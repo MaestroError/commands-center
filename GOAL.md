@@ -1,0 +1,875 @@
+# Goal
+
+Node + Typescript + React
+
+Installable via npm/pnpm, ready for web production and containerisation.
+
+> **Single-User Application** — This is a single-operator tool. There is no user registration, login, or multi-tenancy. The person who installs and runs the app is the sole user with full access to all agents, workspaces, terminals, and the host filesystem. Authentication may be added in a future phase, but the MVP assumes a trusted, single-user environment.
+
+> **MUST: Portable Workspace Rule** — The entire workspace directory is the single source of truth. All application state (agents, configs, chat history, cron jobs, credentials, DB) MUST be stored within the active workspace folder. Even when PostgreSQL is the primary database, the app MUST silently sync all data in the background to a local in-folder SQLite DB (`.agile-ai/local.db`). If a user copies or moves the entire directory to another machine and runs `agile-ai`, they MUST get the exact same application state — zero external dependencies on the originating host. This rule applies to every feature and subsystem without exception.
+
+## Features
+
+App manages OpenCode workspaces as agent, allowing user to add different agents with different tools and instructions. 
+
+Then, it orchestrates this OpenCode agents inside group chats and Kanban board as well as allows direct messages to each agent. 
+
+In case of group chats and kanban board all agents have shared context such as documents, images, task description, chat history, etc.. 
+
+
+At the MVP stage we focus on Direct Messaging only. Let's focus on that.
+
+### Product Phases
+
+The product has three planned feature pillars. We build them sequentially:
+
+| Phase | Feature | Scope |
+|---|---|---|
+| **Phase 1 (MVP)** | **Direct Messages** | Agent CRUD, 1-on-1 chat with each agent via OpenCode SDK, file manager, terminal, cron automations, custom tools, MCP/provider auth, self-updating |
+| **Phase 2** | **Group Chat** | Multi-agent conversations with shared context (documents, images, chat history) |
+| **Phase 3** | **Kanban Board** | Task-based orchestration — agents assigned to cards/columns with shared project context |
+
+**Current focus: Phase 1 — Direct Messages.** All subsequent sections in this document describe Phase 1 scope unless explicitly noted otherwise.
+
+The user should be able to globally:
+
+- Add any custom skills + Browse curated skill library from us (Founders)
+- Add MCPs, including with OAuth + Our built-in integrations
+- Auth Integrations from Composio
+
+Then while creating the agent, Specify what should it has access to, plus specify the role of the agen, name and instructions. Optionally the icon / image too.
+
+The creation of new agent = new workspace for OpenCode by coping skills, setting AGENTS.md (Role, Name, Instructions) and building configuration file with needed mcp and other configs such as our custom agent (Which will be used in chats by defult).
+
+Note: AGENTS.md may be appended with instructions our custom MCP or other tools we (the app) provides
+
+
+### Filesystem
+
+App also should include file manager (preferable using some well-established and documented npm package).
+
+Allowing the user to locate files inside workspace including agents, read them and edit them from web with syntax highlighting.
+
+The user can also browse the full machine filesystem (since they are the owner/operator).
+
+### Terminal
+
+Global terminal that allows the user to run CLI commands, install apps/bins and everything else, including root access with sudo.
+
+Additionally, each agent's chat page should have a terminal provided by OpenCode to run commands inside that agent's workspace (Default location) which is closed by default.
+
+(preferable using some well-established and documented npm package with interactive teminal capabilities).
+
+Terminal can be based on openCode's socket endpoint specifically created for terminal commands (OpenCode web uses the same)
+
+### Cron (Automations)
+
+The user should be able to open up automations page and add some amount of automations (controlled from .env, 0 for unlimited) per day / hour or any custom schedule. Each automation has it's own title, description, status (can be disabled) and prompts. In prompt, user chooses agent and writes prompt that goes to Agent.
+The system enhances this prompt with needed context, including the description of cron job and passes to agent when cron invoked. each cron invokation is different session and should be saved as for future reference / checking
+
+### Direct chat
+
+In sidebar under agents dropdown (expanded by default), should be rendered 3 latest agents the user had direct chat with and "See all" button which leads to agents page.
+
+On agents page should be rendered all available agents with image/icon, name, role and action buttons including "chat" (prefferable in grid view 2 or 3 agents per row) and search input which just filter agents by name and role
+
+## Inside chat window
+
+Very similar to what the opencode agent has: 
+- input with main configs: model, auto-approve switch. And attachments uploading feature.
+    - Attachments are passed directly to OpenCode via the SDK's `FilePartInput` in `session.prompt()`. The app handles the upload UI and temporary storage; OpenCode handles the AI processing. Supported part types: `TextPartInput`, `FilePartInput`, `AgentPartInput`, `SubtaskPartInput`.
+- collapsable right panel with tabs
+    - Only one tab for now: workspace file tree
+        - Supporting option to open folder in terminal or in filesystem view (for reading/editing)
+- terminal window openning (toggle) button which is opened on bottom of main chat window and allows creating multiple terminal sessions
+
+Note: Would be great to use some well-established component library for building the UI
+
+# Opencode
+
+##  OpenCode Engine Management
+
+**Context:** It orchestrates multiple isolated OpenCode AI agents across varied deployment environments (Docker, global NPM, and bare metal). 
+
+The following decisions outline how the application manages the underlying `opencode` binary for maximum performance, stability, and ease of installation.
+
+---
+
+### 1. Execution Strategy: Single-Process Orchestrator
+
+**Decision:** The application runs a **single `opencode serve` process** as a persistent, long-running background daemon (managed by a Node Orchestrator). All agent workspaces are accessed through this single process — workspaces are switched via HTTP headers or query parameters, not by spawning separate server processes per agent.
+
+**Rationale:**
+* **Zero-Latency Interactions:** Spinning up the engine for every message incurs a 2-5 second startup penalty. A persistent service keeps the models loaded in memory, allowing for instant, snappy chat UI responses.
+* **Stateful Context:** Agents require continuous memory. A long-running process maintains active conversation states, file-system watchers (for hot-reloading skills), and authentication without re-initializing on every request.
+* **Single-Process Simplicity:** Instead of spawning one child process per agent (with dynamic port allocation and reverse proxying), a single `opencode serve` instance handles all workspaces. The Orchestrator routes requests to the correct workspace via HTTP headers or query parameters. This eliminates port management, reduces resource consumption, and simplifies lifecycle management.
+* **Active Monitoring:** The Orchestrator polls the single engine's `/health` endpoint, providing the UI with real-time status and graceful error handling if an agent's MCP script crashes.
+
+---
+
+### 2. Installation & Binary Management: The "Universal Local" Strategy
+
+**Decision:** The `opencode-ai` CLI will be managed strictly as a standard `dependency` within the project's `package.json`, avoiding complex system-wide binary downloads or `peerDependency` requirements. 
+
+**Rationale:**
+* **"Batteries Included" Installation:** Relying on standard Node module resolution guarantees a zero-friction setup across all deployment targets:
+  * **Docker:** `npm ci` cleanly installs the binary into the container's isolated `/app/node_modules/.bin/`.
+  * **Bare Metal (VPS/Local):** Cloning and running `npm install` keeps the binary localized to the project folder, preventing pollution of the host's global `PATH`.
+  * **Global NPM:** Running `npm i -g agile-ai` automatically resolves and nests the correct OpenCode dependency under the app's tree.
+* **Total Version Authority:** Because the Orchestrator relies on specific OpenCode API endpoints (e.g., `/instance/dispose`, `/health`), the app's stability is paramount. Locking the version as a strict dependency (e.g., `"opencode-ai": "^1.2.0"`) protects users from unexpected upstream breaking changes until the orchestrator is updated and tested.
+* **Programmatic Execution:** The Orchestrator uses the **official OpenCode JavaScript SDK** (`opencode-ai`) for all programmatic interactions (session management, message sending, tool registration, health checks, auth flows). The SDK wraps the REST API, providing type-safe methods and event subscriptions. The Orchestrator spawns a single `opencode serve` process for the engine lifecycle:
+  ```typescript
+  import path from 'path';
+  import { spawn } from 'child_process';
+  
+  const opencodeBinPath = path.resolve(__dirname, '../node_modules/.bin/opencode');
+  const child = spawn(opencodeBinPath, ['serve'], { ... });
+
+### 2.1 The Escape Hatch (Power User Override)
+
+While the local dependency is the strict default, the Orchestrator will respect an environment variable (e.g., AGILEAI_OPENCODE_PATH). If present, the Orchestrator will bypass the node_modules path and use the provided binary. This supports advanced operators who wish to point the application to a custom, globally compiled fork of the OpenCode engine
+
+
+## Agent CLI Tool Management
+
+### Context
+OpenCode agents frequently require CLI applications to perform tasks. When orchestrating these agents via Docker on a cloud VPS, the ephemeral nature of containers creates a challenge: dynamically installed tools are lost whenever the orchestrator is updated and the container is rebuilt. 
+
+### Decision
+To balance security, container immutability, and agent autonomy, the OpenCode orchestrator will utilize a **Tiered Dependency Strategy** heavily anchored in the Node.js ecosystem, alongside an optional **Bare Metal** deployment mode.
+
+#### The Tiered Docker Strategy
+
+* **Tier 1: NPM Ecosystem (Primary)**
+    * **Mechanism:** Tools are defined in `package.json` or executed on the fly using `npx`.
+    * **Rationale:** Keeps state localized to the `node_modules` directory, making installations environment-agnostic (relying only on the Node.js version) and easily restorable without system-level permissions.
+
+* **Tier 2: Base Image (Essentials)**
+    * **Mechanism:** Core, non-NPM dependencies (e.g., `git`, `python3`, `ffmpeg`) are baked directly into the orchestrator's Docker `Dockerfile`.
+    * **Rationale:** Ensures heavy or universally required system packages are immediately available without slowing down container startup times or requiring complex installations.
+
+* **Tier 3: Startup Scripts (Edge Cases)**
+    * **Mechanism:** Users or agents can write initialization commands to a persisted startup script that runs when the container boots.
+    * **Rationale:** Acts as an escape hatch for specific, non-NPM utilities that don't belong in the core base image, restoring them automatically after a container rebuild.
+
+### Bare Metal Option (Non-Docker)
+* **Mechanism:** Allowing the orchestrator to run directly on the host system without containerization on VPN or locally
+* **Rationale:** Provides an alternative for self-hosting users who prioritize absolute environment freedom, native integrations, and unrestricted agent capabilities over container isolation.
+
+
+## Tools
+
+App should expose 2 custom MCP servers where all custom (user-configured) and app-provided tools will be registered and controllered dynamically, per agent.
+
+> "When an MCP server updates its toolset, it sends this notification and OpenCode publishes a ToolsChanged event" - OpenCode source code
+
+### Custom tools
+
+The user can add custom tools globally, that later can be registered to the agents. Custom tools are kinda configurable HTTP requests that may go to the n8n or something similar, do something and return the feedback. So, it should have a basic HTTP request building configurations + name, description (Goes to MCP) and optional extra instructions (If set, goes as a part of system message before each session)
+
+### App provided tools
+
+We will use composio for external integrations, so one of the tools provided by app will be custom set of composio tools (Since composio will be configured also globally and user can specify specific toolset per agent)
+
+And any other interactions with main app will be happen through this MCP (TBD)
+
+
+## Provider & MCP Authentication
+
+Authentication for both LLM providers and MCP servers is handled via OpenCode's REST API. The app acts as a bridge — it provides the UI for managing credentials globally, then delegates the actual OAuth flows, token exchange, and storage to the running `opencode serve` instance through its HTTP endpoints.
+
+### LLM Provider Auth (Global)
+
+Provider authentication is **global**, not per-agent. The user configures their LLM providers (OpenAI, Anthropic, etc.) once at the app level, and all agents share access to those providers.
+
+- The app UI presents a provider auth modal supporting two methods:
+  - **OAuth flow** — the app opens a browser-based authorization flow, then completes the exchange via OpenCode's `/provider/oauth/` API endpoints.
+  - **API key** — the user pastes a secret key directly; the app stores it via OpenCode's API.
+- Tokens and keys are persisted by OpenCode in its configuration directory (`.opencode/`).
+- The user selects a **default model** per agent at creation time. This default can be changed at any time from the chat window's model selector.
+- The app may use extended timeouts for OAuth endpoints (up to 5 minutes) to accommodate slow browser redirects or device flows (e.g., OpenAI's headless device flow).
+
+### MCP Server Auth (Global + Per-Agent Control)
+
+MCP server connections and their OAuth credentials are also configured **globally** through the app, using OpenCode's `/mcp/auth/` API endpoints. However, tool **access** is controlled per agent.
+
+**Global setup:**
+- The user adds and authenticates MCP servers at the app level (e.g., connecting to Jira, Notion, GitHub via OAuth).
+- The app triggers OpenCode's MCP auth flow, which handles the browser-based OAuth, token exchange, and secure token storage.
+- Extended timeouts (up to 90 seconds) are used for MCP auth callbacks.
+
+**Per-agent tool access:**
+- When creating or editing an agent, the user explicitly selects which MCP servers (and which specific tools) that agent is allowed to use.
+- The app translates these selections into OpenCode's workspace config using the `permission` object (the legacy `tools` boolean config is deprecated as of v1.1.1):
+  - Deny all tools from a server by default: `"servername_*": "deny"`
+  - Allow specific servers per agent: `"servername_*": "allow"`
+  - Require approval for specific tools: `"servername_*": "ask"`
+- Permission values: `"allow"` (run without approval), `"ask"` (prompt for approval), `"deny"` (block the action).
+- This uses OpenCode's native configuration precedence — workspace/agent-level config overrides global config.
+- MCP servers can also be fully disabled at the workspace level using the `enabled: false` flag in the `mcp` config section, which prevents the server connection from being established at all.
+
+**Config format (OpenCode `permission` system):**
+- Permissions are controlled via a flat key-value object in the `permission` config section.
+- Keys support glob patterns: `*` matches zero or more characters, `?` matches exactly one.
+- MCP tools are registered with the server name as prefix, so `"servername_*": "deny"` blocks all tools from that server.
+
+**Flow summary:**
+1. User authenticates providers and MCP servers globally via the app UI.
+2. App delegates all auth flows to OpenCode's REST API (`/provider/oauth/`, `/mcp/auth/`).
+3. OpenCode stores tokens in its config directory.
+4. On agent creation/edit, the app writes the agent's `opencode.json` with the appropriate `permission` grants/denials.
+5. When tools change at runtime, the orchestrator uses MCP's `listChanged` notification to force agents to refresh their available toolsets without restart.
+
+# Principles
+
+We should adhere to following principles while development and maintenance of this project
+
+## Code Quality
+
+- **DRY (Don't Repeat Yourself):** Extract shared logic into reusable modules, utilities, and components. Duplicated code is a maintenance liability.
+- **KISS (Keep It Simple, Stupid):** Prefer straightforward solutions over clever abstractions. Code should be readable by any team member without deep tribal knowledge.
+- **YAGNI (You Aren't Gonna Need It):** Do not build features, abstractions, or configurability until there is a concrete, immediate need.
+- **Single Responsibility:** Each module, class, and function should have one clear purpose. If it's hard to name, it's doing too much.
+- **Composition Over Inheritance:** Favour composing small, focused pieces (hooks, utilities, middleware) over deep inheritance hierarchies.
+- **Immutability by Default:** Prefer `const`, readonly types, and pure functions. Mutate state only through well-defined boundaries (stores, reducers, DB transactions).
+
+## Linting & Formatting
+
+- **ESLint** with a strict shared config (e.g. `@typescript-eslint/recommended-requiring-type-checking`) enforced on every file.
+- **Prettier** for consistent formatting — no style debates in PRs.
+- **Husky + lint-staged** pre-commit hooks to prevent non-compliant code from entering the repo.
+- **Zero warnings policy:** Treat ESLint warnings as errors in CI. If a rule isn't useful, disable it explicitly with a comment explaining why — don't suppress broadly.
+
+## TypeScript Discipline
+
+- **Strict mode enabled** (`"strict": true` in `tsconfig.json`) — no implicit `any`, no unchecked index access.
+- **Explicit return types** on exported functions and public API boundaries.
+- **No `any` unless absolutely necessary** — prefer `unknown` and narrow with type guards.
+- **Zod (or similar) for runtime validation** at system boundaries (API inputs, env vars, external payloads). TypeScript types alone are not enough.
+
+## Testing
+
+- **Minimum 95% code coverage** enforced in CI — PRs that drop coverage below threshold are blocked, when it is mandatory, explicitly reduce threshold. Max reduction to 85%, less than that is unacceptible.
+- **Unit tests:** Every utility, service, and pure function must have unit tests. Use Vitest (or Jest) with fast, isolated test suites.
+- **Integration / Feature tests:** Test service interactions, API routes, middleware chains, and database queries against real (or containerised) dependencies.
+- **End-to-End (E2E) tests:** Critical user flows (agent creation, chat messaging, file management, terminal sessions, cron creation) tested with Playwright.
+- **Snapshot tests** for UI components where visual regression matters — but keep them minimal and intentional.
+- **Test naming convention:** `describe` the unit, `it('should <expected behaviour> when <condition>')`.
+- **No skipped tests in main branch.** `it.skip` / `xit` must be resolved or removed before merge.
+
+## Architecture & Design
+
+- **Separation of Concerns:** Clear boundaries between layers — transport (routes/controllers), business logic (services), data access (repositories), and presentation (React components).
+- **Dependency Injection:** Services receive their dependencies explicitly, making them testable and swappable.
+- **Configuration via Environment:** All environment-specific values come from `.env` / environment variables, validated at startup with a schema (Zod). Fail fast on misconfiguration.
+- **Portable Workspace (MUST):** All application state lives inside the workspace directory. Even with PostgreSQL as the primary DB, the app silently syncs to an in-folder SQLite DB. Moving the directory to another device and running `agile-ai` must produce the exact same application — no external host dependencies.
+- **Error Handling Strategy:**
+  - Domain errors are typed and intentional (custom error classes or result types).
+  - Unhandled exceptions trigger structured logging and graceful degradation — never crash silently.
+  - API responses use consistent error shapes (`{ error: { code, message, details? } }`).
+
+## Security
+
+- **Input validation on every boundary** — never trust data from the client, external APIs, or user-configured MCPs.
+- **Parameterised queries only** — no string interpolation in SQL or shell commands.
+- **Least privilege:** Agents and processes run with the minimum permissions required.
+- **Secrets management:** No secrets in code or version control. Use `.env` (gitignored) locally and secure secret stores in production.
+- **Dependency auditing:** Run `npm audit` in CI; block merges on critical/high vulnerabilities.
+- **CSP, CORS, and rate limiting** configured from day one on all HTTP endpoints.
+
+## Performance & Observability
+
+- **Structured logging** (e.g. Pino) with correlation IDs across requests and agent interactions.
+- **Health checks** on all services — both liveness and readiness probes for containerised deployments.
+- **Graceful shutdown:** Handle `SIGTERM` / `SIGINT` properly — drain connections, stop cron schedulers, terminate agent child processes.
+- **Lazy loading & code splitting** on the frontend — don't ship what the user hasn't requested.
+
+## Git & CI/CD
+
+- **Conventional Commits** (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`) for automated changelogs and semantic versioning.
+- **Branch protection:** `main` requires passing CI (lint + typecheck + all tests + coverage gate) and at least one approval.
+- **Small, focused PRs** — each PR addresses one concern. Large PRs are split proactively.
+- **CI pipeline order:** Install → Lint → Typecheck → Unit tests → Integration tests → E2E tests → Build → Coverage report.
+- We should be able to run full CI pipeline locaaly before opening PR.
+
+## Documentation
+
+- **README** kept up to date with setup steps, architecture overview, and contribution guide.
+- **Inline comments only where "why" isn't obvious** — code should be self-documenting through naming and structure.
+- **API documentation** auto-generated from route schemas (e.g. Swagger / OpenAPI via Zod-to-OpenAPI).
+- **ADRs (Architecture Decision Records)** for significant technical choices — stored in `docs/adr/`.
+
+
+---
+
+# Stack
+
+## Core Language & Runtime
+
+- **Node.js** — Backend runtime and orchestrator
+- **TypeScript** — Strict mode across the entire codebase (frontend + backend)
+
+## Project Structure
+
+Fullstack monorepo — single deployable unit. Fastify serves the built React app in production; Vite dev server proxies to Fastify in development. One `agile-ai start` command runs everything.
+
+```
+agile-ai/
+├── packages/
+│   ├── server/          # Fastify backend + orchestrator
+│   ├── web/             # React frontend (Vite)
+│   └── shared/          # Shared types, Zod schemas, constants
+├── package.json         # Root workspace config
+├── tsconfig.base.json
+└── turbo.json           # Monorepo task runner
+```
+
+## Frontend
+
+| Category | Technology | Notes |
+| --- | --- | --- |
+| **Framework** | React 19 | Component-driven UI with TypeScript |
+| **Build Tool** | Vite | Native ESM dev server, Rollup-based production bundling, code splitting & tree shaking |
+| **Styling** | Tailwind CSS | Utility-first CSS framework |
+| **Component Library** | Shadcn/UI (Radix UI primitives) | Ownable component source code, accessible, adaptable for LLM streaming states |
+| **Chat UI** | assistant-ui | Shadcn/UI-native components for streaming text, tool call displays, generative UI |
+| **File Manager** | SVAR React File Manager | `RestDataProvider`, split-view, breadcrumbs, virtualized directory loading |
+| **Code Editor** | Monaco Editor (`@monaco-editor/react`) | VS Code engine — syntax highlighting, IntelliSense, Model-URI virtual file system |
+| **Terminal Emulator** | xterm.js + `xterm-addon-fit` + `xterm-addon-attach` | WebGL renderer, dynamic resize, WebSocket stream attachment |
+| **Server State** | TanStack Query (`@tanstack/react-query`) | API data fetching, caching, polling, optimistic updates for all server-derived state |
+| **Client State** | Zustand | Lightweight store for UI-only state (active tab, sidebar, selected agent, theme) |
+
+## Backend
+
+| Category | Technology | Notes |
+| --- | --- | --- |
+| **Web Framework** | Fastify | High-performance tree routing, HTTP/2, JSON Schema validation at transport layer |
+| **Schema Validation** | Zod + `fastify-type-provider-zod` | End-to-end type safety, runtime validation at all system boundaries |
+| **Reverse Proxy** | `@fastify/http-proxy` | API gateway proxying traffic to the single OpenCode engine process |
+| **WebSockets** | `ws` or `socket.io` | Full-duplex communication for terminal and real-time streams |
+| **Pseudo-Terminal** | `node-pty` | PTY file descriptors for interactive CLI support (ANSI, cursor, color) |
+| **Process Management** | `child_process.spawn()` | Single OpenCode daemon lifecycle management |
+| **Logging** | Pino | Structured JSON logging with correlation IDs |
+
+## Database
+
+| Category | Technology | Notes |
+| --- | --- | --- |
+| **Cloud DB** | PostgreSQL | Scalable, distributed deployments |
+| **Local DB** | SQLite (`better-sqlite3`) | Lightweight local installations **and** mandatory local sync target (see Portable Workspace Rule) |
+| **ORM** | Drizzle ORM | SQL-first, zero-dependency, TypeScript type-safe, dual-driver support (`drizzle-orm/node-postgres` + `drizzle-orm/better-sqlite3`) |
+| **IDs** | ULID | Lexicographically sortable, collision-safe for distributed systems |
+
+> **Portable Workspace Sync:** Regardless of the active DB driver, the app maintains a **dual-write** strategy — every write to PostgreSQL is also written to `.agile-ai/local.db` (SQLite) inside the workspace directory. Drizzle migrations run against both databases to ensure schema parity. On startup, if no PostgreSQL connection is available, the app seamlessly falls back to this local SQLite DB. This guarantees full portability — move the folder, run on a new machine, and the app resumes with identical state.
+
+## Background Jobs & Scheduling
+
+| Environment | Technology | Notes |
+| --- | --- | --- |
+| **Cloud (PostgreSQL)** | `pg-boss` or `graphile-worker` | Persistent, database-backed scheduling with `SKIP LOCKED` semantics |
+| **Local (SQLite)** | `bree` | Cron syntax parsing + worker threads, paired with SQLite state tracking |
+
+## AI & Integrations
+
+| Category | Technology | Notes |
+| --- | --- | --- |
+| **Agent Engine** | `opencode-ai` (binary) + `@opencode-ai/sdk` (JS SDK) | Official JS SDK (`createOpencodeClient`) for type-safe programmatic interaction + single persistent `opencode serve` daemon managed by the orchestrator |
+| **Tool Protocol** | MCP SDK (`@modelcontextprotocol/sdk`) | `StdioServerTransport` / `SSEServerTransport`, dynamic tool registration, `listChanged` notifications |
+| **External API Auth** | Composio (`composio-core`) | Managed OAuth flows, token storage/refresh, Tool Router for dynamic action loading |
+
+## Testing & Quality
+
+| Category | Technology | Notes |
+| --- | --- | --- |
+| **Unit / Integration** | Vitest (V8 coverage provider) | Vite-native test runner, 95% coverage mandate |
+| **E2E** | Playwright | Multi-pane user flow simulation |
+| **Linting** | ESLint (`@typescript-eslint/recommended-requiring-type-checking`) | Zero warnings policy |
+| **Formatting** | Prettier | Enforced on all files |
+| **Pre-commit Hooks** | Husky + `lint-staged` | Auto-reject non-compliant code |
+| **CI/CD** | GitHub Actions | Sequential fail-fast pipeline: install → lint → typecheck → test → coverage gate → E2E |
+
+---
+
+## Self-Updating
+
+### Version Check
+
+On startup and every 6 hours (configurable via `AGILEAI_UPDATE_INTERVAL_MS`), the backend queries the npm registry for the latest `agile-ai` version and compares it to the running version. Result is exposed via `GET /api/system/version` → `{ current, latest, updateAvailable, installMode }`. The frontend shows a non-intrusive banner when an update is available.
+
+### Installation Mode Detection
+
+At startup, auto-detect deployment mode:
+
+| Signal | Mode |
+|---|---|
+| `AGILEAI_DOCKER=true` or `/.dockerenv` exists | Docker |
+| Global npm path is ancestor of `__dirname` | npm global |
+| `.git` in project root | Bare metal (git clone) |
+| Fallback | npm local |
+
+### Update Mechanisms
+
+**npm (global/local):** CLI command `agile-ai update` or UI button (`POST /api/system/update`) spawns `npm install -g agile-ai@latest` / `npm update`. After completion → graceful restart (drain connections, stop crons, SIGTERM the OpenCode engine process with 10s timeout, exit 0). Process manager (PM2/systemd) restarts the new version.
+
+**Bare metal (git):** `agile-ai update` runs `git pull origin main && npm install && npm run build`. Aborts with a warning if local modifications are detected.
+
+**Docker:** The app cannot self-update inside a container. The banner directs the user to pull the new image and restart the container. Recommend Watchtower for automated pulls.
+
+### Graceful Restart Protocol
+
+1. Stop accepting new connections
+2. Cancel pending cron jobs
+3. SIGTERM the OpenCode engine process (10s grace → SIGKILL)
+4. Flush logs, close DB connections, sync final state to local SQLite
+5. Exit 0 — process supervisor restarts
+
+### Rollback & Safety
+
+- Maintain `~/.agile-ai/versions.json` log. `agile-ai update --rollback` reinstalls previous version.
+- Pre-update checks: warn on active chat sessions, validate DB migration compatibility, check Node.js `engines` field.
+
+### Env Variables
+
+See the [Environment Variables](#environment-variables) section for `AGILEAI_UPDATE_CHECK`, `AGILEAI_UPDATE_INTERVAL_MS`, and `AGILEAI_AUTO_UPDATE`.
+
+---
+
+# Environment Variables
+
+All runtime configuration is managed through environment variables. Validated at startup with Zod — the app fails fast on missing required values or invalid types.
+
+## Server & Runtime
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `NODE_ENV` | `development` | No | Node environment: `development`, `production`, or `test` |
+| `AGILEAI_PORT` | `3000` | No | HTTP server bind port |
+| `AGILEAI_HOST` | `0.0.0.0` | No | Bind address. Use `127.0.0.1` to restrict to localhost |
+| `AGILEAI_LOG_LEVEL` | `info` | No | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+
+## Database
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `DATABASE_URL` | `sqlite://.agile-ai/local.db` | No | Primary DB connection string. PostgreSQL URI for cloud, SQLite path for local. Drives the Drizzle dual-driver switch |
+| `AGILEAI_SQLITE_SYNC` | `true` | No | Enable background sync from PostgreSQL to local SQLite (Portable Workspace Rule). No effect when primary DB is SQLite |
+
+## Security & Auth
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `AGILEAI_SECRET` | — | **Yes** (prod) | Secret key for session signing / JWT. App refuses to start without it in production |
+| `AGILEAI_CORS_ORIGINS` | `*` | No | Allowed CORS origins (comma-separated). Lock down in production |
+| `AGILEAI_RATE_LIMIT_MAX` | `100` | No | Max requests per rate limit window per IP |
+| `AGILEAI_RATE_LIMIT_WINDOW_MS` | `60000` | No | Rate limit sliding window in ms (default: 1 min) |
+| `AGILEAI_CSP_DIRECTIVES` | *(sensible defaults)* | No | Override Content-Security-Policy header directives |
+
+## OpenCode Engine
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `AGILEAI_OPENCODE_PATH` | `node_modules/.bin/opencode` | No | Override path to a custom opencode binary (power-user escape hatch) |
+| `AGILEAI_OPENCODE_PORT` | `4100` | No | Port for the single `opencode serve` process |
+| `AGILEAI_AGENT_HEALTH_INTERVAL_MS` | `10000` | No | Polling interval for the engine's `/health` endpoint |
+| `AGILEAI_AGENT_SHUTDOWN_TIMEOUT_MS` | `10000` | No | Grace period before SIGKILL on engine process termination |
+| `AGILEAI_AGENT_STARTUP_TIMEOUT_MS` | `30000` | No | Max time to wait for the engine to become healthy |
+
+## Workspace & Storage
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `AGILEAI_DATA_DIR` | `.agile-ai` | No | App data directory (DB, configs, logs). Relative to workspace or absolute |
+| `AGILEAI_WORKSPACE_DIR` | `./workspaces` | No | Root directory where agent workspace folders are created |
+
+## Automations (Cron)
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `AGILEAI_MAX_CRONS` | `0` | No | Max automation jobs per user. `0` = unlimited |
+| `AGILEAI_CRON_CONCURRENCY` | `1` | No | Max cron jobs executing simultaneously (prevents resource exhaustion from parallel agent spawns) |
+
+## Integrations
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `COMPOSIO_API_KEY` | — | No | Composio SDK API key for managed OAuth and external tool integrations |
+
+## Auth Timeouts
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `AGILEAI_OAUTH_TIMEOUT_MS` | `300000` | No | Timeout for LLM provider OAuth flows (5 min) |
+| `AGILEAI_MCP_AUTH_TIMEOUT_MS` | `90000` | No | Timeout for MCP server OAuth callbacks (90s) |
+
+## Self-Updating
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `AGILEAI_UPDATE_CHECK` | `true` | No | Enable/disable periodic update checks |
+| `AGILEAI_UPDATE_INTERVAL_MS` | `21600000` | No | Update check interval in ms (default: 6h) |
+| `AGILEAI_AUTO_UPDATE` | `false` | No | Auto-apply updates when detected (npm/git only, never Docker) |
+
+## Deployment
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `AGILEAI_DOCKER` | *(auto-detect)* | No | Force Docker mode when `/.dockerenv` auto-detection fails (e.g. rootless containers) |
+
+---
+
+# Setup & Deployment
+
+## Prerequisites (All Methods)
+
+| Dependency | Version | Notes |
+|---|---|---|
+| Node.js | ≥ 20 LTS | Required runtime. Enforced via `engines` field in `package.json` |
+| npm or pnpm | Latest | Package manager |
+| Git | Any | Required for bare-metal updates and agent workflows |
+
+PostgreSQL is **optional**. Without it, the app runs entirely on SQLite — zero additional infrastructure needed.
+
+---
+
+## 1. Local (Personal / Development)
+
+The fastest path. Install globally via npm and run from any directory.
+
+### Quick Start
+
+```bash
+# Install globally
+npm i -g agile-ai
+
+# Create a workspace directory (becomes your portable state folder)
+mkdir my-workspace && cd my-workspace
+
+# Start (auto-initializes on first run)
+agile-ai start
+```
+
+The app launches at `http://localhost:3000`. All state lives inside the current directory under `.agile-ai/`.
+
+### What `agile-ai start` does on first run
+
+1. Creates `.agile-ai/` data directory
+2. Generates `.env` with documented defaults (edit as needed)
+3. Initializes SQLite database at `.agile-ai/local.db`
+4. Creates `workspaces/` directory for agent folders
+5. Starts the server
+
+### Development mode (contributors)
+
+```bash
+git clone https://github.com/<org>/agile-ai.git
+cd agile-ai
+npm install
+cp .env.example .env          # Edit with your values
+npm run dev                    # Starts backend + frontend with hot reload
+```
+
+### Updating
+
+```bash
+agile-ai update
+# or from the UI: Settings → Update banner → Apply
+```
+
+---
+
+## 2. VPS / Bare Metal (Production)
+
+For self-hosting on a Linux server with full system access. The app runs directly on the host — no containers, no restrictions.
+
+### Server Preparation
+
+```bash
+# Install Node.js 20+ (via nvm or NodeSource)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs git build-essential
+
+# (Optional) Install PostgreSQL for cloud-grade persistence
+sudo apt-get install -y postgresql
+sudo -u postgres createuser agileai
+sudo -u postgres createdb agileai -O agileai
+```
+
+### Installation
+
+```bash
+# Option A: Global install (recommended for operators)
+sudo npm i -g agile-ai
+mkdir /opt/agile-ai && cd /opt/agile-ai
+agile-ai start
+
+# Option B: Git clone (recommended for contributors / custom builds)
+git clone https://github.com/<org>/agile-ai.git /opt/agile-ai
+cd /opt/agile-ai
+npm ci
+npm run build
+cp .env.example .env
+```
+
+### Configuration
+
+Edit `.env` in the workspace root:
+
+```bash
+NODE_ENV=production
+AGILEAI_PORT=3000
+AGILEAI_HOST=0.0.0.0
+AGILEAI_SECRET=<generate-a-strong-random-secret>
+AGILEAI_CORS_ORIGINS=https://yourdomain.com
+
+# Only if using PostgreSQL (otherwise SQLite is used automatically)
+DATABASE_URL=postgresql://agileai:password@localhost:5432/agileai
+```
+
+### Process Management (systemd)
+
+```ini
+# /etc/systemd/system/agile-ai.service
+[Unit]
+Description=Agile AI Orchestrator
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=agileai
+WorkingDirectory=/opt/agile-ai
+ExecStart=/usr/bin/agile-ai start
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+EnvironmentFile=/opt/agile-ai/.env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable agile-ai
+sudo systemctl start agile-ai
+```
+
+### Reverse Proxy (Nginx)
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name yourdomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+
+        # WebSocket support (terminal, chat streams)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Long-running connections for SSE / agent streams
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+}
+```
+
+### Updating
+
+```bash
+# Global install
+agile-ai update
+
+# Git clone
+cd /opt/agile-ai && agile-ai update
+# Executes: git pull origin main && npm ci && npm run build → graceful restart
+```
+
+### Security Checklist (VPS)
+
+- [ ] Run as a dedicated non-root user (`agileai`)
+- [ ] Set `AGILEAI_SECRET` to a cryptographically random value (≥ 32 chars)
+- [ ] Lock `AGILEAI_CORS_ORIGINS` to your domain
+- [ ] Enable UFW/iptables: expose only ports 443 (HTTPS) and 22 (SSH)
+- [ ] Set up automatic security updates (`unattended-upgrades`)
+- [ ] Configure log rotation for Pino JSON logs
+
+---
+
+## 3. Docker (Containerized Production)
+
+For isolated, reproducible deployments. The recommended approach for teams and CI/CD pipelines.
+
+### docker-compose.yml
+
+```yaml
+services:
+  agile-ai:
+    image: ghcr.io/<org>/agile-ai:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist the entire workspace (Portable Workspace Rule)
+      - ./workspace:/app/workspace
+      # (Optional) Custom startup scripts for Tier 3 tools
+      - ./startup.sh:/app/.agile-ai/startup.sh:ro
+    environment:
+      - NODE_ENV=production
+      - AGILEAI_PORT=3000
+      - AGILEAI_SECRET=${AGILEAI_SECRET}
+      - AGILEAI_CORS_ORIGINS=https://yourdomain.com
+      # Omit DATABASE_URL to use SQLite (default), or:
+      - DATABASE_URL=postgresql://agileai:password@db:5432/agileai
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=agileai
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=agileai
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agileai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+```
+
+### Minimal (SQLite only, no PostgreSQL)
+
+```yaml
+services:
+  agile-ai:
+    image: ghcr.io/<org>/agile-ai:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./workspace:/app/workspace
+    environment:
+      - NODE_ENV=production
+      - AGILEAI_SECRET=${AGILEAI_SECRET}
+    restart: unless-stopped
+```
+
+### Dockerfile (Reference)
+
+```dockerfile
+FROM node:20-alpine AS base
+RUN apk add --no-cache git python3 make g++
+
+FROM base AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production=false
+COPY . .
+RUN npm run build
+
+FROM base AS runtime
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+
+# Tier 2: Bake essential non-NPM tools into the image
+RUN apk add --no-cache curl jq
+
+EXPOSE 3000
+USER node
+CMD ["node", "dist/main.js"]
+```
+
+Multi-stage build keeps the final image lean (~200MB). The `opencode` binary is included via `node_modules/.bin/` automatically.
+
+### Startup Scripts (Tier 3 Tools)
+
+Mount a `startup.sh` to install edge-case tools that persist across rebuilds:
+
+```bash
+#!/bin/sh
+# .agile-ai/startup.sh — runs on container boot before the app starts
+apk add --no-cache ripgrep
+pip install some-python-tool
+```
+
+### Updating
+
+The app **cannot** self-update inside a container. Two approaches:
+
+**Manual:**
+```bash
+docker compose pull && docker compose up -d
+```
+
+**Automated (Watchtower):**
+```yaml
+services:
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_POLL_INTERVAL=21600  # 6h, matches AGILEAI_UPDATE_INTERVAL_MS
+      - WATCHTOWER_CLEANUP=true
+```
+
+### Security Checklist (Docker)
+
+- [ ] Never run the container as root (Dockerfile sets `USER node`)
+- [ ] Set `AGILEAI_SECRET` via Docker secrets or `.env` file (not inline in compose)
+- [ ] Lock `AGILEAI_CORS_ORIGINS` to your domain
+- [ ] Place behind a reverse proxy (Nginx/Traefik) with TLS termination
+- [ ] Use read-only mounts where possible (`:ro`)
+- [ ] Pin image tags in production (`ghcr.io/<org>/agile-ai:1.2.3` not `:latest`)
+
+---
+
+## Portability Verification
+
+Regardless of deployment method, the Portable Workspace Rule guarantees:
+
+```bash
+# On Machine A
+rsync -avz /opt/agile-ai/workspace/ user@machine-b:/opt/agile-ai/workspace/
+
+# On Machine B
+cd /opt/agile-ai/workspace && agile-ai start
+# → Exact same agents, chats, crons, configs — zero state loss
+```
+
+This works because all state (SQLite DB, agent workspaces, configs, chat history) lives inside the workspace volume/directory.
+
+---
+
+# Licensing & Contribution Strategy
+
+**Decision:** The application will be released under the **AGPL-3.0 License**, with a mandatory **Contributor License Agreement (CLA)** enforced from day one, laying the groundwork for a future **Dual-License** model.
+
+## Rationale
+
+- **Core Protection (AGPL-3.0):** As a network-interactive orchestrator, AGPL prevents third parties from exploiting the "ASP loophole." Any entity that modifies and hosts the application as a service must open-source their modifications, protecting the platform from being silently absorbed into proprietary SaaS products.
+- **Dependency Compliance:** Wrapping the MIT-licensed `opencode` engine within an AGPL-3.0 application is fully legally compliant.
+- **Monetization Pathway (Dual License):** The platform remains 100% free and open-source for the self-hosting community and small teams. In the future, a commercial license will be offered to enterprise clients who require integrating the orchestrator into closed-source, proprietary environments.
+
+## The CLA Imperative
+
+To legally execute the future dual-license pivot, an automated CLA bot (via GitHub Actions) will block PR merges until contributors sign a standard agreement. This ensures the project retains the right to re-license community code without administrative friction.
+
+---
