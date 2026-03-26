@@ -73,6 +73,14 @@ In sidebar under agents dropdown (expanded by default), should be rendered 3 lat
 
 On agents page should be rendered all available agents with image/icon, name, role and action buttons including "chat" (prefferable in grid view 2 or 3 agents per row) and search input which just filter agents by name and role
 
+Direct chat should feel persistent per agent rather than encouraging many separate visible chat threads. Opening an agent should return the user to that agent's ongoing conversation by default.
+
+If the user wants to begin with a clean context, the chat UI should expose a `Start Fresh` action. Internally this creates a new session, but session mechanics should stay secondary in the UX.
+
+Previous sessions should not be promoted on the dashboard or in primary navigation. Instead, the direct chat UI may expose a secondary `Previous Conversations` entry (for example in a dropdown or contextual menu) so older conversations remain accessible without becoming the primary mental model.
+
+User preferences and important long-term memories should be persisted inside the workspace as a Markdown file so they survive restarts, workspace moves, and fresh conversation resets.
+
 ## Inside chat window
 
 Very similar to what the opencode agent has: 
