@@ -1,7 +1,7 @@
 ---
 name: screen-requirements-writing
 description: Create or update screen requirement documents under design/screens using the project's description and acceptance criteria format
-license: AGPL-3.0
+license: MIT
 compatibility: opencode
 metadata:
   audience: maintainers
@@ -11,6 +11,8 @@ metadata:
 ## What I do
 
 - Create or update screen documentation in `design/screens/<screen-name>/`
+- Read GOAL.md for the project vision and requirements
+- Read design/layout.md for layout and behavior rules
 - Write `description.md` with `Purpose`, `Functional Description`, and `User Stories`
 - Write `acceptance_criteria.md` as testable, pass/fail conditions suitable for feature or E2E tests
 - Follow the project conventions established by the dashboard docs

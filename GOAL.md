@@ -109,9 +109,11 @@ The following decisions outline how the application manages the underlying `open
 
 **Rationale:**
 * **Zero-Latency Interactions:** Spinning up the engine for every message incurs a 2-5 second startup penalty. A persistent service keeps the models loaded in memory, allowing for instant, snappy chat UI responses.
-* **Stateful Context:** Agents require continuous memory. A long-running process maintains active conversation states, file-system watchers (for hot-reloading skills), and authentication without re-initializing on every request.
+* **Stateful Context:** Agents require continuous memory. A long-running process maintains active conversation states, instance-scoped caches/services, and authentication without re-initializing on every request.
 * **Single-Process Simplicity:** Instead of spawning one child process per agent (with dynamic port allocation and reverse proxying), a single `opencode serve` instance handles all workspaces. The Orchestrator routes requests to the correct workspace via HTTP headers or query parameters. This eliminates port management, reduces resource consumption, and simplifies lifecycle management.
 * **Active Monitoring:** The Orchestrator polls the single engine's `/health` endpoint, providing the UI with real-time status and graceful error handling if an agent's MCP script crashes.
+
+**Note:** Skill discovery is loaded as part of workspace instance initialization, not hot-reloaded inside an already initialized instance. When skills are added or changed for an existing workspace, the app should dispose that workspace instance (or restart `opencode serve`) before expecting the new skill set to appear. Disposing the instance is preferred because it reloads workspace state without insfrastructure overhead, keep restarting full opencode serve as a fallback option.
 
 ---
 
