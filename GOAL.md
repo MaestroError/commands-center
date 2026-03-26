@@ -6,7 +6,7 @@ Installable via npm/pnpm, ready for web production and containerisation.
 
 > **Single-User Application** — This is a single-operator tool. There is no user registration, login, or multi-tenancy. The person who installs and runs the app is the sole user with full access to all agents, workspaces, terminals, and the host filesystem. Authentication may be added in a future phase, but the MVP assumes a trusted, single-user environment.
 
-> **MUST: Portable Workspace Rule** — The entire workspace directory is the single source of truth. All application state (agents, configs, chat history, cron jobs, credentials, DB) MUST be stored within the active workspace folder. Even when PostgreSQL is the primary database, the app MUST silently sync all data in the background to a local in-folder SQLite DB (`.agile-ai/local.db`). If a user copies or moves the entire directory to another machine and runs `agile-ai`, they MUST get the exact same application state — zero external dependencies on the originating host. This rule applies to every feature and subsystem without exception.
+> **MUST: Portable Workspace Rule** — The entire workspace directory is the single source of truth. All application state (agents, configs, chat history, cron jobs, credentials, DB) MUST be stored within the active workspace folder. Even when PostgreSQL is the primary database, the app MUST silently sync all data in the background to a local in-folder SQLite DB (`.cc/local.db`). If a user copies or moves the entire directory to another machine and runs `cc`, they MUST get the exact same application state — zero external dependencies on the originating host. This rule applies to every feature and subsystem without exception.
 
 ## Features
 
@@ -115,7 +115,7 @@ The following decisions outline how the application manages the underlying `open
 * **"Batteries Included" Installation:** Relying on standard Node module resolution guarantees a zero-friction setup across all deployment targets:
   * **Docker:** `npm ci` cleanly installs the binary into the container's isolated `/app/node_modules/.bin/`.
   * **Bare Metal (VPS/Local):** Cloning and running `npm install` keeps the binary localized to the project folder, preventing pollution of the host's global `PATH`.
-  * **Global NPM:** Running `npm i -g agile-ai` automatically resolves and nests the correct OpenCode dependency under the app's tree.
+  * **Global NPM:** Running `npm i -g cc` automatically resolves and nests the correct OpenCode dependency under the app's tree.
 * **Total Version Authority:** Because the Orchestrator relies on specific OpenCode API endpoints (e.g., `/instance/dispose`, `/health`), the app's stability is paramount. Locking the version as a strict dependency (e.g., `"opencode-ai": "^1.2.0"`) protects users from unexpected upstream breaking changes until the orchestrator is updated and tested.
 * **Programmatic Execution:** The Orchestrator uses the **official OpenCode JavaScript SDK** (`opencode-ai`) for all programmatic interactions (session management, message sending, tool registration, health checks, auth flows). The SDK wraps the REST API, providing type-safe methods and event subscriptions. The Orchestrator spawns a single `opencode serve` process for the engine lifecycle:
   ```typescript
@@ -127,7 +127,7 @@ The following decisions outline how the application manages the underlying `open
 
 ### 2.1 The Escape Hatch (Power User Override)
 
-While the local dependency is the strict default, the Orchestrator will respect an environment variable (e.g., AGILEAI_OPENCODE_PATH). If present, the Orchestrator will bypass the node_modules path and use the provided binary. This supports advanced operators who wish to point the application to a custom, globally compiled fork of the OpenCode engine
+While the local dependency is the strict default, the Orchestrator will respect an environment variable (e.g., CC_OPENCODE_PATH). If present, the Orchestrator will bypass the node_modules path and use the provided binary. This supports advanced operators who wish to point the application to a custom, globally compiled fork of the OpenCode engine
 
 
 ## Agent CLI Tool Management
@@ -262,7 +262,7 @@ We should adhere to following principles while development and maintenance of th
 - **Separation of Concerns:** Clear boundaries between layers — transport (routes/controllers), business logic (services), data access (repositories), and presentation (React components).
 - **Dependency Injection:** Services receive their dependencies explicitly, making them testable and swappable.
 - **Configuration via Environment:** All environment-specific values come from `.env` / environment variables, validated at startup with a schema (Zod). Fail fast on misconfiguration.
-- **Portable Workspace (MUST):** All application state lives inside the workspace directory. Even with PostgreSQL as the primary DB, the app silently syncs to an in-folder SQLite DB. Moving the directory to another device and running `agile-ai` must produce the exact same application — no external host dependencies.
+- **Portable Workspace (MUST):** All application state lives inside the workspace directory. Even with PostgreSQL as the primary DB, the app silently syncs to an in-folder SQLite DB. Moving the directory to another device and running `cc` must produce the exact same application — no external host dependencies.
 - **Error Handling Strategy:**
   - Domain errors are typed and intentional (custom error classes or result types).
   - Unhandled exceptions trigger structured logging and graceful degradation — never crash silently.
@@ -311,10 +311,10 @@ We should adhere to following principles while development and maintenance of th
 
 ## Project Structure
 
-Fullstack monorepo — single deployable unit. Fastify serves the built React app in production; Vite dev server proxies to Fastify in development. One `agile-ai start` command runs everything.
+Fullstack monorepo — single deployable unit. Fastify serves the built React app in production; Vite dev server proxies to Fastify in development. One `cc start` command runs everything.
 
 ```
-agile-ai/
+cc/
 ├── packages/
 │   ├── server/          # Fastify backend + orchestrator
 │   ├── web/             # React frontend (Vite)
@@ -360,7 +360,7 @@ agile-ai/
 | **ORM** | Drizzle ORM | SQL-first, zero-dependency, TypeScript type-safe, dual-driver support (`drizzle-orm/node-postgres` + `drizzle-orm/better-sqlite3`) |
 | **IDs** | ULID | Lexicographically sortable, collision-safe for distributed systems |
 
-> **Portable Workspace Sync:** Regardless of the active DB driver, the app maintains a **dual-write** strategy — every write to PostgreSQL is also written to `.agile-ai/local.db` (SQLite) inside the workspace directory. Drizzle migrations run against both databases to ensure schema parity. On startup, if no PostgreSQL connection is available, the app seamlessly falls back to this local SQLite DB. This guarantees full portability — move the folder, run on a new machine, and the app resumes with identical state.
+> **Portable Workspace Sync:** Regardless of the active DB driver, the app maintains a **dual-write** strategy — every write to PostgreSQL is also written to `.cc/local.db` (SQLite) inside the workspace directory. Drizzle migrations run against both databases to ensure schema parity. On startup, if no PostgreSQL connection is available, the app seamlessly falls back to this local SQLite DB. This guarantees full portability — move the folder, run on a new machine, and the app resumes with identical state.
 
 ## Background Jobs & Scheduling
 
@@ -394,7 +394,7 @@ agile-ai/
 
 ### Version Check
 
-On startup and every 6 hours (configurable via `AGILEAI_UPDATE_INTERVAL_MS`), the backend queries the npm registry for the latest `agile-ai` version and compares it to the running version. Result is exposed via `GET /api/system/version` → `{ current, latest, updateAvailable, installMode }`. The frontend shows a non-intrusive banner when an update is available.
+On startup and every 6 hours (configurable via `CC_UPDATE_INTERVAL_MS`), the backend queries the npm registry for the latest `cc` version and compares it to the running version. Result is exposed via `GET /api/system/version` → `{ current, latest, updateAvailable, installMode }`. The frontend shows a non-intrusive banner when an update is available.
 
 ### Installation Mode Detection
 
@@ -402,16 +402,16 @@ At startup, auto-detect deployment mode:
 
 | Signal | Mode |
 |---|---|
-| `AGILEAI_DOCKER=true` or `/.dockerenv` exists | Docker |
+| `CC_DOCKER=true` or `/.dockerenv` exists | Docker |
 | Global npm path is ancestor of `__dirname` | npm global |
 | `.git` in project root | Bare metal (git clone) |
 | Fallback | npm local |
 
 ### Update Mechanisms
 
-**npm (global/local):** CLI command `agile-ai update` or UI button (`POST /api/system/update`) spawns `npm install -g agile-ai@latest` / `npm update`. After completion → graceful restart (drain connections, stop crons, SIGTERM the OpenCode engine process with 10s timeout, exit 0). Process manager (PM2/systemd) restarts the new version.
+**npm (global/local):** CLI command `cc update` or UI button (`POST /api/system/update`) spawns `npm install -g cc@latest` / `npm update`. After completion → graceful restart (drain connections, stop crons, SIGTERM the OpenCode engine process with 10s timeout, exit 0). Process manager (PM2/systemd) restarts the new version.
 
-**Bare metal (git):** `agile-ai update` runs `git pull origin main && npm install && npm run build`. Aborts with a warning if local modifications are detected.
+**Bare metal (git):** `cc update` runs `git pull origin main && npm install && npm run build`. Aborts with a warning if local modifications are detected.
 
 **Docker:** The app cannot self-update inside a container. The banner directs the user to pull the new image and restart the container. Recommend Watchtower for automated pulls.
 
@@ -425,12 +425,12 @@ At startup, auto-detect deployment mode:
 
 ### Rollback & Safety
 
-- Maintain `~/.agile-ai/versions.json` log. `agile-ai update --rollback` reinstalls previous version.
+- Maintain `~/.cc/versions.json` log. `cc update --rollback` reinstalls previous version.
 - Pre-update checks: warn on active chat sessions, validate DB migration compatibility, check Node.js `engines` field.
 
 ### Env Variables
 
-See the [Environment Variables](#environment-variables) section for `AGILEAI_UPDATE_CHECK`, `AGILEAI_UPDATE_INTERVAL_MS`, and `AGILEAI_AUTO_UPDATE`.
+See the [Environment Variables](#environment-variables) section for `CC_UPDATE_CHECK`, `CC_UPDATE_INTERVAL_MS`, and `CC_AUTO_UPDATE`.
 
 ---
 
@@ -443,50 +443,50 @@ All runtime configuration is managed through environment variables. Validated at
 | Variable | Default | Required | Description |
 |---|---|---|---|
 | `NODE_ENV` | `development` | No | Node environment: `development`, `production`, or `test` |
-| `AGILEAI_PORT` | `3000` | No | HTTP server bind port |
-| `AGILEAI_HOST` | `0.0.0.0` | No | Bind address. Use `127.0.0.1` to restrict to localhost |
-| `AGILEAI_LOG_LEVEL` | `info` | No | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+| `CC_PORT` | `3000` | No | HTTP server bind port |
+| `CC_HOST` | `0.0.0.0` | No | Bind address. Use `127.0.0.1` to restrict to localhost |
+| `CC_LOG_LEVEL` | `info` | No | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 
 ## Database
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
-| `DATABASE_URL` | `sqlite://.agile-ai/local.db` | No | Primary DB connection string. PostgreSQL URI for cloud, SQLite path for local. Drives the Drizzle dual-driver switch |
-| `AGILEAI_SQLITE_SYNC` | `true` | No | Enable background sync from PostgreSQL to local SQLite (Portable Workspace Rule). No effect when primary DB is SQLite |
+| `DATABASE_URL` | `sqlite://.cc/local.db` | No | Primary DB connection string. PostgreSQL URI for cloud, SQLite path for local. Drives the Drizzle dual-driver switch |
+| `CC_SQLITE_SYNC` | `true` | No | Enable background sync from PostgreSQL to local SQLite (Portable Workspace Rule). No effect when primary DB is SQLite |
 
 ## Security & Auth
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
-| `AGILEAI_SECRET` | — | **Yes** (prod) | Secret key for session signing / JWT. App refuses to start without it in production |
-| `AGILEAI_CORS_ORIGINS` | `*` | No | Allowed CORS origins (comma-separated). Lock down in production |
-| `AGILEAI_RATE_LIMIT_MAX` | `100` | No | Max requests per rate limit window per IP |
-| `AGILEAI_RATE_LIMIT_WINDOW_MS` | `60000` | No | Rate limit sliding window in ms (default: 1 min) |
-| `AGILEAI_CSP_DIRECTIVES` | *(sensible defaults)* | No | Override Content-Security-Policy header directives |
+| `CC_SECRET` | — | **Yes** (prod) | Secret key for session signing / JWT. App refuses to start without it in production |
+| `CC_CORS_ORIGINS` | `*` | No | Allowed CORS origins (comma-separated). Lock down in production |
+| `CC_RATE_LIMIT_MAX` | `100` | No | Max requests per rate limit window per IP |
+| `CC_RATE_LIMIT_WINDOW_MS` | `60000` | No | Rate limit sliding window in ms (default: 1 min) |
+| `CC_CSP_DIRECTIVES` | *(sensible defaults)* | No | Override Content-Security-Policy header directives |
 
 ## OpenCode Engine
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
-| `AGILEAI_OPENCODE_PATH` | `node_modules/.bin/opencode` | No | Override path to a custom opencode binary (power-user escape hatch) |
-| `AGILEAI_OPENCODE_PORT` | `4100` | No | Port for the single `opencode serve` process |
-| `AGILEAI_AGENT_HEALTH_INTERVAL_MS` | `10000` | No | Polling interval for the engine's `/health` endpoint |
-| `AGILEAI_AGENT_SHUTDOWN_TIMEOUT_MS` | `10000` | No | Grace period before SIGKILL on engine process termination |
-| `AGILEAI_AGENT_STARTUP_TIMEOUT_MS` | `30000` | No | Max time to wait for the engine to become healthy |
+| `CC_OPENCODE_PATH` | `node_modules/.bin/opencode` | No | Override path to a custom opencode binary (power-user escape hatch) |
+| `CC_OPENCODE_PORT` | `4100` | No | Port for the single `opencode serve` process |
+| `CC_AGENT_HEALTH_INTERVAL_MS` | `10000` | No | Polling interval for the engine's `/health` endpoint |
+| `CC_AGENT_SHUTDOWN_TIMEOUT_MS` | `10000` | No | Grace period before SIGKILL on engine process termination |
+| `CC_AGENT_STARTUP_TIMEOUT_MS` | `30000` | No | Max time to wait for the engine to become healthy |
 
 ## Workspace & Storage
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
-| `AGILEAI_DATA_DIR` | `.agile-ai` | No | App data directory (DB, configs, logs). Relative to workspace or absolute |
-| `AGILEAI_WORKSPACE_DIR` | `./workspaces` | No | Root directory where agent workspace folders are created |
+| `CC_DATA_DIR` | `.cc` | No | App data directory (DB, configs, logs). Relative to workspace or absolute |
+| `CC_WORKSPACE_DIR` | `./workspaces` | No | Root directory where agent workspace folders are created |
 
 ## Automations (Cron)
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
-| `AGILEAI_MAX_CRONS` | `0` | No | Max automation jobs per user. `0` = unlimited |
-| `AGILEAI_CRON_CONCURRENCY` | `1` | No | Max cron jobs executing simultaneously (prevents resource exhaustion from parallel agent spawns) |
+| `CC_MAX_CRONS` | `0` | No | Max automation jobs per user. `0` = unlimited |
+| `CC_CRON_CONCURRENCY` | `1` | No | Max cron jobs executing simultaneously (prevents resource exhaustion from parallel agent spawns) |
 
 ## Integrations
 
@@ -498,22 +498,22 @@ All runtime configuration is managed through environment variables. Validated at
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
-| `AGILEAI_OAUTH_TIMEOUT_MS` | `300000` | No | Timeout for LLM provider OAuth flows (5 min) |
-| `AGILEAI_MCP_AUTH_TIMEOUT_MS` | `90000` | No | Timeout for MCP server OAuth callbacks (90s) |
+| `CC_OAUTH_TIMEOUT_MS` | `300000` | No | Timeout for LLM provider OAuth flows (5 min) |
+| `CC_MCP_AUTH_TIMEOUT_MS` | `90000` | No | Timeout for MCP server OAuth callbacks (90s) |
 
 ## Self-Updating
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
-| `AGILEAI_UPDATE_CHECK` | `true` | No | Enable/disable periodic update checks |
-| `AGILEAI_UPDATE_INTERVAL_MS` | `21600000` | No | Update check interval in ms (default: 6h) |
-| `AGILEAI_AUTO_UPDATE` | `false` | No | Auto-apply updates when detected (npm/git only, never Docker) |
+| `CC_UPDATE_CHECK` | `true` | No | Enable/disable periodic update checks |
+| `CC_UPDATE_INTERVAL_MS` | `21600000` | No | Update check interval in ms (default: 6h) |
+| `CC_AUTO_UPDATE` | `false` | No | Auto-apply updates when detected (npm/git only, never Docker) |
 
 ## Deployment
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
-| `AGILEAI_DOCKER` | *(auto-detect)* | No | Force Docker mode when `/.dockerenv` auto-detection fails (e.g. rootless containers) |
+| `CC_DOCKER` | *(auto-detect)* | No | Force Docker mode when `/.dockerenv` auto-detection fails (e.g. rootless containers) |
 
 ---
 
@@ -539,30 +539,30 @@ The fastest path. Install globally via npm and run from any directory.
 
 ```bash
 # Install globally
-npm i -g agile-ai
+npm i -g cc
 
 # Create a workspace directory (becomes your portable state folder)
 mkdir my-workspace && cd my-workspace
 
 # Start (auto-initializes on first run)
-agile-ai start
+cc start
 ```
 
-The app launches at `http://localhost:3000`. All state lives inside the current directory under `.agile-ai/`.
+The app launches at `http://localhost:3000`. All state lives inside the current directory under `.cc/`.
 
-### What `agile-ai start` does on first run
+### What `cc start` does on first run
 
-1. Creates `.agile-ai/` data directory
+1. Creates `.cc/` data directory
 2. Generates `.env` with documented defaults (edit as needed)
-3. Initializes SQLite database at `.agile-ai/local.db`
+3. Initializes SQLite database at `.cc/local.db`
 4. Creates `workspaces/` directory for agent folders
 5. Starts the server
 
 ### Development mode (contributors)
 
 ```bash
-git clone https://github.com/<org>/agile-ai.git
-cd agile-ai
+git clone https://github.com/<org>/cc.git
+cd cc
 npm install
 cp .env.example .env          # Edit with your values
 npm run dev                    # Starts backend + frontend with hot reload
@@ -571,7 +571,7 @@ npm run dev                    # Starts backend + frontend with hot reload
 ### Updating
 
 ```bash
-agile-ai update
+cc update
 # or from the UI: Settings → Update banner → Apply
 ```
 
@@ -590,21 +590,21 @@ sudo apt-get install -y nodejs git build-essential
 
 # (Optional) Install PostgreSQL for cloud-grade persistence
 sudo apt-get install -y postgresql
-sudo -u postgres createuser agileai
-sudo -u postgres createdb agileai -O agileai
+sudo -u postgres createuser cc
+sudo -u postgres createdb cc -O cc
 ```
 
 ### Installation
 
 ```bash
 # Option A: Global install (recommended for operators)
-sudo npm i -g agile-ai
-mkdir /opt/agile-ai && cd /opt/agile-ai
-agile-ai start
+sudo npm i -g cc
+mkdir /opt/cc && cd /opt/cc
+cc start
 
 # Option B: Git clone (recommended for contributors / custom builds)
-git clone https://github.com/<org>/agile-ai.git /opt/agile-ai
-cd /opt/agile-ai
+git clone https://github.com/<org>/cc.git /opt/cc
+cd /opt/cc
 npm ci
 npm run build
 cp .env.example .env
@@ -616,33 +616,33 @@ Edit `.env` in the workspace root:
 
 ```bash
 NODE_ENV=production
-AGILEAI_PORT=3000
-AGILEAI_HOST=0.0.0.0
-AGILEAI_SECRET=<generate-a-strong-random-secret>
-AGILEAI_CORS_ORIGINS=https://yourdomain.com
+CC_PORT=3000
+CC_HOST=0.0.0.0
+CC_SECRET=<generate-a-strong-random-secret>
+CC_CORS_ORIGINS=https://yourdomain.com
 
 # Only if using PostgreSQL (otherwise SQLite is used automatically)
-DATABASE_URL=postgresql://agileai:password@localhost:5432/agileai
+DATABASE_URL=postgresql://cc:password@localhost:5432/cc
 ```
 
 ### Process Management (systemd)
 
 ```ini
-# /etc/systemd/system/agile-ai.service
+# /etc/systemd/system/cc.service
 [Unit]
-Description=Agile AI Orchestrator
+Description=CommandsCenter Orchestrator
 After=network.target postgresql.service
 
 [Service]
 Type=simple
-User=agileai
-WorkingDirectory=/opt/agile-ai
-ExecStart=/usr/bin/agile-ai start
+User=cc
+WorkingDirectory=/opt/cc
+ExecStart=/usr/bin/cc start
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=30
-EnvironmentFile=/opt/agile-ai/.env
+EnvironmentFile=/opt/cc/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -650,8 +650,8 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable agile-ai
-sudo systemctl start agile-ai
+sudo systemctl enable cc
+sudo systemctl start cc
 ```
 
 ### Reverse Proxy (Nginx)
@@ -688,18 +688,18 @@ server {
 
 ```bash
 # Global install
-agile-ai update
+cc update
 
 # Git clone
-cd /opt/agile-ai && agile-ai update
+cd /opt/cc && cc update
 # Executes: git pull origin main && npm ci && npm run build → graceful restart
 ```
 
 ### Security Checklist (VPS)
 
-- [ ] Run as a dedicated non-root user (`agileai`)
-- [ ] Set `AGILEAI_SECRET` to a cryptographically random value (≥ 32 chars)
-- [ ] Lock `AGILEAI_CORS_ORIGINS` to your domain
+- [ ] Run as a dedicated non-root user (`cc`)
+- [ ] Set `CC_SECRET` to a cryptographically random value (≥ 32 chars)
+- [ ] Lock `CC_CORS_ORIGINS` to your domain
 - [ ] Enable UFW/iptables: expose only ports 443 (HTTPS) and 22 (SSH)
 - [ ] Set up automatic security updates (`unattended-upgrades`)
 - [ ] Configure log rotation for Pino JSON logs
@@ -714,22 +714,22 @@ For isolated, reproducible deployments. The recommended approach for teams and C
 
 ```yaml
 services:
-  agile-ai:
-    image: ghcr.io/<org>/agile-ai:latest
+  cc:
+    image: ghcr.io/<org>/cc:latest
     ports:
       - "3000:3000"
     volumes:
       # Persist the entire workspace (Portable Workspace Rule)
       - ./workspace:/app/workspace
       # (Optional) Custom startup scripts for Tier 3 tools
-      - ./startup.sh:/app/.agile-ai/startup.sh:ro
+      - ./startup.sh:/app/.cc/startup.sh:ro
     environment:
       - NODE_ENV=production
-      - AGILEAI_PORT=3000
-      - AGILEAI_SECRET=${AGILEAI_SECRET}
-      - AGILEAI_CORS_ORIGINS=https://yourdomain.com
+      - CC_PORT=3000
+      - CC_SECRET=${CC_SECRET}
+      - CC_CORS_ORIGINS=https://yourdomain.com
       # Omit DATABASE_URL to use SQLite (default), or:
-      - DATABASE_URL=postgresql://agileai:password@db:5432/agileai
+      - DATABASE_URL=postgresql://cc:password@db:5432/cc
     depends_on:
       db:
         condition: service_healthy
@@ -740,11 +740,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     environment:
-      - POSTGRES_USER=agileai
+      - POSTGRES_USER=cc
       - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=agileai
+      - POSTGRES_DB=cc
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agileai"]
+      test: ["CMD-SHELL", "pg_isready -U cc"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -757,15 +757,15 @@ volumes:
 
 ```yaml
 services:
-  agile-ai:
-    image: ghcr.io/<org>/agile-ai:latest
+  cc:
+    image: ghcr.io/<org>/cc:latest
     ports:
       - "3000:3000"
     volumes:
       - ./workspace:/app/workspace
     environment:
       - NODE_ENV=production
-      - AGILEAI_SECRET=${AGILEAI_SECRET}
+      - CC_SECRET=${CC_SECRET}
     restart: unless-stopped
 ```
 
@@ -804,7 +804,7 @@ Mount a `startup.sh` to install edge-case tools that persist across rebuilds:
 
 ```bash
 #!/bin/sh
-# .agile-ai/startup.sh — runs on container boot before the app starts
+# .cc/startup.sh — runs on container boot before the app starts
 apk add --no-cache ripgrep
 pip install some-python-tool
 ```
@@ -826,18 +826,18 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - WATCHTOWER_POLL_INTERVAL=21600  # 6h, matches AGILEAI_UPDATE_INTERVAL_MS
+      - WATCHTOWER_POLL_INTERVAL=21600  # 6h, matches CC_UPDATE_INTERVAL_MS
       - WATCHTOWER_CLEANUP=true
 ```
 
 ### Security Checklist (Docker)
 
 - [ ] Never run the container as root (Dockerfile sets `USER node`)
-- [ ] Set `AGILEAI_SECRET` via Docker secrets or `.env` file (not inline in compose)
-- [ ] Lock `AGILEAI_CORS_ORIGINS` to your domain
+- [ ] Set `CC_SECRET` via Docker secrets or `.env` file (not inline in compose)
+- [ ] Lock `CC_CORS_ORIGINS` to your domain
 - [ ] Place behind a reverse proxy (Nginx/Traefik) with TLS termination
 - [ ] Use read-only mounts where possible (`:ro`)
-- [ ] Pin image tags in production (`ghcr.io/<org>/agile-ai:1.2.3` not `:latest`)
+- [ ] Pin image tags in production (`ghcr.io/<org>/cc:1.2.3` not `:latest`)
 
 ---
 
@@ -847,10 +847,10 @@ Regardless of deployment method, the Portable Workspace Rule guarantees:
 
 ```bash
 # On Machine A
-rsync -avz /opt/agile-ai/workspace/ user@machine-b:/opt/agile-ai/workspace/
+rsync -avz /opt/cc/workspace/ user@machine-b:/opt/cc/workspace/
 
 # On Machine B
-cd /opt/agile-ai/workspace && agile-ai start
+cd /opt/cc/workspace && cc start
 # → Exact same agents, chats, crons, configs — zero state loss
 ```
 
