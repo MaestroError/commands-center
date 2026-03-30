@@ -1,0 +1,16 @@
+# Automations Acceptance Criteria
+
+- Selecting the automations entry in navigation or the automations quick action from dashboard opens the automations screen.
+- The automations screen shows all configured automations when one or more automations exist.
+- If no automations exist, the automations screen shows an empty state and provides an action to create an automation.
+- The automations screen allows the user to create an automation with a title, description, schedule, target agent, and prompt.
+- The automations screen allows the user to edit an existing automation and shows its saved title, description, schedule, target agent, prompt, and enabled or disabled status.
+- If the user attempts to save an automation without a title, schedule, target agent, or prompt, the screen prevents submission and shows a validation error for each missing required field.
+- When the user saves a valid automation, the system persists the automation in the workspace.
+- The automations screen allows the user to enable or disable an automation, and the updated status is shown when the automation is reopened.
+- When a maximum number of automations is configured and that limit has been reached, the screen prevents creation of an additional automation and shows that the automation limit has been reached.
+- When no maximum number of automations is configured, the automations screen does not block creation based on automation count.
+- The automations screen shows run history for an automation when execution history exists.
+- When run history exists, each run entry shows the automation identity, execution status, and execution time.
+- When no run history exists for an automation, the screen shows an empty history state.
+- Each automation run is recorded as a separate history entry.

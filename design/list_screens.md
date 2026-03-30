@@ -17,55 +17,45 @@
 
 ## 4. Direct Chat
 
-- Description: Core 1-on-1 chat screen with message history, composer, model picker, auto-approve switch, attachments, and agent interactions.
-- Decision: This is the center of the MVP and should also contain the lightweight workspace panel and agent terminal access.
+- Description: Core 1-on-1 chat screen with message history, expandable tool calls, composer, model picker, auto-approve switch, attachments, agent interactions, a right context sidebar with tabs, and an embedded agent terminal panel.
+- Decision: This is the center of the MVP. The workspace files view belongs inside the direct chat right sidebar and the agent terminal belongs inside the direct chat bottom panel rather than as separate screens.
 
-## 5. Chat Workspace Panel
-
-- Description: Right-side panel inside direct chat that shows the agent workspace tree for quick browsing and context.
-- Decision: This is not a full editor. Single click can preview/select, double click should open the file for editing, and `Open in File Manager` should open the full file manager in a new tab focused on that location.
-
-## 6. File Manager
+## 5. File Manager
 
 - Description: Main place to browse folders/files and edit files comfortably with breadcrumbs, tree navigation, and an editing surface.
 - Decision: This replaces the need for a separate code editor screen. Editing should happen here, not in chat modals or in the small workspace panel.
 
-## 7. Agent Terminal
-
-- Description: Terminal experience tied to the current agent workspace, opened from the chat screen for workspace-level command execution.
-- Decision: Treat this as part of the direct chat experience, likely as a bottom drawer/panel, not as a separate top-level page.
-
-## 8. Global Terminal
+## 6. Global Terminal
 
 - Description: Standalone terminal for host-level commands, installs, and machine-wide operations outside a single agent workspace.
 - Decision: Keep separate from the agent terminal because scope and risk are different.
 
-## 9. Automations
+## 7. Automations
 
 - Description: Screen for listing, creating, editing, enabling/disabling, and reviewing scheduled prompt automations.
 - Decision: One module can cover list + form + basic run history instead of splitting into many MVP screens.
 
-## 10. Custom Tools
+## 8. Custom Tools
 
 - Description: Manage globally defined custom tools, including list, create, edit, and configuration of request details and instructions.
 - Decision: This is a global library, not an agent-local screen. Agents only reference tools from here.
 
-## 11. Provider Connections
+## 9. Provider Connections
 
 - Description: Global screen for connecting and managing LLM providers such as OpenAI or Anthropic.
 - Decision: Provider auth is global, so this should live outside agent screens. OAuth/API key flows can open in modal steps from here.
 
-## 12. MCP Servers
+## 10. MCP Servers
 
 - Description: Global screen for adding MCP servers, authenticating them, reviewing connection state, and managing available integrations.
 - Decision: MCP auth is global, but permissions are applied per agent in the agent form.
 
-## 13. Settings
+## 11. Settings
 
 - Description: App-wide configuration screen for runtime preferences, workspace-related options, and update actions.
 - Decision: Keep update controls here together with general configuration instead of creating a separate MVP update screen.
 
-## 14. Profile
+## 12. Profile
 
 - Description: Personalization screen for the single user, including display name, theme selection, and timezone.
 - Decision: In MVP this stays intentionally small. Post-MVP it can also host quick export/import actions for portable user/workspace setup flows.
