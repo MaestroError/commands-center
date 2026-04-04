@@ -8,9 +8,14 @@
 - If the user attempts to save an automation without a title, schedule, target agent, or prompt, the screen prevents submission and shows a validation error for each missing required field.
 - When the user saves a valid automation, the system persists the automation in the workspace.
 - The automations screen allows the user to enable or disable an automation, and the updated status is shown when the automation is reopened.
+- The automations screen allows the user to archive an automation. Archived automations are hidden from the active list but their configuration and run history are preserved.
+- The automations screen provides a way to view archived automations and restore them to active status.
+- The automations screen allows the user to delete an automation permanently. Selecting the delete action prompts the user with a confirmation dialog before proceeding.
+- When the user confirms deletion, the system removes the automation and its run history from the workspace and the automation is no longer shown.
 - When a maximum number of automations is configured and that limit has been reached, the screen prevents creation of an additional automation and shows that the automation limit has been reached.
 - When no maximum number of automations is configured, the automations screen does not block creation based on automation count.
 - The automations screen shows run history for an automation when execution history exists.
-- When run history exists, each run entry shows the automation identity, execution status, and execution time.
+- When run history exists, each run entry shows the automation identity, execution status, execution time, and the final enriched prompt that the system sent to the agent.
+- Each automation run creates a separate agent session. Run history entries link to or provide access to the full agent session for that run.
 - When no run history exists for an automation, the screen shows an empty history state.
-- Each automation run is recorded as a separate history entry.
+- Each automation run is recorded as a separate history entry with its own agent session.

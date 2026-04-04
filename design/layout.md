@@ -10,9 +10,26 @@ CommandsCenter should use a simple global app shell and a flexible page-level wo
 
 ## Global App Shell
 
-- Left sidebar for primary navigation and recent agents.
+- Left sidebar for primary navigation and agent shortcuts.
 - Top header for page title, page actions, and profile access.
 - Main content area for page-specific layouts.
+
+## Sidebar Structure
+
+The left sidebar contains two regions: primary navigation links and an agents shortcut section.
+
+### Navigation Links
+
+- Links to each main screen: Dashboard, Agents, File Manager, Global Terminal, Automations, Custom Tools, Built-in Skills, Integrations, Provider Connections, Settings.
+- The active screen link is visually highlighted.
+
+### Agents Section
+
+- The section is titled **Agents** and acts as a quick-access area, not a navigation group.
+- Shows up to **3 most recent agents** the user has had a direct chat with, ordered by last chat activity.
+- Each agent entry shows the agent's icon and name and opens that agent's direct chat when selected.
+- Below the recent agents, a **See all** link navigates to the full Agents screen.
+- If no agents have been chatted with yet, the section shows an empty state or is hidden until a first chat occurs.
 
 ## Main Content Workspace
 
@@ -85,7 +102,7 @@ The main content area should be a reusable flexible panel system.
 
 ### Integrations
 
-- Primary pane tabs: `Apps` and `MCPs`.
+- Primary pane: Composio integrations section followed by MCP servers section (or tabs: `Composio Apps` and `MCP Servers`).
 - Additional panels only when needed.
 
 ## MVP Decisions

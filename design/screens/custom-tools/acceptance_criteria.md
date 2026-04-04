@@ -8,5 +8,7 @@
 - If the user attempts to save a custom tool without a name, description, or HTTP request configuration, the screen prevents submission and shows a validation error for each missing required field.
 - When the user saves a valid custom tool, the system persists that custom tool in the workspace.
 - When the user saves valid changes to an existing custom tool, the system persists the updated definition and the saved values are shown when the tool is reopened for editing.
+- The custom tools screen allows the user to delete a custom tool. Selecting the delete action prompts the user with a confirmation dialog before proceeding.
+- When the user confirms deletion, the system removes the custom tool from the workspace and the tool is no longer shown on the custom tools screen or available for agent assignment.
 - The custom tools screen stores custom tools as global definitions rather than inside a single agent configuration.
 - A custom tool saved on the custom tools screen is available for selection from the create or edit agent screen.

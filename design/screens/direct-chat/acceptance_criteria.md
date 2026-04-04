@@ -6,6 +6,7 @@
 - When the agent produces one or more tool calls in the conversation, the direct chat screen shows those tool calls inline and allows each tool call entry to be expanded to reveal its details.
 - The direct chat screen provides a message composer with a prompt input, a model selector, an auto-approve control, and an attachment action.
 - When the user sends a prompt, the prompt is added to the current conversation for the selected agent and the screen shows the agent response in that same conversation.
+- When the agent sends a response, the direct chat screen renders it progressively as content streams in, displaying formatted Markdown in real time rather than waiting for the full response to complete.
 - When the user adds one or more attachments and sends a prompt, the prompt is sent with those attachments attached to the same conversation request.
 - Selecting `Start Fresh` creates a new conversation for the current agent and opens that new empty conversation in the direct chat screen.
 - The direct chat screen provides a `Previous Conversations` entry or equivalent secondary access point, and selecting a previous conversation opens that conversation for the current agent.
@@ -14,6 +15,7 @@
 - The right sidebar supports tabs for contextual content related to the current chat.
 - In MVP, the right sidebar includes a workspace files tab.
 - The workspace files tab shows the current agent workspace as a file tree.
+- The workspace file tree includes agent workspace files such as memory, preferences, and AGENTS.md, and these files can be opened for reading or editing through the file manager.
 - When the user selects a file in the workspace files tab, the screen shows that file as the current selection or preview target inside the direct chat workspace context.
 - When the user double-selects a file in the workspace files tab, the app opens the file in the file manager focused on that file.
 - When the user selects the option to open a folder in the terminal from the workspace files tab, the app opens the agent terminal in the context of that folder.

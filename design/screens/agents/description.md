@@ -6,10 +6,11 @@ Agents is the main screen for browsing and selecting all available agents in Com
 
 ## Functional Description
 
-- Show all available agents in one searchable collection.
+- Show all available agents in one searchable grid collection.
+- Display agents in a grid layout with 2–3 agents per row on desktop viewports.
 - Display each agent with the core identity information needed for selection, including icon or image, name, and role.
-- Allow the user to filter the list by entering a search query that matches agent name or role.
-- Provide direct actions for the primary next steps from the list, including opening the agent's direct chat and opening the agent for editing.
+- Allow the user to filter the grid by entering a search query that matches agent name or role.
+- Provide direct actions for the primary next steps from the list, including opening the agent's direct chat, opening the agent for editing, and deleting the agent.
 - Provide a clear way to create a new agent from this screen.
 - Reflect empty states when no agents exist or when the current search returns no matches.
 
@@ -20,3 +21,4 @@ Agents is the main screen for browsing and selecting all available agents in Com
 - As a single user, I want to open an agent's direct chat from the agents screen, so that I can continue working with that agent immediately.
 - As a single user, I want to open the edit agent screen from the agents screen, so that I can update that agent's instructions, tools, or configuration.
 - As a single user, I want to open the create agent screen from the agents screen, so that I can add a new agent when I need one.
+- As a single user, I want to delete an agent from the agents screen, so that I can remove agents I no longer need.
