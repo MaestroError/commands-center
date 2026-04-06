@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage & test artifacts
+coverage/
+.artifacts/
+playwright-report/
+test-results/
+
+# Logs
+*.log
+
+# Database (local runtime files, not the portable .cc/local.db)
+*.db-journal
+*.db-wal
+
+# Reference repos (cloned for agent learning, not part of the project)
+examples/openwork/
+examples/opencode/
