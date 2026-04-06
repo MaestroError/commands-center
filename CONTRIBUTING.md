@@ -15,7 +15,6 @@ pnpm install
 
 # 4. Set up MCP secrets
 cp .env.mcp.example .env.mcp   # then fill in your API keys
-source scripts/load-env-mcp.sh
 
 # 5. Start development servers
 pnpm dev
@@ -99,17 +98,12 @@ See [design/list_screens.md](design/list_screens.md) for the full screen invento
 
 ## MCP Secrets
 
-`.mcp.json` is tracked in git and uses `${VAR}` interpolation for API keys — no secrets in the repo.
+`.mcp.json` is tracked in git with empty keys. Each MCP server that needs auth has a `headersHelper` script (`scripts/mcp-headers-*.sh`) that reads secrets from `.env.mcp` at connection time — no shell env setup required.
 
 1. Copy the example: `cp .env.mcp.example .env.mcp`
 2. Fill in your keys in `.env.mcp` (gitignored)
-3. Load into your shell: `source scripts/load-env-mcp.sh`
 
-To auto-load every session, add to `~/.zshrc`:
-
-```bash
-[ -f ~/Projects/cc/.env.mcp ] && { set -a; source ~/Projects/cc/.env.mcp; set +a; }
-```
+Keys are loaded automatically by Claude Code when it connects to each MCP server.
 
 ## Adding a New Feature
 
