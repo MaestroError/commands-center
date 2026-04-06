@@ -13,7 +13,11 @@ npm install -g pnpm
 # 3. Install dependencies
 pnpm install
 
-# 4. Start development servers
+# 4. Set up MCP secrets
+cp .env.mcp.example .env.mcp   # then fill in your API keys
+source scripts/load-env-mcp.sh
+
+# 5. Start development servers
 pnpm dev
 ```
 
@@ -82,6 +86,20 @@ UI requirements and acceptance criteria live in `design/screens/<screen-name>/`:
 - `acceptance_criteria.md` — what must be true for it to be complete
 
 See [design/list_screens.md](design/list_screens.md) for the full screen inventory.
+
+## MCP Secrets
+
+`.mcp.json` is tracked in git and uses `${VAR}` interpolation for API keys — no secrets in the repo.
+
+1. Copy the example: `cp .env.mcp.example .env.mcp`
+2. Fill in your keys in `.env.mcp` (gitignored)
+3. Load into your shell: `source scripts/load-env-mcp.sh`
+
+To auto-load every session, add to `~/.zshrc`:
+
+```bash
+[ -f ~/Projects/cc/.env.mcp ] && { set -a; source ~/Projects/cc/.env.mcp; set +a; }
+```
 
 ## Adding a New Feature
 
