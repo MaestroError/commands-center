@@ -242,7 +242,7 @@ export const agents = pgTable("agents", {
 
 ### Coverage Target
 
-**90% minimum** on statements, branches, and functions for all packages. The CI pipeline enforces this as a merge gate.
+**95% minimum** on statements, branches, and functions for all packages. The CI pipeline enforces this as a merge gate.
 
 ### Unit & Integration Tests (Vitest)
 
