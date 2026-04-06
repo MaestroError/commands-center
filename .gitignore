@@ -12,7 +12,9 @@ build/
 .env
 .env.*
 !.env.example
-!.env.mcp.example
+
+# Secret files
+.secrets/*
 
 # IDE
 .idea/

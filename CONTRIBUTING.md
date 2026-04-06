@@ -98,12 +98,14 @@ See [design/list_screens.md](design/list_screens.md) for the full screen invento
 
 ## MCP Secrets
 
-`.mcp.json` is tracked in git with empty keys. Each MCP server that needs auth has a `headersHelper` script (`scripts/mcp-headers-*.sh`) that reads secrets from `.env.mcp` at connection time — no shell env setup required.
+`.mcp.json` is tracked in git with empty keys. Each MCP server that needs auth has a `headersHelper` script (`scripts/mcp-headers-*.sh`) that reads secrets from files in `.secrets/` at connection time — no shell env setup required.
 
-1. Copy the example: `cp .env.mcp.example .env.mcp`
-2. Fill in your keys in `.env.mcp` (gitignored)
+1. Create the secrets directory: `mkdir -p .secrets`
+2. Write each secret into its own file, for example: `printf '%s' 'your-context7-key' > .secrets/context7-api-key`
 
 Keys are loaded automatically by Claude Code when it connects to each MCP server.
+
+OpenCode uses the tracked `opencode.jsonc` project config and reads secret files directly via `{file:...}` substitutions, so plain `opencode web` works without a wrapper.
 
 ## Adding a New Feature
 

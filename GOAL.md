@@ -22,6 +22,7 @@ npm install -g commandscenter
 | `ccenter serve`                  | Start the HTTP API server only, without serving the frontend. For headless/API-only use or custom frontends. |
 | `ccenter start --port 4000`      | Start on a custom port.                                                                                      |
 | `ccenter start --host 127.0.0.1` | Bind to a specific host (default: `0.0.0.0`).                                                                |
+| `ccenter upgrade`                | Upgrade `commandscenter` to the latest version (re-installs globally via the detected package manager).      |
 | `ccenter --version`              | Print the installed version.                                                                                 |
 | `ccenter --help`                 | Show all available commands and options.                                                                     |
 
