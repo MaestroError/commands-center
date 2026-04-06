@@ -12,15 +12,13 @@ build/
 .env
 .env.*
 !.env.example
+!.env.mcp.example
 
 # IDE
 .idea/
 *.swp
 *.swo
 *~
-
-# MCP config (contains API keys)
-.mcp.json
 
 # OS
 .DS_Store
