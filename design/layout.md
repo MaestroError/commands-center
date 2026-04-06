@@ -45,7 +45,7 @@ The main content area should be a reusable flexible panel system.
 
 - Holds the main page content.
 - Can also have its own internal tabs when a page needs them.
-    - Example: Integrations page can use top-level tabs such as `Apps` and `MCPs`.
+  - Example: Integrations page can use top-level tabs such as `Apps` and `MCPs`.
 - Can also be splitted flexibly (resizable columns) into 2-4 parts
 
 ### Context Pane

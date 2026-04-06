@@ -6,9 +6,9 @@
 
 Read these files for full context (in order of priority):
 
-| File | Purpose |
-|---|---|
-| `GOAL.md` | Product vision, features, phases, workspace portability rule |
+| File               | Purpose                                                            |
+| ------------------ | ------------------------------------------------------------------ |
+| `GOAL.md`          | Product vision, features, phases, workspace portability rule       |
 | `tech-research.md` | Architecture blueprint, technology rationale, integration patterns |
 
 Optionally:
@@ -34,144 +34,51 @@ These are the chosen technologies. Do not introduce alternatives without explici
 
 ### Frontend
 
-| Concern | Technology |
-|---|---|
-| Framework | React 19, TypeScript strict mode |
-| Build tool | Vite (dev: native ESM HMR, prod: Rollup code-splitting) |
-| Styling | Tailwind CSS v4 |
-| Components | Shadcn/UI (copy-owned, Radix primitives underneath) |
-| Chat UI | `assistant-ui` (streaming text, tool calls, generative UI) |
-| File manager | SVAR React File Manager (`RestDataProvider`) |
-| Code editor | Monaco Editor (`@monaco-editor/react`) |
-| Terminal | `xterm.js` + `xterm-addon-fit` + `xterm-addon-attach` |
-| State | React context + hooks (no external state library in MVP) |
+| Concern      | Technology                                                             |
+| ------------ | ---------------------------------------------------------------------- |
+| Framework    | React 19, TypeScript strict mode                                       |
+| Build tool   | Vite (dev: native ESM HMR, prod: Rollup code-splitting)                |
+| Styling      | Tailwind CSS v4 (CSS-native config via `@theme {}`, no JS config file) |
+| Components   | Shadcn/UI (copy-owned, Radix primitives underneath)                    |
+| Chat UI      | `assistant-ui` (streaming text, tool calls, generative UI)             |
+| File manager | SVAR React File Manager (`RestDataProvider`)                           |
+| Code editor  | Monaco Editor (`@monaco-editor/react`)                                 |
+| Terminal     | `xterm.js` + `xterm-addon-fit` + `xterm-addon-attach`                  |
+| State        | React context + hooks (no external state library in MVP)               |
 
 ### Backend
 
-| Concern | Technology |
-|---|---|
-| Runtime | Node.js (LTS) |
-| Framework | Fastify with `fastify-type-provider-zod` |
-| Validation | Zod (all system boundaries) |
-| ORM | Drizzle ORM (SQL-first, zero-dependency) |
-| Database | PostgreSQL (cloud) / SQLite via `better-sqlite3` (local) |
-| WebSockets | `ws` (terminal streams, real-time events) |
-| PTY | `node-pty` (pseudo-terminal for shells) |
-| Logging | Pino (structured JSON, correlation IDs) |
-| AI engine | `opencode-ai` (npm dependency, single `opencode serve` daemon) |
-| MCP | `@modelcontextprotocol/sdk` (stdio + SSE transports) |
-| Integrations | Composio (`composio-core`) for managed OAuth |
+| Concern      | Technology                                                     |
+| ------------ | -------------------------------------------------------------- |
+| Runtime      | Node.js (LTS)                                                  |
+| Framework    | Fastify with `fastify-type-provider-zod`                       |
+| Validation   | Zod 4 (all system boundaries)                                  |
+| ORM          | Drizzle ORM (SQL-first, zero-dependency)                       |
+| Database     | PostgreSQL (cloud) / SQLite via `better-sqlite3` (local)       |
+| WebSockets   | `ws` (terminal streams, real-time events)                      |
+| PTY          | `node-pty` (pseudo-terminal for shells)                        |
+| Logging      | Pino (structured JSON, correlation IDs)                        |
+| AI engine    | `opencode-ai` (npm dependency, single `opencode serve` daemon) |
+| MCP          | `@modelcontextprotocol/sdk` (stdio + SSE transports)           |
+| Integrations | Composio (`composio-core`) for managed OAuth                   |
 
 ### Scheduling
 
-| Environment | Technology |
-|---|---|
+| Environment        | Technology                            |
+| ------------------ | ------------------------------------- |
 | Cloud (PostgreSQL) | `pg-boss` (persistent, `SKIP LOCKED`) |
-| Local (SQLite) | `bree` + SQLite state tracking |
+| Local (SQLite)     | `bree` + SQLite state tracking        |
 
 ### Testing & Quality
 
-| Concern | Technology |
-|---|---|
-| Unit + integration | Vitest (V8 coverage provider) |
-| E2E | Playwright |
-| Linting | ESLint (`@typescript-eslint/recommended-requiring-type-checking`) |
-| Formatting | Prettier |
-| Git hooks | Husky + `lint-staged` |
-| CI | GitHub Actions |
-
----
-
-## Project Structure
-
-```
-cc/
-├── packages/
-│   ├── frontend/          # React 19 + Vite app
-│   │   ├── src/
-│   │   │   ├── components/    # Shared UI components (Shadcn/UI based)
-│   │   │   ├── pages/         # Route-level page components
-│   │   │   ├── hooks/         # Custom React hooks
-│   │   │   ├── context/       # React context providers
-│   │   │   ├── lib/           # Frontend utilities
-│   │   │   └── types/         # Frontend-specific types
-│   │   ├── e2e/               # Playwright E2E tests
-│   │   ├── public/
-│   │   ├── index.html
-│   │   ├── vite.config.ts
-│   │   ├── tailwind.config.ts
-│   │   ├── tsconfig.json
-│   │   └── package.json
-│   │
-│   ├── backend/           # Fastify + Node.js server
-│   │   ├── src/
-│   │   │   ├── routes/        # Fastify route handlers
-│   │   │   ├── services/      # Domain business logic
-│   │   │   ├── db/            # Drizzle schema, migrations, client
-│   │   │   │   ├── schema/        # Table definitions
-│   │   │   │   ├── migrations/    # SQL migration files
-│   │   │   │   └── client.ts      # DB connection (PG or SQLite)
-│   │   │   ├── mcp/           # MCP server implementations
-│   │   │   ├── ws/            # WebSocket handlers (terminal, events)
-│   │   │   ├── orchestrator/  # opencode process lifecycle
-│   │   │   ├── middleware/    # Fastify plugins, hooks
-│   │   │   ├── lib/           # Backend utilities
-│   │   │   └── types/         # Backend-specific types
-│   │   ├── test/              # Vitest tests (mirror src/ structure)
-│   │   ├── drizzle.config.ts
-│   │   ├── tsconfig.json
-│   │   └── package.json
-│   │
-│   └── shared/            # Code shared between frontend and backend
-│       ├── src/
-│       │   ├── schemas/       # Zod schemas (API contracts, validation)
-│       │   ├── types/         # Shared TypeScript types
-│       │   └── constants/     # Shared constants
-│       ├── tsconfig.json
-│       └── package.json
-│
-├── .cc/                   # Runtime workspace data (portable)
-│   └── local.db           # SQLite sync DB
-│
-├── examples/              # Cloned reference repos (gitignored)
-│   ├── openwork/          # https://github.com/different-ai/openwork
-│   └── opencode/          # https://github.com/anomalyco/opencode
-│
-├── design/                # Screen specs, layout, themes
-├── AGENTS.md              # This file
-├── GOAL.md                # Product vision
-├── PRD.md                 # Product requirements
-├── tech-research.md       # Architecture blueprint
-├── pnpm-workspace.yaml    # Workspace definition
-├── package.json           # Root manifest (scripts, devDeps: pnpm only)
-├── tsconfig.base.json     # Shared TS config (extended by packages)
-├── .prettierrc            # Prettier config
-├── .eslintrc.cjs          # ESLint config
-├── .gitignore
-└── playwright.config.ts   # Global Playwright config
-```
-
-### Monorepo Setup
-
-We use **pnpm workspaces**
-
-`pnpm-workspace.yaml`:
-```yaml
-packages:
-  - "packages/*"
-```
-
-Root `package.json` should only contain:
-- `devDependencies` for workspace-level tooling (prettier, eslint, husky, lint-staged)
-- Scripts that orchestrate across packages (`dev`, `build`, `test`, `lint`, `typecheck`)
-- `"packageManager": "pnpm@10.x.x"` for Corepack
-
-Cross-package imports use the `workspace:*` protocol:
-```json
-"dependencies": {
-  "@cc/shared": "workspace:*"
-}
-```
+| Concern            | Technology                                                                |
+| ------------------ | ------------------------------------------------------------------------- |
+| Unit + integration | Vitest (V8 coverage provider)                                             |
+| E2E                | Playwright                                                                |
+| Linting            | ESLint flat config (`eslint.config.ts`, `typescript-eslint` type-checked) |
+| Formatting         | Prettier                                                                  |
+| Git hooks          | Husky + `lint-staged`                                                     |
+| CI                 | GitHub Actions                                                            |
 
 ---
 
@@ -222,20 +129,18 @@ Cross-package imports use the `workspace:*` protocol:
 
 ### Naming
 
-| Thing | Convention | Example |
-|---|---|---|
-| Files | `kebab-case.ts` | `agent-service.ts` |
-| React components | `PascalCase.tsx` | `AgentCard.tsx` |
-| Variables, functions | `camelCase` | `getActiveAgent()` |
-| Types, interfaces | `PascalCase` | `AgentConfig` |
-| Constants | `SCREAMING_SNAKE` | `MAX_RETRY_COUNT` |
-| Database tables | `snake_case` | `agent_configs` |
-| Database columns | `snake_case` | `created_at` |
-| Zod schemas | `camelCase` + `Schema` suffix | `agentConfigSchema` |
-| Route paths | `kebab-case` | `/api/agent-configs` |
-| Environment variables | `SCREAMING_SNAKE` | `DATABASE_URL` |
-
-Names must be self-documenting. If you need a comment to explain what a variable is, rename the variable.
+| Thing                 | Convention                    | Example              |
+| --------------------- | ----------------------------- | -------------------- |
+| Files                 | `kebab-case.ts`               | `agent-service.ts`   |
+| React components      | `PascalCase.tsx`              | `AgentCard.tsx`      |
+| Variables, functions  | `camelCase`                   | `getActiveAgent()`   |
+| Types, interfaces     | `PascalCase`                  | `AgentConfig`        |
+| Constants             | `SCREAMING_SNAKE`             | `MAX_RETRY_COUNT`    |
+| Database tables       | `snake_case`                  | `agent_configs`      |
+| Database columns      | `snake_case`                  | `created_at`         |
+| Zod schemas           | `camelCase` + `Schema` suffix | `agentConfigSchema`  |
+| Route paths           | `kebab-case`                  | `/api/agent-configs` |
+| Environment variables | `SCREAMING_SNAKE`             | `DATABASE_URL`       |
 
 ### File Organization
 
@@ -371,14 +276,14 @@ describe("AgentService", () => {
 
 ### What to Test
 
-| Layer | What to test | Tool |
-|---|---|---|
-| Zod schemas | Validation edge cases, error messages | Vitest |
-| Services | Business logic, DB interactions | Vitest |
-| Route handlers | Request/response contracts, status codes | Vitest + Fastify `inject()` |
-| React components | Rendering, user interaction, state | Vitest + Testing Library |
-| WebSocket handlers | Message flow, connection lifecycle | Vitest |
-| Full user flows | Multi-page interactions, persistence | Playwright |
+| Layer              | What to test                             | Tool                        |
+| ------------------ | ---------------------------------------- | --------------------------- |
+| Zod schemas        | Validation edge cases, error messages    | Vitest                      |
+| Services           | Business logic, DB interactions          | Vitest                      |
+| Route handlers     | Request/response contracts, status codes | Vitest + Fastify `inject()` |
+| React components   | Rendering, user interaction, state       | Vitest + Testing Library    |
+| WebSocket handlers | Message flow, connection lifecycle       | Vitest                      |
+| Full user flows    | Multi-page interactions, persistence     | Playwright                  |
 
 ### What Not to Test
 
@@ -391,13 +296,13 @@ describe("AgentService", () => {
 
 ## Performance Targets
 
-| Metric | Target |
-|---|---|
-| First Contentful Paint | < 500ms |
-| Time to Interactive | < 1s |
-| Animation frame rate | 60fps |
-| Interaction latency | < 100ms |
-| JS bundle (gzipped) | < 200KB initial |
+| Metric                 | Target          |
+| ---------------------- | --------------- |
+| First Contentful Paint | < 500ms         |
+| Time to Interactive    | < 1s            |
+| Animation frame rate   | 60fps           |
+| Interaction latency    | < 100ms         |
+| JS bundle (gzipped)    | < 200KB initial |
 
 Heavy dependencies (Monaco, xterm.js, SVAR) must be lazy-loaded — only fetch them when the user navigates to a screen that needs them.
 
@@ -411,62 +316,29 @@ Two reference repositories are cloned in `examples/` (gitignored). Use these for
 
 **Source:** https://github.com/different-ai/openwork
 
-The closest architectural sibling to CC. Key patterns to study:
-
-| Pattern | Location | Why it matters |
-|---|---|---|
-| pnpm + Turborepo monorepo | Root `pnpm-workspace.yaml`, `turbo.json` | Workspace organization (we use pnpm without Turborepo) |
-| Orchestrator lifecycle | `apps/orchestrator/` | How to spawn, manage, and kill the opencode process |
-| Server architecture | `apps/server/src/` | Flat Bun-based API server — study the filesystem API patterns |
-| MCP integration | `apps/server/src/mcp.ts` | MCP server setup and tool registration |
-| Session management | `apps/server/src/session-read-model.ts` | How to model persistent conversations |
-| Workspace files API | `apps/server/src/workspace-files.ts` | Filesystem operations exposed via REST |
-| Approval system | `apps/server/src/approvals.ts` | Tool approval workflow patterns |
-| Event streaming | `apps/server/src/events.ts` | SSE event streaming to frontend |
-| Design system tokens | `DESIGN-SYSTEM.md`, `DESIGN-LANGUAGE.md` | Token-based theming approach |
-| Agent instructions | `AGENTS.md`, `PRINCIPLES.md` | How they structure agent guidelines |
+| Pattern                | Location                                | Why it matters                                                |
+| ---------------------- | --------------------------------------- | ------------------------------------------------------------- |
+| Orchestrator lifecycle | `apps/orchestrator/`                    | How to spawn, manage, and kill the opencode process           |
+| Server architecture    | `apps/server/src/`                      | Flat Bun-based API server — study the filesystem API patterns |
+| MCP integration        | `apps/server/src/mcp.ts`                | MCP server setup and tool registration                        |
+| Session management     | `apps/server/src/session-read-model.ts` | How to model persistent conversations                         |
+| Workspace files API    | `apps/server/src/workspace-files.ts`    | Filesystem operations exposed via REST                        |
+| Event streaming        | `apps/server/src/events.ts`             | SSE event streaming to frontend                               |
 
 ### OpenCode — `examples/opencode/`
 
 **Source:** https://github.com/anomalyco/opencode
 
-The upstream AI engine that CC orchestrates. Key patterns to study:
-
-| Pattern | Location | Why it matters |
-|---|---|---|
-| Drizzle ORM setup | `packages/opencode/drizzle.config.ts`, `src/storage/` | Database schema design with Drizzle |
-| Conditional DB drivers | `package.json` `"imports"` field (`#db`) | Runtime-switched SQLite/PG — study for our dual-engine approach |
-| Tool implementation | `packages/opencode/src/tool/` | Paired `.ts` + `.txt` pattern for tools |
-| Provider abstraction | `packages/opencode/src/provider/` | Unified provider interface over 15+ AI providers |
-| MCP protocol | `packages/opencode/src/mcp/` | Client-side MCP integration |
-| PTY management | `packages/opencode/src/pty/` | Pseudo-terminal handling patterns |
-| Server (Hono) | `packages/opencode/src/server/` | API server with routes + middleware |
-| Permission system | `packages/opencode/src/permission/` | Tool permission enforcement |
-| Session model | `packages/opencode/src/session/` | Conversation persistence |
-| Plugin system | `packages/opencode/src/plugin/` | Extensibility architecture |
-| Test structure | `packages/opencode/test/` | Mirror-based test organization, minimal mocking |
-| Bun workspace catalog | Root `package.json` `"workspaces.catalog"` | Version pinning strategy |
-| Husky hooks | `.husky/` | Pre-commit quality gates |
-
----
-
-### Pre-Commit Checks (Enforced by Husky)
-
-Every commit must pass:
-1. `lint-staged` runs Prettier + ESLint on staged files
-2. `pnpm typecheck` validates type integrity
-3. Zero ESLint warnings policy — warnings are errors
-
-### CI Pipeline (GitHub Actions)
-
-Every pull request runs this sequence (fail-fast):
-
-1. `pnpm install --frozen-lockfile` — deterministic deps
-2. `pnpm lint` — ESLint + Prettier check
-3. `pnpm typecheck` — TypeScript strict compilation
-4. `pnpm test:coverage` — Vitest with 90% coverage gate
-5. `pnpm test:e2e` — Playwright against a built app with SQLite
-6. `npm audit --audit-level=high` — block on high/critical vulnerabilities
+| Pattern                | Location                                              | Why it matters                                                  |
+| ---------------------- | ----------------------------------------------------- | --------------------------------------------------------------- |
+| Drizzle ORM setup      | `packages/opencode/drizzle.config.ts`, `src/storage/` | Database schema design with Drizzle                             |
+| Conditional DB drivers | `package.json` `"imports"` field (`#db`)              | Runtime-switched SQLite/PG — study for our dual-engine approach |
+| Tool implementation    | `packages/opencode/src/tool/`                         | Paired `.ts` + `.txt` pattern for tools                         |
+| Provider abstraction   | `packages/opencode/src/provider/`                     | Unified provider interface over 15+ AI providers                |
+| MCP protocol           | `packages/opencode/src/mcp/`                          | Client-side MCP integration                                     |
+| PTY management         | `packages/opencode/src/pty/`                          | Pseudo-terminal handling patterns                               |
+| Server (Hono)          | `packages/opencode/src/server/`                       | API server with routes + middleware                             |
+| Session model          | `packages/opencode/src/session/`                      | Conversation persistence                                        |
 
 ---
 
@@ -501,6 +373,15 @@ Every pull request runs this sequence (fail-fast):
 5. Commit the schema change and migration together
 6. Never edit a migration that has been applied to any environment
 
+### Updating Documentation
+
+When making changes that affect the developer experience, update the relevant docs:
+
+- **README.md** — Update if: quick start steps change, tech stack changes, project structure changes, prerequisites change.
+- **CONTRIBUTING.md** — Update if: new commands are added, git workflow changes, new packages are added, dev setup steps change.
+- **AGENTS.md** (this file) — Update if: coding conventions change, new patterns are established, tech stack entries are added/removed/replaced.
+- **.env.example** — Update if: new environment variables are introduced.
+
 ### Debugging Agent Issues
 
 - Check Pino logs — every request has a correlation ID
@@ -513,21 +394,22 @@ Every pull request runs this sequence (fail-fast):
 
 ## Quick Reference: File → Responsibility
 
-| You need to... | Go to... |
-|---|---|
-| Add an API endpoint | `packages/backend/src/routes/` |
-| Add business logic | `packages/backend/src/services/` |
-| Add a DB table | `packages/backend/src/db/schema/` |
-| Add a migration | `pnpm --filter @cc/backend db:generate` |
-| Add a shared type/schema | `packages/shared/src/schemas/` or `packages/shared/src/types/` |
-| Add a UI page | `packages/frontend/src/pages/` |
-| Add a UI component | `packages/frontend/src/components/` |
-| Add a custom hook | `packages/frontend/src/hooks/` |
-| Add WebSocket logic | `packages/backend/src/ws/` |
-| Add MCP server/tool | `packages/backend/src/mcp/` |
-| Add orchestrator logic | `packages/backend/src/orchestrator/` |
-| Add an E2E test | `packages/frontend/e2e/` |
-| Add a unit test | `packages/backend/test/` (mirroring `src/`) |
-| Check screen requirements | `design/screens/<screen-name>/` |
-| Check product requirements | `PRD.md` |
-| Check architecture decisions | `tech-research.md` |
+| You need to...               | Go to...                                                       |
+| ---------------------------- | -------------------------------------------------------------- |
+| Add an API endpoint          | `packages/backend/src/routes/`                                 |
+| Add business logic           | `packages/backend/src/services/`                               |
+| Add a DB table               | `packages/backend/src/db/schema/`                              |
+| Add a migration              | `pnpm --filter @cc/backend db:generate`                        |
+| Add a shared type/schema     | `packages/shared/src/schemas/` or `packages/shared/src/types/` |
+| Add a UI page                | `packages/frontend/src/pages/`                                 |
+| Add a UI component           | `packages/frontend/src/components/`                            |
+| Add a custom hook            | `packages/frontend/src/hooks/`                                 |
+| Add WebSocket logic          | `packages/backend/src/ws/`                                     |
+| Add MCP server/tool          | `packages/backend/src/mcp/`                                    |
+| Add orchestrator logic       | `packages/backend/src/orchestrator/`                           |
+| Add an E2E test              | `packages/frontend/e2e/`                                       |
+| Add a unit test              | `packages/backend/test/` (mirroring `src/`)                    |
+| Check screen requirements    | `design/screens/<screen-name>/`                                |
+| Check product requirements   | `PRD.md`                                                       |
+| Check architecture decisions | `tech-research.md`                                             |
+| Check dev setup & commands   | `CONTRIBUTING.md`                                              |

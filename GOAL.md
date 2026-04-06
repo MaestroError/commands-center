@@ -10,12 +10,11 @@ Installable via npm/pnpm, ready for web production and containerisation.
 
 ## Features
 
-App manages OpenCode workspaces as agent, allowing user to add different agents with different tools and instructions. 
+App manages OpenCode workspaces as agent, allowing user to add different agents with different tools and instructions.
 
-Then, it orchestrates this OpenCode agents inside group chats and Kanban board as well as allows direct messages to each agent. 
+Then, it orchestrates this OpenCode agents inside group chats and Kanban board as well as allows direct messages to each agent.
 
-In case of group chats and kanban board all agents have shared context such as documents, images, task description, chat history, etc.. 
-
+In case of group chats and kanban board all agents have shared context such as documents, images, task description, chat history, etc..
 
 At the MVP stage we focus on Direct Messaging only. Let's focus on that.
 
@@ -23,11 +22,11 @@ At the MVP stage we focus on Direct Messaging only. Let's focus on that.
 
 The product has three planned feature pillars. We build them sequentially:
 
-| Phase | Feature | Scope |
-|---|---|---|
+| Phase             | Feature             | Scope                                                                                                                                              |
+| ----------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Phase 1 (MVP)** | **Direct Messages** | Agent CRUD, 1-on-1 chat with each agent via OpenCode SDK, file manager, terminal, cron automations, custom tools, MCP/provider auth, self-updating |
-| **Phase 2** | **Group Chat** | Multi-agent conversations with shared context (documents, images, chat history) |
-| **Phase 3** | **Kanban Board** | Task-based orchestration — agents assigned to cards/columns with shared project context |
+| **Phase 2**       | **Group Chat**      | Multi-agent conversations with shared context (documents, images, chat history)                                                                    |
+| **Phase 3**       | **Kanban Board**    | Task-based orchestration — agents assigned to cards/columns with shared project context                                                            |
 
 **Current focus: Phase 1 — Direct Messages.** All subsequent sections in this document describe Phase 1 scope unless explicitly noted otherwise.
 
@@ -42,7 +41,6 @@ Then while creating the agent, Specify what should it has access to, plus specif
 The creation of new agent = new workspace for OpenCode by coping skills, setting AGENTS.md (Role, Name, Instructions) and building configuration file with needed mcp and other configs such as our custom agent (Which will be used in chats by defult).
 
 Note: AGENTS.md may be appended with instructions our custom MCP or other tools we (the app) provides
-
 
 ### Filesystem
 
@@ -83,21 +81,22 @@ User preferences and important long-term memories should be persisted inside the
 
 ## Inside chat window
 
-Very similar to what the opencode agent has: 
+Very similar to what the opencode agent has:
+
 - input with main configs: model, auto-approve switch. And attachments uploading feature.
-    - Attachments are passed directly to OpenCode via the SDK's `FilePartInput` in `session.prompt()`. The app handles the upload UI and temporary storage; OpenCode handles the AI processing. Supported part types: `TextPartInput`, `FilePartInput`, `AgentPartInput`, `SubtaskPartInput`.
+  - Attachments are passed directly to OpenCode via the SDK's `FilePartInput` in `session.prompt()`. The app handles the upload UI and temporary storage; OpenCode handles the AI processing. Supported part types: `TextPartInput`, `FilePartInput`, `AgentPartInput`, `SubtaskPartInput`.
 - collapsable right panel with tabs
-    - Only one tab for now: workspace file tree
-        - Supporting option to open folder in terminal or in filesystem view (for reading/editing)
+  - Only one tab for now: workspace file tree
+    - Supporting option to open folder in terminal or in filesystem view (for reading/editing)
 - terminal window openning (toggle) button which is opened on bottom of main chat window and allows creating multiple terminal sessions
 
 Note: Would be great to use some well-established component library for building the UI
 
 # Opencode
 
-##  OpenCode Engine Management
+## OpenCode Engine Management
 
-**Context:** It orchestrates multiple isolated OpenCode AI agents across varied deployment environments (Docker, global NPM, and bare metal). 
+**Context:** It orchestrates multiple isolated OpenCode AI agents across varied deployment environments (Docker, global NPM, and bare metal).
 
 The following decisions outline how the application manages the underlying `opencode` binary for maximum performance, stability, and ease of installation.
 
@@ -108,10 +107,11 @@ The following decisions outline how the application manages the underlying `open
 **Decision:** The application runs a **single `opencode serve` process** as a persistent, long-running background daemon (managed by a Node Orchestrator). All agent workspaces are accessed through this single process — workspaces are switched via HTTP headers or query parameters, not by spawning separate server processes per agent.
 
 **Rationale:**
-* **Zero-Latency Interactions:** Spinning up the engine for every message incurs a 2-5 second startup penalty. A persistent service keeps the models loaded in memory, allowing for instant, snappy chat UI responses.
-* **Stateful Context:** Agents require continuous memory. A long-running process maintains active conversation states, instance-scoped caches/services, and authentication without re-initializing on every request.
-* **Single-Process Simplicity:** Instead of spawning one child process per agent (with dynamic port allocation and reverse proxying), a single `opencode serve` instance handles all workspaces. The Orchestrator routes requests to the correct workspace via HTTP headers or query parameters. This eliminates port management, reduces resource consumption, and simplifies lifecycle management.
-* **Active Monitoring:** The Orchestrator polls the single engine's `/health` endpoint, providing the UI with real-time status and graceful error handling if an agent's MCP script crashes.
+
+- **Zero-Latency Interactions:** Spinning up the engine for every message incurs a 2-5 second startup penalty. A persistent service keeps the models loaded in memory, allowing for instant, snappy chat UI responses.
+- **Stateful Context:** Agents require continuous memory. A long-running process maintains active conversation states, instance-scoped caches/services, and authentication without re-initializing on every request.
+- **Single-Process Simplicity:** Instead of spawning one child process per agent (with dynamic port allocation and reverse proxying), a single `opencode serve` instance handles all workspaces. The Orchestrator routes requests to the correct workspace via HTTP headers or query parameters. This eliminates port management, reduces resource consumption, and simplifies lifecycle management.
+- **Active Monitoring:** The Orchestrator polls the single engine's `/health` endpoint, providing the UI with real-time status and graceful error handling if an agent's MCP script crashes.
 
 **Note:** Skill discovery is loaded as part of workspace instance initialization, not hot-reloaded inside an already initialized instance. When skills are added or changed for an existing workspace, the app should dispose that workspace instance (or restart `opencode serve`) before expecting the new skill set to appear. Disposing the instance is preferred because it reloads workspace state without insfrastructure overhead, keep restarting full opencode serve as a fallback option.
 
@@ -119,53 +119,57 @@ The following decisions outline how the application manages the underlying `open
 
 ### 2. Installation & Binary Management: The "Universal Local" Strategy
 
-**Decision:** The `opencode-ai` CLI will be managed strictly as a standard `dependency` within the project's `package.json`, avoiding complex system-wide binary downloads or `peerDependency` requirements. 
+**Decision:** The `opencode-ai` CLI will be managed strictly as a standard `dependency` within the project's `package.json`, avoiding complex system-wide binary downloads or `peerDependency` requirements.
 
 **Rationale:**
-* **"Batteries Included" Installation:** Relying on standard Node module resolution guarantees a zero-friction setup across all deployment targets:
-  * **Docker:** `npm ci` cleanly installs the binary into the container's isolated `/app/node_modules/.bin/`.
-  * **Bare Metal (VPS/Local):** Cloning and running `npm install` keeps the binary localized to the project folder, preventing pollution of the host's global `PATH`.
-  * **Global NPM:** Running `npm i -g cc` automatically resolves and nests the correct OpenCode dependency under the app's tree.
-* **Total Version Authority:** Because the Orchestrator relies on specific OpenCode API endpoints (e.g., `/instance/dispose`, `/health`), the app's stability is paramount. Locking the version as a strict dependency (e.g., `"opencode-ai": "^1.2.0"`) protects users from unexpected upstream breaking changes until the orchestrator is updated and tested.
-* **Programmatic Execution:** The Orchestrator uses the **official OpenCode JavaScript SDK** (`opencode-ai`) for all programmatic interactions (session management, message sending, tool registration, health checks, auth flows). The SDK wraps the REST API, providing type-safe methods and event subscriptions. The Orchestrator spawns a single `opencode serve` process for the engine lifecycle:
+
+- **"Batteries Included" Installation:** Relying on standard Node module resolution guarantees a zero-friction setup across all deployment targets:
+  - **Docker:** `npm ci` cleanly installs the binary into the container's isolated `/app/node_modules/.bin/`.
+  - **Bare Metal (VPS/Local):** Cloning and running `npm install` keeps the binary localized to the project folder, preventing pollution of the host's global `PATH`.
+  - **Global NPM:** Running `npm i -g cc` automatically resolves and nests the correct OpenCode dependency under the app's tree.
+- **Total Version Authority:** Because the Orchestrator relies on specific OpenCode API endpoints (e.g., `/instance/dispose`, `/health`), the app's stability is paramount. Locking the version as a strict dependency (e.g., `"opencode-ai": "^1.2.0"`) protects users from unexpected upstream breaking changes until the orchestrator is updated and tested.
+- **Programmatic Execution:** The Orchestrator uses the **official OpenCode JavaScript SDK** (`opencode-ai`) for all programmatic interactions (session management, message sending, tool registration, health checks, auth flows). The SDK wraps the REST API, providing type-safe methods and event subscriptions. The Orchestrator spawns a single `opencode serve` process for the engine lifecycle:
+
   ```typescript
   import path from 'path';
   import { spawn } from 'child_process';
-  
+
   const opencodeBinPath = path.resolve(__dirname, '../node_modules/.bin/opencode');
   const child = spawn(opencodeBinPath, ['serve'], { ... });
+  ```
 
 ### 2.1 The Escape Hatch (Power User Override)
 
 While the local dependency is the strict default, the Orchestrator will respect an environment variable (e.g., CC_OPENCODE_PATH). If present, the Orchestrator will bypass the node_modules path and use the provided binary. This supports advanced operators who wish to point the application to a custom, globally compiled fork of the OpenCode engine
 
-
 ## Agent CLI Tool Management
 
 ### Context
-OpenCode agents frequently require CLI applications to perform tasks. When orchestrating these agents via Docker on a cloud VPS, the ephemeral nature of containers creates a challenge: dynamically installed tools are lost whenever the orchestrator is updated and the container is rebuilt. 
+
+OpenCode agents frequently require CLI applications to perform tasks. When orchestrating these agents via Docker on a cloud VPS, the ephemeral nature of containers creates a challenge: dynamically installed tools are lost whenever the orchestrator is updated and the container is rebuilt.
 
 ### Decision
+
 To balance security, container immutability, and agent autonomy, the OpenCode orchestrator will utilize a **Tiered Dependency Strategy** heavily anchored in the Node.js ecosystem, alongside an optional **Bare Metal** deployment mode.
 
 #### The Tiered Docker Strategy
 
-* **Tier 1: NPM Ecosystem (Primary)**
-    * **Mechanism:** Tools are defined in `package.json` or executed on the fly using `npx`.
-    * **Rationale:** Keeps state localized to the `node_modules` directory, making installations environment-agnostic (relying only on the Node.js version) and easily restorable without system-level permissions.
+- **Tier 1: NPM Ecosystem (Primary)**
+  - **Mechanism:** Tools are defined in `package.json` or executed on the fly using `npx`.
+  - **Rationale:** Keeps state localized to the `node_modules` directory, making installations environment-agnostic (relying only on the Node.js version) and easily restorable without system-level permissions.
 
-* **Tier 2: Base Image (Essentials)**
-    * **Mechanism:** Core, non-NPM dependencies (e.g., `git`, `python3`, `ffmpeg`) are baked directly into the orchestrator's Docker `Dockerfile`.
-    * **Rationale:** Ensures heavy or universally required system packages are immediately available without slowing down container startup times or requiring complex installations.
+- **Tier 2: Base Image (Essentials)**
+  - **Mechanism:** Core, non-NPM dependencies (e.g., `git`, `python3`, `ffmpeg`) are baked directly into the orchestrator's Docker `Dockerfile`.
+  - **Rationale:** Ensures heavy or universally required system packages are immediately available without slowing down container startup times or requiring complex installations.
 
-* **Tier 3: Startup Scripts (Edge Cases)**
-    * **Mechanism:** Users or agents can write initialization commands to a persisted startup script that runs when the container boots.
-    * **Rationale:** Acts as an escape hatch for specific, non-NPM utilities that don't belong in the core base image, restoring them automatically after a container rebuild.
+- **Tier 3: Startup Scripts (Edge Cases)**
+  - **Mechanism:** Users or agents can write initialization commands to a persisted startup script that runs when the container boots.
+  - **Rationale:** Acts as an escape hatch for specific, non-NPM utilities that don't belong in the core base image, restoring them automatically after a container rebuild.
 
 ### Bare Metal Option (Non-Docker)
-* **Mechanism:** Allowing the orchestrator to run directly on the host system without containerization on VPN or locally
-* **Rationale:** Provides an alternative for self-hosting users who prioritize absolute environment freedom, native integrations, and unrestricted agent capabilities over container isolation.
 
+- **Mechanism:** Allowing the orchestrator to run directly on the host system without containerization on VPN or locally
+- **Rationale:** Provides an alternative for self-hosting users who prioritize absolute environment freedom, native integrations, and unrestricted agent capabilities over container isolation.
 
 ## Tools
 
@@ -182,7 +186,6 @@ The user can add custom tools globally, that later can be registered to the agen
 We will use composio for external integrations, so one of the tools provided by app will be custom set of composio tools (Since composio will be configured also globally and user can specify specific toolset per agent)
 
 And any other interactions with main app will be happen through this MCP (TBD)
-
 
 ## Provider & MCP Authentication
 
@@ -204,11 +207,13 @@ Provider authentication is **global**, not per-agent. The user configures their 
 MCP server connections and their OAuth credentials are also configured **globally** through the app, using OpenCode's `/mcp/auth/` API endpoints. However, tool **access** is controlled per agent.
 
 **Global setup:**
+
 - The user adds and authenticates MCP servers at the app level (e.g., connecting to Jira, Notion, GitHub via OAuth).
 - The app triggers OpenCode's MCP auth flow, which handles the browser-based OAuth, token exchange, and secure token storage.
 - Extended timeouts (up to 90 seconds) are used for MCP auth callbacks.
 
 **Per-agent tool access:**
+
 - When creating or editing an agent, the user explicitly selects which MCP servers (and which specific tools) that agent is allowed to use.
 - The app translates these selections into OpenCode's workspace config using the `permission` object (the legacy `tools` boolean config is deprecated as of v1.1.1):
   - Deny all tools from a server by default: `"servername_*": "deny"`
@@ -219,11 +224,13 @@ MCP server connections and their OAuth credentials are also configured **globall
 - MCP servers can also be fully disabled at the workspace level using the `enabled: false` flag in the `mcp` config section, which prevents the server connection from being established at all.
 
 **Config format (OpenCode `permission` system):**
+
 - Permissions are controlled via a flat key-value object in the `permission` config section.
 - Keys support glob patterns: `*` matches zero or more characters, `?` matches exactly one.
 - MCP tools are registered with the server name as prefix, so `"servername_*": "deny"` blocks all tools from that server.
 
 **Flow summary:**
+
 1. User authenticates providers and MCP servers globally via the app UI.
 2. App delegates all auth flows to OpenCode's REST API (`/provider/oauth/`, `/mcp/auth/`).
 3. OpenCode stores tokens in its config directory.
@@ -309,7 +316,6 @@ We should adhere to following principles while development and maintenance of th
 - **API documentation** auto-generated from route schemas (e.g. Swagger / OpenAPI via Zod-to-OpenAPI).
 - **ADRs (Architecture Decision Records)** for significant technical choices — stored in `docs/adr/`.
 
-
 ---
 
 # Stack
@@ -336,67 +342,67 @@ cc/
 
 ## Frontend
 
-| Category | Technology | Notes |
-| --- | --- | --- |
-| **Framework** | React 19 | Component-driven UI with TypeScript |
-| **Build Tool** | Vite | Native ESM dev server, Rollup-based production bundling, code splitting & tree shaking |
-| **Styling** | Tailwind CSS | Utility-first CSS framework |
-| **Component Library** | Shadcn/UI (Radix UI primitives) | Ownable component source code, accessible, adaptable for LLM streaming states |
-| **Chat UI** | assistant-ui | Shadcn/UI-native components for streaming text, tool call displays, generative UI |
-| **File Manager** | SVAR React File Manager | `RestDataProvider`, split-view, breadcrumbs, virtualized directory loading |
-| **Code Editor** | Monaco Editor (`@monaco-editor/react`) | VS Code engine — syntax highlighting, IntelliSense, Model-URI virtual file system |
-| **Terminal Emulator** | xterm.js + `xterm-addon-fit` + `xterm-addon-attach` | WebGL renderer, dynamic resize, WebSocket stream attachment |
-| **Server State** | TanStack Query (`@tanstack/react-query`) | API data fetching, caching, polling, optimistic updates for all server-derived state |
-| **Client State** | Zustand | Lightweight store for UI-only state (active tab, sidebar, selected agent, theme) |
+| Category              | Technology                                          | Notes                                                                                  |
+| --------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Framework**         | React 19                                            | Component-driven UI with TypeScript                                                    |
+| **Build Tool**        | Vite                                                | Native ESM dev server, Rollup-based production bundling, code splitting & tree shaking |
+| **Styling**           | Tailwind CSS                                        | Utility-first CSS framework                                                            |
+| **Component Library** | Shadcn/UI (Radix UI primitives)                     | Ownable component source code, accessible, adaptable for LLM streaming states          |
+| **Chat UI**           | assistant-ui                                        | Shadcn/UI-native components for streaming text, tool call displays, generative UI      |
+| **File Manager**      | SVAR React File Manager                             | `RestDataProvider`, split-view, breadcrumbs, virtualized directory loading             |
+| **Code Editor**       | Monaco Editor (`@monaco-editor/react`)              | VS Code engine — syntax highlighting, IntelliSense, Model-URI virtual file system      |
+| **Terminal Emulator** | xterm.js + `xterm-addon-fit` + `xterm-addon-attach` | WebGL renderer, dynamic resize, WebSocket stream attachment                            |
+| **Server State**      | TanStack Query (`@tanstack/react-query`)            | API data fetching, caching, polling, optimistic updates for all server-derived state   |
+| **Client State**      | Zustand                                             | Lightweight store for UI-only state (active tab, sidebar, selected agent, theme)       |
 
 ## Backend
 
-| Category | Technology | Notes |
-| --- | --- | --- |
-| **Web Framework** | Fastify | High-performance tree routing, HTTP/2, JSON Schema validation at transport layer |
-| **Schema Validation** | Zod + `fastify-type-provider-zod` | End-to-end type safety, runtime validation at all system boundaries |
-| **Reverse Proxy** | `@fastify/http-proxy` | API gateway proxying traffic to the single OpenCode engine process |
-| **WebSockets** | `ws` or `socket.io` | Full-duplex communication for terminal and real-time streams |
-| **Pseudo-Terminal** | `node-pty` | PTY file descriptors for interactive CLI support (ANSI, cursor, color) |
-| **Process Management** | `child_process.spawn()` | Single OpenCode daemon lifecycle management |
-| **Logging** | Pino | Structured JSON logging with correlation IDs |
+| Category               | Technology                        | Notes                                                                            |
+| ---------------------- | --------------------------------- | -------------------------------------------------------------------------------- |
+| **Web Framework**      | Fastify                           | High-performance tree routing, HTTP/2, JSON Schema validation at transport layer |
+| **Schema Validation**  | Zod + `fastify-type-provider-zod` | End-to-end type safety, runtime validation at all system boundaries              |
+| **Reverse Proxy**      | `@fastify/http-proxy`             | API gateway proxying traffic to the single OpenCode engine process               |
+| **WebSockets**         | `ws` or `socket.io`               | Full-duplex communication for terminal and real-time streams                     |
+| **Pseudo-Terminal**    | `node-pty`                        | PTY file descriptors for interactive CLI support (ANSI, cursor, color)           |
+| **Process Management** | `child_process.spawn()`           | Single OpenCode daemon lifecycle management                                      |
+| **Logging**            | Pino                              | Structured JSON logging with correlation IDs                                     |
 
 ## Database
 
-| Category | Technology | Notes |
-| --- | --- | --- |
-| **Cloud DB** | PostgreSQL | Scalable, distributed deployments |
-| **Local DB** | SQLite (`better-sqlite3`) | Lightweight local installations **and** mandatory local sync target (see Portable Workspace Rule) |
-| **ORM** | Drizzle ORM | SQL-first, zero-dependency, TypeScript type-safe, dual-driver support (`drizzle-orm/node-postgres` + `drizzle-orm/better-sqlite3`) |
-| **IDs** | ULID | Lexicographically sortable, collision-safe for distributed systems |
+| Category     | Technology                | Notes                                                                                                                              |
+| ------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **Cloud DB** | PostgreSQL                | Scalable, distributed deployments                                                                                                  |
+| **Local DB** | SQLite (`better-sqlite3`) | Lightweight local installations **and** mandatory local sync target (see Portable Workspace Rule)                                  |
+| **ORM**      | Drizzle ORM               | SQL-first, zero-dependency, TypeScript type-safe, dual-driver support (`drizzle-orm/node-postgres` + `drizzle-orm/better-sqlite3`) |
+| **IDs**      | ULID                      | Lexicographically sortable, collision-safe for distributed systems                                                                 |
 
 > **Portable Workspace Sync:** Regardless of the active DB driver, the app maintains a **dual-write** strategy — every write to PostgreSQL is also written to `.cc/local.db` (SQLite) inside the workspace directory. Drizzle migrations run against both databases to ensure schema parity. On startup, if no PostgreSQL connection is available, the app seamlessly falls back to this local SQLite DB. This guarantees full portability — move the folder, run on a new machine, and the app resumes with identical state.
 
 ## Background Jobs & Scheduling
 
-| Environment | Technology | Notes |
-| --- | --- | --- |
-| **Cloud (PostgreSQL)** | `pg-boss` or `graphile-worker` | Persistent, database-backed scheduling with `SKIP LOCKED` semantics |
-| **Local (SQLite)** | `bree` | Cron syntax parsing + worker threads, paired with SQLite state tracking |
+| Environment            | Technology                     | Notes                                                                   |
+| ---------------------- | ------------------------------ | ----------------------------------------------------------------------- |
+| **Cloud (PostgreSQL)** | `pg-boss` or `graphile-worker` | Persistent, database-backed scheduling with `SKIP LOCKED` semantics     |
+| **Local (SQLite)**     | `bree`                         | Cron syntax parsing + worker threads, paired with SQLite state tracking |
 
 ## AI & Integrations
 
-| Category | Technology | Notes |
-| --- | --- | --- |
-| **Agent Engine** | `opencode-ai` (binary) + `@opencode-ai/sdk` (JS SDK) | Official JS SDK (`createOpencodeClient`) for type-safe programmatic interaction + single persistent `opencode serve` daemon managed by the orchestrator |
-| **Tool Protocol** | MCP SDK (`@modelcontextprotocol/sdk`) | `StdioServerTransport` / `SSEServerTransport`, dynamic tool registration, `listChanged` notifications |
-| **External API Auth** | Composio (`composio-core`) | Managed OAuth flows, token storage/refresh, Tool Router for dynamic action loading |
+| Category              | Technology                                           | Notes                                                                                                                                                   |
+| --------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Agent Engine**      | `opencode-ai` (binary) + `@opencode-ai/sdk` (JS SDK) | Official JS SDK (`createOpencodeClient`) for type-safe programmatic interaction + single persistent `opencode serve` daemon managed by the orchestrator |
+| **Tool Protocol**     | MCP SDK (`@modelcontextprotocol/sdk`)                | `StdioServerTransport` / `SSEServerTransport`, dynamic tool registration, `listChanged` notifications                                                   |
+| **External API Auth** | Composio (`composio-core`)                           | Managed OAuth flows, token storage/refresh, Tool Router for dynamic action loading                                                                      |
 
 ## Testing & Quality
 
-| Category | Technology | Notes |
-| --- | --- | --- |
-| **Unit / Integration** | Vitest (V8 coverage provider) | Vite-native test runner, 95% coverage mandate |
-| **E2E** | Playwright | Multi-pane user flow simulation |
-| **Linting** | ESLint (`@typescript-eslint/recommended-requiring-type-checking`) | Zero warnings policy |
-| **Formatting** | Prettier | Enforced on all files |
-| **Pre-commit Hooks** | Husky + `lint-staged` | Auto-reject non-compliant code |
-| **CI/CD** | GitHub Actions | Sequential fail-fast pipeline: install → lint → typecheck → test → coverage gate → E2E |
+| Category               | Technology                                                        | Notes                                                                                  |
+| ---------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Unit / Integration** | Vitest (V8 coverage provider)                                     | Vite-native test runner, 95% coverage mandate                                          |
+| **E2E**                | Playwright                                                        | Multi-pane user flow simulation                                                        |
+| **Linting**            | ESLint (`@typescript-eslint/recommended-requiring-type-checking`) | Zero warnings policy                                                                   |
+| **Formatting**         | Prettier                                                          | Enforced on all files                                                                  |
+| **Pre-commit Hooks**   | Husky + `lint-staged`                                             | Auto-reject non-compliant code                                                         |
+| **CI/CD**              | GitHub Actions                                                    | Sequential fail-fast pipeline: install → lint → typecheck → test → coverage gate → E2E |
 
 ---
 
@@ -410,12 +416,12 @@ On startup and every 6 hours (configurable via `CC_UPDATE_INTERVAL_MS`), the bac
 
 At startup, auto-detect deployment mode:
 
-| Signal | Mode |
-|---|---|
-| `CC_DOCKER=true` or `/.dockerenv` exists | Docker |
-| Global npm path is ancestor of `__dirname` | npm global |
-| `.git` in project root | Bare metal (git clone) |
-| Fallback | npm local |
+| Signal                                     | Mode                   |
+| ------------------------------------------ | ---------------------- |
+| `CC_DOCKER=true` or `/.dockerenv` exists   | Docker                 |
+| Global npm path is ancestor of `__dirname` | npm global             |
+| `.git` in project root                     | Bare metal (git clone) |
+| Fallback                                   | npm local              |
 
 ### Update Mechanisms
 
@@ -450,80 +456,80 @@ All runtime configuration is managed through environment variables. Validated at
 
 ## Server & Runtime
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `NODE_ENV` | `development` | No | Node environment: `development`, `production`, or `test` |
-| `CC_PORT` | `3000` | No | HTTP server bind port |
-| `CC_HOST` | `0.0.0.0` | No | Bind address. Use `127.0.0.1` to restrict to localhost |
-| `CC_LOG_LEVEL` | `info` | No | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+| Variable       | Default       | Required | Description                                                        |
+| -------------- | ------------- | -------- | ------------------------------------------------------------------ |
+| `NODE_ENV`     | `development` | No       | Node environment: `development`, `production`, or `test`           |
+| `CC_PORT`      | `3000`        | No       | HTTP server bind port                                              |
+| `CC_HOST`      | `0.0.0.0`     | No       | Bind address. Use `127.0.0.1` to restrict to localhost             |
+| `CC_LOG_LEVEL` | `info`        | No       | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 
 ## Database
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `DATABASE_URL` | `sqlite://.cc/local.db` | No | Primary DB connection string. PostgreSQL URI for cloud, SQLite path for local. Drives the Drizzle dual-driver switch |
-| `CC_SQLITE_SYNC` | `true` | No | Enable background sync from PostgreSQL to local SQLite (Portable Workspace Rule). No effect when primary DB is SQLite |
+| Variable         | Default                 | Required | Description                                                                                                           |
+| ---------------- | ----------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`   | `sqlite://.cc/local.db` | No       | Primary DB connection string. PostgreSQL URI for cloud, SQLite path for local. Drives the Drizzle dual-driver switch  |
+| `CC_SQLITE_SYNC` | `true`                  | No       | Enable background sync from PostgreSQL to local SQLite (Portable Workspace Rule). No effect when primary DB is SQLite |
 
 ## Security & Auth
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `CC_SECRET` | — | **Yes** (prod) | Secret key for session signing / JWT. App refuses to start without it in production |
-| `CC_CORS_ORIGINS` | `*` | No | Allowed CORS origins (comma-separated). Lock down in production |
-| `CC_RATE_LIMIT_MAX` | `100` | No | Max requests per rate limit window per IP |
-| `CC_RATE_LIMIT_WINDOW_MS` | `60000` | No | Rate limit sliding window in ms (default: 1 min) |
-| `CC_CSP_DIRECTIVES` | *(sensible defaults)* | No | Override Content-Security-Policy header directives |
+| Variable                  | Default               | Required       | Description                                                                         |
+| ------------------------- | --------------------- | -------------- | ----------------------------------------------------------------------------------- |
+| `CC_SECRET`               | —                     | **Yes** (prod) | Secret key for session signing / JWT. App refuses to start without it in production |
+| `CC_CORS_ORIGINS`         | `*`                   | No             | Allowed CORS origins (comma-separated). Lock down in production                     |
+| `CC_RATE_LIMIT_MAX`       | `100`                 | No             | Max requests per rate limit window per IP                                           |
+| `CC_RATE_LIMIT_WINDOW_MS` | `60000`               | No             | Rate limit sliding window in ms (default: 1 min)                                    |
+| `CC_CSP_DIRECTIVES`       | _(sensible defaults)_ | No             | Override Content-Security-Policy header directives                                  |
 
 ## OpenCode Engine
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `CC_OPENCODE_PATH` | `node_modules/.bin/opencode` | No | Override path to a custom opencode binary (power-user escape hatch) |
-| `CC_OPENCODE_PORT` | `4100` | No | Port for the single `opencode serve` process |
-| `CC_AGENT_HEALTH_INTERVAL_MS` | `10000` | No | Polling interval for the engine's `/health` endpoint |
-| `CC_AGENT_SHUTDOWN_TIMEOUT_MS` | `10000` | No | Grace period before SIGKILL on engine process termination |
-| `CC_AGENT_STARTUP_TIMEOUT_MS` | `30000` | No | Max time to wait for the engine to become healthy |
+| Variable                       | Default                      | Required | Description                                                         |
+| ------------------------------ | ---------------------------- | -------- | ------------------------------------------------------------------- |
+| `CC_OPENCODE_PATH`             | `node_modules/.bin/opencode` | No       | Override path to a custom opencode binary (power-user escape hatch) |
+| `CC_OPENCODE_PORT`             | `4100`                       | No       | Port for the single `opencode serve` process                        |
+| `CC_AGENT_HEALTH_INTERVAL_MS`  | `10000`                      | No       | Polling interval for the engine's `/health` endpoint                |
+| `CC_AGENT_SHUTDOWN_TIMEOUT_MS` | `10000`                      | No       | Grace period before SIGKILL on engine process termination           |
+| `CC_AGENT_STARTUP_TIMEOUT_MS`  | `30000`                      | No       | Max time to wait for the engine to become healthy                   |
 
 ## Workspace & Storage
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `CC_DATA_DIR` | `.cc` | No | App data directory (DB, configs, logs). Relative to workspace or absolute |
-| `CC_WORKSPACE_DIR` | `./workspaces` | No | Root directory where agent workspace folders are created |
+| Variable           | Default        | Required | Description                                                               |
+| ------------------ | -------------- | -------- | ------------------------------------------------------------------------- |
+| `CC_DATA_DIR`      | `.cc`          | No       | App data directory (DB, configs, logs). Relative to workspace or absolute |
+| `CC_WORKSPACE_DIR` | `./workspaces` | No       | Root directory where agent workspace folders are created                  |
 
 ## Automations (Cron)
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `CC_MAX_CRONS` | `0` | No | Max automation jobs per user. `0` = unlimited |
-| `CC_CRON_CONCURRENCY` | `1` | No | Max cron jobs executing simultaneously (prevents resource exhaustion from parallel agent spawns) |
+| Variable              | Default | Required | Description                                                                                      |
+| --------------------- | ------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `CC_MAX_CRONS`        | `0`     | No       | Max automation jobs per user. `0` = unlimited                                                    |
+| `CC_CRON_CONCURRENCY` | `1`     | No       | Max cron jobs executing simultaneously (prevents resource exhaustion from parallel agent spawns) |
 
 ## Integrations
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `COMPOSIO_API_KEY` | — | No | Composio SDK API key for managed OAuth and external tool integrations |
+| Variable           | Default | Required | Description                                                           |
+| ------------------ | ------- | -------- | --------------------------------------------------------------------- |
+| `COMPOSIO_API_KEY` | —       | No       | Composio SDK API key for managed OAuth and external tool integrations |
 
 ## Auth Timeouts
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `CC_OAUTH_TIMEOUT_MS` | `300000` | No | Timeout for LLM provider OAuth flows (5 min) |
-| `CC_MCP_AUTH_TIMEOUT_MS` | `90000` | No | Timeout for MCP server OAuth callbacks (90s) |
+| Variable                 | Default  | Required | Description                                  |
+| ------------------------ | -------- | -------- | -------------------------------------------- |
+| `CC_OAUTH_TIMEOUT_MS`    | `300000` | No       | Timeout for LLM provider OAuth flows (5 min) |
+| `CC_MCP_AUTH_TIMEOUT_MS` | `90000`  | No       | Timeout for MCP server OAuth callbacks (90s) |
 
 ## Self-Updating
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `CC_UPDATE_CHECK` | `true` | No | Enable/disable periodic update checks |
-| `CC_UPDATE_INTERVAL_MS` | `21600000` | No | Update check interval in ms (default: 6h) |
-| `CC_AUTO_UPDATE` | `false` | No | Auto-apply updates when detected (npm/git only, never Docker) |
+| Variable                | Default    | Required | Description                                                   |
+| ----------------------- | ---------- | -------- | ------------------------------------------------------------- |
+| `CC_UPDATE_CHECK`       | `true`     | No       | Enable/disable periodic update checks                         |
+| `CC_UPDATE_INTERVAL_MS` | `21600000` | No       | Update check interval in ms (default: 6h)                     |
+| `CC_AUTO_UPDATE`        | `false`    | No       | Auto-apply updates when detected (npm/git only, never Docker) |
 
 ## Deployment
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `CC_DOCKER` | *(auto-detect)* | No | Force Docker mode when `/.dockerenv` auto-detection fails (e.g. rootless containers) |
+| Variable    | Default         | Required | Description                                                                          |
+| ----------- | --------------- | -------- | ------------------------------------------------------------------------------------ |
+| `CC_DOCKER` | _(auto-detect)_ | No       | Force Docker mode when `/.dockerenv` auto-detection fails (e.g. rootless containers) |
 
 ---
 
@@ -531,11 +537,11 @@ All runtime configuration is managed through environment variables. Validated at
 
 ## Prerequisites (All Methods)
 
-| Dependency | Version | Notes |
-|---|---|---|
-| Node.js | ≥ 20 LTS | Required runtime. Enforced via `engines` field in `package.json` |
-| npm or pnpm | Latest | Package manager |
-| Git | Any | Required for bare-metal updates and agent workflows |
+| Dependency  | Version  | Notes                                                            |
+| ----------- | -------- | ---------------------------------------------------------------- |
+| Node.js     | ≥ 20 LTS | Required runtime. Enforced via `engines` field in `package.json` |
+| npm or pnpm | Latest   | Package manager                                                  |
+| Git         | Any      | Required for bare-metal updates and agent workflows              |
 
 PostgreSQL is **optional**. Without it, the app runs entirely on SQLite — zero additional infrastructure needed.
 
@@ -824,11 +830,13 @@ pip install some-python-tool
 The app **cannot** self-update inside a container. Two approaches:
 
 **Manual:**
+
 ```bash
 docker compose pull && docker compose up -d
 ```
 
 **Automated (Watchtower):**
+
 ```yaml
 services:
   watchtower:
@@ -836,7 +844,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - WATCHTOWER_POLL_INTERVAL=21600  # 6h, matches CC_UPDATE_INTERVAL_MS
+      - WATCHTOWER_POLL_INTERVAL=21600 # 6h, matches CC_UPDATE_INTERVAL_MS
       - WATCHTOWER_CLEANUP=true
 ```
 

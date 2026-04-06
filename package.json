@@ -1,0 +1,55 @@
+{
+  "name": "@cc/root",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter './packages/*' dev",
+    "build": "pnpm --parallel --filter './packages/*' --if-present build",
+    "test": "pnpm --parallel --filter './packages/*' test",
+    "test:coverage": "pnpm --parallel --filter './packages/*' test:coverage",
+    "test:e2e": "pnpm --filter @cc/frontend test:e2e",
+    "lint": "pnpm --parallel --filter './packages/*' lint",
+    "lint:root": "eslint .",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "typecheck": "pnpm --parallel --filter './packages/*' typecheck",
+    "clean": "pnpm --parallel --filter './packages/*' clean",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.59.1",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "globals": "^16.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.8.1",
+    "typescript": "catalog:",
+    "typescript-eslint": "^8.58.0",
+    "vitest": "^3.2.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "node-pty"
+    ]
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,yaml,yml,css,html}": [
+      "prettier --write"
+    ]
+  }
+}

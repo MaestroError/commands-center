@@ -1,0 +1,9 @@
+dist/
+node_modules/
+coverage/
+pnpm-lock.yaml
+*.db
+.cc/
+.opencode/
+examples/
+packages/frontend/src/components/ui/
