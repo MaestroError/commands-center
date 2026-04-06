@@ -69,6 +69,16 @@ These are the chosen technologies. Do not introduce alternatives without explici
 | Cloud (PostgreSQL) | `pg-boss` (persistent, `SKIP LOCKED`) |
 | Local (SQLite)     | `bree` + SQLite state tracking        |
 
+### CLI Distribution
+
+| Concern        | Technology                                                   |
+| -------------- | ------------------------------------------------------------ |
+| Package name   | `commandscenter` (binary: `ccenter`)                         |
+| Bundler        | esbuild (single-file ESM output, `better-sqlite3` external)  |
+| Static serving | `@fastify/static` (serves pre-built React app, SPA fallback) |
+
+The CLI bundles backend + frontend into `packages/cli/dist/`. The backend exposes a `createServer()` factory; the CLI entry point (`bin.ts`) creates the server, registers static file serving, and calls `listen()`.
+
 ### Testing & Quality
 
 | Concern            | Technology                                                                |
@@ -407,6 +417,8 @@ When making changes that affect the developer experience, update the relevant do
 | Add WebSocket logic          | `packages/backend/src/ws/`                                     |
 | Add MCP server/tool          | `packages/backend/src/mcp/`                                    |
 | Add orchestrator logic       | `packages/backend/src/orchestrator/`                           |
+| Modify CLI entry point       | `packages/cli/src/bin.ts`                                      |
+| Modify CLI build             | `packages/cli/build.ts`                                        |
 | Add an E2E test              | `packages/frontend/e2e/`                                       |
 | Add a unit test              | `packages/backend/test/` (mirroring `src/`)                    |
 | Check screen requirements    | `design/screens/<screen-name>/`                                |

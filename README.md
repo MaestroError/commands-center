@@ -31,6 +31,20 @@ pnpm dev
 
 This starts both the backend (port 3000) and frontend (port 5173) dev servers.
 
+### Production (CLI)
+
+```bash
+npm install -g commandscenter
+ccenter start
+```
+
+Or build and run locally:
+
+```bash
+pnpm build:cli
+node packages/cli/dist/bin.mjs start --port 3000
+```
+
 ## Project Structure
 
 ```
@@ -38,6 +52,7 @@ cc/
 ├── packages/
 │   ├── frontend/     # React 19 + Vite app
 │   ├── backend/      # Fastify + Node.js server
+│   ├── cli/          # CLI binary (ccenter) — bundles backend + frontend
 │   └── shared/       # Shared Zod schemas, types, constants
 ├── design/           # Screen specs, layout, themes
 ├── .cc/              # Runtime workspace data (portable)

@@ -39,6 +39,7 @@ The backend runs on `http://localhost:3000`, the frontend on `http://localhost:5
 | `pnpm format:fix`    | Auto-fix Prettier formatting      |
 | `pnpm typecheck`     | Run TypeScript type checking      |
 | `pnpm clean`         | Remove build artifacts            |
+| `pnpm build:cli`     | Build production CLI binary       |
 
 ### Package-specific
 
@@ -50,6 +51,15 @@ The backend runs on `http://localhost:3000`, the frontend on `http://localhost:5
 | `pnpm --filter @cc/backend db:migrate`  | Run migrations             |
 | `pnpm --filter @cc/backend db:push`     | Push schema to DB          |
 | `pnpm --filter @cc/backend db:studio`   | Open Drizzle Studio        |
+
+### CLI
+
+| Command                                        | Description                    |
+| ---------------------------------------------- | ------------------------------ |
+| `pnpm build:cli`                               | Build CLI (frontend + backend) |
+| `node packages/cli/dist/bin.mjs start`         | Run production server          |
+| `node packages/cli/dist/bin.mjs start -p 4000` | Run on a custom port           |
+| `node packages/cli/dist/bin.mjs --help`        | Show CLI help                  |
 
 ## Git Workflow
 

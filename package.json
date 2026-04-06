@@ -19,6 +19,7 @@
     "format:fix": "prettier --write .",
     "typecheck": "pnpm --parallel --filter './packages/*' typecheck",
     "clean": "pnpm --parallel --filter './packages/*' clean",
+    "build:cli": "pnpm --filter commandscenter build",
     "prepare": "husky"
   },
   "devDependencies": {

@@ -4,6 +4,35 @@ Node + Typescript + React
 
 Installable via npm/pnpm, ready for web production and containerisation.
 
+## CLI Distribution
+
+The application is distributed as a single npm package (`commandscenter`) with a `ccenter` binary. The CLI bundles the Fastify backend and pre-built React frontend into one distributable.
+
+### Installation
+
+```bash
+npm install -g commandscenter
+```
+
+### Commands
+
+| Command                          | Description                                                                                                  |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `ccenter start`                  | Start the full application (API server + web UI). Opens on `http://localhost:3000` by default.               |
+| `ccenter serve`                  | Start the HTTP API server only, without serving the frontend. For headless/API-only use or custom frontends. |
+| `ccenter start --port 4000`      | Start on a custom port.                                                                                      |
+| `ccenter start --host 127.0.0.1` | Bind to a specific host (default: `0.0.0.0`).                                                                |
+| `ccenter --version`              | Print the installed version.                                                                                 |
+| `ccenter --help`                 | Show all available commands and options.                                                                     |
+
+### Modes
+
+- **`start`** — Full mode. Serves the React frontend as static files and the backend API. This is the default for end users.
+- **`serve`** — API-only mode. Exposes only the HTTP API and WebSocket endpoints. No static file serving. Useful for:
+  - Running behind a reverse proxy with a separately deployed frontend
+  - Headless / programmatic access
+  - Development setups where Vite dev server handles the frontend
+
 > **Single-User Application** — This is a single-operator tool. There is no user registration, login, or multi-tenancy. The person who installs and runs the app is the sole user with full access to all agents, workspaces, terminals, and the host filesystem. Authentication may be added in a future phase, but the MVP assumes a trusted, single-user environment.
 
 > **MUST: Portable Workspace Rule** — The entire workspace directory is the single source of truth. All application state (agents, configs, chat history, cron jobs, credentials, DB) MUST be stored within the active workspace folder. Even when PostgreSQL is the primary database, the app MUST silently sync all data in the background to a local in-folder SQLite DB (`.cc/local.db`). If a user copies or moves the entire directory to another machine and runs `cc`, they MUST get the exact same application state — zero external dependencies on the originating host. This rule applies to every feature and subsystem without exception.
@@ -327,17 +356,18 @@ We should adhere to following principles while development and maintenance of th
 
 ## Project Structure
 
-Fullstack monorepo — single deployable unit. Fastify serves the built React app in production; Vite dev server proxies to Fastify in development. One `cc start` command runs everything.
+Fullstack monorepo — single deployable unit. Fastify serves the built React app in production; Vite dev server proxies to Fastify in development. One `ccenter start` command runs everything.
 
 ```
 cc/
 ├── packages/
-│   ├── server/          # Fastify backend + orchestrator
-│   ├── web/             # React frontend (Vite)
-│   └── shared/          # Shared types, Zod schemas, constants
-├── package.json         # Root workspace config
+│   ├── backend/       # Fastify backend + orchestrator
+│   ├── frontend/      # React frontend (Vite)
+│   ├── cli/           # CLI binary (ccenter) — bundles backend + frontend
+│   └── shared/        # Shared types, Zod schemas, constants
+├── package.json       # Root workspace config
 ├── tsconfig.base.json
-└── turbo.json           # Monorepo task runner
+└── pnpm-workspace.yaml
 ```
 
 ## Frontend
