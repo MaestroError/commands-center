@@ -47,10 +47,11 @@ export async function createAgentRecord(
   db: AppDb,
   input: {
     name: string;
+    slug?: string;
     role: string;
     instructions: string;
     workspacePath: string;
-    model?: string;
+    defaultModel?: string;
     iconPath?: string;
   },
 ) {
@@ -59,14 +60,22 @@ export async function createAgentRecord(
     .insert(agents)
     .values({
       id: createId(),
+      slug: input.slug ?? input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
       name: input.name,
       role: input.role,
       instructions: input.instructions,
       workspace_path: input.workspacePath,
-      model: input.model,
+      default_model: input.defaultModel ?? "test/model",
       icon_path: input.iconPath,
+      status: "active",
+      capabilities_json: JSON.stringify({
+        builtInSkills: [],
+        mcpServers: [],
+        toolPermissions: [],
+      }),
       created_at: timestamp,
       updated_at: timestamp,
+      archived_at: null,
     })
     .returning();
 

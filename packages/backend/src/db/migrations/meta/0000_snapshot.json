@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6f2ad4ef-343b-4046-ad32-dfaac56d6ba9",
+  "id": "f2469680-81dd-49db-90bb-33107f0dda3f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "agents": {
@@ -11,6 +11,13 @@
           "name": "id",
           "type": "text",
           "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
@@ -35,11 +42,11 @@
           "notNull": true,
           "autoincrement": false
         },
-        "model": {
-          "name": "model",
+        "default_model": {
+          "name": "default_model",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "icon_path": {
@@ -51,6 +58,20 @@
         },
         "workspace_path": {
           "name": "workspace_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "capabilities_json": {
+          "name": "capabilities_json",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -69,9 +90,22 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "agents_slug_unique": {
+          "name": "agents_slug_unique",
+          "columns": ["slug"],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

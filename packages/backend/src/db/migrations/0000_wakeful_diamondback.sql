@@ -1,15 +1,20 @@
 CREATE TABLE `agents` (
 	`id` text PRIMARY KEY NOT NULL,
+	`slug` text NOT NULL,
 	`name` text NOT NULL,
 	`role` text NOT NULL,
 	`instructions` text NOT NULL,
-	`model` text,
+	`default_model` text NOT NULL,
 	`icon_path` text,
 	`workspace_path` text NOT NULL,
+	`status` text NOT NULL,
+	`capabilities_json` text NOT NULL,
 	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL
+	`updated_at` integer NOT NULL,
+	`archived_at` integer
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `agents_slug_unique` ON `agents` (`slug`);--> statement-breakpoint
 CREATE TABLE `automation_runs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`automation_id` text NOT NULL,

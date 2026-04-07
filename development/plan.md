@@ -16,8 +16,8 @@ This plan is organized so each epic is a complete feature slice that can ship as
 ## Dependency Tree
 
 ```text
-E1 Runtime Bootstrap
-|- E2 OpenCode Orchestrator
+ ✅ E1 Runtime Bootstrap
+ |- ✅ E2 OpenCode Orchestrator
 |  |- C3 Direct Chat Session Model
 |  |  |- U3 Direct Chat Screen
 |  |  \- I4 Automations
@@ -29,8 +29,8 @@ E1 Runtime Bootstrap
 |  |- U4 File Manager and Terminals
 |  |- U5 Profile, Settings, and Theming
 |  \- I4 Automations
-\- C1 Database and Workspace Foundation
-   |- C2 Agent Workspace Lifecycle
+ \- ✅ C1 Database and Workspace Foundation
+    |- ✅ C2 Agent Workspace Lifecycle
    |  |- U2 Agents and Agent Editor
    |  |- U3 Direct Chat Screen
    |  |- I2 Integrations and MCP Management
@@ -46,10 +46,10 @@ E1 Runtime Bootstrap
 
 ### Path A: Fastest route to internal alpha
 
-1. `engine-infrastructure/01-runtime-bootstrap.md`
-2. `engine-infrastructure/02-opencode-orchestrator.md`
-3. `core-data-state/01-database-and-workspace-foundation.md`
-4. `core-data-state/02-agent-workspace-lifecycle.md`
+1. `✅ engine-infrastructure/01-runtime-bootstrap.md`
+2. `✅ engine-infrastructure/02-opencode-orchestrator.md`
+3. `✅ core-data-state/01-database-and-workspace-foundation.md`
+4. `✅ core-data-state/02-agent-workspace-lifecycle.md`
 5. `product-ux-surfaces/02-agents-and-agent-editor.md`
 6. `core-data-state/03-direct-chat-session-model.md`
 7. `product-ux-surfaces/03-direct-chat-screen.md`
@@ -86,7 +86,6 @@ Run after agents and direct chat execution are stable.
 
 Result: scheduled prompts with isolated sessions and run history.
 
-
 ## Cross-Cutting Architectural Principles
 
 ### Service-First Architecture
@@ -122,14 +121,14 @@ Each epic PR should:
 
 ### Milestone 0: Foundation
 
-- E1 Runtime Bootstrap
-- E2 OpenCode Orchestrator
+- ✅ E1 Runtime Bootstrap
+- ✅ E2 OpenCode Orchestrator
 - E3 API and Realtime Foundation
-- C1 Database and Workspace Foundation
+- ✅ C1 Database and Workspace Foundation
 
 ### Milestone 1: Agent and Chat Alpha
 
-- C2 Agent Workspace Lifecycle
+- ✅ C2 Agent Workspace Lifecycle
 - U2 Agents and Agent Editor
 - C3 Direct Chat Session Model
 - U3 Direct Chat Screen

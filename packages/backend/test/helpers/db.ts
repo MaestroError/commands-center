@@ -5,10 +5,11 @@ import { tmpdir } from "node:os";
 import type { DatabaseClient } from "../../src/db/client.js";
 import { createDatabaseClient } from "../../src/db/client.js";
 import { migrateDatabase } from "../../src/db/migrate.js";
-import { loadRuntimeConfig } from "../../src/lib/runtime-config.js";
+import { loadRuntimeConfig, type RuntimeConfig } from "../../src/lib/runtime-config.js";
 
 export async function createTestDatabase(): Promise<{
   client: DatabaseClient;
+  config: RuntimeConfig;
   cwd: string;
   cleanup(): Promise<void>;
 }> {
@@ -27,6 +28,7 @@ export async function createTestDatabase(): Promise<{
 
   return {
     client,
+    config,
     cwd,
     async cleanup() {
       client.close();

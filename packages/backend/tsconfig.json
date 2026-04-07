@@ -11,6 +11,5 @@
       "@test/*": ["./test/*"]
     }
   },
-  "include": ["src", "test"],
-  "references": [{ "path": "../shared" }]
+  "include": ["src", "test"]
 }

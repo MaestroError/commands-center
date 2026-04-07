@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 
 import type { RuntimeContext } from "./lib/start-server-runtime.js";
+import { registerAgentRoutes } from "./routes/agents.js";
 
 export async function createServer(context: RuntimeContext) {
   const server = Fastify({
@@ -33,6 +34,8 @@ export async function createServer(context: RuntimeContext) {
   server.get("/api/engine", () => {
     return context.orchestrator.getStatus();
   });
+
+  registerAgentRoutes(server, context);
 
   return server;
 }

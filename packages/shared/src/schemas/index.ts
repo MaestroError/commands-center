@@ -1,1 +1,21 @@
-export {};
+export {
+  agentCapabilitySelectionSchema,
+  agentListSchema,
+  agentMcpServerSchema,
+  agentPermissionRuleSchema,
+  agentSchema,
+  agentStatusSchema,
+  builtInSkillListSchema,
+  builtInSkillSchema,
+  createAgentInputSchema,
+  permissionActionSchema,
+  updateAgentInputSchema,
+  type Agent,
+  type AgentCapabilitySelection,
+  type AgentMcpServer,
+  type AgentPermissionRule,
+  type AgentStatus,
+  type BuiltInSkill,
+  type CreateAgentInput,
+  type UpdateAgentInput,
+} from "./agents.js";
