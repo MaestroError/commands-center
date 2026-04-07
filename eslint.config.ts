@@ -61,6 +61,11 @@ export default tseslint.config(
 
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "**/test/**"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
     rules: {
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/no-unsafe-member-access": "off",

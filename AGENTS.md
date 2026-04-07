@@ -18,6 +18,12 @@ Optionally:
 
 ---
 
+# Important notes
+
+- Always run linters and tests before reporting task as done
+
+---
+
 ## Portable Workspace Rule
 
 This is the single most important architectural constraint. Every feature must comply:
