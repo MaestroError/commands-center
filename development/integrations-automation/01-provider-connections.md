@@ -17,14 +17,23 @@ This is a complete global capability with clear UI, backend, and engine integrat
 - U2 Agents and Agent Editor
 - U3 Direct Chat Screen
 
+## Context
+
+Review GOAL.md and tech-research.md before start.
+
+Generally, this app (cc) should act as a bridge to opencode, opencode already manages the oAuth flow and API tokens. The similar system is created in OpenWork, you can check it in examples. So, we just make sure opencode get's authorization from our app and we don't lose it while upgrading cc. That's it.
+
+Check `examples/openwork` and `examples/opencode` for more information.
+
 ## Scope
 
 - Implement provider status and model listing APIs
 - Implement API key submission flow via OpenCode auth/config APIs
 - Implement OAuth flow delegation and callback handling with configured timeouts
-- Build provider connections screen UI
+- Build provider connections screen UI (page)
 - Surface available models to the agent editor and chat model selector
 - Ensure provider connections screen is responsive on mobile viewports
+- Add e2e test for provider connections UI
 
 ## Acceptance Criteria
 

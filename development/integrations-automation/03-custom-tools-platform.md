@@ -15,7 +15,7 @@ This is a complete capability platform with its own data model, backend executio
 
 ## Unblocks
 
-- U2 Agents and Agent Editor
+- No hard blockers downstream. Extends the agent editor with custom tools assignment.
 
 ## Scope
 
@@ -26,16 +26,19 @@ This is a complete capability platform with its own data model, backend executio
 - Register custom tools into the user-configured custom tools MCP server established in I2
 - Emit MCP `listChanged` notifications when tool definitions are created, updated, or deleted, forcing active agents to refresh their available toolsets without restart
 - Support optional extra instructions injection per assigned custom tool
-- Ensure custom tools screen is responsive on mobile viewports
+- Add custom tools section to the agent editor: per-agent tool assignment and permission controls
+- Update agent workspace config (`opencode.jsonc`) when custom tool assignments change
+- Ensure custom tools screen and agent editor custom tools section are responsive on mobile viewports
 
 ## Acceptance Criteria
 
 - The user can create, edit, and delete global custom tools
-- Custom tools appear as assignable capabilities for agents
+- Custom tools appear in the agent editor as assignable capabilities with per-agent permission controls
+- Agent workspace `opencode.jsonc` is updated when custom tool assignments are saved
 - Tool definitions are exposed through the custom tools MCP server
 - Tool updates trigger MCP `listChanged` notifications that agents receive and act on without requiring restart or manual repair
 - Custom tool CRUD is implemented as a decoupled service reusable by future surfaces (MCP, CLI)
-- Custom tools screen adapts correctly to mobile viewports
+- Custom tools screen and agent editor section adapt correctly to mobile viewports
 
 ## Non-Goals
 

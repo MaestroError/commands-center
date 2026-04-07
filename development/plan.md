@@ -25,11 +25,8 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |  |- I1 Provider Connections
  |  |  \- U2 Agents and Agent Editor
  |  \- I2 Integrations and MCP Management
- |     |- U2 Agents and Agent Editor
  |     |- I3 Custom Tools Platform
- |     |  \- U2 Agents and Agent Editor
  |     \- I5 Composio Integration
- |        \- U2 Agents and Agent Editor
  |- E3 API and Realtime Foundation
  |  |- E4 Self-Updating and Version Management
  |  |- U1 App Shell and Dashboard
@@ -50,8 +47,9 @@ This plan is organized so each epic is a complete feature slice that can ship as
     |- U4 File Manager and Terminals
     \- U5 Profile, Settings, and Theming
 
-U2 blocks on: C2, I1, I2, I3, I5
+U2 blocks on: C2, I1
 U3 blocks on: C2, C3, U2
+I2, I3, I5 each extend the agent editor independently after U2 ships
 ```
 
 ## Recommended Execution Paths
@@ -64,26 +62,26 @@ U3 blocks on: C2, C3, U2
 4. `✅ core-data-state/02-agent-workspace-lifecycle.md`
 5. `✅ engine-infrastructure/05-opencode-workspace-contract.md`
 6. `integrations-automation/01-provider-connections.md`
-7. `integrations-automation/02-integrations-and-mcp-management.md`
-8. `integrations-automation/03-custom-tools-platform.md`
-9. `integrations-automation/05-composio-integration.md`
-10. `product-ux-surfaces/02-agents-and-agent-editor.md`
-11. `core-data-state/03-direct-chat-session-model.md`
-12. `product-ux-surfaces/03-direct-chat-screen.md`
+7. `product-ux-surfaces/02-agents-and-agent-editor.md`
+8. `core-data-state/03-direct-chat-session-model.md`
+9. `product-ux-surfaces/03-direct-chat-screen.md`
 
-Result: connect providers, configure MCP servers and tools, create agents with real capabilities, generate workspaces, open persistent direct chat, send messages.
+Result: connect providers, create agents with model and skills, generate workspaces, open persistent direct chat, send messages.
 
-### Path B: Make the product useful for day-to-day work
+### Path B: Extend capabilities and make the product useful for day-to-day work
 
-Run after Path A starts stabilizing.
+Run after Path A starts stabilizing. Integration epics (I2, I3, I5) each extend the agent editor with their respective sections.
 
-1. `engine-infrastructure/03-api-and-realtime-foundation.md`
-2. `engine-infrastructure/04-self-updating-and-version-management.md`
-3. `product-ux-surfaces/04-file-manager-and-terminals.md`
-4. `product-ux-surfaces/01-app-shell-and-dashboard.md`
-5. `product-ux-surfaces/05-profile-settings-and-theming.md`
+1. `integrations-automation/02-integrations-and-mcp-management.md`
+2. `integrations-automation/03-custom-tools-platform.md`
+3. `integrations-automation/05-composio-integration.md`
+4. `engine-infrastructure/03-api-and-realtime-foundation.md`
+5. `engine-infrastructure/04-self-updating-and-version-management.md`
+6. `product-ux-surfaces/04-file-manager-and-terminals.md`
+7. `product-ux-surfaces/01-app-shell-and-dashboard.md`
+8. `product-ux-surfaces/05-profile-settings-and-theming.md`
 
-Result: file browsing/editing, global and agent terminals, health visibility, user preferences, theming, and self-updating.
+Result: MCP server management, custom tools, Composio integration, file browsing/editing, global and agent terminals, health visibility, user preferences, theming, and self-updating.
 
 ### Path C: Complete the MVP operating loop
 
@@ -138,19 +136,19 @@ Each epic PR should:
 - E3 API and Realtime Foundation
 - ✅ C1 Database and Workspace Foundation
 
-### Milestone 1: Capability Layer
+### Milestone 1: Agent Alpha
 
 - ✅ C2 Agent Workspace Lifecycle
 - I1 Provider Connections
-- I2 Integrations and MCP Management
-- I3 Custom Tools Platform
-- I5 Composio Integration
-
-### Milestone 2: Agent and Chat Alpha
-
 - U2 Agents and Agent Editor
 - C3 Direct Chat Session Model
 - U3 Direct Chat Screen
+
+### Milestone 2: Capability Extensions
+
+- I2 Integrations and MCP Management
+- I3 Custom Tools Platform
+- I5 Composio Integration
 
 ### Milestone 3: Workspace Interaction and Polish
 

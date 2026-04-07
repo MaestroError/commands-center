@@ -27,7 +27,7 @@ Composio is a distinct third-party integration with its own SDK, auth model, and
 
 ## Unblocks
 
-- U2 Agents and Agent Editor
+- No hard blockers downstream. Extends the agent editor with Composio tool assignment.
 
 ## Scope
 
@@ -37,16 +37,18 @@ Composio is a distinct third-party integration with its own SDK, auth model, and
 - Implement tool/toolkit browsing: list available toolkits, list tools per connected app, show tool descriptions
 - Register Composio-provided tools into the app-provided MCP server established in I2 (either via Composio's MCP mode URL or by wrapping native tool calls)
 - Add Composio section to the integrations screen (extending the screen built by I2)
+- Add Composio tools section to the agent editor: per-agent Composio tool assignment and permission controls
+- Update agent workspace config (`opencode.jsonc`) when Composio tool assignments change
 - Persist Composio connection state inside the workspace
-- Surface connected Composio tools as assignable capabilities for per-agent permission control in the agent editor
-- Ensure Composio section of integrations screen is responsive on mobile viewports
+- Ensure Composio sections of integrations screen and agent editor are responsive on mobile viewports
 
 ## Acceptance Criteria
 
 - The user can connect external app accounts through Composio OAuth flows from the integrations screen
 - Connected accounts are listed with status and available tools
 - The user can disconnect/revoke Composio connections
-- Connected Composio tools appear in agent editor as assignable capabilities with per-agent permission control
+- Connected Composio tools appear in the agent editor with per-agent permission controls
+- Agent workspace `opencode.jsonc` is updated when Composio tool assignments are saved
 - Composio tools are exposed to agents through the app-provided MCP server
 - Connection state persists across app restarts and workspace moves per the Portable Workspace Rule
 - Composio section adapts correctly to mobile viewports

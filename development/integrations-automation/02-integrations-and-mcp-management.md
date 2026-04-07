@@ -15,7 +15,6 @@ This is a complete feature area with one screen and one clear capability boundar
 
 ## Unblocks
 
-- U2 Agents and Agent Editor
 - I3 Custom Tools Platform
 - I5 Composio Integration
 
@@ -26,17 +25,19 @@ This is a complete feature area with one screen and one clear capability boundar
 - Implement global MCP add, remove, enable, disable, and auth flows
 - Show connection state and available tools per MCP server
 - Persist MCP server state inside the workspace
-- Update per-agent capability sources used by the agent editor
-- Ensure integrations screen is responsive on mobile viewports
+- Add MCP permissions section to the agent editor: per-agent MCP server enable/disable and tool permission controls (allow, ask, deny)
+- Update agent workspace config (`opencode.jsonc`) when MCP permissions change
+- Ensure integrations screen and agent editor MCP section are responsive on mobile viewports
 
 ## Acceptance Criteria
 
 - Behavior matches `design/screens/integrations/acceptance_criteria.md`
 - Two internal MCP servers (app-provided tools and user-configured custom tools) are operational and can register tools independently
 - MCP servers can be configured and authenticated through the app flow
-- Connected capabilities appear in per-agent access configuration
+- Connected MCP servers appear in the agent editor with per-agent permission controls
+- Agent workspace `opencode.jsonc` is updated when MCP permissions are saved
 - Changes that require OpenCode reload are applied through a controlled orchestrator path
-- Integrations screen adapts correctly to mobile viewports
+- Integrations screen and agent editor MCP section adapt correctly to mobile viewports
 
 ## Non-Goals
 
