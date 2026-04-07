@@ -21,15 +21,16 @@ This is the platform entry point for every other feature. Once merged, all later
 ## Scope
 
 - Add a typed runtime config module with Zod validation
-- Support `CC_PORT`, `CC_HOST`, `CC_DATA_DIR`, `CC_WORKSPACE_DIR`, engine timeouts, auth timeouts, and log level
-- Implement first-run bootstrap for `.cc/`, `.cc/local.db`, and workspace root folders
+- Support `CC_PORT`, `CC_HOST`, `CC_DATA_DIR`, `CC_WORKSPACE_DIR` (defaults to `.cc/workspace/`), engine timeouts, auth timeouts, and log level
+- Implement first-run bootstrap for the `.cc/` application root directory and the `.cc/workspace/` portable state directory (containing agents, database, preferences, auth, MCP configs, and all user data)
+- Ensure the `.cc/workspace/` directory is the single source of truth for all portable state — copying it to another machine and running `ccenter start` must produce the exact same application state
 - Add structured logging setup and request correlation IDs
 - Implement graceful shutdown as a reusable drain protocol: stop accepting connections, cancel pending scheduled jobs, SIGTERM child processes with configured grace period, flush logs, close DB connections, sync final state to SQLite, exit 0
 - Align CLI startup behavior with `GOAL.md` first-run flow
 
 ## Acceptance Criteria
 
-- Starting the app in an empty workspace creates the required local runtime folders
+- Starting the app creates the `.cc/` application root and `.cc/workspace/` portable state directory with all required subdirectories
 - Invalid environment configuration fails fast with actionable errors
 - The app logs startup configuration without leaking secrets
 - `SIGINT` and `SIGTERM` trigger the full drain protocol: stop listeners, cancel jobs, terminate child processes, flush and close resources, then exit cleanly

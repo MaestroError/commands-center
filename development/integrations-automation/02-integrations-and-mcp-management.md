@@ -21,7 +21,7 @@ This is a complete feature area with one screen and one clear capability boundar
 ## Scope
 
 - Build integrations screen with separate Composio and MCP sections
-- Establish the two internal MCP server architecture: one server for app-provided tools (Composio integrations, app-level interactions) and one for user-configured custom tools, using StdioServerTransport or SSEServerTransport
+- Establish the two internal MCP server architecture: one server for app-provided tools (Composio integrations, automation scheduling for agents, and other app-level interactions) and one for user-configured custom tools, using SSEServerTransport with token auth
 - Implement global MCP add, remove, enable, disable, and auth flows
 - Implement Composio connect and disconnect flows
 - Show connection state and available tools per integration

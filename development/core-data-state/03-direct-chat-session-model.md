@@ -21,7 +21,7 @@ This is the backend half of the MVP centerpiece. Once merged, the chat UI can be
 ## Scope
 
 - Define agent-to-default-conversation behavior
-- Implement session creation, lookup, and previous-conversation access
+- Implement session creation, lookup, and previous-conversation access as a backend service exposed via REST API routes
 - Persist user messages, assistant messages, tool call parts, and attachments metadata
 - Route prompt execution through the OpenCode SDK or HTTP API via the orchestrator
 - Add `Start Fresh` behavior that creates a new session while preserving the agent-centric UX model

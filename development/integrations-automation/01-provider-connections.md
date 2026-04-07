@@ -24,6 +24,7 @@ This is a complete global capability with clear UI, backend, and engine integrat
 - Implement OAuth flow delegation and callback handling with configured timeouts
 - Build provider connections screen UI
 - Surface available models to the agent editor and chat model selector
+- Ensure provider connections screen is responsive on mobile viewports
 
 ## Acceptance Criteria
 
@@ -31,6 +32,7 @@ This is a complete global capability with clear UI, backend, and engine integrat
 - API key and OAuth flows can connect a provider successfully
 - Connected provider models become selectable in the app
 - Provider credentials are stored through OpenCode, not ad hoc app storage
+- Provider connections screen adapts correctly to mobile viewports
 
 ## Non-Goals
 

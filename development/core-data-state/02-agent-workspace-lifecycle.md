@@ -21,8 +21,8 @@ This is the core domain boundary between app state and OpenCode workspaces. It i
 
 ## Scope
 
-- Implement agent CRUD service
-- Create workspace folders per agent
+- Implement agent CRUD as a backend service, exposed via REST API routes
+- Create workspace folders per agent inside `.cc/workspace/agents/`
 - Generate and update `AGENTS.md`
 - Generate and update per-agent OpenCode config with permissions
 - Copy built-in skills into agent workspace on assignment

@@ -116,6 +116,28 @@ Result: scheduled prompts with isolated sessions and run history.
 - I3 Custom Tools Platform
 - I4 Automations
 
+## Cross-Cutting Architectural Principles
+
+### Service-First Architecture
+
+All business actions (agent CRUD, session management, automation CRUD, custom tool management, etc.) MUST be implemented as backend services first, then exposed via REST API routes for the frontend. Services are the single source of truth for all business logic — no business rules in route handlers, CLI commands, or MCP tools.
+
+This decoupling ensures that any action can be surfaced through additional interfaces (MCP tools, CLI commands, etc.) in the future without reimplementing logic. The web UI, a CLI command, and an MCP tool must all call the same service method and produce the same result.
+
+**Currently confirmed for MCP exposure:** automation one-time task scheduling and status checks, so AI agents can create and monitor scheduled jobs programmatically.
+
+### OpenCode as Engine Dependency
+
+All AI agent interactions (prompt execution, session management, provider auth, MCP auth, terminal) go through the OpenCode SDK and the single `opencode serve` process. The app never implements its own LLM interaction layer — OpenCode is the engine, the app is the orchestrator.
+
+### Mobile-First Responsiveness
+
+Every screen and panel MUST be usable on mobile viewports. This is not optional polish — it's a core requirement for comfortable mobile access. Each epic with a UI surface must include mobile responsiveness in both scope and acceptance criteria.
+
+### Portable Workspace (.cc/workspace)
+
+The `.cc` directory is the application root (created on first run, like OpenCode's `.opencode`). Within it, `.cc/workspace/` is the single portable state directory containing all user data: agents, database, preferences, auth credentials, MCP configs, automations history, and everything else. Copying `.cc/workspace/` to another machine and running `ccenter start` MUST produce the exact same application state — zero external dependencies on the originating host.
+
 ## PR Rules
 
 Each epic PR should:

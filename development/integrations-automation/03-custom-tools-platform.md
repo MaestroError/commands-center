@@ -20,6 +20,7 @@ This is a complete capability platform with its own data model, backend executio
 ## Scope
 
 - Add custom tool schema and persistence
+- Implement custom tools CRUD as a backend service exposed via REST API routes
 - Build custom tools CRUD screen
 - Implement HTTP request configuration, validation, and execution rules
 - Register custom tools into the user-configured custom tools MCP server established in I2
@@ -33,7 +34,7 @@ This is a complete capability platform with its own data model, backend executio
 - Custom tools appear as assignable capabilities for agents
 - Tool definitions are exposed through the custom tools MCP server
 - Tool updates trigger MCP `listChanged` notifications that agents receive and act on without requiring restart or manual repair
-
+- Custom tool CRUD is implemented as a decoupled service reusable by future surfaces (MCP, CLI)
 - Custom tools screen adapts correctly to mobile viewports
 
 ## Non-Goals

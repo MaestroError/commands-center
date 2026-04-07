@@ -23,6 +23,7 @@ This lets all feature PRs plug into a stable backend contract instead of each fe
 ## Scope
 
 - Establish route registration by domain
+- Establish service-first architecture convention: all business logic lives in services, exposed via REST API routes — services are decoupled so they can be surfaced through additional interfaces (MCP tools, CLI) in the future without reimplementing logic
 - Add shared error handler and response conventions
 - Add request validation helpers and typed route utilities
 - Add websocket server baseline for terminals and realtime updates
@@ -38,6 +39,7 @@ This lets all feature PRs plug into a stable backend contract instead of each fe
 - PTY WebSocket output is batched at 16ms intervals to prevent congestion during high-throughput terminal operations
 - Health endpoints expose enough information for dashboard and diagnostics use
 - New features can add services and routes without restructuring server boot code
+- All business logic is encapsulated in services, decoupled from transport, so additional surfaces (MCP tools, CLI) can reuse the same logic without reimplementation
 - The responsive layout system supports desktop side-by-side panels and mobile sheet/overlay behavior with touch-friendly tabs
 
 ## Non-Goals
