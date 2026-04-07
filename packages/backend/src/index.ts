@@ -1,5 +1,14 @@
 export { createServer } from "./server.js";
 export {
+  createDatabaseClient,
+  type AppDb,
+  type AppSchema,
+  type DatabaseClient,
+} from "./db/client.js";
+export { createId, now } from "./db/ids.js";
+export { createAgentRecord, getSetting, listAgents, upsertSetting } from "./db/helpers.js";
+export { getMigrationFolder, migrateDatabase } from "./db/migrate.js";
+export {
   createOpenCodeOrchestrator,
   type EngineState,
   type EngineStatus,

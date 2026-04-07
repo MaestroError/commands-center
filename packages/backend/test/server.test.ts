@@ -4,9 +4,19 @@ import {
   createLogger,
   createServer,
   loadRuntimeConfig,
+  type DatabaseClient,
   type EngineStatus,
   type OpenCodeOrchestrator,
 } from "@cc/backend";
+
+function createDatabase(sqlitePath: string): DatabaseClient {
+  return {
+    db: {} as DatabaseClient["db"],
+    dialect: "sqlite",
+    sqlitePath,
+    close: () => {},
+  };
+}
 
 function createOrchestrator(status: EngineStatus): OpenCodeOrchestrator {
   return {
@@ -51,6 +61,7 @@ describe("createServer", () => {
     const server = await createServer({
       config,
       logger: createLogger(config),
+      database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
     });
 
@@ -65,6 +76,10 @@ describe("createServer", () => {
         status: "ok",
         dataDir: "/tmp/project/.cc",
         workspaceDir: "/tmp/project/.cc/workspace",
+        database: {
+          dialect: "sqlite",
+          sqlitePath: "/tmp/project/.cc/workspace/database/local.db",
+        },
         engine: {
           state: "healthy",
           healthy: true,
@@ -98,6 +113,7 @@ describe("createServer", () => {
     const server = await createServer({
       config,
       logger: createLogger(config),
+      database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
     });
 
@@ -135,6 +151,7 @@ describe("createServer", () => {
     const server = await createServer({
       config,
       logger: createLogger(config),
+      database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
     });
 

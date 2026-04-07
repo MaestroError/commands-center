@@ -22,6 +22,10 @@ export async function createServer(context: RuntimeContext) {
       status: "ok",
       dataDir: context.config.paths.dataDir,
       workspaceDir: context.config.paths.workspaceDir,
+      database: {
+        dialect: context.database.dialect,
+        sqlitePath: context.database.sqlitePath,
+      },
       engine: context.orchestrator.getStatus(),
     };
   });

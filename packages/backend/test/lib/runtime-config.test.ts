@@ -15,7 +15,8 @@ describe("loadRuntimeConfig", () => {
     expect(config.server.host).toBe("0.0.0.0");
     expect(config.paths.dataDir).toBe("/tmp/project/.cc");
     expect(config.paths.workspaceDir).toBe("/tmp/project/.cc/workspace");
-    expect(config.paths.subdirectories.db).toBe("/tmp/project/.cc/workspace/db");
+    expect(config.paths.subdirectories.database).toBe("/tmp/project/.cc/workspace/database");
+    expect(config.paths.databaseFile).toBe("/tmp/project/.cc/workspace/database/local.db");
   });
 
   it("fails fast with actionable validation errors", () => {
@@ -57,6 +58,11 @@ describe("loadRuntimeConfig", () => {
       paths: {
         dataDir: "/tmp/project/.cc",
         workspaceDir: "/tmp/project/.cc/workspace",
+        databaseFile: "/tmp/project/.cc/workspace/database/local.db",
+      },
+      database: {
+        hasDatabaseUrl: false,
+        sqlitePath: "/tmp/project/.cc/workspace/database/local.db",
       },
       timeouts: {
         engineRequestMs: 30000,

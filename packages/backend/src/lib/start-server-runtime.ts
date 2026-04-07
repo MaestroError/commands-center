@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 
+import { createDatabaseClient, type DatabaseClient } from "../db/client.js";
 import {
   createOpenCodeOrchestrator,
   type OpenCodeOrchestrator,
@@ -29,6 +30,7 @@ export type StartServerRuntimeOptions = {
 export type RuntimeContext = {
   config: RuntimeConfig;
   logger: Logger;
+  database: DatabaseClient;
   orchestrator: OpenCodeOrchestrator;
 };
 
@@ -50,6 +52,7 @@ export async function startServerRuntime(
 
   const logger = createLogger(config);
   logger.info(getStartupLogContext(config), "runtime configuration loaded");
+  const database = createDatabaseClient(config);
 
   const orchestrator = createOpenCodeOrchestrator({
     config,
@@ -58,7 +61,7 @@ export async function startServerRuntime(
 
   await orchestrator.start();
 
-  const context: RuntimeContext = { config, logger, orchestrator };
+  const context: RuntimeContext = { config, logger, database, orchestrator };
   const server = await createServer(context);
 
   if (options?.register) {
@@ -74,6 +77,7 @@ export async function startServerRuntime(
       },
       terminateChildProcesses: async () => {
         await orchestrator.stop();
+        database.close();
       },
       ...options?.extraDrainHandlers,
       flushLogs: () => {

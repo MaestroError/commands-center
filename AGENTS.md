@@ -20,6 +20,7 @@ Optionally:
 
 # Important notes
 
+- Before starting editing code, always Plan changes as todo tasks and implement them one by one
 - Always run linters (`eslint --fix`) and tests after finishing changes, before reporting task as done.
 
 ---

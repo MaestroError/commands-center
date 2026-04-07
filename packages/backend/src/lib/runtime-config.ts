@@ -50,6 +50,7 @@ const envSchema = z.object({
   CC_HOST: z.string().trim().optional().default(DEFAULT_HOST),
   CC_DATA_DIR: z.string().trim().optional().default(DEFAULT_DATA_DIR),
   CC_WORKSPACE_DIR: z.string().trim().optional(),
+  DATABASE_URL: z.string().trim().optional(),
   CC_ENGINE_TIMEOUT_MS: positiveInteger("CC_ENGINE_TIMEOUT_MS", DEFAULT_ENGINE_TIMEOUT_MS),
   CC_ENGINE_STARTUP_TIMEOUT_MS: positiveInteger(
     "CC_ENGINE_STARTUP_TIMEOUT_MS",
@@ -96,13 +97,18 @@ export type RuntimeConfig = {
       agents: string;
       auth: string;
       automations: string;
-      db: string;
+      database: string;
       mcp: string;
       preferences: string;
       sessions: string;
       tools: string;
       tmp: string;
     };
+    databaseFile: string;
+  };
+  database: {
+    databaseUrl?: string;
+    sqlitePath: string;
   };
   timeouts: {
     engineRequestMs: number;
@@ -165,13 +171,18 @@ export function loadRuntimeConfig(options?: {
         agents: resolve(workspaceDir, "agents"),
         auth: resolve(workspaceDir, "auth"),
         automations: resolve(workspaceDir, "automations"),
-        db: resolve(workspaceDir, "db"),
+        database: resolve(workspaceDir, "database"),
         mcp: resolve(workspaceDir, "mcp"),
         preferences: resolve(workspaceDir, "preferences"),
         sessions: resolve(workspaceDir, "sessions"),
         tools: resolve(workspaceDir, "tools"),
         tmp: resolve(workspaceDir, "tmp"),
       },
+      databaseFile: resolve(workspaceDir, "database", "local.db"),
+    },
+    database: {
+      databaseUrl: parsedEnv.data.DATABASE_URL || undefined,
+      sqlitePath: resolve(workspaceDir, "database", "local.db"),
     },
     timeouts: {
       engineRequestMs: parsedEnv.data.CC_ENGINE_TIMEOUT_MS,
@@ -202,6 +213,11 @@ export function getStartupLogContext(config: RuntimeConfig): Record<string, unkn
     paths: {
       dataDir: config.paths.dataDir,
       workspaceDir: config.paths.workspaceDir,
+      databaseFile: config.paths.databaseFile,
+    },
+    database: {
+      hasDatabaseUrl: config.database.databaseUrl !== undefined,
+      sqlitePath: config.database.sqlitePath,
     },
     timeouts: config.timeouts,
     logLevel: config.logLevel,
