@@ -40,7 +40,19 @@ npm install -g commandscenter
 
 ## Features
 
-App manages OpenCode workspaces as agent, allowing user to add different agents with different tools and instructions.
+App manages OpenCode workspaces as agents, allowing user to add different agents with different tools and instructions.
+
+### What is an Agent
+
+An agent in this app is an **OpenCode workspace** — nothing more. Each agent maps 1:1 to an OpenCode workspace directory containing standard OpenCode configuration files:
+
+- `AGENTS.md` — the agent's name, role, and instructions (OpenCode reads this as the system prompt)
+- `opencode.jsonc` — OpenCode workspace config: default model, MCP server permissions, tool permissions
+- `.opencode/skills/` — copied built-in skill files that OpenCode loads on workspace initialization
+
+The app creates this workspace directory when the user creates an agent and updates the files when the user edits the agent. All chat, prompt execution, tool calls, and terminal sessions go through the single `opencode serve` process, routed to the correct workspace via directory parameter. The app additionally provides tools to agents via its own MCP servers (app-provided tools and user-configured custom tools).
+
+**The app is the orchestrator; OpenCode is the engine.** Refer to OpenCode documentation for workspace configuration format, supported `opencode.jsonc` fields, `AGENTS.md` conventions, skill file structure, and MCP permission rules.
 
 Then, it orchestrates this OpenCode agents inside group chats and Kanban board as well as allows direct messages to each agent.
 
@@ -66,11 +78,7 @@ The user should be able to globally:
 - Add MCPs, including with OAuth + Our built-in integrations
 - Auth Integrations from Composio
 
-Then while creating the agent, Specify what should it has access to, plus specify the role of the agen, name and instructions. Optionally the icon / image too.
-
-The creation of new agent = new workspace for OpenCode by coping skills, setting AGENTS.md (Role, Name, Instructions) and building configuration file with needed mcp and other configs such as our custom agent (Which will be used in chats by defult).
-
-Note: AGENTS.md may be appended with instructions our custom MCP or other tools we (the app) provides
+Then while creating the agent, the user specifies what it should have access to, plus the role, name, and instructions. Optionally the icon/image too. See **What is an Agent** above for what this produces on disk.
 
 ### Filesystem
 

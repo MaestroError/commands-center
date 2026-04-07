@@ -18,6 +18,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
 ```text
  ✅ E1 Runtime Bootstrap
  |- ✅ E2 OpenCode Orchestrator
+|  |- E5 OpenCode Workspace Contract
 |  |- C3 Direct Chat Session Model
 |  |  |- U3 Direct Chat Screen
 |  |  \- I4 Automations
@@ -31,6 +32,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
 |  \- I4 Automations
  \- ✅ C1 Database and Workspace Foundation
     |- ✅ C2 Agent Workspace Lifecycle
+   |  |- E5 OpenCode Workspace Contract
    |  |- U2 Agents and Agent Editor
    |  |- U3 Direct Chat Screen
    |  |- I2 Integrations and MCP Management
@@ -50,9 +52,10 @@ This plan is organized so each epic is a complete feature slice that can ship as
 2. `✅ engine-infrastructure/02-opencode-orchestrator.md`
 3. `✅ core-data-state/01-database-and-workspace-foundation.md`
 4. `✅ core-data-state/02-agent-workspace-lifecycle.md`
-5. `product-ux-surfaces/02-agents-and-agent-editor.md`
-6. `core-data-state/03-direct-chat-session-model.md`
-7. `product-ux-surfaces/03-direct-chat-screen.md`
+5. `engine-infrastructure/05-opencode-workspace-contract.md`
+6. `product-ux-surfaces/02-agents-and-agent-editor.md`
+7. `core-data-state/03-direct-chat-session-model.md`
+8. `product-ux-surfaces/03-direct-chat-screen.md`
 
 Result: create agents, generate workspaces, open persistent direct chat, send messages.
 
@@ -100,6 +103,10 @@ This decoupling ensures that any action can be surfaced through additional inter
 
 All AI agent interactions (prompt execution, session management, provider auth, MCP auth, terminal) go through the OpenCode SDK and the single `opencode serve` process. The app never implements its own LLM interaction layer — OpenCode is the engine, the app is the orchestrator.
 
+### Agent = OpenCode Workspace
+
+An agent is a standard OpenCode workspace directory containing `AGENTS.md` (system prompt), `opencode.jsonc` (model, MCP/tool permissions), and `.opencode/skills/` (copied skill files). The app creates and updates these files; OpenCode reads them at runtime. The single `opencode serve` process handles all workspaces — the orchestrator routes requests to the correct agent workspace via directory parameter. Refer to OpenCode documentation for workspace configuration format and supported fields.
+
 ### Mobile-First Responsiveness
 
 Every screen and panel MUST be usable on mobile viewports. This is not optional polish — it's a core requirement for comfortable mobile access. Each epic with a UI surface must include mobile responsiveness in both scope and acceptance criteria.
@@ -129,6 +136,7 @@ Each epic PR should:
 ### Milestone 1: Agent and Chat Alpha
 
 - ✅ C2 Agent Workspace Lifecycle
+- E5 OpenCode Workspace Contract
 - U2 Agents and Agent Editor
 - C3 Direct Chat Session Model
 - U3 Direct Chat Screen

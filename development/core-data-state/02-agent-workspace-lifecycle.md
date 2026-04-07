@@ -1,8 +1,12 @@
 # C2 Agent Workspace Lifecycle
 
+## Context
+
+An agent is an OpenCode workspace — a directory containing `AGENTS.md` (system prompt), `opencode.jsonc` (model, MCP permissions, tool permissions), and `skills/` (copied skill files). The app creates and maintains these files; OpenCode reads them at runtime. Refer to OpenCode documentation for the workspace configuration format and supported fields.
+
 ## Outcome
 
-Creating or editing an agent produces a durable portable workspace with `AGENTS.md`, agent config, copied skills, and persisted permission settings.
+Creating or editing an agent produces a durable portable OpenCode workspace with `AGENTS.md`, `opencode.jsonc`, copied skills, and persisted permission settings.
 
 ## Why this is a separate PR
 
