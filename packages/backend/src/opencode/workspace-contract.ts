@@ -1,0 +1,271 @@
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+
+import { z } from "zod";
+
+import type { AgentCapabilitySelection, BuiltInSkill } from "../schemas/agents.js";
+
+const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
+const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+const permissionActionSchema = z.enum(["allow", "ask", "deny"]);
+const permissionRuleSchema = z.record(z.string().min(1), permissionActionSchema);
+
+const skillFrontmatterSchema = z
+  .object({
+    name: z.string().min(1).max(64).regex(SKILL_NAME_PATTERN),
+    description: z.string().min(1).max(1024),
+    license: z.string().min(1).optional(),
+    compatibility: z.string().min(1).optional(),
+    metadata: z.record(z.string(), z.string()).optional(),
+  })
+  .strict();
+
+const workspaceConfigSchema = z
+  .object({
+    $schema: z.literal(OPENCODE_CONFIG_SCHEMA_URL),
+    model: z.string().trim().min(1),
+    mcp: z.record(z.string().min(1), z.object({ enabled: z.boolean() }).strict()).default({}),
+    permission: z
+      .record(z.string().min(1), z.union([permissionActionSchema, permissionRuleSchema]))
+      .default({}),
+  })
+  .strict();
+
+const workspaceRulesSchema = z.object({
+  title: z.string().trim().min(1),
+  role: z.string().trim().min(1),
+  instructions: z.string().trim().min(1),
+});
+
+export const OPENCODE_WORKSPACE_CONTRACT = {
+  docs: {
+    config: "https://opencode.ai/docs/config/",
+    rules: "https://opencode.ai/docs/rules/",
+    models: "https://opencode.ai/docs/models/",
+    permissions: "https://opencode.ai/docs/permissions/",
+    mcpServers: "https://opencode.ai/docs/mcp-servers/",
+    skills: "https://opencode.ai/docs/skills/",
+  },
+  files: {
+    rules: {
+      relativePath: "AGENTS.md",
+      description: "Project-local OpenCode rules file loaded from the workspace root.",
+      docs: ["https://opencode.ai/docs/rules/"],
+    },
+    config: {
+      relativePath: "opencode.jsonc",
+      description: "Project-local OpenCode config merged above global config.",
+      schemaUrl: OPENCODE_CONFIG_SCHEMA_URL,
+      docs: [
+        "https://opencode.ai/docs/config/",
+        "https://opencode.ai/docs/models/",
+        "https://opencode.ai/docs/permissions/",
+        "https://opencode.ai/docs/mcp-servers/",
+      ],
+    },
+    skills: {
+      relativePath: ".opencode/skills",
+      description: "Project-local skill directory discovered by OpenCode.",
+      docs: ["https://opencode.ai/docs/skills/"],
+    },
+  },
+} as const;
+
+export type OpenCodeWorkspaceInput = {
+  name: string;
+  role: string;
+  instructions: string;
+  defaultModel: string;
+  capabilities: AgentCapabilitySelection;
+};
+
+export function getOpenCodeWorkspacePaths(root: string): {
+  root: string;
+  rulesFile: string;
+  configFile: string;
+  skillsDir: string;
+} {
+  return {
+    root,
+    rulesFile: join(root, OPENCODE_WORKSPACE_CONTRACT.files.rules.relativePath),
+    configFile: join(root, OPENCODE_WORKSPACE_CONTRACT.files.config.relativePath),
+    skillsDir: join(root, OPENCODE_WORKSPACE_CONTRACT.files.skills.relativePath),
+  };
+}
+
+export function getBuiltInSkillRoot(cwd: string): string {
+  return resolve(cwd, ".opencode", "skills");
+}
+
+export async function listBuiltInSkills(root: string): Promise<BuiltInSkill[]> {
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    const skills = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map(async (entry) => validateSkillDirectory(join(root, entry.name), entry.name)),
+    );
+
+    return skills.sort((a, b) => a.name.localeCompare(b.name));
+  } catch (error) {
+    if (isMissingError(error)) {
+      return [];
+    }
+
+    throw error;
+  }
+}
+
+export async function writeOpenCodeWorkspace(options: {
+  workspacePath: string;
+  input: OpenCodeWorkspaceInput;
+  skillRoot: string;
+}): Promise<void> {
+  const paths = getOpenCodeWorkspacePaths(options.workspacePath);
+  const rendered = renderOpenCodeWorkspace(options.input);
+
+  validateOpenCodeWorkspace(rendered);
+
+  await mkdir(paths.root, { recursive: true });
+  await rm(paths.skillsDir, { recursive: true, force: true });
+  await mkdir(paths.skillsDir, { recursive: true });
+
+  for (const skill of options.input.capabilities.builtInSkills) {
+    await copyBuiltInSkill(options.skillRoot, paths.skillsDir, skill);
+  }
+
+  await writeFile(paths.rulesFile, rendered.rulesMarkdown, "utf8");
+  await writeFile(paths.configFile, rendered.configJsonc, "utf8");
+}
+
+export function renderOpenCodeWorkspace(input: OpenCodeWorkspaceInput): {
+  rulesMarkdown: string;
+  configJsonc: string;
+  config: z.infer<typeof workspaceConfigSchema>;
+} {
+  const rules = workspaceRulesSchema.parse({
+    title: input.name,
+    role: input.role,
+    instructions: input.instructions,
+  });
+  const config = workspaceConfigSchema.parse({
+    $schema: OPENCODE_CONFIG_SCHEMA_URL,
+    model: input.defaultModel,
+    mcp: Object.fromEntries(
+      input.capabilities.mcpServers.map((server) => [server.name, { enabled: server.enabled }]),
+    ),
+    permission: {
+      ...Object.fromEntries([
+        ...input.capabilities.toolPermissions.map((rule) => [rule.pattern, rule.action] as const),
+        ...input.capabilities.mcpServers.map(
+          (server) => [`${server.name}_*`, server.action] as const,
+        ),
+      ]),
+      skill:
+        input.capabilities.builtInSkills.length === 0
+          ? "deny"
+          : Object.fromEntries([
+              ["*", "deny"] as const,
+              ...input.capabilities.builtInSkills.map((skill) => [skill, "allow"] as const),
+            ]),
+    },
+  });
+
+  return {
+    rulesMarkdown: [
+      `# ${rules.title}`,
+      "",
+      `- Role: ${rules.role}`,
+      "",
+      "## Instructions",
+      "",
+      rules.instructions,
+      "",
+    ].join("\n"),
+    configJsonc: `${JSON.stringify(config, null, 2)}\n`,
+    config,
+  };
+}
+
+export function validateOpenCodeWorkspace(rendered: {
+  rulesMarkdown: string;
+  configJsonc: string;
+}): void {
+  parseRulesMarkdown(rendered.rulesMarkdown);
+  workspaceConfigSchema.parse(JSON.parse(rendered.configJsonc));
+}
+
+export function parseRulesMarkdown(markdown: string): z.infer<typeof workspaceRulesSchema> {
+  const lines = markdown.trim().split("\n");
+  const title = lines[0]?.match(/^#\s+(.+)$/)?.[1]?.trim();
+  const role = lines
+    .find((line) => line.startsWith("- Role:"))
+    ?.replace(/^- Role:\s*/, "")
+    .trim();
+  const heading = lines.findIndex((line) => line.trim() === "## Instructions");
+  const instructions =
+    heading === -1
+      ? ""
+      : lines
+          .slice(heading + 1)
+          .join("\n")
+          .trim();
+
+  return workspaceRulesSchema.parse({
+    title,
+    role,
+    instructions,
+  });
+}
+
+export async function validateSkillDirectory(dir: string, slug: string): Promise<BuiltInSkill> {
+  const markdown = await readFile(join(dir, "SKILL.md"), "utf8");
+  const frontmatter = parseSkillFrontmatter(markdown);
+
+  if (frontmatter.name !== slug) {
+    throw new Error(
+      `OpenCode skill directory '${slug}' must match frontmatter name '${frontmatter.name}'.`,
+    );
+  }
+
+  return {
+    name: frontmatter.name,
+    slug,
+    description: frontmatter.description,
+  };
+}
+
+export function parseSkillFrontmatter(markdown: string): z.infer<typeof skillFrontmatterSchema> {
+  const match = markdown.match(/^---\n([\s\S]*?)\n---/);
+
+  if (!match?.[1]) {
+    throw new Error("OpenCode skill must start with YAML frontmatter.");
+  }
+
+  const data = match[1]
+    .split("\n")
+    .map((line) => line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/))
+    .filter((line): line is RegExpMatchArray => line !== null)
+    .reduce<Record<string, string>>((result, line) => {
+      const key = line[1];
+
+      if (key) {
+        result[key] = line[2] ?? "";
+      }
+
+      return result;
+    }, {});
+
+  return skillFrontmatterSchema.parse(data);
+}
+
+async function copyBuiltInSkill(root: string, targetRoot: string, slug: string): Promise<void> {
+  const source = join(root, slug);
+  await validateSkillDirectory(source, slug);
+  await cp(source, join(targetRoot, slug), { recursive: true });
+}
+
+function isMissingError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}

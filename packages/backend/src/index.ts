@@ -9,6 +9,19 @@ export { createId, now } from "./db/ids.js";
 export { createAgentRecord, getSetting, listAgents, upsertSetting } from "./db/helpers.js";
 export { getMigrationFolder, migrateDatabase } from "./db/migrate.js";
 export {
+  getBuiltInSkillRoot,
+  getOpenCodeWorkspacePaths,
+  listBuiltInSkills,
+  OPENCODE_WORKSPACE_CONTRACT,
+  parseRulesMarkdown,
+  parseSkillFrontmatter,
+  renderOpenCodeWorkspace,
+  validateOpenCodeWorkspace,
+  validateSkillDirectory,
+  writeOpenCodeWorkspace,
+  type OpenCodeWorkspaceInput,
+} from "./opencode/workspace-contract.js";
+export {
   createOpenCodeOrchestrator,
   type EngineState,
   type EngineStatus,

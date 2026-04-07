@@ -1,0 +1,119 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import {
+  getBuiltInSkillRoot,
+  getOpenCodeWorkspacePaths,
+  listBuiltInSkills,
+  OPENCODE_WORKSPACE_CONTRACT,
+  parseRulesMarkdown,
+  parseSkillFrontmatter,
+  renderOpenCodeWorkspace,
+  validateOpenCodeWorkspace,
+  writeOpenCodeWorkspace,
+} from "../../src/opencode/workspace-contract";
+import { createTestDatabase } from "../helpers/db";
+
+describe("OPENCODE_WORKSPACE_CONTRACT", () => {
+  it("documents the canonical workspace file layout in one place", () => {
+    expect(OPENCODE_WORKSPACE_CONTRACT.files.rules.relativePath).toBe("AGENTS.md");
+    expect(OPENCODE_WORKSPACE_CONTRACT.files.config.relativePath).toBe("opencode.jsonc");
+    expect(OPENCODE_WORKSPACE_CONTRACT.files.skills.relativePath).toBe(".opencode/skills");
+    expect(OPENCODE_WORKSPACE_CONTRACT.files.config.docs).toContain(
+      "https://opencode.ai/docs/config/",
+    );
+  });
+
+  it("renders and validates OpenCode workspace files against the contract", () => {
+    const rendered = renderOpenCodeWorkspace({
+      name: "Writer",
+      role: "write docs",
+      instructions: "Write useful docs and keep them accurate.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {
+        builtInSkills: ["writer"],
+        mcpServers: [{ name: "github", enabled: true, action: "allow" }],
+        toolPermissions: [{ pattern: "custom_write", action: "ask" }],
+      },
+    });
+
+    expect(parseRulesMarkdown(rendered.rulesMarkdown)).toEqual({
+      title: "Writer",
+      role: "write docs",
+      instructions: "Write useful docs and keep them accurate.",
+    });
+    expect(JSON.parse(rendered.configJsonc)).toEqual({
+      $schema: "https://opencode.ai/config.json",
+      model: "openai/gpt-4.1",
+      mcp: {
+        github: { enabled: true },
+      },
+      permission: {
+        custom_write: "ask",
+        "github_*": "allow",
+        skill: {
+          "*": "deny",
+          writer: "allow",
+        },
+      },
+    });
+
+    expect(() => validateOpenCodeWorkspace(rendered)).not.toThrow();
+  });
+
+  it("copies validated skills into the documented .opencode path", async () => {
+    const testDb = await createTestDatabase();
+    const skillRoot = getBuiltInSkillRoot(testDb.cwd);
+    const skillDir = join(skillRoot, "writer");
+
+    try {
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(
+        join(skillDir, "SKILL.md"),
+        "---\nname: writer\ndescription: Writing helper\ncompatibility: opencode\n---\n\n# writer\n",
+        "utf8",
+      );
+
+      await expect(listBuiltInSkills(skillRoot)).resolves.toEqual([
+        {
+          name: "writer",
+          slug: "writer",
+          description: "Writing helper",
+        },
+      ]);
+
+      await writeOpenCodeWorkspace({
+        workspacePath: join(testDb.config.paths.subdirectories.agents, "writer-agent"),
+        input: {
+          name: "Writer",
+          role: "write docs",
+          instructions: "Write useful docs.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            builtInSkills: ["writer"],
+            mcpServers: [],
+            toolPermissions: [],
+          },
+        },
+        skillRoot,
+      });
+
+      const paths = getOpenCodeWorkspacePaths(
+        join(testDb.config.paths.subdirectories.agents, "writer-agent"),
+      );
+      await expect(
+        readFile(join(paths.skillsDir, "writer", "SKILL.md"), "utf8"),
+      ).resolves.toContain("description: Writing helper");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects malformed skill frontmatter early", () => {
+    expect(() => parseSkillFrontmatter("# missing frontmatter\n")).toThrow(
+      "OpenCode skill must start with YAML frontmatter.",
+    );
+  });
+});

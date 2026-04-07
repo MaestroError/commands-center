@@ -42,7 +42,7 @@ describe("createAgentService", () => {
       expect(agent.status).toBe("active");
       expect(agent.slug).toBe("reviewer");
       await expect(
-        stat(join(agent.workspacePath, "skills", "reviewer", "SKILL.md")),
+        stat(join(agent.workspacePath, ".opencode", "skills", "reviewer", "SKILL.md")),
       ).resolves.toBeDefined();
       expect(markdown).toContain("# Reviewer");
       expect(markdown).toContain("Review diffs and call out risks.");
@@ -93,14 +93,14 @@ describe("createAgentService", () => {
       expect(updated?.workspacePath).not.toBe(created.workspacePath);
       await expect(stat(created.workspacePath)).rejects.toThrow();
       await expect(
-        stat(join(updated!.workspacePath, "skills", "planner", "SKILL.md")),
+        stat(join(updated!.workspacePath, ".opencode", "skills", "planner", "SKILL.md")),
       ).resolves.toBeDefined();
       await expect(readFile(join(updated!.workspacePath, "AGENTS.md"), "utf8")).resolves.toContain(
         "Plan before editing.",
       );
       await expect(
         readFile(join(updated!.workspacePath, "opencode.jsonc"), "utf8"),
-      ).resolves.toContain('"jira": {\n      "enabled": false');
+      ).resolves.toContain('"skill": {\n      "*": "deny",\n      "planner": "allow"');
       expect(disposeWorkspace).toHaveBeenCalledWith({ directory: updated!.workspacePath });
     } finally {
       await testDb.cleanup();

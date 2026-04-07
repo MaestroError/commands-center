@@ -18,7 +18,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
 ```text
  ✅ E1 Runtime Bootstrap
  |- ✅ E2 OpenCode Orchestrator
-|  |- E5 OpenCode Workspace Contract
+ |  |- ✅ E5 OpenCode Workspace Contract
 |  |- C3 Direct Chat Session Model
 |  |  |- U3 Direct Chat Screen
 |  |  \- I4 Automations
@@ -32,7 +32,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
 |  \- I4 Automations
  \- ✅ C1 Database and Workspace Foundation
     |- ✅ C2 Agent Workspace Lifecycle
-   |  |- E5 OpenCode Workspace Contract
+    |  |- ✅ E5 OpenCode Workspace Contract
    |  |- U2 Agents and Agent Editor
    |  |- U3 Direct Chat Screen
    |  |- I2 Integrations and MCP Management
@@ -52,7 +52,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
 2. `✅ engine-infrastructure/02-opencode-orchestrator.md`
 3. `✅ core-data-state/01-database-and-workspace-foundation.md`
 4. `✅ core-data-state/02-agent-workspace-lifecycle.md`
-5. `engine-infrastructure/05-opencode-workspace-contract.md`
+5. `✅ engine-infrastructure/05-opencode-workspace-contract.md`
 6. `product-ux-surfaces/02-agents-and-agent-editor.md`
 7. `core-data-state/03-direct-chat-session-model.md`
 8. `product-ux-surfaces/03-direct-chat-screen.md`
@@ -136,7 +136,7 @@ Each epic PR should:
 ### Milestone 1: Agent and Chat Alpha
 
 - ✅ C2 Agent Workspace Lifecycle
-- E5 OpenCode Workspace Contract
+- ✅ E5 OpenCode Workspace Contract
 - U2 Agents and Agent Editor
 - C3 Direct Chat Session Model
 - U3 Direct Chat Screen
