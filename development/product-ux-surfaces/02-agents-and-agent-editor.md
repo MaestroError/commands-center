@@ -11,10 +11,20 @@ This is a complete user-facing slice backed by C2 and directly matches the MVP a
 ## Blockers
 
 - C2 Agent Workspace Lifecycle
+- I1 Provider Connections
+- I2 Integrations and MCP Management
+- I3 Custom Tools Platform
+- I5 Composio Integration
 
 ## Unblocks
 
 - U3 Direct Chat Screen
+
+## Context
+
+Creation screen should create a new folder under .cc/workspace/agents with the name defined by user (Make name folder-friendly and save in DB as `slug`, use the same slug for url of edit page). The agent should be created as a workspace of OpenCode with user defined instructions, skills, etc (check `design/` and `GOAL.md` for details). 
+
+Editing means rewriting: we should maintain the state in the DB as well, so that we know what is added from our side: list of chosen skills and tools, instructions, default model and etc. And when editing, we should remove everything we added before, update internal state and re-add everything that is in new state.
 
 ## Scope
 

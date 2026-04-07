@@ -19,29 +19,39 @@ This plan is organized so each epic is a complete feature slice that can ship as
  ✅ E1 Runtime Bootstrap
  |- ✅ E2 OpenCode Orchestrator
  |  |- ✅ E5 OpenCode Workspace Contract
-|  |- C3 Direct Chat Session Model
-|  |  |- U3 Direct Chat Screen
-|  |  \- I4 Automations
-|  |- I1 Provider Connections
-|  \- I2 Integrations and MCP Management
-|- E3 API and Realtime Foundation
-|  |- E4 Self-Updating and Version Management
-|  |- U1 App Shell and Dashboard
-|  |- U4 File Manager and Terminals
-|  |- U5 Profile, Settings, and Theming
-|  \- I4 Automations
+ |  |- C3 Direct Chat Session Model
+ |  |  |- U3 Direct Chat Screen
+ |  |  \- I4 Automations
+ |  |- I1 Provider Connections
+ |  |  \- U2 Agents and Agent Editor
+ |  \- I2 Integrations and MCP Management
+ |     |- U2 Agents and Agent Editor
+ |     |- I3 Custom Tools Platform
+ |     |  \- U2 Agents and Agent Editor
+ |     \- I5 Composio Integration
+ |        \- U2 Agents and Agent Editor
+ |- E3 API and Realtime Foundation
+ |  |- E4 Self-Updating and Version Management
+ |  |- U1 App Shell and Dashboard
+ |  |- U4 File Manager and Terminals
+ |  |- U5 Profile, Settings, and Theming
+ |  \- I4 Automations
  \- ✅ C1 Database and Workspace Foundation
     |- ✅ C2 Agent Workspace Lifecycle
     |  |- ✅ E5 OpenCode Workspace Contract
-   |  |- U2 Agents and Agent Editor
-   |  |- U3 Direct Chat Screen
-   |  |- I2 Integrations and MCP Management
-   |  \- I3 Custom Tools Platform
-   |- C3 Direct Chat Session Model
-   |  |- U3 Direct Chat Screen
-   |  \- I4 Automations
-   |- U4 File Manager and Terminals
-   \- U5 Profile, Settings, and Theming
+    |  |- U2 Agents and Agent Editor
+    |  |- U3 Direct Chat Screen
+    |  |- I2 Integrations and MCP Management
+    |  |- I3 Custom Tools Platform
+    |  \- I5 Composio Integration
+    |- C3 Direct Chat Session Model
+    |  |- U3 Direct Chat Screen
+    |  \- I4 Automations
+    |- U4 File Manager and Terminals
+    \- U5 Profile, Settings, and Theming
+
+U2 blocks on: C2, I1, I2, I3, I5
+U3 blocks on: C2, C3, U2
 ```
 
 ## Recommended Execution Paths
@@ -53,11 +63,15 @@ This plan is organized so each epic is a complete feature slice that can ship as
 3. `✅ core-data-state/01-database-and-workspace-foundation.md`
 4. `✅ core-data-state/02-agent-workspace-lifecycle.md`
 5. `✅ engine-infrastructure/05-opencode-workspace-contract.md`
-6. `product-ux-surfaces/02-agents-and-agent-editor.md`
-7. `core-data-state/03-direct-chat-session-model.md`
-8. `product-ux-surfaces/03-direct-chat-screen.md`
+6. `integrations-automation/01-provider-connections.md`
+7. `integrations-automation/02-integrations-and-mcp-management.md`
+8. `integrations-automation/03-custom-tools-platform.md`
+9. `integrations-automation/05-composio-integration.md`
+10. `product-ux-surfaces/02-agents-and-agent-editor.md`
+11. `core-data-state/03-direct-chat-session-model.md`
+12. `product-ux-surfaces/03-direct-chat-screen.md`
 
-Result: create agents, generate workspaces, open persistent direct chat, send messages.
+Result: connect providers, configure MCP servers and tools, create agents with real capabilities, generate workspaces, open persistent direct chat, send messages.
 
 ### Path B: Make the product useful for day-to-day work
 
@@ -71,17 +85,7 @@ Run after Path A starts stabilizing.
 
 Result: file browsing/editing, global and agent terminals, health visibility, user preferences, theming, and self-updating.
 
-### Path C: Unlock real external capability
-
-Run in parallel with late Path A or early Path B.
-
-1. `integrations-automation/01-provider-connections.md`
-2. `integrations-automation/02-integrations-and-mcp-management.md`
-3. `integrations-automation/03-custom-tools-platform.md`
-
-Result: providers, MCP servers, Composio integrations, custom tools, per-agent permissions.
-
-### Path D: Complete the MVP operating loop
+### Path C: Complete the MVP operating loop
 
 Run after agents and direct chat execution are stable.
 
@@ -130,29 +134,30 @@ Each epic PR should:
 
 - ✅ E1 Runtime Bootstrap
 - ✅ E2 OpenCode Orchestrator
+- ✅ E5 OpenCode Workspace Contract
 - E3 API and Realtime Foundation
 - ✅ C1 Database and Workspace Foundation
 
-### Milestone 1: Agent and Chat Alpha
+### Milestone 1: Capability Layer
 
 - ✅ C2 Agent Workspace Lifecycle
-- ✅ E5 OpenCode Workspace Contract
+- I1 Provider Connections
+- I2 Integrations and MCP Management
+- I3 Custom Tools Platform
+- I5 Composio Integration
+
+### Milestone 2: Agent and Chat Alpha
+
 - U2 Agents and Agent Editor
 - C3 Direct Chat Session Model
 - U3 Direct Chat Screen
 
-### Milestone 2: Workspace Interaction and Polish
+### Milestone 3: Workspace Interaction and Polish
 
 - U4 File Manager and Terminals
 - U1 App Shell and Dashboard
 - U5 Profile, Settings, and Theming
 - E4 Self-Updating and Version Management
-
-### Milestone 3: External Capability
-
-- I1 Provider Connections
-- I2 Integrations and MCP Management
-- I3 Custom Tools Platform
 
 ### Milestone 4: MVP Completion
 
