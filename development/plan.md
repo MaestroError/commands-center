@@ -86,35 +86,6 @@ Run after agents and direct chat execution are stable.
 
 Result: scheduled prompts with isolated sessions and run history.
 
-## Parallel Workstreams
-
-### Workstream 1: Platform
-
-- E1 Runtime Bootstrap
-- E2 OpenCode Orchestrator
-- E3 API and Realtime Foundation
-- E4 Self-Updating and Version Management
-
-### Workstream 2: Data and Workspace
-
-- C1 Database and Workspace Foundation
-- C2 Agent Workspace Lifecycle
-- C3 Direct Chat Session Model
-
-### Workstream 3: Frontend
-
-- U1 App Shell and Dashboard
-- U2 Agents and Agent Editor
-- U3 Direct Chat Screen
-- U4 File Manager and Terminals
-- U5 Profile, Settings, and Theming
-
-### Workstream 4: Capability
-
-- I1 Provider Connections
-- I2 Integrations and MCP Management
-- I3 Custom Tools Platform
-- I4 Automations
 
 ## Cross-Cutting Architectural Principles
 

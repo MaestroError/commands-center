@@ -22,6 +22,25 @@ pnpm dev
 
 The backend runs on `http://localhost:3000`, the frontend on `http://localhost:5173`.
 
+On first backend or CLI startup, the app bootstraps `.cc/` in the current working directory and creates `.cc/workspace/` plus its portable state subdirectories.
+
+## Runtime Environment
+
+The shared backend and CLI bootstrap path validates these environment variables at startup:
+
+| Variable                      | Description                                   | Default                   |
+| ----------------------------- | --------------------------------------------- | ------------------------- |
+| `CC_PORT`                     | HTTP listen port                              | `3000`                    |
+| `CC_HOST`                     | HTTP bind host                                | `0.0.0.0`                 |
+| `CC_DATA_DIR`                 | Application root directory                    | `.cc`                     |
+| `CC_WORKSPACE_DIR`            | Portable workspace state directory            | `<CC_DATA_DIR>/workspace` |
+| `CC_ENGINE_TIMEOUT_MS`        | OpenCode engine request timeout               | `30000`                   |
+| `CC_PROVIDER_AUTH_TIMEOUT_MS` | Provider auth timeout                         | `300000`                  |
+| `CC_MCP_AUTH_TIMEOUT_MS`      | MCP auth timeout                              | `90000`                   |
+| `CC_DRAIN_TIMEOUT_MS`         | Graceful shutdown timeout                     | `15000`                   |
+| `CC_LOG_LEVEL`                | Pino log level                                | `info`                    |
+| `CC_OPENCODE_PATH`            | Optional custom OpenCode binary path override | unset                     |
+
 ## Available Commands
 
 ### Root-level (runs across all packages)

@@ -1,21 +1,28 @@
-import Fastify, { type FastifyServerOptions } from "fastify";
+import { randomUUID } from "node:crypto";
+import Fastify from "fastify";
 
-const devTransport: FastifyServerOptions["logger"] = {
-  transport: {
-    target: "pino-pretty",
-    options: { translateTime: "HH:MM:ss Z", ignore: "pid,hostname" },
-  },
-};
+import type { RuntimeContext } from "./lib/start-server-runtime.js";
 
-export async function createServer() {
-  const isDev = process.env["NODE_ENV"] !== "production";
-
+export async function createServer(context: RuntimeContext) {
   const server = Fastify({
-    logger: isDev ? devTransport : true,
+    loggerInstance: context.logger,
+    genReqId(request) {
+      return request.headers["x-request-id"]?.toString() ?? randomUUID();
+    },
+    requestIdHeader: "x-request-id",
+    requestIdLogLabel: "requestId",
+  });
+
+  server.addHook("onRequest", async (request, reply) => {
+    reply.header("x-request-id", request.id);
   });
 
   server.get("/api/health", () => {
-    return { status: "ok" };
+    return {
+      status: "ok",
+      dataDir: context.config.paths.dataDir,
+      workspaceDir: context.config.paths.workspaceDir,
+    };
   });
 
   return server;

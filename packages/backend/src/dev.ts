@@ -1,5 +1,3 @@
-import { createServer } from "./server.js";
+import { startServerRuntime } from "./lib/start-server-runtime.js";
 
-const server = await createServer();
-
-await server.listen({ port: 3000, host: "0.0.0.0" });
+await startServerRuntime();
