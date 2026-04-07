@@ -1,5 +1,9 @@
 import type { Logger } from "pino";
 
+import {
+  createOpenCodeOrchestrator,
+  type OpenCodeOrchestrator,
+} from "../orchestrator/opencode-orchestrator.js";
 import { bootstrapRuntimePaths } from "./runtime-paths.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
 import { createLogger, flushLogger } from "./logger.js";
@@ -25,6 +29,7 @@ export type StartServerRuntimeOptions = {
 export type RuntimeContext = {
   config: RuntimeConfig;
   logger: Logger;
+  orchestrator: OpenCodeOrchestrator;
 };
 
 export type StartedServerRuntime = RuntimeContext & {
@@ -46,7 +51,14 @@ export async function startServerRuntime(
   const logger = createLogger(config);
   logger.info(getStartupLogContext(config), "runtime configuration loaded");
 
-  const context: RuntimeContext = { config, logger };
+  const orchestrator = createOpenCodeOrchestrator({
+    config,
+    logger,
+  });
+
+  await orchestrator.start();
+
+  const context: RuntimeContext = { config, logger, orchestrator };
   const server = await createServer(context);
 
   if (options?.register) {
@@ -59,6 +71,9 @@ export async function startServerRuntime(
     handlers: {
       stopAcceptingConnections: async () => {
         await server.close();
+      },
+      terminateChildProcesses: async () => {
+        await orchestrator.stop();
       },
       ...options?.extraDrainHandlers,
       flushLogs: () => {

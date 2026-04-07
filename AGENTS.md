@@ -20,7 +20,7 @@ Optionally:
 
 # Important notes
 
-- Always run linters and tests before reporting task as done
+- Always run linters (`eslint --fix`) and tests after finishing changes, before reporting task as done.
 
 ---
 

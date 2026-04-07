@@ -1,10 +1,20 @@
 export { createServer } from "./server.js";
 export {
+  createOpenCodeOrchestrator,
+  type EngineState,
+  type EngineStatus,
+  type OpenCodeOrchestrator,
+  type WorkspaceClient,
+  type WorkspaceRequestInit,
+  type WorkspaceTarget,
+} from "./orchestrator/opencode-orchestrator.js";
+export {
   createDrainController,
   type DrainController,
   type DrainHandlers,
 } from "./lib/drain-protocol.js";
 export { createLogger, flushLogger } from "./lib/logger.js";
+export { resolveOpencodeBinary, type OpenCodeBinary } from "./lib/opencode-binary.js";
 export { bootstrapRuntimePaths } from "./lib/runtime-paths.js";
 export {
   getStartupLogContext,

@@ -22,7 +22,12 @@ export async function createServer(context: RuntimeContext) {
       status: "ok",
       dataDir: context.config.paths.dataDir,
       workspaceDir: context.config.paths.workspaceDir,
+      engine: context.orchestrator.getStatus(),
     };
+  });
+
+  server.get("/api/engine", () => {
+    return context.orchestrator.getStatus();
   });
 
   return server;

@@ -31,6 +31,16 @@ pnpm dev
 
 This starts both the backend (port 3000) and frontend (port 5173) dev servers.
 
+The backend manages a single persistent `opencode serve` engine process in the background.
+
+### OpenCode Engine
+
+```bash
+opencode serve --hostname=127.0.0.1 --port=4096
+```
+
+In CommandsCenter this command is started and monitored by the backend orchestrator.
+
 ### Production (CLI)
 
 ```bash

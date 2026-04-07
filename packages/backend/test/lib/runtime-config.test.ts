@@ -48,12 +48,22 @@ describe("loadRuntimeConfig", () => {
         host: "0.0.0.0",
         port: 3000,
       },
+      engine: {
+        host: "127.0.0.1",
+        port: 4096,
+        maxRestarts: 3,
+        baseUrl: "http://127.0.0.1:4096",
+      },
       paths: {
         dataDir: "/tmp/project/.cc",
         workspaceDir: "/tmp/project/.cc/workspace",
       },
       timeouts: {
         engineRequestMs: 30000,
+        engineStartupMs: 30000,
+        engineShutdownMs: 15000,
+        engineHealthPollMs: 2000,
+        engineRestartWindowMs: 60000,
         providerAuthMs: 300000,
         mcpAuthMs: 90000,
         drainMs: 15000,
