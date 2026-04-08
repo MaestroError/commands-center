@@ -66,6 +66,8 @@ describe("App", () => {
     await user.type(screen.getByLabelText("API key"), "sk-test");
     await user.click(screen.getByRole("button", { name: /Save key/i }));
 
+    await screen.findByText("Provider connected successfully");
+
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/providers/openai/api-key",
@@ -96,6 +98,9 @@ describe("App", () => {
     await screen.findByText(/OAuth session started/i);
     await user.type(screen.getByLabelText(/Manual code or callback value/i), "oauth-code");
     await user.click(screen.getByRole("button", { name: /Complete OAuth/i }));
+
+    await screen.findByText("Provider connected successfully");
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(

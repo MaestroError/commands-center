@@ -250,9 +250,8 @@ export function ProviderConnectionsPage(props: ProviderConnectionsPageProps) {
           onClose={() => setDialog(undefined)}
           onCompleteOauth={completeOauth}
           onConnectApiKey={connectApiKey}
-          onSuccess={(message) => {
+          onConnected={(message: string) => {
             setSuccessMessage(message);
-            setDialog(undefined);
           }}
           onStartOauth={startOauth}
           provider={dialog.provider}
@@ -291,7 +290,7 @@ type ProviderDialogProps = {
     method: number,
     code?: string,
   ) => Promise<ProviderOauthCompleteResult>;
-  onSuccess: (message: string) => void;
+  onConnected: (message: string) => void;
 };
 
 function ProviderDialog(props: ProviderDialogProps) {
@@ -311,8 +310,10 @@ function ProviderDialog(props: ProviderDialogProps) {
   const [localError, setLocalError] = useState<string>();
   const [autoStatus, setAutoStatus] = useState<string>();
   const [dialogBusy, setDialogBusy] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string>();
   const pollRef = useRef<number | undefined>(undefined);
   const pollBusyRef = useRef(false);
+  const completingRef = useRef(false);
 
   const prompts = useMemo(() => {
     if (!oauthMethod?.prompts) {
@@ -335,6 +336,7 @@ function ProviderDialog(props: ProviderDialogProps) {
         window.clearInterval(pollRef.current);
       }
       pollBusyRef.current = false;
+      completingRef.current = false;
     };
   }, []);
 
@@ -345,7 +347,8 @@ function ProviderDialog(props: ProviderDialogProps) {
     try {
       setDialogBusy(true);
       await props.onConnectApiKey(props.provider.provider.id, apiKey);
-      props.onSuccess(`${props.provider.provider.name} connected.`);
+      setSuccessMessage("Provider connected successfully");
+      props.onConnected(`${props.provider.provider.name} connected.`);
     } catch (error) {
       setLocalError(readDialogError(error));
     } finally {
@@ -372,16 +375,23 @@ function ProviderDialog(props: ProviderDialogProps) {
         method: props.provider.authMethods.indexOf(oauthMethod),
         auth,
       });
+      setSuccessMessage(undefined);
       setAutoStatus(undefined);
       window.open(auth.url, "_blank", "noopener,noreferrer");
 
       if (auth.method === "auto") {
+        completingRef.current = true;
+        setDialogBusy(true);
+        setAutoStatus("Waiting for provider confirmation...");
         startPolling(props.provider.provider.id, props.provider.authMethods.indexOf(oauthMethod));
+        return;
       }
     } catch (error) {
       setLocalError(readDialogError(error));
     } finally {
-      setDialogBusy(false);
+      if (!completingRef.current) {
+        setDialogBusy(false);
+      }
     }
   }
 
@@ -407,14 +417,17 @@ function ProviderDialog(props: ProviderDialogProps) {
 
           if (pollRef.current) {
             window.clearInterval(pollRef.current);
+            pollRef.current = undefined;
           }
 
-          props.onSuccess(result.message ?? `${props.provider.provider.name} connected.`);
+          completingRef.current = false;
+          setDialogBusy(false);
+          setSuccessMessage("Provider connected successfully");
+          props.onConnected(result.message ?? `${props.provider.provider.name} connected.`);
         })
         .catch(() => undefined)
         .finally(() => {
           pollBusyRef.current = false;
-          setDialogBusy(false);
         });
     }, 2000);
   }
@@ -430,6 +443,7 @@ function ProviderDialog(props: ProviderDialogProps) {
 
     try {
       setDialogBusy(true);
+      completingRef.current = true;
       const result = await props.onCompleteOauth(
         props.provider.provider.id,
         oauthSession.method,
@@ -437,7 +451,10 @@ function ProviderDialog(props: ProviderDialogProps) {
       );
 
       if (result.connected) {
-        props.onSuccess(result.message ?? `${props.provider.provider.name} connected.`);
+        completingRef.current = false;
+        setDialogBusy(false);
+        setSuccessMessage("Provider connected successfully");
+        props.onConnected(result.message ?? `${props.provider.provider.name} connected.`);
         return;
       }
 
@@ -446,11 +463,45 @@ function ProviderDialog(props: ProviderDialogProps) {
         startPolling(props.provider.provider.id, oauthSession.method);
         return;
       }
+      completingRef.current = false;
     } catch (error) {
+      completingRef.current = false;
       setLocalError(readDialogError(error));
     } finally {
-      setDialogBusy(false);
+      if (!completingRef.current) {
+        setDialogBusy(false);
+      }
     }
+  }
+
+  if (successMessage) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-3 sm:items-center sm:p-6">
+        <section className="w-full max-w-2xl rounded-[2rem] border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-slate-950/60">
+          <div className="flex justify-end">
+            <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+              Close
+            </button>
+          </div>
+          <div className="flex min-h-80 flex-col items-center justify-center gap-5 text-center">
+            <div aria-label="success" className="text-6xl" role="img">
+              ✅
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">
+                {props.provider.provider.name}
+              </p>
+              <h2 className="mt-3 text-3xl font-semibold text-white">
+                Provider connected successfully
+              </h2>
+              <p className="mt-3 text-sm text-slate-300">
+                The provider is now available in CommandsCenter.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   return (
@@ -553,7 +604,7 @@ function ProviderDialog(props: ProviderDialogProps) {
               onClick={() => void handleStartOauth()}
               type="button"
             >
-              {props.busy || dialogBusy ? "Starting..." : "Open provider login"}
+              {props.busy || dialogBusy ? "Completing..." : "Open provider login"}
             </button>
 
             {oauthSession ? (

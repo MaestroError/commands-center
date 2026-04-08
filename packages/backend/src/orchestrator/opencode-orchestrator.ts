@@ -74,6 +74,7 @@ export function createOpenCodeOrchestrator(options: {
     process.platform !== "win32" && options.config.nodeEnv !== "development";
 
   let child: ChildProcess | undefined;
+  let reusing = false;
   let state: EngineState = "stopped";
   let healthy = false;
   let startPromise: Promise<void> | undefined;
@@ -89,6 +90,10 @@ export function createOpenCodeOrchestrator(options: {
   let restartHistory: number[] = [];
   let intentionalStop = false;
 
+  function hasEngine(): boolean {
+    return reusing || child !== undefined;
+  }
+
   async function start(): Promise<void> {
     if (startPromise) {
       return startPromise;
@@ -100,6 +105,7 @@ export function createOpenCodeOrchestrator(options: {
 
     startPromise = (async () => {
       intentionalStop = false;
+      reusing = false;
       state = "starting";
       healthy = false;
       startedAt = undefined;
@@ -108,6 +114,7 @@ export function createOpenCodeOrchestrator(options: {
       lastExitSignal = undefined;
 
       if (options.config.nodeEnv === "development" && (await probeExistingEngine())) {
+        reusing = true;
         startedAt = Date.now();
         healthy = true;
         state = "healthy";
@@ -235,6 +242,7 @@ export function createOpenCodeOrchestrator(options: {
       intentionalStop = true;
       stopPolling();
       healthy = false;
+      reusing = false;
 
       if (!child) {
         state = "stopped";
@@ -258,7 +266,7 @@ export function createOpenCodeOrchestrator(options: {
   }
 
   async function refreshHealth(): Promise<boolean> {
-    if (!child || state === "stopped" || state === "stopping") {
+    if (!hasEngine() || state === "stopped" || state === "stopping") {
       healthy = false;
 
       if (state !== "starting") {
@@ -271,7 +279,7 @@ export function createOpenCodeOrchestrator(options: {
     lastHealthCheckAt = Date.now();
 
     try {
-      const response = await request<{ healthy: boolean; version: string }>("/global/health");
+      const response = await fetchHealthDirectly();
       healthy = response.healthy;
 
       if (response.healthy) {
@@ -348,7 +356,7 @@ export function createOpenCodeOrchestrator(options: {
     path: string,
     init?: WorkspaceRequestInit & { target?: WorkspaceTarget },
   ): Promise<T> {
-    if (!child || state === "stopped" || state === "stopping") {
+    if (!hasEngine() || state === "stopped" || state === "stopping") {
       throw new Error("OpenCode engine is not running.");
     }
 
@@ -507,6 +515,18 @@ export function createOpenCodeOrchestrator(options: {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  async function fetchHealthDirectly(): Promise<{ healthy: boolean; version: string }> {
+    const response = await fetchWithTimeout(
+      new URL("/global/health", options.config.opencode.baseUrl),
+    );
+
+    if (!response.ok) {
+      throw new Error(`Health check returned status ${String(response.status)}.`);
+    }
+
+    return (await response.json()) as { healthy: boolean; version: string };
   }
 
   async function probeExistingEngine(): Promise<boolean> {
