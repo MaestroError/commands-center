@@ -10,6 +10,7 @@ This is a complete user-facing slice backed by C2 and I1. It delivers functional
 
 ## Blockers
 
+- U0 Frontend Foundation
 - C2 Agent Workspace Lifecycle
 - I1 Provider Connections
 

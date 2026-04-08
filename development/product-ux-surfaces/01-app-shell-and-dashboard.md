@@ -2,41 +2,45 @@
 
 ## Outcome
 
-The frontend has a real app shell with navigation, recent-agent entry points, and a dashboard showing runtime health and quick actions.
+The dashboard shows runtime health, recent agents, latest automation sessions, and quick actions inside the app shell established by U0.
 
 ## Why this is a separate PR
 
-This gives the product a usable top-level structure and makes platform health visible before the deeper workflows are complete.
+This populates the dashboard with live data and real widgets. The structural shell, navigation, layout system, and theming are already delivered by U0.
 
 ## Blockers
 
+- U0 Frontend Foundation
 - E3 API and Realtime Foundation
 
 ## Unblocks
 
-- No hard blockers. This is a shared shell for later UX work.
+- No hard blockers. Dashboard content is independent of other feature screens.
 
 ## Scope
 
-- Build the main layout, navigation, and routing structure using the responsive panel system established in E3
-- Add dashboard cards for recent agents, recent chats, engine health, DB health, cron health, and update status
-- Add latest automation sessions section showing execution status, execution time, and automation identity with links to the related automation
+- Build dashboard cards for engine health, DB health, cron health, and update status using health endpoints from E3
+- Add recent agents section: list agents ordered by most recent direct-chat activity, show agent icon and name, link to agent's direct chat, include action to navigate to full agents screen, show empty state when no activity exists
+- Add latest automation sessions section: list sessions ordered by most recent execution time, show automation identity, execution status, and execution time, link to the related automation, show empty state when no history exists
 - Add dashboard quick actions: create agent, open automations, open file manager, open settings
-- Add loading, error, and empty states for the shell
-- Add shared frontend data-fetching primitives and page-level state handling
-- Ensure dashboard and navigation are fully usable on mobile viewports with stacked cards and touch-friendly navigation
+- Add update state display: running version and update availability with navigation to update flow in settings
+- Ensure dashboard cards stack on mobile viewports and are touch-friendly
 
 ## Acceptance Criteria
 
-- The app no longer renders a placeholder root screen
-- The user can navigate to dashboard, agents, chat, integrations, automations, settings, and profile routes
-- Dashboard status cards reflect backend health APIs
-- Dashboard includes a latest automation sessions section with status, execution time, and automation identity
-- Quick actions include: create agent, open automations, open file manager, and open settings
-- Recent agent and recent chat entry points are visible when data exists
-- Layout is responsive: dashboard cards stack on mobile, sidebar becomes an overlay, and navigation is touch-friendly
+- Behavior matches `design/screens/dashboard/acceptance_criteria.md`
+- The dashboard is shown as the default landing screen
+- Dashboard status cards reflect backend health APIs for runtime, OpenCode engine, database mode, and automation system
+- Recent agents section shows agents ordered by last direct-chat activity with links to direct chat and the full agents screen
+- Latest automation sessions section shows sessions with status, execution time, and automation identity
+- Quick actions include: create agent, open automations, open file manager, open settings
+- Update state shows running version and update availability with navigation to update flow
+- Dashboard cards stack on mobile and navigation remains touch-friendly
 
 ## Non-Goals
 
+- App shell structure, navigation, sidebar, header (owned by U0)
+- Panel layout system (owned by U0)
+- Theme infrastructure (owned by U0)
 - Full agent CRUD
 - Full chat interactions

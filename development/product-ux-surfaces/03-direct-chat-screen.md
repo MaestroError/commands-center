@@ -10,6 +10,7 @@ This is the MVP centerpiece and should land as one coherent feature rather than 
 
 ## Blockers
 
+- U0 Frontend Foundation
 - C2 Agent Workspace Lifecycle
 - C3 Direct Chat Session Model
 

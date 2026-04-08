@@ -29,9 +29,12 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |     \- I5 Composio Integration
  |- E3 API and Realtime Foundation
  |  |- E4 Self-Updating and Version Management
- |  |- U1 App Shell and Dashboard
- |  |- U4 File Manager and Terminals
- |  |- U5 Profile, Settings, and Theming
+ |  |- U0 Frontend Foundation
+ |  |  |- U1 App Shell and Dashboard
+ |  |  |- U2 Agents and Agent Editor
+ |  |  |- U3 Direct Chat Screen
+ |  |  |- U4 File Manager and Terminals
+ |  |  \- U5 Profile, Settings, and Theming
  |  \- I4 Automations
  \- ✅ C1 Database and Workspace Foundation
     |- ✅ C2 Agent Workspace Lifecycle
@@ -47,8 +50,9 @@ This plan is organized so each epic is a complete feature slice that can ship as
     |- U4 File Manager and Terminals
     \- U5 Profile, Settings, and Theming
 
-U2 blocks on: C2, I1
-U3 blocks on: C2, C3, U2
+U0 blocks on: E3
+U2 blocks on: U0, C2, I1
+U3 blocks on: U0, C2, C3
 I2, I3, I5 each extend the agent editor independently after U2 ships
 ```
 
@@ -61,12 +65,14 @@ I2, I3, I5 each extend the agent editor independently after U2 ships
 3. `✅ core-data-state/01-database-and-workspace-foundation.md`
 4. `✅ core-data-state/02-agent-workspace-lifecycle.md`
 5. `✅ engine-infrastructure/05-opencode-workspace-contract.md`
-6. `integrations-automation/01-provider-connections.md`
-7. `product-ux-surfaces/02-agents-and-agent-editor.md`
-8. `core-data-state/03-direct-chat-session-model.md`
-9. `product-ux-surfaces/03-direct-chat-screen.md`
+6. `engine-infrastructure/03-api-and-realtime-foundation.md`
+7. `integrations-automation/01-provider-connections.md`
+8. `product-ux-surfaces/00-frontend-foundation.md`
+9. `product-ux-surfaces/02-agents-and-agent-editor.md`
+10. `core-data-state/03-direct-chat-session-model.md`
+11. `product-ux-surfaces/03-direct-chat-screen.md`
 
-Result: connect providers, create agents with model and skills, generate workspaces, open persistent direct chat, send messages.
+Result: connect providers, app shell with layout and theming, create agents with model and skills, generate workspaces, open persistent direct chat, send messages.
 
 ### Path B: Extend capabilities and make the product useful for day-to-day work
 
@@ -75,11 +81,10 @@ Run after Path A starts stabilizing. Integration epics (I2, I3, I5) each extend 
 1. `integrations-automation/02-integrations-and-mcp-management.md`
 2. `integrations-automation/03-custom-tools-platform.md`
 3. `integrations-automation/05-composio-integration.md`
-4. `engine-infrastructure/03-api-and-realtime-foundation.md`
-5. `engine-infrastructure/04-self-updating-and-version-management.md`
-6. `product-ux-surfaces/04-file-manager-and-terminals.md`
-7. `product-ux-surfaces/01-app-shell-and-dashboard.md`
-8. `product-ux-surfaces/05-profile-settings-and-theming.md`
+4. `engine-infrastructure/04-self-updating-and-version-management.md`
+5. `product-ux-surfaces/04-file-manager-and-terminals.md`
+6. `product-ux-surfaces/01-app-shell-and-dashboard.md`
+7. `product-ux-surfaces/05-profile-settings-and-theming.md`
 
 Result: MCP server management, custom tools, Composio integration, file browsing/editing, global and agent terminals, health visibility, user preferences, theming, and self-updating.
 
@@ -140,6 +145,7 @@ Each epic PR should:
 
 - ✅ C2 Agent Workspace Lifecycle
 - I1 Provider Connections
+- U0 Frontend Foundation
 - U2 Agents and Agent Editor
 - C3 Direct Chat Session Model
 - U3 Direct Chat Screen

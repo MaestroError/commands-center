@@ -10,6 +10,7 @@ This is a complete workspace-interaction feature slice and can ship after the da
 
 ## Blockers
 
+- U0 Frontend Foundation
 - C1 Database and Workspace Foundation
 - E3 API and Realtime Foundation
 

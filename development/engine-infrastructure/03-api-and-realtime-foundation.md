@@ -14,6 +14,7 @@ This lets all feature PRs plug into a stable backend contract instead of each fe
 
 ## Unblocks
 
+- U0 Frontend Foundation
 - U1 App Shell and Dashboard
 - E4 Self-Updating and Version Management
 - U4 File Manager and Terminals
@@ -29,7 +30,6 @@ This lets all feature PRs plug into a stable backend contract instead of each fe
 - Add websocket server baseline for terminals and realtime updates
 - Add PTY output flow-control buffering: batch terminal output into 16ms intervals before broadcasting over WebSocket to prevent network congestion and UI freezing during high-output operations
 - Add health/status endpoints for app, DB, engine, and scheduler status
-- Establish the responsive panel layout system (sidebar, context pane, bottom pane) with mobile breakpoints, touch-friendly controls, and sheet/overlay behavior for narrow viewports as described in `design/layout.md`
 
 ## Acceptance Criteria
 
@@ -40,9 +40,9 @@ This lets all feature PRs plug into a stable backend contract instead of each fe
 - Health endpoints expose enough information for dashboard and diagnostics use
 - New features can add services and routes without restructuring server boot code
 - All business logic is encapsulated in services, decoupled from transport, so additional surfaces (MCP tools, CLI) can reuse the same logic without reimplementation
-- The responsive layout system supports desktop side-by-side panels and mobile sheet/overlay behavior with touch-friendly tabs
 
 ## Non-Goals
 
 - Implementing final product screens
 - Defining all business entities
+- Frontend panel layout system (owned by U0 Frontend Foundation)
