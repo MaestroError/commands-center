@@ -52,7 +52,7 @@ describe("createServer", () => {
     const engine = createOrchestrator({
       state: "healthy",
       healthy: true,
-      url: "http://127.0.0.1:4096",
+      url: "http://127.0.0.1:4100",
       workspaceDir: "/tmp/project/.cc/workspace",
       pid: 4321,
       restartCount: 0,
@@ -80,10 +80,10 @@ describe("createServer", () => {
           dialect: "sqlite",
           sqlitePath: "/tmp/project/.cc/workspace/database/local.db",
         },
-        engine: {
+        opencode: {
           state: "healthy",
           healthy: true,
-          url: "http://127.0.0.1:4096",
+          url: "http://127.0.0.1:4100",
           workspaceDir: "/tmp/project/.cc/workspace",
           pid: 4321,
           restartCount: 0,
@@ -105,7 +105,7 @@ describe("createServer", () => {
     const engine = createOrchestrator({
       state: "healthy",
       healthy: true,
-      url: "http://127.0.0.1:4096",
+      url: "http://127.0.0.1:4100",
       workspaceDir: "/tmp/project/.cc/workspace",
       restartCount: 0,
       maxRestarts: 3,
@@ -132,7 +132,7 @@ describe("createServer", () => {
     }
   });
 
-  it("exposes engine status through a dedicated API route", async () => {
+  it("exposes opencode status through a dedicated API route", async () => {
     const config = loadRuntimeConfig({
       cwd: "/tmp/project",
       env: {
@@ -142,7 +142,7 @@ describe("createServer", () => {
     const engine = createOrchestrator({
       state: "unhealthy",
       healthy: false,
-      url: "http://127.0.0.1:4096",
+      url: "http://127.0.0.1:4100",
       workspaceDir: "/tmp/project/.cc/workspace",
       lastError: "health check failed",
       restartCount: 2,
@@ -158,14 +158,14 @@ describe("createServer", () => {
     try {
       const response = await server.inject({
         method: "GET",
-        url: "/api/engine",
+        url: "/api/opencode",
       });
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({
         state: "unhealthy",
         healthy: false,
-        url: "http://127.0.0.1:4096",
+        url: "http://127.0.0.1:4100",
         workspaceDir: "/tmp/project/.cc/workspace",
         lastError: "health check failed",
         restartCount: 2,

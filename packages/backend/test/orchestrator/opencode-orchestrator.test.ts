@@ -66,8 +66,8 @@ describe("createOpenCodeOrchestrator", () => {
       cwd: "/tmp/project",
       env: {
         NODE_ENV: "test",
-        CC_ENGINE_HEALTH_POLL_MS: "10000",
-        CC_ENGINE_STARTUP_TIMEOUT_MS: "500",
+        CC_OPENCODE_HEALTH_POLL_MS: "10000",
+        CC_OPENCODE_STARTUP_TIMEOUT_MS: "500",
       },
     });
     const orchestrator = createOpenCodeOrchestrator({
@@ -86,7 +86,7 @@ describe("createOpenCodeOrchestrator", () => {
 
     expect(spawnProcess).toHaveBeenCalledWith(
       "/tmp/project/node_modules/opencode/bin/opencode.js",
-      ["serve", "--hostname=127.0.0.1", "--port=4096"],
+      ["serve", "--hostname=127.0.0.1", "--port=4100"],
       expect.objectContaining({
         cwd: "/tmp/project",
         detached: true,
@@ -123,17 +123,59 @@ describe("createOpenCodeOrchestrator", () => {
   it("keeps the opencode child attached in development", async () => {
     const child = createChild(777);
     const spawnProcess = vi.fn(() => child as never);
+    let healthChecks = 0;
     const config = loadRuntimeConfig({
       cwd: "/tmp/project",
       env: {
         NODE_ENV: "development",
-        CC_ENGINE_HEALTH_POLL_MS: "10000",
+        CC_OPENCODE_HEALTH_POLL_MS: "10000",
       },
     });
     const orchestrator = createOpenCodeOrchestrator({
       config,
       logger: pino({ enabled: false }),
       spawnProcess,
+      fetch: vi.fn(() => {
+        healthChecks += 1;
+
+        if (healthChecks === 1) {
+          return Promise.reject(new Error("connection refused"));
+        }
+
+        return Promise.resolve(jsonResponse({ healthy: true, version: "1.0.0" }));
+      }) as typeof globalThis.fetch,
+      resolveBinary: () =>
+        Promise.resolve({
+          path: "/tmp/project/node_modules/opencode/bin/opencode.js",
+          source: "dependency",
+        }),
+    });
+
+    await orchestrator.start();
+
+    expect(spawnProcess).toHaveBeenCalledWith(
+      "/tmp/project/node_modules/opencode/bin/opencode.js",
+      ["serve", "--hostname=127.0.0.1", "--port=4100"],
+      expect.objectContaining({
+        cwd: "/tmp/project",
+        detached: false,
+      }),
+    );
+  });
+
+  it("reuses an already running engine in development", async () => {
+    const spawnProcess = vi.fn();
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: {
+        NODE_ENV: "development",
+        CC_OPENCODE_HEALTH_POLL_MS: "10000",
+      },
+    });
+    const orchestrator = createOpenCodeOrchestrator({
+      config,
+      logger: pino({ enabled: false }),
+      spawnProcess: spawnProcess,
       fetch: vi.fn(() =>
         Promise.resolve(jsonResponse({ healthy: true, version: "1.0.0" })),
       ) as typeof globalThis.fetch,
@@ -146,12 +188,12 @@ describe("createOpenCodeOrchestrator", () => {
 
     await orchestrator.start();
 
-    expect(spawnProcess).toHaveBeenCalledWith(
-      "/tmp/project/node_modules/opencode/bin/opencode.js",
-      ["serve", "--hostname=127.0.0.1", "--port=4096"],
+    expect(spawnProcess).not.toHaveBeenCalled();
+    expect(orchestrator.getStatus()).toEqual(
       expect.objectContaining({
-        cwd: "/tmp/project",
-        detached: false,
+        state: "healthy",
+        healthy: true,
+        pid: undefined,
       }),
     );
   });
@@ -170,8 +212,8 @@ describe("createOpenCodeOrchestrator", () => {
       cwd: "/tmp/project",
       env: {
         NODE_ENV: "test",
-        CC_ENGINE_STARTUP_TIMEOUT_MS: "100",
-        CC_ENGINE_TIMEOUT_MS: "20",
+        CC_OPENCODE_STARTUP_TIMEOUT_MS: "100",
+        CC_OPENCODE_TIMEOUT_MS: "20",
       },
     });
     const orchestrator = createOpenCodeOrchestrator({
@@ -211,8 +253,8 @@ describe("createOpenCodeOrchestrator", () => {
       cwd: "/tmp/project",
       env: {
         NODE_ENV: "test",
-        CC_ENGINE_MAX_RESTARTS: "1",
-        CC_ENGINE_HEALTH_POLL_MS: "10000",
+        CC_OPENCODE_MAX_RESTARTS: "1",
+        CC_OPENCODE_HEALTH_POLL_MS: "10000",
       },
     });
     const orchestrator = createOpenCodeOrchestrator({

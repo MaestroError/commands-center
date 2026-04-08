@@ -28,11 +28,11 @@ export async function createServer(context: RuntimeContext) {
         dialect: context.database.dialect,
         sqlitePath: context.database.sqlitePath,
       },
-      engine: context.orchestrator.getStatus(),
+      opencode: context.orchestrator.getStatus(),
     };
   });
 
-  server.get("/api/engine", () => {
+  server.get("/api/opencode", () => {
     return context.orchestrator.getStatus();
   });
 

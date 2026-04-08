@@ -49,11 +49,11 @@ describe("loadRuntimeConfig", () => {
         host: "0.0.0.0",
         port: 3000,
       },
-      engine: {
+      opencode: {
         host: "127.0.0.1",
-        port: 4096,
+        port: 4100,
         maxRestarts: 3,
-        baseUrl: "http://127.0.0.1:4096",
+        baseUrl: "http://127.0.0.1:4100",
       },
       paths: {
         dataDir: "/tmp/project/.cc",
@@ -65,11 +65,11 @@ describe("loadRuntimeConfig", () => {
         sqlitePath: "/tmp/project/.cc/workspace/database/local.db",
       },
       timeouts: {
-        engineRequestMs: 30000,
-        engineStartupMs: 30000,
-        engineShutdownMs: 15000,
-        engineHealthPollMs: 2000,
-        engineRestartWindowMs: 60000,
+        opencodeRequestMs: 30000,
+        opencodeStartupMs: 30000,
+        opencodeShutdownMs: 15000,
+        opencodeHealthPollMs: 2000,
+        opencodeRestartWindowMs: 60000,
         providerAuthMs: 300000,
         mcpAuthMs: 90000,
         drainMs: 15000,

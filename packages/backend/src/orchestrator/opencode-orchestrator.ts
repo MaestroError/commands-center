@@ -99,7 +99,6 @@ export function createOpenCodeOrchestrator(options: {
     }
 
     startPromise = (async () => {
-      binary = await resolveBinary(options.config);
       intentionalStop = false;
       state = "starting";
       healthy = false;
@@ -108,12 +107,27 @@ export function createOpenCodeOrchestrator(options: {
       lastExitCode = undefined;
       lastExitSignal = undefined;
 
+      if (options.config.nodeEnv === "development" && (await probeExistingEngine())) {
+        startedAt = Date.now();
+        healthy = true;
+        state = "healthy";
+        lastHealthyAt = startedAt;
+        startPolling();
+        options.logger.info(
+          { url: options.config.opencode.baseUrl },
+          "reusing existing opencode engine",
+        );
+        return;
+      }
+
+      binary = await resolveBinary(options.config);
+
       const next = spawnProcess(
         binary.path,
         [
           "serve",
-          `--hostname=${options.config.engine.host}`,
-          `--port=${String(options.config.engine.port)}`,
+          `--hostname=${options.config.opencode.host}`,
+          `--port=${String(options.config.opencode.port)}`,
         ],
         {
           cwd: options.config.paths.cwd,
@@ -178,7 +192,7 @@ export function createOpenCodeOrchestrator(options: {
           pid: next.pid,
           binaryPath: binary.path,
           binarySource: binary.source,
-          url: options.config.engine.baseUrl,
+          url: options.config.opencode.baseUrl,
         },
         "starting opencode engine",
       );
@@ -187,7 +201,7 @@ export function createOpenCodeOrchestrator(options: {
         await waitForHealthy();
       } catch (error) {
         lastError = formatError(error);
-        await terminateChild(next, options.config.timeouts.engineShutdownMs);
+        await terminateChild(next, options.config.timeouts.opencodeShutdownMs);
         state = "unhealthy";
         throw error;
       }
@@ -201,7 +215,7 @@ export function createOpenCodeOrchestrator(options: {
       options.logger.info(
         {
           pid: next.pid,
-          url: options.config.engine.baseUrl,
+          url: options.config.opencode.baseUrl,
         },
         "opencode engine is healthy",
       );
@@ -228,7 +242,7 @@ export function createOpenCodeOrchestrator(options: {
       }
 
       state = "stopping";
-      await terminateChild(child, options.config.timeouts.engineShutdownMs);
+      await terminateChild(child, options.config.timeouts.opencodeShutdownMs);
       state = "stopped";
     })().finally(() => {
       stopPromise = undefined;
@@ -288,7 +302,7 @@ export function createOpenCodeOrchestrator(options: {
     return {
       state,
       healthy,
-      url: options.config.engine.baseUrl,
+      url: options.config.opencode.baseUrl,
       workspaceDir: options.config.paths.workspaceDir,
       pid: child?.pid,
       binaryPath: binary?.path,
@@ -300,7 +314,7 @@ export function createOpenCodeOrchestrator(options: {
       lastExitSignal,
       lastError,
       restartCount: restartHistory.length,
-      maxRestarts: options.config.engine.maxRestarts,
+      maxRestarts: options.config.opencode.maxRestarts,
     };
   }
 
@@ -338,7 +352,7 @@ export function createOpenCodeOrchestrator(options: {
       throw new Error("OpenCode engine is not running.");
     }
 
-    const url = new URL(path, options.config.engine.baseUrl);
+    const url = new URL(path, options.config.opencode.baseUrl);
 
     if (init?.target?.directory) {
       url.searchParams.set("directory", init.target.directory);
@@ -381,7 +395,7 @@ export function createOpenCodeOrchestrator(options: {
 
     pollTimer = setInterval(() => {
       void refreshHealth();
-    }, options.config.timeouts.engineHealthPollMs);
+    }, options.config.timeouts.opencodeHealthPollMs);
 
     pollTimer.unref();
   }
@@ -398,7 +412,7 @@ export function createOpenCodeOrchestrator(options: {
   async function waitForHealthy(): Promise<void> {
     const startTime = Date.now();
 
-    while (Date.now() - startTime < options.config.timeouts.engineStartupMs) {
+    while (Date.now() - startTime < options.config.timeouts.opencodeStartupMs) {
       if (!child) {
         throw new Error("OpenCode process exited before becoming healthy.");
       }
@@ -411,21 +425,21 @@ export function createOpenCodeOrchestrator(options: {
     }
 
     throw new Error(
-      `OpenCode did not become healthy within ${String(options.config.timeouts.engineStartupMs)}ms.`,
+      `OpenCode did not become healthy within ${String(options.config.timeouts.opencodeStartupMs)}ms.`,
     );
   }
 
   async function restartAfterCrash(): Promise<void> {
     const now = Date.now();
     restartHistory = restartHistory.filter(
-      (value) => now - value < options.config.timeouts.engineRestartWindowMs,
+      (value) => now - value < options.config.timeouts.opencodeRestartWindowMs,
     );
 
-    if (restartHistory.length >= options.config.engine.maxRestarts) {
+    if (restartHistory.length >= options.config.opencode.maxRestarts) {
       options.logger.error(
         {
           restarts: restartHistory.length,
-          windowMs: options.config.timeouts.engineRestartWindowMs,
+          windowMs: options.config.timeouts.opencodeRestartWindowMs,
         },
         "opencode restart limit reached",
       );
@@ -449,7 +463,7 @@ export function createOpenCodeOrchestrator(options: {
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       controller.abort(new Error("OpenCode request timed out."));
-    }, timeoutMs ?? options.config.timeouts.engineRequestMs);
+    }, timeoutMs ?? options.config.timeouts.opencodeRequestMs);
 
     timeout.unref();
 
@@ -460,6 +474,25 @@ export function createOpenCodeOrchestrator(options: {
       });
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  async function probeExistingEngine(): Promise<boolean> {
+    try {
+      const response = await fetchWithTimeout(
+        new URL("/global/health", options.config.opencode.baseUrl),
+        undefined,
+        1_000,
+      );
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const body = (await response.json()) as { healthy?: boolean };
+      return body.healthy === true;
+    } catch {
+      return false;
     }
   }
 

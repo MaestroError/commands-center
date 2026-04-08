@@ -5,14 +5,14 @@ const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_DATA_DIR = ".cc";
 const DEFAULT_WORKSPACE_DIR_NAME = "workspace";
-const DEFAULT_ENGINE_TIMEOUT_MS = 30_000;
-const DEFAULT_ENGINE_STARTUP_TIMEOUT_MS = 30_000;
-const DEFAULT_ENGINE_SHUTDOWN_TIMEOUT_MS = 15_000;
-const DEFAULT_ENGINE_HEALTH_POLL_MS = 2_000;
-const DEFAULT_ENGINE_HOST = "127.0.0.1";
-const DEFAULT_ENGINE_PORT = 4096;
-const DEFAULT_ENGINE_MAX_RESTARTS = 3;
-const DEFAULT_ENGINE_RESTART_WINDOW_MS = 60_000;
+const DEFAULT_OPENCODE_TIMEOUT_MS = 30_000;
+const DEFAULT_OPENCODE_STARTUP_TIMEOUT_MS = 30_000;
+const DEFAULT_OPENCODE_SHUTDOWN_TIMEOUT_MS = 15_000;
+const DEFAULT_OPENCODE_HEALTH_POLL_MS = 2_000;
+const DEFAULT_OPENCODE_HOST = "127.0.0.1";
+const DEFAULT_OPENCODE_PORT = 4100;
+const DEFAULT_OPENCODE_MAX_RESTARTS = 3;
+const DEFAULT_OPENCODE_RESTART_WINDOW_MS = 60_000;
 const DEFAULT_PROVIDER_AUTH_TIMEOUT_MS = 300_000;
 const DEFAULT_MCP_AUTH_TIMEOUT_MS = 90_000;
 const DEFAULT_DRAIN_TIMEOUT_MS = 15_000;
@@ -51,25 +51,28 @@ const envSchema = z.object({
   CC_DATA_DIR: z.string().trim().optional().default(DEFAULT_DATA_DIR),
   CC_WORKSPACE_DIR: z.string().trim().optional(),
   DATABASE_URL: z.string().trim().optional(),
-  CC_ENGINE_TIMEOUT_MS: positiveInteger("CC_ENGINE_TIMEOUT_MS", DEFAULT_ENGINE_TIMEOUT_MS),
-  CC_ENGINE_STARTUP_TIMEOUT_MS: positiveInteger(
-    "CC_ENGINE_STARTUP_TIMEOUT_MS",
-    DEFAULT_ENGINE_STARTUP_TIMEOUT_MS,
+  CC_OPENCODE_TIMEOUT_MS: positiveInteger("CC_OPENCODE_TIMEOUT_MS", DEFAULT_OPENCODE_TIMEOUT_MS),
+  CC_OPENCODE_STARTUP_TIMEOUT_MS: positiveInteger(
+    "CC_OPENCODE_STARTUP_TIMEOUT_MS",
+    DEFAULT_OPENCODE_STARTUP_TIMEOUT_MS,
   ),
-  CC_ENGINE_SHUTDOWN_TIMEOUT_MS: positiveInteger(
-    "CC_ENGINE_SHUTDOWN_TIMEOUT_MS",
-    DEFAULT_ENGINE_SHUTDOWN_TIMEOUT_MS,
+  CC_OPENCODE_SHUTDOWN_TIMEOUT_MS: positiveInteger(
+    "CC_OPENCODE_SHUTDOWN_TIMEOUT_MS",
+    DEFAULT_OPENCODE_SHUTDOWN_TIMEOUT_MS,
   ),
-  CC_ENGINE_HEALTH_POLL_MS: positiveInteger(
-    "CC_ENGINE_HEALTH_POLL_MS",
-    DEFAULT_ENGINE_HEALTH_POLL_MS,
+  CC_OPENCODE_HEALTH_POLL_MS: positiveInteger(
+    "CC_OPENCODE_HEALTH_POLL_MS",
+    DEFAULT_OPENCODE_HEALTH_POLL_MS,
   ),
-  CC_ENGINE_HOST: z.string().trim().optional().default(DEFAULT_ENGINE_HOST),
-  CC_ENGINE_PORT: positiveInteger("CC_ENGINE_PORT", DEFAULT_ENGINE_PORT),
-  CC_ENGINE_MAX_RESTARTS: positiveInteger("CC_ENGINE_MAX_RESTARTS", DEFAULT_ENGINE_MAX_RESTARTS),
-  CC_ENGINE_RESTART_WINDOW_MS: positiveInteger(
-    "CC_ENGINE_RESTART_WINDOW_MS",
-    DEFAULT_ENGINE_RESTART_WINDOW_MS,
+  CC_OPENCODE_HOST: z.string().trim().optional().default(DEFAULT_OPENCODE_HOST),
+  CC_OPENCODE_PORT: positiveInteger("CC_OPENCODE_PORT", DEFAULT_OPENCODE_PORT),
+  CC_OPENCODE_MAX_RESTARTS: positiveInteger(
+    "CC_OPENCODE_MAX_RESTARTS",
+    DEFAULT_OPENCODE_MAX_RESTARTS,
+  ),
+  CC_OPENCODE_RESTART_WINDOW_MS: positiveInteger(
+    "CC_OPENCODE_RESTART_WINDOW_MS",
+    DEFAULT_OPENCODE_RESTART_WINDOW_MS,
   ),
   CC_PROVIDER_AUTH_TIMEOUT_MS: positiveInteger(
     "CC_PROVIDER_AUTH_TIMEOUT_MS",
@@ -111,16 +114,16 @@ export type RuntimeConfig = {
     sqlitePath: string;
   };
   timeouts: {
-    engineRequestMs: number;
-    engineStartupMs: number;
-    engineShutdownMs: number;
-    engineHealthPollMs: number;
-    engineRestartWindowMs: number;
+    opencodeRequestMs: number;
+    opencodeStartupMs: number;
+    opencodeShutdownMs: number;
+    opencodeHealthPollMs: number;
+    opencodeRestartWindowMs: number;
     providerAuthMs: number;
     mcpAuthMs: number;
     drainMs: number;
   };
-  engine: {
+  opencode: {
     host: string;
     port: number;
     maxRestarts: number;
@@ -185,20 +188,20 @@ export function loadRuntimeConfig(options?: {
       sqlitePath: resolve(workspaceDir, "database", "local.db"),
     },
     timeouts: {
-      engineRequestMs: parsedEnv.data.CC_ENGINE_TIMEOUT_MS,
-      engineStartupMs: parsedEnv.data.CC_ENGINE_STARTUP_TIMEOUT_MS,
-      engineShutdownMs: parsedEnv.data.CC_ENGINE_SHUTDOWN_TIMEOUT_MS,
-      engineHealthPollMs: parsedEnv.data.CC_ENGINE_HEALTH_POLL_MS,
-      engineRestartWindowMs: parsedEnv.data.CC_ENGINE_RESTART_WINDOW_MS,
+      opencodeRequestMs: parsedEnv.data.CC_OPENCODE_TIMEOUT_MS,
+      opencodeStartupMs: parsedEnv.data.CC_OPENCODE_STARTUP_TIMEOUT_MS,
+      opencodeShutdownMs: parsedEnv.data.CC_OPENCODE_SHUTDOWN_TIMEOUT_MS,
+      opencodeHealthPollMs: parsedEnv.data.CC_OPENCODE_HEALTH_POLL_MS,
+      opencodeRestartWindowMs: parsedEnv.data.CC_OPENCODE_RESTART_WINDOW_MS,
       providerAuthMs: parsedEnv.data.CC_PROVIDER_AUTH_TIMEOUT_MS,
       mcpAuthMs: parsedEnv.data.CC_MCP_AUTH_TIMEOUT_MS,
       drainMs: parsedEnv.data.CC_DRAIN_TIMEOUT_MS,
     },
-    engine: {
-      host: parsedEnv.data.CC_ENGINE_HOST,
-      port: parsedEnv.data.CC_ENGINE_PORT,
-      maxRestarts: parsedEnv.data.CC_ENGINE_MAX_RESTARTS,
-      baseUrl: `http://${parsedEnv.data.CC_ENGINE_HOST}:${String(parsedEnv.data.CC_ENGINE_PORT)}`,
+    opencode: {
+      host: parsedEnv.data.CC_OPENCODE_HOST,
+      port: parsedEnv.data.CC_OPENCODE_PORT,
+      maxRestarts: parsedEnv.data.CC_OPENCODE_MAX_RESTARTS,
+      baseUrl: `http://${parsedEnv.data.CC_OPENCODE_HOST}:${String(parsedEnv.data.CC_OPENCODE_PORT)}`,
     },
     logLevel: parsedEnv.data.CC_LOG_LEVEL,
     opencodePath: parsedEnv.data.CC_OPENCODE_PATH || undefined,
@@ -209,7 +212,7 @@ export function getStartupLogContext(config: RuntimeConfig): Record<string, unkn
   return {
     nodeEnv: config.nodeEnv,
     server: config.server,
-    engine: config.engine,
+    opencode: config.opencode,
     paths: {
       dataDir: config.paths.dataDir,
       workspaceDir: config.paths.workspaceDir,
