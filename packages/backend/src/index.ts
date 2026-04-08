@@ -26,10 +26,13 @@ export {
   type EngineState,
   type EngineStatus,
   type OpenCodeOrchestrator,
-  type WorkspaceClient,
-  type WorkspaceRequestInit,
-  type WorkspaceTarget,
 } from "./orchestrator/opencode-orchestrator.js";
+export {
+  createOpenCodeClient,
+  createScopedOpenCodeClient,
+  type OpencodeClient,
+} from "./lib/opencode-client.js";
+export { createOpenCodeService, type OpenCodeService } from "./services/opencode-service.js";
 export { createProviderService, type ProviderService } from "./services/provider-service.js";
 export {
   createDrainController,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createLogger,
@@ -7,6 +7,7 @@ import {
   type DatabaseClient,
   type EngineStatus,
   type OpenCodeOrchestrator,
+  type OpenCodeService,
 } from "@cc/backend";
 
 function createDatabase(sqlitePath: string): DatabaseClient {
@@ -25,20 +26,21 @@ function createOrchestrator(status: EngineStatus): OpenCodeOrchestrator {
     restart: () => Promise.resolve(),
     refreshHealth: () => Promise.resolve(status.healthy),
     getStatus: () => status,
-    createWorkspaceClient: () => ({
-      request: () => Promise.resolve(undefined as never),
-      getPath: () =>
-        Promise.resolve({
-          home: "/tmp/home",
-          state: "/tmp/state",
-          config: "/tmp/config",
-          worktree: "/tmp/worktree",
-          directory: "/tmp/worktree",
-        }),
-      disposeInstance: () => Promise.resolve(true),
-    }),
-    disposeWorkspace: () => Promise.resolve(true),
   };
+}
+
+function createMockOpenCodeService(): OpenCodeService {
+  return {
+    dispose: vi.fn(() => Promise.resolve()),
+    listProviders: vi.fn(() => Promise.resolve({ all: [], default: {}, connected: [] })),
+    listAuthMethods: vi.fn(() => Promise.resolve({})),
+    setApiKey: vi.fn(() => Promise.resolve(true)),
+    startOauth: vi.fn(() =>
+      Promise.resolve({ url: "https://example.com", method: "auto", instructions: "" }),
+    ),
+    completeOauth: vi.fn(() => Promise.resolve(true)),
+    disconnectProvider: vi.fn(() => Promise.resolve(true)),
+  } as unknown as OpenCodeService;
 }
 
 describe("createServer", () => {
@@ -63,6 +65,7 @@ describe("createServer", () => {
       logger: createLogger(config),
       database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
+      opencodeService: createMockOpenCodeService(),
     });
 
     try {
@@ -115,6 +118,7 @@ describe("createServer", () => {
       logger: createLogger(config),
       database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
+      opencodeService: createMockOpenCodeService(),
     });
 
     try {
@@ -153,6 +157,7 @@ describe("createServer", () => {
       logger: createLogger(config),
       database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
+      opencodeService: createMockOpenCodeService(),
     });
 
     try {

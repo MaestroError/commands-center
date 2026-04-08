@@ -5,6 +5,8 @@ import {
   createOpenCodeOrchestrator,
   type OpenCodeOrchestrator,
 } from "../orchestrator/opencode-orchestrator.js";
+import { createOpenCodeClient } from "./opencode-client.js";
+import { createOpenCodeService, type OpenCodeService } from "../services/opencode-service.js";
 import { bootstrapRuntimePaths } from "./runtime-paths.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
 import { createLogger, flushLogger } from "./logger.js";
@@ -32,6 +34,7 @@ export type RuntimeContext = {
   logger: Logger;
   database: DatabaseClient;
   orchestrator: OpenCodeOrchestrator;
+  opencodeService: OpenCodeService;
 };
 
 export type StartedServerRuntime = RuntimeContext & {
@@ -61,7 +64,10 @@ export async function startServerRuntime(
 
   await orchestrator.start();
 
-  const context: RuntimeContext = { config, logger, database, orchestrator };
+  const opencodeClient = createOpenCodeClient(config);
+  const opencodeService = createOpenCodeService({ client: opencodeClient, config });
+
+  const context: RuntimeContext = { config, logger, database, orchestrator, opencodeService };
   const server = await createServer(context);
 
   if (options?.register) {

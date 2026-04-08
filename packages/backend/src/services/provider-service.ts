@@ -1,9 +1,5 @@
 import {
-  configProvidersSchema,
-  providerAuthMethodsSchema,
   providerConnectResultSchema,
-  providerListSchema,
-  providerOauthAuthorizationSchema,
   providerOauthCompleteResultSchema,
   providerStatusListSchema,
   type ProviderAuthMethod,
@@ -12,23 +8,23 @@ import {
 } from "@cc/shared/schemas";
 
 import type { RuntimeConfig } from "../lib/runtime-config.js";
-import type { OpenCodeOrchestrator } from "../orchestrator/opencode-orchestrator.js";
+import type { OpenCodeService } from "./opencode-service.js";
 
 export type ProviderService = ReturnType<typeof createProviderService>;
 
 export function createProviderService(options: {
   config: RuntimeConfig;
-  orchestrator: OpenCodeOrchestrator;
+  opencodeService: OpenCodeService;
 }) {
-  const client = options.orchestrator.createWorkspaceClient({
-    directory: options.config.paths.workspaceDir,
-  });
+  const directory = options.config.paths.workspaceDir;
 
   return {
     async list(): Promise<ProviderStatus[]> {
+      await disposeWorkspaceInstance();
+
       const [providers, auth] = await Promise.all([
-        listProviders({ dispose: true }),
-        listAuthMethods(),
+        options.opencodeService.listProviders(directory),
+        options.opencodeService.listAuthMethods(directory),
       ]);
 
       return providerStatusListSchema.parse(
@@ -43,7 +39,7 @@ export function createProviderService(options: {
     },
 
     async listModels(): Promise<ProviderModel[]> {
-      const providers = await listProviders();
+      const providers = await options.opencodeService.listProviders(directory);
 
       return providers.all
         .filter((provider) => providers.connected.includes(provider.id))
@@ -51,50 +47,23 @@ export function createProviderService(options: {
     },
 
     async setApiKey(providerId: string, apiKey: string): Promise<boolean> {
-      const result = await client.request<boolean>(`/auth/${encodeURIComponent(providerId)}`, {
-        method: "PUT",
-        body: {
-          type: "api",
-          key: apiKey,
-        },
-        timeoutMs: options.config.timeouts.providerAuthMs,
-      });
-
+      const result = await options.opencodeService.setApiKey(directory, providerId, apiKey);
       return providerConnectResultSchema.parse({ success: result }).success;
     },
 
     async startOauth(providerId: string, method: number, inputs?: Record<string, string>) {
-      const result = await client.request(
-        `/provider/${encodeURIComponent(providerId)}/oauth/authorize`,
-        {
-          method: "POST",
-          body: {
-            method,
-            inputs,
-          },
-          timeoutMs: options.config.timeouts.providerAuthMs,
-        },
-      );
-
-      return providerOauthAuthorizationSchema.parse(result);
+      return options.opencodeService.startOauth(directory, providerId, method, inputs);
     },
 
     async completeOauth(providerId: string, method: number, code?: string) {
       const trimmedCode = code?.trim();
 
       try {
-        const result = await client.request<boolean>(
-          `/provider/${encodeURIComponent(providerId)}/oauth/callback`,
-          {
-            method: "POST",
-            body: {
-              method,
-              code: trimmedCode || undefined,
-            },
-            timeoutMs: trimmedCode
-              ? options.config.timeouts.providerAuthMs
-              : Math.min(options.config.timeouts.providerAuthMs, 5_000),
-          },
+        const result = await options.opencodeService.completeOauth(
+          directory,
+          providerId,
+          method,
+          trimmedCode,
         );
 
         if (providerConnectResultSchema.parse({ success: result }).success) {
@@ -112,49 +81,14 @@ export function createProviderService(options: {
     },
 
     async disconnect(providerId: string): Promise<boolean> {
-      const result = await client.request<boolean>(`/auth/${encodeURIComponent(providerId)}`, {
-        method: "DELETE",
-        timeoutMs: options.config.timeouts.providerAuthMs,
-      });
-
+      const result = await options.opencodeService.disconnectProvider(directory, providerId);
       return providerConnectResultSchema.parse({ success: result }).success;
     },
   };
 
-  async function listProvidersWithOptions(optionsArg: { dispose: boolean }) {
-    if (optionsArg.dispose) {
-      await disposeWorkspaceInstance();
-    }
-
-    try {
-      const result = await client.request("/provider");
-      return providerListSchema.parse(result);
-    } catch {
-      const result = await client.request("/config/providers");
-      const fallback = configProvidersSchema.parse(result);
-
-      return providerListSchema.parse({
-        all: fallback.providers,
-        default: fallback.default,
-        connected: fallback.providers.map((provider) => provider.id),
-      });
-    }
-  }
-
-  async function listProviders(optionsArg?: { dispose: boolean }) {
-    return listProvidersWithOptions({ dispose: optionsArg?.dispose ?? false });
-  }
-
-  async function listAuthMethods() {
-    const result = await client.request("/provider/auth", {
-      timeoutMs: options.config.timeouts.providerAuthMs,
-    });
-
-    return providerAuthMethodsSchema.parse(result);
-  }
-
   async function resolveOauthStatus(providerId: string, pending: boolean) {
-    const providers = await listProviders({ dispose: true });
+    await disposeWorkspaceInstance();
+    const providers = await options.opencodeService.listProviders(directory);
     const connected = providers.connected.includes(providerId);
 
     return providerOauthCompleteResultSchema.parse({
@@ -166,7 +100,7 @@ export function createProviderService(options: {
 
   async function disposeWorkspaceInstance(): Promise<void> {
     try {
-      await client.disposeInstance();
+      await options.opencodeService.dispose(directory);
     } catch {
       // Ignore dispose failures and fall back to the current instance state.
     }

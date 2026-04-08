@@ -5,16 +5,6 @@ import type { Logger } from "pino";
 import { resolveOpencodeBinary, type OpenCodeBinary } from "../lib/opencode-binary.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 
-export type WorkspaceTarget = {
-  directory?: string;
-  workspaceId?: string;
-};
-
-export type WorkspaceRequestInit = Omit<RequestInit, "body"> & {
-  body?: unknown;
-  timeoutMs?: number;
-};
-
 export type EngineState = "stopped" | "starting" | "healthy" | "unhealthy" | "stopping";
 
 export type EngineStatus = {
@@ -35,26 +25,12 @@ export type EngineStatus = {
   maxRestarts: number;
 };
 
-export type WorkspaceClient = {
-  request<T>(path: string, init?: WorkspaceRequestInit): Promise<T>;
-  getPath(): Promise<{
-    home: string;
-    state: string;
-    config: string;
-    worktree: string;
-    directory: string;
-  }>;
-  disposeInstance(): Promise<boolean>;
-};
-
 export type OpenCodeOrchestrator = {
   start(): Promise<void>;
   stop(): Promise<void>;
   restart(reason: string): Promise<void>;
   refreshHealth(): Promise<boolean>;
   getStatus(): EngineStatus;
-  createWorkspaceClient(target: WorkspaceTarget): WorkspaceClient;
-  disposeWorkspace(target: WorkspaceTarget): Promise<boolean>;
 };
 
 type SpawnFn = typeof spawn;
@@ -326,110 +302,6 @@ export function createOpenCodeOrchestrator(options: {
     };
   }
 
-  function createWorkspaceClient(target: WorkspaceTarget): WorkspaceClient {
-    return {
-      request: <T>(path: string, init?: WorkspaceRequestInit) =>
-        request<T>(path, {
-          ...init,
-          target,
-        }),
-      getPath: () =>
-        request<{
-          home: string;
-          state: string;
-          config: string;
-          worktree: string;
-          directory: string;
-        }>("/path", { target }),
-      disposeInstance: () => request<boolean>("/instance/dispose", { method: "POST", target }),
-    };
-  }
-
-  async function disposeWorkspace(target: WorkspaceTarget): Promise<boolean> {
-    return request<boolean>("/instance/dispose", {
-      method: "POST",
-      target,
-    });
-  }
-
-  async function request<T>(
-    path: string,
-    init?: WorkspaceRequestInit & { target?: WorkspaceTarget },
-  ): Promise<T> {
-    if (!hasEngine() || state === "stopped" || state === "stopping") {
-      throw new Error("OpenCode engine is not running.");
-    }
-
-    const url = new URL(path, options.config.opencode.baseUrl);
-
-    if (init?.target?.directory) {
-      url.searchParams.set("directory", init.target.directory);
-    }
-
-    if (init?.target?.workspaceId) {
-      url.searchParams.set("workspace", init.target.workspaceId);
-    }
-
-    const { body, target: _target, timeoutMs, ...rest } = init ?? {};
-    const headers = new Headers(init?.headers);
-    const requestInit: RequestInit = {
-      ...rest,
-      headers,
-    };
-
-    if (body !== undefined) {
-      requestInit.body = serializeBody(body, headers);
-    }
-
-    const response = await fetchWithTimeout(url, requestInit, timeoutMs);
-
-    if (!response.ok) {
-      throw new Error(
-        `OpenCode request to ${url.pathname} failed with status ${String(response.status)}${await readErrorDetail(response)}.`,
-      );
-    }
-
-    const contentType = response.headers.get("content-type");
-
-    if (contentType?.includes("application/json")) {
-      return (await response.json()) as T;
-    }
-
-    return (await response.text()) as T;
-  }
-
-  async function readErrorDetail(response: Response): Promise<string> {
-    const contentType = response.headers.get("content-type") ?? "";
-
-    if (contentType.includes("application/json")) {
-      const payload = await response.json().catch(() => undefined);
-
-      if (payload && typeof payload === "object") {
-        const name =
-          "name" in payload && typeof payload.name === "string" ? payload.name : undefined;
-        const message =
-          "message" in payload && typeof payload.message === "string" ? payload.message : undefined;
-
-        if (name && message) {
-          return `: ${name}: ${message}`;
-        }
-
-        if (name) {
-          return `: ${name}`;
-        }
-
-        if (message) {
-          return `: ${message}`;
-        }
-      }
-
-      return "";
-    }
-
-    const text = await response.text().catch(() => "");
-    return text ? `: ${text}` : "";
-  }
-
   function startPolling(): void {
     stopPolling();
 
@@ -600,33 +472,6 @@ export function createOpenCodeOrchestrator(options: {
     });
   }
 
-  function serializeBody(body: unknown, headers: Headers): RequestInit["body"] {
-    if (typeof body === "string") {
-      return body;
-    }
-
-    if (body instanceof URLSearchParams) {
-      return body;
-    }
-
-    if (body instanceof FormData) {
-      return body;
-    }
-
-    if (body instanceof Blob) {
-      return body;
-    }
-
-    if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
-      return body instanceof ArrayBuffer
-        ? body
-        : new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
-    }
-
-    headers.set("content-type", "application/json");
-    return JSON.stringify(body);
-  }
-
   function formatError(error: unknown): string {
     if (error instanceof Error) {
       return error.message;
@@ -652,7 +497,5 @@ export function createOpenCodeOrchestrator(options: {
     restart,
     refreshHealth,
     getStatus,
-    createWorkspaceClient,
-    disposeWorkspace,
   };
 }

@@ -1,11 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
+import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("agent routes", () => {
@@ -17,6 +18,7 @@ describe("agent routes", () => {
       logger: createLogger(testDb.config),
       database: testDb.client,
       orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
     });
 
     try {
@@ -112,42 +114,48 @@ function createOrchestrator(): OpenCodeOrchestrator {
     getStatus: () => ({
       state: "healthy",
       healthy: true,
-      url: "http://127.0.0.1:4096",
+      url: "http://127.0.0.1:4100",
       workspaceDir: "/tmp/workspace",
       restartCount: 0,
       maxRestarts: 3,
     }),
-    createWorkspaceClient: () => ({
-      request: <T>(path: string) => {
-        if (path === "/provider") {
-          return Promise.resolve({
-            all: [
-              {
-                id: "openai",
-                name: "OpenAI",
-                source: "api",
-                env: ["OPENAI_API_KEY"],
-                models: {
-                  "openai/gpt-4.1": { name: "GPT-4.1" },
-                },
-              },
-            ],
-            default: { openai: "openai/gpt-4.1" },
-            connected: ["openai"],
-          } as T);
-        }
-
-        if (path === "/provider/auth") {
-          return Promise.resolve({
-            openai: [{ type: "api", label: "API key" }],
-          } as T);
-        }
-
-        return Promise.reject(new Error("not used"));
-      },
-      getPath: () => Promise.reject(new Error("not used")),
-      disposeInstance: () => Promise.reject(new Error("not used")),
-    }),
-    disposeWorkspace: () => Promise.resolve(true),
   };
+}
+
+function createMockOpenCodeService(): OpenCodeService {
+  return {
+    dispose: vi.fn(() => Promise.resolve()),
+    listProviders: vi.fn(() =>
+      Promise.resolve({
+        all: [
+          {
+            id: "openai",
+            name: "OpenAI",
+            source: "api",
+            env: ["OPENAI_API_KEY"],
+            models: {
+              "openai/gpt-4.1": { name: "GPT-4.1" },
+            },
+          },
+        ],
+        default: { openai: "openai/gpt-4.1" },
+        connected: ["openai"],
+      }),
+    ),
+    listAuthMethods: vi.fn(() =>
+      Promise.resolve({
+        openai: [{ type: "api", label: "API key" }],
+      }),
+    ),
+    setApiKey: vi.fn(() => Promise.resolve(true)),
+    startOauth: vi.fn(() =>
+      Promise.resolve({
+        url: "https://provider.example/oauth",
+        method: "auto",
+        instructions: "Finish login.",
+      }),
+    ),
+    completeOauth: vi.fn(() => Promise.resolve(true)),
+    disconnectProvider: vi.fn(() => Promise.resolve(true)),
+  } as unknown as OpenCodeService;
 }

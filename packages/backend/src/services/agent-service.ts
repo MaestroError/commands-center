@@ -16,8 +16,8 @@ import {
 import { createId, now } from "../db/ids.js";
 import { agents, custom_tools, mcp_servers } from "../db/schema/index.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
-import type { OpenCodeOrchestrator } from "../orchestrator/opencode-orchestrator.js";
 import type { AppDb } from "../db/client.js";
+import type { OpenCodeService } from "./opencode-service.js";
 import { createProviderService } from "./provider-service.js";
 import {
   archiveWorkspace,
@@ -32,13 +32,13 @@ export type AgentService = ReturnType<typeof createAgentService>;
 export function createAgentService(options: {
   db: AppDb;
   config: RuntimeConfig;
-  orchestrator: OpenCodeOrchestrator;
+  opencodeService: OpenCodeService;
   skillRoot?: string;
 }) {
   const skillRoot = options.skillRoot ?? getBuiltInSkillRoot(options.config);
   const providerService = createProviderService({
     config: options.config,
-    orchestrator: options.orchestrator,
+    opencodeService: options.opencodeService,
   });
 
   return {
@@ -135,9 +135,7 @@ export function createAgentService(options: {
         skillRoot,
       });
 
-      await options.orchestrator
-        .disposeWorkspace({ directory: nextWorkspacePath })
-        .catch(() => false);
+      await options.opencodeService.dispose(nextWorkspacePath).catch(() => {});
 
       const [row] = await options.db
         .update(agents)
@@ -175,9 +173,7 @@ export function createAgentService(options: {
         return mapAgent(existing);
       }
 
-      await options.orchestrator
-        .disposeWorkspace({ directory: existing.workspace_path })
-        .catch(() => false);
+      await options.opencodeService.dispose(existing.workspace_path).catch(() => {});
 
       const archivedPath = await archiveWorkspace(existing.workspace_path, buildArchiveRoot());
       const archivedAt = now();

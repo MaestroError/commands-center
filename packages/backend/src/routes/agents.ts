@@ -50,7 +50,7 @@ export function registerAgentRoutes(server: RouteServer, context: RuntimeContext
   const service = createAgentService({
     db: context.database.db,
     config: context.config,
-    orchestrator: context.orchestrator,
+    opencodeService: context.opencodeService,
   });
 
   server.get("/api/agents", async (request, reply) => {

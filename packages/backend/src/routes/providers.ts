@@ -49,7 +49,7 @@ type RouteServer = {
 export function registerProviderRoutes(server: RouteServer, context: RuntimeContext): void {
   const service = createProviderService({
     config: context.config,
-    orchestrator: context.orchestrator,
+    opencodeService: context.opencodeService,
   });
 
   server.get("/api/providers", async () => {

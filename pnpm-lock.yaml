@@ -59,6 +59,9 @@ importers:
       '@cc/shared':
         specifier: workspace:*
         version: link:../shared
+      '@opencode-ai/sdk':
+        specifier: ^1.4.0
+        version: 1.4.0
       better-sqlite3:
         specifier: ^12.0.0
         version: 12.8.0
@@ -894,6 +897,9 @@ packages:
   '@lukeed/ms@2.0.2':
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
     engines: {node: '>=8'}
+
+  '@opencode-ai/sdk@1.4.0':
+    resolution: {integrity: sha512-mfa3MzhqNM+Az4bgPDDXL3NdG+aYOHClXmT6/4qLxf2ulyfPpMNHqb9Dfmo4D8UfmrDsPuJHmbune73/nUQnuw==}
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
@@ -3640,6 +3646,10 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@lukeed/ms@2.0.2': {}
+
+  '@opencode-ai/sdk@1.4.0':
+    dependencies:
+      cross-spawn: 7.0.6
 
   '@pinojs/redact@0.4.0': {}
 
