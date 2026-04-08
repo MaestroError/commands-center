@@ -1,1 +1,62 @@
 @import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.cc-button {
+  @apply inline-flex items-center justify-center rounded-full bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+.cc-button-secondary {
+  @apply bg-white/10 text-white hover:bg-white/15;
+}
+
+.cc-button-danger {
+  @apply bg-rose-500 text-white hover:bg-rose-400;
+}
+
+.cc-input {
+  @apply w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/60 focus:bg-white/8;
+}
+
+.cc-alert {
+  @apply rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-100;
+}
+
+.cc-badge {
+  @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em];
+}
+
+.cc-badge-connected {
+  @apply bg-emerald-400/15 text-emerald-200 ring-1 ring-inset ring-emerald-300/25;
+}
+
+.cc-badge-muted {
+  @apply bg-white/10 text-slate-300 ring-1 ring-inset ring-white/10;
+}
+
+.cc-nav-item {
+  @apply flex items-center rounded-2xl px-4 py-3 text-left text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white;
+}
+
+.cc-nav-item-active {
+  @apply bg-cyan-400/15 text-cyan-100 ring-1 ring-inset ring-cyan-300/20;
+}

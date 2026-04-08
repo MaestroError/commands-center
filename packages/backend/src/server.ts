@@ -3,6 +3,7 @@ import Fastify from "fastify";
 
 import type { RuntimeContext } from "./lib/start-server-runtime.js";
 import { registerAgentRoutes } from "./routes/agents.js";
+import { registerProviderRoutes } from "./routes/providers.js";
 
 export async function createServer(context: RuntimeContext) {
   const server = Fastify({
@@ -36,6 +37,7 @@ export async function createServer(context: RuntimeContext) {
   });
 
   registerAgentRoutes(server, context);
+  registerProviderRoutes(server, context);
 
   return server;
 }

@@ -172,7 +172,33 @@ function createOrchestrator(
       maxRestarts: 3,
     }),
     createWorkspaceClient: () => ({
-      request: () => Promise.reject(new Error("not used")),
+      request: <T>(path: string) => {
+        if (path === "/provider") {
+          return Promise.resolve({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                source: "api",
+                env: ["OPENAI_API_KEY"],
+                models: {
+                  "openai/gpt-4.1": { name: "GPT-4.1" },
+                },
+              },
+            ],
+            default: { openai: "openai/gpt-4.1" },
+            connected: ["openai"],
+          } as T);
+        }
+
+        if (path === "/provider/auth") {
+          return Promise.resolve({
+            openai: [{ type: "api", label: "API key" }],
+          } as T);
+        }
+
+        return Promise.reject(new Error("not used"));
+      },
       getPath: () => Promise.reject(new Error("not used")),
       disposeInstance: () => Promise.reject(new Error("not used")),
     }),

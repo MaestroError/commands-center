@@ -120,6 +120,42 @@ describe("createOpenCodeOrchestrator", () => {
     expect(processKill).toHaveBeenCalledWith(-321, "SIGTERM");
   });
 
+  it("keeps the opencode child attached in development", async () => {
+    const child = createChild(777);
+    const spawnProcess = vi.fn(() => child as never);
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: {
+        NODE_ENV: "development",
+        CC_ENGINE_HEALTH_POLL_MS: "10000",
+      },
+    });
+    const orchestrator = createOpenCodeOrchestrator({
+      config,
+      logger: pino({ enabled: false }),
+      spawnProcess,
+      fetch: vi.fn(() =>
+        Promise.resolve(jsonResponse({ healthy: true, version: "1.0.0" })),
+      ) as typeof globalThis.fetch,
+      resolveBinary: () =>
+        Promise.resolve({
+          path: "/tmp/project/node_modules/opencode/bin/opencode.js",
+          source: "dependency",
+        }),
+    });
+
+    await orchestrator.start();
+
+    expect(spawnProcess).toHaveBeenCalledWith(
+      "/tmp/project/node_modules/opencode/bin/opencode.js",
+      ["serve", "--hostname=127.0.0.1", "--port=4096"],
+      expect.objectContaining({
+        cwd: "/tmp/project",
+        detached: false,
+      }),
+    );
+  });
+
   it("fails startup when the engine never becomes healthy", async () => {
     const child = createChild(654);
     const processKill = vi.spyOn(process, "kill").mockImplementation((pid) => {

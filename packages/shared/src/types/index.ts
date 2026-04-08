@@ -8,3 +8,17 @@ export type {
   CreateAgentInput,
   UpdateAgentInput,
 } from "../schemas/agents.js";
+export type {
+  ConfigProviders,
+  Provider,
+  ProviderApiKeyInput,
+  ProviderAuthMethod,
+  ProviderAuthMethods,
+  ProviderConnectResult,
+  ProviderList,
+  ProviderModel,
+  ProviderOauthAuthorization,
+  ProviderOauthCompleteInput,
+  ProviderOauthStartInput,
+  ProviderStatus,
+} from "../schemas/providers.js";

@@ -30,6 +30,7 @@ export {
   type WorkspaceRequestInit,
   type WorkspaceTarget,
 } from "./orchestrator/opencode-orchestrator.js";
+export { createProviderService, type ProviderService } from "./services/provider-service.js";
 export {
   createDrainController,
   type DrainController,

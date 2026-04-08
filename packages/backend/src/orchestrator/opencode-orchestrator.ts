@@ -12,6 +12,7 @@ export type WorkspaceTarget = {
 
 export type WorkspaceRequestInit = Omit<RequestInit, "body"> & {
   body?: unknown;
+  timeoutMs?: number;
 };
 
 export type EngineState = "stopped" | "starting" | "healthy" | "unhealthy" | "stopping";
@@ -69,6 +70,8 @@ export function createOpenCodeOrchestrator(options: {
   const spawnProcess = options.spawnProcess ?? spawn;
   const fetchFn = options.fetch ?? fetch;
   const resolveBinary = options.resolveBinary ?? resolveOpencodeBinary;
+  const useDetachedProcess =
+    process.platform !== "win32" && options.config.nodeEnv !== "development";
 
   let child: ChildProcess | undefined;
   let state: EngineState = "stopped";
@@ -115,7 +118,7 @@ export function createOpenCodeOrchestrator(options: {
         {
           cwd: options.config.paths.cwd,
           env: process.env,
-          detached: process.platform !== "win32",
+          detached: useDetachedProcess,
           stdio: ["ignore", "pipe", "pipe"],
         },
       );
@@ -345,7 +348,7 @@ export function createOpenCodeOrchestrator(options: {
       url.searchParams.set("workspace", init.target.workspaceId);
     }
 
-    const { body, target: _target, ...rest } = init ?? {};
+    const { body, target: _target, timeoutMs, ...rest } = init ?? {};
     const headers = new Headers(init?.headers);
     const requestInit: RequestInit = {
       ...rest,
@@ -356,7 +359,7 @@ export function createOpenCodeOrchestrator(options: {
       requestInit.body = serializeBody(body, headers);
     }
 
-    const response = await fetchWithTimeout(url, requestInit);
+    const response = await fetchWithTimeout(url, requestInit, timeoutMs);
 
     if (!response.ok) {
       throw new Error(
@@ -438,11 +441,15 @@ export function createOpenCodeOrchestrator(options: {
     }
   }
 
-  async function fetchWithTimeout(input: URL | string, init?: RequestInit): Promise<Response> {
+  async function fetchWithTimeout(
+    input: URL | string,
+    init?: RequestInit,
+    timeoutMs?: number,
+  ): Promise<Response> {
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       controller.abort(new Error("OpenCode request timed out."));
-    }, options.config.timeouts.engineRequestMs);
+    }, timeoutMs ?? options.config.timeouts.engineRequestMs);
 
     timeout.unref();
 
@@ -473,7 +480,7 @@ export function createOpenCodeOrchestrator(options: {
 
   function signalProcess(proc: ChildProcess, signal: NodeJS.Signals): void {
     try {
-      if (process.platform !== "win32" && proc.pid) {
+      if (useDetachedProcess && proc.pid) {
         process.kill(-proc.pid, signal);
         return;
       }

@@ -18,6 +18,7 @@ import { agents, custom_tools, mcp_servers } from "../db/schema/index.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { OpenCodeOrchestrator } from "../orchestrator/opencode-orchestrator.js";
 import type { AppDb } from "../db/client.js";
+import { createProviderService } from "./provider-service.js";
 import {
   archiveWorkspace,
   getBuiltInSkillRoot,
@@ -35,6 +36,10 @@ export function createAgentService(options: {
   skillRoot?: string;
 }) {
   const skillRoot = options.skillRoot ?? getBuiltInSkillRoot(options.config);
+  const providerService = createProviderService({
+    config: options.config,
+    orchestrator: options.orchestrator,
+  });
 
   return {
     async list(includeArchived = false): Promise<Agent[]> {
@@ -200,7 +205,7 @@ export function createAgentService(options: {
       customTools: Array<{ name: string; enabled: boolean }>;
       providerModels: string[];
     }> {
-      const [skills, mcpRows, toolRows] = await Promise.all([
+      const [skills, mcpRows, toolRows, providerModels] = await Promise.all([
         listBuiltInSkills(skillRoot),
         options.db
           .select({ name: mcp_servers.name, enabled: mcp_servers.enabled })
@@ -208,13 +213,14 @@ export function createAgentService(options: {
         options.db
           .select({ name: custom_tools.name, enabled: custom_tools.enabled })
           .from(custom_tools),
+        providerService.listModels(),
       ]);
 
       return {
         builtInSkills: builtInSkillListSchema.parse(skills),
         mcpServers: mcpRows,
         customTools: toolRows,
-        providerModels: [],
+        providerModels: providerModels.map((model) => model.id),
       };
     },
   };
