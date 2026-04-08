@@ -243,6 +243,58 @@ describe("createOpenCodeOrchestrator", () => {
     expect(processKill).toHaveBeenCalledWith(-654, "SIGTERM");
   });
 
+  it("includes opencode json error details in request failures", async () => {
+    const child = createChild(888);
+    const fetch = vi.fn((input: URL | string) => {
+      const url = new URL(input.toString());
+
+      if (url.pathname === "/global/health") {
+        return Promise.resolve(jsonResponse({ healthy: true, version: "1.0.0" }));
+      }
+
+      if (url.pathname === "/provider/github-copilot/oauth/callback") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ name: "ProviderAuthOauthMissing" }), {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected request: ${url.toString()}`));
+    });
+    const orchestrator = createOpenCodeOrchestrator({
+      config: loadRuntimeConfig({
+        cwd: "/tmp/project",
+        env: {
+          NODE_ENV: "test",
+          CC_OPENCODE_HEALTH_POLL_MS: "10000",
+        },
+      }),
+      logger: pino({ enabled: false }),
+      spawnProcess: vi.fn(() => child as never),
+      fetch: fetch as typeof globalThis.fetch,
+      resolveBinary: () =>
+        Promise.resolve({
+          path: "/tmp/project/node_modules/opencode/bin/opencode.js",
+          source: "dependency",
+        }),
+    });
+
+    await orchestrator.start();
+
+    const client = orchestrator.createWorkspaceClient({
+      directory: "/tmp/project/.cc/workspace",
+    });
+
+    await expect(
+      client.request("/provider/github-copilot/oauth/callback", {
+        method: "POST",
+        body: { method: 0 },
+      }),
+    ).rejects.toThrow(/ProviderAuthOauthMissing/);
+  });
+
   it("restarts crashed processes only within the configured restart limit", async () => {
     const first = createChild(111);
     const second = createChild(222);

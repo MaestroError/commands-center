@@ -377,7 +377,7 @@ export function createOpenCodeOrchestrator(options: {
 
     if (!response.ok) {
       throw new Error(
-        `OpenCode request to ${url.pathname} failed with status ${String(response.status)}.`,
+        `OpenCode request to ${url.pathname} failed with status ${String(response.status)}${await readErrorDetail(response)}.`,
       );
     }
 
@@ -388,6 +388,38 @@ export function createOpenCodeOrchestrator(options: {
     }
 
     return (await response.text()) as T;
+  }
+
+  async function readErrorDetail(response: Response): Promise<string> {
+    const contentType = response.headers.get("content-type") ?? "";
+
+    if (contentType.includes("application/json")) {
+      const payload = await response.json().catch(() => undefined);
+
+      if (payload && typeof payload === "object") {
+        const name =
+          "name" in payload && typeof payload.name === "string" ? payload.name : undefined;
+        const message =
+          "message" in payload && typeof payload.message === "string" ? payload.message : undefined;
+
+        if (name && message) {
+          return `: ${name}: ${message}`;
+        }
+
+        if (name) {
+          return `: ${name}`;
+        }
+
+        if (message) {
+          return `: ${message}`;
+        }
+      }
+
+      return "";
+    }
+
+    const text = await response.text().catch(() => "");
+    return text ? `: ${text}` : "";
   }
 
   function startPolling(): void {

@@ -142,6 +142,24 @@ describe("createProviderService", () => {
               } as T);
             }
 
+            if (path === "/provider") {
+              return Promise.resolve({
+                all: [
+                  {
+                    id: "openai",
+                    name: "OpenAI",
+                    source: "api",
+                    env: ["OPENAI_API_KEY"],
+                    models: {
+                      "openai/gpt-4.1": { name: "GPT-4.1" },
+                    },
+                  },
+                ],
+                default: { openai: "openai/gpt-4.1" },
+                connected: ["openai"],
+              } as T);
+            }
+
             return Promise.resolve(true as T);
           },
           getPath: () => Promise.reject(new Error("not used")),
@@ -160,8 +178,75 @@ describe("createProviderService", () => {
       { path: "/auth/openai", timeoutMs: 1234 },
       { path: "/provider/openai/oauth/authorize", timeoutMs: 1234 },
       { path: "/provider/openai/oauth/callback", timeoutMs: 1234 },
+      { path: "/provider", timeoutMs: undefined },
       { path: "/auth/openai", timeoutMs: 1234 },
     ]);
+  });
+
+  it("returns pending when oauth completion is still waiting on provider confirmation", async () => {
+    const pendingOrchestrator = {
+      ...createOrchestrator({
+        "/provider": {
+          all: [
+            {
+              id: "github-copilot",
+              name: "GitHub Copilot",
+              source: "api",
+              env: [],
+              models: {},
+            },
+          ],
+          default: {},
+          connected: [],
+        },
+        "/provider/auth": {
+          "github-copilot": [{ type: "oauth", label: "Browser OAuth" }],
+        },
+      }),
+    };
+    pendingOrchestrator.createWorkspaceClient = () => ({
+      request: <T>(path: string) => {
+        if (path === "/provider/github-copilot/oauth/callback") {
+          return Promise.reject(new Error("Request timed out"));
+        }
+
+        if (path === "/provider") {
+          return Promise.resolve({
+            all: [
+              {
+                id: "github-copilot",
+                name: "GitHub Copilot",
+                source: "api",
+                env: [],
+                models: {},
+              },
+            ],
+            default: {},
+            connected: [],
+          } as T);
+        }
+
+        if (path === "/provider/auth") {
+          return Promise.resolve({
+            "github-copilot": [{ type: "oauth", label: "Browser OAuth" }],
+          } as T);
+        }
+
+        return Promise.resolve(true as T);
+      },
+      getPath: () => Promise.reject(new Error("not used")),
+      disposeInstance: () => Promise.resolve(true),
+    });
+
+    const pendingService = createProviderService({
+      config: loadRuntimeConfig({ cwd: "/tmp/project", env: { NODE_ENV: "test" } }),
+      orchestrator: pendingOrchestrator,
+    });
+
+    await expect(pendingService.completeOauth("github-copilot", 0)).resolves.toEqual({
+      connected: false,
+      pending: true,
+    });
   });
 });
 

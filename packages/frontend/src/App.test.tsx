@@ -37,9 +37,9 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("OpenAI");
+    await screen.findByRole("heading", { name: "OpenAI" });
     expect(window.location.pathname).toBe("/providers");
-    expect(screen.getByText("GPT-4.1")).toBeInTheDocument();
+    expect(screen.getAllByText("GPT-4.1").length).toBeGreaterThan(0);
     expect(screen.getByText("Connected")).toBeInTheDocument();
   });
 
@@ -83,7 +83,7 @@ describe("App", () => {
         method: "code",
         instructions: "Complete login in the browser, then paste the code here.",
       }),
-      jsonResponse(200, { success: true }),
+      jsonResponse(200, { connected: true, pending: false, message: "Connected openai" }),
       jsonResponse(200, [connectedProvider]),
     ]);
 

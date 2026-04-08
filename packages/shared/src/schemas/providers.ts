@@ -102,6 +102,12 @@ export const providerConnectResultSchema = z.object({
   success: z.boolean(),
 });
 
+export const providerOauthCompleteResultSchema = z.object({
+  connected: z.boolean(),
+  pending: z.boolean().optional(),
+  message: z.string().optional(),
+});
+
 export type ConfigProviders = z.infer<typeof configProvidersSchema>;
 export type Provider = z.infer<typeof providerSchema>;
 export type ProviderApiKeyInput = z.infer<typeof providerApiKeyInputSchema>;
@@ -111,6 +117,7 @@ export type ProviderConnectResult = z.infer<typeof providerConnectResultSchema>;
 export type ProviderList = z.infer<typeof providerListSchema>;
 export type ProviderModel = z.infer<typeof providerModelSchema>;
 export type ProviderOauthAuthorization = z.infer<typeof providerOauthAuthorizationSchema>;
+export type ProviderOauthCompleteResult = z.infer<typeof providerOauthCompleteResultSchema>;
 export type ProviderOauthCompleteInput = z.infer<typeof providerOauthCompleteInputSchema>;
 export type ProviderOauthStartInput = z.infer<typeof providerOauthStartInputSchema>;
 export type ProviderStatus = z.infer<typeof providerStatusSchema>;

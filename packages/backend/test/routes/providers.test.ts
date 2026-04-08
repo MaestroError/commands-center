@@ -53,14 +53,19 @@ describe("provider routes", () => {
         method: "auto",
         instructions: "Finish login in the opened browser window.",
       });
-      expect(oauthComplete.json()).toEqual({ success: true });
+      expect(oauthComplete.json()).toEqual({
+        connected: true,
+        pending: false,
+        message: "Connected openai",
+      });
       expect(disconnected.json()).toEqual({ success: true });
-      expect(calls).toEqual([
-        "/provider",
-        "/provider/auth",
+      expect(calls).toHaveLength(7);
+      expect(calls.slice(0, 2).sort()).toEqual(["/provider", "/provider/auth"]);
+      expect(calls.slice(2)).toEqual([
         "/auth/openai",
         "/provider/openai/oauth/authorize",
         "/provider/openai/oauth/callback",
+        "/provider",
         "/auth/openai",
       ]);
     } finally {

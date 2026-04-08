@@ -88,9 +88,7 @@ export function registerProviderRoutes(server: RouteServer, context: RuntimeCont
       return;
     }
 
-    return {
-      success: await service.completeOauth(params.providerId, body.method, body.code),
-    };
+    return service.completeOauth(params.providerId, body.method, body.code);
   });
 
   server.delete("/api/providers/:providerId", async (request, reply) => {

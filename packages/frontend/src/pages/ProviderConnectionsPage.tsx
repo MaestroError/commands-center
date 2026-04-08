@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { ProviderOauthAuthorization, ProviderStatus } from "@cc/shared/schemas";
+import type {
+  ProviderOauthAuthorization,
+  ProviderOauthCompleteResult,
+  ProviderStatus,
+} from "@cc/shared/schemas";
 
 import { useProviderConnections } from "@/hooks/use-provider-connections";
 
@@ -26,6 +30,15 @@ export function ProviderConnectionsPage(props: ProviderConnectionsPageProps) {
     disconnect,
   } = useProviderConnections();
   const [dialog, setDialog] = useState<DialogState>();
+  const [successMessage, setSuccessMessage] = useState<string>();
+  const availableModels = providers.flatMap((entry) =>
+    entry.models.map((model) => ({
+      ...model,
+      providerName: entry.provider.name,
+      connected: entry.connected,
+    })),
+  );
+  const connectedModels = availableModels.filter((model) => model.connected);
 
   if (!props.active) {
     return null;
@@ -57,7 +70,66 @@ export function ProviderConnectionsPage(props: ProviderConnectionsPageProps) {
         </div>
       </section>
 
-      {error ? <div className="cc-alert">{error}</div> : null}
+      {error ? (
+        <section className="cc-alert flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-semibold">Provider data could not be loaded.</p>
+            <p className="mt-1 text-sm text-rose-100/90">{error}</p>
+          </div>
+          <button
+            className="cc-button cc-button-secondary"
+            onClick={() => void refresh()}
+            type="button"
+          >
+            Try again
+          </button>
+        </section>
+      ) : null}
+
+      {successMessage ? (
+        <section className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+          {successMessage}
+        </section>
+      ) : null}
+
+      {!loading ? (
+        <section className="rounded-3xl border border-white/10 bg-slate-950/70 p-6 shadow-xl shadow-slate-950/20">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Available models</h2>
+              <p className="mt-1 text-sm text-slate-300">
+                Connected providers expose these models right now. This is the quickest way to
+                confirm auth worked.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+              {connectedModels.length} connected model{connectedModels.length === 1 ? "" : "s"}
+            </div>
+          </div>
+
+          {connectedModels.length > 0 ? (
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {connectedModels.map((model) => (
+                <div
+                  className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4"
+                  key={`${model.providerId}:${model.id}`}
+                >
+                  <p className="text-sm font-semibold text-white">{model.name}</p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-emerald-200">
+                    {model.providerName}
+                  </p>
+                  <p className="mt-2 break-all text-xs text-slate-300">{model.id}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-5 rounded-2xl border border-dashed border-white/10 bg-white/5 p-5 text-sm text-slate-300">
+              No connected provider models yet. Authenticate a provider below, then refresh to
+              confirm the model list.
+            </div>
+          )}
+        </section>
+      ) : null}
 
       {loading ? <LoadingState /> : null}
 
@@ -178,6 +250,10 @@ export function ProviderConnectionsPage(props: ProviderConnectionsPageProps) {
           onClose={() => setDialog(undefined)}
           onCompleteOauth={completeOauth}
           onConnectApiKey={connectApiKey}
+          onSuccess={(message) => {
+            setSuccessMessage(message);
+            setDialog(undefined);
+          }}
           onStartOauth={startOauth}
           provider={dialog.provider}
         />
@@ -210,7 +286,12 @@ type ProviderDialogProps = {
     method: number,
     inputs?: Record<string, string>,
   ) => Promise<ProviderOauthAuthorization>;
-  onCompleteOauth: (providerId: string, method: number, code?: string) => Promise<boolean>;
+  onCompleteOauth: (
+    providerId: string,
+    method: number,
+    code?: string,
+  ) => Promise<ProviderOauthCompleteResult>;
+  onSuccess: (message: string) => void;
 };
 
 function ProviderDialog(props: ProviderDialogProps) {
@@ -228,7 +309,10 @@ function ProviderDialog(props: ProviderDialogProps) {
   }>();
   const [manualCode, setManualCode] = useState("");
   const [localError, setLocalError] = useState<string>();
+  const [autoStatus, setAutoStatus] = useState<string>();
+  const [dialogBusy, setDialogBusy] = useState(false);
   const pollRef = useRef<number | undefined>(undefined);
+  const pollBusyRef = useRef(false);
 
   const prompts = useMemo(() => {
     if (!oauthMethod?.prompts) {
@@ -250,6 +334,7 @@ function ProviderDialog(props: ProviderDialogProps) {
       if (pollRef.current) {
         window.clearInterval(pollRef.current);
       }
+      pollBusyRef.current = false;
     };
   }, []);
 
@@ -258,10 +343,13 @@ function ProviderDialog(props: ProviderDialogProps) {
     setLocalError(undefined);
 
     try {
+      setDialogBusy(true);
       await props.onConnectApiKey(props.provider.provider.id, apiKey);
-      props.onClose();
+      props.onSuccess(`${props.provider.provider.name} connected.`);
     } catch (error) {
       setLocalError(readDialogError(error));
+    } finally {
+      setDialogBusy(false);
     }
   }
 
@@ -273,6 +361,7 @@ function ProviderDialog(props: ProviderDialogProps) {
     setLocalError(undefined);
 
     try {
+      setDialogBusy(true);
       const auth = await props.onStartOauth(
         props.provider.provider.id,
         props.provider.authMethods.indexOf(oauthMethod),
@@ -283,6 +372,7 @@ function ProviderDialog(props: ProviderDialogProps) {
         method: props.provider.authMethods.indexOf(oauthMethod),
         auth,
       });
+      setAutoStatus(undefined);
       window.open(auth.url, "_blank", "noopener,noreferrer");
 
       if (auth.method === "auto") {
@@ -290,6 +380,8 @@ function ProviderDialog(props: ProviderDialogProps) {
       }
     } catch (error) {
       setLocalError(readDialogError(error));
+    } finally {
+      setDialogBusy(false);
     }
   }
 
@@ -299,10 +391,17 @@ function ProviderDialog(props: ProviderDialogProps) {
     }
 
     pollRef.current = window.setInterval(() => {
+      if (pollBusyRef.current) {
+        return;
+      }
+
+      pollBusyRef.current = true;
+      setDialogBusy(true);
       void props
         .onCompleteOauth(providerId, method)
-        .then((connected) => {
-          if (!connected) {
+        .then((result) => {
+          if (!result.connected) {
+            setAutoStatus(result.pending ? "Waiting for provider confirmation..." : undefined);
             return;
           }
 
@@ -310,9 +409,13 @@ function ProviderDialog(props: ProviderDialogProps) {
             window.clearInterval(pollRef.current);
           }
 
-          props.onClose();
+          props.onSuccess(result.message ?? `${props.provider.provider.name} connected.`);
         })
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => {
+          pollBusyRef.current = false;
+          setDialogBusy(false);
+        });
     }, 2000);
   }
 
@@ -326,14 +429,27 @@ function ProviderDialog(props: ProviderDialogProps) {
     setLocalError(undefined);
 
     try {
-      await props.onCompleteOauth(
+      setDialogBusy(true);
+      const result = await props.onCompleteOauth(
         props.provider.provider.id,
         oauthSession.method,
         manualCode || undefined,
       );
-      props.onClose();
+
+      if (result.connected) {
+        props.onSuccess(result.message ?? `${props.provider.provider.name} connected.`);
+        return;
+      }
+
+      if (result.pending) {
+        setAutoStatus("Waiting for provider confirmation...");
+        startPolling(props.provider.provider.id, oauthSession.method);
+        return;
+      }
     } catch (error) {
       setLocalError(readDialogError(error));
+    } finally {
+      setDialogBusy(false);
     }
   }
 
@@ -374,10 +490,10 @@ function ProviderDialog(props: ProviderDialogProps) {
             </p>
             <button
               className="cc-button"
-              disabled={props.busy || apiKey.trim().length === 0}
+              disabled={props.busy || dialogBusy || apiKey.trim().length === 0}
               type="submit"
             >
-              {props.busy ? "Saving..." : "Save key"}
+              {props.busy || dialogBusy ? "Saving..." : "Save key"}
             </button>
           </form>
         ) : null}
@@ -433,11 +549,11 @@ function ProviderDialog(props: ProviderDialogProps) {
 
             <button
               className="cc-button"
-              disabled={props.busy}
+              disabled={props.busy || dialogBusy}
               onClick={() => void handleStartOauth()}
               type="button"
             >
-              {props.busy ? "Starting..." : "Open provider login"}
+              {props.busy || dialogBusy ? "Starting..." : "Open provider login"}
             </button>
 
             {oauthSession ? (
@@ -450,6 +566,7 @@ function ProviderDialog(props: ProviderDialogProps) {
                 <p className="mt-3 text-xs uppercase tracking-[0.2em] text-cyan-200">
                   Mode: {oauthSession.auth.method}
                 </p>
+                {autoStatus ? <p className="mt-3 text-sm text-cyan-100">{autoStatus}</p> : null}
               </div>
             ) : null}
 
@@ -467,10 +584,10 @@ function ProviderDialog(props: ProviderDialogProps) {
                 </label>
                 <button
                   className="cc-button cc-button-secondary"
-                  disabled={props.busy}
+                  disabled={props.busy || dialogBusy}
                   type="submit"
                 >
-                  {props.busy ? "Completing..." : "Complete OAuth"}
+                  {props.busy || dialogBusy ? "Completing..." : "Complete OAuth"}
                 </button>
               </form>
             ) : null}

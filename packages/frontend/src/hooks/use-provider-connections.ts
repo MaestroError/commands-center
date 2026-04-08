@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ProviderOauthAuthorization, ProviderStatus } from "@cc/shared/schemas";
+import type {
+  ProviderOauthAuthorization,
+  ProviderOauthCompleteResult,
+  ProviderStatus,
+} from "@cc/shared/schemas";
 
 import {
   completeProviderOauth,
@@ -39,6 +43,7 @@ export function useProviderConnections() {
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     void refresh();
 
     return () => {
@@ -46,7 +51,7 @@ export function useProviderConnections() {
     };
   }, [refresh]);
 
-  const run = useCallback(
+  const runWithRefresh = useCallback(
     async <T>(providerId: string, action: () => Promise<T>): Promise<T> => {
       setBusyProviderId(providerId);
       setError(undefined);
@@ -68,6 +73,18 @@ export function useProviderConnections() {
     [refresh],
   );
 
+  const runWithoutRefresh = useCallback(async <T>(action: () => Promise<T>): Promise<T> => {
+    setError(undefined);
+
+    try {
+      return await action();
+    } catch (nextError) {
+      const message = readError(nextError);
+      setError(message);
+      throw new Error(message);
+    }
+  }, []);
+
   return {
     providers,
     loading,
@@ -75,12 +92,20 @@ export function useProviderConnections() {
     error,
     refresh,
     connectApiKey: (providerId: string, apiKey: string) =>
-      run(providerId, () => submitProviderApiKey(providerId, apiKey)),
+      runWithRefresh(providerId, () => submitProviderApiKey(providerId, apiKey)),
     startOauth: (providerId: string, method: number, inputs?: Record<string, string>) =>
-      run(providerId, () => startProviderOauth(providerId, method, inputs)),
-    completeOauth: (providerId: string, method: number, code?: string) =>
-      run(providerId, () => completeProviderOauth(providerId, method, code)),
-    disconnect: (providerId: string) => run(providerId, () => disconnectProvider(providerId)),
+      runWithoutRefresh(() => startProviderOauth(providerId, method, inputs)),
+    completeOauth: async (providerId: string, method: number, code?: string) => {
+      const result = await runWithoutRefresh(() => completeProviderOauth(providerId, method, code));
+
+      if (result.connected) {
+        await refresh();
+      }
+
+      return result;
+    },
+    disconnect: (providerId: string) =>
+      runWithRefresh(providerId, () => disconnectProvider(providerId)),
   } satisfies {
     providers: ProviderStatus[];
     loading: boolean;
@@ -93,7 +118,11 @@ export function useProviderConnections() {
       method: number,
       inputs?: Record<string, string>,
     ) => Promise<ProviderOauthAuthorization>;
-    completeOauth: (providerId: string, method: number, code?: string) => Promise<boolean>;
+    completeOauth: (
+      providerId: string,
+      method: number,
+      code?: string,
+    ) => Promise<ProviderOauthCompleteResult>;
     disconnect: (providerId: string) => Promise<boolean>;
   };
 }

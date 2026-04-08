@@ -1,8 +1,10 @@
 import {
   providerConnectResultSchema,
   providerOauthAuthorizationSchema,
+  providerOauthCompleteResultSchema,
   providerStatusListSchema,
   type ProviderOauthAuthorization,
+  type ProviderOauthCompleteResult,
   type ProviderStatus,
 } from "@cc/shared/schemas";
 
@@ -47,17 +49,15 @@ export async function completeProviderOauth(
   providerId: string,
   method: number,
   code?: string,
-): Promise<boolean> {
-  const result = await requestJson<{ success: boolean }>(
+): Promise<ProviderOauthCompleteResult> {
+  return requestJson<ProviderOauthCompleteResult>(
     `/api/providers/${encodeURIComponent(providerId)}/oauth/complete`,
-    providerConnectResultSchema,
+    providerOauthCompleteResultSchema,
     {
       method: "POST",
       body: { method, code },
     },
   );
-
-  return result.success;
 }
 
 export async function disconnectProvider(providerId: string): Promise<boolean> {

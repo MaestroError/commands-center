@@ -48,3 +48,5 @@ test-results/
 # Reference repos (cloned for agent learning, not part of the project)
 examples/openwork/
 examples/opencode/
+
+.playwright-mcp

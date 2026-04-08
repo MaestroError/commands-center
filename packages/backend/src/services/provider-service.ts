@@ -4,6 +4,7 @@ import {
   providerConnectResultSchema,
   providerListSchema,
   providerOauthAuthorizationSchema,
+  providerOauthCompleteResultSchema,
   providerStatusListSchema,
   type ProviderAuthMethod,
   type ProviderModel,
@@ -25,7 +26,10 @@ export function createProviderService(options: {
 
   return {
     async list(): Promise<ProviderStatus[]> {
-      const [providers, auth] = await Promise.all([listProviders(), listAuthMethods()]);
+      const [providers, auth] = await Promise.all([
+        listProviders({ dispose: true }),
+        listAuthMethods(),
+      ]);
 
       return providerStatusListSchema.parse(
         providers.all.map((provider) => ({
@@ -75,20 +79,36 @@ export function createProviderService(options: {
       return providerOauthAuthorizationSchema.parse(result);
     },
 
-    async completeOauth(providerId: string, method: number, code?: string): Promise<boolean> {
-      const result = await client.request<boolean>(
-        `/provider/${encodeURIComponent(providerId)}/oauth/callback`,
-        {
-          method: "POST",
-          body: {
-            method,
-            code,
-          },
-          timeoutMs: options.config.timeouts.providerAuthMs,
-        },
-      );
+    async completeOauth(providerId: string, method: number, code?: string) {
+      const trimmedCode = code?.trim();
 
-      return providerConnectResultSchema.parse({ success: result }).success;
+      try {
+        const result = await client.request<boolean>(
+          `/provider/${encodeURIComponent(providerId)}/oauth/callback`,
+          {
+            method: "POST",
+            body: {
+              method,
+              code: trimmedCode || undefined,
+            },
+            timeoutMs: trimmedCode
+              ? options.config.timeouts.providerAuthMs
+              : Math.min(options.config.timeouts.providerAuthMs, 5_000),
+          },
+        );
+
+        if (providerConnectResultSchema.parse({ success: result }).success) {
+          return resolveOauthStatus(providerId, false);
+        }
+      } catch (error) {
+        if (isPendingOauthError(error)) {
+          return resolveOauthStatus(providerId, true);
+        }
+
+        throw error;
+      }
+
+      return resolveOauthStatus(providerId, false);
     },
 
     async disconnect(providerId: string): Promise<boolean> {
@@ -101,7 +121,11 @@ export function createProviderService(options: {
     },
   };
 
-  async function listProviders() {
+  async function listProvidersWithOptions(optionsArg: { dispose: boolean }) {
+    if (optionsArg.dispose) {
+      await disposeWorkspaceInstance();
+    }
+
     try {
       const result = await client.request("/provider");
       return providerListSchema.parse(result);
@@ -117,6 +141,10 @@ export function createProviderService(options: {
     }
   }
 
+  async function listProviders(optionsArg?: { dispose: boolean }) {
+    return listProvidersWithOptions({ dispose: optionsArg?.dispose ?? false });
+  }
+
   async function listAuthMethods() {
     const result = await client.request("/provider/auth", {
       timeoutMs: options.config.timeouts.providerAuthMs,
@@ -124,6 +152,31 @@ export function createProviderService(options: {
 
     return providerAuthMethodsSchema.parse(result);
   }
+
+  async function resolveOauthStatus(providerId: string, pending: boolean) {
+    const providers = await listProviders({ dispose: true });
+    const connected = providers.connected.includes(providerId);
+
+    return providerOauthCompleteResultSchema.parse({
+      connected,
+      pending: connected ? false : pending,
+      message: connected ? `Connected ${providerId}` : undefined,
+    });
+  }
+
+  async function disposeWorkspaceInstance(): Promise<void> {
+    try {
+      await client.disposeInstance();
+    } catch {
+      // Ignore dispose failures and fall back to the current instance state.
+    }
+  }
+}
+
+function isPendingOauthError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+
+  return /request timed out/i.test(text) || /ProviderAuthOauthMissing/i.test(text);
 }
 
 function mergeAuthMethods(

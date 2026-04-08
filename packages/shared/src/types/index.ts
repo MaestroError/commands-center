@@ -18,6 +18,7 @@ export type {
   ProviderList,
   ProviderModel,
   ProviderOauthAuthorization,
+  ProviderOauthCompleteResult,
   ProviderOauthCompleteInput,
   ProviderOauthStartInput,
   ProviderStatus,
