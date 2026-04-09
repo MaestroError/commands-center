@@ -13,6 +13,7 @@ This is a full product feature with its own backend scheduler, data model usage,
 - E2 OpenCode Orchestrator
 - E3 API and Realtime Foundation
 - C3 Direct Chat Session Model
+- I6 App-Provided MCP Server (for exposing scheduling tools to agents)
 
 ## Unblocks
 

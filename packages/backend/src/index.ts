@@ -28,12 +28,24 @@ export {
   type OpenCodeOrchestrator,
 } from "./orchestrator/opencode-orchestrator.js";
 export {
+  API_ERROR_RESPONSE,
+  ApiError,
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  registerApiErrorHandler,
+} from "./lib/api-error.js";
+export { configureFastifyZod, type AppServer, type AppTypeProvider } from "./lib/fastify-zod.js";
+export { commonErrorResponses } from "./lib/route.js";
+export {
   createOpenCodeClient,
   createScopedOpenCodeClient,
   type OpencodeClient,
 } from "./lib/opencode-client.js";
+export { createHealthService, type HealthService } from "./services/health-service.js";
 export { createOpenCodeService, type OpenCodeService } from "./services/opencode-service.js";
 export { createProviderService, type ProviderService } from "./services/provider-service.js";
+export { createSchedulerService, type SchedulerService } from "./services/scheduler-service.js";
 export {
   createDrainController,
   type DrainController,

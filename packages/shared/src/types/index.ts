@@ -1,4 +1,11 @@
 export type {
+  ApiError,
+  ApiErrorCode,
+  ApiErrorResponse,
+  ApiValidationDetails,
+  ApiValidationErrorResponse,
+} from "../schemas/api.js";
+export type {
   Agent,
   AgentCapabilitySelection,
   AgentMcpServer,
@@ -23,3 +30,10 @@ export type {
   ProviderOauthStartInput,
   ProviderStatus,
 } from "../schemas/providers.js";
+export type {
+  DatabaseStatus,
+  EngineState,
+  EngineStatus,
+  HealthResponse,
+  SchedulerStatus,
+} from "../schemas/health.js";

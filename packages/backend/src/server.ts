@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 
+import { registerApiErrorHandler } from "./lib/api-error.js";
+import { configureFastifyZod } from "./lib/fastify-zod.js";
 import type { RuntimeContext } from "./lib/start-server-runtime.js";
-import { registerAgentRoutes } from "./routes/agents.js";
-import { registerProviderRoutes } from "./routes/providers.js";
+import { registerApiRoutes } from "./routes/index.js";
 
-export async function createServer(context: RuntimeContext) {
+export function createServer(context: RuntimeContext) {
   const server = Fastify({
     loggerInstance: context.logger,
     genReqId(request) {
@@ -14,30 +15,17 @@ export async function createServer(context: RuntimeContext) {
     requestIdHeader: "x-request-id",
     requestIdLogLabel: "requestId",
   });
+  configureFastifyZod(server);
 
   server.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);
   });
 
-  server.get("/api/health", () => {
-    return {
-      status: "ok",
-      dataDir: context.config.paths.dataDir,
-      workspaceDir: context.config.paths.workspaceDir,
-      database: {
-        dialect: context.database.dialect,
-        sqlitePath: context.database.sqlitePath,
-      },
-      opencode: context.orchestrator.getStatus(),
-    };
+  server.setErrorHandler((error, request, reply) => {
+    registerApiErrorHandler(request, reply, error);
   });
 
-  server.get("/api/opencode", () => {
-    return context.orchestrator.getStatus();
-  });
-
-  registerAgentRoutes(server, context);
-  registerProviderRoutes(server, context);
+  registerApiRoutes(server, context);
 
   return server;
 }

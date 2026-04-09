@@ -76,7 +76,7 @@ The user should be able to globally:
 
 - Add any custom skills + Browse curated skill library from us (Founders)
 - Add MCPs, including with OAuth + Our built-in integrations
-- Auth Integrations from Composio
+- Auth Integrations from Composio (built-in MCP suggestion — user provides their own API key, CC authorizes globally via OpenCode, per-agent tool access via workspace config)
 
 Then while creating the agent, the user specifies what it should have access to, plus the role, name, and instructions. Optionally the icon/image too. See **What is an Agent** above for what this produces on disk.
 
@@ -221,7 +221,7 @@ The user can add custom tools globally, that later can be registered to the agen
 
 ### App provided tools
 
-We will use composio for external integrations, so one of the tools provided by app will be custom set of composio tools (Since composio will be configured also globally and user can specify specific toolset per agent)
+Composio is offered as a built-in MCP server suggestion. The user brings their own Composio API key, CC registers it as a global MCP server via OpenCode's standard auth flow, and per-agent tool access is controlled through the workspace `opencode.jsonc` permission system — same as any other MCP server. No deep SDK integration; we use Composio's MCP mode exclusively. Enterprise multi-profile Composio integration is planned for a future phase.
 
 And any other interactions with main app will be happen through this MCP (TBD)
 
@@ -430,7 +430,7 @@ cc/
 | --------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Agent Engine**      | `opencode-ai` (binary) + `@opencode-ai/sdk` (JS SDK) | Official JS SDK (`createOpencodeClient`) for type-safe programmatic interaction + single persistent `opencode serve` daemon managed by the orchestrator |
 | **Tool Protocol**     | MCP SDK (`@modelcontextprotocol/sdk`)                | `StdioServerTransport` / `SSEServerTransport`, dynamic tool registration, `listChanged` notifications                                                   |
-| **External API Auth** | Composio (`composio-core`)                           | Managed OAuth flows, token storage/refresh, Tool Router for dynamic action loading                                                                      |
+| **External API Auth** | Composio (MCP mode)                         | Built-in MCP suggestion: user-provided API key or OAuth, global auth via OpenCode, per-agent tool permissions via workspace config. Enterprise multi-profile planned for future phase. |
 
 ## Testing & Quality
 
@@ -547,7 +547,7 @@ All runtime configuration is managed through environment variables. Validated at
 
 | Variable           | Default | Required | Description                                                           |
 | ------------------ | ------- | -------- | --------------------------------------------------------------------- |
-| `COMPOSIO_API_KEY` | —       | No       | Composio SDK API key for managed OAuth and external tool integrations |
+| `COMPOSIO_API_KEY` | —       | No       | User-provided Composio API key for the built-in MCP suggestion. Stored encrypted in DB, injected into OpenCode's global MCP config at runtime. |
 
 ## Auth Timeouts
 

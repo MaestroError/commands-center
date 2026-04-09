@@ -1,4 +1,16 @@
 export {
+  apiErrorCodeSchema,
+  apiErrorResponseSchema,
+  apiErrorSchema,
+  apiValidationDetailsSchema,
+  apiValidationErrorResponseSchema,
+  type ApiError,
+  type ApiErrorCode,
+  type ApiErrorResponse,
+  type ApiValidationDetails,
+  type ApiValidationErrorResponse,
+} from "./api.js";
+export {
   agentCapabilitySelectionSchema,
   agentListSchema,
   agentMcpServerSchema,
@@ -48,3 +60,15 @@ export {
   type ProviderOauthStartInput,
   type ProviderStatus,
 } from "./providers.js";
+export {
+  databaseStatusSchema,
+  engineStateSchema,
+  engineStatusSchema,
+  healthResponseSchema,
+  schedulerStatusSchema,
+  type DatabaseStatus,
+  type EngineState,
+  type EngineStatus,
+  type HealthResponse,
+  type SchedulerStatus,
+} from "./health.js";

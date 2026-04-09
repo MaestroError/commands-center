@@ -22,17 +22,24 @@ This is a complete workspace-interaction feature slice and can ship after the da
 
 - Implement file manager screen with tree, breadcrumbs, editor, and create/rename/delete flows
 - Implement critical-file warnings for agent-sensitive files
-- Implement global terminal screen using PTY and websocket transport with 16ms flow-control buffering from E3 infrastructure
-- Reuse agent terminal backend for chat-embedded terminals
+- Implement global terminal screen by integrating OpenCode's existing PTY HTTP + WebSocket endpoints instead of introducing a second PTY backend in CommandsCenter
+- Reuse the same OpenCode PTY session model for chat-embedded agent terminals, with workspace directory passed per agent
 - Support opening files and folders from chat sidebar into file manager or terminal context
 - Ensure file manager and terminal screens are responsive on mobile viewports
+
+## OpenCode Findings
+
+- OpenCode already exposes PTY session management routes (`/pty`, `/pty/:ptyID`, `/pty/:ptyID/connect`) and uses them in its own app for terminal support
+- CommandsCenter should treat OpenCode as the terminal engine just like it treats it as the chat engine; U4 should integrate with those upstream endpoints rather than building a parallel PTY service with `node-pty`
+- Terminal-specific reconnect, cursor replay, and resize behavior should follow the upstream PTY contract so we stay aligned with OpenCode semantics
+- If upstream PTY throughput needs additional smoothing in the UI, prefer frontend-side buffering/render strategies first; avoid forking backend PTY transport unless OpenCode proves insufficient
 
 ## Acceptance Criteria
 
 - The user can browse and edit workspace files with syntax-highlighted editing
 - The user can browse the wider machine filesystem where allowed by the app model
 - The user can open a global terminal and run interactive commands
-- Terminal output renders smoothly during high-throughput operations without UI freezing
+- Terminal output renders smoothly during high-throughput operations without UI freezing while using OpenCode's PTY transport
 - The user can open an agent terminal in workspace context and maintain multiple sessions
 - File manager and terminal flows interoperate with direct chat entry points
 - File manager and terminal layouts adapt correctly to mobile viewports

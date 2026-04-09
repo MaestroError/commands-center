@@ -27,7 +27,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |  \- I2 Integrations and MCP Management
  |     |- I3 Custom Tools Platform
  |     \- I5 Composio Integration
- |- E3 API and Realtime Foundation
+ |- ✅ E3 API and Realtime Foundation
  |  |- E4 Self-Updating and Version Management
  |  |- U0 Frontend Foundation
  |  |  |- U1 App Shell and Dashboard
@@ -65,7 +65,7 @@ I2, I3, I5 each extend the agent editor independently after U2 ships
 3. `✅ core-data-state/01-database-and-workspace-foundation.md`
 4. `✅ core-data-state/02-agent-workspace-lifecycle.md`
 5. `✅ engine-infrastructure/05-opencode-workspace-contract.md`
-6. `engine-infrastructure/03-api-and-realtime-foundation.md`
+6. `✅ engine-infrastructure/03-api-and-realtime-foundation.md`
 7. `integrations-automation/01-provider-connections.md`
 8. `product-ux-surfaces/00-frontend-foundation.md`
 9. `product-ux-surfaces/02-agents-and-agent-editor.md`
@@ -138,7 +138,7 @@ Each epic PR should:
 - ✅ E1 Runtime Bootstrap
 - ✅ E2 OpenCode Orchestrator
 - ✅ E5 OpenCode Workspace Contract
-- E3 API and Realtime Foundation
+- ✅ E3 API and Realtime Foundation
 - ✅ C1 Database and Workspace Foundation
 
 ### Milestone 1: Agent Alpha

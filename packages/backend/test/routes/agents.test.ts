@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
@@ -19,6 +20,7 @@ describe("agent routes", () => {
       database: testDb.client,
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
+      scheduler: createSchedulerService(),
     });
 
     try {

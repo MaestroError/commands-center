@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  createSchedulerService,
   createLogger,
   createServer,
   loadRuntimeConfig,
@@ -66,6 +67,7 @@ describe("createServer", () => {
       database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
+      scheduler: createSchedulerService(),
     });
 
     try {
@@ -82,6 +84,11 @@ describe("createServer", () => {
         database: {
           dialect: "sqlite",
           sqlitePath: "/tmp/project/.cc/workspace/database/local.db",
+        },
+        scheduler: {
+          state: "inactive",
+          healthy: true,
+          driver: "none",
         },
         opencode: {
           state: "healthy",
@@ -119,6 +126,7 @@ describe("createServer", () => {
       database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
+      scheduler: createSchedulerService(),
     });
 
     try {
@@ -158,6 +166,7 @@ describe("createServer", () => {
       database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
+      scheduler: createSchedulerService(),
     });
 
     try {
@@ -175,6 +184,55 @@ describe("createServer", () => {
         lastError: "health check failed",
         restartCount: 2,
         maxRestarts: 3,
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns typed validation errors", async () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: {
+        NODE_ENV: "test",
+      },
+    });
+    const engine = createOrchestrator({
+      state: "healthy",
+      healthy: true,
+      url: "http://127.0.0.1:4100",
+      workspaceDir: "/tmp/project/.cc/workspace",
+      restartCount: 0,
+      maxRestarts: 3,
+    });
+    const server = await createServer({
+      config,
+      logger: createLogger(config),
+      database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
+      orchestrator: engine,
+      opencodeService: createMockOpenCodeService(),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/providers/openai/oauth/start",
+        payload: { method: -1 },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        error: {
+          code: "invalid_request",
+          message: "Request validation failed.",
+          details: {
+            formErrors: [expect.stringContaining("method")],
+            fieldErrors: {
+              "/method": [expect.stringContaining(">=")],
+            },
+          },
+        },
       });
     } finally {
       await server.close();

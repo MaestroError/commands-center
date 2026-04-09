@@ -1,10 +1,11 @@
 import { z } from "zod";
-
-import type { FastifyReply } from "fastify";
+import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import { createAgentInputSchema, updateAgentInputSchema } from "../schemas/agents.js";
 
+import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
+import { NotFoundError } from "../lib/api-error.js";
 import { createAgentService } from "../services/agent-service.js";
 
 const agentIdParamsSchema = z.object({
@@ -15,136 +16,91 @@ const listAgentsQuerySchema = z.object({
   includeArchived: z.coerce.boolean().optional().default(false),
 });
 
-type RouteServer = {
-  get(
-    path: string,
-    handler: (
-      request: { query: unknown; params: unknown; body: unknown },
-      reply: FastifyReply,
-    ) => unknown,
-  ): unknown;
-  post(
-    path: string,
-    handler: (
-      request: { query: unknown; params: unknown; body: unknown },
-      reply: FastifyReply,
-    ) => unknown,
-  ): unknown;
-  patch(
-    path: string,
-    handler: (
-      request: { query: unknown; params: unknown; body: unknown },
-      reply: FastifyReply,
-    ) => unknown,
-  ): unknown;
-  delete(
-    path: string,
-    handler: (
-      request: { query: unknown; params: unknown; body: unknown },
-      reply: FastifyReply,
-    ) => unknown,
-  ): unknown;
-};
-
-export function registerAgentRoutes(server: RouteServer, context: RuntimeContext): void {
+export function registerAgentRoutes(server: AppServer, context: RuntimeContext): void {
+  const app = server.withTypeProvider<ZodTypeProvider>();
   const service = createAgentService({
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,
   });
 
-  server.get("/api/agents", async (request, reply) => {
-    const query = parseOrReply(listAgentsQuerySchema, request.query, reply);
-
-    if (!query) {
-      return;
-    }
-
-    return service.list(query.includeArchived);
-  });
-
-  server.get("/api/agents/catalog", async () => {
-    return service.getCatalog();
-  });
-
-  server.get("/api/agents/:id", async (request, reply) => {
-    const params = parseOrReply(agentIdParamsSchema, request.params, reply);
-
-    if (!params) {
-      return;
-    }
-
-    const agent = await service.get(params.id);
-
-    if (!agent) {
-      reply.code(404);
-      return { error: { code: "not_found", message: "Agent not found." } };
-    }
-
-    return agent;
-  });
-
-  server.post("/api/agents", async (request, reply) => {
-    const body = parseOrReply(createAgentInputSchema, request.body, reply);
-
-    if (!body) {
-      return;
-    }
-
-    reply.code(201);
-    return service.create(body);
-  });
-
-  server.patch("/api/agents/:id", async (request, reply) => {
-    const params = parseOrReply(agentIdParamsSchema, request.params, reply);
-    const body = parseOrReply(updateAgentInputSchema, request.body, reply);
-
-    if (!params || !body) {
-      return;
-    }
-
-    const agent = await service.update(params.id, body);
-
-    if (!agent) {
-      reply.code(404);
-      return { error: { code: "not_found", message: "Agent not found." } };
-    }
-
-    return agent;
-  });
-
-  server.delete("/api/agents/:id", async (request, reply) => {
-    const params = parseOrReply(agentIdParamsSchema, request.params, reply);
-
-    if (!params) {
-      return;
-    }
-
-    const agent = await service.archive(params.id);
-
-    if (!agent) {
-      reply.code(404);
-      return { error: { code: "not_found", message: "Agent not found." } };
-    }
-
-    return agent;
-  });
-}
-
-function parseOrReply<T>(schema: z.ZodType<T>, input: unknown, reply: FastifyReply): T | undefined {
-  const parsed = schema.safeParse(input);
-
-  if (parsed.success) {
-    return parsed.data;
-  }
-
-  reply.code(400);
-  void reply.send({
-    error: {
-      code: "invalid_request",
-      message: "Request validation failed.",
-      details: parsed.error.flatten(),
+  app.get(
+    "/api/agents",
+    {
+      schema: {
+        querystring: listAgentsQuerySchema,
+      },
     },
-  });
-  return undefined;
+    async (request) => service.list(request.query.includeArchived),
+  );
+
+  app.get("/api/agents/catalog", async () => service.getCatalog());
+
+  app.get(
+    "/api/agents/:id",
+    {
+      schema: {
+        params: agentIdParamsSchema,
+      },
+    },
+    async (request) => {
+      const agent = await service.get(request.params.id);
+
+      if (!agent) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      return agent;
+    },
+  );
+
+  app.post(
+    "/api/agents",
+    {
+      schema: {
+        body: createAgentInputSchema,
+      },
+    },
+    async (request, reply) => {
+      reply.code(201);
+      return service.create(request.body);
+    },
+  );
+
+  app.patch(
+    "/api/agents/:id",
+    {
+      schema: {
+        params: agentIdParamsSchema,
+        body: updateAgentInputSchema,
+      },
+    },
+    async (request) => {
+      const agent = await service.update(request.params.id, request.body);
+
+      if (!agent) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      return agent;
+    },
+  );
+
+  app.delete(
+    "/api/agents/:id",
+    {
+      schema: {
+        params: agentIdParamsSchema,
+      },
+    },
+    async (request) => {
+      const agent = await service.archive(request.params.id);
+
+      if (!agent) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      return agent;
+    },
+  );
 }

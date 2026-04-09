@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createLogger } from "../../src/lib/logger";
+import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createServer } from "../../src/server";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
@@ -15,6 +16,7 @@ describe("provider routes", () => {
       database: testDb.client,
       orchestrator: createOrchestrator(),
       opencodeService,
+      scheduler: createSchedulerService(),
     });
 
     try {

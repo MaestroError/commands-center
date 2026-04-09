@@ -2,7 +2,7 @@
 
 ## Outcome
 
-The backend has a production-ready feature foundation: route layout, service boundaries, error handling, websocket infrastructure, and reusable API conventions.
+The backend has a production-ready feature foundation: route layout, service boundaries, error handling, health/status services, and reusable API conventions.
 
 ## Why this is a separate PR
 
@@ -27,22 +27,22 @@ This lets all feature PRs plug into a stable backend contract instead of each fe
 - Establish service-first architecture convention: all business logic lives in services, exposed via REST API routes — services are decoupled so they can be surfaced through additional interfaces (MCP tools, CLI) in the future without reimplementing logic
 - Add shared error handler and response conventions
 - Add request validation helpers and typed route utilities
-- Add websocket server baseline for terminals and realtime updates
-- Add PTY output flow-control buffering: batch terminal output into 16ms intervals before broadcasting over WebSocket to prevent network congestion and UI freezing during high-output operations
 - Add health/status endpoints for app, DB, engine, and scheduler status
+- Establish the backend contract that later realtime and terminal features plug into without restructuring server boot code
+- Defer terminal PTY transport to OpenCode's upstream PTY endpoints, integrated in U4 instead of reimplemented here
 
 ## Acceptance Criteria
 
 - Backend routes follow one consistent registration and validation pattern
 - Route errors return typed, predictable API responses
-- Websocket infrastructure exists and can be reused by terminal features
-- PTY WebSocket output is batched at 16ms intervals to prevent congestion during high-throughput terminal operations
 - Health endpoints expose enough information for dashboard and diagnostics use
 - New features can add services and routes without restructuring server boot code
 - All business logic is encapsulated in services, decoupled from transport, so additional surfaces (MCP tools, CLI) can reuse the same logic without reimplementation
+- Terminal and realtime features can be added later against the shared API and service foundation without server boot rewrites
 
 ## Non-Goals
 
 - Implementing final product screens
 - Defining all business entities
 - Frontend panel layout system (owned by U0 Frontend Foundation)
+- Reimplementing PTY transport already provided by OpenCode
