@@ -70,7 +70,6 @@ describe("loadRuntimeConfig", () => {
         opencodeShutdownMs: 15000,
         opencodeHealthPollMs: 2000,
         opencodeRestartWindowMs: 60000,
-        providerAuthMs: 300000,
         mcpAuthMs: 90000,
         drainMs: 15000,
       },

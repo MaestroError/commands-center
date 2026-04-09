@@ -42,7 +42,6 @@ The shared backend and CLI bootstrap path validates these environment variables 
 | `CC_ENGINE_PORT`                | OpenCode engine listen port                   | `4096`                    |
 | `CC_ENGINE_MAX_RESTARTS`        | Max automatic restarts within restart window  | `3`                       |
 | `CC_ENGINE_RESTART_WINDOW_MS`   | Time window used for restart limiting         | `60000`                   |
-| `CC_PROVIDER_AUTH_TIMEOUT_MS`   | Provider auth timeout                         | `300000`                  |
 | `CC_MCP_AUTH_TIMEOUT_MS`        | MCP auth timeout                              | `90000`                   |
 | `CC_DRAIN_TIMEOUT_MS`           | Graceful shutdown timeout                     | `15000`                   |
 | `CC_LOG_LEVEL`                  | Pino log level                                | `info`                    |

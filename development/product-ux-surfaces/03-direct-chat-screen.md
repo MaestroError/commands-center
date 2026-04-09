@@ -24,6 +24,7 @@ This is the MVP centerpiece and should land as one coherent feature rather than 
 - Show current agent identity and existing conversation by default
 - Add streaming message rendering and inline tool call inspection
 - Add composer with model selector, auto-approve control, and attachments
+- Surface connected provider models from I1 in the chat model selector
 - Add `Start Fresh` and previous conversations affordances
 - Add right sidebar with workspace files tab including interaction patterns: single-select for preview or context target, double-click to open in file manager, context menu with options to open folder in terminal or open file/folder in file manager
 - Add embedded agent terminal bottom panel with tabbed sessions
@@ -34,6 +35,7 @@ This is the MVP centerpiece and should land as one coherent feature rather than 
 - Behavior matches `design/screens/direct-chat/acceptance_criteria.md`
 - Chat streaming renders progressively instead of waiting for completion
 - Tool calls can be expanded inline
+- The chat model selector shows connected provider models from I1
 - Sidebar and terminal panel can be opened, closed, and restored
 - Workspace files tab supports single-select preview, double-click to open in file manager, and context menu actions for terminal and file manager
 - Previous conversations remain secondary, not the primary navigation model

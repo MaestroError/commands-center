@@ -66,7 +66,7 @@ I2, I3, I5 each extend the agent editor independently after U2 ships
 4. `✅ core-data-state/02-agent-workspace-lifecycle.md`
 5. `✅ engine-infrastructure/05-opencode-workspace-contract.md`
 6. `✅ engine-infrastructure/03-api-and-realtime-foundation.md`
-7. `integrations-automation/01-provider-connections.md`
+7. `✅ integrations-automation/01-provider-connections.md`
 8. `product-ux-surfaces/00-frontend-foundation.md`
 9. `product-ux-surfaces/02-agents-and-agent-editor.md`
 10. `core-data-state/03-direct-chat-session-model.md`
@@ -144,7 +144,7 @@ Each epic PR should:
 ### Milestone 1: Agent Alpha
 
 - ✅ C2 Agent Workspace Lifecycle
-- I1 Provider Connections
+- ✅ I1 Provider Connections
 - U0 Frontend Foundation
 - U2 Agents and Agent Editor
 - C3 Direct Chat Session Model

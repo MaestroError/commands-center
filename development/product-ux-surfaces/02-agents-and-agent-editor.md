@@ -33,6 +33,7 @@ Editing means rewriting: we should maintain the state in the DB as well, so that
 - Add empty states for missing models or no connected providers
 - Navigate to edit state after create
 - Ensure agent list, editor, and skills browser are responsive on mobile viewports
+- Surface connected provider models from I1 as selectable default-model options in the editor
 
 ## Acceptance Criteria
 

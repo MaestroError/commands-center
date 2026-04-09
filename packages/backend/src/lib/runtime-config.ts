@@ -13,7 +13,6 @@ const DEFAULT_OPENCODE_HOST = "127.0.0.1";
 const DEFAULT_OPENCODE_PORT = 4100;
 const DEFAULT_OPENCODE_MAX_RESTARTS = 3;
 const DEFAULT_OPENCODE_RESTART_WINDOW_MS = 60_000;
-const DEFAULT_PROVIDER_AUTH_TIMEOUT_MS = 300_000;
 const DEFAULT_MCP_AUTH_TIMEOUT_MS = 90_000;
 const DEFAULT_DRAIN_TIMEOUT_MS = 15_000;
 const DEFAULT_LOG_LEVEL = "info";
@@ -74,10 +73,6 @@ const envSchema = z.object({
     "CC_OPENCODE_RESTART_WINDOW_MS",
     DEFAULT_OPENCODE_RESTART_WINDOW_MS,
   ),
-  CC_PROVIDER_AUTH_TIMEOUT_MS: positiveInteger(
-    "CC_PROVIDER_AUTH_TIMEOUT_MS",
-    DEFAULT_PROVIDER_AUTH_TIMEOUT_MS,
-  ),
   CC_MCP_AUTH_TIMEOUT_MS: positiveInteger("CC_MCP_AUTH_TIMEOUT_MS", DEFAULT_MCP_AUTH_TIMEOUT_MS),
   CC_DRAIN_TIMEOUT_MS: positiveInteger("CC_DRAIN_TIMEOUT_MS", DEFAULT_DRAIN_TIMEOUT_MS),
   CC_LOG_LEVEL: logLevelSchema.optional().default(DEFAULT_LOG_LEVEL),
@@ -119,7 +114,6 @@ export type RuntimeConfig = {
     opencodeShutdownMs: number;
     opencodeHealthPollMs: number;
     opencodeRestartWindowMs: number;
-    providerAuthMs: number;
     mcpAuthMs: number;
     drainMs: number;
   };
@@ -193,7 +187,6 @@ export function loadRuntimeConfig(options?: {
       opencodeShutdownMs: parsedEnv.data.CC_OPENCODE_SHUTDOWN_TIMEOUT_MS,
       opencodeHealthPollMs: parsedEnv.data.CC_OPENCODE_HEALTH_POLL_MS,
       opencodeRestartWindowMs: parsedEnv.data.CC_OPENCODE_RESTART_WINDOW_MS,
-      providerAuthMs: parsedEnv.data.CC_PROVIDER_AUTH_TIMEOUT_MS,
       mcpAuthMs: parsedEnv.data.CC_MCP_AUTH_TIMEOUT_MS,
       drainMs: parsedEnv.data.CC_DRAIN_TIMEOUT_MS,
     },

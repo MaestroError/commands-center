@@ -29,9 +29,8 @@ Check `examples/openwork` and `examples/opencode` for more information.
 
 - Implement provider status and model listing APIs
 - Implement API key submission flow via OpenCode auth/config APIs
-- Implement OAuth flow delegation and callback handling with configured timeouts
+- Implement OAuth flow delegation and callback handling through OpenCode-owned provider auth flows
 - Build provider connections screen UI (page)
-- Surface available models to the agent editor and chat model selector
 - Ensure provider connections screen is responsive on mobile viewports
 - Add e2e test for provider connections UI
 
@@ -39,11 +38,13 @@ Check `examples/openwork` and `examples/opencode` for more information.
 
 - The user can see provider connection state globally
 - API key and OAuth flows can connect a provider successfully
-- Connected provider models become selectable in the app
 - Provider credentials are stored through OpenCode, not ad hoc app storage
 - Provider connections screen adapts correctly to mobile viewports
+- Provider connection flows are covered by end-to-end tests
 
 ## Non-Goals
 
+- Agent editor model selection (owned by U2)
+- Chat model selector integration (owned by U3)
 - MCP servers
 - Composio integrations
