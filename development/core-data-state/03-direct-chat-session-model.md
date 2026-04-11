@@ -39,3 +39,14 @@ This is the backend half of the MVP centerpiece. Once merged, the chat UI can be
 - Final streaming chat UI
 - File manager
 - Global terminal
+
+## Context
+
+Reference: `examples/opencode` web app — how it consumes the `opencode serve` HTTP API.
+
+- **Session lifecycle**: web app creates sessions lazily on first message via `sdk.session.create()`, sends prompts via `sdk.session.promptAsync()` (fire-and-forget), fetches history via `sdk.session.messages()` (paginated). Ref: `packages/app/src/components/prompt-input/submit.ts`, `packages/app/src/context/sync.tsx`
+- **Prompt parts**: the prompt payload accepts an array of parts — text, file (image/document as data URL with mime), agent, subtask. Attachments are passed as `FilePartInput` directly to OpenCode. Ref: `packages/app/src/components/prompt-input/submit.ts`
+- **SSE event stream**: web app opens a single SSE connection to receive all realtime updates — message parts, streaming text deltas, session status changes, todos, permission/question requests. Events are batched per ~16ms frame. Ref: `packages/app/src/context/global-sdk.tsx`, `packages/app/src/context/global-sync/event-reducer.ts`
+- **Permission & question flows**: OpenCode pauses execution and emits `permission.asked` / `question.asked` events; web app presents UI and replies via `sdk.permission.respond()` / `sdk.question.reply()`. Ref: `packages/app/src/context/permission.tsx`, `packages/app/src/pages/session/composer/session-question-dock.tsx`
+- **Todos**: OpenCode emits `todo.updated` events with the agent's task list; web app renders them read-only. Ref: `packages/app/src/pages/session/composer/session-todo-dock.tsx`
+- **Session management**: list, archive, abort. Session is scoped to a directory (= agent workspace). Ref: `packages/sdk/js/src/v2/gen/sdk.gen.ts`
