@@ -1,44 +1,174 @@
 @import "tailwindcss";
 
-:root {
-  color-scheme: dark;
-  font-family:
-    Inter,
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+@theme {
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --color-app-bg: var(--app-bg);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-sidebar: var(--sidebar-bg);
+  --color-border: var(--border);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-selection: var(--selection);
+  --color-focus-ring: var(--focus-ring);
+  --color-success: var(--success);
+  --color-success-contrast: var(--success-contrast);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-danger-contrast: var(--danger-contrast);
+  --color-info: var(--info);
+  --color-chat-user: var(--chat-user);
+  --color-chat-agent: var(--chat-agent);
+  --color-terminal-bg: var(--terminal-bg);
+  --color-terminal-fg: var(--terminal-fg);
+}
+
+:root,
+[data-theme="light"] {
+  --app-bg: #eef2f7;
+  --surface: #ffffff;
+  --surface-elevated: #f8fafc;
+  --sidebar-bg: #f6f8fb;
+  --border: rgba(15, 23, 42, 0.1);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-active: #1e40af;
+  --selection: rgba(37, 99, 235, 0.16);
+  --focus-ring: rgba(37, 99, 235, 0.3);
+  --success: #15803d;
+  --success-contrast: #ecfdf5;
+  --warning: #b45309;
+  --danger: #be123c;
+  --danger-contrast: #fff1f2;
+  --info: #0f766e;
+  --chat-user: #dbeafe;
+  --chat-agent: #eff6ff;
+  --terminal-bg: #e2e8f0;
+  --terminal-fg: #0f172a;
+}
+
+[data-theme="dark"] {
+  --app-bg: #020817;
+  --surface: #0f172a;
+  --surface-elevated: #111c33;
+  --sidebar-bg: #08111f;
+  --border: rgba(148, 163, 184, 0.18);
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --accent: #38bdf8;
+  --accent-hover: #67e8f9;
+  --accent-active: #0ea5e9;
+  --selection: rgba(56, 189, 248, 0.18);
+  --focus-ring: rgba(56, 189, 248, 0.28);
+  --success: #10b981;
+  --success-contrast: #ecfdf5;
+  --warning: #f59e0b;
+  --danger: #f43f5e;
+  --danger-contrast: #fff1f2;
+  --info: #22d3ee;
+  --chat-user: #082f49;
+  --chat-agent: #172554;
+  --terminal-bg: #020617;
+  --terminal-fg: #cbd5e1;
+}
+
+[data-theme="modern"] {
+  --app-bg: #07111f;
+  --surface: #101a2b;
+  --surface-elevated: #162338;
+  --sidebar-bg: #0b1627;
+  --border: rgba(167, 139, 250, 0.18);
+  --text-primary: #eef2ff;
+  --text-secondary: #b8c2df;
+  --accent: #8b5cf6;
+  --accent-hover: #a78bfa;
+  --accent-active: #7c3aed;
+  --selection: rgba(139, 92, 246, 0.18);
+  --focus-ring: rgba(168, 85, 247, 0.28);
+  --success: #34d399;
+  --success-contrast: #ecfdf5;
+  --warning: #fb7185;
+  --danger: #f43f5e;
+  --danger-contrast: #fff1f2;
+  --info: #38bdf8;
+  --chat-user: #312e81;
+  --chat-agent: #1e293b;
+  --terminal-bg: #0b1120;
+  --terminal-fg: #e2e8f0;
+}
+
+html {
+  font-family: var(--font-sans);
 }
 
 body {
   margin: 0;
   min-width: 320px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-bg) 92%, black 8%),
+    var(--app-bg)
+  );
+  color: var(--text-primary);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: var(--selection);
 }
 
 #root {
   min-height: 100vh;
 }
 
+.cc-panel {
+  @apply rounded-3xl border border-border bg-surface shadow-[0_24px_64px_-40px_rgba(15,23,42,0.65)];
+}
+
 .cc-button {
-  @apply inline-flex items-center justify-center rounded-full bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60;
+  @apply inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60;
 }
 
 .cc-button-secondary {
-  @apply bg-white/10 text-white hover:bg-white/15;
+  @apply border border-border bg-surface text-text-primary hover:bg-surface-elevated;
 }
 
 .cc-button-danger {
-  @apply bg-rose-500 text-white hover:bg-rose-400;
+  @apply bg-danger text-white hover:brightness-110;
 }
 
 .cc-input {
-  @apply w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/60 focus:bg-white/8;
+  @apply w-full rounded-2xl border border-border bg-surface-elevated px-4 py-3 text-sm text-text-primary outline-none transition placeholder:text-text-secondary focus:border-accent focus:bg-surface;
 }
 
 .cc-alert {
-  @apply rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-100;
+  @apply rounded-2xl border px-4 py-3 text-sm;
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  background-color: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger-contrast);
+}
+
+.cc-success {
+  @apply rounded-2xl border px-4 py-3 text-sm;
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  background-color: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--text-primary);
 }
 
 .cc-badge {
@@ -46,17 +176,40 @@ body {
 }
 
 .cc-badge-connected {
-  @apply bg-emerald-400/15 text-emerald-200 ring-1 ring-inset ring-emerald-300/25;
+  color: var(--success);
+  background-color: color-mix(in srgb, var(--success) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 24%, transparent);
 }
 
 .cc-badge-muted {
-  @apply bg-white/10 text-slate-300 ring-1 ring-inset ring-white/10;
+  @apply bg-surface-elevated text-text-secondary;
+  box-shadow: inset 0 0 0 1px var(--border);
 }
 
 .cc-nav-item {
-  @apply flex items-center rounded-2xl px-4 py-3 text-left text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white;
+  @apply flex items-center rounded-2xl px-4 py-3 text-left text-sm font-medium text-text-secondary transition hover:bg-surface hover:text-text-primary;
 }
 
 .cc-nav-item-active {
-  @apply bg-cyan-400/15 text-cyan-100 ring-1 ring-inset ring-cyan-300/20;
+  @apply bg-surface-elevated text-text-primary;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.cc-tab {
+  @apply inline-flex items-center rounded-full border border-border bg-surface px-4 py-2.5 text-sm text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary;
+  min-height: 44px;
+}
+
+.cc-tab-active {
+  @apply text-white;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  border-color: transparent;
+}
+
+.cc-empty-state {
+  @apply rounded-3xl border border-dashed border-border bg-surface p-8 text-center;
+}
+
+.cc-eyebrow {
+  @apply text-xs font-semibold uppercase tracking-[0.24em] text-accent;
 }

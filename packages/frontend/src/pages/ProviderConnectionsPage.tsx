@@ -6,142 +6,120 @@ import type {
   ProviderStatus,
 } from "@cc/shared/schemas";
 
-import { useProviderConnections } from "@/hooks/use-provider-connections";
-
-type ProviderConnectionsPageProps = {
-  active: boolean;
-};
+import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
+import { PageHeader } from "@/components/common/PageHeader";
+import { useProviderMutations, useProvidersQuery } from "@/hooks/use-providers-query";
 
 type DialogState = {
   provider: ProviderStatus;
   mode: "api" | "oauth";
 };
 
-export function ProviderConnectionsPage(props: ProviderConnectionsPageProps) {
-  const {
-    providers,
-    loading,
-    busyProviderId,
-    error,
-    refresh,
-    connectApiKey,
-    startOauth,
-    completeOauth,
-    disconnect,
-  } = useProviderConnections();
+export function ProviderConnectionsPage() {
+  const providersQuery = useProvidersQuery();
+  const providerMutations = useProviderMutations();
   const [dialog, setDialog] = useState<DialogState>();
+  const [busyProviderId, setBusyProviderId] = useState<string>();
   const [successMessage, setSuccessMessage] = useState<string>();
-  const availableModels = providers.flatMap((entry) =>
-    entry.models.map((model) => ({
+  const providers = providersQuery.data ?? [];
+  const availableModels = providers.flatMap((entry: ProviderStatus) =>
+    entry.models.map((model: ProviderStatus["models"][number]) => ({
       ...model,
       providerName: entry.provider.name,
       connected: entry.connected,
     })),
   );
-  const connectedModels = availableModels.filter((model) => model.connected);
-
-  if (!props.active) {
-    return null;
-  }
+  const connectedModels = availableModels.filter(
+    (model: (typeof availableModels)[number]) => model.connected,
+  );
+  const queryError = readError(providersQuery.error);
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-      <section className="rounded-3xl border border-white/10 bg-slate-950/70 p-6 shadow-2xl shadow-slate-950/30">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">
-          Provider Connections
-        </p>
-        <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-white">
-              Connect models once, use them everywhere.
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-              CommandsCenter delegates provider auth to OpenCode, then reads back connected
-              providers and models so the next agent and chat flows can reuse them.
-            </p>
-          </div>
+    <div className="grid gap-4">
+      <PageHeader
+        actions={
           <button
             className="cc-button cc-button-secondary"
-            onClick={() => void refresh()}
+            onClick={() => void providersQuery.refetch()}
             type="button"
           >
             Refresh
           </button>
-        </div>
-      </section>
+        }
+        description="CommandsCenter delegates provider authentication to OpenCode, then surfaces the connected providers and models inside the shared application shell."
+        eyebrow="Provider Connections"
+        title="Connect models once, use them everywhere."
+      />
 
-      {error ? (
-        <section className="cc-alert flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-semibold">Provider data could not be loaded.</p>
-            <p className="mt-1 text-sm text-rose-100/90">{error}</p>
-          </div>
-          <button
-            className="cc-button cc-button-secondary"
-            onClick={() => void refresh()}
-            type="button"
-          >
-            Try again
-          </button>
-        </section>
+      {queryError ? (
+        <ErrorState
+          action={
+            <button
+              className="cc-button cc-button-secondary"
+              onClick={() => void providersQuery.refetch()}
+              type="button"
+            >
+              Try again
+            </button>
+          }
+          description={queryError}
+          title="Provider data could not be loaded."
+        />
       ) : null}
 
-      {successMessage ? (
-        <section className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
-          {successMessage}
-        </section>
-      ) : null}
+      {successMessage ? <section className="cc-success">{successMessage}</section> : null}
 
-      {!loading ? (
-        <section className="rounded-3xl border border-white/10 bg-slate-950/70 p-6 shadow-xl shadow-slate-950/20">
+      {providersQuery.isLoading ? <LoadingState testId="providers-loading" /> : null}
+
+      {!providersQuery.isLoading ? (
+        <section className="cc-panel p-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-white">Available models</h2>
-              <p className="mt-1 text-sm text-slate-300">
-                Connected providers expose these models right now. This is the quickest way to
-                confirm auth worked.
+              <h2 className="text-xl font-semibold text-text-primary">Available models</h2>
+              <p className="mt-1 text-sm text-text-secondary">
+                Connected providers expose these models right now, which makes auth verification
+                immediate.
               </p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+            <div className="rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text-secondary">
               {connectedModels.length} connected model{connectedModels.length === 1 ? "" : "s"}
             </div>
           </div>
 
           {connectedModels.length > 0 ? (
             <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {connectedModels.map((model) => (
+              {connectedModels.map((model: (typeof connectedModels)[number]) => (
                 <div
-                  className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4"
+                  className="rounded-2xl border border-border bg-surface p-4"
                   key={`${model.providerId}:${model.id}`}
                 >
-                  <p className="text-sm font-semibold text-white">{model.name}</p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-emerald-200">
+                  <p className="text-sm font-semibold text-text-primary">{model.name}</p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-accent">
                     {model.providerName}
                   </p>
-                  <p className="mt-2 break-all text-xs text-slate-300">{model.id}</p>
+                  <p className="mt-2 break-all text-xs text-text-secondary">{model.id}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="mt-5 rounded-2xl border border-dashed border-white/10 bg-white/5 p-5 text-sm text-slate-300">
-              No connected provider models yet. Authenticate a provider below, then refresh to
-              confirm the model list.
-            </div>
+            <EmptyState
+              description="Authenticate a provider below, then refresh to confirm the model list."
+              title="No connected provider models yet."
+            />
           )}
         </section>
       ) : null}
 
-      {loading ? <LoadingState /> : null}
-
-      {!loading && providers.length === 0 ? (
-        <section className="rounded-3xl border border-dashed border-white/15 bg-slate-950/50 p-10 text-center text-slate-300">
-          No providers are available from OpenCode right now.
-        </section>
+      {!providersQuery.isLoading && providers.length === 0 ? (
+        <EmptyState
+          description="No providers are available from OpenCode right now."
+          title="Nothing to connect yet."
+        />
       ) : null}
 
-      {!loading ? (
+      {!providersQuery.isLoading ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {providers.map((entry) => {
+          {providers.map((entry: ProviderStatus) => {
             const oauthMethod = entry.authMethods.find(
               (method: ProviderStatus["authMethods"][number]) => method.type === "oauth",
             );
@@ -151,14 +129,13 @@ export function ProviderConnectionsPage(props: ProviderConnectionsPageProps) {
             const busy = busyProviderId === entry.provider.id;
 
             return (
-              <article
-                className="flex min-h-72 flex-col rounded-3xl border border-white/10 bg-slate-950/70 p-5 shadow-lg shadow-slate-950/20"
-                key={entry.provider.id}
-              >
+              <article className="cc-panel flex min-h-72 flex-col p-5" key={entry.provider.id}>
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-xl font-semibold text-white">{entry.provider.name}</h2>
-                    <p className="mt-1 text-sm text-slate-400">{entry.provider.id}</p>
+                    <h2 className="text-xl font-semibold text-text-primary">
+                      {entry.provider.name}
+                    </h2>
+                    <p className="mt-1 text-sm text-text-secondary">{entry.provider.id}</p>
                   </div>
                   <span
                     className={
@@ -170,13 +147,15 @@ export function ProviderConnectionsPage(props: ProviderConnectionsPageProps) {
                 </div>
 
                 <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-2xl bg-white/5 p-3">
-                    <dt className="text-slate-400">Models</dt>
-                    <dd className="mt-1 text-lg font-semibold text-white">{entry.models.length}</dd>
+                  <div className="rounded-2xl border border-border bg-surface p-3">
+                    <dt className="text-text-secondary">Models</dt>
+                    <dd className="mt-1 text-lg font-semibold text-text-primary">
+                      {entry.models.length}
+                    </dd>
                   </div>
-                  <div className="rounded-2xl bg-white/5 p-3">
-                    <dt className="text-slate-400">Default</dt>
-                    <dd className="mt-1 truncate text-sm font-medium text-white">
+                  <div className="rounded-2xl border border-border bg-surface p-3">
+                    <dt className="text-text-secondary">Default</dt>
+                    <dd className="mt-1 truncate text-sm font-medium text-text-primary">
                       {entry.defaultModel ?? "None"}
                     </dd>
                   </div>
@@ -185,14 +164,14 @@ export function ProviderConnectionsPage(props: ProviderConnectionsPageProps) {
                 <div className="mt-5 flex flex-wrap gap-2">
                   {entry.models.slice(0, 4).map((model: ProviderStatus["models"][number]) => (
                     <span
-                      className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-100"
+                      className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent"
                       key={model.id}
                     >
                       {model.name}
                     </span>
                   ))}
                   {entry.models.length > 4 ? (
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                    <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
                       +{String(entry.models.length - 4)} more
                     </span>
                   ) : null}
@@ -224,14 +203,20 @@ export function ProviderConnectionsPage(props: ProviderConnectionsPageProps) {
                       <button
                         className="cc-button cc-button-danger"
                         disabled={busy}
-                        onClick={() => void disconnect(entry.provider.id)}
+                        onClick={() =>
+                          void runProviderAction(entry.provider.id, setBusyProviderId, async () => {
+                            await providerMutations.disconnect.mutateAsync({
+                              providerId: entry.provider.id,
+                            });
+                          })
+                        }
                         type="button"
                       >
                         Disconnect
                       </button>
                     ) : null}
                   </div>
-                  <p className="mt-3 text-xs leading-5 text-slate-400">
+                  <p className="mt-3 text-xs leading-5 text-text-secondary">
                     {entry.authMethods
                       .map((method: ProviderStatus["authMethods"][number]) => method.label)
                       .join(" • ") || "No auth methods exposed by OpenCode."}
@@ -248,30 +233,40 @@ export function ProviderConnectionsPage(props: ProviderConnectionsPageProps) {
           busy={busyProviderId === dialog.provider.provider.id}
           mode={dialog.mode}
           onClose={() => setDialog(undefined)}
-          onCompleteOauth={completeOauth}
-          onConnectApiKey={connectApiKey}
-          onConnected={(message: string) => {
-            setSuccessMessage(message);
-          }}
-          onStartOauth={startOauth}
+          onCompleteOauth={async (providerId, method, code) =>
+            runProviderAction(providerId, setBusyProviderId, () =>
+              providerMutations.completeOauth.mutateAsync({ providerId, method, code }),
+            )
+          }
+          onConnectApiKey={async (providerId, apiKey) =>
+            runProviderAction(providerId, setBusyProviderId, async () => {
+              await providerMutations.connectApiKey.mutateAsync({ providerId, apiKey });
+              return true;
+            })
+          }
+          onConnected={setSuccessMessage}
+          onStartOauth={(providerId, method, inputs) =>
+            providerMutations.startOauth.mutateAsync({ providerId, method, inputs })
+          }
           provider={dialog.provider}
         />
       ) : null}
-    </main>
+    </div>
   );
 }
 
-function LoadingState() {
-  return (
-    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="providers-loading">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div
-          className="min-h-72 animate-pulse rounded-3xl border border-white/10 bg-white/5"
-          key={String(index)}
-        />
-      ))}
-    </section>
-  );
+async function runProviderAction<T>(
+  providerId: string,
+  setBusyProviderId: (providerId?: string) => void,
+  action: () => Promise<T>,
+): Promise<T> {
+  setBusyProviderId(providerId);
+
+  try {
+    return await action();
+  } finally {
+    setBusyProviderId(undefined);
+  }
 }
 
 type ProviderDialogProps = {
@@ -294,12 +289,8 @@ type ProviderDialogProps = {
 };
 
 function ProviderDialog(props: ProviderDialogProps) {
-  const apiKeyMethod = props.provider.authMethods.find(
-    (method: ProviderStatus["authMethods"][number]) => method.type === "api",
-  );
-  const oauthMethod = props.provider.authMethods.find(
-    (method: ProviderStatus["authMethods"][number]) => method.type === "oauth",
-  );
+  const apiKeyMethod = props.provider.authMethods.find((method) => method.type === "api");
+  const oauthMethod = props.provider.authMethods.find((method) => method.type === "oauth");
   const [apiKey, setApiKey] = useState("");
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [oauthSession, setOauthSession] = useState<{
@@ -330,15 +321,16 @@ function ProviderDialog(props: ProviderDialogProps) {
     });
   }, [inputs, oauthMethod]);
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (pollRef.current) {
         window.clearInterval(pollRef.current);
       }
       pollBusyRef.current = false;
       completingRef.current = false;
-    };
-  }, []);
+    },
+    [],
+  );
 
   async function handleApiKeySubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -350,7 +342,7 @@ function ProviderDialog(props: ProviderDialogProps) {
       setSuccessMessage("Provider connected successfully");
       props.onConnected(`${props.provider.provider.name} connected.`);
     } catch (error) {
-      setLocalError(readDialogError(error));
+      setLocalError(readError(error));
     } finally {
       setDialogBusy(false);
     }
@@ -365,29 +357,25 @@ function ProviderDialog(props: ProviderDialogProps) {
 
     try {
       setDialogBusy(true);
+      const methodIndex = props.provider.authMethods.indexOf(oauthMethod);
       const auth = await props.onStartOauth(
         props.provider.provider.id,
-        props.provider.authMethods.indexOf(oauthMethod),
+        methodIndex,
         Object.keys(inputs).length > 0 ? inputs : undefined,
       );
-
-      setOauthSession({
-        method: props.provider.authMethods.indexOf(oauthMethod),
-        auth,
-      });
+      setOauthSession({ method: methodIndex, auth });
       setSuccessMessage(undefined);
       setAutoStatus(undefined);
       window.open(auth.url, "_blank", "noopener,noreferrer");
 
       if (auth.method === "auto") {
         completingRef.current = true;
-        setDialogBusy(true);
         setAutoStatus("Waiting for provider confirmation...");
-        startPolling(props.provider.provider.id, props.provider.authMethods.indexOf(oauthMethod));
+        startPolling(props.provider.provider.id, methodIndex);
         return;
       }
     } catch (error) {
-      setLocalError(readDialogError(error));
+      setLocalError(readError(error));
     } finally {
       if (!completingRef.current) {
         setDialogBusy(false);
@@ -425,7 +413,9 @@ function ProviderDialog(props: ProviderDialogProps) {
           setSuccessMessage("Provider connected successfully");
           props.onConnected(result.message ?? `${props.provider.provider.name} connected.`);
         })
-        .catch(() => undefined)
+        .catch((error) => {
+          setLocalError(readError(error));
+        })
         .finally(() => {
           pollBusyRef.current = false;
         });
@@ -463,10 +453,11 @@ function ProviderDialog(props: ProviderDialogProps) {
         startPolling(props.provider.provider.id, oauthSession.method);
         return;
       }
+
       completingRef.current = false;
     } catch (error) {
       completingRef.current = false;
-      setLocalError(readDialogError(error));
+      setLocalError(readError(error));
     } finally {
       if (!completingRef.current) {
         setDialogBusy(false);
@@ -476,8 +467,8 @@ function ProviderDialog(props: ProviderDialogProps) {
 
   if (successMessage) {
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-3 sm:items-center sm:p-6">
-        <section className="w-full max-w-2xl rounded-[2rem] border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-slate-950/60">
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6">
+        <section className="cc-panel w-full max-w-2xl p-6 shadow-2xl">
           <div className="flex justify-end">
             <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
               Close
@@ -485,16 +476,14 @@ function ProviderDialog(props: ProviderDialogProps) {
           </div>
           <div className="flex min-h-80 flex-col items-center justify-center gap-5 text-center">
             <div aria-label="success" className="text-6xl" role="img">
-              ✅
+              OK
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">
-                {props.provider.provider.name}
-              </p>
-              <h2 className="mt-3 text-3xl font-semibold text-white">
+              <p className="cc-eyebrow">{props.provider.provider.name}</p>
+              <h2 className="mt-3 text-3xl font-semibold text-text-primary">
                 Provider connected successfully
               </h2>
-              <p className="mt-3 text-sm text-slate-300">
+              <p className="mt-3 text-sm text-text-secondary">
                 The provider is now available in CommandsCenter.
               </p>
             </div>
@@ -505,14 +494,12 @@ function ProviderDialog(props: ProviderDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-3 sm:items-center sm:p-6">
-      <section className="w-full max-w-2xl rounded-[2rem] border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-slate-950/60">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6">
+      <section className="cc-panel w-full max-w-2xl p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">
-              {props.provider.provider.name}
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-white">
+            <p className="cc-eyebrow">{props.provider.provider.name}</p>
+            <h2 className="mt-2 text-2xl font-semibold text-text-primary">
               {props.mode === "api" ? "Connect with API key" : "Connect with OAuth"}
             </h2>
           </div>
@@ -525,7 +512,7 @@ function ProviderDialog(props: ProviderDialogProps) {
 
         {props.mode === "api" && apiKeyMethod ? (
           <form className="mt-6 space-y-4" onSubmit={(event) => void handleApiKeySubmit(event)}>
-            <label className="block text-sm font-medium text-slate-200" htmlFor="api-key-input">
+            <label className="block text-sm font-medium text-text-primary" htmlFor="api-key-input">
               API key
             </label>
             <input
@@ -536,7 +523,7 @@ function ProviderDialog(props: ProviderDialogProps) {
               type="password"
               value={apiKey}
             />
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-text-secondary">
               OpenCode stores and validates the key with the selected provider.
             </p>
             <button
@@ -553,10 +540,10 @@ function ProviderDialog(props: ProviderDialogProps) {
           <div className="mt-6 space-y-5">
             {prompts.length > 0 ? (
               <div className="grid gap-4">
-                {prompts.map((prompt: (typeof prompts)[number]) => {
+                {prompts.map((prompt) => {
                   if (prompt.type === "text") {
                     return (
-                      <label className="grid gap-2 text-sm text-slate-200" key={prompt.key}>
+                      <label className="grid gap-2 text-sm text-text-primary" key={prompt.key}>
                         <span>{prompt.message}</span>
                         <input
                           className="cc-input"
@@ -574,19 +561,16 @@ function ProviderDialog(props: ProviderDialogProps) {
                   }
 
                   return (
-                    <label className="grid gap-2 text-sm text-slate-200" key={prompt.key}>
+                    <label className="grid gap-2 text-sm text-text-primary" key={prompt.key}>
                       <span>{prompt.message}</span>
                       <select
                         className="cc-input"
                         onChange={(event) =>
-                          setInputs((current) => ({
-                            ...current,
-                            [prompt.key]: event.target.value,
-                          }))
+                          setInputs((current) => ({ ...current, [prompt.key]: event.target.value }))
                         }
                         value={inputs[prompt.key] ?? prompt.options[0]?.value ?? ""}
                       >
-                        {prompt.options.map((option: (typeof prompt.options)[number]) => (
+                        {prompt.options.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
@@ -608,22 +592,22 @@ function ProviderDialog(props: ProviderDialogProps) {
             </button>
 
             {oauthSession ? (
-              <div className="rounded-3xl border border-cyan-400/20 bg-cyan-400/5 p-4 text-sm text-slate-200">
-                <p className="font-medium text-white">OAuth session started</p>
-                <p className="mt-2 whitespace-pre-wrap text-slate-300">
+              <div className="rounded-3xl border border-accent/20 bg-accent/5 p-4 text-sm text-text-primary">
+                <p className="font-medium text-text-primary">OAuth session started</p>
+                <p className="mt-2 whitespace-pre-wrap text-text-secondary">
                   {oauthSession.auth.instructions ||
                     "Complete the provider login in the opened browser window."}
                 </p>
-                <p className="mt-3 text-xs uppercase tracking-[0.2em] text-cyan-200">
+                <p className="mt-3 text-xs uppercase tracking-[0.2em] text-accent">
                   Mode: {oauthSession.auth.method}
                 </p>
-                {autoStatus ? <p className="mt-3 text-sm text-cyan-100">{autoStatus}</p> : null}
+                {autoStatus ? <p className="mt-3 text-sm text-accent">{autoStatus}</p> : null}
               </div>
             ) : null}
 
             {oauthSession ? (
               <form className="space-y-4" onSubmit={(event) => void handleManualOauthSubmit(event)}>
-                <label className="grid gap-2 text-sm text-slate-200" htmlFor="oauth-code-input">
+                <label className="grid gap-2 text-sm text-text-primary" htmlFor="oauth-code-input">
                   <span>Manual code or callback value</span>
                   <input
                     className="cc-input"
@@ -649,7 +633,7 @@ function ProviderDialog(props: ProviderDialogProps) {
   );
 }
 
-function readDialogError(error: unknown): string {
+function readError(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message;
   }

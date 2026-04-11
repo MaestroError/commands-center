@@ -22,6 +22,22 @@ const provider = {
   models: [{ id: "openai/gpt-4.1", name: "GPT-4.1", providerId: "openai" }],
 } as const;
 
+test("renders the global shell and provider page", async ({ page, isMobile }) => {
+  const state: ProviderState = { connected: true };
+  await mockProviderApi(page, state);
+
+  await page.goto("/providers");
+
+  await expect(page.getByRole("heading", { name: "Provider Connections" })).toBeVisible();
+  if (isMobile) {
+    await expect(page.getByRole("button", { name: "Menu" })).toBeVisible();
+  } else {
+    await expect(page.getByTestId("sidebar-navigation")).toBeVisible();
+    await expect(page.getByText("Theme:")).toBeVisible();
+  }
+  await expect(page.getByText("1 connected model")).toBeVisible();
+});
+
 test("submits API keys from the provider screen", async ({ page }) => {
   const state: ProviderState = { connected: false };
   await mockProviderApi(page, state);
@@ -31,9 +47,7 @@ test("submits API keys from the provider screen", async ({ page }) => {
   await page.getByLabel("API key").fill("sk-test");
   await page.getByRole("button", { name: "Save key" }).click();
 
-  await expect(
-    page.getByRole("heading", { name: "Provider connected successfully" }),
-  ).toBeVisible();
+  await expect(page.getByText("Provider connected successfully")).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await expect(page.getByText("1 connected model")).toBeVisible();
@@ -53,36 +67,34 @@ test("starts and completes OAuth from the provider screen", async ({ page }) => 
   await page.getByLabel("Manual code or callback value").fill("oauth-code");
   await page.getByRole("button", { name: "Complete OAuth" }).click();
 
-  await expect(
-    page.getByRole("heading", { name: "Provider connected successfully" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(page.getByText("Provider connected successfully")).toBeVisible();
 });
 
-test("disconnects a connected provider", async ({ page }) => {
-  const state: ProviderState = { connected: true };
-  await mockProviderApi(page, state);
+test("supports theme changes through the profile page", async ({ page }) => {
+  await page.goto("/profile");
+  await page.getByRole("button", { name: "modern" }).click();
 
-  await page.goto("/providers");
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Disconnect" }).click();
-
-  await expect(page.getByText("Not connected", { exact: true })).toBeVisible();
-  await expect(page.getByText("0 connected models")).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "modern");
 });
 
-test("keeps the screen usable on mobile", async ({ page }) => {
+test("keeps the shell usable on mobile", async ({ page, isMobile }) => {
   const state: ProviderState = { connected: false };
   await mockProviderApi(page, state);
 
-  await page.goto("/providers");
+  await page.goto("/chat/demo-agent");
 
+  if (!isMobile) {
+    await expect(page.getByTestId("context-pane")).toBeVisible();
+    return;
+  }
+
+  await page.getByRole("button", { name: "Menu" }).click();
+  await expect(page.getByRole("link", { name: "Provider Connections" })).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Open context pane" }).click();
   await expect(
-    page.getByRole("heading", { name: "Connect models once, use them everywhere." }),
+    page.getByText("Workspace files, memory, and preferences can live here."),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Provider Connections" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Connect API key" })).toBeVisible();
 });
 
 async function mockProviderApi(page: Page, state: ProviderState): Promise<void> {

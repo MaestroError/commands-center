@@ -70,6 +70,7 @@ Every UI epic needs routing, layout panels, theme tokens, and data-fetching conv
 - Theme changes apply immediately across the entire application without page reload
 - Shared data-fetching and state primitives are established and usable by subsequent epics
 - Loading, error, and empty states are available as shared components
+- Use packages listed in GOAL.md
 
 ## Non-Goals
 

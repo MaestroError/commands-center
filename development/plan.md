@@ -29,7 +29,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |     \- I5 Composio Integration
  |- ✅ E3 API and Realtime Foundation
  |  |- E4 Self-Updating and Version Management
- |  |- U0 Frontend Foundation
+ |  |- ✅ U0 Frontend Foundation
  |  |  |- U1 App Shell and Dashboard
  |  |  |- U2 Agents and Agent Editor
  |  |  |- U3 Direct Chat Screen
@@ -67,7 +67,7 @@ I2, I3, I5 each extend the agent editor independently after U2 ships
 5. `✅ engine-infrastructure/05-opencode-workspace-contract.md`
 6. `✅ engine-infrastructure/03-api-and-realtime-foundation.md`
 7. `✅ integrations-automation/01-provider-connections.md`
-8. `product-ux-surfaces/00-frontend-foundation.md`
+8. `✅ product-ux-surfaces/00-frontend-foundation.md`
 9. `product-ux-surfaces/02-agents-and-agent-editor.md`
 10. `core-data-state/03-direct-chat-session-model.md`
 11. `product-ux-surfaces/03-direct-chat-screen.md`
@@ -145,7 +145,7 @@ Each epic PR should:
 
 - ✅ C2 Agent Workspace Lifecycle
 - ✅ I1 Provider Connections
-- U0 Frontend Foundation
+- ✅ U0 Frontend Foundation
 - U2 Agents and Agent Editor
 - C3 Direct Chat Session Model
 - U3 Direct Chat Screen

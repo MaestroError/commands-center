@@ -1,8 +1,10 @@
 import {
+  agentListSchema,
   providerConnectResultSchema,
   providerOauthAuthorizationSchema,
   providerOauthCompleteResultSchema,
   providerStatusListSchema,
+  type Agent,
   type ProviderOauthAuthorization,
   type ProviderOauthCompleteResult,
   type ProviderStatus,
@@ -15,6 +17,10 @@ type RequestOptions = {
 
 export async function listProviders(): Promise<ProviderStatus[]> {
   return requestJson<ProviderStatus[]>("/api/providers", providerStatusListSchema);
+}
+
+export async function listAgents(): Promise<Agent[]> {
+  return requestJson<Agent[]>("/api/agents", agentListSchema);
 }
 
 export async function submitProviderApiKey(providerId: string, apiKey: string): Promise<boolean> {

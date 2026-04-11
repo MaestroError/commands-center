@@ -1,0 +1,308 @@
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
+
+import { useMediaQuery } from "@/hooks/use-media-query";
+
+type Tab = {
+  id: string;
+  label: string;
+  content: ReactNode;
+};
+
+type WorkspaceLayoutProps = {
+  primary: ReactNode;
+  contextPane?: {
+    title: string;
+    tabs: Tab[];
+    defaultTabId?: string;
+  };
+  bottomPane?: {
+    title: string;
+    tabs: Tab[];
+    defaultTabId?: string;
+  };
+};
+
+const EMPTY_TABS: Tab[] = [];
+
+export function WorkspaceLayout(props: WorkspaceLayoutProps) {
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const [contextCollapsed, setContextCollapsed] = useState(false);
+  const [bottomCollapsed, setBottomCollapsed] = useState(false);
+  const [contextWidth, setContextWidth] = useState(360);
+  const [bottomHeight, setBottomHeight] = useState(220);
+  const [mobileContextOpen, setMobileContextOpen] = useState(false);
+  const [mobileBottomOpen, setMobileBottomOpen] = useState(false);
+  const contextTabs = props.contextPane?.tabs ?? EMPTY_TABS;
+  const bottomTabs = props.bottomPane?.tabs ?? EMPTY_TABS;
+  const [activeContextTab, setActiveContextTab] = useState(
+    props.contextPane?.defaultTabId ?? contextTabs[0]?.id,
+  );
+  const [activeBottomTab, setActiveBottomTab] = useState(
+    props.bottomPane?.defaultTabId ?? bottomTabs[0]?.id,
+  );
+
+  useEffect(() => {
+    if (isDesktop) {
+      setMobileBottomOpen(false);
+      setMobileContextOpen(false);
+    }
+  }, [isDesktop]);
+
+  const activeContextContent = useMemo(
+    () => contextTabs.find((tab) => tab.id === activeContextTab)?.content,
+    [activeContextTab, contextTabs],
+  );
+  const activeBottomContent = useMemo(
+    () => bottomTabs.find((tab) => tab.id === activeBottomTab)?.content,
+    [activeBottomTab, bottomTabs],
+  );
+
+  return (
+    <div className="flex min-h-[calc(100vh-10rem)] flex-col gap-4" data-testid="workspace-layout">
+      {!isDesktop && (props.contextPane || props.bottomPane) ? (
+        <div className="flex flex-wrap gap-2">
+          {props.contextPane ? (
+            <button
+              className="cc-button cc-button-secondary"
+              onClick={() => setMobileContextOpen(true)}
+              type="button"
+            >
+              Open context pane
+            </button>
+          ) : null}
+          {props.bottomPane ? (
+            <button
+              className="cc-button cc-button-secondary"
+              onClick={() => setMobileBottomOpen(true)}
+              type="button"
+            >
+              Open bottom pane
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="flex min-h-0 flex-1 gap-4">
+          <div className="cc-panel min-h-[28rem] min-w-0 flex-1 overflow-hidden">
+            {props.primary}
+          </div>
+          {isDesktop && props.contextPane ? (
+            <>
+              {!contextCollapsed ? (
+                <div
+                  aria-hidden="true"
+                  className="hidden w-1.5 cursor-col-resize rounded-full bg-border/70 transition hover:bg-accent lg:block"
+                  onPointerDown={(event) =>
+                    startDrag(event, "horizontal", setContextWidth, 280, 560, -1)
+                  }
+                />
+              ) : null}
+              <aside
+                className={contextCollapsed ? "hidden" : "cc-panel hidden lg:flex lg:flex-col"}
+                data-testid="context-pane"
+                style={{ width: `${String(contextWidth)}px` }}
+              >
+                <PaneHeader
+                  title={props.contextPane.title}
+                  onToggle={() => setContextCollapsed(true)}
+                  toggleLabel="Collapse context pane"
+                />
+                <PaneTabs
+                  activeTabId={activeContextTab}
+                  onTabChange={setActiveContextTab}
+                  tabs={contextTabs}
+                />
+                <div className="min-h-0 flex-1 overflow-auto p-4">{activeContextContent}</div>
+              </aside>
+              {contextCollapsed ? (
+                <button
+                  className="cc-button cc-button-secondary hidden self-start lg:inline-flex"
+                  onClick={() => setContextCollapsed(false)}
+                  type="button"
+                >
+                  Restore context pane
+                </button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+
+        {isDesktop && props.bottomPane ? (
+          <>
+            {!bottomCollapsed ? (
+              <div
+                aria-hidden="true"
+                className="hidden h-1.5 cursor-row-resize rounded-full bg-border/70 transition hover:bg-accent lg:block"
+                onPointerDown={(event) =>
+                  startDrag(event, "vertical", setBottomHeight, 160, 360, -1)
+                }
+              />
+            ) : null}
+            {!bottomCollapsed ? (
+              <section
+                className="cc-panel hidden lg:flex lg:flex-col"
+                data-testid="bottom-pane"
+                style={{ height: `${String(bottomHeight)}px` }}
+              >
+                <PaneHeader
+                  title={props.bottomPane.title}
+                  onToggle={() => setBottomCollapsed(true)}
+                  toggleLabel="Collapse bottom pane"
+                />
+                <PaneTabs
+                  activeTabId={activeBottomTab}
+                  onTabChange={setActiveBottomTab}
+                  tabs={bottomTabs}
+                />
+                <div className="min-h-0 flex-1 overflow-auto p-4">{activeBottomContent}</div>
+              </section>
+            ) : (
+              <button
+                className="cc-button cc-button-secondary hidden self-start lg:inline-flex"
+                onClick={() => setBottomCollapsed(false)}
+                type="button"
+              >
+                Restore bottom pane
+              </button>
+            )}
+          </>
+        ) : null}
+      </div>
+
+      {!isDesktop && props.contextPane && mobileContextOpen ? (
+        <MobilePane title={props.contextPane.title} onClose={() => setMobileContextOpen(false)}>
+          <PaneTabs
+            activeTabId={activeContextTab}
+            onTabChange={setActiveContextTab}
+            tabs={contextTabs}
+          />
+          <div className="mt-4">{activeContextContent}</div>
+        </MobilePane>
+      ) : null}
+
+      {!isDesktop && props.bottomPane && mobileBottomOpen ? (
+        <MobilePane
+          bottom
+          title={props.bottomPane.title}
+          onClose={() => setMobileBottomOpen(false)}
+        >
+          <PaneTabs
+            activeTabId={activeBottomTab}
+            onTabChange={setActiveBottomTab}
+            tabs={bottomTabs}
+          />
+          <div className="mt-4">{activeBottomContent}</div>
+        </MobilePane>
+      ) : null}
+    </div>
+  );
+}
+
+function PaneHeader(props: { title: string; onToggle: () => void; toggleLabel: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+      <div>
+        <p className="text-sm font-semibold text-text-primary">{props.title}</p>
+        <p className="text-xs text-text-secondary">Docked workspace surface</p>
+      </div>
+      <button
+        aria-label={props.toggleLabel}
+        className="cc-button cc-button-secondary"
+        onClick={props.onToggle}
+        type="button"
+      >
+        Collapse
+      </button>
+    </div>
+  );
+}
+
+function PaneTabs(props: {
+  tabs: Tab[];
+  activeTabId?: string;
+  onTabChange: (tabId: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3">
+      {props.tabs.map((tab) => (
+        <button
+          className={tab.id === props.activeTabId ? "cc-tab cc-tab-active" : "cc-tab"}
+          key={tab.id}
+          onClick={() => props.onTabChange(tab.id)}
+          type="button"
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MobilePane(props: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+  bottom?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 bg-app-bg/85 p-3 backdrop-blur-sm">
+      <section
+        className={
+          props.bottom
+            ? "cc-panel absolute inset-x-3 bottom-3 top-24 overflow-auto p-4"
+            : "cc-panel absolute inset-3 overflow-auto p-4"
+        }
+      >
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-text-primary">{props.title}</p>
+            <p className="text-xs text-text-secondary">Mobile overlay panel</p>
+          </div>
+          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+            Close
+          </button>
+        </div>
+        {props.children}
+      </section>
+    </div>
+  );
+}
+
+function startDrag(
+  event: React.PointerEvent<HTMLDivElement>,
+  axis: "horizontal" | "vertical",
+  updateValue: Dispatch<SetStateAction<number>>,
+  min: number,
+  max: number,
+  direction: 1 | -1,
+) {
+  event.preventDefault();
+  let lastPos = axis === "horizontal" ? event.clientX : event.clientY;
+
+  const handleMove = (moveEvent: PointerEvent) => {
+    const currentPos = axis === "horizontal" ? moveEvent.clientX : moveEvent.clientY;
+    const delta = (currentPos - lastPos) * direction;
+    lastPos = currentPos;
+    updateValue((current) => clamp(current + delta, min, max));
+  };
+
+  const handleEnd = () => {
+    window.removeEventListener("pointermove", handleMove);
+    window.removeEventListener("pointerup", handleEnd);
+  };
+
+  window.addEventListener("pointermove", handleMove);
+  window.addEventListener("pointerup", handleEnd);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}

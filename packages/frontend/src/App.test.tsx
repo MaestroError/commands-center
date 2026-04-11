@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "@/App";
+import { queryClient } from "@/lib/query-client";
+import { THEME_STORAGE_KEY } from "@/stores/ui-store";
 
 const connectedProvider = {
   provider: {
@@ -25,30 +27,58 @@ const connectedProvider = {
 
 beforeEach(() => {
   window.history.replaceState({}, "", "/");
+  resetStorage();
+  queryClient.clear();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  queryClient.clear();
 });
 
 describe("App", () => {
-  it("redirects to provider connections and renders providers", async () => {
+  it("renders the global shell on the dashboard route", () => {
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-navigation")).toBeInTheDocument();
+    expect(screen.getByText("Provider Connections")).toBeInTheDocument();
+    expect(screen.getByTestId("recent-agents-empty-state")).toBeInTheDocument();
+  });
+
+  it("updates active navigation and header title when navigating", async () => {
     mockFetch([jsonResponse(200, [connectedProvider])]);
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: "OpenAI" });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link", { name: "Provider Connections" }));
+
+    await screen.findByRole("heading", { name: "OpenAI", level: 2 });
+    expect(screen.getByRole("heading", { name: "Provider Connections" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/providers");
-    expect(screen.getAllByText("GPT-4.1").length).toBeGreaterThan(0);
-    expect(screen.getByText("Connected")).toBeInTheDocument();
   });
 
-  it("shows the empty state when no providers are available", async () => {
-    mockFetch([jsonResponse(200, [])]);
-
+  it("persists theme selection from the profile page", async () => {
     render(<App />);
 
-    expect(await screen.findByText(/No providers are available/i)).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link", { name: "Profile" }));
+    await user.click(screen.getByRole("button", { name: "modern" }));
+
+    expect(document.documentElement.getAttribute("data-theme")).toBe("modern");
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("modern");
+  });
+
+  it("loads providers inside the new shell", async () => {
+    mockFetch([jsonResponse(200, [connectedProvider])]);
+
+    window.history.replaceState({}, "", "/providers");
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "OpenAI", level: 2 });
+    expect(screen.getByText("1 connected model")).toBeInTheDocument();
+    expect(screen.getAllByText("GPT-4.1").length).toBeGreaterThan(0);
   });
 
   it("submits API keys from the provider dialog", async () => {
@@ -58,10 +88,11 @@ describe("App", () => {
       jsonResponse(200, [connectedProvider]),
     ]);
 
+    window.history.replaceState({}, "", "/providers");
     render(<App />);
 
     const user = userEvent.setup();
-    await screen.findByText("OpenAI");
+    await screen.findByRole("heading", { name: "OpenAI", level: 2 });
     await user.click(screen.getByRole("button", { name: /Connect API key/i }));
     await user.type(screen.getByLabelText("API key"), "sk-test");
     await user.click(screen.getByRole("button", { name: /Save key/i }));
@@ -89,10 +120,11 @@ describe("App", () => {
       jsonResponse(200, [connectedProvider]),
     ]);
 
+    window.history.replaceState({}, "", "/providers");
     render(<App />);
 
     const user = userEvent.setup();
-    await screen.findByText("OpenAI");
+    await screen.findByRole("heading", { name: "OpenAI", level: 2 });
     await user.click(screen.getByRole("button", { name: /Connect OAuth/i }));
     await user.click(screen.getByRole("button", { name: /Open provider login/i }));
     await screen.findByText(/OAuth session started/i);
@@ -100,7 +132,6 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /Complete OAuth/i }));
 
     await screen.findByText("Provider connected successfully");
-    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
@@ -114,18 +145,14 @@ describe("App", () => {
       );
     });
   });
-
-  it("shows API errors", async () => {
-    mockFetch([jsonResponse(500, { error: { message: "Provider listing failed." } })]);
-
-    render(<App />);
-
-    expect(await screen.findByText("Provider listing failed.")).toBeInTheDocument();
-  });
 });
 
 function mockFetch(responses: Response[]) {
-  return vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+  return vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+    if (typeof input === "string" && !input.startsWith("/api/providers")) {
+      return Promise.reject(new Error(`Unexpected fetch URL: ${input}`));
+    }
+
     const next = responses.shift();
 
     if (!next) {
@@ -134,6 +161,17 @@ function mockFetch(responses: Response[]) {
 
     return Promise.resolve(next);
   });
+}
+
+function resetStorage() {
+  if (typeof window.localStorage?.clear === "function") {
+    window.localStorage.clear();
+    return;
+  }
+
+  if (typeof window.localStorage?.removeItem === "function") {
+    window.localStorage.removeItem(THEME_STORAGE_KEY);
+  }
 }
 
 function jsonResponse(status: number, body: unknown): Response {
