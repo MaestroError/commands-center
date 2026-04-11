@@ -32,7 +32,7 @@ export function ProviderConnectionsPage() {
   const connectedModels = availableModels.filter(
     (model: (typeof availableModels)[number]) => model.connected,
   );
-  const queryError = readError(providersQuery.error);
+  const queryError = providersQuery.error ? readError(providersQuery.error) : undefined;
 
   return (
     <div className="grid gap-4">
@@ -205,6 +205,7 @@ export function ProviderConnectionsPage() {
                         disabled={busy}
                         onClick={() =>
                           void runProviderAction(entry.provider.id, setBusyProviderId, async () => {
+                            setSuccessMessage(undefined);
                             await providerMutations.disconnect.mutateAsync({
                               providerId: entry.provider.id,
                             });
