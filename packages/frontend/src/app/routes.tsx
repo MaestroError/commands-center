@@ -145,6 +145,14 @@ export const appRoutes = [
 
 export const sidebarRoutes = appRoutes.filter((route) => route.navLabel);
 
+export const dashboardSidebarRoute = sidebarRoutes.find((route) => route.path === "/");
+
+export const agentsSidebarRoute = sidebarRoutes.find((route) => route.path === "/agents");
+
+export const secondarySidebarRoutes = sidebarRoutes.filter(
+  (route) => route.path !== "/" && route.path !== "/agents",
+);
+
 export const appRouteObjects = appRoutes.map((route) => ({
   path: route.path,
   element: route.element,

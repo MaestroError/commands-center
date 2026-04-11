@@ -29,9 +29,16 @@ test("renders the global shell and provider page", async ({ page, isMobile }) =>
   await page.goto("/providers");
 
   await expect(page.getByRole("heading", { name: "Provider Connections" })).toBeVisible();
+  await expect(page.getByText("Frontend foundation")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Menu" })).toHaveCount(0);
   if (isMobile) {
-    await expect(page.getByRole("button", { name: "Menu" })).toBeVisible();
+    await expect(page.getByTestId("sidebar-navigation")).toBeHidden();
   } else {
+    await expect(page.getByRole("link", { name: "CommandsCenter" })).toHaveAttribute("href", "/");
+    await expect(page.getByRole("link", { name: "Agents" }).first()).toHaveAttribute(
+      "href",
+      "/agents",
+    );
     await expect(page.getByTestId("sidebar-navigation")).toBeVisible();
     await expect(page.getByText("Theme:")).toBeVisible();
   }
@@ -88,9 +95,6 @@ test("keeps the shell usable on mobile", async ({ page, isMobile }) => {
     return;
   }
 
-  await page.getByRole("button", { name: "Menu" }).click();
-  await expect(page.getByRole("link", { name: "Provider Connections" })).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
   await page.getByRole("button", { name: "Open context pane" }).click();
   await expect(
     page.getByText("Workspace files, memory, and preferences can live here."),

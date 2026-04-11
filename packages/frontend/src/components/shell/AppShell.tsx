@@ -2,14 +2,17 @@ import { useMemo } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { useTheme } from "@/context/use-theme";
-import { sidebarRoutes, getRouteTitle, isRouteActive } from "@/app/routes";
-import { useUiStore, type UiState } from "@/stores/ui-store";
+import {
+  agentsSidebarRoute,
+  dashboardSidebarRoute,
+  getRouteTitle,
+  isRouteActive,
+  secondarySidebarRoutes,
+} from "@/app/routes";
 
 export function AppShell() {
   const location = useLocation();
   const title = useMemo(() => getRouteTitle(location.pathname), [location.pathname]);
-  const mobileSidebarOpen = useUiStore((state: UiState) => state.mobileSidebarOpen);
-  const setMobileSidebarOpen = useUiStore((state: UiState) => state.setMobileSidebarOpen);
   const { theme } = useTheme();
 
   return (
@@ -22,18 +25,8 @@ export function AppShell() {
         <div className="min-w-0">
           <header className="sticky top-0 z-30 border-b border-border bg-app-bg/90 backdrop-blur">
             <div className="flex min-h-16 items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-              <div className="flex items-center gap-3">
-                <button
-                  className="cc-button cc-button-secondary lg:hidden"
-                  onClick={() => setMobileSidebarOpen(true)}
-                  type="button"
-                >
-                  Menu
-                </button>
-                <div>
-                  <p className="cc-eyebrow">CommandsCenter</p>
-                  <h1 className="text-xl font-semibold text-text-primary">{title}</h1>
-                </div>
+              <div>
+                <h1 className="text-xl font-semibold text-text-primary">{title}</h1>
               </div>
               <div className="flex items-center gap-2">
                 <span className="hidden rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary sm:inline-flex">
@@ -51,70 +44,56 @@ export function AppShell() {
           </main>
         </div>
       </div>
-
-      {mobileSidebarOpen ? (
-        <div className="fixed inset-0 z-40 bg-app-bg/85 backdrop-blur-sm lg:hidden">
-          <aside className="absolute inset-y-0 left-0 w-80 max-w-[85vw] border-r border-border bg-sidebar px-4 py-5">
-            <div className="mb-4 flex justify-end">
-              <button
-                className="cc-button cc-button-secondary"
-                onClick={() => setMobileSidebarOpen(false)}
-                type="button"
-              >
-                Close
-              </button>
-            </div>
-            <SidebarContent
-              onNavigate={() => setMobileSidebarOpen(false)}
-              pathname={location.pathname}
-            />
-          </aside>
-        </div>
-      ) : null}
     </div>
   );
 }
 
-function SidebarContent(props: { pathname: string; onNavigate?: () => void }) {
+function SidebarContent(props: { pathname: string }) {
   return (
     <>
-      <div className="rounded-3xl border border-border bg-surface p-4">
-        <p className="cc-eyebrow">CommandsCenter</p>
-        <h2 className="mt-2 text-2xl font-semibold text-text-primary">Frontend foundation</h2>
-        <p className="mt-2 text-sm leading-6 text-text-secondary">
-          Shared shell, panel workspace, semantic themes, and reusable state primitives for the rest
-          of the product.
-        </p>
-      </div>
+      <NavLink className="cc-eyebrow inline-flex w-fit" to="/">
+        CommandsCenter
+      </NavLink>
 
       <nav className="grid gap-2" data-testid="sidebar-navigation">
-        {sidebarRoutes.map((route) => (
+        {dashboardSidebarRoute ? (
           <NavLink
             className={
-              isRouteActive(props.pathname, route.path, route.navigationMatch)
+              isRouteActive(
+                props.pathname,
+                dashboardSidebarRoute.path,
+                dashboardSidebarRoute.navigationMatch,
+              )
                 ? "cc-nav-item cc-nav-item-active"
                 : "cc-nav-item"
             }
-            key={route.path}
-            onClick={props.onNavigate}
-            to={route.path}
+            to={dashboardSidebarRoute.path}
           >
-            {route.navLabel}
+            {dashboardSidebarRoute.navLabel}
           </NavLink>
-        ))}
+        ) : null}
       </nav>
 
       <section
-        className="rounded-3xl border border-border bg-surface p-4"
+        className={
+          isRouteActive(
+            props.pathname,
+            agentsSidebarRoute?.path ?? "/agents",
+            agentsSidebarRoute?.navigationMatch,
+          )
+            ? "rounded-3xl border border-accent/30 bg-surface p-4"
+            : "rounded-3xl border border-border bg-surface p-4"
+        }
         data-testid="recent-agents-empty-state"
       >
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-text-primary">Agents</h3>
           <NavLink
-            className="text-sm text-accent transition hover:text-accent-hover"
-            onClick={props.onNavigate}
+            className="text-sm font-semibold text-text-primary transition hover:text-accent"
             to="/agents"
           >
+            Agents
+          </NavLink>
+          <NavLink className="text-sm text-accent transition hover:text-accent-hover" to="/agents">
             See all
           </NavLink>
         </div>
@@ -122,6 +101,22 @@ function SidebarContent(props: { pathname: string; onNavigate?: () => void }) {
           Recent agent chats will appear here after the direct chat flow starts recording activity.
         </p>
       </section>
+
+      <nav className="grid gap-2">
+        {secondarySidebarRoutes.map((route) => (
+          <NavLink
+            className={
+              isRouteActive(props.pathname, route.path, route.navigationMatch)
+                ? "cc-nav-item cc-nav-item-active"
+                : "cc-nav-item"
+            }
+            key={route.path}
+            to={route.path}
+          >
+            {route.navLabel}
+          </NavLink>
+        ))}
+      </nav>
     </>
   );
 }

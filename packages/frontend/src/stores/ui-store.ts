@@ -6,16 +6,13 @@ export type ThemeName = (typeof themeNames)[number];
 
 type UiState = {
   theme: ThemeName;
-  mobileSidebarOpen: boolean;
   setTheme: (theme: ThemeName) => void;
-  setMobileSidebarOpen: (open: boolean) => void;
 };
 
 export const THEME_STORAGE_KEY = "cc.theme";
 
 export const useUiStore = create<UiState>((set: (partial: Partial<UiState>) => void) => ({
   theme: readStoredTheme(),
-  mobileSidebarOpen: false,
   setTheme: (theme: ThemeName) => {
     if (hasStorage()) {
       window.localStorage.setItem(THEME_STORAGE_KEY, theme);
@@ -23,7 +20,6 @@ export const useUiStore = create<UiState>((set: (partial: Partial<UiState>) => v
 
     set({ theme });
   },
-  setMobileSidebarOpen: (mobileSidebarOpen: boolean) => set({ mobileSidebarOpen }),
 }));
 
 export type { UiState };

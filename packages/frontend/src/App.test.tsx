@@ -41,7 +41,11 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "CommandsCenter" })).toHaveAttribute("href", "/");
+    expect(screen.getAllByRole("link", { name: "Agents" })[0]).toHaveAttribute("href", "/agents");
     expect(screen.getByTestId("sidebar-navigation")).toBeInTheDocument();
+    expect(screen.queryByText("Frontend foundation")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
     expect(screen.getByText("Provider Connections")).toBeInTheDocument();
     expect(screen.getByTestId("recent-agents-empty-state")).toBeInTheDocument();
   });
