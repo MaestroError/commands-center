@@ -3,12 +3,13 @@ import { join } from "node:path";
 
 import {
   agentCapabilitySelectionSchema,
+  agentCatalogSchema,
   agentSchema,
   builtInSkillListSchema,
   createAgentInputSchema,
   updateAgentInputSchema,
   type Agent,
-  type BuiltInSkill,
+  type AgentCatalog,
   type CreateAgentInput,
   type UpdateAgentInput,
 } from "../schemas/agents.js";
@@ -53,6 +54,14 @@ export function createAgentService(options: {
       return rows.map(mapAgent);
     },
 
+    async getBySlug(slug: string): Promise<Agent | undefined> {
+      const row = await options.db.query.agents.findFirst({
+        where: (table, operators) => operators.eq(table.slug, slug),
+      });
+
+      return row ? mapAgent(row) : undefined;
+    },
+
     async get(id: string): Promise<Agent | undefined> {
       const row = await options.db.query.agents.findFirst({
         where: (table, operators) => operators.eq(table.id, id),
@@ -66,7 +75,7 @@ export function createAgentService(options: {
       const id = createId();
       const slug = await reserveSlug(parsed.name);
       const timestamp = now();
-      const workspacePath = buildWorkspacePath(slug, id);
+      const workspacePath = buildWorkspacePath(slug);
 
       await prepareWorkspace({
         config: options.config,
@@ -113,7 +122,7 @@ export function createAgentService(options: {
 
       const nextName = parsed.name ?? existing.name;
       const nextSlug = parsed.name ? await reserveSlug(parsed.name, id) : existing.slug;
-      const nextWorkspacePath = buildWorkspacePath(nextSlug, existing.id);
+      const nextWorkspacePath = buildWorkspacePath(nextSlug);
 
       if (existing.workspace_path !== nextWorkspacePath) {
         await moveWorkspace(existing.workspace_path, nextWorkspacePath);
@@ -195,12 +204,7 @@ export function createAgentService(options: {
       return mapAgent(row);
     },
 
-    async getCatalog(): Promise<{
-      builtInSkills: BuiltInSkill[];
-      mcpServers: Array<{ name: string; enabled: boolean }>;
-      customTools: Array<{ name: string; enabled: boolean }>;
-      providerModels: string[];
-    }> {
+    async getCatalog(): Promise<AgentCatalog> {
       const [skills, mcpRows, toolRows, providerModels] = await Promise.all([
         listBuiltInSkills(skillRoot),
         options.db
@@ -212,17 +216,25 @@ export function createAgentService(options: {
         providerService.listModels(),
       ]);
 
-      return {
+      return agentCatalogSchema.parse({
         builtInSkills: builtInSkillListSchema.parse(skills),
+        providerModels: Array.from(
+          new Map(
+            providerModels.map((model) => {
+              const qualifiedId = qualifyModelId(model.providerId, model.id);
+
+              return [qualifiedId, { id: qualifiedId, label: qualifiedId }];
+            }),
+          ).values(),
+        ),
         mcpServers: mcpRows,
         customTools: toolRows,
-        providerModels: providerModels.map((model) => model.id),
-      };
+      });
     },
   };
 
-  function buildWorkspacePath(slug: string, id: string): string {
-    return join(options.config.paths.subdirectories.agents, `${slug}-${id}`);
+  function buildWorkspacePath(slug: string): string {
+    return join(options.config.paths.subdirectories.agents, slug);
   }
 
   function buildArchiveRoot(): string {
@@ -254,6 +266,10 @@ export function createAgentService(options: {
       index += 1;
     }
   }
+}
+
+function qualifyModelId(providerId: string, modelId: string): string {
+  return modelId.includes("/") ? modelId : `${providerId}/${modelId}`;
 }
 
 function mapAgent(row: typeof agents.$inferSelect): Agent {

@@ -5,6 +5,9 @@ import type { RouteObject } from "react-router-dom";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { FileManagerPage } from "@/pages/FileManagerPage";
 import { GenericPlaceholderPage } from "@/pages/GenericPlaceholderPage";
+import { AgentEditorPage } from "@/pages/AgentEditorPage";
+import { AgentsPage } from "@/pages/AgentsPage";
+import { BuiltInSkillsPage } from "@/pages/BuiltInSkillsPage";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { ProviderConnectionsPage } from "@/pages/ProviderConnectionsPage";
@@ -29,33 +32,18 @@ export const appRoutes = [
     path: "/agents",
     title: "Agents",
     navLabel: "Agents",
-    navigationMatch: ["/agents/new", "/agents/:agentId/edit"],
-    element: (
-      <GenericPlaceholderPage
-        title="Agents"
-        description="Browse, filter, and manage every agent from one searchable grid."
-      />
-    ),
+    navigationMatch: ["/agents/new", "/agents/:slug/edit"],
+    element: <AgentsPage />,
   },
   {
     path: "/agents/new",
     title: "Create Agent",
-    element: (
-      <GenericPlaceholderPage
-        title="Create Agent"
-        description="Reusable create and edit flows will land on top of the shared shell and page-state primitives."
-      />
-    ),
+    element: <AgentEditorPage mode="create" />,
   },
   {
-    path: "/agents/:agentId/edit",
+    path: "/agents/:slug/edit",
     title: "Edit Agent",
-    element: (
-      <GenericPlaceholderPage
-        title="Edit Agent"
-        description="Agent editing will reuse the same form surface as creation once the CRUD experience is implemented."
-      />
-    ),
+    element: <AgentEditorPage mode="edit" />,
   },
   {
     path: "/chat/:agentId",
@@ -106,12 +94,7 @@ export const appRoutes = [
     path: "/skills",
     title: "Built-in Skills",
     navLabel: "Built-in Skills",
-    element: (
-      <GenericPlaceholderPage
-        title="Built-in Skills"
-        description="Curated skill browsing will slot into the shell without changing its layout contract."
-      />
-    ),
+    element: <BuiltInSkillsPage />,
   },
   {
     path: "/integrations",

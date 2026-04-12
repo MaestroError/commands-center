@@ -12,6 +12,7 @@ export {
 } from "./api.js";
 export {
   agentCapabilitySelectionSchema,
+  agentCatalogSchema,
   agentListSchema,
   agentMcpServerSchema,
   agentPermissionRuleSchema,
@@ -23,6 +24,7 @@ export {
   permissionActionSchema,
   updateAgentInputSchema,
   type Agent,
+  type AgentCatalog,
   type AgentCapabilitySelection,
   type AgentMcpServer,
   type AgentPermissionRule,

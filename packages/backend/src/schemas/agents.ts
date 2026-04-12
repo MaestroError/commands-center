@@ -6,6 +6,35 @@ export const builtInSkillSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1),
   description: z.string().min(1),
+  category: z.string().min(1),
+  version: z.string().min(1).optional(),
+  license: z.string().min(1).optional(),
+  compatibility: z.string().min(1).optional(),
+  metadata: z.record(z.string(), z.string()).default({}),
+  detailsMarkdown: z.string(),
+  files: z.array(z.string().min(1)).default([]),
+});
+
+export const agentCatalogSchema = z.object({
+  builtInSkills: z.array(builtInSkillSchema),
+  providerModels: z.array(
+    z.object({
+      id: z.string().min(1),
+      label: z.string().min(1),
+    }),
+  ),
+  mcpServers: z.array(
+    z.object({
+      name: z.string().min(1),
+      enabled: z.boolean(),
+    }),
+  ),
+  customTools: z.array(
+    z.object({
+      name: z.string().min(1),
+      enabled: z.boolean(),
+    }),
+  ),
 });
 
 export const agentPermissionRuleSchema = z.object({
@@ -63,6 +92,7 @@ export const agentSchema = z.object({
 export const builtInSkillListSchema = z.array(builtInSkillSchema);
 
 export type Agent = z.infer<typeof agentSchema>;
+export type AgentCatalog = z.infer<typeof agentCatalogSchema>;
 export type AgentCapabilitySelection = z.infer<typeof agentCapabilitySelectionSchema>;
 export type BuiltInSkill = z.infer<typeof builtInSkillSchema>;
 export type CreateAgentInput = z.infer<typeof createAgentInputSchema>;

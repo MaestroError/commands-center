@@ -81,6 +81,13 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
           name: "writer",
           slug: "writer",
           description: "Writing helper",
+          category: "General",
+          version: undefined,
+          license: undefined,
+          compatibility: "opencode",
+          metadata: {},
+          detailsMarkdown: "# writer",
+          files: ["SKILL.md"],
         },
       ]);
 
@@ -106,6 +113,19 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       await expect(
         readFile(join(paths.skillsDir, "writer", "SKILL.md"), "utf8"),
       ).resolves.toContain("description: Writing helper");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("stores the curated skill library under the CC workspace", async () => {
+    const testDb = await createTestDatabase();
+
+    try {
+      expect(getBuiltInSkillRoot(testDb.cwd)).toBe(
+        testDb.config.paths.subdirectories.builtinSkills,
+      );
+      expect(getBuiltInSkillRoot(testDb.cwd)).toContain(".cc/workspace/builtinSkills");
     } finally {
       await testDb.cleanup();
     }

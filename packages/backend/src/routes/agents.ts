@@ -12,6 +12,10 @@ const agentIdParamsSchema = z.object({
   id: z.string().min(1),
 });
 
+const agentSlugParamsSchema = z.object({
+  slug: z.string().min(1),
+});
+
 const listAgentsQuerySchema = z.object({
   includeArchived: z.coerce.boolean().optional().default(false),
 });
@@ -45,6 +49,24 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
     },
     async (request) => {
       const agent = await service.get(request.params.id);
+
+      if (!agent) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      return agent;
+    },
+  );
+
+  app.get(
+    "/api/agents/by-slug/:slug",
+    {
+      schema: {
+        params: agentSlugParamsSchema,
+      },
+    },
+    async (request) => {
+      const agent = await service.getBySlug(request.params.slug);
 
       if (!agent) {
         throw new NotFoundError("Agent not found.");

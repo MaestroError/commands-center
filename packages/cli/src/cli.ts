@@ -16,6 +16,7 @@ export type CliArgs = {
   command: string;
   host?: string;
   port?: number;
+  here: boolean;
   help: boolean;
   version: boolean;
 };
@@ -33,6 +34,7 @@ export function printHelp(): void {
   Options:
     --port, -p <number>        Port to listen on (default: ${String(DEFAULT_PORT)})
     --host, -h <string>        Host to bind to (default: ${DEFAULT_HOST})
+    --here                     Store CC workspace in <cwd>/.cc/workspace
 `);
 }
 
@@ -61,6 +63,7 @@ export function parseCliArgs(args: string[]): CliArgs {
     command,
     host,
     port,
+    here: args.includes("--here"),
     help: args.includes("--help"),
     version: args.includes("--version"),
   };
@@ -86,6 +89,11 @@ export async function runCli(args: string[]): Promise<void> {
     printHelp();
     process.exitCode = 1;
     return;
+  }
+
+  if (parsedArgs.here) {
+    const root = process.env["INIT_CWD"] ?? process.cwd();
+    process.env["CC_WORKSPACE_DIR"] = resolve(root, ".cc", "workspace");
   }
 
   const staticAssetsDir = resolveStaticAssetsDir();

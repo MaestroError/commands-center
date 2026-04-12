@@ -51,6 +51,10 @@ describe("agent routes", () => {
         method: "GET",
         url: `/api/agents/${agent.id}`,
       });
+      const fetchedBySlug = await server.inject({
+        method: "GET",
+        url: `/api/agents/by-slug/${agent.slug}`,
+      });
       const catalog = await server.inject({
         method: "GET",
         url: "/api/agents/catalog",
@@ -75,12 +79,21 @@ describe("agent routes", () => {
       expect(listed.json()).toHaveLength(1);
       expect(fetched.statusCode).toBe(200);
       expect(fetched.json().name).toBe("Writer");
+      expect(fetchedBySlug.statusCode).toBe(200);
+      expect(fetchedBySlug.json().id).toBe(agent.id);
       expect(catalog.statusCode).toBe(200);
       expect(catalog.json().builtInSkills).toEqual([
         {
           name: "writer",
           slug: "writer",
           description: "Writing helper",
+          category: "General",
+          version: undefined,
+          license: undefined,
+          compatibility: undefined,
+          metadata: {},
+          detailsMarkdown: "# writer",
+          files: ["SKILL.md"],
         },
       ]);
       expect(updated.statusCode).toBe(200);
@@ -97,7 +110,7 @@ describe("agent routes", () => {
 });
 
 async function createSkill(cwd: string, slug: string, description: string): Promise<void> {
-  const dir = join(cwd, ".opencode", "skills", slug);
+  const dir = join(cwd, ".cc", "workspace", "builtinSkills", slug);
 
   await mkdir(dir, { recursive: true });
   await writeFile(

@@ -44,6 +44,7 @@ Editing means rewriting: we should maintain the state in the DB as well, so that
 - The built-in skills browser shows all available skills with metadata and supports searching or filtering by category
 - Behavior matches `design/screens/create-edit-agent/acceptance_criteria.md` and `design/screens/built-in-skills/acceptance_criteria.md`
 - Agent list, editor, and skills browser layouts adapt correctly to mobile viewports
+- Dispose after each new edit to reload configuration. Check `dispose` in `packages/backend/src/services/opencode-service.ts`
 
 ## Non-Goals
 

@@ -1,13 +1,20 @@
 import {
+  agentCatalogSchema,
   agentListSchema,
+  agentSchema,
+  createAgentInputSchema,
   providerConnectResultSchema,
   providerOauthAuthorizationSchema,
   providerOauthCompleteResultSchema,
   providerStatusListSchema,
   type Agent,
+  type AgentCatalog,
+  type CreateAgentInput,
   type ProviderOauthAuthorization,
   type ProviderOauthCompleteResult,
   type ProviderStatus,
+  type UpdateAgentInput,
+  updateAgentInputSchema,
 } from "@cc/shared/schemas";
 
 type RequestOptions = {
@@ -21,6 +28,34 @@ export async function listProviders(): Promise<ProviderStatus[]> {
 
 export async function listAgents(): Promise<Agent[]> {
   return requestJson<Agent[]>("/api/agents", agentListSchema);
+}
+
+export async function getAgentBySlug(slug: string): Promise<Agent> {
+  return requestJson<Agent>(`/api/agents/by-slug/${encodeURIComponent(slug)}`, agentSchema);
+}
+
+export async function getAgentCatalog(): Promise<AgentCatalog> {
+  return requestJson<AgentCatalog>("/api/agents/catalog", agentCatalogSchema);
+}
+
+export async function createAgent(input: CreateAgentInput): Promise<Agent> {
+  return requestJson<Agent>("/api/agents", agentSchema, {
+    method: "POST",
+    body: createAgentInputSchema.parse(input),
+  });
+}
+
+export async function updateAgent(id: string, input: UpdateAgentInput): Promise<Agent> {
+  return requestJson<Agent>(`/api/agents/${encodeURIComponent(id)}`, agentSchema, {
+    method: "PATCH",
+    body: updateAgentInputSchema.parse(input),
+  });
+}
+
+export async function archiveAgent(id: string): Promise<Agent> {
+  return requestJson<Agent>(`/api/agents/${encodeURIComponent(id)}`, agentSchema, {
+    method: "DELETE",
+  });
 }
 
 export async function submitProviderApiKey(providerId: string, apiKey: string): Promise<boolean> {

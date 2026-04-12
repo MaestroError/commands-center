@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 
 import { createDatabaseClient, type DatabaseClient } from "../db/client.js";
+import { migrateDatabase } from "../db/migrate.js";
 import {
   createOpenCodeOrchestrator,
   type OpenCodeOrchestrator,
@@ -58,6 +59,7 @@ export async function startServerRuntime(
   const logger = createLogger(config);
   logger.info(getStartupLogContext(config), "runtime configuration loaded");
   const database = createDatabaseClient(config);
+  migrateDatabase(database.db);
 
   const orchestrator = createOpenCodeOrchestrator({
     config,

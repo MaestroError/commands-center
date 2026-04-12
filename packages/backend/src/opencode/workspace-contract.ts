@@ -1,5 +1,5 @@
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 import { z } from "zod";
 
@@ -95,7 +95,7 @@ export function getOpenCodeWorkspacePaths(root: string): {
 }
 
 export function getBuiltInSkillRoot(cwd: string): string {
-  return resolve(cwd, ".opencode", "skills");
+  return resolve(cwd, ".cc", "workspace", "builtinSkills");
 }
 
 export async function listBuiltInSkills(root: string): Promise<BuiltInSkill[]> {
@@ -233,6 +233,13 @@ export async function validateSkillDirectory(dir: string, slug: string): Promise
     name: frontmatter.name,
     slug,
     description: frontmatter.description,
+    category: frontmatter.metadata?.["category"] ?? frontmatter.metadata?.["area"] ?? "General",
+    version: frontmatter.metadata?.["version"],
+    license: frontmatter.license,
+    compatibility: frontmatter.compatibility,
+    metadata: frontmatter.metadata ?? {},
+    detailsMarkdown: stripSkillFrontmatter(markdown),
+    files: await listSkillFiles(dir),
   };
 }
 
@@ -243,21 +250,68 @@ export function parseSkillFrontmatter(markdown: string): z.infer<typeof skillFro
     throw new Error("OpenCode skill must start with YAML frontmatter.");
   }
 
-  const data = match[1]
-    .split("\n")
-    .map((line) => line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/))
-    .filter((line): line is RegExpMatchArray => line !== null)
-    .reduce<Record<string, string>>((result, line) => {
-      const key = line[1];
+  const lines = match[1].split("\n");
+  const data: Record<string, string | Record<string, string>> = {};
+  let activeObject: Record<string, string> | undefined;
 
-      if (key) {
-        result[key] = line[2] ?? "";
+  for (const line of lines) {
+    const nestedMatch = line.match(/^\s{2}([A-Za-z0-9_-]+):\s*(.*)$/);
+
+    if (nestedMatch && activeObject) {
+      const nestedKey = nestedMatch[1];
+
+      if (nestedKey) {
+        activeObject[nestedKey] = nestedMatch[2] ?? "";
       }
 
-      return result;
-    }, {});
+      continue;
+    }
+
+    const topLevelMatch = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+
+    if (!topLevelMatch) {
+      activeObject = undefined;
+      continue;
+    }
+
+    const key = topLevelMatch[1];
+
+    if (!key) {
+      continue;
+    }
+
+    if (topLevelMatch[2] === "" && key === "metadata") {
+      activeObject = {};
+      data[key] = activeObject;
+      continue;
+    }
+
+    data[key] = topLevelMatch[2] ?? "";
+    activeObject = undefined;
+  }
 
   return skillFrontmatterSchema.parse(data);
+}
+
+function stripSkillFrontmatter(markdown: string): string {
+  return markdown.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
+}
+
+async function listSkillFiles(root: string, baseRoot = root): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true });
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const absolutePath = join(root, entry.name);
+
+      if (entry.isDirectory()) {
+        return listSkillFiles(absolutePath, baseRoot);
+      }
+
+      return [relative(baseRoot, absolutePath)];
+    }),
+  );
+
+  return files.flat().sort((left, right) => left.localeCompare(right));
 }
 
 async function copyBuiltInSkill(root: string, targetRoot: string, slug: string): Promise<void> {

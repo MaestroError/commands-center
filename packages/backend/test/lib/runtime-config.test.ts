@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import os from "node:os";
+
+import { describe, expect, it, vi } from "vitest";
 
 import { getStartupLogContext, loadRuntimeConfig } from "../../src/lib/runtime-config";
 
@@ -76,5 +78,57 @@ describe("loadRuntimeConfig", () => {
       logLevel: "info",
       opencodePathConfigured: true,
     });
+  });
+
+  it("prefers INIT_CWD when runtime starts through workspace package scripts", () => {
+    const config = loadRuntimeConfig({
+      env: {
+        NODE_ENV: "test",
+        INIT_CWD: "/tmp/workspace-root",
+      },
+    });
+
+    expect(config.paths.dataDir).toBe("/tmp/workspace-root/.cc");
+    expect(config.paths.workspaceDir).toBe("/tmp/workspace-root/.cc/workspace");
+    expect(config.paths.subdirectories.builtinSkills).toBe(
+      "/tmp/workspace-root/.cc/workspace/builtinSkills",
+    );
+  });
+
+  it("defaults to a user-level CC home when no cwd or INIT_CWD is provided", () => {
+    const home = vi.spyOn(os, "homedir").mockReturnValue("/tmp/user-home");
+
+    try {
+      const config = loadRuntimeConfig({
+        env: {
+          NODE_ENV: "test",
+        },
+      });
+
+      expect(config.paths.dataDir).toBe("/tmp/user-home/.cc");
+      expect(config.paths.workspaceDir).toBe("/tmp/user-home/.cc/workspace");
+      expect(config.paths.subdirectories.builtinSkills).toBe(
+        "/tmp/user-home/.cc/workspace/builtinSkills",
+      );
+    } finally {
+      home.mockRestore();
+    }
+  });
+
+  it("allows overriding the workspace root with an absolute CC_WORKSPACE_DIR path", () => {
+    const config = loadRuntimeConfig({
+      env: {
+        NODE_ENV: "test",
+        INIT_CWD: "/tmp/workspace-root",
+        CC_WORKSPACE_DIR: "/srv/commandscenter-workspace",
+      },
+    });
+
+    expect(config.paths.workspaceDir).toBe("/srv/commandscenter-workspace");
+    expect(config.paths.subdirectories.agents).toBe("/srv/commandscenter-workspace/agents");
+    expect(config.paths.subdirectories.builtinSkills).toBe(
+      "/srv/commandscenter-workspace/builtinSkills",
+    );
+    expect(config.database.sqlitePath).toBe("/srv/commandscenter-workspace/database/local.db");
   });
 });

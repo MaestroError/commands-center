@@ -8,6 +8,7 @@ describe("parseCliArgs", () => {
       command: "start",
       host: undefined,
       port: undefined,
+      here: false,
       help: false,
       version: false,
     });
@@ -18,6 +19,18 @@ describe("parseCliArgs", () => {
       command: "serve",
       host: "127.0.0.1",
       port: 4001,
+      here: false,
+      help: false,
+      version: false,
+    });
+  });
+
+  it("parses the --here workspace flag", () => {
+    expect(parseCliArgs(["start", "--here"])).toEqual({
+      command: "start",
+      host: undefined,
+      port: undefined,
+      here: true,
       help: false,
       version: false,
     });
@@ -28,6 +41,7 @@ describe("parseCliArgs", () => {
       command: "start",
       host: undefined,
       port: undefined,
+      here: false,
       help: true,
       version: true,
     });

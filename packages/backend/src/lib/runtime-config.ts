@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import os from "node:os";
+import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 
 const DEFAULT_PORT = 3000;
@@ -94,6 +95,7 @@ export type RuntimeConfig = {
     subdirectories: {
       agents: string;
       auth: string;
+      builtinSkills: string;
       automations: string;
       database: string;
       mcp: string;
@@ -137,8 +139,8 @@ export function loadRuntimeConfig(options?: {
   env?: RuntimeEnvironment;
   overrides?: RuntimeConfigOverrides;
 }): RuntimeConfig {
-  const cwd = options?.cwd ?? process.cwd();
   const env = options?.env ?? process.env;
+  const cwd = options?.cwd ?? env["INIT_CWD"] ?? os.homedir();
   const parsedEnv = envSchema.safeParse(env);
 
   if (!parsedEnv.success) {
@@ -151,7 +153,9 @@ export function loadRuntimeConfig(options?: {
 
   const dataDir = resolve(cwd, parsedEnv.data.CC_DATA_DIR);
   const workspaceDir = parsedEnv.data.CC_WORKSPACE_DIR
-    ? resolve(cwd, parsedEnv.data.CC_WORKSPACE_DIR)
+    ? isAbsolute(parsedEnv.data.CC_WORKSPACE_DIR)
+      ? parsedEnv.data.CC_WORKSPACE_DIR
+      : resolve(cwd, parsedEnv.data.CC_WORKSPACE_DIR)
     : resolve(dataDir, DEFAULT_WORKSPACE_DIR_NAME);
 
   return {
@@ -167,6 +171,7 @@ export function loadRuntimeConfig(options?: {
       subdirectories: {
         agents: resolve(workspaceDir, "agents"),
         auth: resolve(workspaceDir, "auth"),
+        builtinSkills: resolve(workspaceDir, "builtinSkills"),
         automations: resolve(workspaceDir, "automations"),
         database: resolve(workspaceDir, "database"),
         mcp: resolve(workspaceDir, "mcp"),

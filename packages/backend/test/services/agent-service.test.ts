@@ -41,6 +41,7 @@ describe("createAgentService", () => {
 
       expect(agent.status).toBe("active");
       expect(agent.slug).toBe("reviewer");
+      expect(agent.workspacePath).toMatch(/\/agents\/reviewer$/);
       await expect(
         stat(join(agent.workspacePath, ".opencode", "skills", "reviewer", "SKILL.md")),
       ).resolves.toBeDefined();
@@ -90,6 +91,7 @@ describe("createAgentService", () => {
       });
 
       expect(updated?.slug).toBe("planner");
+      expect(updated?.workspacePath).toMatch(/\/agents\/planner$/);
       expect(updated?.workspacePath).not.toBe(created.workspacePath);
       await expect(stat(created.workspacePath)).rejects.toThrow();
       await expect(
@@ -114,7 +116,7 @@ describe("createAgentService", () => {
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: createMockOpenCodeService({ dispose }),
-      skillRoot: join(testDb.cwd, ".opencode", "skills"),
+      skillRoot: join(testDb.cwd, ".cc", "workspace", "builtinSkills"),
     });
 
     try {
@@ -139,16 +141,75 @@ describe("createAgentService", () => {
       await testDb.cleanup();
     }
   });
+
+  it("loads agents by slug and exposes richer built-in skill catalog details", async () => {
+    const testDb = await createTestDatabase();
+    const skillRoot = await createSkill(
+      testDb.cwd,
+      "screen-writer",
+      "Screen writing helper",
+      "area: docs\n  version: 1.0.0",
+    );
+    const service = createAgentService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      skillRoot,
+    });
+
+    try {
+      const created = await service.create({
+        name: "Screen Writer",
+        role: "write screen docs",
+        instructions: "Write screen docs.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: ["screen-writer"],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+
+      const loaded = await service.getBySlug(created.slug);
+      const catalog = await service.getCatalog();
+
+      expect(loaded?.id).toBe(created.id);
+      expect(catalog.builtInSkills).toEqual([
+        {
+          name: "screen-writer",
+          slug: "screen-writer",
+          description: "Screen writing helper",
+          category: "docs",
+          version: "1.0.0",
+          license: undefined,
+          compatibility: undefined,
+          metadata: {
+            area: "docs",
+            version: "1.0.0",
+          },
+          detailsMarkdown: "# screen-writer",
+          files: ["SKILL.md"],
+        },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
 });
 
-async function createSkill(cwd: string, slug: string, description: string): Promise<string> {
-  const root = join(cwd, ".opencode", "skills");
+async function createSkill(
+  cwd: string,
+  slug: string,
+  description: string,
+  metadataBlock?: string,
+): Promise<string> {
+  const root = join(cwd, ".cc", "workspace", "builtinSkills");
   const dir = join(root, slug);
 
   await mkdir(dir, { recursive: true });
   await writeFile(
     join(dir, "SKILL.md"),
-    `---\nname: ${slug}\ndescription: ${description}\n---\n\n# ${slug}\n`,
+    `---\nname: ${slug}\ndescription: ${description}${metadataBlock ? `\nmetadata:\n  ${metadataBlock}` : ""}\n---\n\n# ${slug}\n`,
     "utf8",
   );
 
