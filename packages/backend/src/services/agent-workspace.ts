@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import type { AgentCapabilitySelection, BuiltInSkill } from "../schemas/agents.js";
 
 import type { RuntimeConfig } from "../lib/runtime-config.js";
+import { resolveBuiltInSkillsRoot } from "../lib/builtin-skills.js";
 import {
   listBuiltInSkills as listContractBuiltInSkills,
   writeOpenCodeWorkspace,
@@ -18,7 +19,8 @@ export type AgentWorkspaceInput = {
 };
 
 export function getBuiltInSkillRoot(config: RuntimeConfig): string {
-  return config.paths.subdirectories.builtinSkills;
+  void config;
+  return resolveBuiltInSkillsRoot();
 }
 
 export async function listBuiltInSkills(root: string): Promise<BuiltInSkill[]> {

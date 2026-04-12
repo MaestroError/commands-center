@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const cliDir = resolve(root, "packages/cli");
 const frontendDir = resolve(root, "packages/frontend");
+const backendDir = resolve(root, "packages/backend");
 
 console.log("Building frontend...");
 execSync("pnpm --filter @cc/frontend build", { cwd: root, stdio: "inherit" });
@@ -35,5 +36,10 @@ console.log("Copying frontend assets...");
 const publicDir = resolve(cliDir, "dist/public");
 mkdirSync(publicDir, { recursive: true });
 cpSync(resolve(frontendDir, "dist"), publicDir, { recursive: true });
+
+console.log("Copying backend resources...");
+const resourcesDir = resolve(cliDir, "dist/resources");
+mkdirSync(resourcesDir, { recursive: true });
+cpSync(resolve(backendDir, "resources"), resourcesDir, { recursive: true });
 
 console.log("CLI build complete → packages/cli/dist/");

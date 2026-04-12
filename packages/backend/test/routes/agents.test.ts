@@ -1,6 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import { describe, expect, it, vi } from "vitest";
 
 import { createSchedulerService } from "../../src/services/scheduler-service";
@@ -13,7 +10,6 @@ import { createTestDatabase } from "../helpers/db";
 describe("agent routes", () => {
   it("supports create, list, get, update, catalog, and archive flows", async () => {
     const testDb = await createTestDatabase();
-    await createSkill(testDb.cwd, "writer", "Writing helper");
     const server = await createServer({
       config: testDb.config,
       logger: createLogger(testDb.config),
@@ -33,7 +29,7 @@ describe("agent routes", () => {
           instructions: "Write useful docs.",
           defaultModel: "openai/gpt-4.1",
           capabilities: {
-            builtInSkills: ["writer"],
+            builtInSkills: ["task-planner"],
             mcpServers: [{ name: "github", enabled: true, action: "allow" }],
             toolPermissions: [{ pattern: "custom_write", action: "ask" }],
           },
@@ -82,19 +78,11 @@ describe("agent routes", () => {
       expect(fetchedBySlug.statusCode).toBe(200);
       expect(fetchedBySlug.json().id).toBe(agent.id);
       expect(catalog.statusCode).toBe(200);
-      expect(catalog.json().builtInSkills).toEqual([
-        {
-          name: "writer",
-          slug: "writer",
-          description: "Writing helper",
-          category: "General",
-          version: undefined,
-          license: undefined,
-          compatibility: undefined,
-          metadata: {},
-          detailsMarkdown: "# writer",
-          files: ["SKILL.md"],
-        },
+      const catalogBody = catalog.json<{ builtInSkills: Array<{ slug: string }> }>();
+      expect(catalogBody.builtInSkills.map((skill) => skill.slug)).toEqual([
+        "concise-summarizer",
+        "final-review",
+        "task-planner",
       ]);
       expect(updated.statusCode).toBe(200);
       expect(updated.json().slug).toBe("writer-prime");
@@ -108,17 +96,6 @@ describe("agent routes", () => {
     }
   });
 });
-
-async function createSkill(cwd: string, slug: string, description: string): Promise<void> {
-  const dir = join(cwd, ".cc", "workspace", "builtinSkills", slug);
-
-  await mkdir(dir, { recursive: true });
-  await writeFile(
-    join(dir, "SKILL.md"),
-    `---\nname: ${slug}\ndescription: ${description}\n---\n\n# ${slug}\n`,
-    "utf8",
-  );
-}
 
 function createOrchestrator(): OpenCodeOrchestrator {
   return {

@@ -85,7 +85,7 @@ export function BuiltInSkillsPage() {
       ) : null}
       {!catalogQuery.isLoading && !catalogQuery.error && skills.length === 0 ? (
         <EmptyState
-          description="Add curated skills to .cc/workspace/builtinSkills to make them browsable here and assignable to agents."
+          description="Built-in skills are bundled with CommandsCenter and become assignable to agents automatically."
           title="No built-in skills available"
         />
       ) : null}

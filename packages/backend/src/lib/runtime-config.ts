@@ -95,7 +95,6 @@ export type RuntimeConfig = {
     subdirectories: {
       agents: string;
       auth: string;
-      builtinSkills: string;
       automations: string;
       database: string;
       mcp: string;
@@ -171,7 +170,6 @@ export function loadRuntimeConfig(options?: {
       subdirectories: {
         agents: resolve(workspaceDir, "agents"),
         auth: resolve(workspaceDir, "auth"),
-        builtinSkills: resolve(workspaceDir, "builtinSkills"),
         automations: resolve(workspaceDir, "automations"),
         database: resolve(workspaceDir, "database"),
         mcp: resolve(workspaceDir, "mcp"),

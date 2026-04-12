@@ -116,7 +116,7 @@ describe("createAgentService", () => {
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: createMockOpenCodeService({ dispose }),
-      skillRoot: join(testDb.cwd, ".cc", "workspace", "builtinSkills"),
+      skillRoot: join(testDb.cwd, "builtin-skills"),
     });
 
     try {
@@ -203,7 +203,7 @@ async function createSkill(
   description: string,
   metadataBlock?: string,
 ): Promise<string> {
-  const root = join(cwd, ".cc", "workspace", "builtinSkills");
+  const root = join(cwd, "builtin-skills");
   const dir = join(root, slug);
 
   await mkdir(dir, { recursive: true });

@@ -90,9 +90,6 @@ describe("loadRuntimeConfig", () => {
 
     expect(config.paths.dataDir).toBe("/tmp/workspace-root/.cc");
     expect(config.paths.workspaceDir).toBe("/tmp/workspace-root/.cc/workspace");
-    expect(config.paths.subdirectories.builtinSkills).toBe(
-      "/tmp/workspace-root/.cc/workspace/builtinSkills",
-    );
   });
 
   it("defaults to a user-level CC home when no cwd or INIT_CWD is provided", () => {
@@ -107,9 +104,6 @@ describe("loadRuntimeConfig", () => {
 
       expect(config.paths.dataDir).toBe("/tmp/user-home/.cc");
       expect(config.paths.workspaceDir).toBe("/tmp/user-home/.cc/workspace");
-      expect(config.paths.subdirectories.builtinSkills).toBe(
-        "/tmp/user-home/.cc/workspace/builtinSkills",
-      );
     } finally {
       home.mockRestore();
     }
@@ -126,9 +120,6 @@ describe("loadRuntimeConfig", () => {
 
     expect(config.paths.workspaceDir).toBe("/srv/commandscenter-workspace");
     expect(config.paths.subdirectories.agents).toBe("/srv/commandscenter-workspace/agents");
-    expect(config.paths.subdirectories.builtinSkills).toBe(
-      "/srv/commandscenter-workspace/builtinSkills",
-    );
     expect(config.database.sqlitePath).toBe("/srv/commandscenter-workspace/database/local.db");
   });
 });

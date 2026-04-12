@@ -1,5 +1,5 @@
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, relative } from "node:path";
 
 import { z } from "zod";
 
@@ -92,10 +92,6 @@ export function getOpenCodeWorkspacePaths(root: string): {
     configFile: join(root, OPENCODE_WORKSPACE_CONTRACT.files.config.relativePath),
     skillsDir: join(root, OPENCODE_WORKSPACE_CONTRACT.files.skills.relativePath),
   };
-}
-
-export function getBuiltInSkillRoot(cwd: string): string {
-  return resolve(cwd, ".cc", "workspace", "builtinSkills");
 }
 
 export async function listBuiltInSkills(root: string): Promise<BuiltInSkill[]> {

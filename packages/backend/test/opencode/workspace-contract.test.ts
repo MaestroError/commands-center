@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { resolveBuiltInSkillsRoot } from "../../src/lib/builtin-skills";
 import {
-  getBuiltInSkillRoot,
   getOpenCodeWorkspacePaths,
   listBuiltInSkills,
   OPENCODE_WORKSPACE_CONTRACT,
@@ -65,7 +65,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
 
   it("copies validated skills into the documented .opencode path", async () => {
     const testDb = await createTestDatabase();
-    const skillRoot = getBuiltInSkillRoot(testDb.cwd);
+    const skillRoot = join(testDb.cwd, "builtin-skills");
     const skillDir = join(skillRoot, "writer");
 
     try {
@@ -118,17 +118,8 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
     }
   });
 
-  it("stores the curated skill library under the CC workspace", async () => {
-    const testDb = await createTestDatabase();
-
-    try {
-      expect(getBuiltInSkillRoot(testDb.cwd)).toBe(
-        testDb.config.paths.subdirectories.builtinSkills,
-      );
-      expect(getBuiltInSkillRoot(testDb.cwd)).toContain(".cc/workspace/builtinSkills");
-    } finally {
-      await testDb.cleanup();
-    }
+  it("resolves the curated skill library from bundled resources", () => {
+    expect(resolveBuiltInSkillsRoot()).toContain("resources/builtinSkills");
   });
 
   it("rejects malformed skill frontmatter early", () => {
