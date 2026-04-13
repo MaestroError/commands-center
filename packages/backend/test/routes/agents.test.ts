@@ -149,5 +149,11 @@ function createMockOpenCodeService(): OpenCodeService {
     ),
     completeOauth: vi.fn(() => Promise.resolve(true)),
     disconnectProvider: vi.fn(() => Promise.resolve(true)),
+    createSession: vi.fn(),
+    getSession: vi.fn(),
+    listSessionMessages: vi.fn(),
+    promptSession: vi.fn(),
+    commandSession: vi.fn(),
+    shellSession: vi.fn(),
   } as unknown as OpenCodeService;
 }

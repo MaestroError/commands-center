@@ -19,11 +19,11 @@ This plan is organized so each epic is a complete feature slice that can ship as
  ✅ E1 Runtime Bootstrap
  |- ✅ E2 OpenCode Orchestrator
  |  |- ✅ E5 OpenCode Workspace Contract
- |  |- C3 Direct Chat Session Model
+ |  |- ✅ C3 Direct Chat Session Model
  |  |  |- U3 Direct Chat Screen
  |  |  \- I4 Automations
  |  |- I1 Provider Connections
- |  |  \- U2 Agents and Agent Editor
+ |  |  \- ✅ U2 Agents and Agent Editor
  |  \- I2 Integrations and MCP Management
  |     |- I3 Custom Tools Platform
  |     \- I5 Composio Integration
@@ -31,7 +31,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |  |- E4 Self-Updating and Version Management
  |  |- ✅ U0 Frontend Foundation
  |  |  |- U1 App Shell and Dashboard
- |  |  |- U2 Agents and Agent Editor
+ |  |  |- ✅ U2 Agents and Agent Editor
  |  |  |- U3 Direct Chat Screen
  |  |  |- U4 File Manager and Terminals
  |  |  \- U5 Profile, Settings, and Theming
@@ -44,7 +44,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
     |  |- I2 Integrations and MCP Management
     |  |- I3 Custom Tools Platform
     |  \- I5 Composio Integration
-    |- C3 Direct Chat Session Model
+    |- ✅ C3 Direct Chat Session Model
     |  |- U3 Direct Chat Screen
     |  \- I4 Automations
     |- U4 File Manager and Terminals
@@ -68,8 +68,8 @@ I2, I3, I5 each extend the agent editor independently after U2 ships
 6. `✅ engine-infrastructure/03-api-and-realtime-foundation.md`
 7. `✅ integrations-automation/01-provider-connections.md`
 8. `✅ product-ux-surfaces/00-frontend-foundation.md`
-9. `product-ux-surfaces/02-agents-and-agent-editor.md`
-10. `core-data-state/03-direct-chat-session-model.md`
+9. `✅ product-ux-surfaces/02-agents-and-agent-editor.md`
+10. `✅ core-data-state/03-direct-chat-session-model.md`
 11. `product-ux-surfaces/03-direct-chat-screen.md`
 
 Result: connect providers, app shell with layout and theming, create agents with model and skills, generate workspaces, open persistent direct chat, send messages.
@@ -146,8 +146,8 @@ Each epic PR should:
 - ✅ C2 Agent Workspace Lifecycle
 - ✅ I1 Provider Connections
 - ✅ U0 Frontend Foundation
-- U2 Agents and Agent Editor
-- C3 Direct Chat Session Model
+- ✅ U2 Agents and Agent Editor
+- ✅ C3 Direct Chat Session Model
 - U3 Direct Chat Screen
 
 ### Milestone 2: Capability Extensions
