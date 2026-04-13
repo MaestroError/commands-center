@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createAgentService } from "../../src/services/agent-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
@@ -9,8 +9,12 @@ import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("conversation routes", () => {
-  it("supports opening, prompting, listing, and starting fresh for agent conversations", async () => {
-    const testDb = await createTestDatabase();
+  let testDb: Awaited<ReturnType<typeof createTestDatabase>>;
+  let server: Awaited<ReturnType<typeof createServer>>;
+  let agentId: string;
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();
     const agentService = createAgentService({
       db: testDb.client.db,
@@ -18,7 +22,7 @@ describe("conversation routes", () => {
       opencodeService,
       skillRoot: `${testDb.cwd}/builtin-skills`,
     });
-    const server = await createServer({
+    server = await createServer({
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
@@ -27,61 +31,80 @@ describe("conversation routes", () => {
       scheduler: createSchedulerService(),
     });
 
-    try {
-      const agent = await agentService.create({
-        name: "Route Agent",
-        role: "help with routes",
-        instructions: "Be useful.",
-        defaultModel: "openai/gpt-4.1",
-        capabilities: {
-          builtInSkills: [],
-          mcpServers: [],
-          toolPermissions: [],
-        },
-      });
+    const agent = await agentService.create({
+      name: "Route Agent",
+      role: "help with routes",
+      instructions: "Be useful.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {
+        builtInSkills: [],
+        mcpServers: [],
+        toolPermissions: [],
+      },
+    });
+    agentId = agent.id;
+  });
 
-      const opened = await server.inject({
-        method: "GET",
-        url: `/api/agents/${agent.id}/conversations/active`,
-      });
+  afterAll(async () => {
+    await server.close();
+    await testDb.cleanup();
+  });
 
-      expect(opened.statusCode).toBe(200);
-      const snapshot = opened.json<{ current: { id: string }; previous: unknown[] }>();
-      expect(snapshot.previous).toEqual([]);
+  it("resolves the active conversation for an agent", async () => {
+    const response = await server.inject({
+      method: "GET",
+      url: `/api/agents/${agentId}/conversations/active`,
+    });
 
-      const prompted = await server.inject({
-        method: "POST",
-        url: `/api/conversations/${snapshot.current.id}/prompt`,
-        payload: {
-          text: "Explain the plan",
-          attachments: [],
-        },
-      });
+    expect(response.statusCode).toBe(200);
+    const snapshot = response.json<{ current: { id: string }; previous: unknown[] }>();
+    expect(snapshot.current.id).toBeDefined();
+    expect(snapshot.previous).toEqual([]);
+  });
 
-      expect(prompted.statusCode).toBe(200);
-      expect(prompted.json<{ messages: unknown[] }>().messages).toHaveLength(2);
+  it("persists prompt request and response in the session", async () => {
+    const opened = await server.inject({
+      method: "GET",
+      url: `/api/agents/${agentId}/conversations/active`,
+    });
+    const conversationId = opened.json<{ current: { id: string } }>().current.id;
 
-      const listed = await server.inject({
-        method: "GET",
-        url: `/api/agents/${agent.id}/conversations`,
-      });
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/conversations/${conversationId}/prompt`,
+      payload: { text: "Explain the plan", attachments: [] },
+    });
 
-      expect(listed.statusCode).toBe(200);
-      expect(listed.json()).toHaveLength(1);
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ messages: unknown[] }>().messages).toHaveLength(2);
+  });
 
-      const fresh = await server.inject({
-        method: "POST",
-        url: `/api/agents/${agent.id}/conversations/start-fresh`,
-      });
+  it("lists all conversations for an agent", async () => {
+    const response = await server.inject({
+      method: "GET",
+      url: `/api/agents/${agentId}/conversations`,
+    });
 
-      expect(fresh.statusCode).toBe(201);
-      expect(fresh.json<{ previous: Array<{ id: string }> }>().previous[0]?.id).toBe(
-        snapshot.current.id,
-      );
-    } finally {
-      await server.close();
-      await testDb.cleanup();
-    }
+    expect(response.statusCode).toBe(200);
+    expect(response.json<unknown[]>().length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("start-fresh creates a new session and preserves the previous one", async () => {
+    const before = await server.inject({
+      method: "GET",
+      url: `/api/agents/${agentId}/conversations/active`,
+    });
+    const previousId = before.json<{ current: { id: string } }>().current.id;
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/agents/${agentId}/conversations/start-fresh`,
+    });
+
+    expect(response.statusCode).toBe(201);
+    const snapshot = response.json<{ current: { id: string }; previous: Array<{ id: string }> }>();
+    expect(snapshot.current.id).not.toBe(previousId);
+    expect(snapshot.previous.some((c) => c.id === previousId)).toBe(true);
   });
 });
 

@@ -260,26 +260,45 @@ export const agents = pgTable("agents", {
 - Use dependency injection to swap real services for test doubles
 - Each test must be independent — no shared mutable state between tests
 - Name tests descriptively: `it("returns empty array when agent has no conversations")`
+- **One behavior per test** — each `it()` block must test exactly one thing. If the test name contains "and" or commas listing multiple behaviors, split it into separate tests. This keeps failures precise: when a test breaks you immediately know which behavior regressed without reading the test body.
+- Use `beforeAll`/`afterAll` to share expensive setup (DB, server) across tests in a `describe` block — this keeps each `it()` focused on a single assertion while avoiding redundant setup cost.
 
 ```typescript
-// Good: tests real behavior
-import { createAgentService } from "@/services/agent-service";
-import { createTestDb } from "@test/helpers/db";
+// Bad: tests multiple behaviors in one block — if prompting fails you
+// lose visibility into whether listing or start-fresh work.
+it("supports opening, prompting, listing, and starting fresh", async () => {
+  const opened = await server.inject({ method: "GET", url: activeUrl });
+  // ... resolve assertions ...
+  const prompted = await server.inject({ method: "POST", url: promptUrl, payload });
+  // ... prompt assertions ...
+  const listed = await server.inject({ method: "GET", url: listUrl });
+  // ... list assertions ...
+  const fresh = await server.inject({ method: "POST", url: freshUrl });
+  // ... start-fresh assertions ...
+});
 
-describe("AgentService", () => {
-  const db = createTestDb();
-  const service = createAgentService({ db });
+// Good: one behavior per test, shared setup via beforeAll.
+describe("conversation routes", () => {
+  let server, agentId;
+  beforeAll(async () => { /* create DB, server, agent */ });
+  afterAll(async () => { /* close server, cleanup DB */ });
 
-  it("creates an agent with the provided configuration", async () => {
-    const agent = await service.create({
-      name: "Coder",
-      role: "developer",
-      instructions: "Write TypeScript code",
-    });
-
-    expect(agent.id).toBeDefined();
-    expect(agent.name).toBe("Coder");
+  it("resolves the active conversation for an agent", async () => {
+    const response = await server.inject({ method: "GET", url: activeUrl });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().current.id).toBeDefined();
   });
+
+  it("persists prompt request and response in the session", async () => {
+    // ... setup: resolve active conversation ...
+    const response = await server.inject({ method: "POST", url: promptUrl, payload });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().messages).toHaveLength(2);
+  });
+
+  it("lists all conversations for an agent", async () => { /* ... */ });
+
+  it("start-fresh creates a new session and preserves the previous one", async () => { /* ... */ });
 });
 ```
 
