@@ -1,14 +1,11 @@
 # Deferred Chat Features
 
-OpenCode web app features observed in `examples/opencode` that are out of scope for Phase 1. Consider adding later.
+OpenCode web app features not included in Phase 1 MVP. Consider adding later.
 
 ## Composer
 
-- **Slash commands** — `/` at start of prompt opens a command menu (built-in commands, custom commands, MCP tools, skills). Consider adding later.
-- **Shell mode** — `!` prefix or `Cmd+Shift+X` switches composer to monospace shell input for direct CLI execution. Consider adding later.
-- **Prompt history** — Up/Down arrow keys navigate through previous prompts (100 entries, persisted separately for normal and shell modes). Consider adding later.
-- **`@` mention pills** — typing `@` inserts non-editable reference pills for files and agents into the prompt. Consider adding later.
-- **Contenteditable composer** — rich `contenteditable` div instead of `<textarea>`, enabling inline pills and mixed content. Consider adding later (start with plain textarea).
+- **Contenteditable composer** — rich `contenteditable` div enabling inline non-editable pills for file/agent mentions. MVP uses textarea + popover instead. Upgrade path for polished pill UX. Consider adding later.
+- **Custom slash commands** — user-defined commands from `.opencode/command/*.md` files. MVP includes only skills + built-in actions. Consider adding later.
 
 ## Session Management
 
@@ -19,9 +16,8 @@ OpenCode web app features observed in `examples/opencode` that are out of scope 
 
 ## Rendering
 
-- **Context tool grouping** — consecutive read/glob/grep/list tool calls collapsed into a single summary row (e.g., "3 reads, 2 searches"). Consider adding later.
-- **Paced markdown streaming** — animated token reveal with 24ms pace and whitespace-snapping for smooth text appearance. Consider adding later (start with plain streaming append).
-- **Diff viewer in tool cards** — inline before/after diff rendering for edit/write/apply_patch tool results. Consider adding later.
+- **Paced markdown streaming** — animated token reveal with 24ms pace and whitespace-snapping for smooth text appearance. MVP uses plain streaming append. Consider adding later.
+- **Full diff viewer in tool cards** — inline before/after diff rendering for edit/write/apply_patch tool results. MVP shows `+N/-N` stats badge only. Requires external diff library (~1100 lines of viewer infrastructure). Consider adding later.
 - **Subagent navigation** — task tool cards link to child session for inspecting subagent work. Consider adding later.
 
 ## Performance

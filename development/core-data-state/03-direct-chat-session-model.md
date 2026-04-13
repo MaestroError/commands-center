@@ -24,6 +24,8 @@ This is the backend half of the MVP centerpiece. Once merged, the chat UI can be
 - Implement session creation, lookup, and previous-conversation access as a backend service exposed via REST API routes
 - Persist user messages, assistant messages, tool call parts, and attachments metadata
 - Route prompt execution through the OpenCode SDK or HTTP API via the orchestrator
+- Route shell commands through `sdk.session.shell()` for direct CLI execution recorded in the session
+- Route slash commands through `sdk.session.command()` for skill/command invocation
 - Add `Start Fresh` behavior that creates a new session while preserving the agent-centric UX model
 
 ## Acceptance Criteria
@@ -50,3 +52,5 @@ Reference: `examples/opencode` web app — how it consumes the `opencode serve` 
 - **Permission & question flows**: OpenCode pauses execution and emits `permission.asked` / `question.asked` events; web app presents UI and replies via `sdk.permission.respond()` / `sdk.question.reply()`. Ref: `packages/app/src/context/permission.tsx`, `packages/app/src/pages/session/composer/session-question-dock.tsx`
 - **Todos**: OpenCode emits `todo.updated` events with the agent's task list; web app renders them read-only. Ref: `packages/app/src/pages/session/composer/session-todo-dock.tsx`
 - **Session management**: list, archive, abort. Session is scoped to a directory (= agent workspace). Ref: `packages/sdk/js/src/v2/gen/sdk.gen.ts`
+- **Shell execution**: `sdk.session.shell({ sessionID, agent, model, command })` runs a real host shell command in the agent's workspace. The result is recorded as a `bash` tool part in the session so the agent can see it in subsequent turns. Ref: `packages/app/src/components/prompt-input/submit.ts` (lines 434-451)
+- **Command/skill invocation**: `sdk.session.command({ sessionID, command, arguments, agent, model })` dispatches a named command (skill, custom command) to OpenCode. Ref: `packages/app/src/components/prompt-input/submit.ts` (lines 453-483)

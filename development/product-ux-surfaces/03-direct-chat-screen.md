@@ -29,6 +29,12 @@ This is the MVP centerpiece and should land as one coherent feature rather than 
 - Add right sidebar with workspace files tab including interaction patterns: single-select for preview or context target, double-click to open in file manager, context menu with options to open folder in terminal or open file/folder in file manager
 - Add embedded agent terminal bottom panel with tabbed sessions
 - Ensure mobile layout: context pane rendered as sheet/overlay, bottom terminal as full-height mobile panel, touch-friendly tabs
+- Add `#` file mention in composer: typing `#` triggers a popover searching workspace files, selecting inserts path as styled text token, parsed as `FilePartInput` on submit (textarea + popover approach, no contenteditable)
+- Add `/` slash command popover in composer for invoking skills and built-in actions (`/new`, `/model`, `/compact`)
+- Add shell mode: `!` prefix switches composer to monospace shell input, submits via `sdk.session.shell()` for direct CLI execution recorded in the session
+- Add prompt history: Up/Down arrow keys recall previous prompts (persisted in localStorage, separate buckets for normal and shell mode)
+- Group consecutive context tool calls (read/glob/grep/list) into a single collapsible summary row (e.g. "3 reads, 2 searches")
+- Show `+N/-N` diff stats badge on edit/write/apply_patch tool cards
 
 ## Acceptance Criteria
 
@@ -40,6 +46,12 @@ This is the MVP centerpiece and should land as one coherent feature rather than 
 - Workspace files tab supports single-select preview, double-click to open in file manager, and context menu actions for terminal and file manager
 - Previous conversations remain secondary, not the primary navigation model
 - Chat layout adapts to mobile: context pane as overlay/sheet, bottom terminal as full-height panel, touch-friendly tabs
+- `#` in composer triggers file search popover; selected file is sent as `FilePartInput` to OpenCode
+- `/` in composer triggers a popover listing available skills and built-in actions
+- `!` at start of empty prompt enters shell mode; command is executed via `sdk.session.shell()` and result appears in the conversation
+- Up/Down arrows recall previous prompts when the composer is empty
+- Consecutive context tools are grouped into a single collapsible summary
+- Edit/write/apply_patch tool cards show `+N/-N` diff stats
 
 ## Non-Goals
 
@@ -60,3 +72,9 @@ Reference: `examples/opencode` web app — how it renders chat from the `opencod
 - **Mid-session prompts**: question dock (multi-step wizard, single/multi-select + custom answer), permission dock (Deny/Allow always/Allow once). When active, replaces the normal composer. Ref: `packages/app/src/pages/session/composer/session-question-dock.tsx`, `session-permission-dock.tsx`
 - **Part visibility**: todowrite hidden from stream (shown in dock); question hidden while pending; text hidden if whitespace-only. Ref: `partState()` in `session-turn.tsx`
 - **Streaming**: SSE text deltas for progressive rendering, optimistic user messages on send, event coalescing per frame. Ref: `packages/app/src/context/global-sync/event-reducer.ts`
+- **Slash commands**: `/` at start of prompt opens a filtered popover of commands (built-in + skills). Built-in commands run client-side actions; custom/skill commands are sent to OpenCode via `sdk.session.command()`. Ref: `packages/app/src/components/prompt-input/slash-popover.tsx`, `packages/app/src/pages/session/use-session-commands.tsx`
+- **Shell mode**: `!` prefix or `Cmd+Shift+X` sets a mode flag; submit calls `sdk.session.shell()` instead of `sdk.session.promptAsync()`. Monospace styling, popovers suppressed, separate history bucket. ~50 lines of branching total. Ref: `packages/app/src/components/prompt-input/submit.ts` (lines 434-451)
+- **Prompt history**: Up/Down arrows recall previous prompts from a localStorage-persisted array (max 100, separate for normal/shell). Simple index-based navigation — Up from empty input enters history, Down returns to saved draft. Ref: `packages/app/src/components/prompt-input/history.ts`
+- **File mentions (`@` in opencode, `#` in CC)**: trigger character opens a popover that fuzzy-searches workspace files. Selecting inserts the file path. On submit, file paths are sent as `FilePartInput` with `file://` URL. Opencode uses contenteditable + pills; CC uses textarea + popover for simplicity. Ref: `packages/app/src/components/prompt-input.tsx` (lines 897, 920-998)
+- **Context tool grouping**: `groupParts()` is a linear scan that accumulates consecutive read/glob/grep/list tools into a single `ContextToolGroup` rendered as a collapsible summary (e.g. "3 reads, 2 searches"). ~280 lines across grouping logic + summary component. Ref: `packages/ui/src/components/message-part.tsx` (lines 461-503, 834-930)
+- **Diff stats badge**: `DiffChanges` component (115 lines) shows `+N/-N` counts or a 5-block colored bar chart. Self-contained, no external deps. Ref: `packages/ui/src/components/diff-changes.tsx`
