@@ -125,6 +125,7 @@ describe("agent flows", () => {
     const user = userEvent.setup();
     await screen.findByLabelText(/Name/i);
     await user.type(screen.getByLabelText(/Name/i), "Planner");
+    expect(screen.getByTestId("agent-slug-preview")).toHaveTextContent("Identifier: planner");
     await user.type(screen.getByLabelText(/Role/i), "plan work");
     await user.type(screen.getByLabelText(/Instructions/i), "Plan before editing.");
     await user.selectOptions(screen.getByLabelText(/^Model/i), "openai/gpt-4.1");
@@ -147,6 +148,22 @@ describe("agent flows", () => {
     await screen.findByText("screen-requirements-writing");
     expect(screen.getByText("Create screen requirement documents.")).toBeInTheDocument();
     expect(screen.getAllByText("design-docs").length).toBeGreaterThan(0);
+  });
+
+  it("shows a duplicate identifier error before submit", async () => {
+    mockApi({
+      "GET /api/agents": [jsonResponse(200, agents)],
+      "GET /api/agents/catalog": [jsonResponse(200, catalog)],
+    });
+    window.history.replaceState({}, "", "/agents/new");
+    render(<App />);
+
+    const user = userEvent.setup();
+    await screen.findByLabelText(/Name/i);
+    await user.type(screen.getByLabelText(/Name/i), "Writer");
+    await user.click(screen.getByRole("button", { name: "Create agent" }));
+
+    expect(screen.getByText("Identifier 'writer' is already in use.")).toBeInTheDocument();
   });
 });
 

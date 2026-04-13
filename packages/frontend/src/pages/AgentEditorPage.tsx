@@ -10,7 +10,12 @@ import type {
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
-import { useAgentCatalogQuery, useAgentMutations, useAgentQuery } from "@/hooks/use-agents-query";
+import {
+  useAgentCatalogQuery,
+  useAgentMutations,
+  useAgentQuery,
+  useAgentsQuery,
+} from "@/hooks/use-agents-query";
 
 type AgentEditorPageProps = {
   mode: "create" | "edit";
@@ -33,6 +38,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
   const params = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const catalogQuery = useAgentCatalogQuery();
+  const agentsQuery = useAgentsQuery();
   const agentQuery = useAgentQuery(props.mode === "edit" ? params.slug : undefined);
   const agentMutations = useAgentMutations();
   const [form, setForm] = useState<AgentFormState>(createEmptyForm());
@@ -40,8 +46,11 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
   const [successMessage, setSuccessMessage] = useState<string>();
   const initializedKeyRef = useRef<string | undefined>(undefined);
   const catalog = catalogQuery.data;
+  const agents = agentsQuery.data ?? [];
   const agent = agentQuery.data;
   const hasProviderModels = (catalog?.providerModels.length ?? 0) > 0;
+  const slug = slugify(form.name);
+  const slugTaken = agents.some((entry) => entry.slug === slug && entry.id !== agent?.id);
 
   useEffect(() => {
     if (!catalog) {
@@ -107,11 +116,16 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
         <form className="grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
           <section className="cc-panel grid gap-5 p-6 lg:grid-cols-2">
             <Field label="Name" required error={errors.name}>
-              <input
-                className="cc-input"
-                onChange={(event) => updateField("name", event.target.value)}
-                value={form.name}
-              />
+              <div className="grid gap-2">
+                <input
+                  className="cc-input"
+                  onChange={(event) => updateField("name", event.target.value)}
+                  value={form.name}
+                />
+                <p className="text-xs text-text-secondary" data-testid="agent-slug-preview">
+                  Identifier: <span className="font-medium text-text-primary">{slug}</span>
+                </p>
+              </div>
             </Field>
             <Field label="Role" required error={errors.role}>
               <input
@@ -284,7 +298,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSuccessMessage(undefined);
-    const validation = validateForm(form, hasProviderModels);
+    const validation = validateForm(form, hasProviderModels, slugTaken);
     setErrors(validation);
 
     if (Object.values(validation).some(Boolean)) {
@@ -369,14 +383,33 @@ function createInitialForm(catalog: AgentCatalog, agent?: Agent): AgentFormState
   };
 }
 
-function validateForm(form: AgentFormState, hasProviderModels: boolean): FormErrors {
+function validateForm(
+  form: AgentFormState,
+  hasProviderModels: boolean,
+  slugTaken: boolean,
+): FormErrors {
   return {
-    name: form.name.trim() ? undefined : "Name is required.",
+    name: !form.name.trim()
+      ? "Name is required."
+      : slugTaken
+        ? `Identifier '${slugify(form.name)}' is already in use.`
+        : undefined,
     role: form.role.trim() ? undefined : "Role is required.",
     instructions: form.instructions.trim() ? undefined : "Instructions are required.",
     defaultModel:
       hasProviderModels && form.defaultModel.trim() ? undefined : "A default model is required.",
   };
+}
+
+function slugify(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+
+  return slug || "agent";
 }
 
 function resolveInitialModelId(catalog: AgentCatalog, currentModel?: string): string {

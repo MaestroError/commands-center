@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { access } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -241,30 +242,35 @@ export function createAgentService(options: {
     return join(options.config.paths.subdirectories.agents, ".archived");
   }
 
-  async function reserveSlug(name: string, excludeId?: string): Promise<string> {
-    const base = slugify(name);
-    let candidate = base;
-    let index = 2;
+  async function isSlugTaken(slug: string, excludeId?: string): Promise<boolean> {
+    const existing = await options.db.query.agents.findFirst({
+      where:
+        excludeId === undefined
+          ? (table, operators) => operators.eq(table.slug, slug)
+          : (table, operators) =>
+              operators.and(operators.eq(table.slug, slug), operators.ne(table.id, excludeId)),
+    });
 
-    while (true) {
-      const existing = await options.db.query.agents.findFirst({
-        where:
-          excludeId === undefined
-            ? (table, operators) => operators.eq(table.slug, candidate)
-            : (table, operators) =>
-                operators.and(
-                  operators.eq(table.slug, candidate),
-                  operators.ne(table.id, excludeId),
-                ),
-      });
-
-      if (!existing) {
-        return candidate;
-      }
-
-      candidate = `${base}-${String(index)}`;
-      index += 1;
+    if (existing) {
+      return true;
     }
+
+    try {
+      await access(buildWorkspacePath(slug));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function reserveSlug(name: string, excludeId?: string): Promise<string> {
+    const slug = slugify(name);
+
+    if (await isSlugTaken(slug, excludeId)) {
+      throw new Error(`Agent identifier '${slug}' is already in use.`);
+    }
+
+    return slug;
   }
 }
 

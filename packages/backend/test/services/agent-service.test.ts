@@ -195,6 +195,46 @@ describe("createAgentService", () => {
       await testDb.cleanup();
     }
   });
+
+  it("rejects duplicate agent identifiers instead of auto-suffixing them", async () => {
+    const testDb = await createTestDatabase();
+    const service = createAgentService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      skillRoot: join(testDb.cwd, "builtin-skills"),
+    });
+
+    try {
+      await service.create({
+        name: "Testing agent",
+        role: "test",
+        instructions: "Test things.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+
+      await expect(
+        service.create({
+          name: "Testing agent",
+          role: "duplicate",
+          instructions: "Duplicate.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            builtInSkills: [],
+            mcpServers: [],
+            toolPermissions: [],
+          },
+        }),
+      ).rejects.toThrow("Agent identifier 'testing-agent' is already in use.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
 });
 
 async function createSkill(
