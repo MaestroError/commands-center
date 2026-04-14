@@ -28,6 +28,7 @@ describe("conversation routes", () => {
       database: testDb.client,
       orchestrator: createOrchestrator(),
       opencodeService,
+      openCodeEventService: { subscribe: () => {} },
       scheduler: createSchedulerService(),
     });
 
@@ -220,5 +221,10 @@ function createBaseOpenCodeService() {
       }),
     completeOauth: () => Promise.resolve(true),
     disconnectProvider: () => Promise.resolve(true),
+    promptSessionAsync: async () => {},
+    replyPermission: async () => {},
+    replyQuestion: async () => {},
+    rejectQuestion: async () => {},
+    abortSession: async () => {},
   };
 }

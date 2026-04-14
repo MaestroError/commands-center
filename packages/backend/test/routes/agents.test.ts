@@ -16,6 +16,7 @@ describe("agent routes", () => {
       database: testDb.client,
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
       scheduler: createSchedulerService(),
     });
 
@@ -90,6 +91,111 @@ describe("agent routes", () => {
       expect(archived.json().status).toBe("archived");
       expect(withArchived.statusCode).toBe(200);
       expect(withArchived.json()[0].status).toBe("archived");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("allows updating an agent without changing its name", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      // Create agent
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Coder",
+          role: "write code",
+          instructions: "Write clean code.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {},
+        },
+      });
+      expect(created.statusCode).toBe(201);
+      const agent = created.json();
+
+      // Update only the model — same name should not trigger "slug taken"
+      const updated = await server.inject({
+        method: "PATCH",
+        url: `/api/agents/${agent.id}`,
+        payload: {
+          defaultModel: "anthropic/claude-sonnet-4-20250514",
+        },
+      });
+      expect(updated.statusCode).toBe(200);
+      expect(updated.json().defaultModel).toBe("anthropic/claude-sonnet-4-20250514");
+      expect(updated.json().slug).toBe("coder");
+
+      // Update with the same name explicitly — should also succeed
+      const updatedWithName = await server.inject({
+        method: "PATCH",
+        url: `/api/agents/${agent.id}`,
+        payload: {
+          name: "Coder",
+          role: "write better code",
+        },
+      });
+      expect(updatedWithName.statusCode).toBe(200);
+      expect(updatedWithName.json().role).toBe("write better code");
+      expect(updatedWithName.json().slug).toBe("coder");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects creating an agent with a duplicate name", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      // Create first agent
+      const first = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Reviewer",
+          role: "review code",
+          instructions: "Review thoroughly.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {},
+        },
+      });
+      expect(first.statusCode).toBe(201);
+
+      // Try to create second agent with the same name
+      const duplicate = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Reviewer",
+          role: "another reviewer",
+          instructions: "Also reviews.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {},
+        },
+      });
+      expect(duplicate.statusCode).toBe(409);
+      expect(duplicate.json().error.message).toContain("already in use");
     } finally {
       await server.close();
       await testDb.cleanup();

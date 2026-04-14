@@ -2,17 +2,27 @@ import {
   agentCatalogSchema,
   agentListSchema,
   agentSchema,
+  chatEventSchema,
+  conversationDetailSchema,
+  conversationListSchema,
+  conversationSnapshotSchema,
   createAgentInputSchema,
   providerConnectResultSchema,
   providerOauthAuthorizationSchema,
   providerOauthCompleteResultSchema,
   providerStatusListSchema,
+  sendConversationPromptInputSchema,
   type Agent,
   type AgentCatalog,
+  type ChatEvent,
   type CreateAgentInput,
+  type ConversationDetail,
+  type ConversationSnapshot,
+  type ConversationSummary,
   type ProviderOauthAuthorization,
   type ProviderOauthCompleteResult,
   type ProviderStatus,
+  type SendConversationPromptInput,
   type UpdateAgentInput,
   updateAgentInputSchema,
 } from "@cc/shared/schemas";
@@ -148,4 +158,183 @@ function readApiError(payload: unknown, status: number): string {
   }
 
   return `Request failed with status ${String(status)}.`;
+}
+
+// --- Conversation API ---
+
+export async function getActiveConversation(agentId: string): Promise<ConversationSnapshot> {
+  return requestJson<ConversationSnapshot>(
+    `/api/agents/${encodeURIComponent(agentId)}/conversations/active`,
+    conversationSnapshotSchema,
+  );
+}
+
+export async function listConversations(agentId: string): Promise<ConversationSummary[]> {
+  return requestJson<ConversationSummary[]>(
+    `/api/agents/${encodeURIComponent(agentId)}/conversations`,
+    conversationListSchema,
+  );
+}
+
+export async function getConversation(
+  agentId: string,
+  conversationId: string,
+): Promise<ConversationDetail> {
+  return requestJson<ConversationDetail>(
+    `/api/agents/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`,
+    conversationDetailSchema,
+  );
+}
+
+export async function startFreshConversation(agentId: string): Promise<ConversationSnapshot> {
+  return requestJson<ConversationSnapshot>(
+    `/api/agents/${encodeURIComponent(agentId)}/conversations/start-fresh`,
+    conversationSnapshotSchema,
+    { method: "POST" },
+  );
+}
+
+export async function sendPrompt(
+  conversationId: string,
+  input: SendConversationPromptInput,
+): Promise<void> {
+  const parsed = sendConversationPromptInputSchema.parse(input);
+  const response = await fetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/prompt?stream=true`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(parsed),
+    },
+  );
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status));
+  }
+}
+
+export async function abortConversation(conversationId: string): Promise<void> {
+  const response = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/abort`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status));
+  }
+}
+
+export async function replyPermission(
+  conversationId: string,
+  requestId: string,
+  reply: "once" | "always" | "reject",
+): Promise<void> {
+  const response = await fetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/permissions/${encodeURIComponent(requestId)}/reply`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reply }),
+    },
+  );
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status));
+  }
+}
+
+export async function replyQuestion(
+  conversationId: string,
+  requestId: string,
+  answers: string[][],
+): Promise<void> {
+  const response = await fetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/questions/${encodeURIComponent(requestId)}/reply`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ answers }),
+    },
+  );
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status));
+  }
+}
+
+export async function rejectQuestion(conversationId: string, requestId: string): Promise<void> {
+  const response = await fetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/questions/${encodeURIComponent(requestId)}/reject`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status));
+  }
+}
+
+// --- SSE Event Consumer ---
+
+export async function* connectConversationEvents(
+  conversationId: string,
+  signal: AbortSignal,
+): AsyncGenerator<ChatEvent> {
+  const response = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/events`, {
+    method: "GET",
+    headers: { Accept: "text/event-stream" },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`SSE connection failed with status ${String(response.status)}`);
+  }
+
+  if (!response.body) {
+    throw new Error("SSE response has no body");
+  }
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer += value;
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+
+      for (const block of parts) {
+        const dataLines: string[] = [];
+
+        for (const line of block.split("\n")) {
+          if (line.startsWith("data:")) {
+            dataLines.push(line.slice(5).trimStart());
+          }
+        }
+
+        if (dataLines.length === 0) {
+          continue;
+        }
+
+        try {
+          const json = JSON.parse(dataLines.join("\n")) as unknown;
+          const event = chatEventSchema.parse(json);
+          yield event;
+        } catch (err) {
+          console.warn("[SSE] Failed to parse event:", dataLines.join("\n"), err);
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }

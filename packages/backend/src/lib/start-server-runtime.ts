@@ -8,6 +8,10 @@ import {
 } from "../orchestrator/opencode-orchestrator.js";
 import { createOpenCodeClient } from "./opencode-client.js";
 import { createOpenCodeService, type OpenCodeService } from "../services/opencode-service.js";
+import {
+  createOpenCodeEventService,
+  type OpenCodeEventService,
+} from "../services/opencode-event-service.js";
 import { createSchedulerService, type SchedulerService } from "../services/scheduler-service.js";
 import { bootstrapRuntimePaths } from "./runtime-paths.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
@@ -37,6 +41,7 @@ export type RuntimeContext = {
   database: DatabaseClient;
   orchestrator: OpenCodeOrchestrator;
   opencodeService: OpenCodeService;
+  openCodeEventService: OpenCodeEventService;
   scheduler: SchedulerService;
 };
 
@@ -70,6 +75,7 @@ export async function startServerRuntime(
 
   const opencodeClient = createOpenCodeClient(config);
   const opencodeService = createOpenCodeService({ client: opencodeClient, config });
+  const openCodeEventService = createOpenCodeEventService({ config, logger });
   const scheduler = createSchedulerService();
 
   const context: RuntimeContext = {
@@ -78,6 +84,7 @@ export async function startServerRuntime(
     database,
     orchestrator,
     opencodeService,
+    openCodeEventService,
     scheduler,
   };
   const server = await createServer(context);

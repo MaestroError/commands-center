@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
+  replyPermissionInputSchema,
+  replyQuestionInputSchema,
   sendConversationCommandInputSchema,
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
@@ -17,6 +19,11 @@ const agentIdParamsSchema = z.object({
 
 const conversationParamsSchema = z.object({
   conversationId: z.string().min(1),
+});
+
+const conversationRequestParamsSchema = z.object({
+  conversationId: z.string().min(1),
+  requestId: z.string().min(1),
 });
 
 const agentConversationParamsSchema = agentIdParamsSchema.extend({
@@ -79,9 +86,20 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
       schema: {
         params: conversationParamsSchema,
         body: sendConversationPromptInputSchema,
+        querystring: z.object({
+          stream: z.enum(["true", "false"]).optional(),
+        }),
       },
     },
-    async (request) => service.sendPrompt(request.params.conversationId, request.body),
+    async (request, reply) => {
+      if (request.query.stream === "true") {
+        await service.sendPromptAsync(request.params.conversationId, request.body);
+        reply.code(202);
+        return { accepted: true };
+      }
+
+      return service.sendPrompt(request.params.conversationId, request.body);
+    },
   );
 
   app.post(
@@ -104,5 +122,67 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
       },
     },
     async (request) => service.sendShell(request.params.conversationId, request.body),
+  );
+
+  app.post(
+    "/api/conversations/:conversationId/abort",
+    {
+      schema: {
+        params: conversationParamsSchema,
+      },
+    },
+    async (request, reply) => {
+      await service.abortConversation(request.params.conversationId);
+      reply.code(204);
+    },
+  );
+
+  app.post(
+    "/api/conversations/:conversationId/permissions/:requestId/reply",
+    {
+      schema: {
+        params: conversationRequestParamsSchema,
+        body: replyPermissionInputSchema,
+      },
+    },
+    async (request, reply) => {
+      await service.replyPermission(
+        request.params.conversationId,
+        request.params.requestId,
+        request.body.reply,
+      );
+      reply.code(204);
+    },
+  );
+
+  app.post(
+    "/api/conversations/:conversationId/questions/:requestId/reply",
+    {
+      schema: {
+        params: conversationRequestParamsSchema,
+        body: replyQuestionInputSchema,
+      },
+    },
+    async (request, reply) => {
+      await service.replyQuestion(
+        request.params.conversationId,
+        request.params.requestId,
+        request.body.answers,
+      );
+      reply.code(204);
+    },
+  );
+
+  app.post(
+    "/api/conversations/:conversationId/questions/:requestId/reject",
+    {
+      schema: {
+        params: conversationRequestParamsSchema,
+      },
+    },
+    async (request, reply) => {
+      await service.rejectQuestion(request.params.conversationId, request.params.requestId);
+      reply.code(204);
+    },
   );
 }

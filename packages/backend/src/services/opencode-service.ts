@@ -266,6 +266,73 @@ export function createOpenCodeService(options: { client: OpencodeClient; config:
         },
       });
     },
+
+    promptSessionAsync(input: {
+      directory: string;
+      sessionID: string;
+      agent: string;
+      model: SessionModel;
+      text: string;
+      attachments?: SendConversationAttachmentInput[];
+    }): void {
+      // Fire-and-forget: dispatch without awaiting the full response.
+      // The response will be delivered via SSE events.
+      void requestSessionJson({
+        config: options.config,
+        directory: input.directory,
+        method: "POST",
+        path: `/session/${encodeURIComponent(input.sessionID)}/message`,
+        body: {
+          agent: input.agent,
+          model: input.model,
+          parts: buildPromptParts(input.text, input.attachments ?? []),
+        },
+      });
+    },
+
+    async replyPermission(
+      directory: string,
+      requestId: string,
+      reply: "once" | "always" | "reject",
+    ): Promise<void> {
+      await requestSessionJson({
+        config: options.config,
+        directory,
+        method: "POST",
+        path: `/permission/${encodeURIComponent(requestId)}/reply`,
+        body: { reply },
+      });
+    },
+
+    async replyQuestion(directory: string, requestId: string, answers: string[][]): Promise<void> {
+      await requestSessionJson({
+        config: options.config,
+        directory,
+        method: "POST",
+        path: `/question/${encodeURIComponent(requestId)}/reply`,
+        body: { answers },
+      });
+    },
+
+    async rejectQuestion(directory: string, requestId: string): Promise<void> {
+      await requestSessionJson({
+        config: options.config,
+        directory,
+        method: "POST",
+        path: `/question/${encodeURIComponent(requestId)}/reject`,
+        body: {},
+      });
+    },
+
+    async abortSession(directory: string, sessionID: string): Promise<void> {
+      await requestSessionJson({
+        config: options.config,
+        directory,
+        method: "POST",
+        path: `/session/${encodeURIComponent(sessionID)}/abort`,
+        body: {},
+      });
+    },
   };
 }
 
@@ -317,5 +384,11 @@ async function requestSessionJson(options: {
     return true;
   }
 
-  return response.json();
+  const text = await response.text();
+
+  if (!text.trim()) {
+    return true;
+  }
+
+  return JSON.parse(text) as unknown;
 }

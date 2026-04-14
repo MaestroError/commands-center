@@ -1,63 +1,71 @@
-import { PageHeader } from "@/components/common/PageHeader";
+import { useParams } from "react-router-dom";
+
+import { ChatComposer } from "@/components/chat/ChatComposer";
+import { ChatHeader } from "@/components/chat/ChatHeader";
+import { MessageTimeline } from "@/components/chat/MessageTimeline";
+import { PermissionDock } from "@/components/chat/PermissionDock";
+import { QuestionDock } from "@/components/chat/QuestionDock";
+import { TodoDock } from "@/components/chat/TodoDock";
+import { ErrorState, LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
+import { useConversation } from "@/hooks/use-conversation";
 
 export function WorkspaceChatPage() {
-  return (
-    <div className="grid gap-4">
-      <PageHeader
-        description="Direct chat will become the densest workspace surface in the MVP, so this page demonstrates both side and bottom docks on top of the shared layout system."
-        eyebrow="Direct Chat"
-        title="Persistent agent conversation surface"
-      />
-      <WorkspaceLayout
-        bottomPane={{
-          title: "Bottom pane",
-          tabs: [
-            {
-              id: "terminal-1",
-              label: "Terminal 1",
-              content: (
-                <PaneText text="Multiple terminal sessions belong in tabbed bottom panes." />
-              ),
-            },
-            {
-              id: "terminal-2",
-              label: "Terminal 2",
-              content: (
-                <PaneText text="Additional sessions can share the same dock without creating new pages." />
-              ),
-            },
-          ],
-        }}
-        contextPane={{
-          title: "Context pane",
-          tabs: [
-            {
-              id: "files",
-              label: "Files",
-              content: <PaneText text="Workspace files, memory, and preferences can live here." />,
-            },
-            {
-              id: "tools",
-              label: "Tools",
-              content: (
-                <PaneText text="Tool calls and attachments can be added as context tabs later." />
-              ),
-            },
-          ],
-        }}
-        primary={
-          <PaneText text="Streaming conversation and composer controls will occupy the primary pane." />
-        }
-      />
-    </div>
-  );
-}
+  const { agentId: agentSlug } = useParams<{ agentId: string }>();
+  const conv = useConversation(agentSlug ?? "");
 
-function PaneText(props: { text: string }) {
+  if (conv.status === "loading") {
+    return <LoadingState />;
+  }
+
+  if (conv.status === "error" || !conv.conversation) {
+    return (
+      <ErrorState
+        title="Failed to load conversation"
+        description={conv.error ?? "Something went wrong."}
+      />
+    );
+  }
+
   return (
-    <div className="flex h-full min-h-[20rem] items-center justify-center text-center text-sm leading-6 text-text-secondary">
-      {props.text}
-    </div>
+    <WorkspaceLayout
+      primary={
+        <div className="flex h-full flex-col">
+          <ChatHeader
+            agentName={conv.agent?.name ?? agentSlug ?? "Agent"}
+            conversationTitle={conv.conversation.title ?? undefined}
+            previousConversations={conv.previousConversations}
+            currentConversationId={conv.conversation.id}
+            onStartFresh={conv.startFresh}
+            onSelectConversation={conv.switchConversation}
+          />
+
+          <MessageTimeline
+            messages={conv.conversation.messages}
+            parts={conv.parts}
+            agentStatus={conv.agentStatus}
+          />
+
+          {conv.pendingPermission ? (
+            <PermissionDock permission={conv.pendingPermission} onReply={conv.replyPermission} />
+          ) : conv.pendingQuestion ? (
+            <QuestionDock
+              question={conv.pendingQuestion}
+              onReply={conv.replyQuestion}
+              onReject={conv.rejectQuestion}
+            />
+          ) : (
+            <>
+              {conv.todos.length > 0 && <TodoDock todos={conv.todos} />}
+              <ChatComposer
+                onSend={conv.sendUserPrompt}
+                onAbort={conv.abort}
+                agentStatus={conv.agentStatus}
+              />
+            </>
+          )}
+        </div>
+      }
+    />
   );
 }

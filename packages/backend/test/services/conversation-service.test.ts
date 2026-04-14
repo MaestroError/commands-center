@@ -316,6 +316,11 @@ function createMockOpenCodeService(): OpenCodeService {
       session.time.updated = nextTime();
       return Promise.resolve();
     },
+    promptSessionAsync: () => {},
+    replyPermission: async () => {},
+    replyQuestion: async () => {},
+    rejectQuestion: async () => {},
+    abortSession: async () => {},
   } as OpenCodeService;
 
   function mustSession(sessionID: string): OpenCodeSession {

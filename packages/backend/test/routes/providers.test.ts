@@ -16,6 +16,7 @@ describe("provider routes", () => {
       database: testDb.client,
       orchestrator: createOrchestrator(),
       opencodeService,
+      openCodeEventService: { subscribe: () => {} },
       scheduler: createSchedulerService(),
     });
 

@@ -88,6 +88,24 @@ export {
   type ProviderStatus,
 } from "./providers.js";
 export {
+  chatEventSchema,
+  replyPermissionInputSchema,
+  replyQuestionInputSchema,
+  type ChatEvent,
+  type MessagePartDeltaEvent,
+  type MessagePartUpdatedEvent,
+  type MessageUpdatedEvent,
+  type PermissionAskedEvent,
+  type QuestionAskedEvent,
+  type QuestionItem,
+  type QuestionOption,
+  type ReplyPermissionInput,
+  type ReplyQuestionInput,
+  type SessionStatusEvent,
+  type TodoItem,
+  type TodoUpdatedEvent,
+} from "./chat-events.js";
+export {
   databaseStatusSchema,
   engineStateSchema,
   engineStatusSchema,

@@ -67,6 +67,7 @@ describe("createServer", () => {
       database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
       scheduler: createSchedulerService(),
     });
 
@@ -126,6 +127,7 @@ describe("createServer", () => {
       database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
       scheduler: createSchedulerService(),
     });
 
@@ -166,6 +168,7 @@ describe("createServer", () => {
       database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
       scheduler: createSchedulerService(),
     });
 
@@ -211,6 +214,7 @@ describe("createServer", () => {
       database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
       scheduler: createSchedulerService(),
     });
 

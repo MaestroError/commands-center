@@ -1,7 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 
 import {
-  conversationAttachmentSchema,
   conversationDetailSchema,
   conversationMessageSchema,
   conversationSnapshotSchema,
@@ -9,7 +8,6 @@ import {
   sendConversationCommandInputSchema,
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
-  type ConversationAttachment,
   type ConversationDetail,
   type ConversationMessage,
   type ConversationSnapshot,
@@ -23,7 +21,8 @@ import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
 import { type agents, conversations, messages } from "../db/schema/index.js";
 import { NotFoundError } from "../lib/api-error.js";
-import type { OpenCodeService, OpenCodeSessionMessage } from "./opencode-service.js";
+import { cleanTitle, mapRemoteMessage } from "../lib/message-mapper.js";
+import type { OpenCodeService } from "./opencode-service.js";
 
 type AgentRow = typeof agents.$inferSelect;
 type ConversationRow = typeof conversations.$inferSelect;
@@ -83,7 +82,7 @@ export function createConversationService(options: {
       await options.opencodeService.promptSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
-        agent: loaded.agent.slug,
+        agent: resolveOpenCodeAgent(loaded.agent.slug),
         model: parseModel(loaded.agent.default_model),
         text: parsed.text,
         attachments: parsed.attachments,
@@ -103,7 +102,7 @@ export function createConversationService(options: {
       await options.opencodeService.commandSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
-        agent: loaded.agent.slug,
+        agent: resolveOpenCodeAgent(loaded.agent.slug),
         model: loaded.agent.default_model,
         command: parsed.command,
         arguments: parsed.arguments,
@@ -124,12 +123,65 @@ export function createConversationService(options: {
       await options.opencodeService.shellSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
-        agent: loaded.agent.slug,
+        agent: resolveOpenCodeAgent(loaded.agent.slug),
         model: parseModel(loaded.agent.default_model),
         command: parsed.command,
       });
       await syncConversation(loaded.agent, loaded.conversation);
       return getConversationDetail(loaded.conversation.id);
+    },
+
+    async sendPromptAsync(
+      conversationId: string,
+      input: SendConversationPromptInput,
+    ): Promise<void> {
+      const parsed = sendConversationPromptInputSchema.parse(input);
+      const loaded = await getConversationAgent(conversationId);
+
+      await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+      options.opencodeService.promptSessionAsync({
+        directory: loaded.agent.workspace_path,
+        sessionID: loaded.conversation.opencode_session_id,
+        agent: resolveOpenCodeAgent(loaded.agent.slug),
+        model: parseModel(loaded.agent.default_model),
+        text: parsed.text,
+        attachments: parsed.attachments,
+      });
+    },
+
+    async resolveConversationAgent(conversationId: string) {
+      return getConversationAgent(conversationId);
+    },
+
+    async replyPermission(
+      conversationId: string,
+      requestId: string,
+      reply: "once" | "always" | "reject",
+    ): Promise<void> {
+      const loaded = await getConversationAgent(conversationId);
+      await options.opencodeService.replyPermission(loaded.agent.workspace_path, requestId, reply);
+    },
+
+    async replyQuestion(
+      conversationId: string,
+      requestId: string,
+      answers: string[][],
+    ): Promise<void> {
+      const loaded = await getConversationAgent(conversationId);
+      await options.opencodeService.replyQuestion(loaded.agent.workspace_path, requestId, answers);
+    },
+
+    async rejectQuestion(conversationId: string, requestId: string): Promise<void> {
+      const loaded = await getConversationAgent(conversationId);
+      await options.opencodeService.rejectQuestion(loaded.agent.workspace_path, requestId);
+    },
+
+    async abortConversation(conversationId: string): Promise<void> {
+      const loaded = await getConversationAgent(conversationId);
+      await options.opencodeService.abortSession(
+        loaded.agent.workspace_path,
+        loaded.conversation.opencode_session_id,
+      );
     },
   };
 
@@ -348,9 +400,10 @@ function parseModel(value: string): { providerID: string; modelID: string } {
   };
 }
 
-function cleanTitle(value: string | null | undefined): string | undefined {
-  const title = value?.trim();
-  return title ? title : undefined;
+const OPENCODE_AGENTS = new Set(["general", "plan", "build", "explore"]);
+
+function resolveOpenCodeAgent(slug: string): string {
+  return OPENCODE_AGENTS.has(slug) ? slug : "general";
 }
 
 function mapConversationMessage(row: MessageRow): ConversationMessage {
@@ -372,160 +425,4 @@ function parseJson<T>(value: string | null, fallback: T): T {
   }
 
   return JSON.parse(value) as T;
-}
-
-function mapRemoteMessage(
-  conversationId: string,
-  message: OpenCodeSessionMessage,
-): ConversationMessage & { createdAtMs: number; updatedAtMs: number } {
-  const attachments = extractAttachments(message.parts);
-  const parts = message.parts.map(sanitizePart);
-  const createdAtMs = message.info.time.created;
-  const updatedAtMs = message.info.time.completed ?? createdAtMs;
-
-  return {
-    ...conversationMessageSchema.parse({
-      id: message.info.id,
-      conversationId,
-      role: message.info.role,
-      content: readContent(message.parts),
-      parts,
-      attachments,
-      createdAt: new Date(createdAtMs).toISOString(),
-      updatedAt: new Date(updatedAtMs).toISOString(),
-    }),
-    createdAtMs,
-    updatedAtMs,
-  };
-}
-
-function readContent(parts: OpenCodeSessionMessage["parts"]): string {
-  return parts
-    .flatMap((part) => {
-      const text =
-        part.type === "text" && typeof part["text"] === "string" ? part["text"].trim() : "";
-      return text ? [text] : [];
-    })
-    .join("\n\n");
-}
-
-function sanitizePart(part: OpenCodeSessionMessage["parts"][number]) {
-  if (part.type === "file") {
-    return {
-      id: part.id,
-      type: part.type,
-      mime: typeof part["mime"] === "string" ? part["mime"] : "application/octet-stream",
-      filename: typeof part["filename"] === "string" ? part["filename"] : undefined,
-      source: isRecord(part["source"]) ? part["source"] : undefined,
-    };
-  }
-
-  if (part.type === "tool" && isRecord(part["state"])) {
-    return {
-      ...part,
-      state: sanitizeToolState(part["state"]),
-    };
-  }
-
-  return part;
-}
-
-function sanitizeToolState(state: Record<string, unknown>) {
-  if (!Array.isArray(state["attachments"])) {
-    return state;
-  }
-
-  return {
-    ...state,
-    attachments: state["attachments"].flatMap((attachment) => {
-      if (!isRecord(attachment) || typeof attachment["mime"] !== "string") {
-        return [];
-      }
-
-      return [
-        {
-          id: typeof attachment["id"] === "string" ? attachment["id"] : undefined,
-          type: "file",
-          mime: attachment["mime"],
-          filename: typeof attachment["filename"] === "string" ? attachment["filename"] : undefined,
-          source: isRecord(attachment["source"]) ? attachment["source"] : undefined,
-        },
-      ];
-    }),
-  };
-}
-
-function extractAttachments(parts: OpenCodeSessionMessage["parts"]): ConversationAttachment[] {
-  const map = new Map<string, ConversationAttachment>();
-
-  for (const part of parts) {
-    const attachments = readPartAttachments(part);
-
-    for (const attachment of attachments) {
-      const key = attachment.id ?? `${attachment.mimeType}:${attachment.filename ?? ""}`;
-      map.set(key, attachment);
-    }
-  }
-
-  return [...map.values()];
-}
-
-function readPartAttachments(
-  part: OpenCodeSessionMessage["parts"][number],
-): ConversationAttachment[] {
-  if (part.type === "file") {
-    return [
-      conversationAttachmentSchema.parse({
-        id: part.id,
-        type: inferAttachmentType(part["mime"]),
-        filename: typeof part["filename"] === "string" ? part["filename"] : undefined,
-        mimeType: typeof part["mime"] === "string" ? part["mime"] : "application/octet-stream",
-        source: isRecord(part["source"]) ? part["source"] : undefined,
-      }),
-    ];
-  }
-
-  if (
-    part.type !== "tool" ||
-    !isRecord(part["state"]) ||
-    !Array.isArray(part["state"]["attachments"])
-  ) {
-    return [];
-  }
-
-  return part["state"]["attachments"].flatMap((attachment) => {
-    if (!isRecord(attachment) || typeof attachment["mime"] !== "string") {
-      return [];
-    }
-
-    return [
-      conversationAttachmentSchema.parse({
-        id: typeof attachment["id"] === "string" ? attachment["id"] : undefined,
-        type: inferAttachmentType(attachment["mime"]),
-        filename: typeof attachment["filename"] === "string" ? attachment["filename"] : undefined,
-        mimeType: attachment["mime"],
-        source: isRecord(attachment["source"]) ? attachment["source"] : undefined,
-      }),
-    ];
-  });
-}
-
-function inferAttachmentType(mime: unknown): "file" | "image" | "document" {
-  if (typeof mime !== "string") {
-    return "file";
-  }
-
-  if (mime.startsWith("image/")) {
-    return "image";
-  }
-
-  if (mime === "application/pdf" || mime.startsWith("text/")) {
-    return "document";
-  }
-
-  return "file";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

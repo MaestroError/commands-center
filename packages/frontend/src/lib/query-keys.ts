@@ -3,4 +3,6 @@ export const queryKeys = {
   agents: ["agents"] as const,
   agentCatalog: ["agent-catalog"] as const,
   agentBySlug: (slug: string) => ["agent", slug] as const,
+  conversationSnapshot: (agentId: string) => ["conversation-snapshot", agentId] as const,
+  conversations: (agentId: string) => ["conversations", agentId] as const,
 };

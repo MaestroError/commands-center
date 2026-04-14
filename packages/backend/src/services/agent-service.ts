@@ -19,6 +19,7 @@ import { createId, now } from "../db/ids.js";
 import { agents, custom_tools, mcp_servers } from "../db/schema/index.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { AppDb } from "../db/client.js";
+import { ConflictError } from "../lib/api-error.js";
 import type { OpenCodeService } from "./opencode-service.js";
 import { createProviderService } from "./provider-service.js";
 import {
@@ -255,6 +256,16 @@ export function createAgentService(options: {
       return true;
     }
 
+    // If we're updating an agent, check whether the directory belongs to it
+    if (excludeId) {
+      const self = await options.db.query.agents.findFirst({
+        where: (table, operators) => operators.eq(table.id, excludeId),
+      });
+      if (self?.slug === slug) {
+        return false;
+      }
+    }
+
     try {
       await access(buildWorkspacePath(slug));
       return true;
@@ -267,7 +278,7 @@ export function createAgentService(options: {
     const slug = slugify(name);
 
     if (await isSlugTaken(slug, excludeId)) {
-      throw new Error(`Agent identifier '${slug}' is already in use.`);
+      throw new ConflictError(`Agent identifier '${slug}' is already in use.`);
     }
 
     return slug;
