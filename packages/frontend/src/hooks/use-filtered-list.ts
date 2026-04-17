@@ -94,7 +94,8 @@ export function useFilteredList<T>(options: UseFilteredListOptions<T>): UseFilte
 
   const selectActive = useCallback(() => {
     if (filtered.length > 0 && activeIndex >= 0 && activeIndex < filtered.length) {
-      onSelect(filtered[activeIndex]);
+      const item = filtered[activeIndex];
+      if (item !== undefined) onSelect(item);
     }
   }, [filtered, activeIndex, onSelect]);
 

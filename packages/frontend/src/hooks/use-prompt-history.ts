@@ -30,7 +30,7 @@ function loadEntries(mode: "normal" | "shell"): PromptHistoryEntry[] {
             return false;
           }
           const obj = entry as Record<string, unknown>;
-          return typeof obj.text === "string" && typeof obj.timestamp === "number";
+          return typeof obj["text"] === "string" && typeof obj["timestamp"] === "number";
         });
       }
     }
@@ -70,7 +70,7 @@ export function usePromptHistory(mode: "normal" | "shell") {
 
       // Don't add duplicates of the most recent entry
       const current = loadEntries(mode);
-      if (current.length > 0 && current[0].text === trimmed) {
+      if (current.length > 0 && current[0]?.text === trimmed) {
         return;
       }
 
@@ -126,12 +126,12 @@ export function usePromptHistory(mode: "normal" | "shell") {
           }
           savedDraftRef.current = currentText;
           setHistoryIndex(0);
-          return { handled: true, entry: entries[0].text, cursor: "start" };
+          return { handled: true, entry: entries[0]?.text ?? "", cursor: "start" };
         } else {
           // Go deeper into history
           const nextIndex = historyIndex + 1;
           setHistoryIndex(nextIndex);
-          return { handled: true, entry: entries[nextIndex].text, cursor: "start" };
+          return { handled: true, entry: entries[nextIndex]?.text ?? "", cursor: "start" };
         }
       } else {
         // direction === "down"
@@ -139,7 +139,7 @@ export function usePromptHistory(mode: "normal" | "shell") {
           // Go to more recent entry
           const nextIndex = historyIndex - 1;
           setHistoryIndex(nextIndex);
-          return { handled: true, entry: entries[nextIndex].text, cursor: "end" };
+          return { handled: true, entry: entries[nextIndex]?.text ?? "", cursor: "end" };
         } else {
           // At index 0, restore saved draft
           setHistoryIndex(-1);

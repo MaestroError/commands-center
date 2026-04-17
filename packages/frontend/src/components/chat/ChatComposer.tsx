@@ -84,7 +84,7 @@ export function ChatComposer({
     const slashMatch = text.match(/^\/(\S*)$/);
     if (slashMatch) {
       setActivePopover("slash");
-      setPopoverQuery(slashMatch[1]);
+      setPopoverQuery(slashMatch[1] ?? "");
       return;
     }
 
@@ -93,7 +93,7 @@ export function ChatComposer({
     const hashMatch = beforeCursor.match(/#(\S*)$/);
     if (hashMatch) {
       setActivePopover("file");
-      setPopoverQuery(hashMatch[1]);
+      setPopoverQuery(hashMatch[1] ?? "");
       return;
     }
 
@@ -125,7 +125,7 @@ export function ChatComposer({
       onCommand(selectedSkill.slug, args || undefined);
       history.addEntry(trimmed);
     } else if (trimmed.startsWith("/")) {
-      const [cmd, ...args] = trimmed.slice(1).split(" ");
+      const [cmd = "", ...args] = trimmed.slice(1).split(" ");
       onCommand(cmd, args.join(" "));
     } else {
       // Prepend file mentions as #path references
