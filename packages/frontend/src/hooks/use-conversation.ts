@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import {
@@ -6,6 +6,8 @@ import {
   getConversation,
   startFreshConversation,
   sendPrompt,
+  sendShell as apiSendShell,
+  sendCommand as apiSendCommand,
   abortConversation,
   replyPermission as apiReplyPermission,
   replyQuestion as apiReplyQuestion,
@@ -21,6 +23,7 @@ import type {
   ConversationMessage,
   ConversationPart,
   ConversationSummary,
+  SendConversationAttachmentInput,
   TodoItem,
 } from "@cc/shared/schemas";
 
@@ -281,7 +284,15 @@ export type UseConversationReturn = {
   pendingPermission: PermissionRequest | null;
   pendingQuestion: QuestionRequest | null;
   todos: TodoItem[];
-  sendUserPrompt: (text: string) => void;
+  autoApprove: boolean;
+  setAutoApprove: (enabled: boolean) => void;
+  sendUserPrompt: (
+    text: string,
+    attachments?: SendConversationAttachmentInput[],
+    model?: string,
+  ) => void;
+  sendShell: (command: string) => void;
+  sendCommand: (command: string, args?: string) => void;
   abort: () => void;
   startFresh: () => void;
   switchConversation: (conversationId: string) => void;
@@ -294,6 +305,34 @@ export function useConversation(agentSlug: string): UseConversationReturn {
   const [state, dispatch] = useReducer(conversationReducer, initialState);
   const sseAbortRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string | null>(null);
+
+  // Auto-approve state with localStorage persistence
+  const [autoApprove, setAutoApproveState] = useState(() => {
+    try {
+      return localStorage.getItem(`cc-auto-approve-${agentSlug}`) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const autoApproveRef = useRef(autoApprove);
+
+  const setAutoApprove = useCallback(
+    (enabled: boolean) => {
+      setAutoApproveState(enabled);
+      autoApproveRef.current = enabled;
+      try {
+        localStorage.setItem(`cc-auto-approve-${agentSlug}`, enabled ? "true" : "false");
+      } catch {
+        // Ignore storage errors
+      }
+    },
+    [agentSlug],
+  );
+
+  // Keep ref in sync
+  useEffect(() => {
+    autoApproveRef.current = autoApprove;
+  }, [autoApprove]);
 
   // 1. Resolve slug → agent
   const agentQuery = useAgentQuery(agentSlug);
@@ -331,6 +370,16 @@ export function useConversation(agentSlug: string): UseConversationReturn {
       try {
         for await (const event of connectConversationEvents(conversationId, controller.signal)) {
           if (controller.signal.aborted) break;
+
+          // Auto-approve: if permission.asked and auto-approve is enabled, auto-reply
+          if (event.type === "permission.asked" && autoApproveRef.current) {
+            const requestId = (event.properties as { id?: string }).id;
+            if (requestId) {
+              void apiReplyPermission(conversationId, requestId, "once");
+              continue; // Don't dispatch to state — handled immediately
+            }
+          }
+
           dispatch({ type: "SSE_EVENT", event });
         }
       } catch {
@@ -353,7 +402,7 @@ export function useConversation(agentSlug: string): UseConversationReturn {
   // --- Actions ---
 
   const sendUserPrompt = useCallback(
-    (text: string) => {
+    (text: string, attachments?: SendConversationAttachmentInput[], _model?: string) => {
       if (!state.conversation) return;
 
       // Optimistic user message
@@ -369,7 +418,23 @@ export function useConversation(agentSlug: string): UseConversationReturn {
       };
       dispatch({ type: "OPTIMISTIC_USER_MESSAGE", message: optimisticMessage });
 
-      void sendPrompt(state.conversation.id, { text, attachments: [] });
+      void sendPrompt(state.conversation.id, { text, attachments: attachments ?? [] });
+    },
+    [state.conversation],
+  );
+
+  const sendShell = useCallback(
+    (command: string) => {
+      if (!state.conversation) return;
+      void apiSendShell(state.conversation.id, command);
+    },
+    [state.conversation],
+  );
+
+  const sendCommand = useCallback(
+    (command: string, args?: string) => {
+      if (!state.conversation) return;
+      void apiSendCommand(state.conversation.id, command, args);
     },
     [state.conversation],
   );
@@ -448,7 +513,11 @@ export function useConversation(agentSlug: string): UseConversationReturn {
     pendingPermission: state.pendingPermission,
     pendingQuestion: state.pendingQuestion,
     todos: state.todos,
+    autoApprove,
+    setAutoApprove,
     sendUserPrompt,
+    sendShell,
+    sendCommand,
     abort,
     startFresh,
     switchConversation,

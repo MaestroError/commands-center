@@ -1,4 +1,5 @@
 import { useParams } from "react-router-dom";
+import { useMemo } from "react";
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatHeader } from "@/components/chat/ChatHeader";
@@ -9,10 +10,20 @@ import { TodoDock } from "@/components/chat/TodoDock";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { useConversation } from "@/hooks/use-conversation";
+import { useAgentCatalogQuery } from "@/hooks/use-agents-query";
 
 export function WorkspaceChatPage() {
   const { agentId: agentSlug } = useParams<{ agentId: string }>();
   const conv = useConversation(agentSlug ?? "");
+  const { data: catalog } = useAgentCatalogQuery();
+
+  const skills = useMemo(() => {
+    if (!conv.agent || !catalog) return undefined;
+    const slugs = new Set(conv.agent.capabilities.builtInSkills);
+    return catalog.builtInSkills
+      .filter((s) => slugs.has(s.slug))
+      .map((s) => ({ slug: s.slug, description: s.description }));
+  }, [conv.agent, catalog]);
 
   if (conv.status === "loading") {
     return <LoadingState />;
@@ -58,9 +69,17 @@ export function WorkspaceChatPage() {
             <>
               {conv.todos.length > 0 && <TodoDock todos={conv.todos} />}
               <ChatComposer
-                onSend={conv.sendUserPrompt}
+                onSend={(input) => conv.sendUserPrompt(input.text, input.attachments, input.model)}
+                onShell={conv.sendShell}
+                onCommand={conv.sendCommand}
                 onAbort={conv.abort}
+                onStartFresh={conv.startFresh}
                 agentStatus={conv.agentStatus}
+                agentId={conv.agent?.id ?? ""}
+                defaultModel={conv.agent?.defaultModel}
+                autoApprove={conv.autoApprove}
+                onAutoApproveChange={conv.setAutoApprove}
+                skills={skills}
               />
             </>
           )}

@@ -12,6 +12,7 @@ import {
   providerOauthCompleteResultSchema,
   providerStatusListSchema,
   sendConversationPromptInputSchema,
+  workspaceFileSearchResultSchema,
   type Agent,
   type AgentCatalog,
   type ChatEvent,
@@ -275,6 +276,44 @@ export async function rejectQuestion(conversationId: string, requestId: string):
     const payload = (await response.json().catch(() => undefined)) as unknown;
     throw new Error(readApiError(payload, response.status));
   }
+}
+
+export async function sendShell(conversationId: string, command: string): Promise<void> {
+  const response = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/shell`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ command }),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status));
+  }
+}
+
+export async function sendCommand(
+  conversationId: string,
+  command: string,
+  args?: string,
+): Promise<void> {
+  const response = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/command`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ command, arguments: args ?? "" }),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status));
+  }
+}
+
+export async function searchWorkspaceFiles(agentId: string, query: string): Promise<string[]> {
+  const result = await requestJson<{ files: string[] }>(
+    `/api/agents/${encodeURIComponent(agentId)}/workspace/files?query=${encodeURIComponent(query)}`,
+    workspaceFileSearchResultSchema,
+  );
+  return result.files;
 }
 
 // --- SSE Event Consumer ---

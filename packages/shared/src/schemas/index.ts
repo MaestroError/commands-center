@@ -23,6 +23,7 @@ export {
   createAgentInputSchema,
   permissionActionSchema,
   updateAgentInputSchema,
+  workspaceFileSearchResultSchema,
   type Agent,
   type AgentCatalog,
   type AgentCapabilitySelection,
@@ -32,6 +33,7 @@ export {
   type BuiltInSkill,
   type CreateAgentInput,
   type UpdateAgentInput,
+  type WorkspaceFileSearchResult,
 } from "./agents.js";
 export {
   conversationAttachmentSchema,

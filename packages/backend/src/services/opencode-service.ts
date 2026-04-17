@@ -333,6 +333,12 @@ export function createOpenCodeService(options: { client: OpencodeClient; config:
         body: {},
       });
     },
+
+    async searchWorkspaceFiles(directory: string, query: string): Promise<string[]> {
+      const scoped = createScopedOpenCodeClient(options.config, directory);
+      const result = await scoped.find.files({ query: { query } });
+      return z.array(z.string()).parse(result);
+    },
   };
 }
 

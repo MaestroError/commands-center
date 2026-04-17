@@ -19,18 +19,11 @@ Polish the message rendering with specialized tool displays and context grouping
 - Non-context tools break the group and render individually as before.
 - Implementation: linear scan of parts to accumulate consecutive context tools into `ContextToolGroup` objects (~280 lines in opencode reference).
 
-### Diff Stats Badge
-
-- Edit, write, and apply_patch tool cards show a `+N/-N` badge with colored indicators.
-- Self-contained `DiffChanges` component (~115 lines in opencode reference).
-- Shows added/removed line counts extracted from the tool's state/output.
-
 ### Specialized Tool Renderers
 
 Upgrade from the generic JSON-dump card to purpose-built renderers for common tools:
 
 - **Bash/shell**: command + output in a monospace `<pre>` block with copy button, animated status subtitle while running.
-- **Edit/write/apply_patch**: file path header, diff stats badge, collapsible view of the changes. (Full inline diff viewer is deferred — show stats + raw output for now.)
 - **Task (subagent)**: card showing the subagent's task description and completion status. (Linking to child session is deferred.)
 - **Question**: Q&A display showing the question and the user's answer.
 - **TodoWrite**: hidden from the stream (already shown in the todo dock from Sub-Epic 1).
@@ -68,7 +61,7 @@ Note: interactions that depend on unbuilt screens are deferred:
 - Embedded terminal bottom panel (terminal screen not built yet).
 - File manager interactions from workspace files (file manager not built yet).
 - Paced markdown streaming animation (deferred feature).
-- Full inline diff viewer (deferred feature — shows stats badge + raw output).
+- Diff stats, inline diff viewer, and file edit visualization (not needed for business agents).
 - Subagent navigation/linking to child session (deferred feature).
 - Session forking, sharing, followup queue, revert dock (deferred features).
 - Performance optimizations: deferred turn mounting, CSS containment, session cache, SSE coalescing (deferred features).
@@ -76,7 +69,6 @@ Note: interactions that depend on unbuilt screens are deferred:
 ## Acceptance Criteria
 
 - Consecutive context tools (read/glob/grep/list) are grouped into a single collapsible summary row showing counts.
-- Edit/write/apply_patch tool cards display `+N/-N` diff stats.
 - Bash tool cards show command and output with copy button.
 - Tool errors render as distinct error cards; aborted messages show an "Interrupted" divider.
 - The right sidebar provides a workspace files tab showing the agent's file tree.
@@ -90,9 +82,7 @@ Note: interactions that depend on unbuilt screens are deferred:
 - `packages/frontend/src/components/chat/ToolCallCard.tsx` — refactor into a registry-based system with specialized renderers
 - `packages/frontend/src/components/chat/` — new components:
   - `ContextToolGroup.tsx` — collapsible summary for grouped context tools
-  - `DiffChanges.tsx` — `+N/-N` diff stats badge
   - `BashToolCard.tsx` — shell command + output renderer
-  - `EditToolCard.tsx` — edit/write/apply_patch renderer with diff stats
   - `TaskToolCard.tsx` — subagent task card
   - `QuestionToolCard.tsx` — Q&A display
   - `ErrorCard.tsx` — tool error display
@@ -105,7 +95,6 @@ Note: interactions that depend on unbuilt screens are deferred:
 ## Reference
 
 - OpenCode context grouping: `examples/opencode/packages/ui/src/components/message-part.tsx` (lines 461-503, 834-930)
-- OpenCode diff changes: `examples/opencode/packages/ui/src/components/diff-changes.tsx`
 - OpenCode tool registry: `examples/opencode/packages/ui/src/components/message-part.tsx` (`ToolRegistry`, `PART_MAPPING`)
 - OpenCode error handling: `examples/opencode/packages/ui/src/components/tool-error-card.tsx`, `session-retry.tsx`
 - Design acceptance criteria: `design/screens/direct-chat/acceptance_criteria.md`

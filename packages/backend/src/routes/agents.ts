@@ -20,6 +20,10 @@ const listAgentsQuerySchema = z.object({
   includeArchived: z.coerce.boolean().optional().default(false),
 });
 
+const workspaceFilesQuerySchema = z.object({
+  query: z.string().default(""),
+});
+
 export function registerAgentRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const service = createAgentService({
@@ -123,6 +127,30 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
       }
 
       return agent;
+    },
+  );
+
+  app.get(
+    "/api/agents/:id/workspace/files",
+    {
+      schema: {
+        params: agentIdParamsSchema,
+        querystring: workspaceFilesQuerySchema,
+      },
+    },
+    async (request) => {
+      const agent = await service.get(request.params.id);
+
+      if (!agent) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      const files = await context.opencodeService.searchWorkspaceFiles(
+        agent.workspacePath,
+        request.query.query,
+      );
+
+      return { files };
     },
   );
 }

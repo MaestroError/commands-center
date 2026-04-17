@@ -11,6 +11,16 @@ type MessageTimelineProps = {
   agentStatus: "idle" | "busy" | "retry";
 };
 
+// System-generated user messages that should not be shown as chat bubbles
+const HIDDEN_USER_MESSAGES = new Set(["The following tool was executed by the user"]);
+
+function isHiddenUserMessage(msg: ConversationMessage, parts: ConversationPart[]): boolean {
+  if (msg.role !== "user") return false;
+  const textPart = parts.find((p) => p.type === "text");
+  const text = ((textPart?.["text"] as string) || msg.content || "").trim();
+  return HIDDEN_USER_MESSAGES.has(text);
+}
+
 export function MessageTimeline({ messages, parts, agentStatus }: MessageTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -47,6 +57,10 @@ export function MessageTimeline({ messages, parts, agentStatus }: MessageTimelin
         const msgParts = parts[msg.id] ?? msg.parts;
         // Skip empty assistant message shells (no parts yet, no content)
         if (msg.role === "assistant" && msgParts.length === 0 && !msg.content) {
+          return null;
+        }
+        // Skip system-generated user messages
+        if (isHiddenUserMessage(msg, msgParts)) {
           return null;
         }
         return (
