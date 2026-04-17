@@ -260,6 +260,7 @@ function createMockOpenCodeService(): OpenCodeService {
     listSessionMessages: vi.fn(),
     promptSession: vi.fn(),
     commandSession: vi.fn(),
+    summarizeSession: vi.fn(),
     shellSession: vi.fn(),
   } as unknown as OpenCodeService;
 }

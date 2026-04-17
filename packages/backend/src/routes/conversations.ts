@@ -114,6 +114,16 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
   );
 
   app.post(
+    "/api/conversations/:conversationId/summarize",
+    {
+      schema: {
+        params: conversationParamsSchema,
+      },
+    },
+    async (request) => service.summarize(request.params.conversationId),
+  );
+
+  app.post(
     "/api/conversations/:conversationId/shell",
     {
       schema: {

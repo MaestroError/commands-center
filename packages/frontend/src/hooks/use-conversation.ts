@@ -8,6 +8,7 @@ import {
   sendPrompt,
   sendShell as apiSendShell,
   sendCommand as apiSendCommand,
+  summarizeConversation,
   abortConversation,
   replyPermission as apiReplyPermission,
   replyQuestion as apiReplyQuestion,
@@ -293,6 +294,7 @@ export type UseConversationReturn = {
   ) => void;
   sendShell: (command: string) => void;
   sendCommand: (command: string, args?: string) => void;
+  summarize: () => void;
   abort: () => void;
   startFresh: () => void;
   switchConversation: (conversationId: string) => void;
@@ -439,6 +441,11 @@ export function useConversation(agentSlug: string): UseConversationReturn {
     [state.conversation],
   );
 
+  const summarize = useCallback(() => {
+    if (!state.conversation) return;
+    void summarizeConversation(state.conversation.id);
+  }, [state.conversation]);
+
   const abort = useCallback(() => {
     if (!state.conversation) return;
     void abortConversation(state.conversation.id);
@@ -518,6 +525,7 @@ export function useConversation(agentSlug: string): UseConversationReturn {
     sendUserPrompt,
     sendShell,
     sendCommand,
+    summarize,
     abort,
     startFresh,
     switchConversation,

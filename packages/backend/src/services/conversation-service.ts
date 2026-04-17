@@ -112,6 +112,21 @@ export function createConversationService(options: {
       return getConversationDetail(loaded.conversation.id);
     },
 
+    async summarize(conversationId: string): Promise<ConversationDetail> {
+      const loaded = await getConversationAgent(conversationId);
+      const model = parseModel(loaded.agent.default_model);
+
+      await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+      await options.opencodeService.summarizeSession({
+        directory: loaded.agent.workspace_path,
+        sessionID: loaded.conversation.opencode_session_id,
+        providerID: model.providerID,
+        modelID: model.modelID,
+      });
+      await syncConversation(loaded.agent, loaded.conversation);
+      return getConversationDetail(loaded.conversation.id);
+    },
+
     async sendShell(
       conversationId: string,
       input: SendConversationShellInput,

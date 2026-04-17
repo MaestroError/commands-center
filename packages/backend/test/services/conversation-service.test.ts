@@ -281,6 +281,7 @@ function createMockOpenCodeService(): OpenCodeService {
       session.time.updated = nextTime();
       return Promise.resolve();
     },
+    summarizeSession: () => Promise.resolve(),
     shellSession: ({ sessionID, command }) => {
       const session = mustSession(sessionID);
       const list = mustMessages(sessionID);
@@ -321,6 +322,7 @@ function createMockOpenCodeService(): OpenCodeService {
     replyQuestion: async () => {},
     rejectQuestion: async () => {},
     abortSession: async () => {},
+    searchWorkspaceFiles: () => Promise.resolve([]),
   } as OpenCodeService;
 
   function mustSession(sessionID: string): OpenCodeSession {

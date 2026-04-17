@@ -308,6 +308,21 @@ export async function sendCommand(
   }
 }
 
+export async function summarizeConversation(conversationId: string): Promise<void> {
+  const response = await fetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/summarize`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    },
+  );
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status));
+  }
+}
+
 export async function searchWorkspaceFiles(agentId: string, query: string): Promise<string[]> {
   const result = await requestJson<{ files: string[] }>(
     `/api/agents/${encodeURIComponent(agentId)}/workspace/files?query=${encodeURIComponent(query)}`,

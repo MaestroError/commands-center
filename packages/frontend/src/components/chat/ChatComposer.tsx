@@ -19,6 +19,7 @@ type ChatComposerProps = {
   onSend: (input: ComposerSendInput) => void;
   onShell: (command: string) => void;
   onCommand: (command: string, args?: string) => void;
+  onSummarize: () => void;
   onAbort: () => void;
   onStartFresh: () => void;
   agentStatus: "idle" | "busy" | "retry";
@@ -34,6 +35,7 @@ export function ChatComposer({
   onSend,
   onShell,
   onCommand,
+  onSummarize,
   onAbort,
   onStartFresh,
   agentStatus,
@@ -294,12 +296,12 @@ export function ChatComposer({
       } else if (command.name === "new") {
         onStartFresh();
       } else if (command.name === "compact") {
-        onCommand("compact", "");
+        onSummarize();
       } else {
         onCommand(command.name, "");
       }
     },
-    [onCommand, onStartFresh],
+    [onCommand, onStartFresh, onSummarize],
   );
 
   const handlePopoverKeyDown = useCallback((e: React.KeyboardEvent) => {

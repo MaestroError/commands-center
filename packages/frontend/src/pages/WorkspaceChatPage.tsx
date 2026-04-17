@@ -72,6 +72,7 @@ export function WorkspaceChatPage() {
                 onSend={(input) => conv.sendUserPrompt(input.text, input.attachments, input.model)}
                 onShell={conv.sendShell}
                 onCommand={conv.sendCommand}
+                onSummarize={conv.summarize}
                 onAbort={conv.abort}
                 onStartFresh={conv.startFresh}
                 agentStatus={conv.agentStatus}

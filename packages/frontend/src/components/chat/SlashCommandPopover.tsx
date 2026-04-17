@@ -9,7 +9,7 @@ interface SlashCommand {
 
 const BUILTIN_COMMANDS: SlashCommand[] = [
   { name: "new", description: "Start a fresh conversation", type: "builtin" },
-  { name: "compact", description: "Compact the conversation history", type: "builtin" },
+  { name: "compact", description: "Summarize the session to reduce context size", type: "builtin" },
 ];
 
 interface SlashCommandPopoverProps {

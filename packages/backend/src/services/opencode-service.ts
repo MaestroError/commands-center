@@ -247,6 +247,24 @@ export function createOpenCodeService(options: { client: OpencodeClient; config:
       });
     },
 
+    async summarizeSession(input: {
+      directory: string;
+      sessionID: string;
+      providerID: string;
+      modelID: string;
+    }): Promise<void> {
+      await requestSessionJson({
+        config: options.config,
+        directory: input.directory,
+        method: "POST",
+        path: `/session/${encodeURIComponent(input.sessionID)}/summarize`,
+        body: {
+          providerID: input.providerID,
+          modelID: input.modelID,
+        },
+      });
+    },
+
     async shellSession(input: {
       directory: string;
       sessionID: string;
