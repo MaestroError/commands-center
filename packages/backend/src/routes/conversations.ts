@@ -90,6 +90,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
           stream: z.enum(["true", "false"]).optional(),
         }),
       },
+      bodyLimit: 50 * 1024 * 1024, // 50 MB for base64 attachments
     },
     async (request, reply) => {
       if (request.query.stream === "true") {

@@ -420,7 +420,11 @@ export function useConversation(agentSlug: string): UseConversationReturn {
       };
       dispatch({ type: "OPTIMISTIC_USER_MESSAGE", message: optimisticMessage });
 
-      void sendPrompt(state.conversation.id, { text, attachments: attachments ?? [] });
+      void sendPrompt(state.conversation.id, { text, attachments: attachments ?? [] }).catch(
+        (err) => {
+          console.error("Failed to send prompt:", err);
+        },
+      );
     },
     [state.conversation],
   );

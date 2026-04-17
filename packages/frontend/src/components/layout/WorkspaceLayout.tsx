@@ -65,7 +65,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
   );
 
   return (
-    <div className="flex min-h-[calc(100vh-10rem)] flex-col gap-4" data-testid="workspace-layout">
+    <div className="flex h-[calc(100vh-6rem)] flex-col gap-4" data-testid="workspace-layout">
       {!isDesktop && (props.contextPane || props.bottomPane) ? (
         <div className="flex flex-wrap gap-2">
           {props.contextPane ? (
@@ -91,9 +91,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
 
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="flex min-h-0 flex-1 gap-4">
-          <div className="cc-panel min-h-[28rem] min-w-0 flex-1 overflow-hidden">
-            {props.primary}
-          </div>
+          <div className="cc-panel min-w-0 flex-1 overflow-hidden">{props.primary}</div>
           {isDesktop && props.contextPane ? (
             <>
               {!contextCollapsed ? (

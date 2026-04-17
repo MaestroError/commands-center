@@ -77,7 +77,6 @@ export function WorkspaceChatPage() {
                 onStartFresh={conv.startFresh}
                 agentStatus={conv.agentStatus}
                 agentId={conv.agent?.id ?? ""}
-                defaultModel={conv.agent?.defaultModel}
                 autoApprove={conv.autoApprove}
                 onAutoApproveChange={conv.setAutoApprove}
                 skills={skills}

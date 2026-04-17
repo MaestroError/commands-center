@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SendConversationAttachmentInput } from "@cc/shared/schemas";
 import { usePromptHistory } from "../../hooks/use-prompt-history";
-import { ModelSelector } from "./ModelSelector";
+
 import { AutoApproveToggle } from "./AutoApproveToggle";
 import { AttachmentBar } from "./AttachmentBar";
 import { FileMentionPopover } from "./FileMentionPopover";
@@ -24,7 +24,6 @@ type ChatComposerProps = {
   onStartFresh: () => void;
   agentStatus: "idle" | "busy" | "retry";
   agentId: string;
-  defaultModel?: string;
   autoApprove: boolean;
   onAutoApproveChange: (enabled: boolean) => void;
   skills?: { slug: string; description?: string }[];
@@ -40,7 +39,6 @@ export function ChatComposer({
   onStartFresh,
   agentStatus,
   agentId,
-  defaultModel,
   autoApprove,
   onAutoApproveChange,
   skills,
@@ -48,7 +46,6 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<ComposerMode>("normal");
-  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<SendConversationAttachmentInput[]>([]);
   const [mentionedFiles, setMentionedFiles] = useState<{ path: string; filename: string }[]>([]);
   const [selectedSkill, setSelectedSkill] = useState<{ slug: string; description?: string } | null>(
@@ -119,11 +116,21 @@ export function ChatComposer({
       onShell(trimmed);
       history.addEntry(trimmed);
     } else if (selectedSkill) {
-      // Skill mode: send as command with text + file mentions as arguments
-      const filePrefixes = mentionedFiles.map((f) => `#${f.path}`).join(" ");
-      const args = [filePrefixes, trimmed].filter(Boolean).join(" ");
-      onCommand(selectedSkill.slug, args || undefined);
-      history.addEntry(trimmed);
+      const hasContent = trimmed || attachments.length > 0 || mentionedFiles.length > 0;
+      if (hasContent) {
+        // Has extra context: send as normal message with /skill prefix so the LLM
+        // sees attachments + file mentions and can invoke the skill naturally
+        const filePrefixes = mentionedFiles.map((f) => `#${f.path}`).join(" ");
+        const parts = [`Use skill "${selectedSkill.slug}".`, filePrefixes, trimmed].filter(Boolean);
+        onSend({
+          text: parts.join(" "),
+          attachments,
+        });
+      } else {
+        // No extra context: execute skill directly via command API
+        onCommand(selectedSkill.slug);
+      }
+      if (trimmed) history.addEntry(trimmed);
     } else if (trimmed.startsWith("/")) {
       const [cmd = "", ...args] = trimmed.slice(1).split(" ");
       onCommand(cmd, args.join(" "));
@@ -134,7 +141,6 @@ export function ChatComposer({
       onSend({
         text: fullText,
         attachments,
-        model: selectedModel ?? undefined,
       });
       history.addEntry(trimmed);
     }
@@ -144,18 +150,7 @@ export function ChatComposer({
     setMentionedFiles([]);
     setSelectedSkill(null);
     history.reset();
-  }, [
-    text,
-    mode,
-    attachments,
-    mentionedFiles,
-    selectedModel,
-    selectedSkill,
-    onSend,
-    onShell,
-    onCommand,
-    history,
-  ]);
+  }, [text, mode, attachments, mentionedFiles, selectedSkill, onSend, onShell, onCommand, history]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -258,10 +253,11 @@ export function ChatComposer({
 
   const handleFileMentionSelect = useCallback(
     (path: string) => {
-      const filename = path.split("/").pop() ?? path;
+      const isFolder = path.endsWith("/");
+      const display = isFolder ? path : (path.split("/").pop() ?? path);
       setMentionedFiles((prev) => {
         if (prev.some((f) => f.path === path)) return prev;
-        return [...prev, { path, filename }];
+        return [...prev, { path, filename: display }];
       });
 
       // Remove the #query from the text
@@ -393,13 +389,58 @@ export function ChatComposer({
       {/* Attachment Bar */}
       <AttachmentBar attachments={attachments} onRemove={handleRemoveAttachment} />
 
-      {/* Skill & File Mention Pills */}
-      {(selectedSkill || mentionedFiles.length > 0) && (
-        <div className="flex flex-wrap gap-1.5 px-3 pt-3">
-          {selectedSkill && (
-            <span
-              className="inline-flex items-center gap-1 rounded-md bg-purple-500/15 px-2 py-1 text-xs font-medium text-purple-400"
-              title={selectedSkill.description}
+      {/* Top toolbar: attach + auto toggle + pills */}
+      <div className="flex flex-wrap items-center gap-1.5 px-3 pt-2">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="flex h-7 items-center gap-1 rounded-md bg-surface-elevated px-2 text-xs text-text-secondary hover:bg-surface hover:text-text-primary"
+          title="Attach files"
+          disabled={disabled || mode === "shell"}
+        >
+          <svg
+            className="h-3.5 w-3.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
+            />
+          </svg>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => handleFileSelect(e.target.files)}
+        />
+        <AutoApproveToggle enabled={autoApprove} onChange={onAutoApproveChange} />
+
+        {/* Skill & File Mention Pills */}
+        {selectedSkill && (
+          <span
+            className="inline-flex items-center gap-1 rounded-md bg-purple-500/15 px-2 py-1 text-xs font-medium text-purple-400"
+            title={selectedSkill.description}
+          >
+            <svg
+              className="h-3 w-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            /{selectedSkill.slug}
+            <button
+              type="button"
+              className="ml-0.5 rounded-full p-0.5 hover:bg-purple-500/20"
+              onClick={() => setSelectedSkill(null)}
             >
               <svg
                 className="h-3 w-3"
@@ -408,32 +449,32 @@ export function ChatComposer({
                 stroke="currentColor"
                 strokeWidth={2}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
-              /{selectedSkill.slug}
-              <button
-                type="button"
-                className="ml-0.5 rounded-full p-0.5 hover:bg-purple-500/20"
-                onClick={() => setSelectedSkill(null)}
+            </button>
+          </span>
+        )}
+        {mentionedFiles.map((file) => (
+          <span
+            key={file.path}
+            className="inline-flex items-center gap-1 rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent"
+            title={file.path}
+          >
+            {file.path.endsWith("/") ? (
+              <svg
+                className="h-3 w-3"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
               >
-                <svg
-                  className="h-3 w-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </span>
-          )}
-          {mentionedFiles.map((file) => (
-            <span
-              key={file.path}
-              className="inline-flex items-center gap-1 rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent"
-              title={file.path}
-            >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                />
+              </svg>
+            ) : (
               <svg
                 className="h-3 w-3"
                 fill="none"
@@ -447,26 +488,26 @@ export function ChatComposer({
                   d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 />
               </svg>
-              {file.filename}
-              <button
-                type="button"
-                className="ml-0.5 rounded-full p-0.5 hover:bg-accent/20"
-                onClick={() => handleRemoveMention(file.path)}
+            )}
+            {file.filename}
+            <button
+              type="button"
+              className="ml-0.5 rounded-full p-0.5 hover:bg-accent/20"
+              onClick={() => handleRemoveMention(file.path)}
+            >
+              <svg
+                className="h-3 w-3"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
               >
-                <svg
-                  className="h-3 w-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </span>
+        ))}
+      </div>
 
       {/* Input Area */}
       <div className="relative p-3">
@@ -536,45 +577,6 @@ export function ChatComposer({
             registerKeyHandler={setPopoverKeyHandler}
           />
         )}
-      </div>
-
-      {/* Toolbar (below textarea) */}
-      <div className="flex items-center gap-2 border-t border-border px-3 py-2">
-        <ModelSelector
-          value={selectedModel}
-          onChange={setSelectedModel}
-          defaultModel={defaultModel}
-        />
-        <AutoApproveToggle enabled={autoApprove} onChange={onAutoApproveChange} />
-        <div className="flex-1" />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="flex h-8 items-center gap-1.5 rounded-md bg-surface-elevated px-2 text-sm text-text-secondary hover:bg-surface hover:text-text-primary"
-          title="Attach files"
-          disabled={disabled || mode === "shell"}
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
-            />
-          </svg>
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => handleFileSelect(e.target.files)}
-        />
       </div>
     </div>
   );

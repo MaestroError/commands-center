@@ -374,8 +374,7 @@ function buildAttachmentParts(
   attachments: SendConversationAttachmentInput[],
 ): SessionAttachmentPart[] {
   return attachments.map((attachment) => ({
-    id: attachment.id,
-    type: "file",
+    type: "file" as const,
     mime: attachment.mimeType,
     filename: attachment.filename,
     url: attachment.dataUrl,
@@ -399,7 +398,10 @@ async function requestSessionJson(options: {
   });
 
   if (!response.ok) {
-    throw new Error(`OpenCode request failed with status ${String(response.status)}.`);
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `OpenCode request failed: ${options.method} ${options.path} → ${String(response.status)}${body ? `: ${body}` : ""}`,
+    );
   }
 
   const contentType = response.headers.get("content-type") ?? "";
