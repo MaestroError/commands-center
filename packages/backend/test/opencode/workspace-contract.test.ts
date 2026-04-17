@@ -53,10 +53,6 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       permission: {
         custom_write: "ask",
         "github_*": "allow",
-        skill: {
-          "*": "deny",
-          writer: "allow",
-        },
       },
     });
 

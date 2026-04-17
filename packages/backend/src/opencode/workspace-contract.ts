@@ -158,13 +158,6 @@ export function renderOpenCodeWorkspace(input: OpenCodeWorkspaceInput): {
           (server) => [`${server.name}_*`, server.action] as const,
         ),
       ]),
-      skill:
-        input.capabilities.builtInSkills.length === 0
-          ? "deny"
-          : Object.fromEntries([
-              ["*", "deny"] as const,
-              ...input.capabilities.builtInSkills.map((skill) => [skill, "allow"] as const),
-            ]),
     },
   });
 

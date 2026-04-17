@@ -2,10 +2,5 @@
   "$schema": "https://opencode.ai/config.json",
   "model": "opencode/minimax-m2.5-free",
   "mcp": {},
-  "permission": {
-    "skill": {
-      "*": "deny",
-      "concise-summarizer": "allow"
-    }
-  }
+  "permission": {}
 }

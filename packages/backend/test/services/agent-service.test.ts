@@ -100,9 +100,9 @@ describe("createAgentService", () => {
       await expect(readFile(join(updated!.workspacePath, "AGENTS.md"), "utf8")).resolves.toContain(
         "Plan before editing.",
       );
-      await expect(
-        readFile(join(updated!.workspacePath, "opencode.jsonc"), "utf8"),
-      ).resolves.toContain('"skill": {\n      "*": "deny",\n      "planner": "allow"');
+      const configContent = await readFile(join(updated!.workspacePath, "opencode.jsonc"), "utf8");
+      expect(configContent).not.toContain('"skill"');
+      expect(configContent).toContain('"model"');
       expect(dispose).toHaveBeenCalledWith(updated!.workspacePath);
     } finally {
       await testDb.cleanup();
