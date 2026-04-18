@@ -414,7 +414,12 @@ export function useConversation(agentSlug: string): UseConversationReturn {
         role: "user",
         content: text,
         parts: [{ id: `text-${Date.now()}`, type: "text", text }],
-        attachments: [],
+        attachments: (attachments ?? []).map((a) => ({
+          type: a.type ?? "file",
+          filename: a.filename,
+          mimeType: a.mimeType,
+          sizeBytes: a.sizeBytes,
+        })),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
