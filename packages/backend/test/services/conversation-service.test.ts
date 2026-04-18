@@ -323,6 +323,7 @@ function createMockOpenCodeService(): OpenCodeService {
     rejectQuestion: async () => {},
     abortSession: async () => {},
     searchWorkspaceFiles: () => Promise.resolve([]),
+    listWorkspaceTree: () => Promise.resolve([]),
   } as OpenCodeService;
 
   function mustSession(sessionID: string): OpenCodeSession {

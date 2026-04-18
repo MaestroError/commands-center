@@ -24,6 +24,10 @@ const workspaceFilesQuerySchema = z.object({
   query: z.string().default(""),
 });
 
+const workspaceTreeQuerySchema = z.object({
+  path: z.string().optional(),
+});
+
 export function registerAgentRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const service = createAgentService({
@@ -151,6 +155,30 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
       );
 
       return { files };
+    },
+  );
+
+  app.get(
+    "/api/agents/:id/workspace/tree",
+    {
+      schema: {
+        params: agentIdParamsSchema,
+        querystring: workspaceTreeQuerySchema,
+      },
+    },
+    async (request) => {
+      const agent = await service.get(request.params.id);
+
+      if (!agent) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      const nodes = await context.opencodeService.listWorkspaceTree(
+        agent.workspacePath,
+        request.query.path,
+      );
+
+      return { nodes };
     },
   );
 }

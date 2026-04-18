@@ -418,7 +418,7 @@ function parseModel(value: string): { providerID: string; modelID: string } {
 const OPENCODE_AGENTS = new Set(["general", "plan", "build", "explore"]);
 
 function resolveOpenCodeAgent(slug: string): string {
-  return OPENCODE_AGENTS.has(slug) ? slug : "general";
+  return OPENCODE_AGENTS.has(slug) ? slug : "build";
 }
 
 function mapConversationMessage(row: MessageRow): ConversationMessage {

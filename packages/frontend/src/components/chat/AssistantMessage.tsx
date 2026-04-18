@@ -1,7 +1,25 @@
 import type { ConversationMessage, ConversationPart } from "@cc/shared/schemas";
 
 import { Markdown } from "./Markdown";
-import { ToolCallCard } from "./ToolCallCard";
+import { ContextGroup } from "./tools/ContextGroup";
+import { GenericTool } from "./tools/GenericTool";
+import { ToolErrorCard } from "./tools/ToolErrorCard";
+import { BashTool } from "./tools/BashTool";
+import { TaskTool } from "./tools/TaskTool";
+import { QuestionTool } from "./tools/QuestionTool";
+import {
+  getToolName,
+  getToolStatus,
+  HIDDEN_TOOLS,
+  registerTool,
+  resolveToolRenderer,
+} from "./tools/tool-registry";
+import { groupParts, type GroupedEntry } from "./tools/group-parts";
+
+// Register specialized tool renderers
+registerTool("bash", BashTool);
+registerTool("task", TaskTool);
+registerTool("question", QuestionTool);
 
 type AssistantMessageProps = {
   message: ConversationMessage;
@@ -11,35 +29,70 @@ type AssistantMessageProps = {
 // Internal part types that should not be rendered as visible content
 const HIDDEN_PART_TYPES = new Set(["step-start", "step-finish", "reasoning", "patch", "input"]);
 
-function renderPart(part: ConversationPart) {
-  if (HIDDEN_PART_TYPES.has(part.type)) {
-    return null;
+function renderToolPart(part: ConversationPart) {
+  const name = getToolName(part);
+  const status = getToolStatus(part);
+
+  if (HIDDEN_TOOLS.has(name)) return null;
+
+  // Error state: render error card
+  if (status === "error") {
+    return <ToolErrorCard part={part} />;
   }
+
+  // Try specialized renderer
+  const Renderer = resolveToolRenderer(name);
+  if (Renderer) {
+    return <Renderer part={part} />;
+  }
+
+  // Fallback to generic
+  return <GenericTool part={part} />;
+}
+
+function renderPart(part: ConversationPart) {
+  if (HIDDEN_PART_TYPES.has(part.type)) return null;
 
   switch (part.type) {
     case "text":
       return <Markdown content={(part["text"] as string) ?? ""} />;
     case "tool":
-      return <ToolCallCard part={part} />;
+      return renderToolPart(part);
     default:
       return null;
   }
 }
 
+function renderGroupedEntry(entry: GroupedEntry, index: number) {
+  if (entry.type === "context") {
+    return (
+      <div key={`ctx-${String(index)}`}>
+        <ContextGroup parts={entry.parts} />
+      </div>
+    );
+  }
+
+  const rendered = renderPart(entry.part);
+  if (!rendered) return null;
+  return <div key={entry.part.id}>{rendered}</div>;
+}
+
 export function AssistantMessage({ message, parts }: AssistantMessageProps) {
   const hasParts = parts.length > 0;
 
+  if (!hasParts) {
+    return (
+      <div className="bg-chat-agent rounded-2xl px-4 py-3 space-y-3">
+        <Markdown content={message.content} />
+      </div>
+    );
+  }
+
+  const grouped = groupParts(parts);
+
   return (
     <div className="bg-chat-agent rounded-2xl px-4 py-3 space-y-3">
-      {hasParts ? (
-        parts.map((part) => {
-          const rendered = renderPart(part);
-          if (!rendered) return null;
-          return <div key={part.id}>{rendered}</div>;
-        })
-      ) : (
-        <Markdown content={message.content} />
-      )}
+      {grouped.map((entry, i) => renderGroupedEntry(entry, i))}
     </div>
   );
 }

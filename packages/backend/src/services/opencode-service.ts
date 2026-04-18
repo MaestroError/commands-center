@@ -357,6 +357,26 @@ export function createOpenCodeService(options: { client: OpencodeClient; config:
       const result = await scoped.find.files({ query: { query } });
       return z.array(z.string()).parse(result);
     },
+
+    async listWorkspaceTree(
+      directory: string,
+      path?: string,
+    ): Promise<{ name: string; path: string; type: "file" | "directory" }[]> {
+      const scoped = createScopedOpenCodeClient(options.config, directory);
+      const result = await scoped.file.list({ query: { path: path ?? "." } });
+      return z
+        .array(
+          z.object({
+            name: z.string(),
+            path: z.string(),
+            type: z.enum(["file", "directory"]),
+            ignored: z.boolean().optional(),
+          }),
+        )
+        .parse(result)
+        .filter((node) => !node.ignored)
+        .map((node) => ({ name: node.name, path: node.path, type: node.type }));
+    },
   };
 }
 

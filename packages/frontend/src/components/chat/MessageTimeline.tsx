@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConversationMessage, ConversationPart } from "@cc/shared/schemas";
 
 import { AssistantMessage } from "./AssistantMessage";
+import { InterruptedDivider } from "./InterruptedDivider";
 import { UserMessage } from "./UserMessage";
 
 type MessageTimelineProps = {
@@ -19,6 +20,18 @@ function isHiddenUserMessage(msg: ConversationMessage, parts: ConversationPart[]
   const textPart = parts.find((p) => p.type === "text");
   const text = ((textPart?.["text"] as string) || msg.content || "").trim();
   return HIDDEN_USER_MESSAGES.has(text);
+}
+
+function isInterruptedMessage(msg: ConversationMessage, msgParts: ConversationPart[]): boolean {
+  if (msg.role !== "assistant") return false;
+  const hasStepStart = msgParts.some((p) => p.type === "step-start");
+  const stepFinish = msgParts.find((p) => p.type === "step-finish");
+  if (stepFinish) {
+    const reason = (stepFinish as Record<string, unknown>)["reason"] as string | undefined;
+    return reason === "interrupted" || reason === "aborted" || reason === "error";
+  }
+  // Has step-start but no step-finish = interrupted mid-stream
+  return hasStepStart && !stepFinish;
 }
 
 export function MessageTimeline({ messages, parts, agentStatus }: MessageTimelineProps) {
@@ -63,18 +76,19 @@ export function MessageTimeline({ messages, parts, agentStatus }: MessageTimelin
         if (isHiddenUserMessage(msg, msgParts)) {
           return null;
         }
+        const interrupted = isInterruptedMessage(msg, msgParts);
         return (
-          <div
-            key={msg.id}
-            className={msg.role === "user" ? "flex justify-end" : "flex justify-start"}
-          >
-            <div className={msg.role === "user" ? "max-w-[80%]" : "max-w-[90%]"}>
-              {msg.role === "user" ? (
-                <UserMessage message={msg} parts={msgParts} />
-              ) : (
-                <AssistantMessage message={msg} parts={msgParts} />
-              )}
+          <div key={msg.id}>
+            <div className={msg.role === "user" ? "flex justify-end" : "flex justify-start"}>
+              <div className={msg.role === "user" ? "max-w-[80%]" : "max-w-[90%]"}>
+                {msg.role === "user" ? (
+                  <UserMessage message={msg} parts={msgParts} />
+                ) : (
+                  <AssistantMessage message={msg} parts={msgParts} />
+                )}
+              </div>
             </div>
+            {interrupted && <InterruptedDivider />}
           </div>
         );
       })}

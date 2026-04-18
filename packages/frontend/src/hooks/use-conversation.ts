@@ -301,6 +301,8 @@ export type UseConversationReturn = {
   replyPermission: (requestId: string, reply: "once" | "always" | "reject") => void;
   replyQuestion: (requestId: string, answers: string[][]) => void;
   rejectQuestion: (requestId: string) => void;
+  /** Dev-only: inject a mock SSE event into the reducer */
+  __injectEvent?: (event: ChatEvent) => void;
 };
 
 export function useConversation(agentSlug: string): UseConversationReturn {
@@ -541,5 +543,8 @@ export function useConversation(agentSlug: string): UseConversationReturn {
     replyPermission: replyPerm,
     replyQuestion: replyQ,
     rejectQuestion: rejectQ,
+    ...(import.meta.env.DEV && {
+      __injectEvent: (event: ChatEvent) => dispatch({ type: "SSE_EVENT", event }),
+    }),
   };
 }

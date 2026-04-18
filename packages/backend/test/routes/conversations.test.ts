@@ -188,6 +188,7 @@ function createMockOpenCodeService(): OpenCodeService {
     summarizeSession: () => Promise.resolve(),
     shellSession: () => Promise.resolve(),
     searchWorkspaceFiles: () => Promise.resolve([]),
+    listWorkspaceTree: () => Promise.resolve([]),
   } as OpenCodeService;
 }
 

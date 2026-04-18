@@ -331,6 +331,24 @@ export async function searchWorkspaceFiles(agentId: string, query: string): Prom
   return result.files;
 }
 
+export type FileNode = { name: string; path: string; type: "file" | "directory" };
+
+export async function getWorkspaceTree(agentId: string, path?: string): Promise<FileNode[]> {
+  const params = new URLSearchParams();
+  if (path) params.set("path", path);
+  const qs = params.toString();
+  const url = `/api/agents/${encodeURIComponent(agentId)}/workspace/tree${qs ? `?${qs}` : ""}`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status));
+  }
+
+  const json = (await response.json()) as { nodes: FileNode[] };
+  return json.nodes;
+}
+
 // --- SSE Event Consumer ---
 
 export async function* connectConversationEvents(

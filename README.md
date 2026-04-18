@@ -79,6 +79,26 @@ cc/
 | [PRD.md](PRD.md)                     | Product requirements                      |
 | [tech-research.md](tech-research.md) | Architecture blueprint                    |
 
+## Dev Debug Panel
+
+A floating panel available in development mode to test UI components that are hard to trigger manually (tool renderers, TodoDock, error cards, etc.).
+
+**Toggle:** `Ctrl+Shift+D` on any chat page.
+
+| Button | What it injects |
+|--------|----------------|
+| Inject Todos | 3 todo items — TodoDock appears above composer |
+| Clear | Removes all todos |
+| Bash | Completed shell command with sample output |
+| Context Group | 3 consecutive read/glob/grep parts — collapsed "Gathered context" row |
+| Error | Bash tool with error status — red error card |
+| Question | Completed Q&A tool with 2 questions and answers |
+| Task | Explore subagent task card |
+
+Tool part buttons require at least one assistant message (they attach to the latest). Dev-only via `import.meta.env.DEV` — zero bundle impact in production.
+
+**Source:** `packages/frontend/src/components/dev/DevDebugPanel.tsx`
+
 ## License
 
 See [LICENSE](LICENSE) for details.
