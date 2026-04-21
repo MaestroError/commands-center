@@ -452,7 +452,7 @@ describe("SSE_EVENT: message.part.updated", () => {
     };
     const next = conversationReducer(state, { type: "SSE_EVENT", event });
     expect(next.parts["m1"]).toHaveLength(1);
-    expect((next.parts["m1"]?.[0] as { text: string }).text).toBe("new");
+    expect((next.parts["m1"]?.[0] as unknown as { text: string }).text).toBe("new");
   });
 
   it("is a no-op when conversation is null", () => {
@@ -478,7 +478,7 @@ describe("SSE_EVENT: message.part.delta", () => {
       properties: { sessionID: "s", messageID: "m1", partID: "p1", field: "text", delta: " world" },
     };
     const next = conversationReducer(state, { type: "SSE_EVENT", event });
-    expect((next.parts["m1"]?.[0] as { text: string }).text).toBe("hello world");
+    expect((next.parts["m1"]?.[0] as unknown as { text: string }).text).toBe("hello world");
   });
 
   it("treats missing field as empty string before concatenating", () => {
@@ -489,7 +489,7 @@ describe("SSE_EVENT: message.part.delta", () => {
       properties: { sessionID: "s", messageID: "m1", partID: "p1", field: "text", delta: "start" },
     };
     const next = conversationReducer(state, { type: "SSE_EVENT", event });
-    expect((next.parts["m1"]?.[0] as { text: string }).text).toBe("start");
+    expect((next.parts["m1"]?.[0] as unknown as { text: string }).text).toBe("start");
   });
 
   it("is a no-op when messageID is not in the parts map", () => {
@@ -517,8 +517,8 @@ describe("SSE_EVENT: message.part.delta", () => {
       },
     };
     const next = conversationReducer(state, { type: "SSE_EVENT", event });
-    expect((next.parts["m1"]?.[0] as { text: string }).text).toBe("do not touch");
-    expect((next.parts["m1"]?.[1] as { text: string }).text).toBe("target appended");
+    expect((next.parts["m1"]?.[0] as unknown as { text: string }).text).toBe("do not touch");
+    expect((next.parts["m1"]?.[1] as unknown as { text: string }).text).toBe("target appended");
   });
 });
 
