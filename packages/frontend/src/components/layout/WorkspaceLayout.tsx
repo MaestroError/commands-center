@@ -122,11 +122,23 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
               </aside>
               {contextCollapsed ? (
                 <button
-                  className="cc-button cc-button-secondary hidden self-start lg:inline-flex"
+                  aria-label="Restore context pane"
+                  className="hidden h-6 w-6 shrink-0 items-center justify-center self-start rounded text-text-secondary hover:bg-surface-elevated hover:text-text-primary transition lg:flex"
                   onClick={() => setContextCollapsed(false)}
                   type="button"
                 >
-                  Restore context pane
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
                 </button>
               ) : null}
             </>
@@ -164,6 +176,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
               </section>
             ) : (
               <button
+                aria-label="Restore bottom pane"
                 className="cc-button cc-button-secondary hidden self-start lg:inline-flex"
                 onClick={() => setBottomCollapsed(false)}
                 type="button"
@@ -206,19 +219,27 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
 
 function PaneHeader(props: { title: string; onToggle: () => void; toggleLabel: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-      <div>
-        <p className="text-sm font-semibold text-text-primary">{props.title}</p>
-        <p className="text-xs text-text-secondary">Docked workspace surface</p>
-      </div>
+    <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
       <button
         aria-label={props.toggleLabel}
-        className="cc-button cc-button-secondary"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary hover:bg-surface-elevated hover:text-text-primary transition"
         onClick={props.onToggle}
         type="button"
       >
-        Collapse
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
       </button>
+      <span className="text-sm font-medium text-text-primary">Context</span>
     </div>
   );
 }
