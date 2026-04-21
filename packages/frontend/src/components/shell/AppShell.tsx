@@ -13,7 +13,7 @@ import {
 export function AppShell() {
   const location = useLocation();
   const title = useMemo(() => getRouteTitle(location.pathname), [location.pathname]);
-  const { theme } = useTheme();
+  const { theme, themes, setTheme } = useTheme();
 
   return (
     <div className="min-h-screen bg-app-bg text-text-primary">
@@ -29,9 +29,18 @@ export function AppShell() {
                 <h1 className="text-xl font-semibold text-text-primary">{title}</h1>
               </div>
               <div className="flex items-center gap-2">
-                <span className="hidden rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary sm:inline-flex">
+                <button
+                  className="hidden rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary sm:inline-flex"
+                  onClick={() => {
+                    const idx = themes.indexOf(theme ?? themes[0] ?? "dark");
+                    const next = themes[(idx + 1) % themes.length];
+                    if (next) setTheme(next);
+                  }}
+                  type="button"
+                  title="Click to cycle theme"
+                >
                   Theme: {theme}
-                </span>
+                </button>
                 <NavLink className="cc-button cc-button-secondary" to="/profile">
                   Profile
                 </NavLink>
