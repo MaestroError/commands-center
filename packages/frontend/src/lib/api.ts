@@ -177,6 +177,18 @@ export async function listConversations(agentId: string): Promise<ConversationSu
   );
 }
 
+export async function deleteConversation(agentId: string, conversationId: string): Promise<void> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`,
+    { method: "DELETE" },
+  );
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status));
+  }
+}
+
 export async function getConversation(
   agentId: string,
   conversationId: string,

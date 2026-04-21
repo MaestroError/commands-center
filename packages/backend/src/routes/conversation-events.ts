@@ -70,6 +70,9 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
             writeSseEvent(raw, event);
           }
         },
+        onTitleUpdate: (title) => {
+          void service.updateTitle(loaded.conversation.id, title);
+        },
       });
     },
   );

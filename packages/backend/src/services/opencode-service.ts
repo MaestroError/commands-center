@@ -352,6 +352,15 @@ export function createOpenCodeService(options: { client: OpencodeClient; config:
       });
     },
 
+    async deleteSession(directory: string, sessionID: string): Promise<void> {
+      await requestSessionJson({
+        config: options.config,
+        directory,
+        method: "DELETE",
+        path: `/session/${encodeURIComponent(sessionID)}`,
+      });
+    },
+
     async searchWorkspaceFiles(directory: string, query: string): Promise<string[]> {
       const scoped = createScopedOpenCodeClient(options.config, directory);
       const result = await scoped.find.files({ query: { query } });
@@ -404,7 +413,7 @@ function buildAttachmentParts(
 async function requestSessionJson(options: {
   config: RuntimeConfig;
   directory: string;
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "DELETE";
   path: string;
   body?: Record<string, unknown>;
 }): Promise<unknown> {

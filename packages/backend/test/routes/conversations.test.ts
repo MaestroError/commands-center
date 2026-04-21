@@ -229,5 +229,6 @@ function createBaseOpenCodeService() {
     replyQuestion: async () => {},
     rejectQuestion: async () => {},
     abortSession: async () => {},
+    deleteSession: async () => {},
   };
 }

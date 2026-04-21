@@ -60,9 +60,9 @@ export function WorkspaceChatPage() {
         primary={
           <div className="flex h-full flex-col">
             <ChatHeader
+              agentId={conv.agent?.id ?? ""}
               agentName={conv.agent?.name ?? agentSlug ?? "Agent"}
               agentRole={conv.agent?.role ?? ""}
-              previousConversations={conv.previousConversations}
               currentConversationId={conv.conversation.id}
               onStartFresh={conv.startFresh}
               onSelectConversation={conv.switchConversation}

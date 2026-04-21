@@ -18,6 +18,7 @@ export type SubscribeOptions = {
   sessionID: string;
   signal: AbortSignal;
   onEvent: (event: ChatEvent) => void;
+  onTitleUpdate?: (title: string) => void;
 };
 
 export type OpenCodeEventService = ReturnType<typeof createOpenCodeEventService>;
@@ -50,13 +51,13 @@ async function runSubscription(
   logger: Logger,
   options: SubscribeOptions,
 ): Promise<void> {
-  const { directory, sessionID, signal, onEvent } = options;
+  const { directory, sessionID, signal, onEvent, onTitleUpdate } = options;
   let retryDelay = 500;
   const maxRetryDelay = 15_000;
 
   while (!signal.aborted) {
     try {
-      await consumeEventStream(config, directory, sessionID, signal, onEvent);
+      await consumeEventStream(config, directory, sessionID, signal, onEvent, onTitleUpdate);
       // Stream ended normally (server closed) — reconnect
       retryDelay = 500;
     } catch (error) {
@@ -85,6 +86,7 @@ async function consumeEventStream(
   sessionID: string,
   signal: AbortSignal,
   onEvent: (event: ChatEvent) => void,
+  onTitleUpdate?: (title: string) => void,
 ): Promise<void> {
   const url = new URL("/event", config.opencode.baseUrl);
   url.searchParams.set("directory", directory);
@@ -119,6 +121,24 @@ async function consumeEventStream(
       buffer = events.remainder;
 
       for (const raw of events.parsed) {
+        // Intercept session.updated to propagate title changes
+        if (
+          onTitleUpdate &&
+          raw.type === "session.updated" &&
+          typeof raw.properties["sessionID"] === "string" &&
+          raw.properties["sessionID"] === sessionID
+        ) {
+          const info = raw.properties["info"];
+          if (
+            info &&
+            typeof info === "object" &&
+            "title" in info &&
+            typeof (info as Record<string, unknown>)["title"] === "string"
+          ) {
+            onTitleUpdate((info as Record<string, unknown>)["title"] as string);
+          }
+        }
+
         const mapped = mapEvent(sessionID, raw);
 
         if (mapped) {

@@ -198,6 +198,38 @@ export function createConversationService(options: {
         loaded.conversation.opencode_session_id,
       );
     },
+
+    async updateTitle(conversationId: string, title: string): Promise<void> {
+      const cleaned = cleanTitle(title);
+      if (!cleaned) return;
+      await options.db
+        .update(conversations)
+        .set({ title: cleaned })
+        .where(eq(conversations.id, conversationId));
+    },
+
+    async deleteConversation(agentId: string, conversationId: string): Promise<void> {
+      const agent = await getAgent(agentId);
+      const conversation = await options.db.query.conversations.findFirst({
+        where: (table, ops) =>
+          ops.and(ops.eq(table.id, conversationId), ops.eq(table.agent_id, agent.id)),
+      });
+
+      if (!conversation) throw new NotFoundError("Conversation not found.");
+
+      // Best-effort: delete from OpenCode (session may already be gone)
+      try {
+        await options.opencodeService.deleteSession(
+          agent.workspace_path,
+          conversation.opencode_session_id,
+        );
+      } catch {
+        // ignore
+      }
+
+      await options.db.delete(messages).where(eq(messages.conversation_id, conversation.id));
+      await options.db.delete(conversations).where(eq(conversations.id, conversation.id));
+    },
   };
 
   async function getAgent(agentId: string): Promise<AgentRow> {
@@ -249,7 +281,7 @@ export function createConversationService(options: {
   }
 
   async function createConversation(agent: AgentRow): Promise<ConversationRow> {
-    const session = await options.opencodeService.createSession(agent.workspace_path, agent.name);
+    const session = await options.opencodeService.createSession(agent.workspace_path, undefined);
     const timestamp = new Date(session.time.updated ?? session.time.created);
 
     await options.db

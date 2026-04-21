@@ -1,27 +1,25 @@
 import { useState } from "react";
 
-import type { ConversationSummary } from "@cc/shared/schemas";
-
-import { ConversationList } from "./ConversationList";
+import { ConversationHistoryModal } from "./ConversationHistoryModal";
 
 type ChatHeaderProps = {
+  agentId: string;
   agentName: string;
   agentRole: string;
-  previousConversations: ConversationSummary[];
   currentConversationId: string;
   onStartFresh: () => void;
   onSelectConversation: (id: string) => void;
 };
 
 export function ChatHeader({
+  agentId,
   agentName,
   agentRole,
-  previousConversations,
   currentConversationId,
   onStartFresh,
   onSelectConversation,
 }: ChatHeaderProps) {
-  const [showPrevious, setShowPrevious] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   return (
     <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3 bg-surface">
@@ -53,57 +51,42 @@ export function ChatHeader({
           </svg>
         </button>
 
-        {/* Previous conversations */}
-        <div className="relative">
-          <button
-            type="button"
-            title="Previous conversations"
-            className={[
-              "flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition",
-              showPrevious
-                ? "bg-surface-elevated text-text-primary"
-                : "text-text-secondary hover:bg-surface-elevated hover:text-text-primary",
-            ].join(" ")}
-            onClick={() => setShowPrevious((prev) => !prev)}
+        {/* History */}
+        <button
+          type="button"
+          title="Conversation history"
+          className={[
+            "flex h-8 w-8 items-center justify-center rounded-md transition",
+            showHistory
+              ? "bg-surface-elevated text-text-primary"
+              : "text-text-secondary hover:bg-surface-elevated hover:text-text-primary",
+          ].join(" ")}
+          onClick={() => setShowHistory(true)}
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`transition-transform ${showPrevious ? "rotate-180" : ""}`}
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-
-          {showPrevious ? (
-            <ConversationList
-              conversations={previousConversations}
-              currentId={currentConversationId}
-              onSelect={onSelectConversation}
-              onClose={() => setShowPrevious(false)}
-            />
-          ) : null}
-        </div>
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        </button>
       </div>
+
+      {showHistory && (
+        <ConversationHistoryModal
+          agentId={agentId}
+          currentConversationId={currentConversationId}
+          onSelect={onSelectConversation}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   );
 }

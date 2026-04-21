@@ -67,6 +67,19 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
     async (request) => service.get(request.params.id, request.params.conversationId),
   );
 
+  app.delete(
+    "/api/agents/:id/conversations/:conversationId",
+    {
+      schema: {
+        params: agentConversationParamsSchema,
+      },
+    },
+    async (request, reply) => {
+      await service.deleteConversation(request.params.id, request.params.conversationId);
+      reply.code(204);
+    },
+  );
+
   app.post(
     "/api/agents/:id/conversations/start-fresh",
     {
