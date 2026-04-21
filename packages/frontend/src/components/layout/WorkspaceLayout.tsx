@@ -66,7 +66,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
   );
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] flex-col gap-4" data-testid="workspace-layout">
+    <div className="flex h-[calc(100vh-6rem)] flex-col gap-2" data-testid="workspace-layout">
       {!isDesktop && (props.contextPane || props.bottomPane) ? (
         <div className="flex flex-wrap gap-2">
           {props.contextPane ? (
@@ -90,15 +90,15 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4">
-        <div className="flex min-h-0 flex-1 gap-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="flex min-h-0 flex-1 gap-2">
           <div className="cc-panel min-w-0 flex-1 overflow-hidden">{props.primary}</div>
           {isDesktop && props.contextPane ? (
             <>
               {!contextCollapsed ? (
                 <div
                   aria-hidden="true"
-                  className="hidden w-1.5 cursor-col-resize rounded-full bg-border/70 transition hover:bg-accent lg:block"
+                  className="hidden w-[3px] cursor-col-resize rounded-full bg-border/70 transition hover:bg-accent lg:block"
                   onPointerDown={(event) =>
                     startDrag(event, "horizontal", setContextWidth, 280, 560, -1)
                   }
