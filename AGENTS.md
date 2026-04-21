@@ -22,6 +22,7 @@ Optionally:
 
 - Before starting editing code, always Plan changes as todo tasks and implement them one by one
 - Always run linters (`eslint --fix`) and tests after finishing changes, before reporting task as done.
+- Always try to use CSS classes influenced by our themes, so that changing colors inside the theme doesn't skip any component in codebase
 
 ---
 

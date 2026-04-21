@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { TabBar } from "@/components/common/TabBar";
 
 type Tab = {
   id: string;
@@ -113,7 +114,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                   onToggle={() => setContextCollapsed(true)}
                   toggleLabel="Collapse context pane"
                 />
-                <PaneTabs
+                <TabBar
                   activeTabId={activeContextTab}
                   onTabChange={setActiveContextTab}
                   tabs={contextTabs}
@@ -167,7 +168,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                   onToggle={() => setBottomCollapsed(true)}
                   toggleLabel="Collapse bottom pane"
                 />
-                <PaneTabs
+                <TabBar
                   activeTabId={activeBottomTab}
                   onTabChange={setActiveBottomTab}
                   tabs={bottomTabs}
@@ -190,7 +191,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
 
       {!isDesktop && props.contextPane && mobileContextOpen ? (
         <MobilePane title={props.contextPane.title} onClose={() => setMobileContextOpen(false)}>
-          <PaneTabs
+          <TabBar
             activeTabId={activeContextTab}
             onTabChange={setActiveContextTab}
             tabs={contextTabs}
@@ -205,7 +206,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
           title={props.bottomPane.title}
           onClose={() => setMobileBottomOpen(false)}
         >
-          <PaneTabs
+          <TabBar
             activeTabId={activeBottomTab}
             onTabChange={setActiveBottomTab}
             tabs={bottomTabs}
@@ -240,27 +241,6 @@ function PaneHeader(props: { title: string; onToggle: () => void; toggleLabel: s
         </svg>
       </button>
       <span className="text-sm font-medium text-text-primary">Context</span>
-    </div>
-  );
-}
-
-function PaneTabs(props: {
-  tabs: Tab[];
-  activeTabId?: string;
-  onTabChange: (tabId: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3">
-      {props.tabs.map((tab) => (
-        <button
-          className={tab.id === props.activeTabId ? "cc-tab cc-tab-active" : "cc-tab"}
-          key={tab.id}
-          onClick={() => props.onTabChange(tab.id)}
-          type="button"
-        >
-          {tab.label}
-        </button>
-      ))}
     </div>
   );
 }
