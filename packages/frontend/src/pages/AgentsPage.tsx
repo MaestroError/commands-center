@@ -110,11 +110,11 @@ export function AgentsPage() {
                 {agent.iconPath ? (
                   <img
                     alt=""
-                    className="h-14 w-14 rounded-2xl border border-border object-cover"
+                    className="h-14 w-14 rounded-lg border border-border object-cover"
                     src={agent.iconPath}
                   />
                 ) : (
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface-elevated text-lg font-semibold text-accent">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-border bg-surface-elevated text-lg font-semibold text-accent">
                     {readInitials(agent.name)}
                   </div>
                 )}

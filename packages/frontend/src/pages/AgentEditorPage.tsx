@@ -215,8 +215,8 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                     <label
                       className={
                         selected
-                          ? "rounded-3xl border border-accent/30 bg-accent/5 p-4"
-                          : "rounded-3xl border border-border bg-surface p-4"
+                          ? "rounded-xl border border-accent/30 bg-accent/5 p-4"
+                          : "rounded-xl border border-border bg-surface p-4"
                       }
                       key={skill.slug}
                     >

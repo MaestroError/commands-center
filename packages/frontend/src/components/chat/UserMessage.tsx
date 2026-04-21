@@ -45,7 +45,7 @@ export function UserMessage({ message, parts }: UserMessageProps) {
   const hasPills = skill || files.length > 0 || attachments.length > 0;
 
   return (
-    <div className="bg-chat-user rounded-2xl px-4 py-3 text-sm text-text-primary">
+    <div className="bg-chat-user rounded-lg px-4 py-3 text-sm text-text-primary">
       {hasPills && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {skill && (

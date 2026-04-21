@@ -66,7 +66,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
   );
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] flex-col gap-2" data-testid="workspace-layout">
+    <div className="flex h-[calc(100vh-5.3rem)] flex-col gap-2" data-testid="workspace-layout">
       {!isDesktop && (props.contextPane || props.bottomPane) ? (
         <div className="flex flex-wrap gap-2">
           {props.contextPane ? (

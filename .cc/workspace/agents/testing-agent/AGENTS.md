@@ -1,6 +1,6 @@
 # Testing agent
 
-- Role: Hard worker
+- Role: Hard worker agent
 
 ## Instructions
 

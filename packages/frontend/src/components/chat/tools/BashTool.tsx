@@ -24,7 +24,7 @@ export function BashTool({ part }: ToolRendererProps) {
   return (
     <BasicTool title="Shell" subtitle={command} status={status} defaultExpanded>
       <div className="relative">
-        <pre className="text-xs font-mono bg-surface rounded-xl p-3 overflow-auto max-h-80 text-text-primary whitespace-pre-wrap">
+        <pre className="text-xs font-mono bg-surface rounded-md p-3 overflow-auto max-h-80 text-text-primary whitespace-pre-wrap">
           {command && <span className="text-text-secondary">$ {command}</span>}
           {isRunning && (
             <span className="ml-2 inline-flex gap-0.5">

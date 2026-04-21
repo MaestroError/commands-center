@@ -54,10 +54,10 @@ export function ContextGroup({ parts }: ContextGroupProps) {
   const summary = counts.join(", ");
 
   return (
-    <div className="border border-border rounded-xl">
+    <div className="border border-border rounded-md">
       <button
         type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/5 transition rounded-xl"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/5 transition rounded-md"
         onClick={() => setExpanded((prev) => !prev)}
       >
         <span className="text-text-secondary text-sm">{expanded ? "\u25BE" : "\u25B8"}</span>

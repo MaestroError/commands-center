@@ -81,7 +81,7 @@ export function ProviderConnectionsPage() {
                 immediate.
               </p>
             </div>
-            <div className="rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text-secondary">
+            <div className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-text-secondary">
               {connectedModels.length} connected model{connectedModels.length === 1 ? "" : "s"}
             </div>
           </div>
@@ -90,7 +90,7 @@ export function ProviderConnectionsPage() {
             <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {connectedModels.map((model: (typeof connectedModels)[number]) => (
                 <div
-                  className="rounded-2xl border border-border bg-surface p-4"
+                  className="rounded-lg border border-border bg-surface p-4"
                   key={`${model.providerId}:${model.id}`}
                 >
                   <p className="text-sm font-semibold text-text-primary">{model.name}</p>
@@ -147,13 +147,13 @@ export function ProviderConnectionsPage() {
                 </div>
 
                 <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-2xl border border-border bg-surface p-3">
+                  <div className="rounded-lg border border-border bg-surface p-3">
                     <dt className="text-text-secondary">Models</dt>
                     <dd className="mt-1 text-lg font-semibold text-text-primary">
                       {entry.models.length}
                     </dd>
                   </div>
-                  <div className="rounded-2xl border border-border bg-surface p-3">
+                  <div className="rounded-lg border border-border bg-surface p-3">
                     <dt className="text-text-secondary">Default</dt>
                     <dd className="mt-1 truncate text-sm font-medium text-text-primary">
                       {entry.defaultModel ?? "None"}
@@ -593,7 +593,7 @@ function ProviderDialog(props: ProviderDialogProps) {
             </button>
 
             {oauthSession ? (
-              <div className="rounded-3xl border border-accent/20 bg-accent/5 p-4 text-sm text-text-primary">
+              <div className="rounded-xl border border-accent/20 bg-accent/5 p-4 text-sm text-text-primary">
                 <p className="font-medium text-text-primary">OAuth session started</p>
                 <p className="mt-2 whitespace-pre-wrap text-text-secondary">
                   {oauthSession.auth.instructions ||

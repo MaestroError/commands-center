@@ -154,7 +154,7 @@ export function DevDebugPanel({ injectEvent, messageId, sessionId }: DevDebugPan
     "px-2 py-1 text-xs rounded-md bg-surface-elevated hover:bg-accent/10 text-text-primary transition border border-border";
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-64 rounded-xl border border-border bg-surface shadow-lg">
+    <div className="fixed bottom-4 right-4 z-50 w-64 rounded-md border border-border bg-surface shadow-lg">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <span className="text-xs font-semibold text-text-primary">Debug Panel</span>
         <button

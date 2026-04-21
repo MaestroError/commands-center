@@ -29,7 +29,7 @@ export function TodoDock({ todos }: TodoDockProps) {
   if (todos.length === 0) return null;
 
   return (
-    <div className="border border-border rounded-xl p-3 bg-surface mb-2">
+    <div className="border border-border rounded-md p-3 bg-surface mb-2">
       <button
         type="button"
         className="w-full flex items-center justify-between gap-2 text-left"

@@ -82,7 +82,7 @@ export function AssistantMessage({ message, parts }: AssistantMessageProps) {
 
   if (!hasParts) {
     return (
-      <div className="bg-chat-agent rounded-2xl px-4 py-3 space-y-3">
+      <div className="bg-chat-agent rounded-lg px-4 py-3 space-y-3">
         <Markdown content={message.content} />
       </div>
     );
@@ -95,11 +95,11 @@ export function AssistantMessage({ message, parts }: AssistantMessageProps) {
   if (!hasVisible) {
     if (!message.content) return null;
     return (
-      <div className="bg-chat-agent rounded-2xl px-4 py-3 space-y-3">
+      <div className="bg-chat-agent rounded-lg px-4 py-3 space-y-3">
         <Markdown content={message.content} />
       </div>
     );
   }
 
-  return <div className="bg-chat-agent rounded-2xl px-4 py-3 space-y-3">{renderedEntries}</div>;
+  return <div className="bg-chat-agent rounded-lg px-4 py-3 space-y-3">{renderedEntries}</div>;
 }

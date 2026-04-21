@@ -41,10 +41,10 @@ export function ToolCallCard({ part }: ToolCallCardProps) {
   const error = state?.["error"];
 
   return (
-    <div className="border border-border rounded-xl">
+    <div className="border border-border rounded-md">
       <button
         type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/5 transition rounded-xl"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/5 transition rounded-md"
         onClick={() => setExpanded((prev) => !prev)}
       >
         <span className="text-text-secondary text-sm">{expanded ? "\u25BE" : "\u25B8"}</span>
@@ -57,7 +57,7 @@ export function ToolCallCard({ part }: ToolCallCardProps) {
           {input !== undefined ? (
             <div>
               <p className="text-xs font-medium text-text-secondary mb-1">Input</p>
-              <pre className="text-xs bg-surface rounded-xl p-3 overflow-auto max-h-60 text-text-primary">
+              <pre className="text-xs bg-surface rounded-md p-3 overflow-auto max-h-60 text-text-primary">
                 {typeof input === "string" ? input : JSON.stringify(input, null, 2)}
               </pre>
             </div>
@@ -66,7 +66,7 @@ export function ToolCallCard({ part }: ToolCallCardProps) {
           {output !== undefined ? (
             <div>
               <p className="text-xs font-medium text-text-secondary mb-1">Output</p>
-              <pre className="text-xs bg-surface rounded-xl p-3 overflow-auto max-h-60 text-text-primary">
+              <pre className="text-xs bg-surface rounded-md p-3 overflow-auto max-h-60 text-text-primary">
                 {typeof output === "string" ? output : JSON.stringify(output, null, 2)}
               </pre>
             </div>
@@ -75,7 +75,7 @@ export function ToolCallCard({ part }: ToolCallCardProps) {
           {error !== undefined ? (
             <div>
               <p className="text-xs font-medium text-danger mb-1">Error</p>
-              <pre className="text-xs bg-surface rounded-xl p-3 overflow-auto max-h-60 text-danger">
+              <pre className="text-xs bg-surface rounded-md p-3 overflow-auto max-h-60 text-danger">
                 {typeof error === "string" ? error : JSON.stringify(error, null, 2)}
               </pre>
             </div>

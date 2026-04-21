@@ -23,10 +23,10 @@ export function BasicTool({
   const canExpand = !hideDetails && children;
 
   return (
-    <div className="border border-border rounded-xl">
+    <div className="border border-border rounded-md">
       <button
         type="button"
-        className={`w-full flex items-center gap-2 px-3 py-2 text-left transition rounded-xl ${
+        className={`w-full flex items-center gap-2 px-3 py-2 text-left transition rounded-md ${
           canExpand ? "hover:bg-accent/5 cursor-pointer" : "cursor-default"
         }`}
         onClick={() => canExpand && setExpanded((prev) => !prev)}

@@ -14,7 +14,7 @@ type PermissionDockProps = {
 
 export function PermissionDock({ permission, onReply }: PermissionDockProps) {
   return (
-    <div className="border border-border rounded-2xl p-4 bg-surface">
+    <div className="border border-border rounded-lg p-4 bg-surface">
       <h3 className="text-sm font-semibold text-text-primary mb-2">Permission Required</h3>
 
       <p className="text-sm text-text-secondary mb-3">

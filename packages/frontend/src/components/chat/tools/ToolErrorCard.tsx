@@ -22,10 +22,10 @@ export function ToolErrorCard({ part }: ToolErrorCardProps) {
   }, [errorText]);
 
   return (
-    <div className="border border-danger/30 rounded-xl bg-danger/5">
+    <div className="border border-danger/30 rounded-md bg-danger/5">
       <button
         type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-danger/10 transition rounded-xl"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-danger/10 transition rounded-md"
         onClick={() => setExpanded((prev) => !prev)}
       >
         <span className="text-danger text-sm">{expanded ? "\u25BE" : "\u25B8"}</span>
@@ -35,7 +35,7 @@ export function ToolErrorCard({ part }: ToolErrorCardProps) {
 
       {expanded && errorText && (
         <div className="px-3 pb-3 relative">
-          <pre className="text-xs bg-surface rounded-xl p-3 overflow-auto max-h-60 text-danger whitespace-pre-wrap">
+          <pre className="text-xs bg-surface rounded-md p-3 overflow-auto max-h-60 text-danger whitespace-pre-wrap">
             {errorText}
           </pre>
           <button

@@ -90,8 +90,8 @@ function SidebarContent(props: { pathname: string }) {
             agentsSidebarRoute?.path ?? "/agents",
             agentsSidebarRoute?.navigationMatch,
           )
-            ? "rounded-3xl border border-accent/30 bg-surface p-4"
-            : "rounded-3xl border border-border bg-surface p-4"
+            ? "rounded-xl border border-accent/30 bg-surface p-4"
+            : "rounded-xl border border-border bg-surface p-4"
         }
         data-testid="recent-agents-empty-state"
       >

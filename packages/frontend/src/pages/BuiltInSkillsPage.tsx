@@ -124,8 +124,8 @@ export function BuiltInSkillsPage() {
                   <button
                     className={
                       selected
-                        ? "rounded-3xl border border-accent/30 bg-accent/5 p-5 text-left"
-                        : "rounded-3xl border border-border bg-surface p-5 text-left"
+                        ? "rounded-xl border border-accent/30 bg-accent/5 p-5 text-left"
+                        : "rounded-xl border border-border bg-surface p-5 text-left"
                     }
                     key={skill.slug}
                     onClick={() => setSelectedSlug(skill.slug)}
@@ -184,7 +184,7 @@ function SkillDetail(props: {
         ) : null}
       </div>
       {Object.keys(props.skill.metadata).length > 0 ? (
-        <div className="rounded-2xl border border-border bg-surface p-4 text-sm text-text-secondary">
+        <div className="rounded-lg border border-border bg-surface p-4 text-sm text-text-secondary">
           {Object.entries(props.skill.metadata).map(([key, value]) => (
             <p key={key}>
               <span className="font-medium text-text-primary">{key}:</span> {value}
@@ -193,7 +193,7 @@ function SkillDetail(props: {
         </div>
       ) : null}
       {props.skill.files.length > 0 ? (
-        <div className="rounded-2xl border border-border bg-surface p-4">
+        <div className="rounded-lg border border-border bg-surface p-4">
           <p className="font-medium text-text-primary">Files</p>
           <ul className="mt-3 grid gap-2 text-sm text-text-secondary">
             {props.skill.files.map((file) => (
@@ -203,7 +203,7 @@ function SkillDetail(props: {
         </div>
       ) : null}
       {props.skill.detailsMarkdown ? (
-        <pre className="overflow-auto rounded-2xl border border-border bg-terminal-bg p-4 text-sm text-terminal-fg whitespace-pre-wrap">
+        <pre className="overflow-auto rounded-lg border border-border bg-terminal-bg p-4 text-sm text-terminal-fg whitespace-pre-wrap">
           {props.skill.detailsMarkdown}
         </pre>
       ) : null}

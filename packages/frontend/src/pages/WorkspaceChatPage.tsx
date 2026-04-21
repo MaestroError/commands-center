@@ -61,7 +61,7 @@ export function WorkspaceChatPage() {
           <div className="flex h-full flex-col">
             <ChatHeader
               agentName={conv.agent?.name ?? agentSlug ?? "Agent"}
-              conversationTitle={conv.conversation.title ?? undefined}
+              agentRole={conv.agent?.role ?? ""}
               previousConversations={conv.previousConversations}
               currentConversationId={conv.conversation.id}
               onStartFresh={conv.startFresh}

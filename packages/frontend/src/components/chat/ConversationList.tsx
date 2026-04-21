@@ -27,7 +27,7 @@ export function ConversationList({
   onClose,
 }: ConversationListProps) {
   return (
-    <div className="absolute top-full left-0 z-10 mt-1 w-72 border border-border rounded-xl bg-surface shadow-lg max-h-64 overflow-y-auto">
+    <div className="absolute top-full left-0 z-10 mt-1 w-72 border border-border rounded-md bg-surface shadow-lg max-h-64 overflow-y-auto">
       {conversations.length === 0 ? (
         <p className="p-3 text-sm text-text-secondary">No previous conversations.</p>
       ) : (

@@ -43,7 +43,7 @@ function PlaceholderSurface(props: { title: string }) {
 
 function PlaceholderCard(props: { title: string }) {
   return (
-    <div className="rounded-2xl border border-border bg-surface p-4 text-sm text-text-secondary">
+    <div className="rounded-lg border border-border bg-surface p-4 text-sm text-text-secondary">
       {props.title}
     </div>
   );

@@ -95,7 +95,7 @@ export function MessageTimeline({ messages, parts, agentStatus }: MessageTimelin
 
       {showThinking ? (
         <div className="flex justify-start">
-          <div className="bg-chat-agent rounded-2xl px-4 py-3">
+          <div className="bg-chat-agent rounded-lg px-4 py-3">
             <div className="flex items-center gap-1.5">
               <span className="inline-block h-2 w-2 rounded-full bg-accent animate-pulse" />
               <span
