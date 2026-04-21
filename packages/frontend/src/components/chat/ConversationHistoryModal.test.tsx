@@ -61,6 +61,8 @@ const defaultProps = {
 };
 
 beforeEach(() => {
+  vi.mocked(api.listConversations).mockClear();
+  vi.mocked(api.deleteConversation).mockClear();
   vi.mocked(api.listConversations).mockResolvedValue(mockConversations);
   vi.mocked(api.deleteConversation).mockResolvedValue(undefined);
   defaultProps.onSelect.mockClear();
@@ -128,14 +130,32 @@ describe("ConversationHistoryModal", () => {
     expect(defaultProps.onClose).toHaveBeenCalled();
   });
 
-  it("calls deleteConversation when trash button is clicked", async () => {
+  it("calls deleteConversation after confirming the delete prompt", async () => {
     render(<ConversationHistoryModal {...defaultProps} />, { wrapper: makeWrapper() });
     await waitFor(() => screen.getByText("Second conversation"));
 
     const deleteButtons = screen.getAllByLabelText("Delete conversation");
     fireEvent.click(deleteButtons[0]!);
 
+    // Confirmation row appears
+    expect(screen.getByText("Delete this conversation?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
     await waitFor(() => expect(api.deleteConversation).toHaveBeenCalledWith("agent-1", "conv-2"));
+  });
+
+  it("does not delete when confirmation is cancelled", async () => {
+    render(<ConversationHistoryModal {...defaultProps} />, { wrapper: makeWrapper() });
+    await waitFor(() => screen.getByText("Second conversation"));
+
+    const deleteButtons = screen.getAllByLabelText("Delete conversation");
+    fireEvent.click(deleteButtons[0]!);
+
+    expect(screen.getByText("Delete this conversation?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByText("Delete this conversation?")).not.toBeInTheDocument();
+    expect(api.deleteConversation).not.toHaveBeenCalled();
   });
 
   it("does not show delete button for current conversation", async () => {
@@ -147,12 +167,16 @@ describe("ConversationHistoryModal", () => {
     expect(deleteButtons).toHaveLength(2);
   });
 
-  it("shows clear all button with correct count and calls delete for all non-current", async () => {
+  it("shows clear all button with correct count and calls delete for all non-current after confirmation", async () => {
     render(<ConversationHistoryModal {...defaultProps} />, { wrapper: makeWrapper() });
     await waitFor(() => screen.getByText("First conversation"));
 
     expect(screen.getByText("Clear all history (2)")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Clear all history (2)"));
+
+    // Confirmation row appears
+    expect(screen.getByRole("button", { name: "Delete all" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete all" }));
 
     await waitFor(() => {
       expect(api.deleteConversation).toHaveBeenCalledWith("agent-1", "conv-2");

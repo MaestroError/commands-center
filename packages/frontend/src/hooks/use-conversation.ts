@@ -305,7 +305,7 @@ export type UseConversationReturn = {
   __injectEvent?: (event: ChatEvent) => void;
 };
 
-export function useConversation(agentSlug: string): UseConversationReturn {
+export function useConversation(agentSlug: string, conversationId?: string): UseConversationReturn {
   const [state, dispatch] = useReducer(conversationReducer, initialState);
   const sseAbortRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string | null>(null);
@@ -346,7 +346,13 @@ export function useConversation(agentSlug: string): UseConversationReturn {
   const snapshotQuery = useQuery({
     queryKey: queryKeys.conversationSnapshot(agent?.id ?? ""),
     queryFn: () => getActiveConversation(agent!.id),
-    enabled: !!agent,
+    enabled: !!agent && !conversationId,
+  });
+
+  const specificQuery = useQuery({
+    queryKey: queryKeys.conversation(agent?.id ?? "", conversationId ?? ""),
+    queryFn: () => getConversation(agent!.id, conversationId!),
+    enabled: !!agent && !!conversationId,
   });
 
   // Hydrate state from snapshot
@@ -356,30 +362,39 @@ export function useConversation(agentSlug: string): UseConversationReturn {
     }
   }, [snapshotQuery.data]);
 
+  useEffect(() => {
+    if (specificQuery.data) {
+      dispatch({ type: "HYDRATE_DETAIL", detail: specificQuery.data });
+    }
+  }, [specificQuery.data]);
+
   // 3. Manage SSE connection
-  const conversationId = state.conversation?.id ?? null;
+  const activeConversationId = state.conversation?.id ?? null;
 
   useEffect(() => {
-    if (!conversationId) return;
-    if (conversationIdRef.current === conversationId && sseAbortRef.current) return;
+    if (!activeConversationId) return;
+    if (conversationIdRef.current === activeConversationId && sseAbortRef.current) return;
 
     // Close previous connection
     sseAbortRef.current?.abort();
 
     const controller = new AbortController();
     sseAbortRef.current = controller;
-    conversationIdRef.current = conversationId;
+    conversationIdRef.current = activeConversationId;
 
     void (async () => {
       try {
-        for await (const event of connectConversationEvents(conversationId, controller.signal)) {
+        for await (const event of connectConversationEvents(
+          activeConversationId,
+          controller.signal,
+        )) {
           if (controller.signal.aborted) break;
 
           // Auto-approve: if permission.asked and auto-approve is enabled, auto-reply
           if (event.type === "permission.asked" && autoApproveRef.current) {
             const requestId = (event.properties as { id?: string }).id;
             if (requestId) {
-              void apiReplyPermission(conversationId, requestId, "once");
+              void apiReplyPermission(activeConversationId, requestId, "once");
               continue; // Don't dispatch to state — handled immediately
             }
           }
@@ -394,7 +409,7 @@ export function useConversation(agentSlug: string): UseConversationReturn {
     return () => {
       controller.abort();
     };
-  }, [conversationId]);
+  }, [activeConversationId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -513,9 +528,9 @@ export function useConversation(agentSlug: string): UseConversationReturn {
   if (agentQuery.error) {
     status = "error";
     error = agentQuery.error.message;
-  } else if (snapshotQuery.error) {
+  } else if (snapshotQuery.error ?? specificQuery.error) {
     status = "error";
-    error = snapshotQuery.error.message;
+    error = (snapshotQuery.error ?? specificQuery.error)!.message;
   } else if (state.conversation) {
     status = "ready";
   }

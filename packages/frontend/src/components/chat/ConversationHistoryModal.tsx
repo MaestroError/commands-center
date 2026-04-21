@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-import type { ConversationSummary } from "@cc/shared/schemas";
 import { listConversations, deleteConversation } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -29,6 +28,8 @@ export function ConversationHistoryModal({
   onClose,
 }: ConversationHistoryModalProps) {
   const [search, setSearch] = useState("");
+  /** ID of conversation pending delete confirmation, or "__all__" for clear-all */
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
@@ -49,13 +50,14 @@ export function ConversationHistoryModal({
     },
   });
 
-  const handleDelete = (e: React.MouseEvent, conv: ConversationSummary) => {
-    e.stopPropagation();
-    setDeletingIds((prev) => new Set(prev).add(conv.id));
-    deleteMutation.mutate(conv.id);
+  const confirmDelete = (convId: string) => {
+    setConfirmingId(null);
+    setDeletingIds((prev) => new Set(prev).add(convId));
+    deleteMutation.mutate(convId);
   };
 
-  const handleClearAll = () => {
+  const confirmClearAll = () => {
+    setConfirmingId(null);
     const toDelete = conversations.filter((c) => c.id !== currentConversationId);
     for (const conv of toDelete) {
       setDeletingIds((prev) => new Set(prev).add(conv.id));
@@ -73,7 +75,10 @@ export function ConversationHistoryModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20"
-      onClick={onClose}
+      onClick={() => {
+        setConfirmingId(null);
+        onClose();
+      }}
     >
       <div
         className="w-full max-w-lg rounded-md border border-border bg-surface shadow-xl"
@@ -167,56 +172,96 @@ export function ConversationHistoryModal({
             filtered.map((conv) => {
               const isCurrent = conv.id === currentConversationId;
               const isDeleting = deletingIds.has(conv.id);
+              const isConfirming = confirmingId === conv.id;
               return (
-                <button
+                <div
                   key={conv.id}
-                  type="button"
-                  disabled={isDeleting}
-                  className={[
-                    "group w-full text-left flex items-center gap-3 px-4 py-2.5 transition",
-                    isCurrent ? "bg-accent/8" : "hover:bg-surface-elevated",
-                    isDeleting ? "opacity-40 pointer-events-none" : "",
-                  ].join(" ")}
-                  onClick={() => {
-                    onSelect(conv.id);
-                    onClose();
-                  }}
-                >
-                  {isCurrent && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-text-primary">
-                      {conv.title ?? "Untitled"}
-                    </p>
-                    <p className="text-xs text-text-secondary">
-                      {relativeTime(conv.updatedAt)} · {conv.messageCount} message
-                      {conv.messageCount !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                  {!isCurrent && (
-                    <button
-                      type="button"
-                      aria-label="Delete conversation"
-                      className="invisible group-hover:visible flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-secondary transition hover:bg-danger/10 hover:text-danger"
-                      onClick={(e) => handleDelete(e, conv)}
-                    >
-                      <svg
-                        width="13"
-                        height="13"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                        <path d="M10 11v6M14 11v6" />
-                        <path d="M9 6V4h6v2" />
-                      </svg>
-                    </button>
+                  className={["relative", isDeleting ? "opacity-40 pointer-events-none" : ""].join(
+                    " ",
                   )}
-                </button>
+                >
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    className={[
+                      "group w-full text-left flex items-center gap-3 px-4 py-2.5 transition",
+                      isCurrent ? "bg-accent/8" : "hover:bg-surface-elevated",
+                    ].join(" ")}
+                    onClick={() => {
+                      if (!isConfirming) {
+                        onSelect(conv.id);
+                        onClose();
+                      }
+                    }}
+                  >
+                    {isCurrent && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-text-primary">
+                        {conv.title ?? "Untitled"}
+                      </p>
+                      <p className="text-xs text-text-secondary">
+                        {relativeTime(conv.updatedAt)} · {conv.messageCount} message
+                        {conv.messageCount !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    {!isCurrent && !isConfirming && (
+                      <button
+                        type="button"
+                        aria-label="Delete conversation"
+                        className="invisible group-hover:visible flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-secondary transition hover:bg-danger/10 hover:text-danger"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmingId(conv.id);
+                        }}
+                      >
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                          <path d="M10 11v6M14 11v6" />
+                          <path d="M9 6V4h6v2" />
+                        </svg>
+                      </button>
+                    )}
+                  </button>
+
+                  {/* Inline delete confirmation */}
+                  {isConfirming && (
+                    <div className="flex items-center justify-end gap-2 border-t border-border/50 bg-surface-elevated px-4 py-2">
+                      <span className="mr-auto text-xs text-text-secondary">
+                        Delete this conversation?
+                      </span>
+                      <button
+                        type="button"
+                        className="rounded px-2.5 py-1 text-xs text-text-secondary transition hover:bg-surface hover:text-text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmingId(null);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded bg-danger/10 px-2.5 py-1 text-xs font-medium text-danger transition hover:bg-danger/20"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          confirmDelete(conv.id);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })
           )}
@@ -225,13 +270,35 @@ export function ConversationHistoryModal({
         {/* Footer */}
         {deletableCount > 0 && (
           <div className="border-t border-border px-4 py-2.5">
-            <button
-              type="button"
-              className="text-xs text-text-secondary transition hover:text-danger"
-              onClick={handleClearAll}
-            >
-              Clear all history ({deletableCount})
-            </button>
+            {confirmingId === "__all__" ? (
+              <div className="flex items-center gap-2">
+                <span className="mr-auto text-xs text-text-secondary">
+                  Delete all {deletableCount} conversation{deletableCount !== 1 ? "s" : ""}?
+                </span>
+                <button
+                  type="button"
+                  className="rounded px-2.5 py-1 text-xs text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
+                  onClick={() => setConfirmingId(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-danger/10 px-2.5 py-1 text-xs font-medium text-danger transition hover:bg-danger/20"
+                  onClick={confirmClearAll}
+                >
+                  Delete all
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="text-xs text-text-secondary transition hover:text-danger"
+                onClick={() => setConfirmingId("__all__")}
+              >
+                Clear all history ({deletableCount})
+              </button>
+            )}
           </div>
         )}
       </div>

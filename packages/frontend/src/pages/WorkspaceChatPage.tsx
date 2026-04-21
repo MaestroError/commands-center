@@ -1,5 +1,5 @@
-import { useParams } from "react-router-dom";
-import { lazy, Suspense, useMemo } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { lazy, Suspense, useMemo, useEffect, useRef } from "react";
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatHeader } from "@/components/chat/ChatHeader";
@@ -18,9 +18,25 @@ const DevDebugPanel = import.meta.env.DEV
   : null;
 
 export function WorkspaceChatPage() {
-  const { agentId: agentSlug } = useParams<{ agentId: string }>();
-  const conv = useConversation(agentSlug ?? "");
+  const { agentId: agentSlug, conversationId: urlConversationId } = useParams<{
+    agentId: string;
+    conversationId?: string;
+  }>();
+  const navigate = useNavigate();
+  const conv = useConversation(agentSlug ?? "", urlConversationId);
   const { data: catalog } = useAgentCatalogQuery();
+
+  // Sync URL when conversation changes (initial load or switching)
+  const prevConvIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const id = conv.conversation?.id;
+    if (!id || !agentSlug) return;
+    if (id === urlConversationId) return;
+    if (id === prevConvIdRef.current) return;
+    prevConvIdRef.current = id;
+    const isInitial = !urlConversationId;
+    void navigate(`/chat/${agentSlug}/${id}`, { replace: isInitial });
+  }, [conv.conversation?.id, agentSlug, urlConversationId, navigate]);
 
   const skills = useMemo(() => {
     if (!conv.agent || !catalog) return undefined;

@@ -51,6 +51,11 @@ export const appRoutes = [
     element: <WorkspaceChatPage />,
   },
   {
+    path: "/chat/:agentId/:conversationId",
+    title: "Direct Chat",
+    element: <WorkspaceChatPage />,
+  },
+  {
     path: "/files",
     title: "File Manager",
     navLabel: "File Manager",
