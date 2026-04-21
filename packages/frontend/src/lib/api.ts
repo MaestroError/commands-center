@@ -138,13 +138,13 @@ async function requestJson<T>(
   const payload = (await response.json().catch(() => undefined)) as unknown;
 
   if (!response.ok) {
-    throw new Error(readApiError(payload, response.status));
+    throw new Error(readApiError(payload, response.status, response.statusText));
   }
 
   return schema.parse(payload);
 }
 
-function readApiError(payload: unknown, status: number): string {
+export function readApiError(payload: unknown, status: number, statusText?: string): string {
   if (payload && typeof payload === "object" && "error" in payload) {
     const error = payload.error;
 
@@ -158,7 +158,7 @@ function readApiError(payload: unknown, status: number): string {
     }
   }
 
-  return `Request failed with status ${String(status)}.`;
+  return statusText || `Request failed with status ${String(status)}.`;
 }
 
 // --- Conversation API ---
@@ -185,7 +185,7 @@ export async function deleteConversation(agentId: string, conversationId: string
 
   if (!response.ok && response.status !== 204) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status));
+    throw new Error(readApiError(payload, response.status, response.statusText));
   }
 }
 
@@ -223,7 +223,7 @@ export async function sendPrompt(
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status));
+    throw new Error(readApiError(payload, response.status, response.statusText));
   }
 }
 
@@ -234,7 +234,7 @@ export async function abortConversation(conversationId: string): Promise<void> {
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status));
+    throw new Error(readApiError(payload, response.status, response.statusText));
   }
 }
 
@@ -254,7 +254,7 @@ export async function replyPermission(
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status));
+    throw new Error(readApiError(payload, response.status, response.statusText));
   }
 }
 
@@ -274,7 +274,7 @@ export async function replyQuestion(
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status));
+    throw new Error(readApiError(payload, response.status, response.statusText));
   }
 }
 
@@ -286,7 +286,7 @@ export async function rejectQuestion(conversationId: string, requestId: string):
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status));
+    throw new Error(readApiError(payload, response.status, response.statusText));
   }
 }
 
@@ -299,7 +299,7 @@ export async function sendShell(conversationId: string, command: string): Promis
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status));
+    throw new Error(readApiError(payload, response.status, response.statusText));
   }
 }
 
@@ -316,7 +316,7 @@ export async function sendCommand(
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status));
+    throw new Error(readApiError(payload, response.status, response.statusText));
   }
 }
 
@@ -331,7 +331,7 @@ export async function summarizeConversation(conversationId: string): Promise<voi
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status));
+    throw new Error(readApiError(payload, response.status, response.statusText));
   }
 }
 
@@ -354,7 +354,7 @@ export async function getWorkspaceTree(agentId: string, path?: string): Promise<
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status));
+    throw new Error(readApiError(payload, response.status, response.statusText));
   }
 
   const json = (await response.json()) as { nodes: FileNode[] };

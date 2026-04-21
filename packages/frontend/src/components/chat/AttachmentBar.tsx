@@ -2,7 +2,7 @@ import type { SendConversationAttachmentInput } from "@cc/shared/schemas";
 
 interface AttachmentBarProps {
   attachments: SendConversationAttachmentInput[];
-  onRemove: (id: string) => void;
+  onRemove: (index: number) => void;
 }
 
 export function AttachmentBar({ attachments, onRemove }: AttachmentBarProps) {
@@ -12,11 +12,11 @@ export function AttachmentBar({ attachments, onRemove }: AttachmentBarProps) {
 
   return (
     <div className="flex flex-wrap gap-2 border-b border-[--border-primary] bg-[--bg-secondary] px-3 py-2">
-      {attachments.map((attachment) => (
+      {attachments.map((attachment, index) => (
         <AttachmentPreview
           key={attachment.id ?? attachment.dataUrl.slice(0, 50)}
           attachment={attachment}
-          onRemove={() => onRemove(attachment.id ?? attachment.dataUrl)}
+          onRemove={() => onRemove(index)}
         />
       ))}
     </div>

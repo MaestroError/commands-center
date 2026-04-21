@@ -163,7 +163,7 @@ export function isRouteActive(
   return navigationMatch?.some((candidate) => matchesRoute(pathname, candidate)) ?? false;
 }
 
-function matchesRoute(pathname: string, routePath: string): boolean {
+export function matchesRoute(pathname: string, routePath: string): boolean {
   if (routePath === "/") {
     return pathname === "/";
   }

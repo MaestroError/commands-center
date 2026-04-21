@@ -24,7 +24,7 @@ function StatusIcon({ status }: { status: string }) {
 }
 
 export function TodoDock({ todos }: TodoDockProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   if (todos.length === 0) return null;
 

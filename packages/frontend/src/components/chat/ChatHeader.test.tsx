@@ -1,0 +1,69 @@
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+
+import { ChatHeader } from "./ChatHeader";
+
+vi.mock("./ConversationHistoryModal", () => ({
+  ConversationHistoryModal: ({ onClose }: { onClose: () => void }) => (
+    <div data-testid="conversation-history-modal">
+      <span>Mock history modal</span>
+      <button type="button" onClick={onClose}>
+        Close modal
+      </button>
+    </div>
+  ),
+}));
+
+function renderHeader(overrides: Partial<React.ComponentProps<typeof ChatHeader>> = {}) {
+  const props: React.ComponentProps<typeof ChatHeader> = {
+    agentId: "agent-1",
+    agentName: "Planner",
+    agentRole: "Plans implementation work",
+    currentConversationId: "conv-1",
+    onStartFresh: vi.fn(),
+    onSelectConversation: vi.fn(),
+    ...overrides,
+  };
+
+  return { ...render(<ChatHeader {...props} />), props };
+}
+
+describe("ChatHeader", () => {
+  it("renders the agentName as the primary label", () => {
+    renderHeader();
+
+    expect(screen.getByRole("heading", { name: "Planner" })).toBeInTheDocument();
+  });
+
+  it("renders the agentRole as the subtitle", () => {
+    renderHeader();
+
+    expect(screen.getByText("Plans implementation work")).toBeInTheDocument();
+  });
+
+  it("opens ConversationHistoryModal when the history button is clicked", () => {
+    renderHeader();
+
+    fireEvent.click(screen.getByTitle("Conversation history"));
+
+    expect(screen.getByTestId("conversation-history-modal")).toBeInTheDocument();
+  });
+
+  it("hides the modal after closing it", () => {
+    renderHeader();
+
+    fireEvent.click(screen.getByTitle("Conversation history"));
+    fireEvent.click(screen.getByRole("button", { name: "Close modal" }));
+
+    expect(screen.queryByTestId("conversation-history-modal")).not.toBeInTheDocument();
+  });
+
+  it("calls onStartFresh when the start-fresh button is clicked", () => {
+    const onStartFresh = vi.fn();
+    renderHeader({ onStartFresh });
+
+    fireEvent.click(screen.getByTitle("Start fresh conversation"));
+
+    expect(onStartFresh).toHaveBeenCalled();
+  });
+});

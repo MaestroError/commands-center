@@ -363,8 +363,8 @@ export function ChatComposer({
     [handleFileSelect],
   );
 
-  const handleRemoveAttachment = useCallback((id: string) => {
-    setAttachments((prev) => prev.filter((a) => (a.id ?? a.dataUrl) !== id));
+  const handleRemoveAttachment = useCallback((index: number) => {
+    setAttachments((prev) => prev.filter((_, currentIndex) => currentIndex !== index));
   }, []);
 
   const handleRemoveMention = useCallback((path: string) => {

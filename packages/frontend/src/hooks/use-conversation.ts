@@ -55,7 +55,7 @@ type QuestionRequest = {
  * This mirrors the OpenCode web app's approach: messages carry metadata,
  * parts carry content, and they're linked by messageID.
  */
-type ConversationState = {
+export type ConversationState = {
   agentStatus: "idle" | "busy" | "retry";
   conversation: ConversationDetail | null;
   /** Parts keyed by messageID — populated by SSE events */
@@ -66,13 +66,13 @@ type ConversationState = {
   todos: TodoItem[];
 };
 
-type Action =
+export type Action =
   | { type: "HYDRATE"; snapshot: { current: ConversationDetail; previous: ConversationSummary[] } }
   | { type: "HYDRATE_DETAIL"; detail: ConversationDetail; previous?: ConversationSummary[] }
   | { type: "OPTIMISTIC_USER_MESSAGE"; message: ConversationMessage }
   | { type: "SSE_EVENT"; event: ChatEvent };
 
-const initialState: ConversationState = {
+export const initialState: ConversationState = {
   agentStatus: "idle",
   conversation: null,
   parts: {},
@@ -96,7 +96,7 @@ function buildPartsMap(messages: ConversationMessage[]): Record<string, Conversa
   return map;
 }
 
-function conversationReducer(state: ConversationState, action: Action): ConversationState {
+export function conversationReducer(state: ConversationState, action: Action): ConversationState {
   switch (action.type) {
     case "HYDRATE":
       return {

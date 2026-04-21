@@ -5,34 +5,13 @@ import type { ConversationMessage, ConversationPart } from "@cc/shared/schemas";
 import { AssistantMessage } from "./AssistantMessage";
 import { InterruptedDivider } from "./InterruptedDivider";
 import { UserMessage } from "./UserMessage";
+import { isHiddenUserMessage, isInterruptedMessage } from "./message-timeline-utils";
 
 type MessageTimelineProps = {
   messages: ConversationMessage[];
   parts: Record<string, ConversationPart[]>;
   agentStatus: "idle" | "busy" | "retry";
 };
-
-// System-generated user messages that should not be shown as chat bubbles
-const HIDDEN_USER_MESSAGES = new Set(["The following tool was executed by the user"]);
-
-function isHiddenUserMessage(msg: ConversationMessage, parts: ConversationPart[]): boolean {
-  if (msg.role !== "user") return false;
-  const textPart = parts.find((p) => p.type === "text");
-  const text = ((textPart?.["text"] as string) || msg.content || "").trim();
-  return HIDDEN_USER_MESSAGES.has(text);
-}
-
-function isInterruptedMessage(msg: ConversationMessage, msgParts: ConversationPart[]): boolean {
-  if (msg.role !== "assistant") return false;
-  const hasStepStart = msgParts.some((p) => p.type === "step-start");
-  const stepFinish = msgParts.find((p) => p.type === "step-finish");
-  if (stepFinish) {
-    const reason = (stepFinish as Record<string, unknown>)["reason"] as string | undefined;
-    return reason === "interrupted" || reason === "aborted" || reason === "error";
-  }
-  // Has step-start but no step-finish = interrupted mid-stream
-  return hasStepStart && !stepFinish;
-}
 
 export function MessageTimeline({ messages, parts, agentStatus }: MessageTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);

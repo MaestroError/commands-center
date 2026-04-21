@@ -1,40 +1,11 @@
 import type { ConversationMessage, ConversationPart } from "@cc/shared/schemas";
 
+import { parseUserMessage } from "./user-message-utils";
+
 type UserMessageProps = {
   message: ConversationMessage;
   parts: ConversationPart[];
 };
-
-/** Parse skill reference, file mentions, and clean text from user message */
-function parseUserMessage(raw: string) {
-  let text = raw;
-  let skill: string | null = null;
-  const files: { path: string; display: string; isFolder: boolean }[] = [];
-
-  // Extract skill: Use skill "slug".
-  const skillMatch = text.match(/^Use skill "([^"]+)"\.\s*/);
-  if (skillMatch) {
-    skill = skillMatch[1] ?? null;
-    text = text.slice(skillMatch[0].length);
-  }
-
-  // Extract #path references at the start
-  const filePattern = /^#(\S+)\s*/;
-  let match = filePattern.exec(text);
-  while (match) {
-    const path = match[1]!;
-    const isFolder = path.endsWith("/");
-    files.push({
-      path,
-      display: isFolder ? path : (path.split("/").pop() ?? path),
-      isFolder,
-    });
-    text = text.slice(match[0].length);
-    match = filePattern.exec(text);
-  }
-
-  return { skill, files, text: text.trim() };
-}
 
 export function UserMessage({ message, parts }: UserMessageProps) {
   const textPart = parts.find((p) => p.type === "text");
