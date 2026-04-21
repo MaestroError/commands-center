@@ -518,7 +518,7 @@ export function ChatComposer({
           </div>
         )}
 
-        <div className="flex items-end gap-2">
+        <div className="flex items-start gap-2">
           <textarea
             ref={textareaRef}
             className={`flex-1 resize-none border-0 bg-transparent p-0 text-sm leading-6 max-h-40 text-text-primary outline-none placeholder:text-text-secondary ${

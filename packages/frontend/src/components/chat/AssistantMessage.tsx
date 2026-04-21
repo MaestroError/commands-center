@@ -89,10 +89,17 @@ export function AssistantMessage({ message, parts }: AssistantMessageProps) {
   }
 
   const grouped = groupParts(parts);
+  const renderedEntries = grouped.map((entry, i) => renderGroupedEntry(entry, i));
+  const hasVisible = renderedEntries.some(Boolean);
 
-  return (
-    <div className="bg-chat-agent rounded-2xl px-4 py-3 space-y-3">
-      {grouped.map((entry, i) => renderGroupedEntry(entry, i))}
-    </div>
-  );
+  if (!hasVisible) {
+    if (!message.content) return null;
+    return (
+      <div className="bg-chat-agent rounded-2xl px-4 py-3 space-y-3">
+        <Markdown content={message.content} />
+      </div>
+    );
+  }
+
+  return <div className="bg-chat-agent rounded-2xl px-4 py-3 space-y-3">{renderedEntries}</div>;
 }
