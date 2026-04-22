@@ -407,5 +407,10 @@ function createBaseOpenCodeService() {
     rejectQuestion: async () => {},
     abortSession: async () => {},
     deleteSession: async () => {},
+    listMcpStatus: () => Promise.resolve({}),
+    listMcpToolIds: () => Promise.resolve([]),
+    startMcpAuth: () => Promise.resolve({ authorizationUrl: "https://auth.example/oauth" }),
+    completeMcpAuth: () => Promise.resolve({ status: "connected" as const }),
+    removeMcpAuth: () => Promise.resolve({ success: true as const }),
   };
 }

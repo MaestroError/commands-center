@@ -514,6 +514,11 @@ function createMockOpenCodeService(): OpenCodeService {
     deleteSession: async () => {},
     searchWorkspaceFiles: () => Promise.resolve([]),
     listWorkspaceTree: () => Promise.resolve([]),
+    listMcpStatus: () => Promise.resolve({}),
+    listMcpToolIds: () => Promise.resolve([]),
+    startMcpAuth: () => Promise.resolve({ authorizationUrl: "https://auth.example/oauth" }),
+    completeMcpAuth: () => Promise.resolve({ status: "connected" as const }),
+    removeMcpAuth: () => Promise.resolve({ success: true as const }),
   } as OpenCodeService;
 
   function mustSession(sessionID: string): OpenCodeSession {
