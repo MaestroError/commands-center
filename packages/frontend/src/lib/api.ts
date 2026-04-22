@@ -8,6 +8,8 @@ import {
   conversationSnapshotSchema,
   createAgentInputSchema,
   createMcpServerInputSchema,
+  mcpAuthRemoveResultSchema,
+  mcpAuthStartResultSchema,
   mcpServerListSchema,
   mcpServerSchema,
   providerConnectResultSchema,
@@ -26,6 +28,8 @@ import {
   type ConversationDetail,
   type ConversationSnapshot,
   type ConversationSummary,
+  type McpAuthRemoveResult,
+  type McpAuthStartResult,
   type McpServer,
   type ProviderOauthAuthorization,
   type ProviderOauthCompleteResult,
@@ -83,6 +87,37 @@ export async function deleteMcpServer(id: string): Promise<void> {
     const payload = (await response.json().catch(() => undefined)) as unknown;
     throw new Error(readApiError(payload, response.status, response.statusText));
   }
+}
+
+export async function startMcpAuth(id: string): Promise<McpAuthStartResult> {
+  return requestJson<McpAuthStartResult>(
+    `/api/mcp-servers/${encodeURIComponent(id)}/auth/start`,
+    mcpAuthStartResultSchema,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export async function completeMcpAuth(id: string, code: string): Promise<McpServer> {
+  return requestJson<McpServer>(
+    `/api/mcp-servers/${encodeURIComponent(id)}/auth/callback`,
+    mcpServerSchema,
+    {
+      method: "POST",
+      body: { code },
+    },
+  );
+}
+
+export async function removeMcpAuth(id: string): Promise<McpAuthRemoveResult> {
+  return requestJson<McpAuthRemoveResult>(
+    `/api/mcp-servers/${encodeURIComponent(id)}/auth`,
+    mcpAuthRemoveResultSchema,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export async function listAgents(): Promise<Agent[]> {

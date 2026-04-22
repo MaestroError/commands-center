@@ -9,17 +9,24 @@ import { ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import {
   createMcpServerInputSchema,
+  mcpAuthRemoveResultSchema,
+  mcpAuthStartResultSchema,
   mcpServerConfigSchema,
   mcpServerListSchema,
   mcpServerSchema,
   updateMcpServerInputSchema,
   type CreateMcpServerInput,
+  type McpAuthRemoveResult,
+  type McpAuthStartResult,
+  type McpRuntimeStatus,
   type McpServer,
   type McpServerConfig,
+  type McpTool,
   type UpdateMcpServerInput,
 } from "../schemas/mcp.js";
 import type { AppDb } from "../db/client.js";
 import type { OpenCodeOrchestrator } from "../orchestrator/opencode-orchestrator.js";
+import type { OpenCodeService } from "./opencode-service.js";
 
 const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
 
@@ -29,6 +36,7 @@ export function createMcpServerService(options: {
   db: AppDb;
   config: RuntimeConfig;
   orchestrator: OpenCodeOrchestrator;
+  opencodeService: OpenCodeService;
 }) {
   return {
     async list(): Promise<McpServer[]> {
@@ -36,7 +44,7 @@ export function createMcpServerService(options: {
         orderBy: (table, operators) => [operators.asc(table.name)],
       });
 
-      return mcpServerListSchema.parse(rows.map(mapMcpServer));
+      return mcpServerListSchema.parse(await withRuntime(rows.map(mapMcpServer)));
     },
 
     async create(input: CreateMcpServerInput): Promise<McpServer> {
@@ -62,7 +70,7 @@ export function createMcpServerService(options: {
 
       await syncGlobalConfig();
       await options.orchestrator.restart(`mcp server ${parsed.name} created`);
-      return mapMcpServer(row);
+      return readOne(row);
     },
 
     async update(id: string, input: UpdateMcpServerInput): Promise<McpServer> {
@@ -93,7 +101,7 @@ export function createMcpServerService(options: {
 
       await syncGlobalConfig();
       await options.orchestrator.restart(`mcp server ${parsed.name} updated`);
-      return mapMcpServer(row);
+      return readOne(row);
     },
 
     async setEnabled(id: string, enabled: boolean): Promise<McpServer> {
@@ -116,7 +124,47 @@ export function createMcpServerService(options: {
       await options.orchestrator.restart(
         `mcp server ${existing.name} ${enabled ? "enabled" : "disabled"}`,
       );
-      return mapMcpServer(row);
+      return readOne(row);
+    },
+
+    async startAuth(id: string): Promise<McpAuthStartResult> {
+      const row = await getRow(id);
+      if (!row) {
+        throw new NotFoundError("MCP server not found.");
+      }
+
+      const result = await options.opencodeService.startMcpAuth(
+        options.config.paths.workspaceDir,
+        row.name,
+      );
+      return mcpAuthStartResultSchema.parse(result);
+    },
+
+    async completeAuth(id: string, code: string): Promise<McpServer> {
+      const row = await getRow(id);
+      if (!row) {
+        throw new NotFoundError("MCP server not found.");
+      }
+
+      await options.opencodeService.completeMcpAuth(
+        options.config.paths.workspaceDir,
+        row.name,
+        code,
+      );
+      return readOne(row);
+    },
+
+    async removeAuth(id: string): Promise<McpAuthRemoveResult> {
+      const row = await getRow(id);
+      if (!row) {
+        throw new NotFoundError("MCP server not found.");
+      }
+
+      const result = await options.opencodeService.removeMcpAuth(
+        options.config.paths.workspaceDir,
+        row.name,
+      );
+      return mcpAuthRemoveResultSchema.parse(result);
     },
 
     async remove(id: string): Promise<void> {
@@ -135,6 +183,16 @@ export function createMcpServerService(options: {
     return options.db.query.mcp_servers.findFirst({
       where: (table, operators) => operators.eq(table.id, id),
     });
+  }
+
+  async function readOne(row: typeof mcp_servers.$inferSelect): Promise<McpServer> {
+    const [server] = await withRuntime([mapMcpServer(row)]);
+
+    if (!server) {
+      throw new Error("Failed to read MCP server runtime details.");
+    }
+
+    return server;
   }
 
   async function assertNameAvailable(name: string, excludeId?: string): Promise<void> {
@@ -167,6 +225,37 @@ export function createMcpServerService(options: {
     await mkdir(options.config.paths.workspaceDir, { recursive: true });
     await writeFile(configFilePath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
   }
+
+  async function withRuntime(servers: McpServer[]): Promise<McpServer[]> {
+    const [statuses, toolIds] = await Promise.all([
+      options.opencodeService.listMcpStatus(options.config.paths.workspaceDir).catch(() => ({})),
+      options.opencodeService.listMcpToolIds(options.config.paths.workspaceDir).catch(() => []),
+    ]);
+
+    return servers.map((server) =>
+      mcpServerSchema.parse({
+        ...server,
+        runtimeStatus: readStatus(statuses, server.name, server.enabled),
+        tools: readTools(toolIds, server.name),
+      }),
+    );
+  }
+}
+
+function readStatus(
+  statuses: Record<string, McpRuntimeStatus>,
+  name: string,
+  enabled: boolean,
+): McpRuntimeStatus {
+  return statuses[name] ?? { status: enabled ? "disconnected" : "disabled" };
+}
+
+function readTools(toolIds: string[], name: string): McpTool[] {
+  const prefix = `${name}_`;
+
+  return toolIds
+    .filter((id) => id.startsWith(prefix))
+    .map((id) => ({ id, name: id.slice(prefix.length) }));
 }
 
 async function readGlobalConfig(filePath: string): Promise<Record<string, unknown>> {
@@ -181,6 +270,16 @@ async function readGlobalConfig(filePath: string): Promise<Record<string, unknow
 
 function renderConfigEntry(row: typeof mcp_servers.$inferSelect): Record<string, unknown> {
   const config = mcpServerConfigSchema.parse(JSON.parse(row.config_json)) satisfies McpServerConfig;
+
+  if (config.transport === "stdio") {
+    return {
+      type: "local",
+      command: config.command,
+      enabled: row.enabled,
+      ...(Object.keys(config.environment).length > 0 ? { environment: config.environment } : {}),
+    };
+  }
+
   const headers = Object.fromEntries(config.headers.map((header) => [header.key, header.value]));
 
   return {

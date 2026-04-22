@@ -37,7 +37,12 @@ describe("mcp server routes", () => {
 
       expect(created.statusCode).toBe(200);
       const createdBody = created.json<{ id: string; name: string; enabled: boolean }>();
-      expect(createdBody).toMatchObject({ name: "github", enabled: true });
+      expect(createdBody).toMatchObject({
+        name: "github",
+        enabled: true,
+        runtimeStatus: { status: "needs_auth" },
+        tools: [{ id: "github_create_issue", name: "create_issue" }],
+      });
 
       const listed = await server.inject({
         method: "GET",
@@ -158,6 +163,62 @@ describe("mcp server routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("supports MCP auth lifecycle routes", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/mcp-servers",
+        payload: {
+          name: "github",
+          enabled: true,
+          config: {
+            url: "https://example.com/mcp",
+            transport: "streamable-http",
+            authMethod: "oauth",
+            headers: [],
+          },
+        },
+      });
+      const id = created.json<{ id: string }>().id;
+
+      const start = await server.inject({
+        method: "POST",
+        url: `/api/mcp-servers/${id}/auth/start`,
+      });
+      expect(start.statusCode).toBe(200);
+      expect(start.json()).toEqual({ authorizationUrl: "https://example.com/oauth" });
+
+      const callback = await server.inject({
+        method: "POST",
+        url: `/api/mcp-servers/${id}/auth/callback`,
+        payload: { code: "done" },
+      });
+      expect(callback.statusCode).toBe(200);
+      expect(callback.json()).toMatchObject({ runtimeStatus: { status: "connected" } });
+
+      const removed = await server.inject({
+        method: "DELETE",
+        url: `/api/mcp-servers/${id}/auth`,
+      });
+      expect(removed.statusCode).toBe(200);
+      expect(removed.json()).toEqual({ success: true });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 function createOrchestrator() {
@@ -178,7 +239,21 @@ function createOrchestrator() {
 }
 
 function createMockOpenCodeService(): OpenCodeService {
+  let authenticated = false;
+
   return {
     dispose: vi.fn(() => Promise.resolve()),
+    listMcpStatus: vi.fn(() =>
+      Promise.resolve({
+        github: authenticated ? { status: "connected" } : { status: "needs_auth" },
+      }),
+    ),
+    listMcpToolIds: vi.fn(() => Promise.resolve(["github_create_issue"])),
+    startMcpAuth: vi.fn(() => Promise.resolve({ authorizationUrl: "https://example.com/oauth" })),
+    completeMcpAuth: vi.fn(() => {
+      authenticated = true;
+      return Promise.resolve({ status: "connected" as const });
+    }),
+    removeMcpAuth: vi.fn(() => Promise.resolve({ success: true as const })),
   } as unknown as OpenCodeService;
 }

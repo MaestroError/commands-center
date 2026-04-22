@@ -12,12 +12,17 @@ const mcpServerParamsSchema = z.object({
   mcpServerId: z.string().trim().min(1),
 });
 
+const mcpAuthCallbackInputSchema = z.object({
+  code: z.string().trim().min(1),
+});
+
 export function registerMcpServerRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const service = createMcpServerService({
     db: context.database.db,
     config: context.config,
     orchestrator: context.orchestrator,
+    opencodeService: context.opencodeService,
   });
 
   app.get("/api/mcp-servers", async () => service.list());
@@ -52,6 +57,37 @@ export function registerMcpServerRoutes(server: AppServer, context: RuntimeConte
       },
     },
     async (request) => service.setEnabled(request.params.mcpServerId, request.body.enabled),
+  );
+
+  app.post(
+    "/api/mcp-servers/:mcpServerId/auth/start",
+    {
+      schema: {
+        params: mcpServerParamsSchema,
+      },
+    },
+    async (request) => service.startAuth(request.params.mcpServerId),
+  );
+
+  app.post(
+    "/api/mcp-servers/:mcpServerId/auth/callback",
+    {
+      schema: {
+        params: mcpServerParamsSchema,
+        body: mcpAuthCallbackInputSchema,
+      },
+    },
+    async (request) => service.completeAuth(request.params.mcpServerId, request.body.code),
+  );
+
+  app.delete(
+    "/api/mcp-servers/:mcpServerId/auth",
+    {
+      schema: {
+        params: mcpServerParamsSchema,
+      },
+    },
+    async (request) => service.removeAuth(request.params.mcpServerId),
   );
 
   app.delete(

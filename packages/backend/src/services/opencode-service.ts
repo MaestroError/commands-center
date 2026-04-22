@@ -5,10 +5,16 @@ import { z } from "zod";
 
 import {
   configProvidersSchema,
+  mcpAuthRemoveResultSchema,
+  mcpAuthStartResultSchema,
+  mcpRuntimeStatusSchema,
   providerAuthMethodsSchema,
   providerListSchema,
   providerOauthAuthorizationSchema,
   type SendConversationAttachmentInput,
+  type McpAuthRemoveResult,
+  type McpAuthStartResult,
+  type McpRuntimeStatus,
   type ProviderAuthMethods,
   type ProviderList,
   type ProviderOauthAuthorization,
@@ -166,6 +172,66 @@ export function createOpenCodeService(options: { client: OpencodeClient; config:
       }
 
       return true;
+    },
+
+    async listMcpStatus(directory: string): Promise<Record<string, McpRuntimeStatus>> {
+      const result = await requestOpenCodeJson({
+        config: options.config,
+        directory,
+        method: "GET",
+        path: "/mcp",
+      });
+
+      return z.record(z.string(), mcpRuntimeStatusSchema).parse(result);
+    },
+
+    async listMcpToolIds(directory: string): Promise<string[]> {
+      const result = await requestOpenCodeJson({
+        config: options.config,
+        directory,
+        method: "GET",
+        path: "/experimental/tool/ids",
+      });
+
+      return z.array(z.string()).parse(result);
+    },
+
+    async startMcpAuth(directory: string, name: string): Promise<McpAuthStartResult> {
+      const result = await requestOpenCodeJson({
+        config: options.config,
+        directory,
+        method: "POST",
+        path: `/mcp/${encodeURIComponent(name)}/auth`,
+      });
+
+      return mcpAuthStartResultSchema.parse(result);
+    },
+
+    async completeMcpAuth(
+      directory: string,
+      name: string,
+      code: string,
+    ): Promise<McpRuntimeStatus> {
+      const result = await requestOpenCodeJson({
+        config: options.config,
+        directory,
+        method: "POST",
+        path: `/mcp/${encodeURIComponent(name)}/auth/callback`,
+        body: { code },
+      });
+
+      return mcpRuntimeStatusSchema.parse(result);
+    },
+
+    async removeMcpAuth(directory: string, name: string): Promise<McpAuthRemoveResult> {
+      const result = await requestOpenCodeJson({
+        config: options.config,
+        directory,
+        method: "DELETE",
+        path: `/mcp/${encodeURIComponent(name)}/auth`,
+      });
+
+      return mcpAuthRemoveResultSchema.parse(result);
     },
 
     async createSession(directory: string, title?: string): Promise<OpenCodeSession> {
@@ -411,6 +477,16 @@ function buildAttachmentParts(
 }
 
 async function requestSessionJson(options: {
+  config: RuntimeConfig;
+  directory: string;
+  method: "GET" | "POST" | "DELETE";
+  path: string;
+  body?: Record<string, unknown>;
+}): Promise<unknown> {
+  return requestOpenCodeJson(options);
+}
+
+async function requestOpenCodeJson(options: {
   config: RuntimeConfig;
   directory: string;
   method: "GET" | "POST" | "DELETE";

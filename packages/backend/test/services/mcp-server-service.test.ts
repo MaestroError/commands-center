@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createMcpServerService } from "../../src/services/mcp-server-service";
 import { ConflictError, NotFoundError } from "../../src/lib/api-error";
+import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("mcp-server-service", () => {
@@ -15,6 +16,7 @@ describe("mcp-server-service", () => {
       db: testDb.client.db,
       config: testDb.config,
       orchestrator,
+      opencodeService: createMockOpenCodeService(),
     });
 
     try {
@@ -69,6 +71,7 @@ describe("mcp-server-service", () => {
       db: testDb.client.db,
       config: testDb.config,
       orchestrator,
+      opencodeService: createMockOpenCodeService(),
     });
 
     try {
@@ -109,6 +112,7 @@ describe("mcp-server-service", () => {
       db: testDb.client.db,
       config: testDb.config,
       orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
     });
 
     try {
@@ -146,6 +150,7 @@ describe("mcp-server-service", () => {
       db: testDb.client.db,
       config: testDb.config,
       orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
     });
 
     try {
@@ -174,6 +179,7 @@ describe("mcp-server-service", () => {
       db: testDb.client.db,
       config: testDb.config,
       orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
     });
 
     try {
@@ -222,6 +228,87 @@ describe("mcp-server-service", () => {
       await testDb.cleanup();
     }
   });
+
+  it("renders stdio MCP servers as local command config", async () => {
+    const testDb = await createTestDatabase();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+    });
+
+    try {
+      await service.create({
+        name: "filesystem",
+        enabled: true,
+        config: {
+          transport: "stdio",
+          command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp/workspace"],
+          environment: {
+            NODE_ENV: "test",
+          },
+        },
+      });
+
+      const configPath = join(testDb.config.paths.workspaceDir, "opencode.jsonc");
+      const rendered = JSON.parse(await readFile(configPath, "utf8")) as {
+        mcp: Record<string, Record<string, unknown>>;
+      };
+
+      expect(rendered.mcp["filesystem"]).toEqual({
+        type: "local",
+        command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp/workspace"],
+        enabled: true,
+        environment: {
+          NODE_ENV: "test",
+        },
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns runtime status and tools and supports auth flows", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      orchestrator: createOrchestrator(),
+      opencodeService,
+    });
+
+    try {
+      const created = await service.create({
+        name: "github",
+        enabled: true,
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+
+      expect(created.runtimeStatus).toEqual({ status: "needs_auth" });
+      expect(created.tools).toEqual([
+        { id: "github_create_issue", name: "create_issue" },
+        { id: "github_list_issues", name: "list_issues" },
+      ]);
+
+      const authStart = await service.startAuth(created.id);
+      expect(authStart).toEqual({ authorizationUrl: "https://example.com/oauth" });
+
+      const completed = await service.completeAuth(created.id, "done");
+      expect(completed.runtimeStatus).toEqual({ status: "connected" });
+
+      const removed = await service.removeAuth(created.id);
+      expect(removed).toEqual({ success: true });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
 });
 
 function createOrchestrator() {
@@ -239,4 +326,25 @@ function createOrchestrator() {
       maxRestarts: 3,
     })),
   };
+}
+
+function createMockOpenCodeService(): OpenCodeService {
+  let authenticated = false;
+
+  return {
+    listMcpStatus: vi.fn(() =>
+      Promise.resolve({
+        github: authenticated ? { status: "connected" } : { status: "needs_auth" },
+      }),
+    ),
+    listMcpToolIds: vi.fn(() =>
+      Promise.resolve(["github_create_issue", "github_list_issues", "other_tool"]),
+    ),
+    startMcpAuth: vi.fn(() => Promise.resolve({ authorizationUrl: "https://example.com/oauth" })),
+    completeMcpAuth: vi.fn(() => {
+      authenticated = true;
+      return Promise.resolve({ status: "connected" as const });
+    }),
+    removeMcpAuth: vi.fn(() => Promise.resolve({ success: true as const })),
+  } as unknown as OpenCodeService;
 }

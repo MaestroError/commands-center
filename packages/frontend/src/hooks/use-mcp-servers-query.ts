@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  completeMcpAuth,
   createMcpServer,
   deleteMcpServer,
   listMcpServers,
+  removeMcpAuth,
   setMcpServerEnabled,
+  startMcpAuth,
   updateMcpServer,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
@@ -45,6 +48,17 @@ export function useMcpServerMutations() {
     }),
     remove: useMutation({
       mutationFn: ({ id }: { id: string }) => deleteMcpServer(id),
+      onSuccess: invalidateMcpServers,
+    }),
+    startAuth: useMutation({
+      mutationFn: ({ id }: { id: string }) => startMcpAuth(id),
+    }),
+    completeAuth: useMutation({
+      mutationFn: ({ id, code }: { id: string; code: string }) => completeMcpAuth(id, code),
+      onSuccess: invalidateMcpServers,
+    }),
+    removeAuth: useMutation({
+      mutationFn: ({ id }: { id: string }) => removeMcpAuth(id),
       onSuccess: invalidateMcpServers,
     }),
   };
