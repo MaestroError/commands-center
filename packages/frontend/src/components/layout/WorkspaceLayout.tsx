@@ -8,11 +8,9 @@ import {
 } from "react";
 
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { TabBar } from "@/components/common/TabBar";
+import { TabBar, type TabItem } from "@/components/common/TabBar";
 
-type Tab = {
-  id: string;
-  label: string;
+type Tab = TabItem & {
   content: ReactNode;
 };
 

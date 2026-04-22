@@ -95,6 +95,12 @@ vi.mock("@/components/chat/MediaTab", () => ({
   ),
 }));
 
+vi.mock("@/components/chat/SessionSettingsTab", () => ({
+  SessionSettingsTab: ({ agentSlug }: { agentSlug: string }) => (
+    <div data-testid="session-settings-tab">SessionSettingsTab:{agentSlug}</div>
+  ),
+}));
+
 function makeConversation(overrides: Record<string, unknown> = {}) {
   return {
     status: "ready",
@@ -262,7 +268,7 @@ describe("WorkspaceChatPage", () => {
     expect(screen.getByTestId("chat-composer")).toBeInTheDocument();
   });
 
-  it("wires Files and Media tabs into the context pane", () => {
+  it("wires Files, Media, and Settings tabs into the context pane", () => {
     mockParams = { agentId: "planner", conversationId: "conv-1" };
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-1", messages: [] } }),
@@ -271,9 +277,12 @@ describe("WorkspaceChatPage", () => {
 
     render(<WorkspaceChatPage />);
 
-    expect(screen.getByTestId("context-tabs")).toHaveTextContent("Files,Media");
+    expect(screen.getByTestId("context-tabs")).toHaveTextContent("Files,Media,Settings");
     expect(screen.getByTestId("workspace-files-tab")).toBeInTheDocument();
     expect(screen.getByTestId("media-tab")).toHaveTextContent("MediaTab:conv-1:");
+    expect(screen.getByTestId("session-settings-tab")).toHaveTextContent(
+      "SessionSettingsTab:planner",
+    );
   });
 
   it("opens the media tab and seeds search when an attachment pill is clicked", async () => {

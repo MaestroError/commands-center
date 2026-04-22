@@ -16,6 +16,7 @@ import {
   useAgentQuery,
   useAgentsQuery,
 } from "@/hooks/use-agents-query";
+import { resolveInitialModelId } from "@/lib/agent-form";
 
 type AgentEditorPageProps = {
   mode: "create" | "edit";
@@ -410,28 +411,6 @@ function slugify(value: string): string {
     .slice(0, 48);
 
   return slug || "agent";
-}
-
-function resolveInitialModelId(catalog: AgentCatalog, currentModel?: string): string {
-  if (!currentModel) {
-    return catalog.providerModels[0]?.id ?? "";
-  }
-
-  const exactMatch = catalog.providerModels.find((model) => model.id === currentModel);
-
-  if (exactMatch) {
-    return exactMatch.id;
-  }
-
-  const suffixMatches = catalog.providerModels.filter((model) =>
-    model.id.endsWith(`/${currentModel}`),
-  );
-
-  if (suffixMatches.length === 1) {
-    return suffixMatches[0]!.id;
-  }
-
-  return currentModel;
 }
 
 function readError(error: unknown): string {

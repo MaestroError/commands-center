@@ -10,6 +10,17 @@ const TABS = [
   { id: "git", label: "Git" },
 ];
 
+const ICON_TABS = [
+  { id: "files", label: "Files" },
+  {
+    id: "settings",
+    label: "Settings",
+    ariaLabel: "Agent settings",
+    iconOnly: true,
+    icon: <span>gear</span>,
+  },
+];
+
 describe("TabBar", () => {
   it("renders all tabs", () => {
     render(<TabBar tabs={TABS} activeTabId="files" onTabChange={vi.fn()} />);
@@ -68,5 +79,17 @@ describe("TabBar", () => {
     render(<TabBar tabs={[]} activeTabId="files" onTabChange={vi.fn()} />);
 
     expect(screen.getByRole("tablist")).toBeEmptyDOMElement();
+  });
+
+  it("supports icon-only tabs with accessible labels", async () => {
+    const onTabChange = vi.fn();
+    const user = userEvent.setup();
+
+    render(<TabBar tabs={ICON_TABS} activeTabId="files" onTabChange={onTabChange} />);
+
+    await user.click(screen.getByRole("tab", { name: "Agent settings" }));
+
+    expect(onTabChange).toHaveBeenCalledWith("settings");
+    expect(screen.getByRole("tab", { name: "Agent settings" })).toBeInTheDocument();
   });
 });

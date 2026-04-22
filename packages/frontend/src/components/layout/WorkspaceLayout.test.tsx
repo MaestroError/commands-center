@@ -81,6 +81,33 @@ describe("WorkspaceLayout", () => {
     await user.click(screen.getByRole("button", { name: "Open bottom pane" }));
     expect(screen.getByText("Terminal content")).toBeInTheDocument();
   });
+
+  it("renders icon-only context tabs accessibly", async () => {
+    render(
+      <WorkspaceLayout
+        contextPane={{
+          title: "Context pane",
+          tabs: [
+            { id: "files", label: "Files", content: <div>Files content</div> },
+            {
+              id: "settings",
+              label: "Settings",
+              ariaLabel: "Agent settings",
+              iconOnly: true,
+              icon: <span>gear</span>,
+              content: <div>Settings content</div>,
+            },
+          ],
+        }}
+        primary={<div>Primary content</div>}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Agent settings" }));
+
+    expect(screen.getByText("Settings content")).toBeInTheDocument();
+  });
 });
 
 function mockMatchMedia(matches: boolean) {

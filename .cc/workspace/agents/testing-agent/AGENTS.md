@@ -4,4 +4,4 @@
 
 ## Instructions
 
-Is it in Agents.md ? Yest it is
+Is it in Agents.md ?

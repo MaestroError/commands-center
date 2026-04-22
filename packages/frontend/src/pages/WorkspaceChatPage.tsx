@@ -7,6 +7,7 @@ import { MediaTab } from "@/components/chat/MediaTab";
 import { MessageTimeline } from "@/components/chat/MessageTimeline";
 import { PermissionDock } from "@/components/chat/PermissionDock";
 import { QuestionDock } from "@/components/chat/QuestionDock";
+import { SessionSettingsTab } from "@/components/chat/SessionSettingsTab";
 import { TodoDock } from "@/components/chat/TodoDock";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
@@ -96,6 +97,14 @@ export function WorkspaceChatPage() {
                 />
               ),
             },
+            {
+              id: "settings",
+              label: "Settings",
+              ariaLabel: "Agent settings",
+              iconOnly: true,
+              icon: <SettingsIcon />,
+              content: <SessionSettingsTab agentSlug={agentSlug ?? ""} />,
+            },
           ],
           defaultTabId: "files",
         }}
@@ -158,5 +167,20 @@ export function WorkspaceChatPage() {
         </Suspense>
       )}
     </>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
+      <path
+        d="M10.3 3.5h3.4l.5 2a7 7 0 0 1 1.6.9l1.9-.7 1.7 3-1.5 1.3a7 7 0 0 1 0 1.9l1.5 1.3-1.7 3-1.9-.7a7 7 0 0 1-1.6.9l-.5 2h-3.4l-.5-2a7 7 0 0 1-1.6-.9l-1.9.7-1.7-3 1.5-1.3a7 7 0 0 1 0-1.9L4.6 8.7l1.7-3 1.9.7a7 7 0 0 1 1.6-.9z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
+      <circle cx="12" cy="12" r="2.7" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
   );
 }
