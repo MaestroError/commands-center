@@ -5,29 +5,37 @@ import {
   chatEventSchema,
   conversationDetailSchema,
   conversationListSchema,
-  sessionMediaListSchema,
   conversationSnapshotSchema,
   createAgentInputSchema,
+  createMcpServerInputSchema,
+  mcpServerListSchema,
+  mcpServerSchema,
   providerConnectResultSchema,
   providerOauthAuthorizationSchema,
   providerOauthCompleteResultSchema,
   providerStatusListSchema,
+  sessionMediaListSchema,
   sendConversationPromptInputSchema,
+  setMcpServerEnabledInputSchema,
   workspaceFileSearchResultSchema,
   type Agent,
   type AgentCatalog,
   type ChatEvent,
   type CreateAgentInput,
+  type CreateMcpServerInput,
   type ConversationDetail,
   type ConversationSnapshot,
   type ConversationSummary,
-  type SessionMediaItem,
+  type McpServer,
   type ProviderOauthAuthorization,
   type ProviderOauthCompleteResult,
   type ProviderStatus,
+  type SessionMediaItem,
   type SendConversationPromptInput,
   type UpdateAgentInput,
+  type UpdateMcpServerInput,
   updateAgentInputSchema,
+  updateMcpServerInputSchema,
 } from "@cc/shared/schemas";
 
 type RequestOptions = {
@@ -37,6 +45,44 @@ type RequestOptions = {
 
 export async function listProviders(): Promise<ProviderStatus[]> {
   return requestJson<ProviderStatus[]>("/api/providers", providerStatusListSchema);
+}
+
+export async function listMcpServers(): Promise<McpServer[]> {
+  return requestJson<McpServer[]>("/api/mcp-servers", mcpServerListSchema);
+}
+
+export async function createMcpServer(input: CreateMcpServerInput): Promise<McpServer> {
+  return requestJson<McpServer>("/api/mcp-servers", mcpServerSchema, {
+    method: "POST",
+    body: createMcpServerInputSchema.parse(input),
+  });
+}
+
+export async function updateMcpServer(id: string, input: UpdateMcpServerInput): Promise<McpServer> {
+  return requestJson<McpServer>(`/api/mcp-servers/${encodeURIComponent(id)}`, mcpServerSchema, {
+    method: "PATCH",
+    body: updateMcpServerInputSchema.parse(input),
+  });
+}
+
+export async function setMcpServerEnabled(id: string, enabled: boolean): Promise<McpServer> {
+  return requestJson<McpServer>(
+    `/api/mcp-servers/${encodeURIComponent(id)}/enabled`,
+    mcpServerSchema,
+    {
+      method: "PATCH",
+      body: setMcpServerEnabledInputSchema.parse({ enabled }),
+    },
+  );
+}
+
+export async function deleteMcpServer(id: string): Promise<void> {
+  const response = await fetch(`/api/mcp-servers/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
 }
 
 export async function listAgents(): Promise<Agent[]> {

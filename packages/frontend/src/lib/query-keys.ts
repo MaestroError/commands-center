@@ -1,5 +1,6 @@
 export const queryKeys = {
   providers: ["providers"] as const,
+  mcpServers: ["mcp-servers"] as const,
   agents: ["agents"] as const,
   agentCatalog: ["agent-catalog"] as const,
   agentBySlug: (slug: string) => ["agent", slug] as const,

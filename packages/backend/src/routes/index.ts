@@ -4,6 +4,7 @@ import { registerAgentRoutes } from "./agents.js";
 import { registerConversationEventRoutes } from "./conversation-events.js";
 import { registerConversationRoutes } from "./conversations.js";
 import { registerHealthRoutes } from "./health.js";
+import { registerMcpServerRoutes } from "./mcp-servers.js";
 import { registerProviderRoutes } from "./providers.js";
 
 export function registerApiRoutes(server: AppServer, context: RuntimeContext): void {
@@ -11,5 +12,6 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerAgentRoutes(server, context);
   registerConversationRoutes(server, context);
   registerConversationEventRoutes(server, context);
+  registerMcpServerRoutes(server, context);
   registerProviderRoutes(server, context);
 }

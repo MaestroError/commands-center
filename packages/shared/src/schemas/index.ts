@@ -122,3 +122,22 @@ export {
   type HealthResponse,
   type SchedulerStatus,
 } from "./health.js";
+export {
+  createMcpServerInputSchema,
+  mcpAuthMethodSchema,
+  mcpHeaderSchema,
+  mcpServerConfigSchema,
+  mcpServerListSchema,
+  mcpServerSchema,
+  mcpTransportSchema,
+  setMcpServerEnabledInputSchema,
+  updateMcpServerInputSchema,
+  type CreateMcpServerInput,
+  type McpAuthMethod,
+  type McpHeader,
+  type McpServer,
+  type McpServerConfig,
+  type McpTransport,
+  type SetMcpServerEnabledInput,
+  type UpdateMcpServerInput,
+} from "./mcp.js";
