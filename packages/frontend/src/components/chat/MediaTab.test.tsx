@@ -33,7 +33,9 @@ describe("MediaTab", () => {
   it("renders an empty state when the conversation has no media", async () => {
     vi.mocked(api.fetchConversationMedia).mockResolvedValue([]);
 
-    render(<MediaTab conversationId="conv-1" />, { wrapper: makeWrapper() });
+    render(<MediaTab conversationId="conv-1" onSearchQueryChange={vi.fn()} searchQuery="" />, {
+      wrapper: makeWrapper(),
+    });
 
     await waitFor(() => {
       expect(screen.getByText("No media shared in this conversation")).toBeInTheDocument();
@@ -68,7 +70,9 @@ describe("MediaTab", () => {
       },
     ]);
 
-    render(<MediaTab conversationId="conv-1" />, { wrapper: makeWrapper() });
+    render(<MediaTab conversationId="conv-1" onSearchQueryChange={vi.fn()} searchQuery="" />, {
+      wrapper: makeWrapper(),
+    });
 
     await waitFor(() => expect(screen.getByText("Images")).toBeInTheDocument());
 
@@ -119,7 +123,9 @@ describe("MediaTab", () => {
       .spyOn(HTMLAnchorElement.prototype, "click")
       .mockImplementation(() => undefined);
 
-    render(<MediaTab conversationId="conv-1" />, { wrapper: makeWrapper() });
+    render(<MediaTab conversationId="conv-1" onSearchQueryChange={vi.fn()} searchQuery="" />, {
+      wrapper: makeWrapper(),
+    });
 
     await waitFor(() => expect(screen.getByText("notes.pdf")).toBeInTheDocument());
 
@@ -139,5 +145,52 @@ describe("MediaTab", () => {
     if (originalRevokeObjectURL) {
       Object.defineProperty(URL, "revokeObjectURL", originalRevokeObjectURL);
     }
+  });
+
+  it("filters images and documents with the shared search field", async () => {
+    const onSearchQueryChange = vi.fn();
+
+    vi.mocked(api.fetchConversationMedia).mockResolvedValue([
+      {
+        id: "img-1",
+        messageId: "msg-1",
+        filename: "diagram.png",
+        mime: "image/png",
+        url: "data:image/png;base64,AAAA",
+        createdAt: "2026-04-22T10:00:00.000Z",
+      },
+      {
+        id: "doc-1",
+        messageId: "msg-2",
+        filename: "Carpenter Vacancy Redberry.pdf",
+        mime: "application/pdf",
+        url: "data:application/pdf;base64,BBBB",
+        createdAt: "2026-04-22T11:00:00.000Z",
+      },
+    ]);
+
+    const { rerender } = render(
+      <MediaTab conversationId="conv-1" onSearchQueryChange={onSearchQueryChange} searchQuery="" />,
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(screen.getByText("diagram.png")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Search media"), {
+      target: { value: "Carpenter Vacancy" },
+    });
+
+    expect(onSearchQueryChange).toHaveBeenCalledWith("Carpenter Vacancy");
+
+    rerender(
+      <MediaTab
+        conversationId="conv-1"
+        onSearchQueryChange={onSearchQueryChange}
+        searchQuery="Carpenter Vacancy"
+      />,
+    );
+
+    expect(screen.getByText("Carpenter Vacancy Redberry.pdf")).toBeInTheDocument();
+    expect(screen.queryByText("diagram.png")).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspaceChatPage } from "./WorkspaceChatPage";
@@ -28,9 +29,14 @@ vi.mock("@/components/layout/WorkspaceLayout", () => ({
     contextPane,
   }: {
     primary: React.ReactNode;
-    contextPane?: { tabs: Array<{ id: string; label: string; content: React.ReactNode }> };
+    contextPane?: {
+      activeTabId?: string;
+      onTabChange?: (tabId: string) => void;
+      tabs: Array<{ id: string; label: string; content: React.ReactNode }>;
+    };
   }) => (
     <div data-testid="layout">
+      <div data-testid="active-context-tab">{contextPane?.activeTabId}</div>
       <div data-testid="context-tabs">{contextPane?.tabs.map((tab) => tab.label).join(",")}</div>
       <div data-testid="context-content">
         {contextPane?.tabs.map((tab) => (
@@ -47,7 +53,18 @@ vi.mock("@/components/chat/ChatHeader", () => ({
 }));
 
 vi.mock("@/components/chat/MessageTimeline", () => ({
-  MessageTimeline: () => <div data-testid="message-timeline">MessageTimeline</div>,
+  MessageTimeline: ({ onAttachmentClick }: { onAttachmentClick?: (filename: string) => void }) => (
+    <div>
+      <button
+        data-testid="message-attachment-pill"
+        onClick={() => onAttachmentClick?.("Carpenter Vacancy Redberry.pdf")}
+        type="button"
+      >
+        Attachment pill
+      </button>
+      <div data-testid="message-timeline">MessageTimeline</div>
+    </div>
+  ),
 }));
 
 vi.mock("@/components/chat/ChatComposer", () => ({
@@ -71,8 +88,10 @@ vi.mock("@/components/workspace/WorkspaceFilesTab", () => ({
 }));
 
 vi.mock("@/components/chat/MediaTab", () => ({
-  MediaTab: ({ conversationId }: { conversationId: string }) => (
-    <div data-testid="media-tab">MediaTab:{conversationId}</div>
+  MediaTab: ({ conversationId, searchQuery }: { conversationId: string; searchQuery: string }) => (
+    <div data-testid="media-tab">
+      MediaTab:{conversationId}:{searchQuery}
+    </div>
   ),
 }));
 
@@ -254,6 +273,25 @@ describe("WorkspaceChatPage", () => {
 
     expect(screen.getByTestId("context-tabs")).toHaveTextContent("Files,Media");
     expect(screen.getByTestId("workspace-files-tab")).toBeInTheDocument();
-    expect(screen.getByTestId("media-tab")).toHaveTextContent("MediaTab:conv-1");
+    expect(screen.getByTestId("media-tab")).toHaveTextContent("MediaTab:conv-1:");
+  });
+
+  it("opens the media tab and seeds search when an attachment pill is clicked", async () => {
+    const user = userEvent.setup();
+
+    mockParams = { agentId: "planner", conversationId: "conv-1" };
+    useConversationMock.mockReturnValue(
+      makeConversation({ conversation: { id: "conv-1", messages: [] } }),
+    );
+    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+
+    render(<WorkspaceChatPage />);
+
+    await user.click(screen.getByTestId("message-attachment-pill"));
+
+    expect(screen.getByTestId("active-context-tab")).toHaveTextContent("media");
+    expect(screen.getByTestId("media-tab")).toHaveTextContent(
+      "MediaTab:conv-1:Carpenter Vacancy Redberry.pdf",
+    );
   });
 });

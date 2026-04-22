@@ -22,6 +22,8 @@ type WorkspaceLayoutProps = {
     title: string;
     tabs: Tab[];
     defaultTabId?: string;
+    activeTabId?: string;
+    onTabChange?: (tabId: string) => void;
   };
   bottomPane?: {
     title: string;
@@ -48,6 +50,14 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
   const [activeBottomTab, setActiveBottomTab] = useState(
     props.bottomPane?.defaultTabId ?? bottomTabs[0]?.id,
   );
+
+  useEffect(() => {
+    if (!props.contextPane?.activeTabId) {
+      return;
+    }
+
+    setActiveContextTab(props.contextPane.activeTabId);
+  }, [props.contextPane?.activeTabId]);
 
   useEffect(() => {
     if (isDesktop) {
@@ -116,7 +126,10 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                 />
                 <TabBar
                   activeTabId={activeContextTab}
-                  onTabChange={setActiveContextTab}
+                  onTabChange={(tabId) => {
+                    setActiveContextTab(tabId);
+                    props.contextPane?.onTabChange?.(tabId);
+                  }}
                   tabs={contextTabs}
                 />
                 <div className="min-h-0 flex-1 overflow-auto p-4">{activeContextContent}</div>
@@ -193,7 +206,10 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
         <MobilePane title={props.contextPane.title} onClose={() => setMobileContextOpen(false)}>
           <TabBar
             activeTabId={activeContextTab}
-            onTabChange={setActiveContextTab}
+            onTabChange={(tabId) => {
+              setActiveContextTab(tabId);
+              props.contextPane?.onTabChange?.(tabId);
+            }}
             tabs={contextTabs}
           />
           <div className="mt-4">{activeContextContent}</div>

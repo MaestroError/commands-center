@@ -11,9 +11,15 @@ type MessageTimelineProps = {
   messages: ConversationMessage[];
   parts: Record<string, ConversationPart[]>;
   agentStatus: "idle" | "busy" | "retry";
+  onAttachmentClick?: (filename: string) => void;
 };
 
-export function MessageTimeline({ messages, parts, agentStatus }: MessageTimelineProps) {
+export function MessageTimeline({
+  messages,
+  parts,
+  agentStatus,
+  onAttachmentClick,
+}: MessageTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
@@ -61,7 +67,11 @@ export function MessageTimeline({ messages, parts, agentStatus }: MessageTimelin
             <div className={msg.role === "user" ? "flex justify-end" : "flex justify-start"}>
               <div className={msg.role === "user" ? "max-w-[80%]" : "max-w-[90%]"}>
                 {msg.role === "user" ? (
-                  <UserMessage message={msg} parts={msgParts} />
+                  <UserMessage
+                    message={msg}
+                    onAttachmentClick={onAttachmentClick}
+                    parts={msgParts}
+                  />
                 ) : (
                   <AssistantMessage message={msg} parts={msgParts} />
                 )}

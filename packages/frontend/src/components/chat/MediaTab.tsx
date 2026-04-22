@@ -10,6 +10,8 @@ import type { SessionMediaItem } from "@cc/shared/schemas";
 
 type MediaTabProps = {
   conversationId: string;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
 };
 
 type GroupedMedia = {
@@ -18,7 +20,7 @@ type GroupedMedia = {
   other: SessionMediaItem[];
 };
 
-export function MediaTab({ conversationId }: MediaTabProps) {
+export function MediaTab({ conversationId, searchQuery, onSearchQueryChange }: MediaTabProps) {
   const [selectedImage, setSelectedImage] = useState<SessionMediaItem | null>(null);
   const {
     data = [],
@@ -30,8 +32,20 @@ export function MediaTab({ conversationId }: MediaTabProps) {
     enabled: conversationId.length > 0,
   });
 
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredData = useMemo(() => {
+    if (!normalizedQuery) {
+      return data;
+    }
+
+    return data.filter((item) => {
+      const filename = item.filename?.toLowerCase() ?? "";
+      return filename.includes(normalizedQuery);
+    });
+  }, [data, normalizedQuery]);
+
   const grouped = useMemo<GroupedMedia>(() => {
-    return data.reduce<GroupedMedia>(
+    return filteredData.reduce<GroupedMedia>(
       (acc, item) => {
         if (item.mime.startsWith("image/")) {
           acc.images.push(item);
@@ -45,7 +59,7 @@ export function MediaTab({ conversationId }: MediaTabProps) {
       },
       { images: [], documents: [], other: [] },
     );
-  }, [data]);
+  }, [filteredData]);
 
   if (isLoading) {
     return (
@@ -74,7 +88,30 @@ export function MediaTab({ conversationId }: MediaTabProps) {
   return (
     <>
       <div className="space-y-6">
-        {grouped.images.length > 0 ? (
+        <div className="space-y-2">
+          <label
+            className="text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary"
+            htmlFor="media-search"
+          >
+            Search media
+          </label>
+          <input
+            id="media-search"
+            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text-primary outline-none transition placeholder:text-text-secondary/70 focus:border-accent"
+            onChange={(event) => onSearchQueryChange(event.target.value)}
+            placeholder="Filter images and documents"
+            type="search"
+            value={searchQuery}
+          />
+        </div>
+
+        {filteredData.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-text-secondary">
+            No media matches "{searchQuery}"
+          </div>
+        ) : null}
+
+        {filteredData.length > 0 && grouped.images.length > 0 ? (
           <section className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">
               Images
@@ -122,11 +159,11 @@ export function MediaTab({ conversationId }: MediaTabProps) {
           </section>
         ) : null}
 
-        {grouped.documents.length > 0 ? (
+        {filteredData.length > 0 && grouped.documents.length > 0 ? (
           <MediaListSection items={grouped.documents} title="Documents" />
         ) : null}
 
-        {grouped.other.length > 0 ? (
+        {filteredData.length > 0 && grouped.other.length > 0 ? (
           <MediaListSection items={grouped.other} title="Other files" />
         ) : null}
       </div>

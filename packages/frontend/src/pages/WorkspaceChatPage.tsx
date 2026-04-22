@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { lazy, Suspense, useMemo, useEffect, useRef } from "react";
+import { lazy, Suspense, useMemo, useEffect, useRef, useState } from "react";
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatHeader } from "@/components/chat/ChatHeader";
@@ -26,6 +26,8 @@ export function WorkspaceChatPage() {
   const navigate = useNavigate();
   const conv = useConversation(agentSlug ?? "", urlConversationId);
   const { data: catalog } = useAgentCatalogQuery();
+  const [activeContextTabId, setActiveContextTabId] = useState("files");
+  const [mediaSearchQuery, setMediaSearchQuery] = useState("");
 
   // Sync URL when conversation changes (initial load or switching)
   const prevConvIdRef = useRef<string | undefined>(undefined);
@@ -47,6 +49,16 @@ export function WorkspaceChatPage() {
       .map((s) => ({ slug: s.slug, description: s.description }));
   }, [conv.agent, catalog]);
 
+  useEffect(() => {
+    setMediaSearchQuery("");
+    setActiveContextTabId("files");
+  }, [conv.conversation?.id]);
+
+  const handleAttachmentMediaSearch = (filename: string) => {
+    setMediaSearchQuery(filename);
+    setActiveContextTabId("media");
+  };
+
   if (conv.status === "loading") {
     return <LoadingState />;
   }
@@ -65,6 +77,8 @@ export function WorkspaceChatPage() {
       <WorkspaceLayout
         contextPane={{
           title: "Workspace",
+          activeTabId: activeContextTabId,
+          onTabChange: setActiveContextTabId,
           tabs: [
             {
               id: "files",
@@ -74,7 +88,13 @@ export function WorkspaceChatPage() {
             {
               id: "media",
               label: "Media",
-              content: <MediaTab conversationId={conv.conversation.id} />,
+              content: (
+                <MediaTab
+                  conversationId={conv.conversation.id}
+                  onSearchQueryChange={setMediaSearchQuery}
+                  searchQuery={mediaSearchQuery}
+                />
+              ),
             },
           ],
           defaultTabId: "files",
@@ -94,6 +114,7 @@ export function WorkspaceChatPage() {
               messages={conv.conversation.messages}
               parts={conv.parts}
               agentStatus={conv.agentStatus}
+              onAttachmentClick={handleAttachmentMediaSearch}
             />
 
             {conv.pendingPermission ? (

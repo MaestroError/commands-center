@@ -5,9 +5,10 @@ import { parseUserMessage } from "./user-message-utils";
 type UserMessageProps = {
   message: ConversationMessage;
   parts: ConversationPart[];
+  onAttachmentClick?: (filename: string) => void;
 };
 
-export function UserMessage({ message, parts }: UserMessageProps) {
+export function UserMessage({ message, parts, onAttachmentClick }: UserMessageProps) {
   const textPart = parts.find((p) => p.type === "text");
   const raw = (textPart?.["text"] as string) || message.content || "";
   const { skill, files, text } = parseUserMessage(raw);
@@ -72,10 +73,16 @@ export function UserMessage({ message, parts }: UserMessageProps) {
             </span>
           ))}
           {attachments.map((a, i) => (
-            <span
+            <button
               key={a.id ?? i}
-              className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-500"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-500 transition hover:bg-amber-500/20"
+              onClick={() => {
+                if (a.filename) {
+                  onAttachmentClick?.(a.filename);
+                }
+              }}
               title={a.mimeType}
+              type="button"
             >
               <svg
                 className="h-3 w-3"
@@ -91,7 +98,7 @@ export function UserMessage({ message, parts }: UserMessageProps) {
                 />
               </svg>
               {a.filename ?? "attachment"}
-            </span>
+            </button>
           ))}
         </div>
       )}

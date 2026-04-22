@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { MessageTimeline } from "./MessageTimeline";
 
@@ -201,5 +202,36 @@ describe("MessageTimeline", () => {
     );
 
     expect(screen.queryByText("Interrupted")).not.toBeInTheDocument();
+  });
+
+  it("forwards user attachment pill clicks", async () => {
+    const user = userEvent.setup();
+    const onAttachmentClick = vi.fn();
+    const userMessage = makeMessage({
+      id: "user-attachment",
+      role: "user",
+      content: "Please summarize this PDF",
+      attachments: [
+        {
+          id: "att-1",
+          type: "document",
+          filename: "Carpenter Vacancy Redberry.pdf",
+          mimeType: "application/pdf",
+        },
+      ],
+    });
+
+    render(
+      <MessageTimeline
+        agentStatus="idle"
+        messages={[userMessage]}
+        onAttachmentClick={onAttachmentClick}
+        parts={{}}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Carpenter Vacancy Redberry.pdf" }));
+
+    expect(onAttachmentClick).toHaveBeenCalledWith("Carpenter Vacancy Redberry.pdf");
   });
 });
