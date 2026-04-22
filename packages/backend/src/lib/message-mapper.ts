@@ -1,8 +1,10 @@
 import {
   conversationAttachmentSchema,
   conversationMessageSchema,
+  sessionMediaItemSchema,
   type ConversationAttachment,
   type ConversationMessage,
+  type SessionMediaItem,
 } from "@cc/shared/schemas";
 
 import type { OpenCodeSessionMessage } from "../services/opencode-service.js";
@@ -105,6 +107,12 @@ export function extractAttachments(parts: OpenCodePart[]): ConversationAttachmen
   return [...map.values()];
 }
 
+export function extractMediaItems(messages: OpenCodeSessionMessage[]): SessionMediaItem[] {
+  return messages
+    .flatMap((message) => readMessageMediaItems(message))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
 export function cleanTitle(value: string | null | undefined): string | undefined {
   const title = value?.trim();
   return title ? title : undefined;
@@ -149,6 +157,79 @@ function readPartAttachments(part: OpenCodePart): ConversationAttachment[] {
         source: isRecord(attachment["source"]) ? attachment["source"] : undefined,
       }),
     ];
+  });
+}
+
+function readMessageMediaItems(message: OpenCodeSessionMessage): SessionMediaItem[] {
+  const createdAt = new Date(message.info.time.created).toISOString();
+
+  return message.parts.flatMap((part, index) => {
+    if (part.type === "file") {
+      const item = createMediaItem({
+        id: part.id,
+        messageId: message.info.id,
+        filename: typeof part["filename"] === "string" ? part["filename"] : undefined,
+        mime: typeof part["mime"] === "string" ? part["mime"] : undefined,
+        url: part["url"],
+        createdAt,
+      });
+
+      return item ? [item] : [];
+    }
+
+    if (
+      part.type !== "tool" ||
+      !isRecord(part["state"]) ||
+      !Array.isArray(part["state"]["attachments"])
+    ) {
+      return [];
+    }
+
+    return part["state"]["attachments"].flatMap((attachment, attachmentIndex) => {
+      if (!isRecord(attachment)) {
+        return [];
+      }
+
+      const item = createMediaItem({
+        id:
+          typeof attachment["id"] === "string"
+            ? attachment["id"]
+            : `${message.info.id}-tool-${String(index)}-${String(attachmentIndex)}`,
+        messageId: message.info.id,
+        filename: typeof attachment["filename"] === "string" ? attachment["filename"] : undefined,
+        mime: typeof attachment["mime"] === "string" ? attachment["mime"] : undefined,
+        url: attachment["url"],
+        createdAt,
+      });
+
+      return item ? [item] : [];
+    });
+  });
+}
+
+function createMediaItem(input: {
+  id: string;
+  messageId: string;
+  filename?: string;
+  mime?: string;
+  url: unknown;
+  createdAt: string;
+}): SessionMediaItem | null {
+  if (
+    typeof input.mime !== "string" ||
+    typeof input.url !== "string" ||
+    !input.url.startsWith("data:")
+  ) {
+    return null;
+  }
+
+  return sessionMediaItemSchema.parse({
+    id: input.id,
+    messageId: input.messageId,
+    filename: input.filename,
+    mime: input.mime,
+    url: input.url,
+    createdAt: input.createdAt,
   });
 }
 

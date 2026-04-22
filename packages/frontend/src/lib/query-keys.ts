@@ -7,4 +7,5 @@ export const queryKeys = {
   conversation: (agentId: string, conversationId: string) =>
     ["conversation", agentId, conversationId] as const,
   conversations: (agentId: string) => ["conversations", agentId] as const,
+  conversationMedia: (conversationId: string) => ["conversation-media", conversationId] as const,
 };

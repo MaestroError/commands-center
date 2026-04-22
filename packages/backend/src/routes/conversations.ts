@@ -116,6 +116,16 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
     },
   );
 
+  app.get(
+    "/api/conversations/:conversationId/media",
+    {
+      schema: {
+        params: conversationParamsSchema,
+      },
+    },
+    async (request) => service.getMedia(request.params.conversationId),
+  );
+
   app.post(
     "/api/conversations/:conversationId/command",
     {

@@ -5,7 +5,7 @@ import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
-import type { OpenCodeService } from "../../src/services/opencode-service";
+import type { OpenCodeService, OpenCodeSessionMessage } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("conversation routes", () => {
@@ -80,6 +80,73 @@ describe("conversation routes", () => {
     expect(response.json<{ messages: unknown[] }>().messages).toHaveLength(2);
   });
 
+  it("restores streamed prompt messages after reloading a specific conversation", async () => {
+    const opened = await server.inject({
+      method: "GET",
+      url: `/api/agents/${agentId}/conversations/active`,
+    });
+    const conversationId = opened.json<{ current: { id: string } }>().current.id;
+
+    const promptResponse = await server.inject({
+      method: "POST",
+      url: `/api/conversations/${conversationId}/prompt?stream=true`,
+      payload: { text: "Persist streamed prompt", attachments: [] },
+    });
+
+    expect(promptResponse.statusCode).toBe(202);
+
+    const reloaded = await server.inject({
+      method: "GET",
+      url: `/api/agents/${agentId}/conversations/${conversationId}`,
+    });
+
+    expect(reloaded.statusCode).toBe(200);
+    expect(
+      reloaded
+        .json<{ messages: Array<{ role: string; content: string }> }>()
+        .messages.map((msg) => ({ role: msg.role, content: msg.content })),
+    ).toEqual([
+      { role: "user", content: "Persist streamed prompt" },
+      { role: "assistant", content: "Reply to: Persist streamed prompt" },
+    ]);
+  });
+
+  it("returns session media from message parts and tool attachments", async () => {
+    const opened = await server.inject({
+      method: "GET",
+      url: `/api/agents/${agentId}/conversations/active`,
+    });
+    const conversationId = opened.json<{ current: { id: string } }>().current.id;
+
+    const promptResponse = await server.inject({
+      method: "POST",
+      url: `/api/conversations/${conversationId}/prompt`,
+      payload: { text: "Explain the plan", attachments: [] },
+    });
+
+    expect(promptResponse.statusCode).toBe(200);
+
+    const response = await server.inject({
+      method: "GET",
+      url: `/api/conversations/${conversationId}/media`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toHaveLength(2);
+    expect(response.json()[0]).toMatchObject({
+      id: "tool-attachment-1",
+      filename: "notes.pdf",
+      mime: "application/pdf",
+      url: "data:application/pdf;base64,BBBB",
+    });
+    expect(response.json()[1]).toMatchObject({
+      id: "file-1",
+      filename: "plan.png",
+      mime: "image/png",
+      url: "data:image/png;base64,AAAA",
+    });
+  });
+
   it("lists all conversations for an agent", async () => {
     const response = await server.inject({
       method: "GET",
@@ -127,69 +194,180 @@ function createOrchestrator(): OpenCodeOrchestrator {
 }
 
 function createMockOpenCodeService(): OpenCodeService {
+  const sessions = new Map<
+    string,
+    { id: string; title?: string; time: { created: number; updated: number } }
+  >();
+  const messages = new Map<string, OpenCodeSessionMessage[]>();
   let sessionCount = 0;
+  let messageCount = 0;
+  let clock = 1_700_000_000_000;
 
   return {
     ...createBaseOpenCodeService(),
     createSession: (_directory, title) => {
       sessionCount += 1;
 
-      return Promise.resolve({
+      const session = {
         id: `ses-${String(sessionCount)}`,
         title,
-        time: { created: 1_700_000_000_000, updated: 1_700_000_001_000 },
-      });
+        time: { created: nextTime(), updated: nextTime() },
+      };
+      sessions.set(session.id, session);
+      messages.set(session.id, []);
+
+      return Promise.resolve(session);
     },
-    getSession: (_directory, sessionID) =>
-      Promise.resolve({
-        id: sessionID,
-        title: "Route Agent",
-        time: { created: 1_700_000_000_000, updated: 1_700_000_003_000 },
-      }),
-    listSessionMessages: (_directory, sessionID) =>
-      Promise.resolve([
-        {
-          info: {
-            id: "msg-1",
-            sessionID,
-            role: "user",
-            time: { created: 1_700_000_001_000 },
-          },
-          parts: [
-            {
-              id: "part-1",
-              sessionID,
-              messageID: "msg-1",
-              type: "text",
-              text: "Explain the plan",
-            },
-          ],
+    getSession: (_directory, sessionID) => Promise.resolve(mustSession(sessionID)),
+    listSessionMessages: (_directory, sessionID) => Promise.resolve(mustMessages(sessionID)),
+    promptSession: ({ sessionID, text }) => {
+      const session = mustSession(sessionID);
+      const list = mustMessages(sessionID);
+      const userId = nextMessageId();
+      const assistantId = nextMessageId();
+
+      list.splice(0, list.length);
+      list.push({
+        info: {
+          id: userId,
+          sessionID,
+          role: "user",
+          time: { created: nextTime() },
         },
-        {
-          info: {
-            id: "msg-2",
+        parts: [
+          {
+            id: "part-1",
             sessionID,
-            role: "assistant",
-            time: { created: 1_700_000_002_000, completed: 1_700_000_003_000 },
+            messageID: userId,
+            type: "text",
+            text,
           },
-          parts: [
-            {
-              id: "part-2",
-              sessionID,
-              messageID: "msg-2",
-              type: "text",
-              text: "Here is the plan.",
-            },
-          ],
+          {
+            id: "file-1",
+            sessionID,
+            messageID: userId,
+            type: "file",
+            mime: "image/png",
+            filename: "plan.png",
+            url: "data:image/png;base64,AAAA",
+          },
+        ],
+      });
+      list.push({
+        info: {
+          id: assistantId,
+          sessionID,
+          role: "assistant",
+          time: { created: nextTime(), completed: nextTime() },
         },
-      ]),
-    promptSession: () => Promise.resolve(),
+        parts: [
+          {
+            id: "part-2",
+            sessionID,
+            messageID: assistantId,
+            type: "text",
+            text: "Here is the plan.",
+          },
+          {
+            id: "part-3",
+            sessionID,
+            messageID: assistantId,
+            type: "tool",
+            state: {
+              attachments: [
+                {
+                  id: "tool-attachment-1",
+                  mime: "application/pdf",
+                  filename: "notes.pdf",
+                  url: "data:application/pdf;base64,BBBB",
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      session.title = session.title ?? "Route Agent";
+      session.time.updated = nextTime();
+      return Promise.resolve();
+    },
+    promptSessionAsync: ({ sessionID, text }) => {
+      const session = mustSession(sessionID);
+      const list = mustMessages(sessionID);
+      const userId = nextMessageId();
+      const assistantId = nextMessageId();
+
+      list.splice(0, list.length);
+      list.push({
+        info: {
+          id: userId,
+          sessionID,
+          role: "user",
+          time: { created: nextTime() },
+        },
+        parts: [
+          {
+            id: `part-${userId}`,
+            sessionID,
+            messageID: userId,
+            type: "text",
+            text,
+          },
+        ],
+      });
+      list.push({
+        info: {
+          id: assistantId,
+          sessionID,
+          role: "assistant",
+          time: { created: nextTime(), completed: nextTime() },
+        },
+        parts: [
+          {
+            id: `part-${assistantId}`,
+            sessionID,
+            messageID: assistantId,
+            type: "text",
+            text: `Reply to: ${text}`,
+          },
+        ],
+      });
+
+      session.title = session.title ?? "Route Agent";
+      session.time.updated = nextTime();
+    },
     commandSession: () => Promise.resolve(),
     summarizeSession: () => Promise.resolve(),
     shellSession: () => Promise.resolve(),
     searchWorkspaceFiles: () => Promise.resolve([]),
     listWorkspaceTree: () => Promise.resolve([]),
   } as OpenCodeService;
+
+  function mustSession(sessionID: string) {
+    const session = sessions.get(sessionID);
+    if (!session) {
+      throw new Error(`Unknown session ${sessionID}`);
+    }
+    return session;
+  }
+
+  function mustMessages(sessionID: string) {
+    const list = messages.get(sessionID);
+    if (!list) {
+      throw new Error(`Unknown session ${sessionID}`);
+    }
+    return list;
+  }
+
+  function nextMessageId(): string {
+    messageCount += 1;
+    return `msg-${String(messageCount)}`;
+  }
+
+  function nextTime(): number {
+    clock += 1_000;
+    return clock;
+  }
 }
 
 function createBaseOpenCodeService() {
@@ -224,7 +402,6 @@ function createBaseOpenCodeService() {
       }),
     completeOauth: () => Promise.resolve(true),
     disconnectProvider: () => Promise.resolve(true),
-    promptSessionAsync: async () => {},
     replyPermission: async () => {},
     replyQuestion: async () => {},
     rejectQuestion: async () => {},

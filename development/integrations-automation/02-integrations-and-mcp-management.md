@@ -55,7 +55,7 @@ This is a complete feature area with one screen and one clear capability boundar
 
 ## Acceptance Criteria
 
-- Behavior matches `design/screens/integrations/acceptance_criteria.md`
+- Behavior matches `design/screens/integrations/acceptance_criteria.md` (Skip composio part for now, it will be handled in I5)
 - External MCP servers can be added, authenticated, enabled/disabled, and removed through the integrations screen
 - Connection status and available tools are visible per server
 - Connected MCP servers appear in the agent editor with per-agent server toggle and per-tool permission controls

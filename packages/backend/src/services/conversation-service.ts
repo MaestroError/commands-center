@@ -5,6 +5,7 @@ import {
   conversationMessageSchema,
   conversationSnapshotSchema,
   conversationSummarySchema,
+  sessionMediaListSchema,
   sendConversationCommandInputSchema,
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
@@ -12,6 +13,7 @@ import {
   type ConversationMessage,
   type ConversationSnapshot,
   type ConversationSummary,
+  type SessionMediaItem,
   type SendConversationCommandInput,
   type SendConversationPromptInput,
   type SendConversationShellInput,
@@ -21,7 +23,7 @@ import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
 import { type agents, conversations, messages } from "../db/schema/index.js";
 import { NotFoundError } from "../lib/api-error.js";
-import { cleanTitle, mapRemoteMessage } from "../lib/message-mapper.js";
+import { cleanTitle, extractMediaItems, mapRemoteMessage } from "../lib/message-mapper.js";
 import type { OpenCodeService } from "./opencode-service.js";
 
 type AgentRow = typeof agents.$inferSelect;
@@ -62,7 +64,18 @@ export function createConversationService(options: {
     async get(agentId: string, conversationId: string): Promise<ConversationDetail> {
       const agent = await getAgent(agentId);
       const conversation = await getConversationRow(agent.id, conversationId);
+      await syncConversation(agent, conversation);
       return mapConversationDetail(conversation);
+    },
+
+    async getMedia(conversationId: string): Promise<SessionMediaItem[]> {
+      const loaded = await getConversationAgent(conversationId);
+      const remoteMessages = await options.opencodeService.listSessionMessages(
+        loaded.agent.workspace_path,
+        loaded.conversation.opencode_session_id,
+      );
+
+      return sessionMediaListSchema.parse(extractMediaItems(remoteMessages));
     },
 
     async startFresh(agentId: string): Promise<ConversationSnapshot> {

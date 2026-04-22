@@ -5,6 +5,7 @@ import {
   chatEventSchema,
   conversationDetailSchema,
   conversationListSchema,
+  sessionMediaListSchema,
   conversationSnapshotSchema,
   createAgentInputSchema,
   providerConnectResultSchema,
@@ -20,6 +21,7 @@ import {
   type ConversationDetail,
   type ConversationSnapshot,
   type ConversationSummary,
+  type SessionMediaItem,
   type ProviderOauthAuthorization,
   type ProviderOauthCompleteResult,
   type ProviderStatus,
@@ -204,6 +206,13 @@ export async function startFreshConversation(agentId: string): Promise<Conversat
     `/api/agents/${encodeURIComponent(agentId)}/conversations/start-fresh`,
     conversationSnapshotSchema,
     { method: "POST" },
+  );
+}
+
+export async function fetchConversationMedia(conversationId: string): Promise<SessionMediaItem[]> {
+  return requestJson<SessionMediaItem[]>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/media`,
+    sessionMediaListSchema,
   );
 }
 

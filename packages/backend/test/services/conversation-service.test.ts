@@ -127,6 +127,137 @@ describe("createConversationService", () => {
       await testDb.cleanup();
     }
   });
+
+  it("returns media items from file parts and tool attachments newest first", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const agentService = createAgentService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const service = createConversationService({
+      db: testDb.client.db,
+      opencodeService,
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "Media Agent",
+        role: "handles attachments",
+        instructions: "Review uploads.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+
+      const opened = await service.resolveCurrent(agent.id);
+
+      await service.sendPrompt(opened.current.id, {
+        text: "Inspect this image",
+        attachments: [
+          {
+            id: "att-image",
+            filename: "diagram.png",
+            mimeType: "image/png",
+            dataUrl: "data:image/png;base64,AAAA",
+            type: "image",
+          },
+        ],
+      });
+
+      await service.sendCommand(opened.current.id, {
+        command: "annotate",
+        arguments: "--pdf",
+        attachments: [
+          {
+            id: "att-pdf",
+            filename: "spec.pdf",
+            mimeType: "application/pdf",
+            dataUrl: "data:application/pdf;base64,BBBB",
+            type: "document",
+          },
+        ],
+      });
+
+      const media = await service.getMedia(opened.current.id);
+
+      expect(media).toHaveLength(2);
+      expect(media[0]).toMatchObject({
+        id: "att-pdf",
+        messageId: "msg-3",
+        filename: "spec.pdf",
+        mime: "application/pdf",
+        url: "data:application/pdf;base64,BBBB",
+      });
+      expect(media[1]).toMatchObject({
+        id: "att-image",
+        messageId: "msg-1",
+        filename: "diagram.png",
+        mime: "image/png",
+        url: "data:image/png;base64,AAAA",
+      });
+      expect(new Date(media[0]!.createdAt).getTime()).toBeGreaterThan(
+        new Date(media[1]!.createdAt).getTime(),
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("re-syncs remote messages when loading a specific conversation", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const agentService = createAgentService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const service = createConversationService({
+      db: testDb.client.db,
+      opencodeService,
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "Reload Agent",
+        role: "restore chats",
+        instructions: "Be persistent.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+
+      const opened = await service.resolveCurrent(agent.id);
+
+      await service.sendPromptAsync(opened.current.id, {
+        text: "Persist this after reload",
+        attachments: [],
+      });
+
+      const reloaded = await service.get(agent.id, opened.current.id);
+
+      expect(reloaded.messages).toHaveLength(2);
+      expect(reloaded.messages[0]).toMatchObject({
+        role: "user",
+        content: "Persist this after reload",
+      });
+      expect(reloaded.messages[1]).toMatchObject({
+        role: "assistant",
+        content: "Reply to: Persist this after reload",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
 });
 
 function createMockOpenCodeService(): OpenCodeService {
@@ -246,7 +377,7 @@ function createMockOpenCodeService(): OpenCodeService {
       session.time.updated = nextTime();
       return Promise.resolve();
     },
-    commandSession: ({ sessionID, command, arguments: args }) => {
+    commandSession: ({ sessionID, command, arguments: args, attachments }) => {
       const session = mustSession(sessionID);
       const list = mustMessages(sessionID);
       const assistantId = nextMessageId();
@@ -272,6 +403,12 @@ function createMockOpenCodeService(): OpenCodeService {
               output: "ok",
               title: command,
               metadata: {},
+              attachments: (attachments ?? []).map((attachment) => ({
+                id: attachment.id,
+                mime: attachment.mimeType,
+                filename: attachment.filename,
+                url: attachment.dataUrl,
+              })),
               time: { start: nextTime(), end: nextTime() },
             },
           },
@@ -317,7 +454,59 @@ function createMockOpenCodeService(): OpenCodeService {
       session.time.updated = nextTime();
       return Promise.resolve();
     },
-    promptSessionAsync: () => {},
+    promptSessionAsync: ({ sessionID, text, attachments }) => {
+      const session = mustSession(sessionID);
+      const list = mustMessages(sessionID);
+      const userId = nextMessageId();
+      const assistantId = nextMessageId();
+
+      list.push({
+        info: {
+          id: userId,
+          sessionID,
+          role: "user",
+          time: { created: nextTime() },
+        },
+        parts: [
+          {
+            id: `part-${userId}`,
+            sessionID,
+            messageID: userId,
+            type: "text",
+            text,
+          },
+          ...(attachments ?? []).map((attachment, index) => ({
+            id: attachment.id ?? `file-${userId}-${String(index)}`,
+            sessionID,
+            messageID: userId,
+            type: "file" as const,
+            mime: attachment.mimeType,
+            filename: attachment.filename,
+            url: attachment.dataUrl,
+          })),
+        ],
+      });
+      list.push({
+        info: {
+          id: assistantId,
+          sessionID,
+          role: "assistant",
+          time: { created: nextTime(), completed: nextTime() },
+        },
+        parts: [
+          {
+            id: `part-${assistantId}`,
+            sessionID,
+            messageID: assistantId,
+            type: "text",
+            text: `Reply to: ${text}`,
+          },
+        ],
+      });
+
+      session.title = session.title ?? text.slice(0, 40);
+      session.time.updated = nextTime();
+    },
     replyPermission: async () => {},
     replyQuestion: async () => {},
     rejectQuestion: async () => {},

@@ -3,6 +3,7 @@ import { lazy, Suspense, useMemo, useEffect, useRef } from "react";
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatHeader } from "@/components/chat/ChatHeader";
+import { MediaTab } from "@/components/chat/MediaTab";
 import { MessageTimeline } from "@/components/chat/MessageTimeline";
 import { PermissionDock } from "@/components/chat/PermissionDock";
 import { QuestionDock } from "@/components/chat/QuestionDock";
@@ -69,6 +70,11 @@ export function WorkspaceChatPage() {
               id: "files",
               label: "Files",
               content: <WorkspaceFilesTab agentId={conv.agent?.id ?? ""} />,
+            },
+            {
+              id: "media",
+              label: "Media",
+              content: <MediaTab conversationId={conv.conversation.id} />,
             },
           ],
           defaultTabId: "files",

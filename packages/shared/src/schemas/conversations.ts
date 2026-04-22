@@ -49,6 +49,17 @@ export const conversationDetailSchema = conversationSummarySchema.extend({
 
 export const conversationListSchema = z.array(conversationSummarySchema);
 
+export const sessionMediaItemSchema = z.object({
+  id: z.string().min(1),
+  messageId: z.string().min(1),
+  filename: z.string().min(1).optional(),
+  mime: z.string().min(1),
+  url: z.string().startsWith("data:"),
+  createdAt: z.string().datetime(),
+});
+
+export const sessionMediaListSchema = z.array(sessionMediaItemSchema);
+
 export const conversationSnapshotSchema = z.object({
   current: conversationDetailSchema,
   previous: conversationListSchema,
@@ -85,6 +96,7 @@ export type ConversationPart = z.infer<typeof conversationPartSchema>;
 export type ConversationSnapshot = z.infer<typeof conversationSnapshotSchema>;
 export type ConversationStatus = z.infer<typeof conversationStatusSchema>;
 export type ConversationSummary = z.infer<typeof conversationSummarySchema>;
+export type SessionMediaItem = z.infer<typeof sessionMediaItemSchema>;
 export type SendConversationAttachmentInput = z.infer<typeof sendConversationAttachmentInputSchema>;
 export type SendConversationCommandInput = z.infer<typeof sendConversationCommandInputSchema>;
 export type SendConversationPromptInput = z.infer<typeof sendConversationPromptInputSchema>;

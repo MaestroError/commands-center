@@ -23,8 +23,22 @@ vi.mock("@/hooks/use-agents-query", () => ({
 }));
 
 vi.mock("@/components/layout/WorkspaceLayout", () => ({
-  WorkspaceLayout: ({ primary }: { primary: React.ReactNode }) => (
-    <div data-testid="layout">{primary}</div>
+  WorkspaceLayout: ({
+    primary,
+    contextPane,
+  }: {
+    primary: React.ReactNode;
+    contextPane?: { tabs: Array<{ id: string; label: string; content: React.ReactNode }> };
+  }) => (
+    <div data-testid="layout">
+      <div data-testid="context-tabs">{contextPane?.tabs.map((tab) => tab.label).join(",")}</div>
+      <div data-testid="context-content">
+        {contextPane?.tabs.map((tab) => (
+          <div key={tab.id}>{tab.content}</div>
+        ))}
+      </div>
+      {primary}
+    </div>
   ),
 }));
 
@@ -54,6 +68,12 @@ vi.mock("@/components/chat/TodoDock", () => ({
 
 vi.mock("@/components/workspace/WorkspaceFilesTab", () => ({
   WorkspaceFilesTab: () => <div data-testid="workspace-files-tab">WorkspaceFilesTab</div>,
+}));
+
+vi.mock("@/components/chat/MediaTab", () => ({
+  MediaTab: ({ conversationId }: { conversationId: string }) => (
+    <div data-testid="media-tab">MediaTab:{conversationId}</div>
+  ),
 }));
 
 function makeConversation(overrides: Record<string, unknown> = {}) {
@@ -221,5 +241,19 @@ describe("WorkspaceChatPage", () => {
 
     expect(screen.queryByTestId("todo-dock")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-composer")).toBeInTheDocument();
+  });
+
+  it("wires Files and Media tabs into the context pane", () => {
+    mockParams = { agentId: "planner", conversationId: "conv-1" };
+    useConversationMock.mockReturnValue(
+      makeConversation({ conversation: { id: "conv-1", messages: [] } }),
+    );
+    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+
+    render(<WorkspaceChatPage />);
+
+    expect(screen.getByTestId("context-tabs")).toHaveTextContent("Files,Media");
+    expect(screen.getByTestId("workspace-files-tab")).toBeInTheDocument();
+    expect(screen.getByTestId("media-tab")).toHaveTextContent("MediaTab:conv-1");
   });
 });
