@@ -163,7 +163,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     description: "Microsoft's official browser automation via accessibility tree.",
     authBadge: "Local",
     tags: [
-      "auth:none",
+      "auth:no-auth",
       "category:browser",
       "language:node",
       "launcher:npx",
@@ -184,7 +184,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     description: "Generate 25+ chart types (line, bar, pie, sankey, treemap, mind map).",
     authBadge: "Local",
     tags: [
-      "auth:none",
+      "auth:no-auth",
       "category:charts",
       "language:node",
       "launcher:npx",
@@ -205,7 +205,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     description: "Render Mermaid diagrams (flowcharts, sequence, ER, gantt, class).",
     authBadge: "Local",
     tags: [
-      "auth:none",
+      "auth:no-auth",
       "category:diagrams",
       "language:node",
       "launcher:npx",
@@ -226,7 +226,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     description: "Playwright-based web fetcher with JS rendering, returns clean Markdown.",
     authBadge: "Local",
     tags: [
-      "auth:none",
+      "auth:no-auth",
       "category:web-fetching",
       "language:node",
       "launcher:npx",
@@ -247,7 +247,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     description: "Convert PDF, DOCX, PPTX, XLSX, images, and audio to Markdown (Microsoft).",
     authBadge: "Local",
     tags: [
-      "auth:none",
+      "auth:no-auth",
       "category:documents",
       "language:python",
       "launcher:uvx",
@@ -268,7 +268,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     description: "Free web search with no API key required.",
     authBadge: "Local",
     tags: [
-      "auth:none",
+      "auth:no-auth",
       "category:search",
       "language:python",
       "launcher:uvx",
@@ -289,7 +289,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     description: "Persistent knowledge graph stored locally. Anthropic reference implementation.",
     authBadge: "Local",
     tags: [
-      "auth:none",
+      "auth:no-auth",
       "category:memory",
       "language:node",
       "launcher:npx",
@@ -310,7 +310,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     description: "Structured step-by-step reasoning helper. Anthropic reference implementation.",
     authBadge: "Local",
     tags: [
-      "auth:none",
+      "auth:no-auth",
       "category:reasoning",
       "language:node",
       "launcher:npx",
@@ -1092,20 +1092,63 @@ function readError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "Request failed.";
 }
 
+const SEARCH_SUGGESTIONS = [
+  "no-auth",
+  "oauth",
+  "official",
+  "remote",
+  "local",
+  "search",
+  "browser",
+  "reasoning",
+] as const;
+
+const TAG_PREFIX_STYLES: Record<string, string> = {
+  auth: "bg-sky-500/15 text-sky-400",
+  category: "bg-violet-500/15 text-violet-400",
+  language: "bg-emerald-500/15 text-emerald-400",
+  launcher: "bg-amber-500/15 text-amber-400",
+  type: "bg-cyan-500/15 text-cyan-400",
+  source: "bg-rose-500/15 text-rose-400",
+};
+const DEFAULT_TAG_STYLE = "bg-surface-elevated text-text-secondary";
+
+function tagStyle(tag: string): string {
+  const idx = tag.indexOf(":");
+  const prefix = idx === -1 ? tag : tag.slice(0, idx);
+  return TAG_PREFIX_STYLES[prefix] ?? DEFAULT_TAG_STYLE;
+}
+
+function tagLabel(tag: string): string {
+  const idx = tag.indexOf(":");
+  return idx === -1 ? tag : tag.slice(idx + 1);
+}
+
 function SuggestedMcpServersSection(props: {
   configuredNames: string[];
   onSelect: (suggestion: SuggestedMcpServer) => void;
 }) {
+  const [search, setSearch] = useState("");
   const configured = new Set(props.configuredNames.map((name) => name.toLowerCase()));
-  const visible = SUGGESTED_MCP_SERVERS.filter(
+  const available = SUGGESTED_MCP_SERVERS.filter(
     (suggestion) =>
       !configured.has(suggestion.name.toLowerCase()) &&
       !configured.has(suggestion.form.name.toLowerCase()),
   );
 
-  if (visible.length === 0) {
+  if (available.length === 0) {
     return null;
   }
+
+  const query = search.trim().toLowerCase();
+  const visible = query
+    ? available.filter((suggestion) => {
+        const haystack = [suggestion.name, suggestion.description, ...suggestion.tags]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(query);
+      })
+    : available;
 
   return (
     <section className="cc-panel p-6">
@@ -1119,24 +1162,78 @@ function SuggestedMcpServersSection(props: {
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {visible.map((suggestion) => (
-          <button
-            aria-label={`Add ${suggestion.name}`}
-            className="flex h-full flex-col items-start gap-2 rounded-lg border border-border bg-surface p-5 text-left transition hover:border-accent hover:bg-surface-elevated"
-            key={suggestion.id}
-            onClick={() => props.onSelect(suggestion)}
-            type="button"
-          >
-            <div className="flex w-full items-start justify-between gap-3">
-              <h3 className="text-base font-semibold text-text-primary">{suggestion.name}</h3>
-              <span className="cc-badge cc-badge-muted">{suggestion.authBadge}</span>
-            </div>
-            <p className="text-sm text-text-secondary">{suggestion.description}</p>
-            <span className="mt-auto text-sm font-medium text-accent">Tap to connect</span>
-          </button>
-        ))}
+      <div className="mt-5 grid gap-3">
+        <div className="relative">
+          <input
+            aria-label="Search suggested MCPs"
+            className="cc-input pr-10"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search by name, description, or tag (e.g. no-auth, oauth, search)"
+            type="search"
+            value={search}
+          />
+          {search ? (
+            <button
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
+              onClick={() => setSearch("")}
+              type="button"
+            >
+              <CloseIcon />
+            </button>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+          <span className="uppercase tracking-[0.16em]">Try:</span>
+          {SEARCH_SUGGESTIONS.map((term) => (
+            <button
+              aria-label={`Search ${term}`}
+              className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-secondary transition hover:border-accent hover:text-text-primary"
+              key={term}
+              onClick={() => setSearch(term)}
+              type="button"
+            >
+              {term}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {visible.length === 0 ? (
+        <p className="mt-5 rounded-lg border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-text-secondary">
+          No suggestions match &ldquo;{search}&rdquo;.
+        </p>
+      ) : (
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {visible.map((suggestion) => (
+            <button
+              aria-label={`Add ${suggestion.name}`}
+              className="flex h-full flex-col items-start gap-2 rounded-lg border border-border bg-surface p-5 text-left transition hover:border-accent hover:bg-surface-elevated"
+              key={suggestion.id}
+              onClick={() => props.onSelect(suggestion)}
+              type="button"
+            >
+              <div className="flex w-full items-start justify-between gap-3">
+                <h3 className="text-base font-semibold text-text-primary">{suggestion.name}</h3>
+                <span className="cc-badge cc-badge-muted">{suggestion.authBadge}</span>
+              </div>
+              <p className="text-sm text-text-secondary">{suggestion.description}</p>
+              <span className="mt-auto text-sm font-medium text-accent">Tap to connect</span>
+              <div className="mt-2 flex w-full flex-wrap gap-1.5">
+                {suggestion.tags.map((tag) => (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${tagStyle(tag)}`}
+                    key={tag}
+                  >
+                    {tagLabel(tag)}
+                  </span>
+                ))}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
