@@ -353,13 +353,13 @@ export function IntegrationsPage() {
               onClick={() => setDialog({ mode: "create" })}
               type="button"
             >
-              Add MCP server
+              Add custom MCP server
             </button>
           </div>
         }
-        description="Manage global external MCP servers once, then reuse them safely across agents through workspace-backed permissions."
+        description="Manage global external MCP servers once, then reuse them safely across agents through permissions."
         eyebrow="Integrations"
-        title="External MCP servers"
+        title="External Apps"
       />
 
       {successMessage ? <section className="cc-success">{successMessage}</section> : null}
@@ -803,7 +803,7 @@ function McpServerDialog(props: {
                   aria-label="Environment"
                   className="cc-input min-h-24 resize-y font-mono text-xs"
                   onChange={(event) => updateField("environmentText", event.target.value)}
-                  placeholder="NODE_ENV=test\nAPI_TOKEN=secret"
+                  placeholder="Example: API_TOKEN=secret. One variable per line."
                   value={form.environmentText}
                 />
               </Field>
@@ -825,7 +825,7 @@ function McpServerDialog(props: {
                   aria-label="Headers"
                   className="cc-input min-h-32 resize-y font-mono text-xs"
                   onChange={(event) => updateField("headersText", event.target.value)}
-                  placeholder="Authorization: Bearer token\nX-API-Key: value"
+                  placeholder="Example: X-API-Key: value. One header per line."
                   value={form.headersText}
                 />
               </Field>
@@ -1156,8 +1156,7 @@ function SuggestedMcpServersSection(props: {
         <div>
           <h2 className="text-xl font-semibold text-text-primary">Suggested MCPs</h2>
           <p className="mt-1 text-sm text-text-secondary">
-            One-click presets that prefill the &ldquo;Add MCP server&rdquo; form. Review the details
-            and adjust before saving.
+            One-click presets - Review the details and adjust before saving.
           </p>
         </div>
       </div>
