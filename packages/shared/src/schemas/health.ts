@@ -40,7 +40,6 @@ export const schedulerStatusSchema = z.object({
 
 export const healthResponseSchema = z.object({
   status: z.enum(["ok", "degraded"]),
-  dataDir: z.string().min(1),
   workspaceDir: z.string().min(1),
   database: databaseStatusSchema,
   opencode: engineStatusSchema,

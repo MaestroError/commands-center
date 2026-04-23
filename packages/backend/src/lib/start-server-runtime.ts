@@ -71,8 +71,6 @@ export async function startServerRuntime(
     logger,
   });
 
-  await orchestrator.start();
-
   const opencodeClient = createOpenCodeClient(config);
   const opencodeService = createOpenCodeService({ client: opencodeClient, config });
   const openCodeEventService = createOpenCodeEventService({ config, logger });
@@ -115,10 +113,20 @@ export async function startServerRuntime(
     installSignalHandlers(drainController.drain, logger);
   }
 
-  await server.listen({
-    host: config.server.host,
-    port: config.server.port,
-  });
+  await orchestrator.start();
+
+  try {
+    await server.listen({
+      host: config.server.host,
+      port: config.server.port,
+    });
+  } catch (error) {
+    logger.error({ err: error }, "runtime server failed to listen; draining");
+    await drainController.drain("manual").catch((drainError: unknown) => {
+      logger.error({ err: drainError }, "runtime drain failed during startup recovery");
+    });
+    throw error;
+  }
 
   logger.info(
     {

@@ -122,6 +122,8 @@ export function createOpenCodeOrchestrator(options: {
 
       child = next;
 
+      registerExitReaper(next);
+
       next.stdout?.on("data", (chunk: Buffer | string) => {
         const output = chunk.toString().trim();
 
@@ -418,6 +420,31 @@ export function createOpenCodeOrchestrator(options: {
     } catch {
       return false;
     }
+  }
+
+  function registerExitReaper(proc: ChildProcess): void {
+    const reap = (): void => {
+      if (!proc.pid || proc.exitCode !== null) {
+        return;
+      }
+
+      try {
+        if (useDetachedProcess) {
+          process.kill(-proc.pid, "SIGKILL");
+        } else {
+          proc.kill("SIGKILL");
+        }
+      } catch (error) {
+        if (!isMissingProcessError(error)) {
+          options.logger.warn({ err: error, pid: proc.pid }, "failed to reap opencode child");
+        }
+      }
+    };
+
+    process.once("exit", reap);
+    proc.once("exit", () => {
+      process.removeListener("exit", reap);
+    });
   }
 
   async function terminateChild(proc: ChildProcess, timeoutMs: number): Promise<void> {

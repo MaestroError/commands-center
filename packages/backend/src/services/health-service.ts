@@ -20,7 +20,6 @@ export function createHealthService(options: {
 
       return healthResponseSchema.parse({
         status: opencode.healthy && scheduler.healthy ? "ok" : "degraded",
-        dataDir: options.config.paths.dataDir,
         workspaceDir: options.config.paths.workspaceDir,
         database: {
           dialect: options.database.dialect,

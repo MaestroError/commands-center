@@ -20,7 +20,6 @@ describe("bootstrapRuntimePaths", () => {
 
       await bootstrapRuntimePaths(config);
 
-      await expect(stat(config.paths.dataDir)).resolves.toBeDefined();
       await expect(stat(config.paths.workspaceDir)).resolves.toBeDefined();
 
       for (const directoryPath of Object.values(config.paths.subdirectories)) {

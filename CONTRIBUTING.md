@@ -32,8 +32,7 @@ The shared backend and CLI bootstrap path validates these environment variables 
 | ------------------------------- | --------------------------------------------- | ------------------------- |
 | `CC_PORT`                       | HTTP listen port                              | `3000`                    |
 | `CC_HOST`                       | HTTP bind host                                | `0.0.0.0`                 |
-| `CC_DATA_DIR`                   | Application root directory                    | `.cc`                     |
-| `CC_WORKSPACE_DIR`              | Portable workspace state directory            | `<CC_DATA_DIR>/workspace` |
+| `CC_WORKSPACE_DIR`              | Portable workspace state directory            | `.cc/workspace`           |
 | `CC_ENGINE_TIMEOUT_MS`          | OpenCode engine request timeout               | `30000`                   |
 | `CC_ENGINE_STARTUP_TIMEOUT_MS`  | Max time to wait for engine health on boot    | `30000`                   |
 | `CC_ENGINE_SHUTDOWN_TIMEOUT_MS` | Grace period before force-killing the engine  | `15000`                   |

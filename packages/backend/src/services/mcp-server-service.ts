@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { createId, now } from "../db/ids.js";
 import { mcp_servers } from "../db/schema/index.js";
-import { ConflictError, NotFoundError } from "../lib/api-error.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import {
   createMcpServerInputSchema,
@@ -133,11 +133,32 @@ export function createMcpServerService(options: {
         throw new NotFoundError("MCP server not found.");
       }
 
-      const result = await options.opencodeService.startMcpAuth(
-        options.config.paths.workspaceDir,
-        row.name,
+      assertRowSupportsOauth(row);
+
+      const result = await callOpencode(row.name, "start authentication for", () =>
+        options.opencodeService.startMcpAuth(options.config.paths.workspaceDir, row.name),
       );
       return mcpAuthStartResultSchema.parse(result);
+    },
+
+    async authenticate(id: string): Promise<McpServer> {
+      const row = await getRow(id);
+      if (!row) {
+        throw new NotFoundError("MCP server not found.");
+      }
+
+      assertRowSupportsOauth(row);
+
+      const [server] = await withRuntime([mapMcpServer(row)]);
+      if (server?.runtimeStatus?.status === "connected") {
+        return server;
+      }
+
+      await callOpencode(row.name, "authenticate", () =>
+        options.opencodeService.authenticateMcp(options.config.paths.workspaceDir, row.name),
+      );
+
+      return readOne(row);
     },
 
     async completeAuth(id: string, code: string): Promise<McpServer> {
@@ -146,10 +167,10 @@ export function createMcpServerService(options: {
         throw new NotFoundError("MCP server not found.");
       }
 
-      await options.opencodeService.completeMcpAuth(
-        options.config.paths.workspaceDir,
-        row.name,
-        code,
+      assertRowSupportsOauth(row);
+
+      await callOpencode(row.name, "complete authentication for", () =>
+        options.opencodeService.completeMcpAuth(options.config.paths.workspaceDir, row.name, code),
       );
       return readOne(row);
     },
@@ -160,9 +181,8 @@ export function createMcpServerService(options: {
         throw new NotFoundError("MCP server not found.");
       }
 
-      const result = await options.opencodeService.removeMcpAuth(
-        options.config.paths.workspaceDir,
-        row.name,
+      const result = await callOpencode(row.name, "remove credentials for", () =>
+        options.opencodeService.removeMcpAuth(options.config.paths.workspaceDir, row.name),
       );
       return mcpAuthRemoveResultSchema.parse(result);
     },
@@ -242,6 +262,33 @@ export function createMcpServerService(options: {
   }
 }
 
+function assertRowSupportsOauth(row: typeof mcp_servers.$inferSelect): void {
+  const config = mcpServerConfigSchema.parse(JSON.parse(row.config_json));
+
+  if (config.transport === "stdio") {
+    throw new BadRequestError("Local (stdio) MCP servers do not support OAuth authentication.");
+  }
+
+  if (config.authMethod !== "oauth") {
+    throw new BadRequestError(
+      `MCP server '${row.name}' is not configured to use OAuth authentication.`,
+    );
+  }
+}
+
+async function callOpencode<T>(
+  serverName: string,
+  action: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new BadRequestError(`Failed to ${action} MCP server '${serverName}': ${message}`);
+  }
+}
+
 function readStatus(
   statuses: Record<string, McpRuntimeStatus>,
   name: string,
@@ -286,7 +333,7 @@ function renderConfigEntry(row: typeof mcp_servers.$inferSelect): Record<string,
     type: "remote",
     url: config.url,
     enabled: row.enabled,
-    ...(config.authMethod === "oauth" ? { oauth: true } : {}),
+    ...(config.authMethod === "oauth" ? {} : { oauth: false }),
     ...(config.headers.length > 0 ? { headers } : {}),
   };
 }

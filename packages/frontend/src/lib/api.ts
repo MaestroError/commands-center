@@ -99,6 +99,16 @@ export async function startMcpAuth(id: string): Promise<McpAuthStartResult> {
   );
 }
 
+export async function authenticateMcp(id: string): Promise<McpServer> {
+  return requestJson<McpServer>(
+    `/api/mcp-servers/${encodeURIComponent(id)}/auth/authenticate`,
+    mcpServerSchema,
+    {
+      method: "POST",
+    },
+  );
+}
+
 export async function completeMcpAuth(id: string, code: string): Promise<McpServer> {
   return requestJson<McpServer>(
     `/api/mcp-servers/${encodeURIComponent(id)}/auth/callback`,

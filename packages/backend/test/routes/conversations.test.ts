@@ -412,5 +412,6 @@ function createBaseOpenCodeService() {
     startMcpAuth: () => Promise.resolve({ authorizationUrl: "https://auth.example/oauth" }),
     completeMcpAuth: () => Promise.resolve({ status: "connected" as const }),
     removeMcpAuth: () => Promise.resolve({ success: true as const }),
+    authenticateMcp: () => Promise.resolve({ status: "connected" as const }),
   };
 }

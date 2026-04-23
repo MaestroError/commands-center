@@ -223,6 +223,17 @@ export function createOpenCodeService(options: { client: OpencodeClient; config:
       return mcpRuntimeStatusSchema.parse(result);
     },
 
+    async authenticateMcp(directory: string, name: string): Promise<McpRuntimeStatus> {
+      const result = await requestOpenCodeJson({
+        config: options.config,
+        directory,
+        method: "POST",
+        path: `/mcp/${encodeURIComponent(name)}/auth/authenticate`,
+      });
+
+      return mcpRuntimeStatusSchema.parse(result);
+    },
+
     async removeMcpAuth(directory: string, name: string): Promise<McpAuthRemoveResult> {
       const result = await requestOpenCodeJson({
         config: options.config,

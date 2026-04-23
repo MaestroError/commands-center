@@ -255,5 +255,6 @@ function createMockOpenCodeService(): OpenCodeService {
       return Promise.resolve({ status: "connected" as const });
     }),
     removeMcpAuth: vi.fn(() => Promise.resolve({ success: true as const })),
+    authenticateMcp: vi.fn(() => Promise.resolve({ status: "connected" as const })),
   } as unknown as OpenCodeService;
 }

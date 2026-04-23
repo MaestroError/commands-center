@@ -4,8 +4,7 @@ import { z } from "zod";
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "0.0.0.0";
-const DEFAULT_DATA_DIR = ".cc";
-const DEFAULT_WORKSPACE_DIR_NAME = "workspace";
+const DEFAULT_WORKSPACE_DIR = ".cc/workspace";
 const DEFAULT_OPENCODE_TIMEOUT_MS = 30_000;
 const DEFAULT_OPENCODE_STARTUP_TIMEOUT_MS = 30_000;
 const DEFAULT_OPENCODE_SHUTDOWN_TIMEOUT_MS = 15_000;
@@ -48,7 +47,6 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).optional().default("development"),
   CC_PORT: positiveInteger("CC_PORT", DEFAULT_PORT),
   CC_HOST: z.string().trim().optional().default(DEFAULT_HOST),
-  CC_DATA_DIR: z.string().trim().optional().default(DEFAULT_DATA_DIR),
   CC_WORKSPACE_DIR: z.string().trim().optional(),
   DATABASE_URL: z.string().trim().optional(),
   CC_OPENCODE_TIMEOUT_MS: positiveInteger("CC_OPENCODE_TIMEOUT_MS", DEFAULT_OPENCODE_TIMEOUT_MS),
@@ -90,7 +88,6 @@ export type RuntimeConfig = {
   };
   paths: {
     cwd: string;
-    dataDir: string;
     workspaceDir: string;
     subdirectories: {
       agents: string;
@@ -150,12 +147,11 @@ export function loadRuntimeConfig(options?: {
     throw new Error(`Invalid runtime configuration: ${details}`);
   }
 
-  const dataDir = resolve(cwd, parsedEnv.data.CC_DATA_DIR);
   const workspaceDir = parsedEnv.data.CC_WORKSPACE_DIR
     ? isAbsolute(parsedEnv.data.CC_WORKSPACE_DIR)
       ? parsedEnv.data.CC_WORKSPACE_DIR
       : resolve(cwd, parsedEnv.data.CC_WORKSPACE_DIR)
-    : resolve(dataDir, DEFAULT_WORKSPACE_DIR_NAME);
+    : resolve(cwd, DEFAULT_WORKSPACE_DIR);
 
   return {
     nodeEnv: parsedEnv.data.NODE_ENV,
@@ -165,7 +161,6 @@ export function loadRuntimeConfig(options?: {
     },
     paths: {
       cwd,
-      dataDir,
       workspaceDir,
       subdirectories: {
         agents: resolve(workspaceDir, "agents"),
@@ -210,7 +205,6 @@ export function getStartupLogContext(config: RuntimeConfig): Record<string, unkn
     server: config.server,
     opencode: config.opencode,
     paths: {
-      dataDir: config.paths.dataDir,
       workspaceDir: config.paths.workspaceDir,
       databaseFile: config.paths.databaseFile,
     },

@@ -15,7 +15,6 @@ describe("loadRuntimeConfig", () => {
 
     expect(config.server.port).toBe(3000);
     expect(config.server.host).toBe("0.0.0.0");
-    expect(config.paths.dataDir).toBe("/tmp/project/.cc");
     expect(config.paths.workspaceDir).toBe("/tmp/project/.cc/workspace");
     expect(config.paths.subdirectories.database).toBe("/tmp/project/.cc/workspace/database");
     expect(config.paths.databaseFile).toBe("/tmp/project/.cc/workspace/database/local.db");
@@ -58,7 +57,6 @@ describe("loadRuntimeConfig", () => {
         baseUrl: "http://127.0.0.1:4100",
       },
       paths: {
-        dataDir: "/tmp/project/.cc",
         workspaceDir: "/tmp/project/.cc/workspace",
         databaseFile: "/tmp/project/.cc/workspace/database/local.db",
       },
@@ -88,7 +86,6 @@ describe("loadRuntimeConfig", () => {
       },
     });
 
-    expect(config.paths.dataDir).toBe("/tmp/workspace-root/.cc");
     expect(config.paths.workspaceDir).toBe("/tmp/workspace-root/.cc/workspace");
   });
 
@@ -102,7 +99,6 @@ describe("loadRuntimeConfig", () => {
         },
       });
 
-      expect(config.paths.dataDir).toBe("/tmp/user-home/.cc");
       expect(config.paths.workspaceDir).toBe("/tmp/user-home/.cc/workspace");
     } finally {
       home.mockRestore();

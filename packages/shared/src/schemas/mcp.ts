@@ -43,7 +43,7 @@ export const mcpToolSchema = z.object({
 export const mcpToolListSchema = z.array(mcpToolSchema);
 
 export const mcpAuthStartResultSchema = z.object({
-  authorizationUrl: z.string().url(),
+  authorizationUrl: z.string(),
 });
 
 export const mcpAuthRemoveResultSchema = z.object({

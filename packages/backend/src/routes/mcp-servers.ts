@@ -70,6 +70,16 @@ export function registerMcpServerRoutes(server: AppServer, context: RuntimeConte
   );
 
   app.post(
+    "/api/mcp-servers/:mcpServerId/auth/authenticate",
+    {
+      schema: {
+        params: mcpServerParamsSchema,
+      },
+    },
+    async (request) => service.authenticate(request.params.mcpServerId),
+  );
+
+  app.post(
     "/api/mcp-servers/:mcpServerId/auth/callback",
     {
       schema: {

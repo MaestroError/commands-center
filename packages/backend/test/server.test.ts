@@ -80,7 +80,6 @@ describe("createServer", () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({
         status: "ok",
-        dataDir: "/tmp/project/.cc",
         workspaceDir: "/tmp/project/.cc/workspace",
         database: {
           dialect: "sqlite",

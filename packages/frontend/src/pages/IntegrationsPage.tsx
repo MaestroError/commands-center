@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 
 type DialogState =
-  | { mode: "create" }
+  | { mode: "create"; prefill?: FormState }
   | {
       mode: "edit";
       server: McpServer;
@@ -24,6 +24,308 @@ type FormState = {
 };
 
 type FormErrors = Partial<Record<keyof FormState, string>>;
+
+type SuggestedMcpServer = {
+  id: string;
+  name: string;
+  description: string;
+  authBadge: string;
+  tags: string[];
+  form: FormState;
+};
+
+const EMPTY_FORM_BASE = {
+  url: "",
+  headersText: "",
+  commandText: "",
+  environmentText: "",
+} as const;
+
+const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
+  {
+    id: "notion",
+    name: "Notion",
+    description: "Pages, databases, and project docs in sync.",
+    authBadge: "OAuth",
+    tags: ["auth:oauth", "category:productivity", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "notion",
+      url: "https://mcp.notion.com/mcp",
+      transport: "streamable-http",
+      authMethod: "oauth",
+    },
+  },
+  {
+    id: "context7",
+    name: "Context7",
+    description: "Search product docs with richer context.",
+    authBadge: "API key",
+    tags: ["auth:api-key", "category:documentation", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "context7",
+      url: "https://mcp.context7.com/mcp",
+      transport: "streamable-http",
+      authMethod: "headers",
+      headersText: "CONTEXT7_API_KEY: <your-context7-api-key>",
+    },
+  },
+  {
+    id: "github",
+    name: "GitHub",
+    description: "Issues, pull requests, and repo automation.",
+    authBadge: "PAT",
+    tags: ["auth:pat", "category:dev-tools", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "github",
+      url: "https://api.githubcopilot.com/mcp/",
+      transport: "streamable-http",
+      authMethod: "headers",
+      headersText: "Authorization: Bearer <your-github-personal-access-token>",
+    },
+  },
+  {
+    id: "brave-search",
+    name: "Brave Search",
+    description: "Privacy-first web search via Brave's API.",
+    authBadge: "API token",
+    tags: ["auth:api-key", "category:search", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "brave-search",
+      url: "https://mcp.brave.com/mcp",
+      transport: "streamable-http",
+      authMethod: "headers",
+      headersText: "X-Subscription-Token: <your-brave-api-key>",
+    },
+  },
+  {
+    id: "linear",
+    name: "Linear",
+    description: "Issues, projects, and cycles via Linear's official MCP.",
+    authBadge: "OAuth",
+    tags: ["auth:oauth", "category:productivity", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "linear",
+      url: "https://mcp.linear.app/mcp",
+      transport: "streamable-http",
+      authMethod: "oauth",
+    },
+  },
+  {
+    id: "sentry",
+    name: "Sentry",
+    description: "Inspect errors, releases, and performance issues.",
+    authBadge: "OAuth",
+    tags: ["auth:oauth", "category:monitoring", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "sentry",
+      url: "https://mcp.sentry.dev/mcp",
+      transport: "streamable-http",
+      authMethod: "oauth",
+    },
+  },
+  {
+    id: "vercel",
+    name: "Vercel",
+    description: "Deployments, projects, and logs from Vercel.",
+    authBadge: "OAuth",
+    tags: ["auth:oauth", "category:deployment", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "vercel",
+      url: "https://mcp.vercel.com/",
+      transport: "streamable-http",
+      authMethod: "oauth",
+    },
+  },
+  {
+    id: "supabase",
+    name: "Supabase",
+    description: "Project, database, and storage operations on Supabase.",
+    authBadge: "OAuth",
+    tags: ["auth:oauth", "category:database", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "supabase",
+      url: "https://mcp.supabase.com/mcp",
+      transport: "streamable-http",
+      authMethod: "oauth",
+    },
+  },
+  {
+    id: "playwright",
+    name: "Playwright",
+    description: "Microsoft's official browser automation via accessibility tree.",
+    authBadge: "Local",
+    tags: [
+      "auth:none",
+      "category:browser",
+      "language:node",
+      "launcher:npx",
+      "type:local",
+      "source:official",
+    ],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "playwright",
+      transport: "stdio",
+      authMethod: "none",
+      commandText: "npx\n-y\n@playwright/mcp@latest",
+    },
+  },
+  {
+    id: "antv-chart",
+    name: "AntV Charts",
+    description: "Generate 25+ chart types (line, bar, pie, sankey, treemap, mind map).",
+    authBadge: "Local",
+    tags: [
+      "auth:none",
+      "category:charts",
+      "language:node",
+      "launcher:npx",
+      "type:local",
+      "source:official",
+    ],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "antv-chart",
+      transport: "stdio",
+      authMethod: "none",
+      commandText: "npx\n-y\n@antv/mcp-server-chart",
+    },
+  },
+  {
+    id: "mermaid",
+    name: "Mermaid",
+    description: "Render Mermaid diagrams (flowcharts, sequence, ER, gantt, class).",
+    authBadge: "Local",
+    tags: [
+      "auth:none",
+      "category:diagrams",
+      "language:node",
+      "launcher:npx",
+      "type:local",
+      "source:community",
+    ],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "mermaid",
+      transport: "stdio",
+      authMethod: "none",
+      commandText: "npx\n-y\nmcp-mermaid",
+    },
+  },
+  {
+    id: "fetcher",
+    name: "Fetcher",
+    description: "Playwright-based web fetcher with JS rendering, returns clean Markdown.",
+    authBadge: "Local",
+    tags: [
+      "auth:none",
+      "category:web-fetching",
+      "language:node",
+      "launcher:npx",
+      "type:local",
+      "source:community",
+    ],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "fetcher",
+      transport: "stdio",
+      authMethod: "none",
+      commandText: "npx\n-y\nfetcher-mcp",
+    },
+  },
+  {
+    id: "markitdown",
+    name: "MarkItDown",
+    description: "Convert PDF, DOCX, PPTX, XLSX, images, and audio to Markdown (Microsoft).",
+    authBadge: "Local",
+    tags: [
+      "auth:none",
+      "category:documents",
+      "language:python",
+      "launcher:uvx",
+      "type:local",
+      "source:official",
+    ],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "markitdown",
+      transport: "stdio",
+      authMethod: "none",
+      commandText: "uvx\nmarkitdown-mcp",
+    },
+  },
+  {
+    id: "duckduckgo",
+    name: "DuckDuckGo",
+    description: "Free web search with no API key required.",
+    authBadge: "Local",
+    tags: [
+      "auth:none",
+      "category:search",
+      "language:python",
+      "launcher:uvx",
+      "type:local",
+      "source:community",
+    ],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "duckduckgo",
+      transport: "stdio",
+      authMethod: "none",
+      commandText: "uvx\nduckduckgo-mcp-server",
+    },
+  },
+  {
+    id: "memory",
+    name: "Memory",
+    description: "Persistent knowledge graph stored locally. Anthropic reference implementation.",
+    authBadge: "Local",
+    tags: [
+      "auth:none",
+      "category:memory",
+      "language:node",
+      "launcher:npx",
+      "type:local",
+      "source:reference",
+    ],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "memory",
+      transport: "stdio",
+      authMethod: "none",
+      commandText: "npx\n-y\n@modelcontextprotocol/server-memory",
+    },
+  },
+  {
+    id: "sequential-thinking",
+    name: "Sequential Thinking",
+    description: "Structured step-by-step reasoning helper. Anthropic reference implementation.",
+    authBadge: "Local",
+    tags: [
+      "auth:none",
+      "category:reasoning",
+      "language:node",
+      "launcher:npx",
+      "type:local",
+      "source:reference",
+    ],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "sequential-thinking",
+      transport: "stdio",
+      authMethod: "none",
+      commandText: "npx\n-y\n@modelcontextprotocol/server-sequential-thinking",
+    },
+  },
+];
 
 export function IntegrationsPage() {
   const mcpServersQuery = useMcpServersQuery();
@@ -79,6 +381,13 @@ export function IntegrationsPage() {
       ) : null}
 
       {mcpServersQuery.isLoading ? <LoadingState testId="mcp-loading" /> : null}
+
+      {!mcpServersQuery.isLoading && !queryError ? (
+        <SuggestedMcpServersSection
+          configuredNames={mcpServers.map((server) => server.name)}
+          onSelect={(suggestion) => setDialog({ mode: "create", prefill: suggestion.form })}
+        />
+      ) : null}
 
       {!mcpServersQuery.isLoading && !queryError ? (
         <section className="cc-panel p-6">
@@ -142,19 +451,12 @@ export function IntegrationsPage() {
         </section>
       ) : null}
 
-      <section className="cc-panel p-6">
-        <h2 className="text-lg font-semibold text-text-primary">Composio</h2>
-        <p className="mt-1 text-sm text-text-secondary">
-          Composio shortcuts and built-in setup flows will be added in I5. This slice focuses on
-          generic external MCP lifecycle management.
-        </p>
-      </section>
-
       {dialog ? (
         <McpServerDialog
           busy={mcpMutations.create.isPending || mcpMutations.update.isPending}
           initialServer={dialog.mode === "edit" ? dialog.server : undefined}
           mode={dialog.mode}
+          prefill={dialog.mode === "create" ? dialog.prefill : undefined}
           onClose={() => setDialog(undefined)}
           onSubmit={async (input: {
             name: string;
@@ -177,6 +479,14 @@ export function IntegrationsPage() {
             if (dialog.mode === "create") {
               const created = await mcpMutations.create.mutateAsync({ ...input, enabled: true });
               setSuccessMessage(`${created.name} added.`);
+
+              if (
+                created.config.transport !== "stdio" &&
+                created.config.authMethod === "oauth" &&
+                created.runtimeStatus?.status !== "connected"
+              ) {
+                setAuthServer(created);
+              }
               return;
             }
 
@@ -191,17 +501,16 @@ export function IntegrationsPage() {
 
       {authServer ? (
         <McpAuthDialog
-          busy={mcpMutations.startAuth.isPending || mcpMutations.completeAuth.isPending}
+          busy={mcpMutations.authenticate.isPending}
           onClose={() => setAuthServer(undefined)}
-          onSubmit={async (code) => {
+          onAuthenticate={async () => {
             setSuccessMessage(undefined);
-            const updated = await mcpMutations.completeAuth.mutateAsync({
+            const updated = await mcpMutations.authenticate.mutateAsync({
               id: authServer.id,
-              code,
             });
             setSuccessMessage(`${updated.name} authenticated.`);
+            setAuthServer(undefined);
           }}
-          onStart={async () => mcpMutations.startAuth.mutateAsync({ id: authServer.id })}
           server={authServer}
         />
       ) : null}
@@ -318,11 +627,8 @@ function McpAuthDialog(props: {
   server: McpServer;
   busy: boolean;
   onClose: () => void;
-  onStart: () => Promise<{ authorizationUrl: string }>;
-  onSubmit: (code: string) => Promise<void>;
+  onAuthenticate: () => Promise<void>;
 }) {
-  const [authorizationUrl, setAuthorizationUrl] = useState<string>();
-  const [code, setCode] = useState("");
   const [error, setError] = useState<string>();
 
   return (
@@ -334,7 +640,8 @@ function McpAuthDialog(props: {
               Authenticate {props.server.name}
             </h2>
             <p className="mt-1 text-sm text-text-secondary">
-              Start the OAuth flow in your browser, then paste the returned callback code here.
+              We&rsquo;ll open your default browser to complete sign-in. This window will update
+              automatically when authentication succeeds.
             </p>
           </div>
           <button
@@ -350,49 +657,22 @@ function McpAuthDialog(props: {
           <button
             className="cc-button"
             disabled={props.busy}
-            onClick={() => void handleStart()}
+            onClick={() => void handleAuthenticate()}
             type="button"
           >
-            {props.busy ? "Starting..." : "Start OAuth"}
+            {props.busy ? "Waiting for browser sign-in..." : "Authenticate in browser"}
           </button>
-
-          {authorizationUrl ? (
-            <div className="rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
-              <p className="font-medium">Authorization URL</p>
-              <a
-                className="mt-2 block break-all text-accent hover:underline"
-                href={authorizationUrl}
-                rel="noreferrer"
-                target="_blank"
-              >
-                {authorizationUrl}
-              </a>
-            </div>
-          ) : null}
-
-          <Field label="Callback code" required>
-            <input
-              aria-label="Callback code"
-              className="cc-input"
-              onChange={(event) => setCode(event.target.value)}
-              placeholder="Paste the OAuth callback code"
-              value={code}
-            />
-          </Field>
 
           {error ? <p className="text-sm text-danger">{error}</p> : null}
 
           <div className="flex flex-wrap justify-end gap-2">
-            <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
-              Cancel
-            </button>
             <button
-              className="cc-button"
-              disabled={props.busy || code.trim().length === 0}
-              onClick={() => void handleSubmit()}
+              className="cc-button cc-button-secondary"
+              disabled={props.busy}
+              onClick={props.onClose}
               type="button"
             >
-              {props.busy ? "Completing..." : "Complete auth"}
+              {props.busy ? "Cancel disabled" : "Close"}
             </button>
           </div>
         </div>
@@ -400,24 +680,11 @@ function McpAuthDialog(props: {
     </div>
   );
 
-  async function handleStart() {
+  async function handleAuthenticate() {
     setError(undefined);
 
     try {
-      const result = await props.onStart();
-      setAuthorizationUrl(result.authorizationUrl);
-      window.open(result.authorizationUrl, "_blank", "noopener,noreferrer");
-    } catch (nextError) {
-      setError(readError(nextError));
-    }
-  }
-
-  async function handleSubmit() {
-    setError(undefined);
-
-    try {
-      await props.onSubmit(code.trim());
-      props.onClose();
+      await props.onAuthenticate();
     } catch (nextError) {
       setError(readError(nextError));
     }
@@ -427,6 +694,7 @@ function McpAuthDialog(props: {
 function McpServerDialog(props: {
   mode: "create" | "edit";
   initialServer?: McpServer;
+  prefill?: FormState;
   busy: boolean;
   onClose: () => void;
   onSubmit: (input: {
@@ -447,8 +715,8 @@ function McpServerDialog(props: {
   }) => Promise<void>;
 }) {
   const initialForm = useMemo<FormState>(
-    () => createForm(props.initialServer),
-    [props.initialServer],
+    () => props.prefill ?? createForm(props.initialServer),
+    [props.initialServer, props.prefill],
   );
   const [form, setForm] = useState<FormState>(initialForm);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -822,6 +1090,55 @@ function isValidUrl(value: string): boolean {
 
 function readError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "Request failed.";
+}
+
+function SuggestedMcpServersSection(props: {
+  configuredNames: string[];
+  onSelect: (suggestion: SuggestedMcpServer) => void;
+}) {
+  const configured = new Set(props.configuredNames.map((name) => name.toLowerCase()));
+  const visible = SUGGESTED_MCP_SERVERS.filter(
+    (suggestion) =>
+      !configured.has(suggestion.name.toLowerCase()) &&
+      !configured.has(suggestion.form.name.toLowerCase()),
+  );
+
+  if (visible.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="cc-panel p-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-text-primary">Suggested MCPs</h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            One-click presets that prefill the &ldquo;Add MCP server&rdquo; form. Review the details
+            and adjust before saving.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {visible.map((suggestion) => (
+          <button
+            aria-label={`Add ${suggestion.name}`}
+            className="flex h-full flex-col items-start gap-2 rounded-lg border border-border bg-surface p-5 text-left transition hover:border-accent hover:bg-surface-elevated"
+            key={suggestion.id}
+            onClick={() => props.onSelect(suggestion)}
+            type="button"
+          >
+            <div className="flex w-full items-start justify-between gap-3">
+              <h3 className="text-base font-semibold text-text-primary">{suggestion.name}</h3>
+              <span className="cc-badge cc-badge-muted">{suggestion.authBadge}</span>
+            </div>
+            <p className="text-sm text-text-secondary">{suggestion.description}</p>
+            <span className="mt-auto text-sm font-medium text-accent">Tap to connect</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function CloseIcon() {

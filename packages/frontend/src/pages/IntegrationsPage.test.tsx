@@ -16,9 +16,9 @@ const setEnabledMutateAsync = vi.fn();
 const removeMutateAsync = vi.fn();
 const startAuthMutateAsync = vi.fn();
 const completeAuthMutateAsync = vi.fn();
+const authenticateMutateAsync = vi.fn();
 const removeAuthMutateAsync = vi.fn();
 const confirmSpy = vi.spyOn(window, "confirm");
-const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 
 beforeEach(() => {
   createMutateAsync.mockReset();
@@ -27,6 +27,7 @@ beforeEach(() => {
   removeMutateAsync.mockReset();
   startAuthMutateAsync.mockReset();
   completeAuthMutateAsync.mockReset();
+  authenticateMutateAsync.mockReset();
   removeAuthMutateAsync.mockReset();
   confirmSpy.mockReset();
   confirmSpy.mockReturnValue(true);
@@ -45,6 +46,7 @@ beforeEach(() => {
     remove: { mutateAsync: removeMutateAsync, isPending: false },
     startAuth: { mutateAsync: startAuthMutateAsync, isPending: false },
     completeAuth: { mutateAsync: completeAuthMutateAsync, isPending: false },
+    authenticate: { mutateAsync: authenticateMutateAsync, isPending: false },
     removeAuth: { mutateAsync: removeAuthMutateAsync, isPending: false },
   } as never);
 });
@@ -131,6 +133,76 @@ describe("IntegrationsPage", () => {
         },
       });
     });
+  });
+
+  it("auto-opens the auth dialog after adding an OAuth MCP server", async () => {
+    createMutateAsync.mockResolvedValue({
+      id: "mcp-new",
+      name: "notion",
+      enabled: true,
+      config: {
+        url: "https://mcp.notion.com/mcp",
+        transport: "streamable-http",
+        authMethod: "oauth",
+        headers: [],
+      },
+      runtimeStatus: { status: "needs_auth" },
+      tools: [],
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T10:00:00.000Z",
+    });
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "notion" } });
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "https://mcp.notion.com/mcp" },
+    });
+    fireEvent.change(screen.getByLabelText("Auth method"), { target: { value: "oauth" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Authenticate in browser" })).toBeInTheDocument();
+    });
+  });
+
+  it("does not auto-open the auth dialog after adding a non-OAuth server", async () => {
+    createMutateAsync.mockResolvedValue({
+      id: "mcp-new",
+      name: "github",
+      enabled: true,
+      config: {
+        url: "https://example.com/mcp",
+        transport: "streamable-http",
+        authMethod: "headers",
+        headers: [{ key: "Authorization", value: "Bearer secret" }],
+      },
+      runtimeStatus: { status: "connected" },
+      tools: [],
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T10:00:00.000Z",
+    });
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "github" } });
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "https://example.com/mcp" },
+    });
+    fireEvent.change(screen.getByLabelText("Headers"), {
+      target: { value: "Authorization: Bearer secret" },
+    });
+    fireEvent.change(screen.getByLabelText("Auth method"), { target: { value: "headers" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalled();
+    });
+    expect(
+      screen.queryByRole("button", { name: "Authenticate in browser" }),
+    ).not.toBeInTheDocument();
   });
 
   it("submits a stdio MCP server from the dialog", async () => {
@@ -283,9 +355,8 @@ describe("IntegrationsPage", () => {
     });
   });
 
-  it("supports MCP OAuth start, callback completion, and auth removal", async () => {
-    startAuthMutateAsync.mockResolvedValue({ authorizationUrl: "https://example.com/oauth" });
-    completeAuthMutateAsync.mockResolvedValue({ name: "github" });
+  it("supports MCP authenticate-in-browser flow and credential removal", async () => {
+    authenticateMutateAsync.mockResolvedValue({ name: "github" });
     removeAuthMutateAsync.mockResolvedValue({ success: true });
     vi.mocked(useMcpServersQuery).mockReturnValue({
       data: [
@@ -313,22 +384,10 @@ describe("IntegrationsPage", () => {
     render(<IntegrationsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Re-authenticate" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start OAuth" }));
+    fireEvent.click(screen.getByRole("button", { name: "Authenticate in browser" }));
 
     await waitFor(() => {
-      expect(startAuthMutateAsync).toHaveBeenCalledWith({ id: "mcp-1" });
-      expect(openSpy).toHaveBeenCalledWith(
-        "https://example.com/oauth",
-        "_blank",
-        "noopener,noreferrer",
-      );
-    });
-
-    fireEvent.change(screen.getByLabelText("Callback code"), { target: { value: "done" } });
-    fireEvent.click(screen.getByRole("button", { name: "Complete auth" }));
-
-    await waitFor(() => {
-      expect(completeAuthMutateAsync).toHaveBeenCalledWith({ id: "mcp-1", code: "done" });
+      expect(authenticateMutateAsync).toHaveBeenCalledWith({ id: "mcp-1" });
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Remove auth" }));
@@ -371,5 +430,73 @@ describe("IntegrationsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Create failed")).toBeInTheDocument();
     });
+  });
+
+  it("renders suggested MCP server cards", () => {
+    render(<IntegrationsPage />);
+
+    expect(screen.getByText("Suggested MCPs")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Notion" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Context7" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add GitHub" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Brave Search" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Linear" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Sentry" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Vercel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Supabase" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Playwright" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add AntV Charts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Mermaid" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Fetcher" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add MarkItDown" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add DuckDuckGo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Memory" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Sequential Thinking" })).toBeInTheDocument();
+  });
+
+  it("does not render the Composio panel", () => {
+    render(<IntegrationsPage />);
+
+    expect(screen.queryByText("Composio")).not.toBeInTheDocument();
+  });
+
+  it("prefills the add MCP server dialog from a suggestion", () => {
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Notion" }));
+
+    expect(screen.getByLabelText("Name")).toHaveValue("notion");
+    expect(screen.getByLabelText("URL")).toHaveValue("https://mcp.notion.com/mcp");
+    expect(screen.getByLabelText("Auth method")).toHaveValue("oauth");
+  });
+
+  it("hides a suggestion when a server with the same name is already configured", () => {
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        {
+          id: "mcp-1",
+          name: "notion",
+          enabled: true,
+          config: {
+            url: "https://mcp.notion.com/mcp",
+            transport: "streamable-http",
+            authMethod: "oauth",
+            headers: [],
+          },
+          runtimeStatus: { status: "connected" },
+          tools: [],
+          createdAt: "2026-04-22T10:00:00.000Z",
+          updatedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    render(<IntegrationsPage />);
+
+    expect(screen.queryByRole("button", { name: "Add Notion" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add GitHub" })).toBeInTheDocument();
   });
 });

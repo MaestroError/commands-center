@@ -531,10 +531,9 @@ All runtime configuration is managed through environment variables. Validated at
 
 ## Workspace & Storage
 
-| Variable           | Default        | Required | Description                                                               |
-| ------------------ | -------------- | -------- | ------------------------------------------------------------------------- |
-| `CC_DATA_DIR`      | `.cc`          | No       | App data directory (DB, configs, logs). Relative to workspace or absolute |
-| `CC_WORKSPACE_DIR` | `./workspaces` | No       | Root directory where agent workspace folders are created                  |
+| Variable           | Default          | Required | Description                                              |
+| ------------------ | ---------------- | -------- | -------------------------------------------------------- |
+| `CC_WORKSPACE_DIR` | `.cc/workspace`  | No       | Portable workspace directory (DB, configs, agent state). Relative paths are resolved against cwd. |
 
 ## Automations (Cron)
 

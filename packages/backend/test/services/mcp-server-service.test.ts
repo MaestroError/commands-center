@@ -54,6 +54,7 @@ describe("mcp-server-service", () => {
         type: "remote",
         url: "https://example.com/mcp",
         enabled: true,
+        oauth: false,
         headers: {
           Authorization: "Bearer secret",
         },
@@ -214,12 +215,12 @@ describe("mcp-server-service", () => {
         type: "remote",
         url: "https://oauth.example.com/mcp",
         enabled: true,
-        oauth: true,
       });
       expect(rendered.mcp["plain-server"]).toEqual({
         type: "remote",
         url: "https://plain.example.com/mcp",
         enabled: false,
+        oauth: false,
         headers: {
           "X-API-Key": "secret",
         },
@@ -309,6 +310,136 @@ describe("mcp-server-service", () => {
       await testDb.cleanup();
     }
   });
+
+  it("authenticates an OAuth MCP server in the browser via opencode", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      orchestrator: createOrchestrator(),
+      opencodeService,
+    });
+
+    try {
+      const created = await service.create({
+        name: "github",
+        enabled: true,
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+
+      const authenticated = await service.authenticate(created.id);
+      expect(opencodeService.authenticateMcp).toHaveBeenCalledWith(
+        testDb.config.paths.workspaceDir,
+        "github",
+      );
+      expect(authenticated.runtimeStatus).toEqual({ status: "connected" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("short-circuits authenticate when the MCP server is already connected", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    vi.mocked(opencodeService.listMcpStatus).mockResolvedValue({
+      github: { status: "connected" },
+    });
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      orchestrator: createOrchestrator(),
+      opencodeService,
+    });
+
+    try {
+      const created = await service.create({
+        name: "github",
+        enabled: true,
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+
+      vi.mocked(opencodeService.authenticateMcp).mockClear();
+      const authenticated = await service.authenticate(created.id);
+      expect(opencodeService.authenticateMcp).not.toHaveBeenCalled();
+      expect(authenticated.runtimeStatus).toEqual({ status: "connected" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects OAuth flows for non-OAuth MCP servers", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      orchestrator: createOrchestrator(),
+      opencodeService,
+    });
+
+    try {
+      const created = await service.create({
+        name: "github",
+        enabled: true,
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "headers",
+          headers: [{ key: "Authorization", value: "Bearer secret" }],
+        },
+      });
+
+      await expect(service.authenticate(created.id)).rejects.toThrow(/not configured to use OAuth/);
+      await expect(service.startAuth(created.id)).rejects.toThrow(/not configured to use OAuth/);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("translates upstream opencode failures into a BadRequestError", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    vi.mocked(opencodeService.authenticateMcp).mockRejectedValue(
+      new Error("OpenCode request failed: POST /mcp/github/auth/authenticate \u2192 400: nope"),
+    );
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      orchestrator: createOrchestrator(),
+      opencodeService,
+    });
+
+    try {
+      const created = await service.create({
+        name: "github",
+        enabled: true,
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+
+      await expect(service.authenticate(created.id)).rejects.toMatchObject({
+        statusCode: 400,
+        code: "bad_request",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
 });
 
 function createOrchestrator() {
@@ -342,6 +473,10 @@ function createMockOpenCodeService(): OpenCodeService {
     ),
     startMcpAuth: vi.fn(() => Promise.resolve({ authorizationUrl: "https://example.com/oauth" })),
     completeMcpAuth: vi.fn(() => {
+      authenticated = true;
+      return Promise.resolve({ status: "connected" as const });
+    }),
+    authenticateMcp: vi.fn(() => {
       authenticated = true;
       return Promise.resolve({ status: "connected" as const });
     }),
