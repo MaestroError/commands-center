@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { now } from "../../src/db/ids";
+import { mcp_servers } from "../../src/db/schema";
 import { createAgentService } from "../../src/services/agent-service";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
@@ -24,6 +26,21 @@ describe("createAgentService", () => {
     });
 
     try {
+      await testDb.client.db.insert(mcp_servers).values({
+        id: "mcp-1",
+        name: "github",
+        transport: "streamable-http",
+        enabled: true,
+        config_json: JSON.stringify({
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        }),
+        created_at: now(),
+        updated_at: now(),
+      });
+
       const agent = await service.create({
         name: "Reviewer",
         role: "review code",
@@ -231,6 +248,84 @@ describe("createAgentService", () => {
           },
         }),
       ).rejects.toThrow("Agent identifier 'testing-agent' is already in use.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("drops references to MCP servers that no longer exist while preserving unrelated permissions", async () => {
+    const testDb = await createTestDatabase();
+    const service = createAgentService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      skillRoot: join(testDb.cwd, "builtin-skills"),
+    });
+
+    try {
+      const agent = await service.create({
+        name: "Normalizer",
+        role: "clean capabilities",
+        instructions: "Keep only valid MCP references.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          mcpServers: [{ name: "github", enabled: true, action: "allow" }],
+          toolPermissions: [
+            { pattern: "github_create_issue", action: "ask" },
+            { pattern: "custom_write", action: "allow" },
+          ],
+        },
+      });
+
+      expect(agent.capabilities.mcpServers).toEqual([]);
+      expect(agent.capabilities.toolPermissions).toEqual([
+        { pattern: "custom_write", action: "allow" },
+      ]);
+
+      const config = await readFile(join(agent.workspacePath, "opencode.jsonc"), "utf8");
+      expect(config).not.toContain('"github"');
+      expect(config).not.toContain('"github_create_issue"');
+      expect(config).toContain('"custom_write": "allow"');
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("updates agents using the current workspace root even when stored workspace paths are stale", async () => {
+    const testDb = await createTestDatabase();
+    const dispose = vi.fn(() => Promise.resolve());
+    const service = createAgentService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ dispose }),
+      skillRoot: join(testDb.cwd, "builtin-skills"),
+    });
+
+    try {
+      const created = await service.create({
+        name: "Testing Agent",
+        role: "test",
+        instructions: "Test workspace paths.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+
+      const updated = await service.update(created.id, {
+        instructions: "Still works with CC_WORKSPACE_DIR.",
+      });
+
+      expect(updated?.workspacePath).toBe(
+        join(testDb.config.paths.subdirectories.agents, "testing-agent"),
+      );
+      await expect(readFile(join(updated!.workspacePath, "AGENTS.md"), "utf8")).resolves.toContain(
+        "Still works with CC_WORKSPACE_DIR.",
+      );
+      expect(dispose).toHaveBeenCalledWith(updated!.workspacePath);
     } finally {
       await testDb.cleanup();
     }

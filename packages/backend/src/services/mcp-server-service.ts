@@ -27,6 +27,11 @@ import {
 import type { AppDb } from "../db/client.js";
 import type { OpenCodeOrchestrator } from "../orchestrator/opencode-orchestrator.js";
 import type { OpenCodeService } from "./opencode-service.js";
+import {
+  removeMcpReferences,
+  renameMcpReferences,
+  rewriteAgentsForMcpChange,
+} from "./agent-capability-sync.js";
 
 const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
 
@@ -97,6 +102,16 @@ export function createMcpServerService(options: {
 
       if (!row) {
         throw new Error("Failed to update MCP server record.");
+      }
+
+      if (existing.name !== parsed.name) {
+        await rewriteAgentsForMcpChange({
+          db: options.db,
+          config: options.config,
+          opencodeService: options.opencodeService,
+          transform: (capabilities) =>
+            renameMcpReferences(capabilities, existing.name, parsed.name),
+        });
       }
 
       await syncGlobalConfig();
@@ -194,6 +209,12 @@ export function createMcpServerService(options: {
       }
 
       await options.db.delete(mcp_servers).where(eq(mcp_servers.id, id));
+      await rewriteAgentsForMcpChange({
+        db: options.db,
+        config: options.config,
+        opencodeService: options.opencodeService,
+        transform: (capabilities) => removeMcpReferences(capabilities, existing.name),
+      });
       await syncGlobalConfig();
       await options.orchestrator.restart(`mcp server ${existing.name} removed`);
     },

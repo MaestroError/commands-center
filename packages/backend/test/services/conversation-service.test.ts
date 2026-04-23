@@ -21,6 +21,7 @@ describe("createConversationService", () => {
     });
     const service = createConversationService({
       db: testDb.client.db,
+      config: testDb.config,
       opencodeService,
     });
 
@@ -95,6 +96,7 @@ describe("createConversationService", () => {
     });
     const service = createConversationService({
       db: testDb.client.db,
+      config: testDb.config,
       opencodeService,
     });
 
@@ -139,6 +141,7 @@ describe("createConversationService", () => {
     });
     const service = createConversationService({
       db: testDb.client.db,
+      config: testDb.config,
       opencodeService,
     });
 
@@ -220,6 +223,7 @@ describe("createConversationService", () => {
     });
     const service = createConversationService({
       db: testDb.client.db,
+      config: testDb.config,
       opencodeService,
     });
 

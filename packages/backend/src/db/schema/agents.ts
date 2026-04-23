@@ -8,7 +8,6 @@ export const agents = sqliteTable("agents", {
   instructions: text("instructions").notNull(),
   default_model: text("default_model").notNull(),
   icon_path: text("icon_path"),
-  workspace_path: text("workspace_path").notNull(),
   status: text("status").notNull(),
   capabilities_json: text("capabilities_json").notNull(),
   created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),

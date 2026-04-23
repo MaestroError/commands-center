@@ -86,6 +86,7 @@ describe("agent flows", () => {
   it("creates an agent and navigates to edit state", async () => {
     mockApi({
       "GET /api/agents/catalog": [jsonResponse(200, catalog), jsonResponse(200, catalog)],
+      "GET /api/mcp-servers": [jsonResponse(200, []), jsonResponse(200, [])],
       "POST /api/agents": [
         jsonResponse(201, {
           ...agents[0],
@@ -154,6 +155,7 @@ describe("agent flows", () => {
     mockApi({
       "GET /api/agents": [jsonResponse(200, agents)],
       "GET /api/agents/catalog": [jsonResponse(200, catalog)],
+      "GET /api/mcp-servers": [jsonResponse(200, [])],
     });
     window.history.replaceState({}, "", "/agents/new");
     render(<App />);

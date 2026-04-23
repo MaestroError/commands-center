@@ -24,9 +24,12 @@ import type { AppDb } from "../db/client.js";
 import { type agents, conversations, messages } from "../db/schema/index.js";
 import { NotFoundError } from "../lib/api-error.js";
 import { cleanTitle, extractMediaItems, mapRemoteMessage } from "../lib/message-mapper.js";
+import type { RuntimeConfig } from "../lib/runtime-config.js";
+import { resolveAgentWorkspacePath } from "./agent-workspace.js";
 import type { OpenCodeService } from "./opencode-service.js";
 
 type AgentRow = typeof agents.$inferSelect;
+type AgentRuntimeRow = AgentRow & { workspace_path: string };
 type ConversationRow = typeof conversations.$inferSelect;
 type MessageRow = typeof messages.$inferSelect;
 
@@ -34,6 +37,7 @@ export type ConversationService = ReturnType<typeof createConversationService>;
 
 export function createConversationService(options: {
   db: AppDb;
+  config: RuntimeConfig;
   opencodeService: OpenCodeService;
 }) {
   return {
@@ -245,7 +249,7 @@ export function createConversationService(options: {
     },
   };
 
-  async function getAgent(agentId: string): Promise<AgentRow> {
+  async function getAgent(agentId: string): Promise<AgentRuntimeRow> {
     const agent = await options.db.query.agents.findFirst({
       where: (table, operators) => operators.eq(table.id, agentId),
     });
@@ -254,7 +258,7 @@ export function createConversationService(options: {
       throw new NotFoundError("Agent not found.");
     }
 
-    return agent;
+    return withResolvedWorkspacePath(agent);
   }
 
   async function getConversationRow(
@@ -278,7 +282,7 @@ export function createConversationService(options: {
   }
 
   async function getConversationAgent(conversationId: string): Promise<{
-    agent: AgentRow;
+    agent: AgentRuntimeRow;
     conversation: ConversationRow;
   }> {
     const conversation = await options.db.query.conversations.findFirst({
@@ -293,7 +297,18 @@ export function createConversationService(options: {
     return { agent, conversation };
   }
 
-  async function createConversation(agent: AgentRow): Promise<ConversationRow> {
+  function withResolvedWorkspacePath(agent: AgentRow): AgentRuntimeRow {
+    return {
+      ...agent,
+      workspace_path: resolveAgentWorkspacePath({
+        config: options.config,
+        slug: agent.slug,
+        status: agent.status === "archived" ? "archived" : "active",
+      }),
+    };
+  }
+
+  async function createConversation(agent: AgentRuntimeRow): Promise<ConversationRow> {
     const session = await options.opencodeService.createSession(agent.workspace_path, undefined);
     const timestamp = new Date(session.time.updated ?? session.time.created);
 
@@ -335,7 +350,10 @@ export function createConversationService(options: {
       .where(eq(conversations.id, conversationId));
   }
 
-  async function syncConversation(agent: AgentRow, conversation: ConversationRow): Promise<void> {
+  async function syncConversation(
+    agent: AgentRuntimeRow,
+    conversation: ConversationRow,
+  ): Promise<void> {
     const [session, remoteMessages] = await Promise.all([
       options.opencodeService.getSession(agent.workspace_path, conversation.opencode_session_id),
       options.opencodeService.listSessionMessages(

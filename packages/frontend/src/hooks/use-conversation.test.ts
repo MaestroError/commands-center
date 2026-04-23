@@ -115,14 +115,16 @@ describe("HYDRATE", () => {
     const dirtyState: ConversationState = {
       ...initialState,
       agentStatus: "busy",
-      pendingPermission: {
-        id: "perm-1",
-        sessionID: "s",
-        permission: "read",
-        patterns: [],
-        metadata: {},
-        always: [],
-      },
+      pendingPermissions: [
+        {
+          id: "perm-1",
+          sessionID: "s",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
       pendingQuestion: { id: "q-1", sessionID: "s", questions: [] },
       todos: [{ content: "task", status: "pending" }],
     };
@@ -131,7 +133,7 @@ describe("HYDRATE", () => {
       snapshot: { current: makeConversation(), previous: [] },
     });
     expect(next.agentStatus).toBe("idle");
-    expect(next.pendingPermission).toBeNull();
+    expect(next.pendingPermissions).toEqual([]);
     expect(next.pendingQuestion).toBeNull();
     expect(next.todos).toEqual([]);
   });
@@ -186,14 +188,16 @@ describe("HYDRATE_DETAIL", () => {
     const dirtyState: ConversationState = {
       ...initialState,
       agentStatus: "busy",
-      pendingPermission: {
-        id: "perm-1",
-        sessionID: "s",
-        permission: "read",
-        patterns: [],
-        metadata: {},
-        always: [],
-      },
+      pendingPermissions: [
+        {
+          id: "perm-1",
+          sessionID: "s",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
       todos: [{ content: "x", status: "in_progress" }],
     };
     const next = conversationReducer(dirtyState, {
@@ -201,7 +205,7 @@ describe("HYDRATE_DETAIL", () => {
       detail: makeConversation(),
     });
     expect(next.agentStatus).toBe("idle");
-    expect(next.pendingPermission).toBeNull();
+    expect(next.pendingPermissions).toEqual([]);
     expect(next.todos).toEqual([]);
   });
 });
@@ -580,15 +584,40 @@ describe("SSE_EVENT: permission.asked / permission.replied", () => {
       },
     };
     const next = conversationReducer(initialState, { type: "SSE_EVENT", event });
-    expect(next.pendingPermission).not.toBeNull();
-    expect(next.pendingPermission?.id).toBe("perm-42");
-    expect(next.pendingPermission?.permission).toBe("bash");
+    expect(next.pendingPermissions).toHaveLength(1);
+    expect(next.pendingPermissions[0]?.id).toBe("perm-42");
+    expect(next.pendingPermissions[0]?.permission).toBe("bash");
   });
 
-  it("clears pendingPermission on permission.replied", () => {
+  it("removes only the replied permission and keeps earlier pending ones", () => {
     const state: ConversationState = {
       ...initialState,
-      pendingPermission: {
+      pendingPermissions: [
+        {
+          id: "perm-1",
+          sessionID: "s",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+        {
+          id: "perm-2",
+          sessionID: "s",
+          permission: "write",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+    };
+    const event: ChatEvent = {
+      type: "permission.replied",
+      properties: { sessionID: "s", requestID: "perm-2", reply: "once" },
+    };
+    const next = conversationReducer(state, { type: "SSE_EVENT", event });
+    expect(next.pendingPermissions).toEqual([
+      {
         id: "perm-1",
         sessionID: "s",
         permission: "read",
@@ -596,13 +625,42 @@ describe("SSE_EVENT: permission.asked / permission.replied", () => {
         metadata: {},
         always: [],
       },
+    ]);
+  });
+
+  it("keeps multiple permission requests in order instead of overwriting the latest one", () => {
+    const first: ChatEvent = {
+      type: "permission.asked",
+      properties: {
+        id: "perm-1",
+        sessionID: "s",
+        permission: "memory_search_nodes",
+        patterns: ["*"],
+        metadata: {},
+        always: [],
+      },
     };
-    const event: ChatEvent = {
-      type: "permission.replied",
-      properties: { sessionID: "s", requestID: "perm-1", reply: "once" },
+    const second: ChatEvent = {
+      type: "permission.asked",
+      properties: {
+        id: "perm-2",
+        sessionID: "s",
+        permission: "memory_open_nodes",
+        patterns: ["*"],
+        metadata: {},
+        always: [],
+      },
     };
-    const next = conversationReducer(state, { type: "SSE_EVENT", event });
-    expect(next.pendingPermission).toBeNull();
+
+    const next = conversationReducer(
+      conversationReducer(initialState, { type: "SSE_EVENT", event: second }),
+      { type: "SSE_EVENT", event: first },
+    );
+
+    expect(next.pendingPermissions.map((permission) => permission.id)).toEqual([
+      "perm-1",
+      "perm-2",
+    ]);
   });
 });
 

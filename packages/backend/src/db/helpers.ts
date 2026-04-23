@@ -50,7 +50,6 @@ export async function createAgentRecord(
     slug?: string;
     role: string;
     instructions: string;
-    workspacePath: string;
     defaultModel?: string;
     iconPath?: string;
   },
@@ -64,7 +63,6 @@ export async function createAgentRecord(
       name: input.name,
       role: input.role,
       instructions: input.instructions,
-      workspace_path: input.workspacePath,
       default_model: input.defaultModel ?? "test/model",
       icon_path: input.iconPath,
       status: "active",

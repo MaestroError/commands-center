@@ -38,6 +38,12 @@ describe("PermissionDock", () => {
     expect(screen.queryByText("Patterns:")).not.toBeInTheDocument();
   });
 
+  it("shows queued permission count when more requests are waiting", () => {
+    render(<PermissionDock permission={makePermission()} pendingCount={3} onReply={vi.fn()} />);
+
+    expect(screen.getByText("2 more waiting")).toBeInTheDocument();
+  });
+
   it('calls onReply with reject when clicking "Deny"', () => {
     const onReply = vi.fn();
     render(<PermissionDock permission={makePermission()} onReply={onReply} />);

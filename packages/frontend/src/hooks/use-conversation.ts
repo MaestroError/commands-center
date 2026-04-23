@@ -61,7 +61,7 @@ export type ConversationState = {
   /** Parts keyed by messageID — populated by SSE events */
   parts: Record<string, ConversationPart[]>;
   previousConversations: ConversationSummary[];
-  pendingPermission: PermissionRequest | null;
+  pendingPermissions: PermissionRequest[];
   pendingQuestion: QuestionRequest | null;
   todos: TodoItem[];
 };
@@ -77,7 +77,7 @@ export const initialState: ConversationState = {
   conversation: null,
   parts: {},
   previousConversations: [],
-  pendingPermission: null,
+  pendingPermissions: [],
   pendingQuestion: null,
   todos: [],
 };
@@ -105,7 +105,7 @@ export function conversationReducer(state: ConversationState, action: Action): C
         parts: buildPartsMap(action.snapshot.current.messages),
         previousConversations: action.snapshot.previous,
         agentStatus: "idle",
-        pendingPermission: null,
+        pendingPermissions: [],
         pendingQuestion: null,
         todos: [],
       };
@@ -117,7 +117,7 @@ export function conversationReducer(state: ConversationState, action: Action): C
         parts: buildPartsMap(action.detail.messages),
         previousConversations: action.previous ?? state.previousConversations,
         agentStatus: "idle",
-        pendingPermission: null,
+        pendingPermissions: [],
         pendingQuestion: null,
         todos: [],
       };
@@ -247,11 +247,19 @@ function applySseEvent(state: ConversationState, event: ChatEvent): Conversation
     case "permission.asked":
       return {
         ...state,
-        pendingPermission: event.properties as unknown as PermissionRequest,
+        pendingPermissions: upsertPermissionRequest(
+          state.pendingPermissions,
+          event.properties as unknown as PermissionRequest,
+        ),
       };
 
     case "permission.replied":
-      return { ...state, pendingPermission: null };
+      return {
+        ...state,
+        pendingPermissions: state.pendingPermissions.filter(
+          (request) => request.id !== (event.properties as { requestID?: string }).requestID,
+        ),
+      };
 
     case "question.asked":
       return {
@@ -283,6 +291,7 @@ export type UseConversationReturn = {
   parts: Record<string, ConversationPart[]>;
   previousConversations: ConversationSummary[];
   pendingPermission: PermissionRequest | null;
+  pendingPermissionCount: number;
   pendingQuestion: QuestionRequest | null;
   todos: TodoItem[];
   autoApprove: boolean;
@@ -543,7 +552,8 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     conversation: state.conversation,
     parts: state.parts,
     previousConversations: state.previousConversations,
-    pendingPermission: state.pendingPermission,
+    pendingPermission: state.pendingPermissions[0] ?? null,
+    pendingPermissionCount: state.pendingPermissions.length,
     pendingQuestion: state.pendingQuestion,
     todos: state.todos,
     autoApprove,
@@ -562,4 +572,17 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       __injectEvent: (event: ChatEvent) => dispatch({ type: "SSE_EVENT", event }),
     }),
   };
+}
+
+function upsertPermissionRequest(
+  requests: PermissionRequest[],
+  nextRequest: PermissionRequest,
+): PermissionRequest[] {
+  const existingIndex = requests.findIndex((request) => request.id === nextRequest.id);
+
+  if (existingIndex >= 0) {
+    return requests.map((request, index) => (index === existingIndex ? nextRequest : request));
+  }
+
+  return [...requests, nextRequest].sort((left, right) => left.id.localeCompare(right.id));
 }

@@ -12,7 +12,6 @@ describe("database helpers", () => {
         name: "Coder",
         role: "developer",
         instructions: "Write TypeScript code",
-        workspacePath: "/tmp/project/.cc/workspace/agents/coder",
       });
       const agents = await listAgents(testDb.client.db);
 

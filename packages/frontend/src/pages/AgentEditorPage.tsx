@@ -5,6 +5,7 @@ import type {
   Agent,
   AgentCatalog,
   AgentCapabilitySelection,
+  McpServer,
   UpdateAgentInput,
 } from "@cc/shared/schemas";
 
@@ -16,6 +17,7 @@ import {
   useAgentQuery,
   useAgentsQuery,
 } from "@/hooks/use-agents-query";
+import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import { resolveInitialModelId } from "@/lib/agent-form";
 
 type AgentEditorPageProps = {
@@ -35,15 +37,19 @@ type FormErrors = Partial<
   Record<keyof Pick<AgentFormState, "name" | "role" | "instructions" | "defaultModel">, string>
 >;
 
+type PermissionAction = AgentCapabilitySelection["mcpServers"][number]["action"];
+
 export function AgentEditorPage(props: AgentEditorPageProps) {
   const params = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const catalogQuery = useAgentCatalogQuery();
   const agentsQuery = useAgentsQuery();
   const agentQuery = useAgentQuery(props.mode === "edit" ? params.slug : undefined);
+  const mcpServersQuery = useMcpServersQuery();
   const agentMutations = useAgentMutations();
   const [form, setForm] = useState<AgentFormState>(createEmptyForm());
   const [errors, setErrors] = useState<FormErrors>({});
+  const [saveError, setSaveError] = useState<string>();
   const [successMessage, setSuccessMessage] = useState<string>();
   const initializedKeyRef = useRef<string | undefined>(undefined);
   const catalog = catalogQuery.data;
@@ -71,6 +77,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     initializedKeyRef.current = nextKey;
     setForm(createInitialForm(catalog, agent));
     setErrors({});
+    setSaveError(undefined);
   }, [agent, catalog, props.mode]);
 
   const catalogError = catalogQuery.error ? readError(catalogQuery.error) : undefined;
@@ -254,7 +261,118 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
             )}
           </section>
 
+          <section className="cc-panel p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">MCP permissions</h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Enable global MCP servers per agent, then opt tools into allow, ask, or deny.
+                </p>
+              </div>
+              <Link className="cc-button cc-button-secondary" to="/integrations">
+                Manage integrations
+              </Link>
+            </div>
+
+            {mcpServersQuery.isLoading ? (
+              <div className="mt-5">
+                <LoadingState />
+              </div>
+            ) : mcpServersQuery.error ? (
+              <div className="mt-5 rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+                {readError(mcpServersQuery.error)}
+              </div>
+            ) : mcpServersQuery.data && mcpServersQuery.data.length > 0 ? (
+              <div className="mt-5 grid gap-4">
+                {mcpServersQuery.data.map((server) => {
+                  const serverSelection = getMcpServerSelection(form.capabilities, server.name);
+                  const serverEnabled = serverSelection?.enabled ?? false;
+
+                  return (
+                    <article
+                      className="rounded-xl border border-border bg-surface p-4"
+                      key={server.id}
+                    >
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-base font-semibold text-text-primary">
+                              {server.name}
+                            </h3>
+                            <span className={statusBadgeClassName(server)}>
+                              {statusLabel(server)}
+                            </span>
+                            {!server.enabled ? (
+                              <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                                Globally disabled
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-2 text-sm text-text-secondary">
+                            {server.tools.length} tool{server.tools.length === 1 ? "" : "s"}{" "}
+                            discovered.
+                          </p>
+                          {server.runtimeStatus?.status === "failed" ||
+                          server.runtimeStatus?.status === "needs_client_registration" ? (
+                            <p className="mt-2 text-sm text-danger">{server.runtimeStatus.error}</p>
+                          ) : null}
+                        </div>
+
+                        <label className="flex items-center gap-2 text-sm text-text-primary">
+                          <input
+                            checked={serverEnabled}
+                            onChange={() => toggleMcpServer(server.name)}
+                            type="checkbox"
+                          />
+                          <span>Enable for this agent</span>
+                        </label>
+                      </div>
+
+                      {serverEnabled ? (
+                        server.tools.length > 0 ? (
+                          <div className="mt-5 grid gap-3">
+                            {server.tools.map((tool) => (
+                              <div
+                                className="flex flex-col gap-3 rounded-lg border border-border bg-surface-elevated p-3 md:flex-row md:items-center md:justify-between"
+                                key={tool.id}
+                              >
+                                <div>
+                                  <p className="font-medium text-text-primary">{tool.name}</p>
+                                  <p className="text-xs text-text-secondary">{tool.id}</p>
+                                </div>
+                                <PermissionControl
+                                  label={tool.id}
+                                  onChange={(action) =>
+                                    setToolPermission(server.name, tool.id, action)
+                                  }
+                                  value={getToolPermission(form.capabilities, server.name, tool.id)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-5 rounded-lg border border-dashed border-border px-4 py-5 text-sm text-text-secondary">
+                            Tools are not available yet. Connect or authenticate this MCP in
+                            Integrations before granting tool-level access.
+                          </div>
+                        )
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-5">
+                <EmptyState
+                  description="Create a global MCP integration before assigning its tools to an agent."
+                  title="No MCP integrations configured"
+                />
+              </div>
+            )}
+          </section>
+
           <div className="flex flex-wrap gap-2">
+            {saveError ? <p className="w-full text-sm text-danger">{saveError}</p> : null}
             <button
               className="cc-button"
               disabled={
@@ -282,6 +400,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
   function updateField<Key extends keyof AgentFormState>(key: Key, value: AgentFormState[Key]) {
     setForm((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: undefined }));
+    setSaveError(undefined);
   }
 
   function toggleSkill(skillSlug: string) {
@@ -299,6 +418,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSuccessMessage(undefined);
+    setSaveError(undefined);
     const validation = validateForm(form, hasProviderModels, slugTaken);
     setErrors(validation);
 
@@ -315,22 +435,71 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
       capabilities: form.capabilities,
     };
 
-    if (props.mode === "create") {
-      const created = await agentMutations.create.mutateAsync(
-        payload as AgentFormState & UpdateAgentInput,
+    try {
+      if (props.mode === "create") {
+        const created = await agentMutations.create.mutateAsync(
+          payload as AgentFormState & UpdateAgentInput,
+        );
+        void navigate(`/agents/${created.slug}/edit`, { replace: true });
+        setSuccessMessage(`${created.name} created.`);
+        return;
+      }
+
+      if (!agent) {
+        return;
+      }
+
+      const updated = await agentMutations.update.mutateAsync({ id: agent.id, input: payload });
+      void navigate(`/agents/${updated.slug}/edit`, { replace: true });
+      setSuccessMessage(`${updated.name} saved.`);
+    } catch (error) {
+      setSaveError(readError(error));
+    }
+  }
+
+  function toggleMcpServer(serverName: string) {
+    setForm((current) => ({
+      ...current,
+      capabilities: {
+        ...current.capabilities,
+        mcpServers: upsertMcpServerSelection(current.capabilities.mcpServers, {
+          name: serverName,
+          enabled: !getMcpServerSelection(current.capabilities, serverName)?.enabled,
+          action: "allow",
+        }),
+        toolPermissions: current.capabilities.toolPermissions.filter(
+          (rule) => !rule.pattern.startsWith(`${serverName}_`),
+        ),
+      },
+    }));
+    setSaveError(undefined);
+  }
+
+  function setToolPermission(serverName: string, toolId: string, action: PermissionAction) {
+    setForm((current) => {
+      const serverSelection = getMcpServerSelection(current.capabilities, serverName) ?? {
+        name: serverName,
+        enabled: true,
+        action: "allow" as const,
+      };
+      const nextPermissions = current.capabilities.toolPermissions.filter(
+        (rule) => rule.pattern !== toolId,
       );
-      void navigate(`/agents/${created.slug}/edit`, { replace: true });
-      setSuccessMessage(`${created.name} created.`);
-      return;
-    }
 
-    if (!agent) {
-      return;
-    }
+      if (action !== serverSelection.action) {
+        nextPermissions.push({ pattern: toolId, action });
+      }
 
-    const updated = await agentMutations.update.mutateAsync({ id: agent.id, input: payload });
-    void navigate(`/agents/${updated.slug}/edit`, { replace: true });
-    setSuccessMessage(`${updated.name} saved.`);
+      return {
+        ...current,
+        capabilities: {
+          ...current.capabilities,
+          mcpServers: upsertMcpServerSelection(current.capabilities.mcpServers, serverSelection),
+          toolPermissions: nextPermissions,
+        },
+      };
+    });
+    setSaveError(undefined);
   }
 }
 
@@ -378,10 +547,99 @@ function createInitialForm(catalog: AgentCatalog, agent?: Agent): AgentFormState
     defaultModel: resolveInitialModelId(catalog, agent?.defaultModel),
     capabilities: {
       builtInSkills: existingCapabilities.builtInSkills,
-      mcpServers: [],
-      toolPermissions: [],
+      mcpServers: existingCapabilities.mcpServers,
+      toolPermissions: existingCapabilities.toolPermissions,
     },
   };
+}
+
+function PermissionControl(props: {
+  label: string;
+  value: PermissionAction;
+  onChange: (action: PermissionAction) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {(["allow", "ask", "deny"] as const).map((action) => {
+        const selected = props.value === action;
+
+        return (
+          <button
+            aria-label={`${props.label} ${action}`}
+            aria-pressed={selected}
+            className={
+              selected
+                ? "rounded-full border border-accent bg-accent/10 px-3 py-1 text-xs font-medium text-accent"
+                : "rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text-secondary transition hover:border-accent hover:text-text-primary"
+            }
+            key={action}
+            onClick={() => props.onChange(action)}
+            type="button"
+          >
+            {action}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function getMcpServerSelection(capabilities: AgentCapabilitySelection, serverName: string) {
+  return capabilities.mcpServers.find((server) => server.name === serverName);
+}
+
+function upsertMcpServerSelection(
+  selections: AgentCapabilitySelection["mcpServers"],
+  nextSelection: AgentCapabilitySelection["mcpServers"][number],
+) {
+  const remaining = selections.filter((server) => server.name !== nextSelection.name);
+  return [...remaining, nextSelection];
+}
+
+function getToolPermission(
+  capabilities: AgentCapabilitySelection,
+  serverName: string,
+  toolId: string,
+): PermissionAction {
+  return (
+    capabilities.toolPermissions.find((rule) => rule.pattern === toolId)?.action ??
+    getMcpServerSelection(capabilities, serverName)?.action ??
+    "allow"
+  );
+}
+
+function statusLabel(server: McpServer): string {
+  switch (server.runtimeStatus?.status) {
+    case "connected":
+      return "Connected";
+    case "needs_auth":
+      return "Needs auth";
+    case "failed":
+      return "Failed";
+    case "needs_client_registration":
+      return "Needs client registration";
+    case "disabled":
+      return "Disabled";
+    case "disconnected":
+    default:
+      return server.enabled ? "Disconnected" : "Disabled";
+  }
+}
+
+function statusBadgeClassName(server: McpServer): string {
+  switch (server.runtimeStatus?.status) {
+    case "connected":
+      return "rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400";
+    case "needs_auth":
+      return "rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400";
+    case "failed":
+    case "needs_client_registration":
+      return "rounded-full bg-danger/15 px-2 py-0.5 text-xs font-medium text-danger";
+    case "disabled":
+    case "disconnected":
+    default:
+      return "rounded-full bg-surface-elevated px-2 py-0.5 text-xs font-medium text-text-secondary";
+  }
 }
 
 function validateForm(

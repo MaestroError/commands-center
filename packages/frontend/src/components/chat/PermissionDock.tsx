@@ -9,13 +9,21 @@ type Permission = {
 
 type PermissionDockProps = {
   permission: Permission;
+  pendingCount?: number;
   onReply: (requestId: string, reply: "once" | "always" | "reject") => void;
 };
 
-export function PermissionDock({ permission, onReply }: PermissionDockProps) {
+export function PermissionDock({ permission, pendingCount = 1, onReply }: PermissionDockProps) {
   return (
     <div className="border border-border rounded-lg p-4 bg-surface">
-      <h3 className="text-sm font-semibold text-text-primary mb-2">Permission Required</h3>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-text-primary">Permission Required</h3>
+        {pendingCount > 1 ? (
+          <span className="rounded-full border border-border bg-surface-elevated px-2 py-0.5 text-xs text-text-secondary">
+            {pendingCount - 1} more waiting
+          </span>
+        ) : null}
+      </div>
 
       <p className="text-sm text-text-secondary mb-3">
         The agent is requesting permission to use{" "}
@@ -41,14 +49,14 @@ export function PermissionDock({ permission, onReply }: PermissionDockProps) {
       <div className="flex items-center gap-2">
         <button
           type="button"
-          className="cc-button-danger"
+          className="cc-button cc-button-danger"
           onClick={() => onReply(permission.id, "reject")}
         >
           Deny
         </button>
         <button
           type="button"
-          className="cc-button-secondary"
+          className="cc-button cc-button-secondary"
           onClick={() => onReply(permission.id, "once")}
         >
           Allow Once

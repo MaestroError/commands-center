@@ -58,3 +58,15 @@ export async function moveWorkspace(currentPath: string, nextPath: string): Prom
   await mkdir(join(nextPath, ".."), { recursive: true });
   await rename(currentPath, nextPath);
 }
+
+export function resolveAgentWorkspacePath(options: {
+  config: RuntimeConfig;
+  slug: string;
+  status: "active" | "archived";
+}): string {
+  if (options.status === "archived") {
+    return join(options.config.paths.subdirectories.agents, ".archived", options.slug);
+  }
+
+  return join(options.config.paths.subdirectories.agents, options.slug);
+}

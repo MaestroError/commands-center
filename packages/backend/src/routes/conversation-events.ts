@@ -14,6 +14,7 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
   const app = server.withTypeProvider<ZodTypeProvider>();
   const service = createConversationService({
     db: context.database.db,
+    config: context.config,
     opencodeService: context.opencodeService,
   });
 

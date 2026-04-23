@@ -9,7 +9,22 @@ export function getMigrationFolder(): string {
 }
 
 export function migrateDatabase(db: AppDb, migrationsFolder = getMigrationFolder()): void {
-  migrate(db, {
-    migrationsFolder,
-  });
+  const sqlite = (db as AppDb & { $client?: { pragma: (statement: string) => unknown } }).$client;
+
+  if (!sqlite) {
+    migrate(db, {
+      migrationsFolder,
+    });
+    return;
+  }
+
+  sqlite.pragma("foreign_keys = OFF");
+
+  try {
+    migrate(db, {
+      migrationsFolder,
+    });
+  } finally {
+    sqlite.pragma("foreign_keys = ON");
+  }
 }

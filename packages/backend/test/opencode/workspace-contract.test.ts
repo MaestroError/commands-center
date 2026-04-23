@@ -51,12 +51,30 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
         github: { enabled: true },
       },
       permission: {
-        custom_write: "ask",
         "github_*": "allow",
+        custom_write: "ask",
       },
     });
 
     expect(() => validateOpenCodeWorkspace(rendered)).not.toThrow();
+  });
+
+  it("renders server wildcards before tool overrides so specific rules win", () => {
+    const rendered = renderOpenCodeWorkspace({
+      name: "Writer",
+      role: "write docs",
+      instructions: "Write useful docs and keep them accurate.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {
+        builtInSkills: [],
+        mcpServers: [{ name: "github", enabled: true, action: "deny" }],
+        toolPermissions: [{ pattern: "github_create_issue", action: "ask" }],
+      },
+    });
+
+    const parsed = JSON.parse(rendered.configJsonc) as { permission: Record<string, string> };
+
+    expect(Object.keys(parsed.permission)).toEqual(["github_*", "github_create_issue"]);
   });
 
   it("copies validated skills into the documented .opencode path", async () => {

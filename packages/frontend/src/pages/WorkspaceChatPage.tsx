@@ -127,7 +127,11 @@ export function WorkspaceChatPage() {
             />
 
             {conv.pendingPermission ? (
-              <PermissionDock permission={conv.pendingPermission} onReply={conv.replyPermission} />
+              <PermissionDock
+                permission={conv.pendingPermission}
+                pendingCount={conv.pendingPermissionCount}
+                onReply={conv.replyPermission}
+              />
             ) : conv.pendingQuestion ? (
               <QuestionDock
                 question={conv.pendingQuestion}

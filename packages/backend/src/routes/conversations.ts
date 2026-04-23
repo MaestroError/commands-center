@@ -34,6 +34,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
   const app = server.withTypeProvider<ZodTypeProvider>();
   const service = createConversationService({
     db: context.database.db,
+    config: context.config,
     opencodeService: context.opencodeService,
   });
 

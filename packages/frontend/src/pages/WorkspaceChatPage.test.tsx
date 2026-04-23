@@ -119,6 +119,7 @@ function makeConversation(overrides: Record<string, unknown> = {}) {
     },
     parts: {},
     previousConversations: [],
+    pendingPermissionCount: 0,
     pendingPermission: null,
     pendingQuestion: null,
     todos: [],

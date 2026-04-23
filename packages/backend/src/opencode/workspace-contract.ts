@@ -153,10 +153,10 @@ export function renderOpenCodeWorkspace(input: OpenCodeWorkspaceInput): {
     ),
     permission: {
       ...Object.fromEntries([
-        ...input.capabilities.toolPermissions.map((rule) => [rule.pattern, rule.action] as const),
         ...input.capabilities.mcpServers.map(
           (server) => [`${server.name}_*`, server.action] as const,
         ),
+        ...input.capabilities.toolPermissions.map((rule) => [rule.pattern, rule.action] as const),
       ]),
     },
   });

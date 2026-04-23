@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { createAgentService } from "../../src/services/agent-service";
 import { createMcpServerService } from "../../src/services/mcp-server-service";
 import { ConflictError, NotFoundError } from "../../src/lib/api-error";
 import type { OpenCodeService } from "../../src/services/opencode-service";
@@ -102,6 +103,123 @@ describe("mcp-server-service", () => {
 
       expect(rendered.mcp).toEqual({});
       expect(orchestrator.restart).toHaveBeenCalledTimes(3);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("removes deleted MCP servers from agent capabilities and workspaces", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      orchestrator: createOrchestrator(),
+      opencodeService,
+    });
+    const agentService = createAgentService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const created = await service.create({
+        name: "github",
+        enabled: true,
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+      const agent = await agentService.create({
+        name: "Writer",
+        role: "write docs",
+        instructions: "Use github when needed.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          mcpServers: [{ name: "github", enabled: true, action: "deny" }],
+          toolPermissions: [{ pattern: "github_create_issue", action: "ask" }],
+        },
+      });
+
+      await service.remove(created.id);
+
+      const updated = await agentService.get(agent.id);
+      expect(updated?.capabilities.mcpServers).toEqual([]);
+      expect(updated?.capabilities.toolPermissions).toEqual([]);
+
+      const config = await readFile(join(agent.workspacePath, "opencode.jsonc"), "utf8");
+      expect(config).not.toContain('"github"');
+      expect(config).not.toContain('"github_create_issue"');
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("renames MCP references across agent capabilities and workspaces", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      orchestrator: createOrchestrator(),
+      opencodeService,
+    });
+    const agentService = createAgentService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const created = await service.create({
+        name: "github",
+        enabled: true,
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+      const agent = await agentService.create({
+        name: "Reviewer",
+        role: "review code",
+        instructions: "Use github when needed.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          mcpServers: [{ name: "github", enabled: true, action: "deny" }],
+          toolPermissions: [{ pattern: "github_create_issue", action: "ask" }],
+        },
+      });
+
+      await service.update(created.id, {
+        name: "github-enterprise",
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+
+      const updated = await agentService.get(agent.id);
+      expect(updated?.capabilities.mcpServers).toEqual([
+        { name: "github-enterprise", enabled: true, action: "deny" },
+      ]);
+      expect(updated?.capabilities.toolPermissions).toEqual([
+        { pattern: "github-enterprise_create_issue", action: "ask" },
+      ]);
+
+      const config = await readFile(join(agent.workspacePath, "opencode.jsonc"), "utf8");
+      expect(config).toContain('"github-enterprise": {');
+      expect(config).toContain('"github-enterprise_*": "deny"');
+      expect(config).toContain('"github-enterprise_create_issue": "ask"');
     } finally {
       await testDb.cleanup();
     }
@@ -481,5 +599,6 @@ function createMockOpenCodeService(): OpenCodeService {
       return Promise.resolve({ status: "connected" as const });
     }),
     removeMcpAuth: vi.fn(() => Promise.resolve({ success: true as const })),
+    dispose: vi.fn(() => Promise.resolve()),
   } as unknown as OpenCodeService;
 }
