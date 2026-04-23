@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 
 import type { McpServer } from "@cc/shared/schemas";
 
@@ -40,6 +41,10 @@ const EMPTY_FORM_BASE = {
   commandText: "",
   environmentText: "",
 } as const;
+
+const CONFIGURED_SECTION_STORAGE_KEY = "cc-integrations-configured-expanded";
+const SUGGESTED_SECTION_STORAGE_KEY = "cc-integrations-suggested-expanded";
+const SUGGESTED_SHOW_ALL_STORAGE_KEY = "cc-integrations-suggested-show-all";
 
 const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
   {
@@ -333,6 +338,10 @@ export function IntegrationsPage() {
   const [dialog, setDialog] = useState<DialogState>();
   const [authServer, setAuthServer] = useState<McpServer>();
   const [successMessage, setSuccessMessage] = useState<string>();
+  const [configuredExpanded, setConfiguredExpanded] = usePersistentBooleanState(
+    CONFIGURED_SECTION_STORAGE_KEY,
+    true,
+  );
   const queryError = mcpServersQuery.error ? readError(mcpServersQuery.error) : undefined;
   const mcpServers = mcpServersQuery.data ?? [];
 
@@ -393,7 +402,14 @@ export function IntegrationsPage() {
         <section className="cc-panel p-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-text-primary">Configured MCP servers</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-semibold text-text-primary">Configured MCP servers</h2>
+                <SectionToggleButton
+                  expanded={configuredExpanded}
+                  label="Configured MCP servers"
+                  onClick={() => setConfiguredExpanded((current) => !current)}
+                />
+              </div>
               <p className="mt-1 text-sm text-text-secondary">
                 Global MCP registrations are persisted in the workspace DB and mirrored into
                 `.cc/workspace/opencode.jsonc`.
@@ -404,7 +420,7 @@ export function IntegrationsPage() {
             </div>
           </div>
 
-          {mcpServers.length > 0 ? (
+          {configuredExpanded && mcpServers.length > 0 ? (
             <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {mcpServers.map((server) => (
                 <McpServerCard
@@ -440,14 +456,16 @@ export function IntegrationsPage() {
                 />
               ))}
             </div>
-          ) : (
+          ) : null}
+
+          {configuredExpanded && mcpServers.length === 0 ? (
             <div className="mt-5">
               <EmptyState
                 description="Add an external MCP server to register it globally for this workspace."
                 title="No MCP servers configured yet"
               />
             </div>
-          )}
+          ) : null}
         </section>
       ) : null}
 
@@ -1129,6 +1147,9 @@ function SuggestedMcpServersSection(props: {
   onSelect: (suggestion: SuggestedMcpServer) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = usePersistentBooleanState(SUGGESTED_SECTION_STORAGE_KEY, true);
+  const [showAll, setShowAll] = usePersistentBooleanState(SUGGESTED_SHOW_ALL_STORAGE_KEY, false);
+  const collapsedCount = useResponsiveSuggestionCount();
   const configured = new Set(props.configuredNames.map((name) => name.toLowerCase()));
   const available = SUGGESTED_MCP_SERVERS.filter(
     (suggestion) =>
@@ -1141,6 +1162,7 @@ function SuggestedMcpServersSection(props: {
   }
 
   const query = search.trim().toLowerCase();
+  const searchActive = query.length > 0;
   const visible = query
     ? available.filter((suggestion) => {
         const haystack = [suggestion.name, suggestion.description, ...suggestion.tags]
@@ -1149,92 +1171,228 @@ function SuggestedMcpServersSection(props: {
         return haystack.includes(query);
       })
     : available;
+  const showAllActive = searchActive || showAll;
+  const renderedSuggestions = showAllActive ? visible : visible.slice(0, collapsedCount);
+  const canToggleShowAll = !searchActive && visible.length > collapsedCount;
 
   return (
     <section className="cc-panel p-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-text-primary">Suggested MCPs</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold text-text-primary">Suggested MCPs</h2>
+            <SectionToggleButton
+              expanded={expanded}
+              label="Suggested MCPs"
+              onClick={() => setExpanded((current) => !current)}
+            />
+          </div>
           <p className="mt-1 text-sm text-text-secondary">
             One-click presets - Review the details and adjust before saving.
           </p>
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3">
-        <div className="relative">
-          <input
-            aria-label="Search suggested MCPs"
-            className="cc-input pr-10"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by name, description, or tag (e.g. no-auth, oauth, search)"
-            type="search"
-            value={search}
-          />
-          {search ? (
-            <button
-              aria-label="Clear search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
-              onClick={() => setSearch("")}
-              type="button"
-            >
-              <CloseIcon />
-            </button>
-          ) : null}
-        </div>
+      {expanded ? (
+        <>
+          <div className="mt-5 grid gap-3">
+            <div className="relative">
+              <input
+                aria-label="Search suggested MCPs"
+                className="cc-input pr-10"
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search by name, description, or tag (e.g. no-auth, oauth, search)"
+                type="search"
+                value={search}
+              />
+              {search ? (
+                <button
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
+                  onClick={() => setSearch("")}
+                  type="button"
+                >
+                  <CloseIcon />
+                </button>
+              ) : null}
+            </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-          <span className="uppercase tracking-[0.16em]">Try:</span>
-          {SEARCH_SUGGESTIONS.map((term) => (
-            <button
-              aria-label={`Search ${term}`}
-              className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-secondary transition hover:border-accent hover:text-text-primary"
-              key={term}
-              onClick={() => setSearch(term)}
-              type="button"
-            >
-              {term}
-            </button>
-          ))}
-        </div>
-      </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+              <span className="uppercase tracking-[0.16em]">Try:</span>
+              {SEARCH_SUGGESTIONS.map((term) => (
+                <button
+                  aria-label={`Search ${term}`}
+                  className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-secondary transition hover:border-accent hover:text-text-primary"
+                  key={term}
+                  onClick={() => setSearch(term)}
+                  type="button"
+                >
+                  {term}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      {visible.length === 0 ? (
-        <p className="mt-5 rounded-lg border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-text-secondary">
-          No suggestions match &ldquo;{search}&rdquo;.
-        </p>
-      ) : (
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {visible.map((suggestion) => (
-            <button
-              aria-label={`Add ${suggestion.name}`}
-              className="flex h-full flex-col items-start gap-2 rounded-lg border border-border bg-surface p-5 text-left transition hover:border-accent hover:bg-surface-elevated"
-              key={suggestion.id}
-              onClick={() => props.onSelect(suggestion)}
-              type="button"
-            >
-              <div className="flex w-full items-start justify-between gap-3">
-                <h3 className="text-base font-semibold text-text-primary">{suggestion.name}</h3>
-                <span className="cc-badge cc-badge-muted">{suggestion.authBadge}</span>
-              </div>
-              <p className="text-sm text-text-secondary">{suggestion.description}</p>
-              <span className="mt-auto text-sm font-medium text-accent">Tap to connect</span>
-              <div className="mt-2 flex w-full flex-wrap gap-1.5">
-                {suggestion.tags.map((tag) => (
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${tagStyle(tag)}`}
-                    key={tag}
+          {visible.length === 0 ? (
+            <p className="mt-5 rounded-lg border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-text-secondary">
+              No suggestions match &ldquo;{search}&rdquo;.
+            </p>
+          ) : (
+            <>
+              <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {renderedSuggestions.map((suggestion) => (
+                  <button
+                    aria-label={`Add ${suggestion.name}`}
+                    className="flex h-full flex-col items-start gap-2 rounded-lg border border-border bg-surface p-5 text-left transition hover:border-accent hover:bg-surface-elevated"
+                    key={suggestion.id}
+                    onClick={() => props.onSelect(suggestion)}
+                    type="button"
                   >
-                    {tagLabel(tag)}
-                  </span>
+                    <div className="flex w-full items-start justify-between gap-3">
+                      <h3 className="text-base font-semibold text-text-primary">
+                        {suggestion.name}
+                      </h3>
+                      <span className="cc-badge cc-badge-muted">{suggestion.authBadge}</span>
+                    </div>
+                    <p className="text-sm text-text-secondary">{suggestion.description}</p>
+                    <span className="mt-auto text-sm font-medium text-accent">Tap to connect</span>
+                    <div className="mt-2 flex w-full flex-wrap gap-1.5">
+                      {suggestion.tags.map((tag) => (
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${tagStyle(tag)}`}
+                          key={tag}
+                        >
+                          {tagLabel(tag)}
+                        </span>
+                      ))}
+                    </div>
+                  </button>
                 ))}
               </div>
-            </button>
-          ))}
-        </div>
-      )}
+
+              {canToggleShowAll ? (
+                <div className="mt-5 flex justify-center">
+                  <button
+                    aria-label={showAll ? "Show less suggested MCPs" : "Show all suggested MCPs"}
+                    className="cc-button cc-button-secondary"
+                    onClick={() => setShowAll((current) => !current)}
+                    type="button"
+                  >
+                    {showAll ? "Show less" : "Show all"}
+                  </button>
+                </div>
+              ) : null}
+            </>
+          )}
+        </>
+      ) : null}
     </section>
   );
+}
+
+function SectionToggleButton(props: { expanded: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      aria-expanded={props.expanded}
+      aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.label}`}
+      className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-text-secondary transition hover:border-accent hover:text-text-primary"
+      onClick={props.onClick}
+      type="button"
+    >
+      {props.expanded ? "Collapse" : "Expand"}
+      <ChevronIcon expanded={props.expanded} />
+    </button>
+  );
+}
+
+function ChevronIcon(props: { expanded: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={`transition-transform ${props.expanded ? "rotate-180" : ""}`}
+      fill="none"
+      height="14"
+      viewBox="0 0 24 24"
+      width="14"
+    >
+      <path
+        d="m6 9 6 6 6-6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+}
+
+function usePersistentBooleanState(
+  storageKey: string,
+  defaultValue: boolean,
+): readonly [boolean, Dispatch<SetStateAction<boolean>>] {
+  const [value, setValue] = useState(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored === null) {
+        return defaultValue;
+      }
+
+      return stored === "true";
+    } catch {
+      return defaultValue;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, value ? "true" : "false");
+    } catch {
+      // Ignore storage errors
+    }
+  }, [storageKey, value]);
+
+  return [value, setValue] as const;
+}
+
+function useResponsiveSuggestionCount(): number {
+  const [count, setCount] = useState(getResponsiveSuggestionCount);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const largeQuery = window.matchMedia("(min-width: 1280px)");
+    const mediumQuery = window.matchMedia("(min-width: 768px)");
+    const updateCount = () => setCount(getResponsiveSuggestionCount());
+
+    updateCount();
+    largeQuery.addEventListener("change", updateCount);
+    mediumQuery.addEventListener("change", updateCount);
+
+    return () => {
+      largeQuery.removeEventListener("change", updateCount);
+      mediumQuery.removeEventListener("change", updateCount);
+    };
+  }, []);
+
+  return count;
+}
+
+function getResponsiveSuggestionCount(): number {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return 1;
+  }
+
+  if (window.matchMedia("(min-width: 1280px)").matches) {
+    return 3;
+  }
+
+  if (window.matchMedia("(min-width: 768px)").matches) {
+    return 2;
+  }
+
+  return 1;
 }
 
 function CloseIcon() {

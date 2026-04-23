@@ -20,7 +20,31 @@ const authenticateMutateAsync = vi.fn();
 const removeAuthMutateAsync = vi.fn();
 const confirmSpy = vi.spyOn(window, "confirm");
 
+function setViewport(size: "mobile" | "medium" | "large") {
+  vi.mocked(window.matchMedia).mockImplementation((query: string) => {
+    const matches =
+      size === "large"
+        ? query === "(min-width: 1280px)" || query === "(min-width: 768px)"
+        : size === "medium"
+          ? query === "(min-width: 768px)"
+          : false;
+
+    return {
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    };
+  });
+}
+
 beforeEach(() => {
+  window.localStorage.clear();
+  setViewport("large");
   createMutateAsync.mockReset();
   updateMutateAsync.mockReset();
   setEnabledMutateAsync.mockReset();
@@ -107,7 +131,7 @@ describe("IntegrationsPage", () => {
 
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "github" } });
     fireEvent.change(screen.getByLabelText("URL"), {
       target: { value: "https://example.com/mcp" },
@@ -154,7 +178,7 @@ describe("IntegrationsPage", () => {
 
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "notion" } });
     fireEvent.change(screen.getByLabelText("URL"), {
       target: { value: "https://mcp.notion.com/mcp" },
@@ -186,7 +210,7 @@ describe("IntegrationsPage", () => {
 
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "github" } });
     fireEvent.change(screen.getByLabelText("URL"), {
       target: { value: "https://example.com/mcp" },
@@ -210,7 +234,7 @@ describe("IntegrationsPage", () => {
 
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "filesystem" } });
     fireEvent.change(screen.getByLabelText("Transport"), { target: { value: "stdio" } });
     fireEvent.change(screen.getByLabelText("Command"), {
@@ -240,7 +264,7 @@ describe("IntegrationsPage", () => {
   it("validates stdio command and environment input", () => {
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "filesystem" } });
     fireEvent.change(screen.getByLabelText("Transport"), { target: { value: "stdio" } });
     fireEvent.change(screen.getByLabelText("Environment"), { target: { value: "INVALID" } });
@@ -256,7 +280,7 @@ describe("IntegrationsPage", () => {
   it("shows validation errors in the add MCP server dialog", () => {
     render(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
     fireEvent.change(screen.getByLabelText("Headers"), {
       target: { value: "invalid-header" },
     });
@@ -420,7 +444,7 @@ describe("IntegrationsPage", () => {
 
     rerender(<IntegrationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "github" } });
     fireEvent.change(screen.getByLabelText("URL"), {
       target: { value: "https://example.com/mcp" },
@@ -432,13 +456,18 @@ describe("IntegrationsPage", () => {
     });
   });
 
-  it("renders suggested MCP server cards", () => {
+  it("shows only the first suggested MCP row until expanded", () => {
     render(<IntegrationsPage />);
 
     expect(screen.getByText("Suggested MCPs")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Notion" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Context7" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add GitHub" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add Brave Search" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show all suggested MCPs" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show all suggested MCPs" }));
+
     expect(screen.getByRole("button", { name: "Add Brave Search" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Linear" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Sentry" })).toBeInTheDocument();
@@ -452,6 +481,34 @@ describe("IntegrationsPage", () => {
     expect(screen.getByRole("button", { name: "Add DuckDuckGo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Memory" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Sequential Thinking" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show less suggested MCPs" })).toBeInTheDocument();
+  });
+
+  it("expands suggested MCPs automatically while searching", () => {
+    render(<IntegrationsPage />);
+
+    fireEvent.change(screen.getByLabelText("Search suggested MCPs"), {
+      target: { value: "brave" },
+    });
+
+    expect(screen.getByRole("button", { name: "Add Brave Search" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Show all suggested MCPs" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("persists the suggested MCP section collapsed state", () => {
+    const view = render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Suggested MCPs" }));
+
+    expect(screen.queryByLabelText("Search suggested MCPs")).not.toBeInTheDocument();
+
+    view.unmount();
+    render(<IntegrationsPage />);
+
+    expect(screen.getByRole("button", { name: "Expand Suggested MCPs" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Search suggested MCPs")).not.toBeInTheDocument();
   });
 
   it("does not render the Composio panel", () => {
