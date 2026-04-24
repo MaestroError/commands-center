@@ -738,7 +738,6 @@ describe("mcp-server-service", () => {
 
         await service.update(created.id, {
           name: "github",
-          enabled: true,
           config: {
             url: "https://example.com/mcp/v2",
             transport: "streamable-http",
