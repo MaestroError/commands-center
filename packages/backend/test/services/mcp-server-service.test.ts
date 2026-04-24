@@ -710,6 +710,55 @@ describe("mcp-server-service", () => {
       }
     });
   });
+
+  describe("disposeGlobal call sites", () => {
+    it("does not call disposeGlobal on update, setEnabled, or any auth flow", async () => {
+      const testDb = await createTestDatabase();
+      const opencodeService = createMockOpenCodeService();
+      const service = createMcpServerService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService,
+        secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      });
+
+      try {
+        const created = await service.create({
+          name: "github",
+          enabled: true,
+          config: {
+            url: "https://example.com/mcp",
+            transport: "streamable-http",
+            authMethod: "oauth",
+            headers: [],
+          },
+        });
+
+        vi.mocked(opencodeService.disposeGlobal).mockClear();
+
+        await service.update(created.id, {
+          name: "github",
+          enabled: true,
+          config: {
+            url: "https://example.com/mcp/v2",
+            transport: "streamable-http",
+            authMethod: "oauth",
+            headers: [],
+          },
+        });
+        await service.setEnabled(created.id, false);
+        await service.setEnabled(created.id, true);
+        await service.startAuth(created.id);
+        await service.authenticate(created.id);
+        await service.completeAuth(created.id, "code");
+        await service.removeAuth(created.id);
+
+        expect(opencodeService.disposeGlobal).not.toHaveBeenCalled();
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+  });
 });
 
 function createMockOpenCodeService(): OpenCodeService {
