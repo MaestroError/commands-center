@@ -1,4 +1,16 @@
 import type { ReactNode } from "react";
+import {
+  Clock3,
+  FolderKanban,
+  Home,
+  KeyRound,
+  PlugZap,
+  Settings,
+  Sparkles,
+  Terminal,
+  Users,
+  Wrench,
+} from "lucide-react";
 
 import type { RouteObject } from "react-router-dom";
 
@@ -18,6 +30,7 @@ type AppRouteDefinition = {
   path: string;
   title: string;
   navLabel?: string;
+  navIcon?: ReactNode;
   navigationMatch?: string[];
   element: ReactNode;
 };
@@ -27,12 +40,14 @@ export const appRoutes = [
     path: "/",
     title: "Dashboard",
     navLabel: "Dashboard",
+    navIcon: <Home className="h-4 w-4 shrink-0" />,
     element: <DashboardPage />,
   },
   {
     path: "/agents",
     title: "Agents",
     navLabel: "Agents",
+    navIcon: <Users className="h-4 w-4 shrink-0" />,
     navigationMatch: ["/agents/new", "/agents/:slug/edit"],
     element: <AgentsPage />,
   },
@@ -60,12 +75,14 @@ export const appRoutes = [
     path: "/files",
     title: "File Manager",
     navLabel: "File Manager",
+    navIcon: <FolderKanban className="h-4 w-4 shrink-0" />,
     element: <FileManagerPage />,
   },
   {
     path: "/terminal",
     title: "Global Terminal",
     navLabel: "Global Terminal",
+    navIcon: <Terminal className="h-4 w-4 shrink-0" />,
     element: (
       <GenericPlaceholderPage
         title="Global Terminal"
@@ -78,6 +95,7 @@ export const appRoutes = [
     path: "/automations",
     title: "Automations",
     navLabel: "Automations",
+    navIcon: <Clock3 className="h-4 w-4 shrink-0" />,
     element: (
       <GenericPlaceholderPage
         title="Automations"
@@ -89,6 +107,7 @@ export const appRoutes = [
     path: "/tools",
     title: "Custom Tools",
     navLabel: "Custom Tools",
+    navIcon: <Wrench className="h-4 w-4 shrink-0" />,
     element: (
       <GenericPlaceholderPage
         title="Custom Tools"
@@ -100,24 +119,28 @@ export const appRoutes = [
     path: "/skills",
     title: "Built-in Skills",
     navLabel: "Built-in Skills",
+    navIcon: <Sparkles className="h-4 w-4 shrink-0" />,
     element: <BuiltInSkillsPage />,
   },
   {
     path: "/integrations",
     title: "Integrations",
     navLabel: "Integrations",
+    navIcon: <PlugZap className="h-4 w-4 shrink-0" />,
     element: <IntegrationsPage />,
   },
   {
     path: "/providers",
     title: "Provider Connections",
     navLabel: "Provider Connections",
+    navIcon: <KeyRound className="h-4 w-4 shrink-0" />,
     element: <ProviderConnectionsPage />,
   },
   {
     path: "/settings",
     title: "Settings",
     navLabel: "Settings",
+    navIcon: <Settings className="h-4 w-4 shrink-0" />,
     element: <SettingsPage />,
   },
   {

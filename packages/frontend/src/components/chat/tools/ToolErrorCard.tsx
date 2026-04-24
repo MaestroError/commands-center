@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import type { ConversationPart } from "@cc/shared/schemas";
+import { CopyIdButton } from "../CopyIdButton";
 import { getToolName, getToolState } from "./tool-registry";
 
 type ToolErrorCardProps = {
@@ -23,15 +24,18 @@ export function ToolErrorCard({ part }: ToolErrorCardProps) {
 
   return (
     <div className="border border-danger/30 rounded-md bg-danger/5">
-      <button
-        type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-danger/10 transition rounded-md"
-        onClick={() => setExpanded((prev) => !prev)}
-      >
-        <span className="text-danger text-sm">{expanded ? "\u25BE" : "\u25B8"}</span>
-        <span className="text-sm font-medium text-danger flex-1 truncate">{toolName}</span>
-        <span className="text-xs font-medium text-danger">Error</span>
-      </button>
+      <div className="flex items-center gap-2 px-3 py-2">
+        <button
+          type="button"
+          className="flex flex-1 items-center gap-2 text-left hover:bg-danger/10 transition rounded-md"
+          onClick={() => setExpanded((prev) => !prev)}
+        >
+          <span className="text-danger text-sm">{expanded ? "\u25BE" : "\u25B8"}</span>
+          <span className="text-sm font-medium text-danger flex-1 truncate">{toolName}</span>
+          <span className="text-xs font-medium text-danger">Error</span>
+        </button>
+        <CopyIdButton label={`tool id ${toolName}`} value={toolName} />
+      </div>
 
       {expanded && errorText && (
         <div className="px-3 pb-3 relative">

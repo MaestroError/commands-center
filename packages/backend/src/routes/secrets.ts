@@ -35,6 +35,9 @@ export function registerSecretRoutes(server: AppServer, context: RuntimeContext)
     },
     async (request, reply) => {
       await context.secretService.set(request.params.secretKey, request.body.value);
+      if (request.body.value.trim().length > 0) {
+        void context.orchestrator.restart("secret updated");
+      }
       return reply.status(204).send();
     },
   );
@@ -48,6 +51,7 @@ export function registerSecretRoutes(server: AppServer, context: RuntimeContext)
     },
     async (request, reply) => {
       await context.secretService.delete(request.params.secretKey);
+      void context.orchestrator.restart("secret deleted");
       return reply.status(204).send();
     },
   );

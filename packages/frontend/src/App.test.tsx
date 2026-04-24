@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "@/App";
 import { queryClient } from "@/lib/query-client";
+import { RECENT_AGENTS_STORAGE_KEY } from "@/lib/recent-agents";
 import { THEME_STORAGE_KEY } from "@/stores/ui-store";
 
 const connectedProvider = {
@@ -28,11 +29,13 @@ const connectedProvider = {
 beforeEach(() => {
   window.history.replaceState({}, "", "/");
   resetStorage();
+  setDesktopMatchMedia(true);
   queryClient.clear();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  setDesktopMatchMedia(true);
   queryClient.clear();
 });
 
@@ -40,14 +43,63 @@ describe("App", () => {
   it("renders the global shell on the dashboard route", () => {
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Dashboard" }).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "CommandsCenter" })).toHaveAttribute("href", "/");
     expect(screen.getAllByRole("link", { name: "Agents" })[0]).toHaveAttribute("href", "/agents");
     expect(screen.getByTestId("sidebar-navigation")).toBeInTheDocument();
     expect(screen.queryByText("Frontend foundation")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
     expect(screen.getByText("Provider Connections")).toBeInTheDocument();
-    expect(screen.getByTestId("recent-agents-empty-state")).toBeInTheDocument();
+    expect(screen.getByTestId("recent-agents-section")).toBeInTheDocument();
+  });
+
+  it("collapses the sidebar to icon-only navigation on desktop", async () => {
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+    expect(screen.queryByText("Provider Connections")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Agents" })).toHaveAttribute("href", "/agents");
+    expect(window.localStorage.getItem("cc-sidebar-collapsed")).toBe("true");
+  });
+
+  it("opens the navigation drawer on mobile", async () => {
+    setDesktopMatchMedia(false);
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Open navigation" }));
+
+    expect(screen.getByRole("link", { name: "Integrations" })).toBeInTheDocument();
+  });
+
+  it("shows up to three recent agents in the expanded agents section", () => {
+    window.localStorage.setItem(
+      RECENT_AGENTS_STORAGE_KEY,
+      JSON.stringify([
+        { id: "a1", slug: "planner", name: "Planner", role: "Plans", lastVisitedAt: "1" },
+        { id: "a2", slug: "reviewer", name: "Reviewer", role: "Reviews", lastVisitedAt: "2" },
+        { id: "a3", slug: "builder", name: "Builder", role: "Builds", lastVisitedAt: "3" },
+        { id: "a4", slug: "extra", name: "Extra", role: "Extra", lastVisitedAt: "4" },
+      ]),
+    );
+
+    render(<App />);
+
+    expect(screen.getByRole("link", { name: "Planner Plans" })).toHaveAttribute(
+      "href",
+      "/chat/planner",
+    );
+    expect(screen.getByRole("link", { name: "Reviewer Reviews" })).toHaveAttribute(
+      "href",
+      "/chat/reviewer",
+    );
+    expect(screen.getByRole("link", { name: "Builder Builds" })).toHaveAttribute(
+      "href",
+      "/chat/builder",
+    );
+    expect(screen.queryByRole("link", { name: "Extra Extra" })).not.toBeInTheDocument();
   });
 
   it("updates active navigation and header title when navigating", async () => {
@@ -153,6 +205,10 @@ describe("App", () => {
 
 function mockFetch(responses: Response[]) {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+    if (typeof input === "string" && input === "/api/opencode") {
+      return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+    }
+
     if (typeof input === "string" && !input.startsWith("/api/providers")) {
       return Promise.reject(new Error(`Unexpected fetch URL: ${input}`));
     }
@@ -175,7 +231,25 @@ function resetStorage() {
 
   if (typeof window.localStorage?.removeItem === "function") {
     window.localStorage.removeItem(THEME_STORAGE_KEY);
+    window.localStorage.removeItem(RECENT_AGENTS_STORAGE_KEY);
+    window.localStorage.removeItem("cc-sidebar-collapsed");
   }
+}
+
+function setDesktopMatchMedia(matches: boolean) {
+  vi.mocked(window.matchMedia).mockImplementation(
+    () =>
+      ({
+        matches,
+        media: "",
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      }) as MediaQueryList,
+  );
 }
 
 function jsonResponse(status: number, body: unknown): Response {

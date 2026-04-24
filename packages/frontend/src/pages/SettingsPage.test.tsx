@@ -53,6 +53,7 @@ describe("SettingsPage", () => {
       target: { value: "new-secret" },
     });
     fireEvent.click(screen.getAllByRole("button", { name: "Update" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm update" }));
 
     await waitFor(() => {
       expect(setMutateAsync).toHaveBeenCalledWith({
@@ -62,6 +63,7 @@ describe("SettingsPage", () => {
     });
 
     fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
 
     await waitFor(() => {
       expect(removeMutateAsync).toHaveBeenCalledWith({ key: "CC_MCP_GITHUB_TOKEN" });

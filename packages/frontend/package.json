@@ -17,6 +17,7 @@
   "dependencies": {
     "@cc/shared": "workspace:*",
     "@tanstack/react-query": "^5.90.5",
+    "lucide-react": "^0.542.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",

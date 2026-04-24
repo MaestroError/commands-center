@@ -1,6 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { ChevronLeft, Menu } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { useEngineStatusQuery } from "@/hooks/use-engine-status-query";
 import { useTheme } from "@/context/use-theme";
 import {
   agentsSidebarRoute,
@@ -9,24 +12,93 @@ import {
   isRouteActive,
   secondarySidebarRoutes,
 } from "@/app/routes";
+import { readRecentAgents } from "@/lib/recent-agents";
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "cc-sidebar-collapsed";
 
 export function AppShell() {
   const location = useLocation();
-  const title = useMemo(() => getRouteTitle(location.pathname), [location.pathname]);
+  const pathname = location.pathname;
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const title = getRouteTitle(pathname);
   const { theme, themes, setTheme } = useTheme();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const recentAgents = readRecentAgents();
+  const engineQuery = useEngineStatusQuery();
+  const engineState = engineQuery.data?.state;
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, sidebarCollapsed ? "true" : "false");
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [pathname]);
 
   return (
     <div className="min-h-screen bg-app-bg text-text-primary">
-      <div className="grid min-h-screen lg:grid-cols-[18rem_minmax(0,1fr)]">
-        <aside className="hidden border-r border-border bg-sidebar px-4 py-5 lg:flex lg:flex-col lg:gap-6">
-          <SidebarContent pathname={location.pathname} />
-        </aside>
+      <div
+        className={`grid min-h-screen ${
+          isDesktop
+            ? sidebarCollapsed
+              ? "lg:grid-cols-[4.5rem_minmax(0,1fr)]"
+              : "lg:grid-cols-[18rem_minmax(0,1fr)]"
+            : "grid-cols-1"
+        }`}
+      >
+        {isDesktop ? (
+          <aside
+            className={`border-r border-border bg-sidebar py-5 ${sidebarCollapsed ? "px-2" : "px-4"}`}
+          >
+            <SidebarContent
+              collapsed={sidebarCollapsed}
+              pathname={pathname}
+              recentAgents={recentAgents}
+              onNavigate={() => undefined}
+              onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
+            />
+          </aside>
+        ) : null}
+
+        {!isDesktop && mobileSidebarOpen ? (
+          <div
+            className="fixed inset-0 z-50 bg-app-bg/75 backdrop-blur-sm"
+            onClick={() => setMobileSidebarOpen(false)}
+          >
+            <aside
+              className={`absolute inset-y-0 left-0 border-r border-border bg-sidebar py-5 shadow-2xl ${
+                sidebarCollapsed ? "w-[4.5rem] px-2" : "w-[18rem] px-4"
+              }`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <SidebarContent
+                collapsed={sidebarCollapsed}
+                pathname={pathname}
+                recentAgents={recentAgents}
+                onNavigate={() => setMobileSidebarOpen(false)}
+                onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
+              />
+            </aside>
+          </div>
+        ) : null}
 
         <div className="min-w-0">
           <header className="sticky top-0 z-30 border-b border-border bg-app-bg/90 backdrop-blur">
             <div className="flex min-h-16 items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-              <div>
+              <div className="flex items-center gap-3">
+                {!isDesktop ? (
+                  <button
+                    aria-label="Open navigation"
+                    className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
+                    onClick={() => setMobileSidebarOpen(true)}
+                    type="button"
+                  >
+                    <Menu className="h-4 w-4" />
+                  </button>
+                ) : null}
                 <h1 className="text-xl font-semibold text-text-primary">{title}</h1>
+                <EngineStatusBadge state={engineState} />
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -57,75 +129,221 @@ export function AppShell() {
   );
 }
 
-function SidebarContent(props: { pathname: string }) {
+function SidebarContent(props: {
+  pathname: string;
+  collapsed: boolean;
+  recentAgents: ReturnType<typeof readRecentAgents>;
+  onNavigate: () => void;
+  onToggleCollapsed: () => void;
+}) {
   return (
-    <>
-      <NavLink className="cc-eyebrow inline-flex w-fit" to="/">
-        CommandsCenter
-      </NavLink>
+    <div className="flex h-full flex-col gap-6">
+      <div
+        className={`flex items-center ${props.collapsed ? "justify-center" : "justify-between gap-3"}`}
+      >
+        {!props.collapsed ? (
+          <>
+            <NavLink className="cc-eyebrow inline-flex w-fit" onClick={props.onNavigate} to="/">
+              CommandsCenter
+            </NavLink>
+            <button
+              aria-label="Collapse sidebar"
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
+              onClick={props.onToggleCollapsed}
+              type="button"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          </>
+        ) : (
+          <button
+            aria-label="Expand sidebar"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
+            onClick={props.onToggleCollapsed}
+            type="button"
+          >
+            <Menu className="h-4 w-4" />
+          </button>
+        )}
+      </div>
 
       <nav className="grid gap-2" data-testid="sidebar-navigation">
         {dashboardSidebarRoute ? (
-          <NavLink
-            className={
-              isRouteActive(
-                props.pathname,
-                dashboardSidebarRoute.path,
-                dashboardSidebarRoute.navigationMatch,
-              )
-                ? "cc-nav-item cc-nav-item-active"
-                : "cc-nav-item"
-            }
+          <SidebarRouteLink
+            collapsed={props.collapsed}
+            isActive={isRouteActive(
+              props.pathname,
+              dashboardSidebarRoute.path,
+              dashboardSidebarRoute.navigationMatch,
+            )}
+            label={dashboardSidebarRoute.navLabel ?? dashboardSidebarRoute.title}
+            onNavigate={props.onNavigate}
             to={dashboardSidebarRoute.path}
           >
-            {dashboardSidebarRoute.navLabel}
-          </NavLink>
+            {dashboardSidebarRoute.navIcon}
+          </SidebarRouteLink>
         ) : null}
       </nav>
 
-      <section
-        className={
-          isRouteActive(
-            props.pathname,
-            agentsSidebarRoute?.path ?? "/agents",
-            agentsSidebarRoute?.navigationMatch,
-          )
-            ? "rounded-xl border border-accent/30 bg-surface p-4"
-            : "rounded-xl border border-border bg-surface p-4"
-        }
-        data-testid="recent-agents-empty-state"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <NavLink
-            className="text-sm font-semibold text-text-primary transition hover:text-accent"
-            to="/agents"
-          >
-            Agents
-          </NavLink>
-          <NavLink className="text-sm text-accent transition hover:text-accent-hover" to="/agents">
-            See all
-          </NavLink>
-        </div>
-        <p className="mt-3 text-sm leading-6 text-text-secondary">
-          Recent agent chats will appear here after the direct chat flow starts recording activity.
-        </p>
-      </section>
+      {agentsSidebarRoute ? (
+        <section
+          className={
+            isRouteActive(
+              props.pathname,
+              agentsSidebarRoute.path,
+              agentsSidebarRoute.navigationMatch,
+            )
+              ? "rounded-xl border border-accent/30 bg-surface p-3"
+              : "rounded-xl border border-border bg-surface p-3"
+          }
+          data-testid={props.collapsed ? "recent-agents-collapsed" : "recent-agents-section"}
+        >
+          {props.collapsed ? (
+            <SidebarRouteLink
+              collapsed
+              isActive={isRouteActive(
+                props.pathname,
+                agentsSidebarRoute.path,
+                agentsSidebarRoute.navigationMatch,
+              )}
+              label={agentsSidebarRoute.navLabel ?? agentsSidebarRoute.title}
+              onNavigate={props.onNavigate}
+              to={agentsSidebarRoute.path}
+            >
+              {agentsSidebarRoute.navIcon}
+            </SidebarRouteLink>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <NavLink
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-text-primary transition hover:text-accent"
+                  onClick={props.onNavigate}
+                  to={agentsSidebarRoute.path}
+                >
+                  {agentsSidebarRoute.navIcon}
+                  {agentsSidebarRoute.navLabel}
+                </NavLink>
+                <NavLink
+                  className="text-sm text-accent transition hover:text-accent-hover"
+                  onClick={props.onNavigate}
+                  to={agentsSidebarRoute.path}
+                >
+                  See all
+                </NavLink>
+              </div>
+              {props.recentAgents.length > 0 ? (
+                <div className="mt-3 grid gap-2">
+                  {props.recentAgents.map((agent) => (
+                    <NavLink
+                      className="rounded-lg border border-border bg-surface-elevated/50 px-3 py-2 transition hover:border-accent/40 hover:bg-accent/5"
+                      key={agent.slug}
+                      onClick={props.onNavigate}
+                      to={`/chat/${encodeURIComponent(agent.slug)}`}
+                    >
+                      <p className="truncate text-sm font-medium text-text-primary">{agent.name}</p>
+                      <p className="truncate text-xs text-text-secondary">{agent.role}</p>
+                    </NavLink>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm leading-6 text-text-secondary">
+                  Recent agent chats will appear here after you open them from direct chat.
+                </p>
+              )}
+            </>
+          )}
+        </section>
+      ) : null}
 
       <nav className="grid gap-2">
         {secondarySidebarRoutes.map((route) => (
-          <NavLink
-            className={
-              isRouteActive(props.pathname, route.path, route.navigationMatch)
-                ? "cc-nav-item cc-nav-item-active"
-                : "cc-nav-item"
-            }
+          <SidebarRouteLink
+            collapsed={props.collapsed}
+            isActive={isRouteActive(props.pathname, route.path, route.navigationMatch)}
             key={route.path}
+            label={route.navLabel ?? route.title}
+            onNavigate={props.onNavigate}
             to={route.path}
           >
-            {route.navLabel}
-          </NavLink>
+            {route.navIcon}
+          </SidebarRouteLink>
         ))}
       </nav>
-    </>
+    </div>
+  );
+}
+
+function SidebarRouteLink(props: {
+  to: string;
+  label: string;
+  isActive: boolean;
+  collapsed: boolean;
+  onNavigate: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <NavLink
+      aria-label={props.label}
+      className={
+        props.collapsed
+          ? [
+              "flex h-10 items-center justify-center rounded-lg border transition",
+              props.isActive
+                ? "border-accent/40 bg-accent/10 text-accent"
+                : "border-border bg-surface text-text-secondary hover:border-accent/40 hover:text-text-primary",
+            ].join(" ")
+          : props.isActive
+            ? "cc-nav-item cc-nav-item-active flex items-center gap-3"
+            : "cc-nav-item flex items-center gap-3"
+      }
+      onClick={props.onNavigate}
+      title={props.collapsed ? props.label : undefined}
+      to={props.to}
+    >
+      {props.children}
+      {!props.collapsed ? <span>{props.label}</span> : null}
+    </NavLink>
+  );
+}
+
+function readStoredSidebarCollapsed(): boolean {
+  return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+}
+
+function EngineStatusBadge(props: { state: string | undefined }) {
+  let dotClass: string;
+  let label: string;
+  let pulse = false;
+
+  switch (props.state) {
+    case "healthy":
+      dotClass = "bg-emerald-500";
+      label = "healthy";
+      break;
+    case "starting":
+    case "stopping":
+      dotClass = "bg-amber-400";
+      label = props.state;
+      pulse = true;
+      break;
+    case "unhealthy":
+      dotClass = "bg-danger";
+      label = "unhealthy";
+      break;
+    case undefined:
+      dotClass = "bg-amber-400";
+      label = "restarting";
+      pulse = true;
+      break;
+    default:
+      dotClass = "bg-text-secondary";
+      label = "stopped";
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-text-secondary">
+      <span className={`h-1.5 w-1.5 rounded-full ${dotClass} ${pulse ? "animate-pulse" : ""}`} />
+      {label}
+    </div>
   );
 }

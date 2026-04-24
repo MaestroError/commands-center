@@ -1,7 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { PermissionDock } from "./PermissionDock";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function makePermission(
   overrides: Partial<React.ComponentProps<typeof PermissionDock>["permission"]> = {},
@@ -22,6 +27,21 @@ describe("PermissionDock", () => {
     render(<PermissionDock permission={makePermission()} onReply={vi.fn()} />);
 
     expect(screen.getByText("workspace.read")).toBeInTheDocument();
+  });
+
+  it("copies the permission id", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(<PermissionDock permission={makePermission()} onReply={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Copy permission workspace.read" }));
+
+    expect(writeText).toHaveBeenCalledWith("workspace.read");
   });
 
   it("renders the patterns list when patterns are present", () => {

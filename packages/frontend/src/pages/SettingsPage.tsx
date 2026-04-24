@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
+import { useMarkEngineRestarting } from "@/hooks/use-engine-status-query";
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
 
 export function SettingsPage() {
@@ -35,6 +36,7 @@ export function SettingsPage() {
 function SecretsTab() {
   const secretsQuery = useSecretsQuery();
   const mutations = useSecretMutations();
+  const markEngineRestarting = useMarkEngineRestarting();
   const [search, setSearch] = useState("");
 
   const filteredSecrets = (secretsQuery.data ?? []).filter((secret) =>
@@ -82,8 +84,16 @@ function SecretsTab() {
               isSet={secret.isSet}
               key={secret.key}
               name={secret.key}
-              onDelete={async () => mutations.remove.mutateAsync({ key: secret.key })}
-              onSave={async (value) => mutations.set.mutateAsync({ key: secret.key, value })}
+              onDelete={async () => {
+                await mutations.remove.mutateAsync({ key: secret.key });
+                markEngineRestarting();
+              }}
+              onSave={async (value) => {
+                await mutations.set.mutateAsync({ key: secret.key, value });
+                if (value.trim().length > 0) {
+                  markEngineRestarting();
+                }
+              }}
             />
           ))}
         </div>
@@ -103,6 +113,7 @@ function SecretCard(props: {
   const [revealed, setRevealed] = useState(false);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
+  const [pendingAction, setPendingAction] = useState<"update" | "delete">();
 
   return (
     <article className="rounded-xl border border-border bg-surface p-5">
@@ -148,7 +159,7 @@ function SecretCard(props: {
         <button
           className="cc-button cc-button-secondary"
           disabled={props.busy || value.trim().length === 0}
-          onClick={() => void handleSave()}
+          onClick={() => setPendingAction("update")}
           type="button"
         >
           {props.busy ? "Updating..." : "Update"}
@@ -156,12 +167,51 @@ function SecretCard(props: {
         <button
           className="cc-button cc-button-danger"
           disabled={props.busy}
-          onClick={() => void handleDelete()}
+          onClick={() => setPendingAction("delete")}
           type="button"
         >
           Delete
         </button>
       </div>
+
+      {pendingAction ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6"
+          onClick={() => setPendingAction(undefined)}
+        >
+          <section
+            className="cc-panel w-full max-w-lg p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="text-xl font-semibold text-text-primary">
+              {pendingAction === "delete" ? `Delete ${props.name}?` : `Update ${props.name}?`}
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-text-secondary">
+              The AI engine will be restarted automatically so the updated environment is picked up.
+              Any active agent sessions will be interrupted briefly.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <button
+                className={pendingAction === "delete" ? "cc-button cc-button-danger" : "cc-button"}
+                onClick={() => {
+                  setPendingAction(undefined);
+                  void (pendingAction === "delete" ? handleDelete() : handleSave());
+                }}
+                type="button"
+              >
+                {pendingAction === "delete" ? "Confirm delete" : "Confirm update"}
+              </button>
+              <button
+                className="cc-button cc-button-secondary"
+                onClick={() => setPendingAction(undefined)}
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </article>
   );
 
@@ -172,7 +222,7 @@ function SecretCard(props: {
     try {
       await props.onSave(value);
       setValue("");
-      setMessage("Secret updated.");
+      setMessage("Secret updated. Engine is restarting…");
     } catch (nextError) {
       setError(readError(nextError));
     }
@@ -184,7 +234,7 @@ function SecretCard(props: {
 
     try {
       await props.onDelete();
-      setMessage("Secret deleted.");
+      setMessage("Secret deleted. Engine is restarting…");
     } catch (nextError) {
       setError(readError(nextError));
     }

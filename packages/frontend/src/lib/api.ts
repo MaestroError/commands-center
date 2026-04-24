@@ -8,6 +8,7 @@ import {
   conversationSnapshotSchema,
   createAgentInputSchema,
   createMcpServerInputSchema,
+  engineStatusSchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
   mcpServerListSchema,
@@ -30,6 +31,7 @@ import {
   type ConversationDetail,
   type ConversationSnapshot,
   type ConversationSummary,
+  type EngineStatus,
   type McpAuthRemoveResult,
   type McpAuthStartResult,
   type McpServer,
@@ -49,6 +51,10 @@ type RequestOptions = {
   method?: string;
   body?: unknown;
 };
+
+export async function getEngineStatus(): Promise<EngineStatus> {
+  return requestJson<EngineStatus>("/api/opencode", engineStatusSchema);
+}
 
 export async function listProviders(): Promise<ProviderStatus[]> {
   return requestJson<ProviderStatus[]>("/api/providers", providerStatusListSchema);
@@ -460,7 +466,6 @@ export async function summarizeConversation(conversationId: string): Promise<voi
     `/api/conversations/${encodeURIComponent(conversationId)}/summarize`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
     },
   );
 

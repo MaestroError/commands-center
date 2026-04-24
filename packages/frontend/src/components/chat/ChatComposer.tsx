@@ -28,6 +28,7 @@ type ChatComposerProps = {
   onAutoApproveChange: (enabled: boolean) => void;
   skills?: { slug: string; description?: string }[];
   disabled?: boolean;
+  autoFocusKey?: string;
 };
 
 export function ChatComposer({
@@ -43,6 +44,7 @@ export function ChatComposer({
   onAutoApproveChange,
   skills,
   disabled,
+  autoFocusKey,
 }: ChatComposerProps) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<ComposerMode>("normal");
@@ -67,6 +69,24 @@ export function ChatComposer({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [text]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || disabled) {
+      return;
+    }
+
+    setTimeout(() => {
+      const current = textareaRef.current;
+      if (!current) {
+        return;
+      }
+
+      current.focus();
+      const position = current.value.length;
+      current.setSelectionRange(position, position);
+    }, 0);
+  }, [autoFocusKey, disabled]);
 
   // Detect popover triggers
   useEffect(() => {
@@ -604,7 +624,7 @@ export function ChatComposer({
           />
 
           {isBusy ? (
-            <button type="button" className="cc-button-danger shrink-0" onClick={onAbort}>
+            <button type="button" className="cc-button cc-button-danger shrink-0" onClick={onAbort}>
               Stop
             </button>
           ) : (

@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { connectConversationEvents, deleteConversation, readApiError, sendCommand } from "./api";
+import {
+  connectConversationEvents,
+  deleteConversation,
+  readApiError,
+  sendCommand,
+  summarizeConversation,
+} from "./api";
 
 function makeSseResponse(chunks: string[], init?: ResponseInit): Response {
   const encoder = new TextEncoder();
@@ -123,6 +129,20 @@ describe("sendCommand", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ command: "compact", arguments: "" }),
+    });
+  });
+});
+
+describe("summarizeConversation", () => {
+  it("posts without sending an empty json content type", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await summarizeConversation("conv-1");
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/conversations/conv-1/summarize", {
+      method: "POST",
     });
   });
 });

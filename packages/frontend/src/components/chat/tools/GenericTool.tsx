@@ -18,7 +18,7 @@ export function GenericTool({ part }: GenericToolProps) {
   const hasDetails = input !== undefined || output !== undefined || error !== undefined;
 
   return (
-    <BasicTool title={toolName} status={status}>
+    <BasicTool copyValue={toolName} title={toolName} status={status}>
       {hasDetails ? (
         <>
           {input !== undefined && (

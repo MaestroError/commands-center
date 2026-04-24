@@ -14,6 +14,7 @@ import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
 import { useConversation } from "@/hooks/use-conversation";
 import { useAgentCatalogQuery } from "@/hooks/use-agents-query";
+import { recordRecentAgent } from "@/lib/recent-agents";
 
 const DevDebugPanel = import.meta.env.DEV
   ? lazy(() => import("@/components/dev/DevDebugPanel").then((m) => ({ default: m.DevDebugPanel })))
@@ -54,6 +55,19 @@ export function WorkspaceChatPage() {
     setMediaSearchQuery("");
     setActiveContextTabId("files");
   }, [conv.conversation?.id]);
+
+  useEffect(() => {
+    if (!conv.agent) {
+      return;
+    }
+
+    recordRecentAgent({
+      id: conv.agent.id,
+      slug: conv.agent.slug,
+      name: conv.agent.name,
+      role: conv.agent.role,
+    });
+  }, [conv.agent]);
 
   const handleAttachmentMediaSearch = (filename: string) => {
     setMediaSearchQuery(filename);
@@ -155,6 +169,7 @@ export function WorkspaceChatPage() {
                   autoApprove={conv.autoApprove}
                   onAutoApproveChange={conv.setAutoApprove}
                   skills={skills}
+                  autoFocusKey={conv.conversation.id}
                 />
               </>
             )}

@@ -1,3 +1,5 @@
+import { CopyIdButton } from "./CopyIdButton";
+
 type Permission = {
   id: string;
   sessionID: string;
@@ -27,7 +29,14 @@ export function PermissionDock({ permission, pendingCount = 1, onReply }: Permis
 
       <p className="text-sm text-text-secondary mb-3">
         The agent is requesting permission to use{" "}
-        <span className="font-medium text-text-primary">{permission.permission}</span>.
+        <span className="inline-flex items-center gap-1 font-medium text-text-primary">
+          <span>{permission.permission}</span>
+          <CopyIdButton
+            label={`permission ${permission.permission}`}
+            value={permission.permission}
+          />
+        </span>
+        .
       </p>
 
       {permission.patterns.length > 0 ? (

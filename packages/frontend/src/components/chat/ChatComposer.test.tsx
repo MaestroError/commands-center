@@ -26,6 +26,7 @@ function renderComposer(overrides: Partial<React.ComponentProps<typeof ChatCompo
     onAutoApproveChange: vi.fn(),
     skills: [{ slug: "review", description: "Review code" }],
     disabled: false,
+    autoFocusKey: "conv-1",
     ...overrides,
   };
 
@@ -126,6 +127,16 @@ describe("ChatComposer", () => {
     await user.type(shellTextarea, "ls{enter}");
 
     expect(props.onShell).toHaveBeenCalledWith("ls");
+  });
+
+  it("focuses the textarea when the active conversation changes", async () => {
+    const { rerender, props } = renderComposer({ autoFocusKey: "conv-1" });
+
+    rerender(<ChatComposer {...props} autoFocusKey="conv-2" />);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Type a message... Use "#" to mention')).toHaveFocus();
+    });
   });
 
   it("exits shell mode when Escape is pressed", async () => {

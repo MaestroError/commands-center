@@ -23,8 +23,8 @@ await build({
   external: ["better-sqlite3", "node-pty", "pino-pretty", "fsevents"],
   banner: {
     js: [
-      "import { createRequire } from 'node:module';",
-      "const require = createRequire(import.meta.url);",
+      "import { createRequire as __createRequire } from 'node:module';",
+      "const require = __createRequire(import.meta.url);",
     ].join("\n"),
   },
   sourcemap: true,
@@ -41,5 +41,10 @@ console.log("Copying backend resources...");
 const resourcesDir = resolve(cliDir, "dist/resources");
 mkdirSync(resourcesDir, { recursive: true });
 cpSync(resolve(backendDir, "resources"), resourcesDir, { recursive: true });
+
+console.log("Copying database migrations...");
+const migrationsDir = resolve(cliDir, "dist/migrations");
+mkdirSync(migrationsDir, { recursive: true });
+cpSync(resolve(backendDir, "src/db/migrations"), migrationsDir, { recursive: true });
 
 console.log("CLI build complete → packages/cli/dist/");

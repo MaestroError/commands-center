@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { access, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
 import type { RuntimeConfig } from "./runtime-config.js";
 
@@ -34,7 +35,7 @@ export async function resolveOpencodeBinary(config: RuntimeConfig): Promise<Open
 
   try {
     packageJsonPath = require.resolve("opencode-ai/package.json", {
-      paths: [config.paths.cwd],
+      paths: [config.paths.cwd, dirname(fileURLToPath(import.meta.url))],
     });
   } catch {
     throw new Error(
