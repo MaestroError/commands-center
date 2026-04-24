@@ -19,8 +19,9 @@ import {
 } from "@/hooks/use-agents-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import {
+  getMcpServerAction,
   getMcpServerSelection,
-  setMcpServerEnabled,
+  setMcpServerAction,
   upsertMcpServerSelection,
 } from "@/lib/agent-capabilities";
 import { resolveInitialModelId } from "@/lib/agent-form";
@@ -323,14 +324,11 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                           ) : null}
                         </div>
 
-                        <label className="flex items-center gap-2 text-sm text-text-primary">
-                          <input
-                            checked={serverEnabled}
-                            onChange={() => toggleMcpServer(server.name)}
-                            type="checkbox"
-                          />
-                          <span>Enable for this agent</span>
-                        </label>
+                        <McpServerPermissionControl
+                          label={server.name}
+                          onChange={(action) => setMcpServerPermission(server.name, action)}
+                          value={getMcpServerAction(form.capabilities, server.name)}
+                        />
                       </div>
 
                       {serverEnabled ? (
@@ -462,14 +460,10 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     }
   }
 
-  function toggleMcpServer(serverName: string) {
+  function setMcpServerPermission(serverName: string, action: PermissionAction) {
     setForm((current) => ({
       ...current,
-      capabilities: setMcpServerEnabled(
-        current.capabilities,
-        serverName,
-        !(getMcpServerSelection(current.capabilities, serverName)?.enabled ?? false),
-      ),
+      capabilities: setMcpServerAction(current.capabilities, serverName, action),
     }));
     setSaveError(undefined);
   }
@@ -576,6 +570,55 @@ function PermissionControl(props: {
             type="button"
           >
             {action}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function McpServerPermissionControl(props: {
+  label: string;
+  value: PermissionAction;
+  onChange: (action: PermissionAction) => void;
+}) {
+  const options = [
+    {
+      value: "deny" as const,
+      label: "Disabled",
+      selectedClassName: "border-rose-500 bg-rose-500/10 text-rose-600",
+    },
+    {
+      value: "ask" as const,
+      label: "Ask",
+      selectedClassName: "border-amber-500 bg-amber-500/10 text-amber-600",
+    },
+    {
+      value: "allow" as const,
+      label: "Allow",
+      selectedClassName: "border-emerald-500 bg-emerald-500/10 text-emerald-600",
+    },
+  ];
+
+  return (
+    <div className="inline-flex rounded-xl border border-border bg-surface p-1">
+      {options.map((option) => {
+        const selected = props.value === option.value;
+
+        return (
+          <button
+            aria-label={`${props.label} ${option.label}`}
+            aria-pressed={selected}
+            className={
+              selected
+                ? `rounded-lg border px-3 py-1.5 text-xs font-medium transition ${option.selectedClassName}`
+                : "rounded-lg border border-transparent px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
+            }
+            key={option.value}
+            onClick={() => props.onChange(option.value)}
+            type="button"
+          >
+            {option.label}
           </button>
         );
       })}

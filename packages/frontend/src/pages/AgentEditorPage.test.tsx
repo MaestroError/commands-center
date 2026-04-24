@@ -109,12 +109,12 @@ beforeEach(() => {
 });
 
 describe("AgentEditorPage", () => {
-  it("saves enabled MCPs as allow-by-default when no tool subset is selected", async () => {
+  it("saves MCP server permission as allow when selected", async () => {
     updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
 
     renderEditor();
 
-    fireEvent.click(screen.getByLabelText("Enable for this agent"));
+    fireEvent.click(screen.getByRole("button", { name: "github Allow" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
@@ -136,12 +136,39 @@ describe("AgentEditorPage", () => {
     });
   });
 
+  it("saves MCP server permission as ask when selected", async () => {
+    updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
+
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("button", { name: "github Ask" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(updateMutateAsync).toHaveBeenCalledWith({
+        id: "agent-1",
+        input: {
+          name: "Writer",
+          role: "write docs",
+          instructions: "Write useful docs.",
+          defaultModel: "openai/gpt-4.1",
+          iconPath: undefined,
+          capabilities: {
+            builtInSkills: [],
+            mcpServers: [{ name: "github", enabled: true, action: "ask" }],
+            toolPermissions: [],
+          },
+        },
+      });
+    });
+  });
+
   it("stores explicit MCP tool overrides only when they differ from the server default", async () => {
     updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
 
     renderEditor();
 
-    fireEvent.click(screen.getByLabelText("Enable for this agent"));
+    fireEvent.click(screen.getByRole("button", { name: "github Allow" }));
     fireEvent.click(screen.getByRole("button", { name: "github_create_issue ask" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 

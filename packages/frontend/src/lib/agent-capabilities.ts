@@ -1,4 +1,8 @@
-import type { AgentCapabilitySelection } from "@cc/shared/schemas";
+import type {
+  AgentCapabilitySelection,
+  AgentMcpServer,
+  AgentPermissionRule,
+} from "@cc/shared/schemas";
 
 export function getMcpServerSelection(capabilities: AgentCapabilitySelection, serverName: string) {
   return capabilities.mcpServers.find((server) => server.name === serverName);
@@ -35,4 +39,30 @@ export function setMcpServerEnabled(
       (rule) => !rule.pattern.startsWith(`${serverName}_`),
     ),
   };
+}
+
+export function setMcpServerAction(
+  capabilities: AgentCapabilitySelection,
+  serverName: string,
+  action: AgentMcpServer["action"],
+): AgentCapabilitySelection {
+  if (action === "deny") {
+    return setMcpServerEnabled(capabilities, serverName, false);
+  }
+
+  return {
+    ...capabilities,
+    mcpServers: upsertMcpServerSelection(capabilities.mcpServers, {
+      name: serverName,
+      enabled: true,
+      action,
+    }),
+  };
+}
+
+export function getMcpServerAction(
+  capabilities: AgentCapabilitySelection,
+  serverName: string,
+): AgentPermissionRule["action"] {
+  return getMcpServerSelection(capabilities, serverName)?.action ?? "deny";
 }

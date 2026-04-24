@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsPage } from "./SettingsPage";
 
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
+import { queryClient } from "@/lib/query-client";
 
 vi.mock("@/hooks/use-secrets-query", () => ({
   useSecretsQuery: vi.fn(),
@@ -32,7 +34,7 @@ beforeEach(() => {
 
 describe("SettingsPage", () => {
   it("renders searchable secrets", () => {
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     expect(screen.getByRole("tab", { name: "Secrets" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("CC_MCP_GITHUB_TOKEN")).toBeInTheDocument();
@@ -47,7 +49,7 @@ describe("SettingsPage", () => {
     setMutateAsync.mockResolvedValue(undefined);
     removeMutateAsync.mockResolvedValue(undefined);
 
-    render(<SettingsPage />);
+    renderWithQueryClient(<SettingsPage />);
 
     fireEvent.change(screen.getByLabelText("Value for CC_MCP_GITHUB_TOKEN"), {
       target: { value: "new-secret" },
@@ -70,3 +72,9 @@ describe("SettingsPage", () => {
     });
   });
 });
+
+function renderWithQueryClient(element: React.ReactNode) {
+  queryClient.clear();
+
+  return render(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
+}

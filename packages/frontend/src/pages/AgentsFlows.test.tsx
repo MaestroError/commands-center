@@ -60,6 +60,19 @@ const agents = [
 
 beforeEach(() => {
   queryClient.clear();
+  vi.mocked(window.matchMedia).mockImplementation(
+    () =>
+      ({
+        matches: true,
+        media: "",
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      }) as MediaQueryList,
+  );
 });
 
 afterEach(() => {
@@ -146,8 +159,8 @@ describe("agent flows", () => {
     window.history.replaceState({}, "", "/skills");
     render(<App />);
 
-    await screen.findByText("screen-requirements-writing");
-    expect(screen.getByText("Create screen requirement documents.")).toBeInTheDocument();
+    await screen.findAllByText("screen-requirements-writing");
+    expect(screen.getAllByText("Create screen requirement documents.").length).toBeGreaterThan(0);
     expect(screen.getAllByText("design-docs").length).toBeGreaterThan(0);
   });
 
@@ -173,6 +186,10 @@ function mockApi(routes: Record<string, Response[]>) {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     if (typeof input !== "string") {
       return Promise.reject(new Error("Unexpected request object."));
+    }
+
+    if (input === "/api/opencode") {
+      return Promise.resolve(jsonResponse(200, { state: "healthy" }));
     }
 
     const key = `${init?.method ?? "GET"} ${input}`;
