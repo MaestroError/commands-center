@@ -6,6 +6,7 @@ import { registerConversationRoutes } from "./conversations.js";
 import { registerHealthRoutes } from "./health.js";
 import { registerMcpServerRoutes } from "./mcp-servers.js";
 import { registerProviderRoutes } from "./providers.js";
+import { registerSecretRoutes } from "./secrets.js";
 
 export function registerApiRoutes(server: AppServer, context: RuntimeContext): void {
   registerHealthRoutes(server, context);
@@ -14,4 +15,5 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerConversationEventRoutes(server, context);
   registerMcpServerRoutes(server, context);
   registerProviderRoutes(server, context);
+  registerSecretRoutes(server, context);
 }

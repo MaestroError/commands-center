@@ -3,11 +3,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IntegrationsPage } from "./IntegrationsPage";
 
+import { useAgentMutations, useAgentsQuery } from "@/hooks/use-agents-query";
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
+import { useSecretsQuery } from "@/hooks/use-secrets-query";
+
+vi.mock("@/hooks/use-agents-query", () => ({
+  useAgentsQuery: vi.fn(),
+  useAgentMutations: vi.fn(),
+}));
 
 vi.mock("@/hooks/use-mcp-servers-query", () => ({
   useMcpServersQuery: vi.fn(),
   useMcpServerMutations: vi.fn(),
+}));
+
+vi.mock("@/hooks/use-secrets-query", () => ({
+  useSecretsQuery: vi.fn(),
 }));
 
 const createMutateAsync = vi.fn();
@@ -18,7 +29,9 @@ const startAuthMutateAsync = vi.fn();
 const completeAuthMutateAsync = vi.fn();
 const authenticateMutateAsync = vi.fn();
 const removeAuthMutateAsync = vi.fn();
+const updateAgentMutateAsync = vi.fn();
 const confirmSpy = vi.spyOn(window, "confirm");
+const writeClipboardSpy = vi.fn(() => Promise.resolve());
 
 function setViewport(size: "mobile" | "medium" | "large") {
   vi.mocked(window.matchMedia).mockImplementation((query: string) => {
@@ -53,8 +66,15 @@ beforeEach(() => {
   completeAuthMutateAsync.mockReset();
   authenticateMutateAsync.mockReset();
   removeAuthMutateAsync.mockReset();
+  updateAgentMutateAsync.mockReset();
   confirmSpy.mockReset();
   confirmSpy.mockReturnValue(true);
+  Object.assign(navigator, {
+    clipboard: {
+      writeText: writeClipboardSpy,
+    },
+  });
+  writeClipboardSpy.mockReset();
 
   vi.mocked(useMcpServersQuery).mockReturnValue({
     data: [],
@@ -72,6 +92,52 @@ beforeEach(() => {
     completeAuth: { mutateAsync: completeAuthMutateAsync, isPending: false },
     authenticate: { mutateAsync: authenticateMutateAsync, isPending: false },
     removeAuth: { mutateAsync: removeAuthMutateAsync, isPending: false },
+    refresh: { mutate: vi.fn(), isPending: false },
+  } as never);
+
+  vi.mocked(useSecretsQuery).mockReturnValue({
+    data: [],
+    isLoading: false,
+    error: null,
+  } as never);
+
+  vi.mocked(useAgentsQuery).mockReturnValue({
+    data: [
+      {
+        id: "agent-1",
+        slug: "writer",
+        name: "Writer",
+        role: "write",
+        instructions: "Write things",
+        defaultModel: "openai/gpt-4.1",
+        workspacePath: "/tmp/writer",
+        status: "active",
+        capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
+        createdAt: "2026-04-22T10:00:00.000Z",
+        updatedAt: "2026-04-22T10:00:00.000Z",
+      },
+      {
+        id: "agent-2",
+        slug: "reviewer",
+        name: "Reviewer",
+        role: "review",
+        instructions: "Review things",
+        defaultModel: "openai/gpt-4.1",
+        workspacePath: "/tmp/reviewer",
+        status: "active",
+        capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
+        createdAt: "2026-04-22T10:00:00.000Z",
+        updatedAt: "2026-04-22T10:00:00.000Z",
+      },
+    ],
+    isLoading: false,
+    error: null,
+  } as never);
+
+  vi.mocked(useAgentMutations).mockReturnValue({
+    create: { mutateAsync: vi.fn(), isPending: false },
+    update: { mutateAsync: updateAgentMutateAsync, isPending: false },
+    archive: { mutateAsync: vi.fn(), isPending: false },
   } as never);
 });
 
@@ -126,6 +192,50 @@ describe("IntegrationsPage", () => {
     });
   });
 
+  it("renders copyable missing secrets with a settings shortcut", async () => {
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        {
+          id: "mcp-1",
+          name: "context7",
+          enabled: true,
+          config: {
+            url: "https://mcp.context7.com/mcp",
+            transport: "streamable-http",
+            authMethod: "headers",
+            headers: [{ key: "Authorization", value: "Bearer {env:CONTEXT_SECRET_KEY}" }],
+          },
+          missingSecrets: ["CONTEXT_SECRET_KEY"],
+          runtimeStatus: { status: "disconnected" },
+          tools: [],
+          createdAt: "2026-04-22T10:00:00.000Z",
+          updatedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Copy CONTEXT_SECRET_KEY/i }));
+
+    await waitFor(() => {
+      expect(writeClipboardSpy).toHaveBeenCalledWith("CONTEXT_SECRET_KEY");
+    });
+
+    expect(
+      screen.getByRole("button", { name: /Copy CONTEXT_SECRET_KEY/i }).querySelector("svg"),
+    ).toBeInTheDocument();
+
+    expect(screen.getByRole("link", { name: "Open secrets in new tab" })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
+    expect(screen.getByText("CONTEXT_SECRET_KEY")).toBeInTheDocument();
+  });
+
   it("submits the add MCP server dialog", async () => {
     createMutateAsync.mockResolvedValue({ name: "github" });
 
@@ -154,6 +264,56 @@ describe("IntegrationsPage", () => {
           transport: "streamable-http",
           authMethod: "headers",
           headers: [{ key: "Authorization", value: "Bearer secret" }],
+        },
+      });
+    });
+  });
+
+  it("assigns a newly created MCP server to selected agents", async () => {
+    createMutateAsync.mockResolvedValue({
+      id: "mcp-new",
+      name: "github",
+      enabled: true,
+      config: {
+        url: "https://example.com/mcp",
+        transport: "streamable-http",
+        authMethod: "headers",
+        headers: [{ key: "Authorization", value: "Bearer token" }],
+      },
+      runtimeStatus: { status: "disconnected" },
+      tools: [],
+      missingSecrets: [],
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T10:00:00.000Z",
+    });
+    updateAgentMutateAsync.mockResolvedValue(undefined);
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "github" } });
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "https://example.com/mcp" },
+    });
+    fireEvent.change(screen.getByLabelText("Headers"), {
+      target: { value: "Authorization: Bearer token" },
+    });
+    fireEvent.change(screen.getByLabelText("Auth method"), {
+      target: { value: "headers" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Enable for agents/i }));
+    fireEvent.click(screen.getByLabelText("Writer"));
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+
+    await waitFor(() => {
+      expect(updateAgentMutateAsync).toHaveBeenCalledWith({
+        id: "agent-1",
+        input: {
+          capabilities: {
+            builtInSkills: [],
+            mcpServers: [{ name: "github", enabled: true, action: "allow" }],
+            toolPermissions: [],
+          },
         },
       });
     });

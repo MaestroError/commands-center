@@ -1,10 +1,11 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
 import { createAgentService } from "../../src/services/agent-service";
 import { createMcpServerService } from "../../src/services/mcp-server-service";
+import { createSecretService } from "../../src/services/secret-service";
 import { ConflictError, NotFoundError } from "../../src/lib/api-error";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
@@ -12,12 +13,12 @@ import { createTestDatabase } from "../helpers/db";
 describe("mcp-server-service", () => {
   it("persists MCP servers and syncs the global opencode config", async () => {
     const testDb = await createTestDatabase();
-    const orchestrator = createOrchestrator();
+    const opencodeService = createMockOpenCodeService();
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator,
-      opencodeService: createMockOpenCodeService(),
+      opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
 
     try {
@@ -39,7 +40,7 @@ describe("mcp-server-service", () => {
           url: "https://example.com/mcp",
           transport: "streamable-http",
           authMethod: "headers",
-          headers: [{ key: "Authorization", value: "Bearer secret" }],
+          headers: [{ key: "Authorization", value: "{env:CC_MCP_GITHUB_HEADER_AUTHORIZATION}" }],
         },
       });
 
@@ -57,10 +58,10 @@ describe("mcp-server-service", () => {
         enabled: true,
         oauth: false,
         headers: {
-          Authorization: "Bearer secret",
+          Authorization: "{env:CC_MCP_GITHUB_HEADER_AUTHORIZATION}",
         },
       });
-      expect(orchestrator.restart).toHaveBeenCalledWith("mcp server github created");
+      expect(opencodeService.disposeGlobal).toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
     }
@@ -68,12 +69,12 @@ describe("mcp-server-service", () => {
 
   it("updates enabled state and removes MCP servers from config", async () => {
     const testDb = await createTestDatabase();
-    const orchestrator = createOrchestrator();
+    const opencodeService = createMockOpenCodeService();
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator,
-      opencodeService: createMockOpenCodeService(),
+      opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
 
     try {
@@ -102,7 +103,7 @@ describe("mcp-server-service", () => {
       };
 
       expect(rendered.mcp).toEqual({});
-      expect(orchestrator.restart).toHaveBeenCalledTimes(3);
+      expect(opencodeService.disposeGlobal).toHaveBeenCalledTimes(2);
     } finally {
       await testDb.cleanup();
     }
@@ -114,8 +115,8 @@ describe("mcp-server-service", () => {
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator: createOrchestrator(),
       opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
     const agentService = createAgentService({
       db: testDb.client.db,
@@ -166,8 +167,8 @@ describe("mcp-server-service", () => {
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator: createOrchestrator(),
       opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
     const agentService = createAgentService({
       db: testDb.client.db,
@@ -230,8 +231,8 @@ describe("mcp-server-service", () => {
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
 
     try {
@@ -268,8 +269,8 @@ describe("mcp-server-service", () => {
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
 
     try {
@@ -297,8 +298,8 @@ describe("mcp-server-service", () => {
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
 
     try {
@@ -340,7 +341,7 @@ describe("mcp-server-service", () => {
         enabled: false,
         oauth: false,
         headers: {
-          "X-API-Key": "secret",
+          "X-API-Key": "{env:CC_MCP_PLAIN_SERVER_HEADER_X_API_KEY}",
         },
       });
     } finally {
@@ -353,8 +354,8 @@ describe("mcp-server-service", () => {
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
 
     try {
@@ -380,9 +381,36 @@ describe("mcp-server-service", () => {
         command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp/workspace"],
         enabled: true,
         environment: {
-          NODE_ENV: "test",
+          NODE_ENV: "{env:CC_MCP_FILESYSTEM_ENV_NODE_ENV}",
         },
       });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("flags referenced secrets without values", async () => {
+    const testDb = await createTestDatabase();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+
+    try {
+      const created = await service.create({
+        name: "linear",
+        enabled: true,
+        config: {
+          url: "https://linear.example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "headers",
+          headers: [{ key: "Authorization", value: "Bearer {env:CC_LINEAR_TOKEN}" }],
+        },
+      });
+
+      expect(created.missingSecrets).toEqual(["CC_LINEAR_TOKEN"]);
     } finally {
       await testDb.cleanup();
     }
@@ -394,8 +422,8 @@ describe("mcp-server-service", () => {
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator: createOrchestrator(),
       opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
 
     try {
@@ -435,8 +463,8 @@ describe("mcp-server-service", () => {
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator: createOrchestrator(),
       opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
 
     try {
@@ -471,8 +499,8 @@ describe("mcp-server-service", () => {
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator: createOrchestrator(),
       opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
 
     try {
@@ -502,8 +530,8 @@ describe("mcp-server-service", () => {
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator: createOrchestrator(),
       opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
 
     try {
@@ -534,8 +562,8 @@ describe("mcp-server-service", () => {
     const service = createMcpServerService({
       db: testDb.client.db,
       config: testDb.config,
-      orchestrator: createOrchestrator(),
       opencodeService,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
 
     try {
@@ -558,24 +586,131 @@ describe("mcp-server-service", () => {
       await testDb.cleanup();
     }
   });
-});
 
-function createOrchestrator() {
-  return {
-    start: vi.fn(() => Promise.resolve()),
-    stop: vi.fn(() => Promise.resolve()),
-    restart: vi.fn(() => Promise.resolve()),
-    refreshHealth: vi.fn(() => Promise.resolve(true)),
-    getStatus: vi.fn(() => ({
-      state: "healthy" as const,
-      healthy: true,
-      url: "http://127.0.0.1:4100",
-      workspaceDir: "/tmp/workspace",
-      restartCount: 0,
-      maxRestarts: 3,
-    })),
-  };
-}
+  describe("auth flows re-sync opencode.jsonc before calling opencode", () => {
+    async function setupOauthServer() {
+      const testDb = await createTestDatabase();
+      const opencodeService = createMockOpenCodeService();
+      const service = createMcpServerService({
+        db: testDb.client.db,
+        config: testDb.config,
+        opencodeService,
+        secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      });
+      const configPath = join(testDb.config.paths.workspaceDir, "opencode.jsonc");
+
+      const created = await service.create({
+        name: "notion",
+        enabled: true,
+        config: {
+          url: "https://notion.example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+
+      return { testDb, service, opencodeService, configPath, created };
+    }
+
+    function readMcpEntry(text: string): unknown {
+      return (JSON.parse(text) as { mcp: Record<string, unknown> }).mcp["notion"];
+    }
+
+    it("startAuth rewrites a corrupted opencode.jsonc before invoking opencode", async () => {
+      const ctx = await setupOauthServer();
+      try {
+        await writeFile(ctx.configPath, '{ "mcp": {} }\n', "utf8");
+
+        let snapshotAtCallTime: string | undefined;
+        vi.mocked(ctx.opencodeService.startMcpAuth).mockImplementation(async () => {
+          snapshotAtCallTime = await readFile(ctx.configPath, "utf8");
+          return { authorizationUrl: "https://example.com/oauth" };
+        });
+
+        await ctx.service.startAuth(ctx.created.id);
+
+        expect(snapshotAtCallTime).toBeDefined();
+        expect(readMcpEntry(snapshotAtCallTime!)).toMatchObject({
+          type: "remote",
+          url: "https://notion.example.com/mcp",
+          enabled: true,
+        });
+      } finally {
+        await ctx.testDb.cleanup();
+      }
+    });
+
+    it("authenticate rewrites a corrupted opencode.jsonc before invoking opencode", async () => {
+      const ctx = await setupOauthServer();
+      try {
+        await writeFile(ctx.configPath, '{ "mcp": {} }\n', "utf8");
+
+        let snapshotAtCallTime: string | undefined;
+        vi.mocked(ctx.opencodeService.authenticateMcp).mockImplementation(async () => {
+          snapshotAtCallTime = await readFile(ctx.configPath, "utf8");
+          return { status: "connected" as const };
+        });
+
+        await ctx.service.authenticate(ctx.created.id);
+
+        expect(snapshotAtCallTime).toBeDefined();
+        expect(readMcpEntry(snapshotAtCallTime!)).toMatchObject({
+          type: "remote",
+          url: "https://notion.example.com/mcp",
+        });
+      } finally {
+        await ctx.testDb.cleanup();
+      }
+    });
+
+    it("completeAuth rewrites a corrupted opencode.jsonc before invoking opencode", async () => {
+      const ctx = await setupOauthServer();
+      try {
+        await writeFile(ctx.configPath, '{ "mcp": {} }\n', "utf8");
+
+        let snapshotAtCallTime: string | undefined;
+        vi.mocked(ctx.opencodeService.completeMcpAuth).mockImplementation(async () => {
+          snapshotAtCallTime = await readFile(ctx.configPath, "utf8");
+          return { status: "connected" as const };
+        });
+
+        await ctx.service.completeAuth(ctx.created.id, "code");
+
+        expect(snapshotAtCallTime).toBeDefined();
+        expect(readMcpEntry(snapshotAtCallTime!)).toMatchObject({
+          type: "remote",
+          url: "https://notion.example.com/mcp",
+        });
+      } finally {
+        await ctx.testDb.cleanup();
+      }
+    });
+
+    it("removeAuth rewrites a corrupted opencode.jsonc before invoking opencode", async () => {
+      const ctx = await setupOauthServer();
+      try {
+        await writeFile(ctx.configPath, '{ "mcp": {} }\n', "utf8");
+
+        let snapshotAtCallTime: string | undefined;
+        vi.mocked(ctx.opencodeService.removeMcpAuth).mockImplementation(async () => {
+          snapshotAtCallTime = await readFile(ctx.configPath, "utf8");
+          return { success: true as const };
+        });
+
+        await ctx.service.removeAuth(ctx.created.id);
+
+        expect(snapshotAtCallTime).toBeDefined();
+        expect(readMcpEntry(snapshotAtCallTime!)).toMatchObject({
+          type: "remote",
+          url: "https://notion.example.com/mcp",
+        });
+      } finally {
+        await ctx.testDb.cleanup();
+      }
+    });
+  });
+});
 
 function createMockOpenCodeService(): OpenCodeService {
   let authenticated = false;
@@ -600,5 +735,6 @@ function createMockOpenCodeService(): OpenCodeService {
     }),
     removeMcpAuth: vi.fn(() => Promise.resolve({ success: true as const })),
     dispose: vi.fn(() => Promise.resolve()),
+    disposeGlobal: vi.fn(() => Promise.resolve()),
   } as unknown as OpenCodeService;
 }

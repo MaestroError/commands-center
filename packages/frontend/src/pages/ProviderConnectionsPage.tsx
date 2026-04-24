@@ -468,8 +468,14 @@ function ProviderDialog(props: ProviderDialogProps) {
 
   if (successMessage) {
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6">
-        <section className="cc-panel w-full max-w-2xl p-6 shadow-2xl">
+      <div
+        className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6"
+        onClick={props.onClose}
+      >
+        <section
+          className="cc-panel w-full max-w-2xl p-6 shadow-2xl"
+          onClick={(event) => event.stopPropagation()}
+        >
           <div className="flex justify-end">
             <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
               Close
@@ -495,8 +501,14 @@ function ProviderDialog(props: ProviderDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6">
-      <section className="cc-panel w-full max-w-2xl p-6 shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6"
+      onClick={props.onClose}
+    >
+      <section
+        className="cc-panel w-full max-w-2xl p-6 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="cc-eyebrow">{props.provider.provider.name}</p>

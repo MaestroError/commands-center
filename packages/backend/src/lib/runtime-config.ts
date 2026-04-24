@@ -16,6 +16,7 @@ const DEFAULT_OPENCODE_RESTART_WINDOW_MS = 60_000;
 const DEFAULT_MCP_AUTH_TIMEOUT_MS = 90_000;
 const DEFAULT_DRAIN_TIMEOUT_MS = 15_000;
 const DEFAULT_LOG_LEVEL = "info";
+const DEFAULT_SECRET_KEY = "development-secret-key-change-me";
 
 const logLevelSchema = z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]);
 
@@ -76,6 +77,7 @@ const envSchema = z.object({
   CC_DRAIN_TIMEOUT_MS: positiveInteger("CC_DRAIN_TIMEOUT_MS", DEFAULT_DRAIN_TIMEOUT_MS),
   CC_LOG_LEVEL: logLevelSchema.optional().default(DEFAULT_LOG_LEVEL),
   CC_OPENCODE_PATH: z.string().trim().optional(),
+  CC_SECRET_KEY: z.string().trim().optional().default(DEFAULT_SECRET_KEY),
 });
 
 export type RuntimeEnvironment = NodeJS.ProcessEnv;
@@ -123,6 +125,7 @@ export type RuntimeConfig = {
   };
   logLevel: z.infer<typeof logLevelSchema>;
   opencodePath?: string;
+  secretKey: string;
 };
 
 export type RuntimeConfigOverrides = {
@@ -196,6 +199,7 @@ export function loadRuntimeConfig(options?: {
     },
     logLevel: parsedEnv.data.CC_LOG_LEVEL,
     opencodePath: parsedEnv.data.CC_OPENCODE_PATH || undefined,
+    secretKey: parsedEnv.data.CC_SECRET_KEY,
   };
 }
 
@@ -215,5 +219,6 @@ export function getStartupLogContext(config: RuntimeConfig): Record<string, unkn
     timeouts: config.timeouts,
     logLevel: config.logLevel,
     opencodePathConfigured: config.opencodePath !== undefined,
+    secretKeyConfigured: config.secretKey.trim().length > 0,
   };
 }

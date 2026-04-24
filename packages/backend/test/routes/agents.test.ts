@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createSchedulerService } from "../../src/services/scheduler-service";
+import { createSecretService } from "../../src/services/secret-service";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
@@ -17,6 +18,7 @@ describe("agent routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
 
@@ -106,6 +108,7 @@ describe("agent routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
 
@@ -164,6 +167,7 @@ describe("agent routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
 
@@ -223,6 +227,7 @@ function createOrchestrator(): OpenCodeOrchestrator {
 function createMockOpenCodeService(): OpenCodeService {
   return {
     dispose: vi.fn(() => Promise.resolve()),
+    disposeGlobal: vi.fn(() => Promise.resolve()),
     listProviders: vi.fn(() =>
       Promise.resolve({
         all: [

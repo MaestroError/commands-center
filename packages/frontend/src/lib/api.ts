@@ -16,8 +16,10 @@ import {
   providerOauthAuthorizationSchema,
   providerOauthCompleteResultSchema,
   providerStatusListSchema,
+  secretMetaListSchema,
   sessionMediaListSchema,
   sendConversationPromptInputSchema,
+  setSecretRequestSchema,
   setMcpServerEnabledInputSchema,
   workspaceFileSearchResultSchema,
   type Agent,
@@ -34,6 +36,7 @@ import {
   type ProviderOauthAuthorization,
   type ProviderOauthCompleteResult,
   type ProviderStatus,
+  type SecretMeta,
   type SessionMediaItem,
   type SendConversationPromptInput,
   type UpdateAgentInput,
@@ -53,6 +56,12 @@ export async function listProviders(): Promise<ProviderStatus[]> {
 
 export async function listMcpServers(): Promise<McpServer[]> {
   return requestJson<McpServer[]>("/api/mcp-servers", mcpServerListSchema);
+}
+
+export async function refreshMcpServers(): Promise<McpServer[]> {
+  return requestJson<McpServer[]>("/api/mcp-servers/refresh", mcpServerListSchema, {
+    method: "POST",
+  });
 }
 
 export async function createMcpServer(input: CreateMcpServerInput): Promise<McpServer> {
@@ -128,6 +137,32 @@ export async function removeMcpAuth(id: string): Promise<McpAuthRemoveResult> {
       method: "DELETE",
     },
   );
+}
+
+export async function listSecrets(): Promise<SecretMeta[]> {
+  return requestJson<SecretMeta[]>("/api/secrets", secretMetaListSchema);
+}
+
+export async function setSecret(key: string, value: string): Promise<void> {
+  const response = await fetch(`/api/secrets/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(setSecretRequestSchema.parse({ value })),
+  });
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
+}
+
+export async function deleteSecret(key: string): Promise<void> {
+  const response = await fetch(`/api/secrets/${encodeURIComponent(key)}`, { method: "DELETE" });
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
 }
 
 export async function listAgents(): Promise<Agent[]> {

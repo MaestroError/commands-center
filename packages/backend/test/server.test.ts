@@ -11,6 +11,17 @@ import {
   type OpenCodeService,
 } from "@cc/backend";
 
+function createSecretServiceStub() {
+  return {
+    list: () => Promise.resolve([]),
+    ensure: () => Promise.resolve(),
+    set: () => Promise.resolve(),
+    delete: () => Promise.resolve(),
+    buildEnvMap: () => Promise.resolve({}),
+    listMissing: () => Promise.resolve([]),
+  };
+}
+
 function createDatabase(sqlitePath: string): DatabaseClient {
   return {
     db: {} as DatabaseClient["db"],
@@ -33,6 +44,7 @@ function createOrchestrator(status: EngineStatus): OpenCodeOrchestrator {
 function createMockOpenCodeService(): OpenCodeService {
   return {
     dispose: vi.fn(() => Promise.resolve()),
+    disposeGlobal: vi.fn(() => Promise.resolve()),
     listProviders: vi.fn(() => Promise.resolve({ all: [], default: {}, connected: [] })),
     listAuthMethods: vi.fn(() => Promise.resolve({})),
     setApiKey: vi.fn(() => Promise.resolve(true)),
@@ -68,6 +80,7 @@ describe("createServer", () => {
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretServiceStub(),
       scheduler: createSchedulerService(),
     });
 
@@ -127,6 +140,7 @@ describe("createServer", () => {
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretServiceStub(),
       scheduler: createSchedulerService(),
     });
 
@@ -168,6 +182,7 @@ describe("createServer", () => {
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretServiceStub(),
       scheduler: createSchedulerService(),
     });
 
@@ -214,6 +229,7 @@ describe("createServer", () => {
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretServiceStub(),
       scheduler: createSchedulerService(),
     });
 

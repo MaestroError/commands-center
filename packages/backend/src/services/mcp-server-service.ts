@@ -25,8 +25,8 @@ import {
   type UpdateMcpServerInput,
 } from "../schemas/mcp.js";
 import type { AppDb } from "../db/client.js";
-import type { OpenCodeOrchestrator } from "../orchestrator/opencode-orchestrator.js";
 import type { OpenCodeService } from "./opencode-service.js";
+import type { SecretService } from "./secret-service.js";
 import {
   removeMcpReferences,
   renameMcpReferences,
@@ -40,8 +40,8 @@ export type McpServerService = ReturnType<typeof createMcpServerService>;
 export function createMcpServerService(options: {
   db: AppDb;
   config: RuntimeConfig;
-  orchestrator: OpenCodeOrchestrator;
   opencodeService: OpenCodeService;
+  secretService: SecretService;
 }) {
   return {
     async list(): Promise<McpServer[]> {
@@ -52,18 +52,28 @@ export function createMcpServerService(options: {
       return mcpServerListSchema.parse(await withRuntime(rows.map(mapMcpServer)));
     },
 
+    async refresh(): Promise<McpServer[]> {
+      await options.opencodeService.disposeGlobal();
+      return this.list();
+    },
+
     async create(input: CreateMcpServerInput): Promise<McpServer> {
       const parsed = createMcpServerInputSchema.parse(input);
       await assertNameAvailable(parsed.name);
+      const normalizedConfig = await normalizeConfig({
+        config: parsed.config,
+        serverName: parsed.name,
+        secretService: options.secretService,
+      });
 
       const [row] = await options.db
         .insert(mcp_servers)
         .values({
           id: createId(),
           name: parsed.name,
-          transport: parsed.config.transport,
+          transport: normalizedConfig.transport,
           enabled: parsed.enabled,
-          config_json: JSON.stringify(parsed.config),
+          config_json: JSON.stringify(normalizedConfig),
           created_at: now(),
           updated_at: now(),
         })
@@ -74,7 +84,7 @@ export function createMcpServerService(options: {
       }
 
       await syncGlobalConfig();
-      await options.orchestrator.restart(`mcp server ${parsed.name} created`);
+      await options.opencodeService.disposeGlobal();
       return readOne(row);
     },
 
@@ -89,12 +99,18 @@ export function createMcpServerService(options: {
         await assertNameAvailable(parsed.name, id);
       }
 
+      const normalizedConfig = await normalizeConfig({
+        config: parsed.config,
+        serverName: parsed.name,
+        secretService: options.secretService,
+      });
+
       const [row] = await options.db
         .update(mcp_servers)
         .set({
           name: parsed.name,
-          transport: parsed.config.transport,
-          config_json: JSON.stringify(parsed.config),
+          transport: normalizedConfig.transport,
+          config_json: JSON.stringify(normalizedConfig),
           updated_at: now(),
         })
         .where(eq(mcp_servers.id, id))
@@ -115,7 +131,6 @@ export function createMcpServerService(options: {
       }
 
       await syncGlobalConfig();
-      await options.orchestrator.restart(`mcp server ${parsed.name} updated`);
       return readOne(row);
     },
 
@@ -136,9 +151,6 @@ export function createMcpServerService(options: {
       }
 
       await syncGlobalConfig();
-      await options.orchestrator.restart(
-        `mcp server ${existing.name} ${enabled ? "enabled" : "disabled"}`,
-      );
       return readOne(row);
     },
 
@@ -149,6 +161,7 @@ export function createMcpServerService(options: {
       }
 
       assertRowSupportsOauth(row);
+      await syncGlobalConfig();
 
       const result = await callOpencode(row.name, "start authentication for", () =>
         options.opencodeService.startMcpAuth(options.config.paths.workspaceDir, row.name),
@@ -163,6 +176,7 @@ export function createMcpServerService(options: {
       }
 
       assertRowSupportsOauth(row);
+      await syncGlobalConfig();
 
       const [server] = await withRuntime([mapMcpServer(row)]);
       if (server?.runtimeStatus?.status === "connected") {
@@ -183,6 +197,7 @@ export function createMcpServerService(options: {
       }
 
       assertRowSupportsOauth(row);
+      await syncGlobalConfig();
 
       await callOpencode(row.name, "complete authentication for", () =>
         options.opencodeService.completeMcpAuth(options.config.paths.workspaceDir, row.name, code),
@@ -195,6 +210,8 @@ export function createMcpServerService(options: {
       if (!row) {
         throw new NotFoundError("MCP server not found.");
       }
+
+      await syncGlobalConfig();
 
       const result = await callOpencode(row.name, "remove credentials for", () =>
         options.opencodeService.removeMcpAuth(options.config.paths.workspaceDir, row.name),
@@ -216,7 +233,7 @@ export function createMcpServerService(options: {
         transform: (capabilities) => removeMcpReferences(capabilities, existing.name),
       });
       await syncGlobalConfig();
-      await options.orchestrator.restart(`mcp server ${existing.name} removed`);
+      await options.opencodeService.disposeGlobal();
     },
   };
 
@@ -273,9 +290,19 @@ export function createMcpServerService(options: {
       options.opencodeService.listMcpToolIds(options.config.paths.workspaceDir).catch(() => []),
     ]);
 
-    return servers.map((server) =>
+    const missingByServer = await Promise.all(
+      servers.map(async (server) => ({
+        server,
+        missingSecrets: await options.secretService.listMissing(
+          listReferencedSecrets(server.config),
+        ),
+      })),
+    );
+
+    return missingByServer.map(({ server, missingSecrets }) =>
       mcpServerSchema.parse({
         ...server,
+        missingSecrets,
         runtimeStatus: readStatus(statuses, server.name, server.enabled),
         tools: readTools(toolIds, server.name),
       }),
@@ -365,7 +392,106 @@ function mapMcpServer(row: typeof mcp_servers.$inferSelect): McpServer {
     name: row.name,
     enabled: row.enabled,
     config: mcpServerConfigSchema.parse(JSON.parse(row.config_json) as unknown),
+    missingSecrets: [],
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   });
+}
+
+async function normalizeConfig(options: {
+  config: McpServerConfig;
+  serverName: string;
+  secretService: SecretService;
+}): Promise<McpServerConfig> {
+  if (options.config.transport === "stdio") {
+    const environmentEntries = await Promise.all(
+      Object.entries(options.config.environment).map(
+        async ([key, value]) =>
+          [
+            key,
+            await normalizeSecretValue({
+              secretService: options.secretService,
+              serverName: options.serverName,
+              fieldName: key,
+              fieldPrefix: "env",
+              value,
+            }),
+          ] as const,
+      ),
+    );
+    const environment = Object.fromEntries(environmentEntries) as Record<string, string>;
+
+    return {
+      ...options.config,
+      environment,
+    };
+  }
+
+  const headers = await Promise.all(
+    options.config.headers.map(async (header) => ({
+      key: header.key,
+      value: await normalizeSecretValue({
+        secretService: options.secretService,
+        serverName: options.serverName,
+        fieldName: header.key,
+        fieldPrefix: "header",
+        value: header.value,
+      }),
+    })),
+  );
+
+  return {
+    ...options.config,
+    headers,
+  };
+}
+
+async function normalizeSecretValue(options: {
+  secretService: SecretService;
+  serverName: string;
+  fieldPrefix: string;
+  fieldName: string;
+  value: string;
+}): Promise<string> {
+  const referencedSecrets = extractEnvRefs(options.value);
+
+  if (referencedSecrets.length > 0) {
+    await options.secretService.ensure(referencedSecrets);
+    return options.value;
+  }
+
+  const generatedSecretKey = buildManagedSecretKey(
+    options.serverName,
+    `${options.fieldPrefix}_${options.fieldName}`,
+  );
+  await options.secretService.set(generatedSecretKey, options.value);
+
+  return `{env:${generatedSecretKey}}`;
+}
+
+function listReferencedSecrets(config: McpServerConfig): string[] {
+  if (config.transport === "stdio") {
+    return Object.values(config.environment).flatMap(extractEnvRefs);
+  }
+
+  return config.headers.flatMap((header) => extractEnvRefs(header.value));
+}
+
+function extractEnvRefs(value: string): string[] {
+  const matches = value.matchAll(/\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g);
+  return [...new Set(Array.from(matches, (match) => match[1] ?? "").filter(Boolean))];
+}
+
+function buildManagedSecretKey(serverName: string, fieldName: string): string {
+  return `CC_MCP_${sanitizeSecretSegment(serverName)}_${sanitizeSecretSegment(fieldName)}`;
+}
+
+function sanitizeSecretSegment(value: string): string {
+  const sanitized = value
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+
+  return sanitized || "VALUE";
 }

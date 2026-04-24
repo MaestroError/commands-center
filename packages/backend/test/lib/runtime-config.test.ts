@@ -75,6 +75,7 @@ describe("loadRuntimeConfig", () => {
       },
       logLevel: "info",
       opencodePathConfigured: true,
+      secretKeyConfigured: true,
     });
   });
 

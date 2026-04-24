@@ -1,11 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
-import type { McpServer } from "@cc/shared/schemas";
+import type {
+  Agent,
+  AgentCapabilitySelection,
+  McpServer,
+  UpdateAgentInput,
+} from "@cc/shared/schemas";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
+import { useAgentMutations, useAgentsQuery } from "@/hooks/use-agents-query";
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
+import { getMcpServerSelection, setMcpServerEnabled } from "@/lib/agent-capabilities";
+import { useSecretsQuery } from "@/hooks/use-secrets-query";
 
 type DialogState =
   | { mode: "create"; prefill?: FormState }
@@ -73,7 +81,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
       url: "https://mcp.context7.com/mcp",
       transport: "streamable-http",
       authMethod: "headers",
-      headersText: "CONTEXT7_API_KEY: <your-context7-api-key>",
+      headersText: "CONTEXT7_API_KEY: {env:CONTEXT7_API_KEY}",
     },
   },
   {
@@ -88,22 +96,29 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
       url: "https://api.githubcopilot.com/mcp/",
       transport: "streamable-http",
       authMethod: "headers",
-      headersText: "Authorization: Bearer <your-github-personal-access-token>",
+      headersText: "Authorization: Bearer {env:GITHUB_TOKEN}",
     },
   },
   {
     id: "brave-search",
     name: "Brave Search",
     description: "Privacy-first web search via Brave's API.",
-    authBadge: "API token",
-    tags: ["auth:api-key", "category:search", "type:remote", "source:official"],
+    authBadge: "API key",
+    tags: [
+      "auth:api-key",
+      "category:search",
+      "language:node",
+      "launcher:npx",
+      "type:local",
+      "source:official",
+    ],
     form: {
       ...EMPTY_FORM_BASE,
       name: "brave-search",
-      url: "https://mcp.brave.com/mcp",
-      transport: "streamable-http",
-      authMethod: "headers",
-      headersText: "X-Subscription-Token: <your-brave-api-key>",
+      transport: "stdio",
+      authMethod: "none",
+      commandText: "npx\n-y\n@brave/brave-search-mcp-server",
+      environmentText: "BRAVE_API_KEY={env:BRAVE_API_KEY}",
     },
   },
   {
@@ -143,7 +158,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     form: {
       ...EMPTY_FORM_BASE,
       name: "vercel",
-      url: "https://mcp.vercel.com/",
+      url: "https://mcp.vercel.com",
       transport: "streamable-http",
       authMethod: "oauth",
     },
@@ -166,7 +181,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     id: "playwright",
     name: "Playwright",
     description: "Microsoft's official browser automation via accessibility tree.",
-    authBadge: "Local",
+    authBadge: "No Auth",
     tags: [
       "auth:no-auth",
       "category:browser",
@@ -187,7 +202,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     id: "antv-chart",
     name: "AntV Charts",
     description: "Generate 25+ chart types (line, bar, pie, sankey, treemap, mind map).",
-    authBadge: "Local",
+    authBadge: "No Auth",
     tags: [
       "auth:no-auth",
       "category:charts",
@@ -208,7 +223,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     id: "mermaid",
     name: "Mermaid",
     description: "Render Mermaid diagrams (flowcharts, sequence, ER, gantt, class).",
-    authBadge: "Local",
+    authBadge: "No Auth",
     tags: [
       "auth:no-auth",
       "category:diagrams",
@@ -229,7 +244,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     id: "fetcher",
     name: "Fetcher",
     description: "Playwright-based web fetcher with JS rendering, returns clean Markdown.",
-    authBadge: "Local",
+    authBadge: "No Auth",
     tags: [
       "auth:no-auth",
       "category:web-fetching",
@@ -250,7 +265,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     id: "markitdown",
     name: "MarkItDown",
     description: "Convert PDF, DOCX, PPTX, XLSX, images, and audio to Markdown (Microsoft).",
-    authBadge: "Local",
+    authBadge: "No Auth",
     tags: [
       "auth:no-auth",
       "category:documents",
@@ -271,7 +286,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     id: "duckduckgo",
     name: "DuckDuckGo",
     description: "Free web search with no API key required.",
-    authBadge: "Local",
+    authBadge: "No Auth",
     tags: [
       "auth:no-auth",
       "category:search",
@@ -292,7 +307,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     id: "memory",
     name: "Memory",
     description: "Persistent knowledge graph stored locally. Anthropic reference implementation.",
-    authBadge: "Local",
+    authBadge: "No Auth",
     tags: [
       "auth:no-auth",
       "category:memory",
@@ -313,7 +328,7 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     id: "sequential-thinking",
     name: "Sequential Thinking",
     description: "Structured step-by-step reasoning helper. Anthropic reference implementation.",
-    authBadge: "Local",
+    authBadge: "No Auth",
     tags: [
       "auth:no-auth",
       "category:reasoning",
@@ -333,8 +348,11 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
 ];
 
 export function IntegrationsPage() {
+  const agentsQuery = useAgentsQuery();
+  const agentMutations = useAgentMutations();
   const mcpServersQuery = useMcpServersQuery();
   const mcpMutations = useMcpServerMutations();
+  const secretsQuery = useSecretsQuery();
   const [dialog, setDialog] = useState<DialogState>();
   const [authServer, setAuthServer] = useState<McpServer>();
   const [successMessage, setSuccessMessage] = useState<string>();
@@ -344,6 +362,12 @@ export function IntegrationsPage() {
   );
   const queryError = mcpServersQuery.error ? readError(mcpServersQuery.error) : undefined;
   const mcpServers = mcpServersQuery.data ?? [];
+  const agents = agentsQuery.data ?? [];
+  const secretMeta = secretsQuery.data ?? [];
+  const secretKeys = secretMeta.map((secret) => secret.key);
+  const unsetSecretKeys = new Set(
+    secretMeta.filter((secret) => !secret.isSet).map((secret) => secret.key),
+  );
 
   return (
     <div className="grid gap-4">
@@ -352,10 +376,11 @@ export function IntegrationsPage() {
           <div className="flex flex-wrap gap-2">
             <button
               className="cc-button cc-button-secondary"
-              onClick={() => void mcpServersQuery.refetch()}
+              disabled={mcpMutations.refresh.isPending}
+              onClick={() => mcpMutations.refresh.mutate()}
               type="button"
             >
-              Refresh
+              {mcpMutations.refresh.isPending ? "Refreshing…" : "Refresh"}
             </button>
             <button
               className="cc-button"
@@ -450,6 +475,7 @@ export function IntegrationsPage() {
                     });
                     setSuccessMessage(`${server.name} ${nextEnabled ? "enabled" : "disabled"}.`);
                   }}
+                  missingSecrets={server.missingSecrets ?? []}
                   server={server}
                   removingAuth={mcpMutations.removeAuth.isPending}
                   toggling={mcpMutations.setEnabled.isPending}
@@ -471,14 +497,22 @@ export function IntegrationsPage() {
 
       {dialog ? (
         <McpServerDialog
-          busy={mcpMutations.create.isPending || mcpMutations.update.isPending}
+          agents={agents}
+          busy={
+            mcpMutations.create.isPending ||
+            mcpMutations.update.isPending ||
+            agentMutations.update.isPending
+          }
           initialServer={dialog.mode === "edit" ? dialog.server : undefined}
           mode={dialog.mode}
           prefill={dialog.mode === "create" ? dialog.prefill : undefined}
           onClose={() => setDialog(undefined)}
+          secretKeys={secretKeys}
+          unsetSecretKeys={unsetSecretKeys}
           onSubmit={async (input: {
             name: string;
             enabled?: boolean;
+            agentIds: string[];
             config:
               | {
                   url: string;
@@ -493,10 +527,18 @@ export function IntegrationsPage() {
                 };
           }) => {
             setSuccessMessage(undefined);
+            const { agentIds, ...mcpInput } = input;
 
             if (dialog.mode === "create") {
-              const created = await mcpMutations.create.mutateAsync({ ...input, enabled: true });
-              setSuccessMessage(`${created.name} added.`);
+              const created = await mcpMutations.create.mutateAsync({ ...mcpInput, enabled: true });
+              await syncAgentAssignments({
+                agents,
+                mutateAgent: agentMutations.update.mutateAsync,
+                selectedAgentIds: agentIds,
+                previousServerName: undefined,
+                nextServerName: created.name,
+              });
+              setSuccessMessage(buildAssignmentMessage(`${created.name} added.`, agentIds.length));
 
               if (
                 created.config.transport !== "stdio" &&
@@ -510,9 +552,16 @@ export function IntegrationsPage() {
 
             const updated = await mcpMutations.update.mutateAsync({
               id: dialog.server.id,
-              input,
+              input: mcpInput,
             });
-            setSuccessMessage(`${updated.name} updated.`);
+            await syncAgentAssignments({
+              agents,
+              mutateAgent: agentMutations.update.mutateAsync,
+              selectedAgentIds: agentIds,
+              previousServerName: dialog.server.name,
+              nextServerName: updated.name,
+            });
+            setSuccessMessage(buildAssignmentMessage(`${updated.name} updated.`, agentIds.length));
           }}
         />
       ) : null}
@@ -538,6 +587,7 @@ export function IntegrationsPage() {
 
 function McpServerCard(props: {
   server: McpServer;
+  missingSecrets: string[];
   toggling: boolean;
   removingAuth: boolean;
   onAuthenticate: () => void;
@@ -583,6 +633,30 @@ function McpServerCard(props: {
       </dl>
 
       <p className="mt-4 break-all text-xs text-text-secondary">{describeConfig(props.server)}</p>
+
+      {props.missingSecrets.length > 0 ? (
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-500">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">Missing secret values</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {props.missingSecrets.map((secret) => (
+                  <SecretKeyPill key={secret} secret={secret} />
+                ))}
+              </div>
+            </div>
+            <a
+              aria-label="Open secrets in new tab"
+              className="rounded-md p-1.5 text-amber-500 transition hover:bg-amber-500/10"
+              href="/settings"
+              rel="noreferrer"
+              target="_blank"
+            >
+              <OpenInNewIcon />
+            </a>
+          </div>
+        </div>
+      ) : null}
 
       {"error" in status ? <p className="mt-3 text-sm text-danger">{status.error}</p> : null}
 
@@ -650,8 +724,14 @@ function McpAuthDialog(props: {
   const [error, setError] = useState<string>();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/60 p-4 backdrop-blur-sm">
-      <div className="cc-panel w-full max-w-xl p-6">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/60 p-4 backdrop-blur-sm"
+      onClick={props.onClose}
+    >
+      <div
+        className="cc-panel flex min-h-0 max-h-[calc(100vh-8rem)] w-full max-w-xl flex-col overflow-hidden p-6"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-text-primary">
@@ -671,7 +751,7 @@ function McpAuthDialog(props: {
           </button>
         </div>
 
-        <div className="mt-6 grid gap-4">
+        <div className="mt-6 grid min-h-0 flex-1 gap-4 overflow-y-auto">
           <button
             className="cc-button"
             disabled={props.busy}
@@ -682,17 +762,17 @@ function McpAuthDialog(props: {
           </button>
 
           {error ? <p className="text-sm text-danger">{error}</p> : null}
+        </div>
 
-          <div className="flex flex-wrap justify-end gap-2">
-            <button
-              className="cc-button cc-button-secondary"
-              disabled={props.busy}
-              onClick={props.onClose}
-              type="button"
-            >
-              {props.busy ? "Cancel disabled" : "Close"}
-            </button>
-          </div>
+        <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-surface pt-4">
+          <button
+            className="cc-button cc-button-secondary"
+            disabled={props.busy}
+            onClick={props.onClose}
+            type="button"
+          >
+            {props.busy ? "Cancel disabled" : "Close"}
+          </button>
         </div>
       </div>
     </div>
@@ -710,14 +790,18 @@ function McpAuthDialog(props: {
 }
 
 function McpServerDialog(props: {
+  agents: Agent[];
   mode: "create" | "edit";
   initialServer?: McpServer;
   prefill?: FormState;
+  secretKeys: string[];
+  unsetSecretKeys: Set<string>;
   busy: boolean;
   onClose: () => void;
   onSubmit: (input: {
     name: string;
     enabled?: boolean;
+    agentIds: string[];
     config:
       | {
           url: string;
@@ -739,10 +823,47 @@ function McpServerDialog(props: {
   const [form, setForm] = useState<FormState>(initialForm);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitError, setSubmitError] = useState<string>();
+  const [agentsExpanded, setAgentsExpanded] = useState(false);
+  const [agentSearch, setAgentSearch] = useState("");
+  const agentSectionRef = useRef<HTMLElement>(null);
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>(() =>
+    props.agents
+      .filter((agent) =>
+        props.initialServer
+          ? Boolean(getMcpServerSelection(agent.capabilities, props.initialServer.name)?.enabled)
+          : false,
+      )
+      .map((agent) => agent.id),
+  );
+  const filteredAgents = useMemo(() => {
+    const query = agentSearch.trim().toLowerCase();
+
+    return query
+      ? props.agents.filter(
+          (agent) =>
+            agent.name.toLowerCase().includes(query) || agent.slug.toLowerCase().includes(query),
+        )
+      : props.agents;
+  }, [agentSearch, props.agents]);
+  const referencedSecretKeys = useMemo(
+    () =>
+      form.transport === "stdio"
+        ? extractEnvRefs(form.environmentText)
+        : extractEnvRefs(form.headersText),
+    [form.environmentText, form.headersText, form.transport],
+  );
+  const missingSecrets = referencedSecretKeys.filter((key) => props.unsetSecretKeys.has(key));
+  const unknownSecrets = referencedSecretKeys.filter((key) => !props.secretKeys.includes(key));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/60 p-4 backdrop-blur-sm">
-      <div className="cc-panel w-full max-w-2xl p-6">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/60 p-4 backdrop-blur-sm"
+      onClick={props.onClose}
+    >
+      <div
+        className="cc-panel flex min-h-0 max-h-[calc(100vh-8rem)] w-full max-w-2xl flex-col overflow-hidden p-6"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-text-primary">
@@ -761,98 +882,188 @@ function McpServerDialog(props: {
           </button>
         </div>
 
-        <form className="mt-6 grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
-          <Field error={errors.name} label="Name" required>
-            <input
-              aria-label="Name"
-              className="cc-input"
-              onChange={(event) => updateField("name", event.target.value)}
-              value={form.name}
-            />
-          </Field>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field error={errors.transport} label="Transport" required>
-              <select
-                aria-label="Transport"
+        <form
+          className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden"
+          onSubmit={(event) => void handleSubmit(event)}
+        >
+          <div className="grid min-h-0 flex-1 auto-rows-max content-start gap-4 overflow-y-auto pr-1 pb-6">
+            <Field error={errors.name} label="Name" required>
+              <input
+                aria-label="Name"
                 className="cc-input"
-                onChange={(event) =>
-                  updateField("transport", event.target.value as FormState["transport"])
-                }
-                value={form.transport}
-              >
-                <option value="streamable-http">streamable-http</option>
-                <option value="sse">sse</option>
-                <option value="stdio">stdio</option>
-              </select>
+                onChange={(event) => updateField("name", event.target.value)}
+                value={form.name}
+              />
             </Field>
 
-            <Field error={errors.authMethod} label="Auth method" required>
-              <select
-                aria-label="Auth method"
-                className="cc-input"
-                onChange={(event) =>
-                  updateField("authMethod", event.target.value as FormState["authMethod"])
-                }
-                disabled={form.transport === "stdio"}
-                value={form.authMethod}
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field error={errors.transport} label="Transport" required>
+                <select
+                  aria-label="Transport"
+                  className="cc-input"
+                  onChange={(event) =>
+                    updateField("transport", event.target.value as FormState["transport"])
+                  }
+                  value={form.transport}
+                >
+                  <option value="streamable-http">streamable-http</option>
+                  <option value="sse">sse</option>
+                  <option value="stdio">stdio</option>
+                </select>
+              </Field>
+
+              <Field error={errors.authMethod} label="Auth method" required>
+                <select
+                  aria-label="Auth method"
+                  className="cc-input"
+                  onChange={(event) =>
+                    updateField("authMethod", event.target.value as FormState["authMethod"])
+                  }
+                  disabled={form.transport === "stdio"}
+                  value={form.authMethod}
+                >
+                  <option value="none">none</option>
+                  <option value="oauth">oauth</option>
+                  <option value="headers">headers</option>
+                </select>
+              </Field>
+            </div>
+
+            {form.transport === "stdio" ? (
+              <>
+                <Field error={errors.commandText} label="Command" required>
+                  <textarea
+                    aria-label="Command"
+                    className="cc-input min-h-24 resize-y font-mono text-xs"
+                    onChange={(event) => updateField("commandText", event.target.value)}
+                    placeholder="npx\n-y\n@modelcontextprotocol/server-filesystem\n/Users/revazgh/Projects/cc"
+                    value={form.commandText}
+                  />
+                </Field>
+
+                <Field error={errors.environmentText} label="Environment">
+                  <VariableTextarea
+                    ariaLabel="Environment"
+                    onChange={(value) => updateField("environmentText", value)}
+                    placeholder="Example: API_TOKEN=secret. One variable per line."
+                    secretKeys={props.secretKeys}
+                    value={form.environmentText}
+                  />
+                </Field>
+              </>
+            ) : (
+              <>
+                <Field error={errors.url} label="URL" required>
+                  <input
+                    aria-label="URL"
+                    className="cc-input"
+                    onChange={(event) => updateField("url", event.target.value)}
+                    placeholder="https://example.com/mcp"
+                    value={form.url}
+                  />
+                </Field>
+
+                <Field error={errors.headersText} label="Headers">
+                  <VariableTextarea
+                    ariaLabel="Headers"
+                    onChange={(value) => updateField("headersText", value)}
+                    placeholder="Example: X-API-Key: value. One header per line."
+                    secretKeys={props.secretKeys}
+                    value={form.headersText}
+                  />
+                </Field>
+              </>
+            )}
+
+            {missingSecrets.length > 0 ? (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-500">
+                Referenced secrets without values: {missingSecrets.join(", ")}
+              </div>
+            ) : null}
+            {unknownSecrets.length > 0 ? (
+              <div className="rounded-lg border border-border bg-surface-elevated/70 p-3 text-sm text-text-secondary">
+                New secrets will be created automatically: {unknownSecrets.join(", ")}
+              </div>
+            ) : null}
+
+            <section
+              ref={agentSectionRef}
+              className="rounded-lg border border-border bg-surface-elevated/40"
+            >
+              <button
+                aria-expanded={agentsExpanded}
+                className="flex w-full items-start justify-between gap-3 p-4 text-left transition hover:bg-surface-elevated/60"
+                onClick={() => toggleAgentsExpanded()}
+                type="button"
               >
-                <option value="none">none</option>
-                <option value="oauth">oauth</option>
-                <option value="headers">headers</option>
-              </select>
-            </Field>
+                <div>
+                  <h3 className="text-sm font-medium text-text-primary">Enable for agents</h3>
+                  <p className="mt-1 text-xs text-text-secondary">
+                    Assign this MCP to selected agents using the same capability update flow as
+                    Agent Editor.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="text-xs text-text-secondary">
+                    {selectedAgentIds.length} selected
+                  </span>
+                  <ChevronIcon expanded={agentsExpanded} />
+                </div>
+              </button>
+
+              {agentsExpanded ? (
+                props.agents.length > 0 ? (
+                  <div className="border-t border-border p-4 pt-3">
+                    <input
+                      aria-label="Search agents"
+                      className="cc-input"
+                      onChange={(event) => setAgentSearch(event.target.value)}
+                      placeholder="Search agents"
+                      value={agentSearch}
+                    />
+                    <div className="mt-3 grid max-h-48 gap-2 overflow-y-auto pr-1">
+                      {filteredAgents.map((agent) => {
+                        const selected = selectedAgentIds.includes(agent.id);
+
+                        return (
+                          <label
+                            className="flex min-h-16 items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2"
+                            key={agent.id}
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-text-primary">
+                                {agent.name}
+                              </p>
+                              <p className="truncate text-xs text-text-secondary">{agent.slug}</p>
+                            </div>
+                            <input
+                              aria-label={agent.name}
+                              checked={selected}
+                              onChange={() => toggleAgentSelection(agent.id)}
+                              type="checkbox"
+                            />
+                          </label>
+                        );
+                      })}
+                      {filteredAgents.length === 0 ? (
+                        <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-text-secondary">
+                          No agents match the current search.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="border-t border-border p-4 text-sm text-text-secondary">
+                    No active agents available.
+                  </p>
+                )
+              ) : null}
+            </section>
+
+            {submitError ? <p className="text-sm text-danger">{submitError}</p> : null}
           </div>
 
-          {form.transport === "stdio" ? (
-            <>
-              <Field error={errors.commandText} label="Command" required>
-                <textarea
-                  aria-label="Command"
-                  className="cc-input min-h-24 resize-y font-mono text-xs"
-                  onChange={(event) => updateField("commandText", event.target.value)}
-                  placeholder="npx\n-y\n@modelcontextprotocol/server-filesystem\n/Users/revazgh/Projects/cc"
-                  value={form.commandText}
-                />
-              </Field>
-
-              <Field error={errors.environmentText} label="Environment">
-                <textarea
-                  aria-label="Environment"
-                  className="cc-input min-h-24 resize-y font-mono text-xs"
-                  onChange={(event) => updateField("environmentText", event.target.value)}
-                  placeholder="Example: API_TOKEN=secret. One variable per line."
-                  value={form.environmentText}
-                />
-              </Field>
-            </>
-          ) : (
-            <>
-              <Field error={errors.url} label="URL" required>
-                <input
-                  aria-label="URL"
-                  className="cc-input"
-                  onChange={(event) => updateField("url", event.target.value)}
-                  placeholder="https://example.com/mcp"
-                  value={form.url}
-                />
-              </Field>
-
-              <Field error={errors.headersText} label="Headers">
-                <textarea
-                  aria-label="Headers"
-                  className="cc-input min-h-32 resize-y font-mono text-xs"
-                  onChange={(event) => updateField("headersText", event.target.value)}
-                  placeholder="Example: X-API-Key: value. One header per line."
-                  value={form.headersText}
-                />
-              </Field>
-            </>
-          )}
-
-          {submitError ? <p className="text-sm text-danger">{submitError}</p> : null}
-
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-surface pt-4">
             <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
               Cancel
             </button>
@@ -885,6 +1096,7 @@ function McpServerDialog(props: {
       const input = {
         name: form.name.trim(),
         ...(props.mode === "create" ? { enabled: true } : {}),
+        agentIds: selectedAgentIds,
         config:
           form.transport === "stdio"
             ? {
@@ -906,6 +1118,28 @@ function McpServerDialog(props: {
       setSubmitError(readError(error));
     }
   }
+
+  function toggleAgentSelection(agentId: string) {
+    setSelectedAgentIds((current) =>
+      current.includes(agentId)
+        ? current.filter((value) => value !== agentId)
+        : [...current, agentId],
+    );
+  }
+
+  function toggleAgentsExpanded() {
+    setAgentsExpanded((current) => {
+      const nextExpanded = !current;
+
+      if (nextExpanded) {
+        requestAnimationFrame(() => {
+          agentSectionRef.current?.scrollIntoView({ block: "nearest" });
+        });
+      }
+
+      return nextExpanded;
+    });
+  }
 }
 
 function Field(props: {
@@ -924,6 +1158,141 @@ function Field(props: {
       {props.error ? <span className="text-sm text-danger">{props.error}</span> : null}
     </label>
   );
+}
+
+function VariableTextarea(props: {
+  ariaLabel: string;
+  value: string;
+  placeholder: string;
+  secretKeys: string[];
+  onChange: (value: string) => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [search, setSearch] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const referencedKeys = extractEnvRefs(props.value);
+  const candidateKeys = useMemo(() => {
+    const unique = [...new Set([...referencedKeys, ...props.secretKeys])];
+    const query = search.trim().toLowerCase();
+    return query ? unique.filter((key) => key.toLowerCase().includes(query)) : unique;
+  }, [props.secretKeys, referencedKeys, search]);
+
+  return (
+    <div className="grid gap-3">
+      <textarea
+        aria-label={props.ariaLabel}
+        className="cc-input min-h-32 resize-y font-mono text-xs"
+        onChange={(event) => props.onChange(event.target.value)}
+        placeholder={props.placeholder}
+        ref={textareaRef}
+        value={props.value}
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          className="cc-button cc-button-secondary"
+          onClick={() => setPickerOpen((current) => !current)}
+          type="button"
+        >
+          {pickerOpen ? "Hide variables" : "Variables"}
+        </button>
+        <span className="text-xs text-text-secondary">
+          Click a variable to insert and copy <code>{"{env:...}"}</code>.
+        </span>
+      </div>
+      {pickerOpen ? (
+        <div className="grid gap-3 rounded-lg border border-border bg-surface-elevated/70 p-3">
+          <input
+            aria-label={`${props.ariaLabel} variable search`}
+            className="cc-input"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search variables"
+            value={search}
+          />
+          <div className="flex flex-wrap gap-2">
+            {candidateKeys.map((key) => (
+              <button
+                className="cc-button cc-button-secondary font-mono text-xs"
+                key={key}
+                onClick={() => void handleInsert(key)}
+                type="button"
+              >
+                {key}
+              </button>
+            ))}
+            {candidateKeys.length === 0 && search.trim() ? (
+              <button
+                className="cc-button cc-button-secondary font-mono text-xs"
+                onClick={() =>
+                  void handleInsert(
+                    search
+                      .trim()
+                      .replace(/[^A-Za-z0-9_]/g, "_")
+                      .toUpperCase(),
+                  )
+                }
+                type="button"
+              >
+                Create{" "}
+                {search
+                  .trim()
+                  .replace(/[^A-Za-z0-9_]/g, "_")
+                  .toUpperCase()}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  async function handleInsert(key: string) {
+    const token = `{env:${key}}`;
+    const textarea = textareaRef.current;
+
+    if (!textarea) {
+      props.onChange([props.value, token].filter(Boolean).join("\n"));
+    } else {
+      const start = textarea.selectionStart ?? props.value.length;
+      const end = textarea.selectionEnd ?? props.value.length;
+      props.onChange(`${props.value.slice(0, start)}${token}${props.value.slice(end)}`);
+    }
+
+    await navigator.clipboard.writeText(token).catch(() => undefined);
+    setSearch("");
+  }
+}
+
+function SecretKeyPill(props: { secret: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <div className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1 font-mono text-[11px]">
+      <button
+        className="transition hover:text-amber-400"
+        onClick={() => void handleCopy()}
+        title={`Copy ${props.secret}`}
+        type="button"
+      >
+        {props.secret}
+      </button>
+      <button
+        aria-label={`Copy ${props.secret}`}
+        className="rounded-sm p-0.5 transition hover:bg-amber-500/10 hover:text-amber-400"
+        onClick={() => void handleCopy()}
+        type="button"
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+      </button>
+    </div>
+  );
+
+  async function handleCopy() {
+    await copyText(props.secret);
+    setCopied(true);
+    window.setTimeout(() => {
+      setCopied(false);
+    }, 1200);
+  }
 }
 
 function friendlyStatus(status: { status: string }): string {
@@ -1108,6 +1477,133 @@ function isValidUrl(value: string): boolean {
 
 function readError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "Request failed.";
+}
+
+function extractEnvRefs(value: string): string[] {
+  const matches = value.matchAll(/\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g);
+  return [...new Set(Array.from(matches, (match) => match[1] ?? "").filter(Boolean))];
+}
+
+async function copyText(value: string): Promise<void> {
+  await navigator.clipboard.writeText(value).catch(() => undefined);
+}
+
+async function syncAgentAssignments(options: {
+  agents: Agent[];
+  selectedAgentIds: string[];
+  previousServerName?: string;
+  nextServerName: string;
+  mutateAgent: (input: { id: string; input: UpdateAgentInput }) => Promise<Agent>;
+}) {
+  const selectedIds = new Set(options.selectedAgentIds);
+  const previousServerName = options.previousServerName;
+
+  const updates = options.agents.flatMap((agent) => {
+    const hadPreviousAssignment = previousServerName
+      ? Boolean(getMcpServerSelection(agent.capabilities, previousServerName)?.enabled)
+      : false;
+    const wantsAssignment = selectedIds.has(agent.id);
+
+    if (!hadPreviousAssignment && !wantsAssignment) {
+      return [];
+    }
+
+    let nextCapabilities: AgentCapabilitySelection = agent.capabilities;
+
+    if (previousServerName && previousServerName !== options.nextServerName) {
+      nextCapabilities = setMcpServerEnabled(nextCapabilities, previousServerName, false);
+    }
+
+    nextCapabilities = setMcpServerEnabled(
+      nextCapabilities,
+      options.nextServerName,
+      wantsAssignment,
+    );
+
+    if (JSON.stringify(nextCapabilities) === JSON.stringify(agent.capabilities)) {
+      return [];
+    }
+
+    return [
+      options.mutateAgent({
+        id: agent.id,
+        input: {
+          capabilities: nextCapabilities,
+        },
+      }),
+    ];
+  });
+
+  await Promise.all(updates);
+}
+
+function buildAssignmentMessage(baseMessage: string, assignedAgentCount: number): string {
+  return assignedAgentCount > 0
+    ? `${baseMessage} Enabled for ${assignedAgentCount} agent${assignedAgentCount === 1 ? "" : "s"}.`
+    : baseMessage;
+}
+
+function CopyIcon() {
+  return (
+    <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M9 9.75A2.25 2.25 0 0 1 11.25 7.5h7.5A2.25 2.25 0 0 1 21 9.75v7.5a2.25 2.25 0 0 1-2.25 2.25h-7.5A2.25 2.25 0 0 1 9 17.25v-7.5Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M15 7.5v-.75A2.25 2.25 0 0 0 12.75 4.5h-7.5A2.25 2.25 0 0 0 3 6.75v7.5a2.25 2.25 0 0 0 2.25 2.25H6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M4.5 12.75L10.5 18L19.5 6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function OpenInNewIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M13.5 4.5H19.5V10.5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M10.5 13.5L19.5 4.5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M19.5 13.5V17.25A2.25 2.25 0 0 1 17.25 19.5H6.75A2.25 2.25 0 0 1 4.5 17.25V6.75A2.25 2.25 0 0 1 6.75 4.5H10.5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
 }
 
 const SEARCH_SUGGESTIONS = [

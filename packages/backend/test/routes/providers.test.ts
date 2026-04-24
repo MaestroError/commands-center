@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createLogger } from "../../src/lib/logger";
 import { createSchedulerService } from "../../src/services/scheduler-service";
+import { createSecretService } from "../../src/services/secret-service";
 import { createServer } from "../../src/server";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
@@ -17,6 +18,7 @@ describe("provider routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService,
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
 
@@ -91,6 +93,7 @@ function createOrchestrator() {
 function createMockOpenCodeService(): OpenCodeService {
   return {
     dispose: vi.fn(() => Promise.resolve()),
+    disposeGlobal: vi.fn(() => Promise.resolve()),
 
     listProviders: vi.fn(() =>
       Promise.resolve({

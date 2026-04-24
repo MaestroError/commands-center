@@ -12,6 +12,7 @@ import {
   createOpenCodeEventService,
   type OpenCodeEventService,
 } from "../services/opencode-event-service.js";
+import { createSecretService, type SecretService } from "../services/secret-service.js";
 import { createSchedulerService, type SchedulerService } from "../services/scheduler-service.js";
 import { bootstrapRuntimePaths } from "./runtime-paths.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
@@ -42,6 +43,7 @@ export type RuntimeContext = {
   orchestrator: OpenCodeOrchestrator;
   opencodeService: OpenCodeService;
   openCodeEventService: OpenCodeEventService;
+  secretService: SecretService;
   scheduler: SchedulerService;
 };
 
@@ -65,14 +67,16 @@ export async function startServerRuntime(
   logger.info(getStartupLogContext(config), "runtime configuration loaded");
   const database = createDatabaseClient(config);
   migrateDatabase(database.db);
+  const secretService = createSecretService({ db: database.db, config });
 
   const orchestrator = createOpenCodeOrchestrator({
     config,
     logger,
+    resolveEnv: async () => ({ ...process.env, ...(await secretService.buildEnvMap()) }),
   });
 
   const opencodeClient = createOpenCodeClient(config);
-  const opencodeService = createOpenCodeService({ client: opencodeClient, config });
+  const opencodeService = createOpenCodeService({ client: opencodeClient, config, logger });
   const openCodeEventService = createOpenCodeEventService({ config, logger });
   const scheduler = createSchedulerService();
 
@@ -83,6 +87,7 @@ export async function startServerRuntime(
     orchestrator,
     opencodeService,
     openCodeEventService,
+    secretService,
     scheduler,
   };
   const server = await createServer(context);

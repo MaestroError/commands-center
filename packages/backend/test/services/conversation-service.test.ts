@@ -273,6 +273,7 @@ function createMockOpenCodeService(): OpenCodeService {
 
   return {
     dispose: () => Promise.resolve(),
+    disposeGlobal: () => Promise.resolve(),
     listProviders: () =>
       Promise.resolve({
         all: [

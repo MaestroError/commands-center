@@ -353,9 +353,11 @@ async function createSkill(
 
 function createMockOpenCodeService(overrides?: {
   dispose?: ReturnType<typeof vi.fn>;
+  disposeGlobal?: ReturnType<typeof vi.fn>;
 }): OpenCodeService {
   return {
     dispose: overrides?.dispose ?? vi.fn(() => Promise.resolve()),
+    disposeGlobal: overrides?.disposeGlobal ?? vi.fn(() => Promise.resolve()),
     listProviders: vi.fn(() =>
       Promise.resolve({
         all: [

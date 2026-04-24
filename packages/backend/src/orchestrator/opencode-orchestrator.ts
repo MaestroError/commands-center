@@ -39,6 +39,7 @@ type FetchFn = typeof fetch;
 export function createOpenCodeOrchestrator(options: {
   config: RuntimeConfig;
   logger: Logger;
+  resolveEnv?: () => Promise<NodeJS.ProcessEnv>;
   spawnProcess?: SpawnFn;
   fetch?: FetchFn;
   resolveBinary?: typeof resolveOpencodeBinary;
@@ -104,6 +105,7 @@ export function createOpenCodeOrchestrator(options: {
       }
 
       binary = await resolveBinary(options.config);
+      const resolvedEnv = options.resolveEnv ? await options.resolveEnv() : process.env;
 
       const next = spawnProcess(
         binary.path,
@@ -114,7 +116,7 @@ export function createOpenCodeOrchestrator(options: {
         ],
         {
           cwd: options.config.paths.cwd,
-          env: process.env,
+          env: resolvedEnv,
           detached: useDetachedProcess,
           stdio: ["ignore", "pipe", "pipe"],
         },

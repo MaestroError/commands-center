@@ -1,3 +1,5 @@
+import type { Logger } from "pino";
+
 import type { OpencodeClient } from "../lib/opencode-client.js";
 import { createScopedOpenCodeClient } from "../lib/opencode-client.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
@@ -75,7 +77,16 @@ type SessionAttachmentPart = {
 
 export type OpenCodeService = ReturnType<typeof createOpenCodeService>;
 
-export function createOpenCodeService(options: { client: OpencodeClient; config: RuntimeConfig }) {
+export function createOpenCodeService(options: {
+  client: OpencodeClient;
+  config: RuntimeConfig;
+  logger: Logger;
+}) {
+  // Single-flight guard: coalesces concurrent disposeGlobal callers onto one
+  // in-flight request so rapid invocations (e.g. double-click Refresh, React
+  // Query re-invalidations) don't restart the opencode instance graph twice.
+  let pendingDisposeGlobal: Promise<void> | null = null;
+
   return {
     async dispose(directory: string): Promise<void> {
       const scoped = createScopedOpenCodeClient(options.config, directory);
@@ -85,6 +96,34 @@ export function createOpenCodeService(options: { client: OpencodeClient; config:
       } catch {
         // Ignore dispose failures — fall back to stale instance state.
       }
+    },
+
+    async disposeGlobal(): Promise<void> {
+      if (pendingDisposeGlobal) {
+        return pendingDisposeGlobal;
+      }
+
+      pendingDisposeGlobal = (async () => {
+        // The v1 SDK does not expose POST /global/dispose — use raw fetch.
+        try {
+          const url = new URL("/global/dispose", options.config.opencode.baseUrl);
+          const response = await fetch(url, { method: "POST" });
+
+          if (!response.ok) {
+            const body = await response.text().catch(() => "");
+            options.logger.warn(
+              { status: response.status, body },
+              "opencode global dispose returned non-2xx",
+            );
+          }
+        } catch (error) {
+          options.logger.warn({ err: error }, "opencode global dispose failed");
+        }
+      })().finally(() => {
+        pendingDisposeGlobal = null;
+      });
+
+      return pendingDisposeGlobal;
     },
 
     async listProviders(directory: string): Promise<ProviderList> {
@@ -370,18 +409,24 @@ export function createOpenCodeService(options: { client: OpencodeClient; config:
       text: string;
       attachments?: SendConversationAttachmentInput[];
     }): void {
-      // Fire-and-forget: dispatch without awaiting the full response.
-      // The response will be delivered via SSE events.
-      void requestSessionJson({
+      // Fire-and-forget: opencode's /prompt_async returns 204 immediately and
+      // delivers the assistant response via SSE events. Errors must be caught
+      // here — an unhandled rejection would crash the backend process.
+      requestSessionJson({
         config: options.config,
         directory: input.directory,
         method: "POST",
-        path: `/session/${encodeURIComponent(input.sessionID)}/message`,
+        path: `/session/${encodeURIComponent(input.sessionID)}/prompt_async`,
         body: {
           agent: input.agent,
           model: input.model,
           parts: buildPromptParts(input.text, input.attachments ?? []),
         },
+      }).catch((error: unknown) => {
+        options.logger.error(
+          { err: error, directory: input.directory, sessionID: input.sessionID },
+          "promptSessionAsync failed",
+        );
       });
     },
 

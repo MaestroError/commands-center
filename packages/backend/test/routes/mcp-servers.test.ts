@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createLogger } from "../../src/lib/logger";
 import { createSchedulerService } from "../../src/services/scheduler-service";
+import { createSecretService } from "../../src/services/secret-service";
 import { createServer } from "../../src/server";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
@@ -16,6 +17,7 @@ describe("mcp server routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
 
@@ -95,6 +97,7 @@ describe("mcp server routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
 
@@ -173,6 +176,7 @@ describe("mcp server routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
 
@@ -243,6 +247,7 @@ function createMockOpenCodeService(): OpenCodeService {
 
   return {
     dispose: vi.fn(() => Promise.resolve()),
+    disposeGlobal: vi.fn(() => Promise.resolve()),
     listMcpStatus: vi.fn(() =>
       Promise.resolve({
         github: authenticated ? { status: "connected" } : { status: "needs_auth" },

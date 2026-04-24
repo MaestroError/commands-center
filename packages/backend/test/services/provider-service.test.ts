@@ -11,6 +11,7 @@ function createMockOpenCodeService(
 ): OpenCodeService {
   return {
     dispose: vi.fn(() => Promise.resolve()),
+    disposeGlobal: vi.fn(() => Promise.resolve()),
     listProviders: vi.fn(() =>
       Promise.resolve({
         all: [],

@@ -6,6 +6,7 @@ import {
   createMcpServer,
   deleteMcpServer,
   listMcpServers,
+  refreshMcpServers,
   removeMcpAuth,
   setMcpServerEnabled,
   startMcpAuth,
@@ -28,6 +29,7 @@ export function useMcpServerMutations() {
   const invalidateMcpServers = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.secrets }),
       queryClient.invalidateQueries({ queryKey: queryKeys.agentCatalog }),
     ]);
   };
@@ -36,6 +38,13 @@ export function useMcpServerMutations() {
     create: useMutation({
       mutationFn: (input: CreateMcpServerInput) => createMcpServer(input),
       onSuccess: invalidateMcpServers,
+    }),
+    refresh: useMutation({
+      mutationFn: () => refreshMcpServers(),
+      onSuccess: async (servers) => {
+        queryClient.setQueryData(queryKeys.mcpServers, servers);
+        await invalidateMcpServers();
+      },
     }),
     update: useMutation({
       mutationFn: ({ id, input }: { id: string; input: UpdateMcpServerInput }) =>

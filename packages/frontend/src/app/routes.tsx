@@ -11,6 +11,7 @@ import { BuiltInSkillsPage } from "@/pages/BuiltInSkillsPage";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { ProviderConnectionsPage } from "@/pages/ProviderConnectionsPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import { WorkspaceChatPage } from "@/pages/WorkspaceChatPage";
 
 type AppRouteDefinition = {
@@ -117,12 +118,7 @@ export const appRoutes = [
     path: "/settings",
     title: "Settings",
     navLabel: "Settings",
-    element: (
-      <GenericPlaceholderPage
-        title="Settings"
-        description="Runtime preferences and update controls will build on this semantic theming and shell foundation."
-      />
-    ),
+    element: <SettingsPage />,
   },
   {
     path: "/profile",

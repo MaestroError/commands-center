@@ -152,3 +152,11 @@ export {
   type SetMcpServerEnabledInput,
   type UpdateMcpServerInput,
 } from "./mcp.js";
+export {
+  secretKeySchema,
+  secretMetaListSchema,
+  secretMetaSchema,
+  setSecretRequestSchema,
+  type SecretMeta,
+  type SetSecretRequest,
+} from "./secrets.js";

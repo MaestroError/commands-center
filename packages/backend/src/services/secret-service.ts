@@ -1,0 +1,154 @@
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+
+import { asc, eq, inArray } from "drizzle-orm";
+
+import { createId, now } from "../db/ids.js";
+import { secrets } from "../db/schema/index.js";
+
+import type { SecretMeta } from "@cc/shared/schemas";
+
+import type { AppDb } from "../db/client.js";
+import type { RuntimeConfig } from "../lib/runtime-config.js";
+
+const CIPHER_ALGORITHM = "aes-256-gcm";
+const IV_LENGTH = 12;
+
+export type SecretService = ReturnType<typeof createSecretService>;
+
+export function createSecretService(options: { db: AppDb; config: RuntimeConfig }) {
+  return {
+    async list(): Promise<SecretMeta[]> {
+      const rows = await options.db.select().from(secrets).orderBy(asc(secrets.key));
+
+      return rows.map((row) => ({
+        key: row.key,
+        isSet: row.encrypted_value !== null,
+        updatedAt: row.updated_at.toISOString(),
+      }));
+    },
+
+    async ensure(keys: string[]): Promise<void> {
+      const uniqueKeys = [...new Set(keys.map((key) => key.trim()).filter(Boolean))];
+      if (uniqueKeys.length === 0) {
+        return;
+      }
+
+      const existing = await options.db
+        .select({ key: secrets.key })
+        .from(secrets)
+        .where(inArray(secrets.key, uniqueKeys));
+      const existingKeys = new Set(existing.map((row) => row.key));
+      const timestamp = now();
+      const missingKeys = uniqueKeys.filter((key) => !existingKeys.has(key));
+
+      if (missingKeys.length === 0) {
+        return;
+      }
+
+      await options.db.insert(secrets).values(
+        missingKeys.map((key) => ({
+          id: createId(),
+          key,
+          encrypted_value: null,
+          created_at: timestamp,
+          updated_at: timestamp,
+        })),
+      );
+    },
+
+    async set(key: string, plainValue: string): Promise<void> {
+      const normalizedKey = key.trim();
+      const encryptedValue = encrypt(options.config.secretKey, plainValue);
+      const existing = await findByKey(options.db, normalizedKey);
+
+      if (existing) {
+        await options.db
+          .update(secrets)
+          .set({ encrypted_value: encryptedValue, updated_at: now() })
+          .where(eq(secrets.id, existing.id));
+        return;
+      }
+
+      const timestamp = now();
+      await options.db.insert(secrets).values({
+        id: createId(),
+        key: normalizedKey,
+        encrypted_value: encryptedValue,
+        created_at: timestamp,
+        updated_at: timestamp,
+      });
+    },
+
+    async delete(key: string): Promise<void> {
+      await options.db.delete(secrets).where(eq(secrets.key, key.trim()));
+    },
+
+    async buildEnvMap(): Promise<Record<string, string>> {
+      const rows = await options.db.select().from(secrets);
+
+      return Object.fromEntries(
+        rows
+          .filter((row) => row.encrypted_value !== null)
+          .map((row) => [row.key, decrypt(options.config.secretKey, row.encrypted_value!)]),
+      );
+    },
+
+    async listMissing(keys: string[]): Promise<string[]> {
+      const uniqueKeys = [...new Set(keys.map((key) => key.trim()).filter(Boolean))];
+      if (uniqueKeys.length === 0) {
+        return [];
+      }
+
+      const rows = await options.db
+        .select({ key: secrets.key, encrypted_value: secrets.encrypted_value })
+        .from(secrets)
+        .where(inArray(secrets.key, uniqueKeys));
+      const byKey = new Map(rows.map((row) => [row.key, row.encrypted_value]));
+
+      return uniqueKeys.filter((key) => {
+        const encryptedValue = byKey.get(key);
+        return encryptedValue === undefined || encryptedValue === null;
+      });
+    },
+  };
+}
+
+async function findByKey(db: AppDb, key: string) {
+  const [row] = await db.select().from(secrets).where(eq(secrets.key, key)).limit(1);
+  return row;
+}
+
+function encrypt(secretKey: string, plainValue: string): string {
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv(CIPHER_ALGORITHM, deriveKey(secretKey), iv);
+  const encrypted = Buffer.concat([cipher.update(plainValue, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return [iv.toString("base64"), authTag.toString("base64"), encrypted.toString("base64")].join(
+    ":",
+  );
+}
+
+function decrypt(secretKey: string, encryptedValue: string): string {
+  const [ivPart, authTagPart, valuePart] = encryptedValue.split(":");
+
+  if (!ivPart || !authTagPart || !valuePart) {
+    throw new Error("Stored secret payload is invalid.");
+  }
+
+  const decipher = createDecipheriv(
+    CIPHER_ALGORITHM,
+    deriveKey(secretKey),
+    Buffer.from(ivPart, "base64"),
+  );
+  decipher.setAuthTag(Buffer.from(authTagPart, "base64"));
+
+  return Buffer.concat([
+    decipher.update(Buffer.from(valuePart, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+function deriveKey(secretKey: string): Buffer {
+  return createHash("sha256").update(secretKey).digest();
+}

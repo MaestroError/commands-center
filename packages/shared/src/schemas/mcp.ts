@@ -55,6 +55,7 @@ export const mcpServerSchema = z.object({
   name: z.string().trim().min(1),
   enabled: z.boolean(),
   config: mcpServerConfigSchema,
+  missingSecrets: z.array(z.string().trim().min(1)).default([]),
   runtimeStatus: mcpRuntimeStatusSchema.optional(),
   tools: mcpToolListSchema.default([]),
   createdAt: z.string().datetime(),

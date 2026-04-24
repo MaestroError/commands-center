@@ -18,6 +18,11 @@ import {
   useAgentsQuery,
 } from "@/hooks/use-agents-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
+import {
+  getMcpServerSelection,
+  setMcpServerEnabled,
+  upsertMcpServerSelection,
+} from "@/lib/agent-capabilities";
 import { resolveInitialModelId } from "@/lib/agent-form";
 
 type AgentEditorPageProps = {
@@ -460,17 +465,11 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
   function toggleMcpServer(serverName: string) {
     setForm((current) => ({
       ...current,
-      capabilities: {
-        ...current.capabilities,
-        mcpServers: upsertMcpServerSelection(current.capabilities.mcpServers, {
-          name: serverName,
-          enabled: !getMcpServerSelection(current.capabilities, serverName)?.enabled,
-          action: "allow",
-        }),
-        toolPermissions: current.capabilities.toolPermissions.filter(
-          (rule) => !rule.pattern.startsWith(`${serverName}_`),
-        ),
-      },
+      capabilities: setMcpServerEnabled(
+        current.capabilities,
+        serverName,
+        !(getMcpServerSelection(current.capabilities, serverName)?.enabled ?? false),
+      ),
     }));
     setSaveError(undefined);
   }
@@ -582,18 +581,6 @@ function PermissionControl(props: {
       })}
     </div>
   );
-}
-
-function getMcpServerSelection(capabilities: AgentCapabilitySelection, serverName: string) {
-  return capabilities.mcpServers.find((server) => server.name === serverName);
-}
-
-function upsertMcpServerSelection(
-  selections: AgentCapabilitySelection["mcpServers"],
-  nextSelection: AgentCapabilitySelection["mcpServers"][number],
-) {
-  const remaining = selections.filter((server) => server.name !== nextSelection.name);
-  return [...remaining, nextSelection];
 }
 
 function getToolPermission(

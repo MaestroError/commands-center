@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createAgentService } from "../../src/services/agent-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
+import { createSecretService } from "../../src/services/secret-service";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
@@ -29,6 +30,7 @@ describe("conversation routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService,
       openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
 
@@ -373,6 +375,7 @@ function createMockOpenCodeService(): OpenCodeService {
 function createBaseOpenCodeService() {
   return {
     dispose: () => Promise.resolve(),
+    disposeGlobal: () => Promise.resolve(),
     listProviders: () =>
       Promise.resolve({
         all: [

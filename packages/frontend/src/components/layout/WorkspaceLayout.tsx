@@ -266,13 +266,14 @@ function MobilePane(props: {
   bottom?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 bg-app-bg/85 p-3 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 bg-app-bg/85 p-3 backdrop-blur-sm" onClick={props.onClose}>
       <section
         className={
           props.bottom
             ? "cc-panel absolute inset-x-3 bottom-3 top-24 overflow-auto p-4"
             : "cc-panel absolute inset-3 overflow-auto p-4"
         }
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>

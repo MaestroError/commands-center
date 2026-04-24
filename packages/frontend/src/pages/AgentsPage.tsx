@@ -163,8 +163,14 @@ export function AgentsPage() {
       ) : null}
 
       {pendingDelete ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6">
-          <section className="cc-panel w-full max-w-lg p-6">
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6"
+          onClick={() => setPendingDelete(undefined)}
+        >
+          <section
+            className="cc-panel w-full max-w-lg p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
             <h2 className="text-xl font-semibold text-text-primary">
               Delete {pendingDelete.name}?
             </h2>

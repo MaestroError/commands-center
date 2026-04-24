@@ -21,11 +21,13 @@ export function registerMcpServerRoutes(server: AppServer, context: RuntimeConte
   const service = createMcpServerService({
     db: context.database.db,
     config: context.config,
-    orchestrator: context.orchestrator,
     opencodeService: context.opencodeService,
+    secretService: context.secretService,
   });
 
   app.get("/api/mcp-servers", async () => service.list());
+
+  app.post("/api/mcp-servers/refresh", async () => service.refresh());
 
   app.post(
     "/api/mcp-servers",

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -37,10 +37,65 @@ describe("ChatComposer", () => {
     const user = userEvent.setup();
     const { props } = renderComposer();
 
-    await user.type(screen.getByPlaceholderText("Type a message..."), "hello world");
+    await user.type(
+      screen.getByPlaceholderText('Type a message... Use "#" to mention'),
+      "hello world",
+    );
     await user.click(screen.getByRole("button", { name: "Send" }));
 
     expect(props.onSend).toHaveBeenCalledWith({ text: "hello world", attachments: [] });
+  });
+
+  it("shows a small hint about composer shortcuts", () => {
+    renderComposer();
+
+    expect(screen.getByText("# files")).toBeInTheDocument();
+    expect(screen.getByText("/ skills")).toBeInTheDocument();
+    expect(screen.getByText("! shell")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Type a message... Use "#" to mention')).toBeInTheDocument();
+  });
+
+  it("hides shortcut pills when the user starts typing", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.type(screen.getByPlaceholderText('Type a message... Use "#" to mention'), "h");
+
+    expect(screen.queryByRole("button", { name: "# files" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "/ skills" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "! shell" })).not.toBeInTheDocument();
+  });
+
+  it("prefills the composer with a file mention when # pill is clicked", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "# files" }));
+    expect(screen.getByPlaceholderText('Type a message... Use "#" to mention')).toHaveValue("#");
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Type a message... Use "#" to mention')).toHaveFocus();
+    });
+  });
+
+  it("prefills the composer with a slash when / pill is clicked", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "/ skills" }));
+    expect(screen.getByPlaceholderText('Type a message... Use "#" to mention')).toHaveValue("/");
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Type a message... Use "#" to mention')).toHaveFocus();
+    });
+  });
+
+  it("switches to shell mode when ! pill is clicked", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.click(screen.getByRole("button", { name: "! shell" }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Enter shell command...")).toHaveFocus();
+    });
   });
 
   it("disables Send when the textarea is empty and there is no skill selected", () => {
@@ -62,7 +117,7 @@ describe("ChatComposer", () => {
   it("switches to shell mode when ! is typed first and Enter calls onShell", async () => {
     const user = userEvent.setup();
     const { props } = renderComposer();
-    const textarea = screen.getByPlaceholderText("Type a message...");
+    const textarea = screen.getByPlaceholderText('Type a message... Use "#" to mention');
 
     await user.type(textarea, "!");
     expect(screen.getByText("Shell")).toBeInTheDocument();
@@ -77,20 +132,23 @@ describe("ChatComposer", () => {
     const user = userEvent.setup();
     renderComposer();
 
-    await user.type(screen.getByPlaceholderText("Type a message..."), "!");
+    await user.type(screen.getByPlaceholderText('Type a message... Use "#" to mention'), "!");
     expect(screen.getByText("Shell")).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
 
     expect(screen.queryByText("Shell")).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Type a message...")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Type a message... Use "#" to mention')).toBeInTheDocument();
   });
 
   it("selects /compact from the popover and calls onSummarize", async () => {
     const user = userEvent.setup();
     const { props } = renderComposer();
 
-    await user.type(screen.getByPlaceholderText("Type a message..."), "/compact");
+    await user.type(
+      screen.getByPlaceholderText('Type a message... Use "#" to mention'),
+      "/compact",
+    );
     await user.click(await screen.findByRole("button", { name: /\/compact/i }));
 
     expect(props.onSummarize).toHaveBeenCalled();
@@ -100,7 +158,7 @@ describe("ChatComposer", () => {
     const user = userEvent.setup();
     const { props } = renderComposer();
 
-    await user.type(screen.getByPlaceholderText("Type a message..."), "/new");
+    await user.type(screen.getByPlaceholderText('Type a message... Use "#" to mention'), "/new");
     await user.click(await screen.findByRole("button", { name: /\/new/i }));
 
     expect(props.onStartFresh).toHaveBeenCalled();
@@ -110,7 +168,7 @@ describe("ChatComposer", () => {
     const user = userEvent.setup();
     const { props } = renderComposer();
 
-    await user.type(screen.getByPlaceholderText("Type a message..."), "/review");
+    await user.type(screen.getByPlaceholderText('Type a message... Use "#" to mention'), "/review");
     await user.click(await screen.findByRole("button", { name: /\/review/i }));
     await user.click(screen.getByRole("button", { name: "Send" }));
 
@@ -121,7 +179,7 @@ describe("ChatComposer", () => {
     const user = userEvent.setup();
     const { props } = renderComposer();
 
-    await user.type(screen.getByPlaceholderText("Type a message..."), "/review");
+    await user.type(screen.getByPlaceholderText('Type a message... Use "#" to mention'), "/review");
     await user.click(await screen.findByRole("button", { name: /\/review/i }));
     await user.type(screen.getByPlaceholderText("Prompt for /review..."), "check this file");
     await user.click(screen.getByRole("button", { name: "Send" }));
