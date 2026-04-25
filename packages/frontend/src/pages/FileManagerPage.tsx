@@ -89,6 +89,7 @@ export function FileManagerPage() {
     [data?.nodes, selectedPath],
   );
   const breadcrumbs = useMemo(() => buildBreadcrumbs(currentPath), [currentPath]);
+  const visibleBreadcrumbs = useMemo(() => collapseBreadcrumbs(breadcrumbs), [breadcrumbs]);
   const parentPath = useMemo(() => getParentPath(currentPath), [currentPath]);
 
   async function handleCreate(type: "file" | "directory") {
@@ -273,41 +274,45 @@ export function FileManagerPage() {
                   );
                 })}
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-text-secondary">
-                <button
-                  className="cc-button cc-button-secondary"
-                  disabled={parentPath === undefined}
-                  onClick={() => {
-                    if (!parentPath) {
-                      return;
-                    }
+              <div className="mt-4 flex items-start justify-between gap-4 text-sm text-text-secondary">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <button
+                    className="cc-button cc-button-secondary"
+                    disabled={parentPath === undefined}
+                    onClick={() => {
+                      if (!parentPath) {
+                        return;
+                      }
 
-                    setCurrentPath(parentPath);
-                    setSelectedPath("");
-                  }}
-                  type="button"
-                >
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back
-                </button>
-                <span className="font-medium text-text-primary">{ROOT_LABELS[root]}</span>
-                {breadcrumbs.map((crumb, index) => (
-                  <div className="flex items-center gap-2" key={crumb.path}>
-                    <span aria-hidden="true" className="text-text-secondary">
-                      /
-                    </span>
-                    <button
-                      className="rounded px-2 py-1 transition hover:bg-surface-elevated hover:text-text-primary"
-                      onClick={() => {
-                        setCurrentPath(crumb.path);
-                        setSelectedPath("");
-                      }}
-                      type="button"
-                    >
-                      {index === 0 ? "root" : crumb.label}
-                    </button>
-                  </div>
-                ))}
+                      setCurrentPath(parentPath);
+                      setSelectedPath("");
+                    }}
+                    type="button"
+                  >
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Back
+                  </button>
+                  <span className="font-medium text-text-primary">{ROOT_LABELS[root]}</span>
+                  {visibleBreadcrumbs.map((crumb) => (
+                    <div className="flex min-w-0 items-center gap-2" key={crumb.path}>
+                      <span aria-hidden="true" className="text-text-secondary">
+                        /
+                      </span>
+                      <button
+                        className="max-w-[18rem] truncate rounded px-2 py-1 transition hover:bg-surface-elevated hover:text-text-primary"
+                        onClick={() => {
+                          setCurrentPath(crumb.path);
+                          setSelectedPath("");
+                        }}
+                        title={crumb.label}
+                        type="button"
+                      >
+                        {crumb.label}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex shrink-0 items-center gap-2" aria-hidden="true" />
               </div>
             </div>
             {loading ? (
@@ -615,6 +620,31 @@ function buildBreadcrumbs(currentPath: string): Array<{ label: string; path: str
   }
 
   return crumbs;
+}
+
+function collapseBreadcrumbs(
+  breadcrumbs: Array<{ label: string; path: string }>,
+): Array<{ label: string; path: string }> {
+  const root = breadcrumbs[0];
+
+  if (!root) {
+    return [];
+  }
+
+  const segments = breadcrumbs.slice(1);
+
+  if (segments.length <= 3) {
+    return [root, ...segments];
+  }
+
+  const firstVisibleIndex = segments.length - 3;
+  const hiddenJumpTarget = segments[firstVisibleIndex - 1];
+
+  if (!hiddenJumpTarget) {
+    return [root, ...segments.slice(-3)];
+  }
+
+  return [root, { label: "...", path: hiddenJumpTarget.path }, ...segments.slice(-3)];
 }
 
 function getParentPath(currentPath: string): string | undefined {
