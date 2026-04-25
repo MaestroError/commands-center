@@ -24,7 +24,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |  |  \- I4 Automations
  |  |- I1 Provider Connections
  |  |  \- ✅ U2 Agents and Agent Editor
- |  \- I2 Integrations and MCP Management
+ |  \- ✅ I2 Integrations and MCP Management
  |     |- I3 Custom Tools Platform
  |     \- I5 Composio Integration
  |- ✅ E3 API and Realtime Foundation
@@ -41,7 +41,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
     |  |- ✅ E5 OpenCode Workspace Contract
     |  |- U2 Agents and Agent Editor
      |  |- ✅ U3 Direct Chat Screen
-    |  |- I2 Integrations and MCP Management
+    |  |- ✅ I2 Integrations and MCP Management
     |  |- I3 Custom Tools Platform
     |  \- I5 Composio Integration
     |- ✅ C3 Direct Chat Session Model
@@ -78,7 +78,7 @@ Result: connect providers, app shell with layout and theming, create agents with
 
 Run after Path A starts stabilizing. Integration epics (I2, I3, I5) each extend the agent editor with their respective sections.
 
-1. `integrations-automation/02-integrations-and-mcp-management.md`
+1. `✅ integrations-automation/02-integrations-and-mcp-management.md`
 2. `integrations-automation/03-custom-tools-platform.md`
 3. `integrations-automation/05-composio-integration.md`
 4. `engine-infrastructure/04-self-updating-and-version-management.md`
@@ -152,7 +152,7 @@ Each epic PR should:
 
 ### Milestone 2: Capability Extensions
 
-- I2 Integrations and MCP Management
+- ✅ I2 Integrations and MCP Management
 - I3 Custom Tools Platform
 - I5 Composio Integration
 

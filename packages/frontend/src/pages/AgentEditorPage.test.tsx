@@ -163,34 +163,6 @@ describe("AgentEditorPage", () => {
     });
   });
 
-  it("stores explicit MCP tool overrides only when they differ from the server default", async () => {
-    updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
-
-    renderEditor();
-
-    fireEvent.click(screen.getByRole("button", { name: "github Allow" }));
-    fireEvent.click(screen.getByRole("button", { name: "github_create_issue ask" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-
-    await waitFor(() => {
-      expect(updateMutateAsync).toHaveBeenCalledWith({
-        id: "agent-1",
-        input: {
-          name: "Writer",
-          role: "write docs",
-          instructions: "Write useful docs.",
-          defaultModel: "openai/gpt-4.1",
-          iconPath: undefined,
-          capabilities: {
-            builtInSkills: [],
-            mcpServers: [{ name: "github", enabled: true, action: "allow" }],
-            toolPermissions: [{ pattern: "github_create_issue", action: "ask" }],
-          },
-        },
-      });
-    });
-  });
-
   it("shows save errors from failed agent updates", async () => {
     updateMutateAsync.mockRejectedValue(new Error("Save failed"));
 

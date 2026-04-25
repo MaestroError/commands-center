@@ -18,12 +18,7 @@ import {
   useAgentsQuery,
 } from "@/hooks/use-agents-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
-import {
-  getMcpServerAction,
-  getMcpServerSelection,
-  setMcpServerAction,
-  upsertMcpServerSelection,
-} from "@/lib/agent-capabilities";
+import { getMcpServerAction, setMcpServerAction } from "@/lib/agent-capabilities";
 import { resolveInitialModelId } from "@/lib/agent-form";
 
 type AgentEditorPageProps = {
@@ -291,9 +286,6 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
             ) : mcpServersQuery.data && mcpServersQuery.data.length > 0 ? (
               <div className="mt-5 grid gap-4">
                 {mcpServersQuery.data.map((server) => {
-                  const serverSelection = getMcpServerSelection(form.capabilities, server.name);
-                  const serverEnabled = serverSelection?.enabled ?? false;
-
                   return (
                     <article
                       className="rounded-xl border border-border bg-surface p-4"
@@ -314,10 +306,6 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                               </span>
                             ) : null}
                           </div>
-                          <p className="mt-2 text-sm text-text-secondary">
-                            {server.tools.length} tool{server.tools.length === 1 ? "" : "s"}{" "}
-                            discovered.
-                          </p>
                           {server.runtimeStatus?.status === "failed" ||
                           server.runtimeStatus?.status === "needs_client_registration" ? (
                             <p className="mt-2 text-sm text-danger">{server.runtimeStatus.error}</p>
@@ -330,36 +318,6 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                           value={getMcpServerAction(form.capabilities, server.name)}
                         />
                       </div>
-
-                      {serverEnabled ? (
-                        server.tools.length > 0 ? (
-                          <div className="mt-5 grid gap-3">
-                            {server.tools.map((tool) => (
-                              <div
-                                className="flex flex-col gap-3 rounded-lg border border-border bg-surface-elevated p-3 md:flex-row md:items-center md:justify-between"
-                                key={tool.id}
-                              >
-                                <div>
-                                  <p className="font-medium text-text-primary">{tool.name}</p>
-                                  <p className="text-xs text-text-secondary">{tool.id}</p>
-                                </div>
-                                <PermissionControl
-                                  label={tool.id}
-                                  onChange={(action) =>
-                                    setToolPermission(server.name, tool.id, action)
-                                  }
-                                  value={getToolPermission(form.capabilities, server.name, tool.id)}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="mt-5 rounded-lg border border-dashed border-border px-4 py-5 text-sm text-text-secondary">
-                            Tools are not available yet. Connect or authenticate this MCP in
-                            Integrations before granting tool-level access.
-                          </div>
-                        )
-                      ) : null}
                     </article>
                   );
                 })}
@@ -467,33 +425,6 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     }));
     setSaveError(undefined);
   }
-
-  function setToolPermission(serverName: string, toolId: string, action: PermissionAction) {
-    setForm((current) => {
-      const serverSelection = getMcpServerSelection(current.capabilities, serverName) ?? {
-        name: serverName,
-        enabled: true,
-        action: "allow" as const,
-      };
-      const nextPermissions = current.capabilities.toolPermissions.filter(
-        (rule) => rule.pattern !== toolId,
-      );
-
-      if (action !== serverSelection.action) {
-        nextPermissions.push({ pattern: toolId, action });
-      }
-
-      return {
-        ...current,
-        capabilities: {
-          ...current.capabilities,
-          mcpServers: upsertMcpServerSelection(current.capabilities.mcpServers, serverSelection),
-          toolPermissions: nextPermissions,
-        },
-      };
-    });
-    setSaveError(undefined);
-  }
 }
 
 function Field(props: {
@@ -546,37 +477,6 @@ function createInitialForm(catalog: AgentCatalog, agent?: Agent): AgentFormState
   };
 }
 
-function PermissionControl(props: {
-  label: string;
-  value: PermissionAction;
-  onChange: (action: PermissionAction) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {(["allow", "ask", "deny"] as const).map((action) => {
-        const selected = props.value === action;
-
-        return (
-          <button
-            aria-label={`${props.label} ${action}`}
-            aria-pressed={selected}
-            className={
-              selected
-                ? "rounded-full border border-accent bg-accent/10 px-3 py-1 text-xs font-medium text-accent"
-                : "rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text-secondary transition hover:border-accent hover:text-text-primary"
-            }
-            key={action}
-            onClick={() => props.onChange(action)}
-            type="button"
-          >
-            {action}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function McpServerPermissionControl(props: {
   label: string;
   value: PermissionAction;
@@ -623,18 +523,6 @@ function McpServerPermissionControl(props: {
         );
       })}
     </div>
-  );
-}
-
-function getToolPermission(
-  capabilities: AgentCapabilitySelection,
-  serverName: string,
-  toolId: string,
-): PermissionAction {
-  return (
-    capabilities.toolPermissions.find((rule) => rule.pattern === toolId)?.action ??
-    getMcpServerSelection(capabilities, serverName)?.action ??
-    "allow"
   );
 }
 

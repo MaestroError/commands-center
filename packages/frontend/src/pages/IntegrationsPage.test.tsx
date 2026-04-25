@@ -184,7 +184,6 @@ describe("IntegrationsPage", () => {
 
     expect(screen.getByText("github")).toBeInTheDocument();
     expect(screen.getByText("Needs auth")).toBeInTheDocument();
-    expect(screen.getByText("create_issue")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Disable" }));
 
     await waitFor(() => {

@@ -626,10 +626,6 @@ function McpServerCard(props: {
             {config.transport === "stdio" ? 0 : config.headers.length}
           </dd>
         </div>
-        <div className="rounded-lg border border-border bg-surface-elevated/70 p-3">
-          <dt className="text-text-secondary">Tools</dt>
-          <dd className="mt-1 font-medium text-text-primary">{props.server.tools.length}</dd>
-        </div>
       </dl>
 
       <p className="mt-4 break-all text-xs text-text-secondary">{describeConfig(props.server)}</p>
@@ -659,18 +655,6 @@ function McpServerCard(props: {
       ) : null}
 
       {"error" in status ? <p className="mt-3 text-sm text-danger">{status.error}</p> : null}
-
-      {props.server.tools.length > 0 ? (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {props.server.tools.slice(0, 6).map((tool) => (
-            <span key={tool.id} className="cc-badge cc-badge-muted">
-              {tool.name}
-            </span>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-4 text-sm text-text-secondary">No tools discovered yet.</p>
-      )}
 
       <div className="mt-5 flex flex-wrap gap-2">
         {config.transport !== "stdio" && config.authMethod === "oauth" ? (
