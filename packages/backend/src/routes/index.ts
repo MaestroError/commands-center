@@ -3,6 +3,7 @@ import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { registerAgentRoutes } from "./agents.js";
 import { registerConversationEventRoutes } from "./conversation-events.js";
 import { registerConversationRoutes } from "./conversations.js";
+import { registerFileManagerRoutes } from "./file-manager.js";
 import { registerHealthRoutes } from "./health.js";
 import { registerMcpServerRoutes } from "./mcp-servers.js";
 import { registerProviderRoutes } from "./providers.js";
@@ -13,6 +14,7 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerAgentRoutes(server, context);
   registerConversationRoutes(server, context);
   registerConversationEventRoutes(server, context);
+  registerFileManagerRoutes(server, context);
   registerMcpServerRoutes(server, context);
   registerProviderRoutes(server, context);
   registerSecretRoutes(server, context);

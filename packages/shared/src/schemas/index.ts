@@ -11,6 +11,28 @@ export {
   type ApiValidationErrorResponse,
 } from "./api.js";
 export {
+  fileManagerCreateEntryInputSchema,
+  fileManagerCreateEntryResponseSchema,
+  fileManagerDeleteEntryQuerySchema,
+  fileManagerEntryTypeSchema,
+  fileManagerListQuerySchema,
+  fileManagerListResponseSchema,
+  fileManagerNodeSchema,
+  fileManagerRenameEntryInputSchema,
+  fileManagerRenameEntryResponseSchema,
+  fileManagerRootKindSchema,
+  type FileManagerCreateEntryInput,
+  type FileManagerCreateEntryResponse,
+  type FileManagerDeleteEntryQuery,
+  type FileManagerEntryType,
+  type FileManagerListQuery,
+  type FileManagerListResponse,
+  type FileManagerNode,
+  type FileManagerRenameEntryInput,
+  type FileManagerRenameEntryResponse,
+  type FileManagerRootKind,
+} from "./file-manager.js";
+export {
   agentCapabilitySelectionSchema,
   agentCatalogSchema,
   agentListSchema,

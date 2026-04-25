@@ -9,6 +9,13 @@ import {
   createAgentInputSchema,
   createMcpServerInputSchema,
   engineStatusSchema,
+  fileManagerCreateEntryInputSchema,
+  fileManagerCreateEntryResponseSchema,
+  fileManagerDeleteEntryQuerySchema,
+  fileManagerListQuerySchema,
+  fileManagerListResponseSchema,
+  fileManagerRenameEntryInputSchema,
+  fileManagerRenameEntryResponseSchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
   mcpServerListSchema,
@@ -32,6 +39,11 @@ import {
   type ConversationSnapshot,
   type ConversationSummary,
   type EngineStatus,
+  type FileManagerCreateEntryInput,
+  type FileManagerDeleteEntryQuery,
+  type FileManagerListQuery,
+  type FileManagerListResponse,
+  type FileManagerRenameEntryInput,
   type McpAuthRemoveResult,
   type McpAuthStartResult,
   type McpServer,
@@ -201,6 +213,62 @@ export async function archiveAgent(id: string): Promise<Agent> {
   return requestJson<Agent>(`/api/agents/${encodeURIComponent(id)}`, agentSchema, {
     method: "DELETE",
   });
+}
+
+export async function listFileManagerNodes(
+  query: FileManagerListQuery,
+): Promise<FileManagerListResponse> {
+  const parsed = fileManagerListQuerySchema.parse(query);
+  const params = new URLSearchParams();
+  params.set("root", parsed.root);
+  if (parsed.path) {
+    params.set("path", parsed.path);
+  }
+  return requestJson<FileManagerListResponse>(
+    `/api/file-manager/nodes?${params.toString()}`,
+    fileManagerListResponseSchema,
+  );
+}
+
+export async function createFileManagerEntry(
+  input: FileManagerCreateEntryInput,
+): Promise<{ path: string }> {
+  return requestJson<{ path: string }>(
+    "/api/file-manager/entries",
+    fileManagerCreateEntryResponseSchema,
+    {
+      method: "POST",
+      body: fileManagerCreateEntryInputSchema.parse(input),
+    },
+  );
+}
+
+export async function renameFileManagerEntry(
+  input: FileManagerRenameEntryInput,
+): Promise<{ path: string }> {
+  return requestJson<{ path: string }>(
+    "/api/file-manager/entries",
+    fileManagerRenameEntryResponseSchema,
+    {
+      method: "PATCH",
+      body: fileManagerRenameEntryInputSchema.parse(input),
+    },
+  );
+}
+
+export async function deleteFileManagerEntry(query: FileManagerDeleteEntryQuery): Promise<void> {
+  const parsed = fileManagerDeleteEntryQuerySchema.parse(query);
+  const params = new URLSearchParams();
+  params.set("root", parsed.root);
+  params.set("path", parsed.path);
+  const response = await fetch(`/api/file-manager/entries?${params.toString()}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
 }
 
 export async function submitProviderApiKey(providerId: string, apiKey: string): Promise<boolean> {
