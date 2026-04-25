@@ -27,6 +27,24 @@ This is a complete workspace-interaction feature slice and can ship after the da
 - Support opening files and folders from chat sidebar into file manager or terminal context
 - Ensure file manager and terminal screens are responsive on mobile viewports
 
+## Design References
+
+- `design/screens/file-manager/description.md`
+- `design/screens/file-manager/acceptance_criteria.md`
+- `design/screens/global-terminal/description.md`
+- `design/screens/global-terminal/acceptance_criteria.md`
+- `GOAL.md` for the agent-terminal requirement and host-filesystem access model
+- `PRD.md` for the requirement that both global and agent-scoped terminals exist
+
+## Implementation Decisions
+
+- The file manager should use a dedicated root switcher or equivalent source selector so the user can browse both agent workspaces and the wider host filesystem without conflating them into a single ambiguous tree.
+- The file browser/tree already introduced in direct chat should be treated as groundwork, not a separate competing implementation. U4 should evolve that work into the dedicated file manager experience.
+- The main file editing surface should be page-level and editor-first, using Monaco for supported text files.
+- Unsupported or non-text files should still be openable in the file manager, but may fall back to read-only metadata/preview behavior instead of full editing.
+- Terminal work should reuse one shared terminal UI foundation across the global terminal page and the chat-embedded agent terminal.
+- The chat-embedded agent terminal remains part of U4 even though it does not yet have its own dedicated design screen; its behavior should follow `GOAL.md` and `PRD.md`: bottom-docked, closed by default, multi-session capable, and scoped to the current agent workspace.
+
 ## OpenCode Findings
 
 - OpenCode already exposes PTY session management routes (`/pty`, `/pty/:ptyID`, `/pty/:ptyID/connect`) and uses them in its own app for terminal support
@@ -48,3 +66,9 @@ This is a complete workspace-interaction feature slice and can ship after the da
 
 - Automation scheduling
 - Provider and MCP auth flows
+
+## Suggested Sub-Epics
+
+- `04-file-manager-and-terminals-sub-epics/01-file-manager-navigation-and-crud.md`
+- `04-file-manager-and-terminals-sub-epics/02-file-editor-and-preview.md`
+- `04-file-manager-and-terminals-sub-epics/03-terminal-surfaces.md`
