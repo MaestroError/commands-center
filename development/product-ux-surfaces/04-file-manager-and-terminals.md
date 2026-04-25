@@ -72,3 +72,5 @@ This is a complete workspace-interaction feature slice and can ship after the da
 - `04-file-manager-and-terminals-sub-epics/01-file-manager-navigation-and-crud.md`
 - `04-file-manager-and-terminals-sub-epics/02-file-editor-and-preview.md`
 - `04-file-manager-and-terminals-sub-epics/03-terminal-surfaces.md`
+- `04-file-manager-and-terminals-sub-epics/04-opencode-file-endpoints-integration.md`
+- `04-file-manager-and-terminals-sub-epics/05-global-search-and-resource-palette.md`
