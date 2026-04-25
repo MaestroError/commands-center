@@ -46,6 +46,7 @@ describe("file manager routes", () => {
       const agent = created.json<{ workspacePath: string; slug: string }>();
 
       await mkdir(join(testDb.config.paths.workspaceDir, "notes"), { recursive: true });
+      await writeFile(join(testDb.config.paths.workspaceDir, "opencode.jsonc"), "{}", "utf8");
       await writeFile(join(testDb.config.paths.workspaceDir, "notes", "draft.md"), "hello", "utf8");
 
       const listed = await server.inject({
@@ -79,6 +80,11 @@ describe("file manager routes", () => {
             name: "database",
             isCritical: true,
             absolutePath: testDb.config.paths.subdirectories.database,
+          }),
+          expect.objectContaining({
+            name: "opencode.jsonc",
+            isCritical: true,
+            absolutePath: join(testDb.config.paths.workspaceDir, "opencode.jsonc"),
           }),
         ]),
       );

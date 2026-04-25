@@ -74,3 +74,5 @@ This is a complete workspace-interaction feature slice and can ship after the da
 - `04-file-manager-and-terminals-sub-epics/03-terminal-surfaces.md`
 - `04-file-manager-and-terminals-sub-epics/04-opencode-file-endpoints-integration.md`
 - `04-file-manager-and-terminals-sub-epics/05-global-search-and-resource-palette.md`
+- `04-file-manager-and-terminals-sub-epics/06-file-upload-backend-and-settings.md`
+- `04-file-manager-and-terminals-sub-epics/07-file-upload-ui-and-drag-drop.md`

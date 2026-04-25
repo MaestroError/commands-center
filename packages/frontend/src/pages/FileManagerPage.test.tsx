@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -74,6 +74,17 @@ describe("FileManagerPage", () => {
                   sizeBytes: 2048,
                   isCritical: false,
                 },
+                {
+                  name: "opencode.jsonc",
+                  path: "opencode.jsonc",
+                  absolutePath: "/tmp/.cc/workspace/opencode.jsonc",
+                  type: "file",
+                  sizeBytes: 64,
+                  lineCount: 2,
+                  isCritical: true,
+                  criticalReason:
+                    "This file stores workspace-level OpenCode configuration managed by CommandsCenter.",
+                },
               ],
       }),
     );
@@ -98,6 +109,25 @@ describe("FileManagerPage", () => {
     });
   });
 
+  it("switches roots and resets path state", async () => {
+    renderWithRoute("/files?root=workspace&path=src");
+
+    await screen.findByText("index.ts");
+
+    fireEvent.click(screen.getByRole("button", { name: "All Agents" }));
+
+    await waitFor(() => {
+      expect(listFileManagerNodes).toHaveBeenLastCalledWith({
+        root: "all-agents",
+        path: ".",
+      });
+    });
+    expect(screen.getByRole("button", { name: "All Agents" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
   it("selects folders without auto-opening them and opens them explicitly", async () => {
     renderWithRoute("/files");
 
@@ -114,6 +144,65 @@ describe("FileManagerPage", () => {
       expect(listFileManagerNodes).toHaveBeenLastCalledWith({
         root: "workspace",
         path: "src",
+      });
+    });
+  });
+
+  it("opens folders on double click after selecting them", async () => {
+    renderWithRoute("/files");
+
+    await screen.findAllByText("src");
+
+    const folderRow = screen.getByText("src", { selector: "p" }).closest('[role="button"]');
+    expect(folderRow).not.toBeNull();
+
+    fireEvent.doubleClick(folderRow!);
+
+    await waitFor(() => {
+      expect(listFileManagerNodes).toHaveBeenLastCalledWith({
+        root: "workspace",
+        path: "src",
+      });
+    });
+  });
+
+  it("navigates collapsed breadcrumbs through the ellipsis button", async () => {
+    renderWithRoute(
+      "/files?root=host-filesystem&path=root/System/Library/Accounts/Authentication/AAIDSAuthenticationPlugin.bundle/Contents/_CodeSignature",
+    );
+
+    const ellipsis = await screen.findByRole("button", { name: "..." });
+
+    expect(ellipsis).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "AAIDSAuthenticationPlugin.bundle" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Contents" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "_CodeSignature" })).toBeInTheDocument();
+
+    fireEvent.click(ellipsis);
+
+    await waitFor(() => {
+      expect(listFileManagerNodes).toHaveBeenLastCalledWith({
+        root: "host-filesystem",
+        path: "root/System/Library/Accounts/Authentication",
+      });
+    });
+  });
+
+  it("navigates to the parent directory with back", async () => {
+    renderWithRoute(
+      "/files?root=host-filesystem&path=root/System/Library/Accounts/Authentication/AAIDSAuthenticationPlugin.bundle/Contents/_CodeSignature",
+    );
+
+    await screen.findByRole("button", { name: "Back" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    await waitFor(() => {
+      expect(listFileManagerNodes).toHaveBeenLastCalledWith({
+        root: "host-filesystem",
+        path: "root/System/Library/Accounts/Authentication/AAIDSAuthenticationPlugin.bundle/Contents",
       });
     });
   });
@@ -220,6 +309,24 @@ describe("FileManagerPage", () => {
         path: "src",
       });
     });
+  });
+
+  it("hides rename and delete actions for critical workspace files", async () => {
+    renderWithRoute("/files");
+
+    await screen.findAllByText("opencode.jsonc");
+
+    const criticalRow = screen
+      .getAllByText("opencode.jsonc")[0]
+      ?.closest('[role="button"]') as HTMLElement | null;
+    expect(criticalRow).not.toBeNull();
+
+    fireEvent.click(criticalRow!);
+
+    expect(within(criticalRow!).queryByLabelText("Rename")).not.toBeInTheDocument();
+    expect(within(criticalRow!).queryByLabelText("Delete")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Rename file/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete file/i })).not.toBeInTheDocument();
   });
 });
 

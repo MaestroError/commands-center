@@ -16,6 +16,7 @@ Add the actual file reading and editing experience to the file manager: open fil
 ### File Open and Read
 
 - When the user selects a file, load its contents into the primary editing surface.
+- Double-clicking a file in the file manager should open it for editing.
 - Use OpenCode `GET /file/content?path=<p>` as the primary read path for agent/workspace-scoped file previews and editor opening, rather than inventing a separate preview contract.
 - Distinguish editable text files from unsupported/binary files.
 - Preserve loading and error states while fetching file contents.
@@ -56,6 +57,7 @@ Add the actual file reading and editing experience to the file manager: open fil
 ## Acceptance Criteria
 
 - Selecting a supported text file opens it in an in-app editor.
+- Double-clicking a file in the file manager opens it for editing.
 - File open and preview behavior uses OpenCode `GET /file/content?path=<p>` for agent/workspace-scoped files.
 - Supported text files display syntax highlighting.
 - Editing and saving a file persists the updated contents to disk.

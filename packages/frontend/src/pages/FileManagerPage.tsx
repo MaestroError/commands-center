@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, FilePlus, FolderPlus } from "lucide-react";
+import { ArrowLeft, FilePlus, FolderPlus, Pencil, Trash2 } from "lucide-react";
 
 import type { FileManagerNode, FileManagerRootKind } from "@cc/shared/schemas";
 
@@ -338,6 +338,11 @@ export function FileManagerPage() {
                         }
                         key={node.path}
                         onClick={() => setSelectedPath(node.path)}
+                        onDoubleClick={() => {
+                          if (node.type === "directory") {
+                            openNode(node);
+                          }
+                        }}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(event) => {
@@ -395,7 +400,8 @@ export function FileManagerPage() {
                           {node.isCritical ? null : (
                             <>
                               <button
-                                className="cc-button cc-button-secondary"
+                                aria-label="Rename"
+                                className="flex h-10 w-10 items-center justify-center rounded-full border border-amber-400/40 bg-amber-500/10 text-amber-700 transition hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-300"
                                 disabled={actionBusy}
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -404,10 +410,11 @@ export function FileManagerPage() {
                                 }}
                                 type="button"
                               >
-                                Rename
+                                <Pencil className="h-4 w-4" />
                               </button>
                               <button
-                                className="cc-button cc-button-secondary"
+                                aria-label="Delete"
+                                className="flex h-10 w-10 items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger transition hover:bg-danger/20 disabled:opacity-50"
                                 disabled={actionBusy}
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -415,7 +422,7 @@ export function FileManagerPage() {
                                 }}
                                 type="button"
                               >
-                                Delete
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </>
                           )}
