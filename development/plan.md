@@ -53,7 +53,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
 U0 blocks on: E3
 U2 blocks on: U0, C2, I1
 U3 blocks on: U0, C2, C3
-I2, I3, I5 each extend the agent editor independently after U2 ships
+ I2, I3, I5, and U6 each extend the agent editor independently after U2 ships
 ```
 
 ## Recommended Execution Paths
@@ -76,17 +76,18 @@ Result: connect providers, app shell with layout and theming, create agents with
 
 ### Path B: Extend capabilities and make the product useful for day-to-day work
 
-Run after Path A starts stabilizing. Integration epics (I2, I3, I5) each extend the agent editor with their respective sections.
+Run after Path A starts stabilizing. Integration epics (I2, I3, I5) and the custom skills epic (U6) extend the agent editor after U2 ships. U4 should land before I3 and U6 so custom tool and skill authoring has file browsing/editing support.
 
 1. `✅ integrations-automation/02-integrations-and-mcp-management.md`
-2. `integrations-automation/03-custom-tools-platform.md`
-3. `integrations-automation/05-composio-integration.md`
-4. `engine-infrastructure/04-self-updating-and-version-management.md`
-5. `product-ux-surfaces/04-file-manager-and-terminals.md`
-6. `product-ux-surfaces/01-app-shell-and-dashboard.md`
-7. `product-ux-surfaces/05-profile-settings-and-theming.md`
+2. `product-ux-surfaces/04-file-manager-and-terminals.md`
+3. `integrations-automation/03-custom-tools-platform.md`
+4. `product-ux-surfaces/06-custom-skills-library.md`
+5. `integrations-automation/05-composio-integration.md`
+6. `engine-infrastructure/04-self-updating-and-version-management.md`
+7. `product-ux-surfaces/01-app-shell-and-dashboard.md`
+8. `product-ux-surfaces/05-profile-settings-and-theming.md`
 
-Result: MCP server management, custom tools, Composio integration, file browsing/editing, global and agent terminals, health visibility, user preferences, theming, and self-updating.
+Result: MCP server management, file browsing/editing, custom tools, workspace skills, Composio integration, global and agent terminals, health visibility, user preferences, theming, and self-updating.
 
 ### Path C: Complete the MVP operating loop
 
@@ -153,12 +154,13 @@ Each epic PR should:
 ### Milestone 2: Capability Extensions
 
 - ✅ I2 Integrations and MCP Management
+- U4 File Manager and Terminals
 - I3 Custom Tools Platform
+- U6 Custom Skills Library
 - I5 Composio Integration
 
 ### Milestone 3: Workspace Interaction and Polish
 
-- U4 File Manager and Terminals
 - U1 App Shell and Dashboard
 - U5 Profile, Settings, and Theming
 - E4 Self-Updating and Version Management

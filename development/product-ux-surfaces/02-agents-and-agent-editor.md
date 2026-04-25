@@ -2,7 +2,7 @@
 
 ## Outcome
 
-The user can browse agents, search them, create new agents with a model and built-in skills, edit existing agents, and save workspace-backed configuration.
+The user can browse agents, search them, create new agents with a model and curated built-in skills, edit existing agents, and save workspace-backed configuration.
 
 ## Why this is a separate PR
 
@@ -24,11 +24,13 @@ Creation screen should create a new folder under .cc/workspace/agents with the n
 
 Editing means rewriting: we should maintain the state in the DB as well, so that we know what is added from our side: list of chosen skills and tools, instructions, default model and etc. And when editing, we should remove everything we added before, update internal state and re-add everything that is in new state.
 
+For this epic, "skills" means the curated founder-provided built-in skill library that ships with the codebase. These skills remain code-owned assets, not workspace-authored content. User-defined workspace skills are added later by a dedicated follow-up epic and must reuse the same workspace materialization model rather than changing the built-in skills contract here.
+
 ## Scope
 
 - Implement agents list/grid screen
-- Implement shared create/edit agent screen with sections for: name, role, instructions, model selector (from connected providers via I1), and built-in skills
-- Implement built-in skills browser screen: browsable grid of curated founder-provided skills with name, description, category, version metadata, and detail view
+- Implement shared create/edit agent screen with sections for: name, role, instructions, model selector (from connected providers via I1), and curated built-in skills
+- Implement built-in skills browser screen: browsable grid of curated founder-provided code-owned skills with name, description, category, version metadata, and detail view
 - Design the editor form layout to be extensible — later epics (I2, I3, I5) will add MCP permissions, custom tools, and Composio tool sections
 - Add empty states for missing models or no connected providers
 - Navigate to edit state after create
@@ -50,6 +52,7 @@ Editing means rewriting: we should maintain the state in the DB as well, so that
 
 - Streaming chat
 - Provider connection flows themselves
+- User-authored custom/workspace skills (follow-up epic)
 - MCP permissions section (added by I2)
 - Custom tools section (added by I3)
 - Composio tools section (added by I5)
