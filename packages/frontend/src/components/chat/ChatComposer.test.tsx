@@ -115,6 +115,16 @@ describe("ChatComposer", () => {
     expect(props.onAbort).toHaveBeenCalled();
   });
 
+  it("shows Stop instead of Send when retrying and clicking it calls onAbort", async () => {
+    const user = userEvent.setup();
+    const { props } = renderComposer({ agentStatus: "retry" });
+
+    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+
+    expect(props.onAbort).toHaveBeenCalled();
+  });
+
   it("switches to shell mode when ! is typed first and Enter calls onShell", async () => {
     const user = userEvent.setup();
     const { props } = renderComposer();

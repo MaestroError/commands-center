@@ -398,7 +398,7 @@ export function ChatComposer({
     [],
   );
 
-  const isBusy = agentStatus === "busy";
+  const isBusy = agentStatus !== "idle";
   const showShortcutPills = text.length === 0 && !selectedSkill && mentionedFiles.length === 0;
 
   const activateShortcut = useCallback(
