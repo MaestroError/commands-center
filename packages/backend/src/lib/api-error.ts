@@ -41,6 +41,12 @@ export class ConflictError extends ApiError {
   }
 }
 
+export class ForbiddenError extends ApiError {
+  constructor(message: string, details?: unknown) {
+    super({ code: "forbidden", message, statusCode: 403, details });
+  }
+}
+
 export class BadRequestError extends ApiError {
   constructor(message: string, details?: unknown) {
     super({ code: "bad_request", message, statusCode: 400, details });

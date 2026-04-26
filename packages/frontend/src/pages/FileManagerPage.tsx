@@ -7,6 +7,7 @@ import type { FileManagerNode, FileManagerRootKind } from "@cc/shared/schemas";
 import { CopyIdButton } from "@/components/chat/CopyIdButton";
 import { PageHeader } from "@/components/common/PageHeader";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
+import { FileEditorSurface, type OpenedFile } from "@/components/workspace/FileEditorSurface";
 import {
   createFileManagerEntry,
   deleteFileManagerEntry,
@@ -40,6 +41,9 @@ export function FileManagerPage() {
   const [renameTarget, setRenameTarget] = useState<FileManagerNode>();
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<FileManagerNode>();
+  const [openedFile, setOpenedFile] = useState<OpenedFile>();
+  const [editorReloadKey, setEditorReloadKey] = useState(0);
+  const [editorDirty, setEditorDirty] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -249,194 +253,205 @@ export function FileManagerPage() {
           ],
         }}
         primary={
-          <div className="flex h-full min-h-[28rem] flex-col">
-            <div className="border-b border-border px-4 py-4">
-              <div className="flex flex-wrap gap-2">
-                {(["workspace", "all-agents", "host-filesystem"] as const).map((option) => {
-                  return (
+          <div className="grid h-full min-h-[28rem] grid-cols-1 gap-2 lg:grid-cols-[minmax(20rem,28rem)_1fr]">
+            <div className="flex h-full min-h-[28rem] flex-col rounded-lg border border-border bg-surface">
+              <div className="border-b border-border px-4 py-4">
+                <div className="flex flex-wrap gap-2">
+                  {(["workspace", "all-agents", "host-filesystem"] as const).map((option) => {
+                    return (
+                      <button
+                        aria-pressed={root === option}
+                        className={
+                          root === option
+                            ? "rounded-full border border-accent bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent"
+                            : "rounded-full border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                        }
+                        key={option}
+                        onClick={() => {
+                          setRoot(option);
+                          setCurrentPath(".");
+                          setSelectedPath("");
+                        }}
+                        type="button"
+                      >
+                        {ROOT_LABELS[option]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 flex items-start justify-between gap-4 text-sm text-text-secondary">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                     <button
-                      aria-pressed={root === option}
-                      className={
-                        root === option
-                          ? "rounded-full border border-accent bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent"
-                          : "rounded-full border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                      }
-                      key={option}
+                      className="cc-button cc-button-secondary"
+                      disabled={parentPath === undefined}
                       onClick={() => {
-                        setRoot(option);
-                        setCurrentPath(".");
+                        if (!parentPath) {
+                          return;
+                        }
+
+                        setCurrentPath(parentPath);
                         setSelectedPath("");
                       }}
                       type="button"
                     >
-                      {ROOT_LABELS[option]}
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      Back
                     </button>
-                  );
-                })}
-              </div>
-              <div className="mt-4 flex items-start justify-between gap-4 text-sm text-text-secondary">
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                  <button
-                    className="cc-button cc-button-secondary"
-                    disabled={parentPath === undefined}
-                    onClick={() => {
-                      if (!parentPath) {
-                        return;
-                      }
-
-                      setCurrentPath(parentPath);
-                      setSelectedPath("");
-                    }}
-                    type="button"
-                  >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back
-                  </button>
-                  <span className="font-medium text-text-primary">{ROOT_LABELS[root]}</span>
-                  {visibleBreadcrumbs.map((crumb) => (
-                    <div className="flex min-w-0 items-center gap-2" key={crumb.path}>
-                      <span aria-hidden="true" className="text-text-secondary">
-                        /
-                      </span>
-                      <button
-                        className="max-w-[18rem] truncate rounded px-2 py-1 transition hover:bg-surface-elevated hover:text-text-primary"
-                        onClick={() => {
-                          setCurrentPath(crumb.path);
-                          setSelectedPath("");
-                        }}
-                        title={crumb.label}
-                        type="button"
-                      >
-                        {crumb.label}
-                      </button>
-                    </div>
-                  ))}
+                    <span className="font-medium text-text-primary">{ROOT_LABELS[root]}</span>
+                    {visibleBreadcrumbs.map((crumb) => (
+                      <div className="flex min-w-0 items-center gap-2" key={crumb.path}>
+                        <span aria-hidden="true" className="text-text-secondary">
+                          /
+                        </span>
+                        <button
+                          className="max-w-[18rem] truncate rounded px-2 py-1 transition hover:bg-surface-elevated hover:text-text-primary"
+                          onClick={() => {
+                            setCurrentPath(crumb.path);
+                            setSelectedPath("");
+                          }}
+                          title={crumb.label}
+                          type="button"
+                        >
+                          {crumb.label}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2" aria-hidden="true" />
                 </div>
-                <div className="flex shrink-0 items-center gap-2" aria-hidden="true" />
               </div>
-            </div>
-            {loading ? (
-              <div className="flex flex-1 items-center justify-center px-4 py-10 text-sm text-text-secondary">
-                Loading files...
-              </div>
-            ) : error ? (
-              <div className="px-4 py-10 text-sm text-danger">{error}</div>
-            ) : data && data.nodes.length > 0 ? (
-              <div className="min-h-0 flex-1 overflow-auto p-3">
-                <div className="grid gap-2">
-                  {data.nodes.map((node) => {
-                    const isSelected = node.path === selectedPath;
-                    const actionBusy = busyAction?.endsWith(node.path) ?? false;
+              {loading ? (
+                <div className="flex flex-1 items-center justify-center px-4 py-10 text-sm text-text-secondary">
+                  Loading files...
+                </div>
+              ) : error ? (
+                <div className="px-4 py-10 text-sm text-danger">{error}</div>
+              ) : data && data.nodes.length > 0 ? (
+                <div className="min-h-0 flex-1 overflow-auto p-3">
+                  <div className="grid gap-2">
+                    {data.nodes.map((node) => {
+                      const isSelected = node.path === selectedPath;
+                      const actionBusy = busyAction?.endsWith(node.path) ?? false;
 
-                    return (
-                      <div
-                        aria-pressed={isSelected}
-                        className={
-                          isSelected
-                            ? "flex items-center gap-3 rounded-xl border border-accent bg-accent/5 px-3 py-3"
-                            : "flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-3"
-                        }
-                        key={node.path}
-                        onClick={() => setSelectedPath(node.path)}
-                        onDoubleClick={() => {
-                          if (node.type === "directory") {
+                      return (
+                        <div
+                          aria-pressed={isSelected}
+                          className={
+                            isSelected
+                              ? "flex items-center gap-3 rounded-xl border border-accent bg-accent/5 px-3 py-3"
+                              : "flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-3"
+                          }
+                          key={node.path}
+                          onClick={() => setSelectedPath(node.path)}
+                          onDoubleClick={() => {
                             openNode(node);
-                          }
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            setSelectedPath(node.path);
-                          }
-                        }}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg" aria-hidden="true">
-                              {node.type === "directory" ? "📁" : "📄"}
-                            </span>
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              setSelectedPath(node.path);
+                              openNode(node);
+                            } else if (event.key === " ") {
+                              event.preventDefault();
+                              setSelectedPath(node.path);
+                            }
+                          }}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg" aria-hidden="true">
+                                {node.type === "directory" ? "📁" : "📄"}
+                              </span>
+                              {node.type === "directory" ? (
+                                <button
+                                  className="truncate font-medium text-text-primary underline-offset-4 hover:underline"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openNode(node);
+                                  }}
+                                  type="button"
+                                >
+                                  {node.name}
+                                </button>
+                              ) : (
+                                <span className="truncate font-medium text-text-primary">
+                                  {node.name}
+                                </span>
+                              )}
+                              {node.isCritical ? (
+                                <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                                  Critical
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 truncate text-xs text-text-secondary">
+                              {node.path === "." ? "/" : node.path}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
                             {node.type === "directory" ? (
                               <button
-                                className="truncate font-medium text-text-primary underline-offset-4 hover:underline"
+                                className="cc-button cc-button-secondary"
+                                disabled={actionBusy}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   openNode(node);
                                 }}
                                 type="button"
                               >
-                                {node.name}
+                                Open
                               </button>
-                            ) : (
-                              <span className="truncate font-medium text-text-primary">
-                                {node.name}
-                              </span>
-                            )}
-                            {node.isCritical ? (
-                              <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                                Critical
-                              </span>
                             ) : null}
+                            {node.isCritical ? null : (
+                              <>
+                                <button
+                                  aria-label="Rename"
+                                  className="flex h-10 w-10 items-center justify-center rounded-full border border-amber-400/40 bg-amber-500/10 text-amber-700 transition hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-300"
+                                  disabled={actionBusy}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setRenameTarget(node);
+                                    setRenameValue(node.name);
+                                  }}
+                                  type="button"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                                <button
+                                  aria-label="Delete"
+                                  className="flex h-10 w-10 items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger transition hover:bg-danger/20 disabled:opacity-50"
+                                  disabled={actionBusy}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setDeleteTarget(node);
+                                  }}
+                                  type="button"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
-                          <p className="mt-1 truncate text-xs text-text-secondary">
-                            {node.path === "." ? "/" : node.path}
-                          </p>
                         </div>
-                        <div className="flex shrink-0 gap-2">
-                          {node.type === "directory" ? (
-                            <button
-                              className="cc-button cc-button-secondary"
-                              disabled={actionBusy}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openNode(node);
-                              }}
-                              type="button"
-                            >
-                              Open
-                            </button>
-                          ) : null}
-                          {node.isCritical ? null : (
-                            <>
-                              <button
-                                aria-label="Rename"
-                                className="flex h-10 w-10 items-center justify-center rounded-full border border-amber-400/40 bg-amber-500/10 text-amber-700 transition hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-300"
-                                disabled={actionBusy}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setRenameTarget(node);
-                                  setRenameValue(node.name);
-                                }}
-                                type="button"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </button>
-                              <button
-                                aria-label="Delete"
-                                className="flex h-10 w-10 items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger transition hover:bg-danger/20 disabled:opacity-50"
-                                disabled={actionBusy}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setDeleteTarget(node);
-                                }}
-                                type="button"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="flex flex-1 items-center justify-center px-4 py-10 text-sm text-text-secondary">
-                This folder is empty.
-              </div>
-            )}
+              ) : (
+                <div className="flex flex-1 items-center justify-center px-4 py-10 text-sm text-text-secondary">
+                  This folder is empty.
+                </div>
+              )}
+            </div>
+            <div className="flex h-full min-h-[28rem] flex-col overflow-hidden rounded-lg border border-border bg-surface">
+              <FileEditorSurface
+                opened={openedFile}
+                reloadKey={editorReloadKey}
+                onDirtyChange={setEditorDirty}
+              />
+            </div>
           </div>
         }
       />
@@ -481,6 +496,20 @@ export function FileManagerPage() {
     if (node.type === "directory") {
       setCurrentPath(node.path);
       setSelectedPath("");
+      return;
+    }
+
+    if (node.type === "file") {
+      if (editorDirty) {
+        const proceed = window.confirm(
+          "You have unsaved changes. Open a different file and discard them?",
+        );
+        if (!proceed) {
+          return;
+        }
+      }
+      setOpenedFile({ root, path: node.path });
+      setEditorReloadKey((value) => value + 1);
     }
   }
 }

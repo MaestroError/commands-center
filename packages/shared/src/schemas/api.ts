@@ -5,6 +5,7 @@ export const apiErrorCodeSchema = z.enum([
   "invalid_request",
   "not_found",
   "conflict",
+  "forbidden",
   "internal_error",
 ]);
 

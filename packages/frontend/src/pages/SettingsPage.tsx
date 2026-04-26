@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
 import { useMarkEngineRestarting } from "@/hooks/use-engine-status-query";
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
+import { getFileManagerPreferences, updateFileManagerPreferences } from "@/lib/api";
 
 export function SettingsPage() {
   const [activeTabId, setActiveTabId] = useState("secrets");
@@ -13,6 +14,10 @@ export function SettingsPage() {
       {
         id: "secrets",
         label: "Secrets",
+      },
+      {
+        id: "file-manager",
+        label: "File Manager",
       },
     ],
     [],
@@ -28,7 +33,80 @@ export function SettingsPage() {
       <section className="cc-panel p-6">
         <TabBar activeTabId={activeTabId} onTabChange={setActiveTabId} tabs={tabs} />
         {activeTabId === "secrets" ? <SecretsTab /> : null}
+        {activeTabId === "file-manager" ? <FileManagerTab /> : null}
       </section>
+    </div>
+  );
+}
+
+function FileManagerTab() {
+  const [allowHostEdits, setAllowHostEdits] = useState<boolean>();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    let cancelled = false;
+    void getFileManagerPreferences()
+      .then((preferences) => {
+        if (cancelled) return;
+        setAllowHostEdits(preferences.allowHostFilesystemEdits);
+        setLoading(false);
+      })
+      .catch((nextError: unknown) => {
+        if (cancelled) return;
+        setError(nextError instanceof Error ? nextError.message : "Failed to load preferences.");
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function toggle(next: boolean) {
+    setSaving(true);
+    setError(undefined);
+    try {
+      const result = await updateFileManagerPreferences({ allowHostFilesystemEdits: next });
+      setAllowHostEdits(result.allowHostFilesystemEdits);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to save preferences.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return <LoadingState testId="file-manager-preferences-loading" />;
+  }
+
+  return (
+    <div className="mt-6 grid gap-4">
+      <div>
+        <h2 className="text-xl font-semibold text-text-primary">File Manager</h2>
+        <p className="mt-1 text-sm text-text-secondary">
+          Control how the in-app editor interacts with files outside the workspace.
+        </p>
+      </div>
+      {error ? <ErrorState description={error} title="Could not save preferences." /> : null}
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface p-4">
+        <input
+          checked={allowHostEdits ?? false}
+          className="mt-1"
+          disabled={saving}
+          onChange={(event) => void toggle(event.target.checked)}
+          type="checkbox"
+        />
+        <span>
+          <span className="block font-medium text-text-primary">
+            Allow editing files on the host filesystem
+          </span>
+          <span className="mt-1 block text-sm text-text-secondary">
+            When disabled, files browsed from the Host Filesystem root are read-only in the editor.
+            The Workspace and All Agents roots remain editable regardless of this setting.
+          </span>
+        </span>
+      </label>
     </div>
   );
 }

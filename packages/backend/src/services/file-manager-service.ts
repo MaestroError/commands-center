@@ -1,17 +1,24 @@
 import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, relative, resolve, sep } from "node:path";
+import { createHash } from "node:crypto";
 
 import type { RuntimeConfig } from "../lib/runtime-config.js";
-import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../lib/api-error.js";
 import type {
   FileManagerCreateEntryInput,
   FileManagerDeleteEntryQuery,
+  FileManagerFileContentResponse,
+  FileManagerFileRevision,
   FileManagerListQuery,
   FileManagerListResponse,
   FileManagerNode,
   FileManagerRenameEntryInput,
   FileManagerRootKind,
+  FileManagerSaveFileInput,
+  FileManagerSaveFileResponse,
 } from "@cc/shared/schemas";
+
+export const FILE_EDITOR_MAX_BYTES = 2 * 1024 * 1024;
 
 type RootReference = {
   kind: FileManagerRootKind;
@@ -174,6 +181,127 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
       const absolutePath = resolveEntryPath(root, input.path);
       await assertPresent(absolutePath);
       await rm(absolutePath, { recursive: true, force: false });
+    },
+
+    async readFileContent(
+      root: RootReference,
+      path: string,
+    ): Promise<FileManagerFileContentResponse> {
+      const absolutePath = resolveEntryPath(root, path);
+      const stats = await statOrNotFound(absolutePath);
+
+      if (!stats.isFile()) {
+        throw new BadRequestError("Selected entry is not a file.");
+      }
+
+      const buffer = await readFile(absolutePath);
+      const sizeBytes = buffer.byteLength;
+      const mtimeMs = stats.mtimeMs;
+      const isWritable = root.kind !== "host-filesystem";
+      const relativePath = toRelativePath(root, absolutePath);
+      const name = basename(absolutePath);
+      const mimeType = guessMimeType(name);
+
+      if (sizeBytes > FILE_EDITOR_MAX_BYTES) {
+        return {
+          root: root.kind,
+          path: relativePath,
+          absolutePath,
+          name,
+          kind: "too-large",
+          content: "",
+          mimeType,
+          revision: { mtimeMs, sizeBytes, sha256: hashBuffer(buffer) },
+          isWritable,
+        };
+      }
+
+      const binary = isBinaryBuffer(buffer);
+
+      if (binary) {
+        return {
+          root: root.kind,
+          path: relativePath,
+          absolutePath,
+          name,
+          kind: "binary",
+          content: buffer.toString("base64"),
+          encoding: "base64",
+          mimeType,
+          revision: { mtimeMs, sizeBytes, sha256: hashBuffer(buffer) },
+          isWritable,
+        };
+      }
+
+      return {
+        root: root.kind,
+        path: relativePath,
+        absolutePath,
+        name,
+        kind: "text",
+        content: buffer.toString("utf8"),
+        mimeType,
+        revision: { mtimeMs, sizeBytes, sha256: hashBuffer(buffer) },
+        isWritable,
+      };
+    },
+
+    async writeFileContent(
+      root: RootReference,
+      input: FileManagerSaveFileInput,
+      writeOptions: { allowHostFilesystemEdits: boolean },
+    ): Promise<FileManagerSaveFileResponse> {
+      if (root.kind === "host-filesystem" && !writeOptions.allowHostFilesystemEdits) {
+        throw new ForbiddenError(
+          "Host filesystem edits are disabled. Enable them in Settings to save files outside the workspace.",
+        );
+      }
+
+      const absolutePath = resolveEntryPath(root, input.path);
+      const stats = await statOrNotFound(absolutePath);
+
+      if (!stats.isFile()) {
+        throw new BadRequestError("Selected entry is not a file.");
+      }
+
+      const expected = input.expectedRevision;
+      const fastMatch =
+        Math.trunc(stats.mtimeMs) === Math.trunc(expected.mtimeMs) &&
+        stats.size === expected.sizeBytes;
+
+      if (!fastMatch) {
+        const currentBuffer = await readFile(absolutePath);
+        const currentSha = hashBuffer(currentBuffer);
+
+        if (!expected.sha256 || expected.sha256 !== currentSha) {
+          throw new ConflictError(
+            "The file changed on disk after it was opened. Reload to see the latest contents or overwrite to keep your changes.",
+            {
+              currentRevision: {
+                mtimeMs: stats.mtimeMs,
+                sizeBytes: stats.size,
+                sha256: currentSha,
+              } satisfies FileManagerFileRevision,
+            },
+          );
+        }
+      }
+
+      const data =
+        input.encoding === "base64" ? Buffer.from(input.content, "base64") : input.content;
+      await writeFile(absolutePath, data);
+
+      const updatedStats = await stat(absolutePath);
+      const updatedBuffer = await readFile(absolutePath);
+
+      return {
+        path: toRelativePath(root, absolutePath),
+        revision: {
+          mtimeMs: updatedStats.mtimeMs,
+          sizeBytes: updatedStats.size,
+          sha256: hashBuffer(updatedBuffer),
+        },
+      };
     },
   };
 
@@ -395,4 +523,83 @@ function matchesCriticalPath(path: string, basePath: string, recursive: boolean)
 
 function isMissingError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+async function statOrNotFound(path: string) {
+  try {
+    return await stat(path);
+  } catch (error) {
+    if (isMissingError(error)) {
+      throw new NotFoundError("File not found.");
+    }
+
+    throw error;
+  }
+}
+
+function hashBuffer(buffer: Buffer): string {
+  return createHash("sha256").update(buffer).digest("hex");
+}
+
+function isBinaryBuffer(buffer: Buffer): boolean {
+  const sampleSize = Math.min(buffer.byteLength, 8 * 1024);
+  for (let index = 0; index < sampleSize; index += 1) {
+    if (buffer[index] === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const MIME_TYPES: Record<string, string> = {
+  ".txt": "text/plain",
+  ".md": "text/markdown",
+  ".markdown": "text/markdown",
+  ".json": "application/json",
+  ".jsonc": "application/json",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".cjs": "text/javascript",
+  ".ts": "text/typescript",
+  ".tsx": "text/typescript",
+  ".jsx": "text/javascript",
+  ".css": "text/css",
+  ".html": "text/html",
+  ".htm": "text/html",
+  ".xml": "application/xml",
+  ".svg": "image/svg+xml",
+  ".yml": "application/yaml",
+  ".yaml": "application/yaml",
+  ".toml": "application/toml",
+  ".sh": "text/x-shellscript",
+  ".py": "text/x-python",
+  ".rb": "text/x-ruby",
+  ".go": "text/x-go",
+  ".rs": "text/x-rust",
+  ".java": "text/x-java",
+  ".c": "text/x-c",
+  ".h": "text/x-c",
+  ".cpp": "text/x-c++",
+  ".hpp": "text/x-c++",
+  ".sql": "application/sql",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp",
+  ".ico": "image/x-icon",
+  ".avif": "image/avif",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".m4v": "video/x-m4v",
+  ".ogg": "video/ogg",
+  ".pdf": "application/pdf",
+  ".zip": "application/zip",
+};
+
+function guessMimeType(name: string): string | undefined {
+  const ext = extname(name).toLowerCase();
+  return MIME_TYPES[ext];
 }

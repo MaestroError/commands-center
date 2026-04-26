@@ -200,3 +200,164 @@ function createMockOpenCodeService(): OpenCodeService {
     deleteSession: vi.fn(),
   } as unknown as OpenCodeService;
 }
+
+describe("file manager content routes", () => {
+  async function bootServer() {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+    return { testDb, server };
+  }
+
+  it("reads a workspace text file via GET /api/file-manager/files/content", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      await mkdir(testDb.config.paths.workspaceDir, { recursive: true });
+      await writeFile(join(testDb.config.paths.workspaceDir, "doc.md"), "# hi", "utf8");
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/file-manager/files/content?root=workspace&path=${encodeURIComponent("doc.md")}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{
+        kind: string;
+        content: string;
+        revision: { sizeBytes: number };
+      }>();
+      expect(body.kind).toBe("text");
+      expect(body.content).toBe("# hi");
+      expect(body.revision.sizeBytes).toBe(4);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("saves a file when the expectedRevision matches and 409s when it does not", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      const filePath = join(testDb.config.paths.workspaceDir, "doc.md");
+      await writeFile(filePath, "v1", "utf8");
+
+      const read = await server.inject({
+        method: "GET",
+        url: `/api/file-manager/files/content?root=workspace&path=${encodeURIComponent("doc.md")}`,
+      });
+      const initial = read.json<{
+        revision: { mtimeMs: number; sizeBytes: number; sha256: string };
+      }>();
+
+      const saved = await server.inject({
+        method: "PUT",
+        url: "/api/file-manager/files/content",
+        payload: {
+          root: "workspace",
+          path: "doc.md",
+          content: "v2",
+          expectedRevision: initial.revision,
+        },
+      });
+
+      expect(saved.statusCode).toBe(200);
+      expect(await readFile(filePath, "utf8")).toBe("v2");
+
+      const conflict = await server.inject({
+        method: "PUT",
+        url: "/api/file-manager/files/content",
+        payload: {
+          root: "workspace",
+          path: "doc.md",
+          content: "v3",
+          expectedRevision: initial.revision,
+        },
+      });
+
+      expect(conflict.statusCode).toBe(409);
+      const conflictBody = conflict.json<{
+        error: { code: string; details: { currentRevision: { sizeBytes: number } } };
+      }>();
+      expect(conflictBody.error.code).toBe("conflict");
+      expect(conflictBody.error.details.currentRevision.sizeBytes).toBe(2);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects host-filesystem writes by default and allows them after preference toggle", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      const filePath = join(testDb.config.paths.workspaceDir, "host-target.txt");
+      await writeFile(filePath, "x", "utf8");
+
+      const read = await server.inject({
+        method: "GET",
+        url: `/api/file-manager/files/content?root=host-filesystem&path=${encodeURIComponent(filePath)}`,
+      });
+      expect(read.statusCode).toBe(200);
+      const initial = read.json<{
+        revision: { mtimeMs: number; sizeBytes: number; sha256: string };
+      }>();
+
+      const blocked = await server.inject({
+        method: "PUT",
+        url: "/api/file-manager/files/content",
+        payload: {
+          root: "host-filesystem",
+          path: filePath,
+          content: "y",
+          expectedRevision: initial.revision,
+        },
+      });
+      expect(blocked.statusCode).toBe(403);
+
+      const enabled = await server.inject({
+        method: "PUT",
+        url: "/api/file-manager/preferences",
+        payload: { allowHostFilesystemEdits: true },
+      });
+      expect(enabled.statusCode).toBe(200);
+
+      const allowed = await server.inject({
+        method: "PUT",
+        url: "/api/file-manager/files/content",
+        payload: {
+          root: "host-filesystem",
+          path: filePath,
+          content: "y",
+          expectedRevision: initial.revision,
+        },
+      });
+      expect(allowed.statusCode).toBe(200);
+      expect(await readFile(filePath, "utf8")).toBe("y");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns default preferences via GET /api/file-manager/preferences", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/file-manager/preferences",
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ allowHostFilesystemEdits: false });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+});

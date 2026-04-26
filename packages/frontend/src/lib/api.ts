@@ -12,10 +12,16 @@ import {
   fileManagerCreateEntryInputSchema,
   fileManagerCreateEntryResponseSchema,
   fileManagerDeleteEntryQuerySchema,
+  fileManagerFileContentQuerySchema,
+  fileManagerFileContentResponseSchema,
   fileManagerListQuerySchema,
   fileManagerListResponseSchema,
+  fileManagerPreferencesSchema,
   fileManagerRenameEntryInputSchema,
   fileManagerRenameEntryResponseSchema,
+  fileManagerSaveFileInputSchema,
+  fileManagerSaveFileResponseSchema,
+  fileManagerUpdatePreferencesInputSchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
   mcpServerListSchema,
@@ -42,9 +48,16 @@ import {
   type EngineStatus,
   type FileManagerCreateEntryInput,
   type FileManagerDeleteEntryQuery,
+  type FileManagerFileContentQuery,
+  type FileManagerFileContentResponse,
+  type FileManagerFileRevision,
   type FileManagerListQuery,
   type FileManagerListResponse,
+  type FileManagerPreferences,
   type FileManagerRenameEntryInput,
+  type FileManagerSaveFileInput,
+  type FileManagerSaveFileResponse,
+  type FileManagerUpdatePreferencesInput,
   type McpAuthRemoveResult,
   type McpAuthStartResult,
   type McpServer,
@@ -270,6 +283,76 @@ export async function deleteFileManagerEntry(query: FileManagerDeleteEntryQuery)
     const payload = (await response.json().catch(() => undefined)) as unknown;
     throw new Error(readApiError(payload, response.status, response.statusText));
   }
+}
+
+export async function getFileManagerFileContent(
+  query: FileManagerFileContentQuery,
+): Promise<FileManagerFileContentResponse> {
+  const parsed = fileManagerFileContentQuerySchema.parse(query);
+  const params = new URLSearchParams();
+  params.set("root", parsed.root);
+  params.set("path", parsed.path);
+  return requestJson<FileManagerFileContentResponse>(
+    `/api/file-manager/files/content?${params.toString()}`,
+    fileManagerFileContentResponseSchema,
+  );
+}
+
+export class FileSaveConflictError extends Error {
+  readonly currentRevision?: FileManagerFileRevision;
+  constructor(message: string, currentRevision?: FileManagerFileRevision) {
+    super(message);
+    this.name = "FileSaveConflictError";
+    this.currentRevision = currentRevision;
+  }
+}
+
+export async function saveFileManagerFileContent(
+  input: FileManagerSaveFileInput,
+): Promise<FileManagerSaveFileResponse> {
+  const body = fileManagerSaveFileInputSchema.parse(input);
+  const response = await fetch("/api/file-manager/files/content", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json().catch(() => undefined)) as unknown;
+
+  if (response.status === 409) {
+    const message = readApiError(payload, response.status, response.statusText);
+    const details =
+      payload && typeof payload === "object" && "error" in payload
+        ? (payload as { error?: { details?: { currentRevision?: FileManagerFileRevision } } }).error
+            ?.details?.currentRevision
+        : undefined;
+    throw new FileSaveConflictError(message, details);
+  }
+
+  if (!response.ok) {
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
+
+  return fileManagerSaveFileResponseSchema.parse(payload);
+}
+
+export async function getFileManagerPreferences(): Promise<FileManagerPreferences> {
+  return requestJson<FileManagerPreferences>(
+    "/api/file-manager/preferences",
+    fileManagerPreferencesSchema,
+  );
+}
+
+export async function updateFileManagerPreferences(
+  input: FileManagerUpdatePreferencesInput,
+): Promise<FileManagerPreferences> {
+  return requestJson<FileManagerPreferences>(
+    "/api/file-manager/preferences",
+    fileManagerPreferencesSchema,
+    {
+      method: "PUT",
+      body: fileManagerUpdatePreferencesInputSchema.parse(input),
+    },
+  );
 }
 
 export async function submitProviderApiKey(providerId: string, apiKey: string): Promise<boolean> {
