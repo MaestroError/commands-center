@@ -7,7 +7,8 @@ import type { FileManagerNode, FileManagerRootKind } from "@cc/shared/schemas";
 import { CopyIdButton } from "@/components/chat/CopyIdButton";
 import { PageHeader } from "@/components/common/PageHeader";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
-import { FileEditorSurface, type OpenedFile } from "@/components/workspace/FileEditorSurface";
+import { EditorTabsSurface } from "@/components/workspace/EditorTabsSurface";
+import { useEditorTabs } from "@/hooks/use-editor-tabs";
 import {
   createFileManagerEntry,
   deleteFileManagerEntry,
@@ -41,21 +42,25 @@ export function FileManagerPage() {
   const [renameTarget, setRenameTarget] = useState<FileManagerNode>();
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<FileManagerNode>();
-  const [openedFile, setOpenedFile] = useState<OpenedFile>();
-  const [editorReloadKey, setEditorReloadKey] = useState(0);
-  const [editorDirty, setEditorDirty] = useState(false);
+  const tabsController = useEditorTabs();
 
   useEffect(() => {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(searchParams);
     params.set("root", root);
     if (currentPath !== ".") {
       params.set("path", currentPath);
+    } else {
+      params.delete("path");
     }
     if (selectedPath) {
       params.set("select", selectedPath);
+    } else {
+      params.delete("select");
     }
-    setSearchParams(params, { replace: true });
-  }, [currentPath, root, selectedPath, setSearchParams]);
+    if (params.toString() !== searchParams.toString()) {
+      setSearchParams(params, { replace: true });
+    }
+  }, [currentPath, root, selectedPath, searchParams, setSearchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -446,11 +451,7 @@ export function FileManagerPage() {
               )}
             </div>
             <div className="flex h-full min-h-[28rem] flex-col overflow-hidden rounded-lg border border-border bg-surface">
-              <FileEditorSurface
-                opened={openedFile}
-                reloadKey={editorReloadKey}
-                onDirtyChange={setEditorDirty}
-              />
+              <EditorTabsSurface controller={tabsController} />
             </div>
           </div>
         }
@@ -500,16 +501,7 @@ export function FileManagerPage() {
     }
 
     if (node.type === "file") {
-      if (editorDirty) {
-        const proceed = window.confirm(
-          "You have unsaved changes. Open a different file and discard them?",
-        );
-        if (!proceed) {
-          return;
-        }
-      }
-      setOpenedFile({ root, path: node.path });
-      setEditorReloadKey((value) => value + 1);
+      tabsController.open({ root, path: node.path });
     }
   }
 }

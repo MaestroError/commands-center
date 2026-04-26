@@ -7,6 +7,7 @@ import { FileManagerPage } from "./FileManagerPage";
 import {
   createFileManagerEntry,
   deleteFileManagerEntry,
+  getFileManagerFileContent,
   listFileManagerNodes,
   renameFileManagerEntry,
 } from "@/lib/api";
@@ -16,6 +17,27 @@ vi.mock("@/lib/api", () => ({
   createFileManagerEntry: vi.fn(),
   renameFileManagerEntry: vi.fn(),
   deleteFileManagerEntry: vi.fn(),
+  getFileManagerFileContent: vi.fn(),
+  saveFileManagerFileContent: vi.fn(),
+  FileSaveConflictError: class extends Error {
+    currentRevision?: unknown;
+  },
+}));
+
+vi.mock("@monaco-editor/react", () => ({
+  default: ({
+    value,
+    onChange,
+  }: {
+    value: string;
+    onChange?: (value: string | undefined) => void;
+  }) => (
+    <textarea
+      aria-label="monaco-mock"
+      onChange={(event) => onChange?.(event.target.value)}
+      value={value}
+    />
+  ),
 }));
 
 describe("FileManagerPage", () => {
@@ -337,3 +359,76 @@ function renderWithRoute(route: string) {
     </MemoryRouter>,
   );
 }
+
+describe("FileManagerPage editor tabs", () => {
+  beforeEach(() => {
+    vi.mocked(listFileManagerNodes).mockReset();
+    vi.mocked(listFileManagerNodes).mockResolvedValue({
+      root: "workspace",
+      currentPath: ".",
+      absolutePath: "/tmp/.cc/workspace",
+      sizeBytes: 4096,
+      lineCount: undefined,
+      nodes: [
+        {
+          name: "alpha.ts",
+          path: "alpha.ts",
+          absolutePath: "/tmp/.cc/workspace/alpha.ts",
+          type: "file",
+          sizeBytes: 32,
+          lineCount: 4,
+          isCritical: false,
+        },
+        {
+          name: "beta.ts",
+          path: "beta.ts",
+          absolutePath: "/tmp/.cc/workspace/beta.ts",
+          type: "file",
+          sizeBytes: 32,
+          lineCount: 4,
+          isCritical: false,
+        },
+      ],
+    });
+    vi.mocked(getFileManagerFileContent).mockReset();
+    vi.mocked(getFileManagerFileContent).mockImplementation(({ root, path }) =>
+      Promise.resolve({
+        root,
+        path,
+        absolutePath: `/abs/${path}`,
+        name: path,
+        kind: "text",
+        content: `// ${path}`,
+        revision: { mtimeMs: 1, sizeBytes: 32, sha256: "a".repeat(64) },
+        isWritable: true,
+        mimeType: "text/plain",
+      }),
+    );
+  });
+
+  it("opens two files into separate tabs", async () => {
+    renderWithRoute("/files?root=workspace");
+    const alpha = (await screen.findAllByText("alpha.ts"))[0]?.closest('[role="button"]');
+    fireEvent.doubleClick(alpha!);
+    await waitFor(() =>
+      expect(screen.getByTestId("editor-tab-workspace:alpha.ts")).toBeInTheDocument(),
+    );
+    const beta = (await screen.findAllByText("beta.ts"))[0]?.closest('[role="button"]');
+    fireEvent.doubleClick(beta!);
+    await waitFor(() =>
+      expect(screen.getByTestId("editor-tab-workspace:beta.ts")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("editor-tab-workspace:alpha.ts")).toBeInTheDocument();
+  });
+
+  it("closes a clean tab via the × button", async () => {
+    renderWithRoute("/files?root=workspace");
+    const alpha = (await screen.findAllByText("alpha.ts"))[0]?.closest('[role="button"]');
+    fireEvent.doubleClick(alpha!);
+    await screen.findByTestId("editor-tab-workspace:alpha.ts");
+    fireEvent.click(screen.getByTestId("editor-tab-close-workspace:alpha.ts"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("editor-tab-workspace:alpha.ts")).not.toBeInTheDocument(),
+    );
+  });
+});

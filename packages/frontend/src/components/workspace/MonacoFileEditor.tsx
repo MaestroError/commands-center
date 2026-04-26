@@ -1,12 +1,7 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo } from "react";
+import { RotateCw, Save } from "lucide-react";
 
-import type {
-  FileManagerFileContentResponse,
-  FileManagerFileRevision,
-  FileManagerRootKind,
-} from "@cc/shared/schemas";
-
-import { FileSaveConflictError, saveFileManagerFileContent } from "@/lib/api";
+import type { FileManagerFileRevision } from "@cc/shared/schemas";
 
 const MonacoEditor = lazy(async () => {
   const mod = await import("@monaco-editor/react");
@@ -14,134 +9,95 @@ const MonacoEditor = lazy(async () => {
 });
 
 type Props = {
-  file: FileManagerFileContentResponse;
-  root: FileManagerRootKind;
-  onSaved: (response: { revision: FileManagerFileRevision }) => void;
+  name: string;
+  path: string;
+  draft: string;
+  baseline: string;
+  isWritable: boolean;
+  dirty: boolean;
+  busy: boolean;
+  mimeType?: string;
+  conflict?: { currentRevision?: FileManagerFileRevision; message: string };
+  errorMessage?: string;
+  onDraftChange: (draft: string) => void;
+  onSaveRequested: (overrideRevision?: FileManagerFileRevision) => void;
   onReloadRequested: () => void;
-  onDirtyChange: (dirty: boolean) => void;
+  onDiscardConflict: () => void;
 };
 
 export function MonacoFileEditor(props: Props) {
-  const [draft, setDraft] = useState(props.file.content);
-  const [baseline, setBaseline] = useState(props.file.content);
-  const [revision, setRevision] = useState<FileManagerFileRevision>(props.file.revision);
-  const [conflict, setConflict] = useState<{
-    currentRevision?: FileManagerFileRevision;
-    message: string;
-  }>();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  const fileKeyRef = useRef<string>(`${props.root}:${props.file.path}`);
+  const {
+    busy,
+    conflict,
+    dirty,
+    draft,
+    errorMessage,
+    isWritable,
+    mimeType,
+    name,
+    onDraftChange,
+    onReloadRequested,
+    onSaveRequested,
+    onDiscardConflict,
+    path,
+  } = props;
 
-  useEffect(() => {
-    const nextKey = `${props.root}:${props.file.path}`;
-    if (nextKey !== fileKeyRef.current) {
-      fileKeyRef.current = nextKey;
-      setDraft(props.file.content);
-      setBaseline(props.file.content);
-      setRevision(props.file.revision);
-      setConflict(undefined);
-      setError(undefined);
-    }
-  }, [props.root, props.file.path, props.file.content, props.file.revision]);
+  const language = useMemo(() => guessLanguage(name, mimeType), [name, mimeType]);
 
-  const dirty = draft !== baseline;
-
-  useEffect(() => {
-    props.onDirtyChange(dirty);
-  }, [dirty, props]);
-
-  const language = useMemo(
-    () => guessLanguage(props.file.name, props.file.mimeType),
-    [props.file.name, props.file.mimeType],
-  );
-
-  const handleSave = useCallback(
-    async (overrideRevision?: FileManagerFileRevision) => {
-      if (busy) {
-        return;
-      }
-      setBusy(true);
-      setError(undefined);
-
-      try {
-        const response = await saveFileManagerFileContent({
-          root: props.root,
-          path: props.file.path,
-          content: draft,
-          expectedRevision: overrideRevision ?? revision,
-        });
-        setRevision(response.revision);
-        setBaseline(draft);
-        setConflict(undefined);
-        props.onSaved({ revision: response.revision });
-      } catch (saveError) {
-        if (saveError instanceof FileSaveConflictError) {
-          setConflict({ currentRevision: saveError.currentRevision, message: saveError.message });
-        } else {
-          setError(saveError instanceof Error ? saveError.message : "Failed to save file.");
-        }
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy, draft, props, revision],
-  );
+  const handleSave = useCallback(() => {
+    if (busy || !dirty || !isWritable) return;
+    onSaveRequested();
+  }, [busy, dirty, isWritable, onSaveRequested]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const isSave = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s";
-      if (!isSave) {
-        return;
-      }
+      if (!isSave) return;
       event.preventDefault();
-      void handleSave();
+      handleSave();
     }
-
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handleSave]);
 
   return (
     <div className="flex h-full min-h-[24rem] flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-medium text-text-primary">
-            <span className="truncate">{props.file.name}</span>
-            {dirty ? (
-              <span
-                aria-label="Unsaved changes"
-                className="inline-block h-2 w-2 rounded-full bg-amber-500"
-              />
-            ) : null}
+      <div className="flex items-center justify-between gap-3 border-b border-border bg-surface px-3 py-1.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="truncate text-xs text-text-secondary" title={path}>
+            {path}
           </p>
-          <p className="truncate text-xs text-text-secondary">{props.file.path}</p>
+          {dirty ? (
+            <span
+              aria-label="Unsaved changes"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-amber-500"
+            />
+          ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
           <button
-            className="cc-button cc-button-secondary"
+            aria-label="Reload"
+            className="inline-flex h-7 w-7 items-center justify-center rounded text-text-secondary hover:bg-border hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
             disabled={busy}
-            onClick={() => {
-              setDraft(baseline);
-              setConflict(undefined);
-              setError(undefined);
-              props.onReloadRequested();
-            }}
+            onClick={onReloadRequested}
+            title="Reload"
             type="button"
           >
-            Reload
+            <RotateCw className="h-3.5 w-3.5" />
           </button>
           <button
-            className="cc-button cc-button-primary"
-            disabled={busy || !props.file.isWritable || !dirty}
-            onClick={() => void handleSave()}
+            aria-label={busy ? "Saving" : "Save"}
+            className="inline-flex h-7 w-7 items-center justify-center rounded bg-accent text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={busy || !isWritable || !dirty}
+            onClick={handleSave}
+            title="Save (⌘/Ctrl+S)"
             type="button"
           >
-            {busy ? "Saving..." : "Save"}
+            <Save className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>
-      {!props.file.isWritable ? (
+      {!isWritable ? (
         <div className="border-b border-border bg-amber-500/10 px-4 py-2 text-xs text-amber-700 dark:text-amber-300">
           This root is read-only. Enable host-filesystem editing in Settings to save changes.
         </div>
@@ -153,8 +109,8 @@ export function MonacoFileEditor(props: Props) {
             <button
               className="cc-button cc-button-secondary"
               onClick={() => {
-                setConflict(undefined);
-                props.onReloadRequested();
+                onDiscardConflict();
+                onReloadRequested();
               }}
               type="button"
             >
@@ -163,7 +119,7 @@ export function MonacoFileEditor(props: Props) {
             <button
               className="cc-button cc-button-secondary"
               disabled={busy}
-              onClick={() => void handleSave(conflict.currentRevision ?? revision)}
+              onClick={() => onSaveRequested(conflict.currentRevision)}
               type="button"
             >
               Overwrite
@@ -171,9 +127,9 @@ export function MonacoFileEditor(props: Props) {
           </div>
         </div>
       ) : null}
-      {error ? (
+      {errorMessage ? (
         <div className="border-b border-danger/40 bg-danger/10 px-4 py-2 text-sm text-danger">
-          {error}
+          {errorMessage}
         </div>
       ) : null}
       <div className="min-h-0 flex-1">
@@ -187,10 +143,10 @@ export function MonacoFileEditor(props: Props) {
           <MonacoEditor
             value={draft}
             language={language}
-            onChange={(value) => setDraft(value ?? "")}
+            onChange={(value) => onDraftChange(value ?? "")}
             options={{
               minimap: { enabled: false },
-              readOnly: !props.file.isWritable,
+              readOnly: !isWritable,
               automaticLayout: true,
               fontSize: 13,
               wordWrap: "on",
