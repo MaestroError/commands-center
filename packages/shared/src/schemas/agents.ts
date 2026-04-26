@@ -92,10 +92,6 @@ export const agentSchema = z.object({
 export const builtInSkillListSchema = z.array(builtInSkillSchema);
 export const agentListSchema = z.array(agentSchema);
 
-export const workspaceFileSearchResultSchema = z.object({
-  files: z.array(z.string()),
-});
-
 export type Agent = z.infer<typeof agentSchema>;
 export type AgentCatalog = z.infer<typeof agentCatalogSchema>;
 export type AgentCapabilitySelection = z.infer<typeof agentCapabilitySelectionSchema>;
@@ -105,4 +101,3 @@ export type AgentStatus = z.infer<typeof agentStatusSchema>;
 export type CreateAgentInput = z.infer<typeof createAgentInputSchema>;
 export type UpdateAgentInput = z.infer<typeof updateAgentInputSchema>;
 export type BuiltInSkill = z.infer<typeof builtInSkillSchema>;
-export type WorkspaceFileSearchResult = z.infer<typeof workspaceFileSearchResultSchema>;

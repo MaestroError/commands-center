@@ -20,6 +20,8 @@ import {
   mcpAuthStartResultSchema,
   mcpServerListSchema,
   mcpServerSchema,
+  opencodeFileListResultSchema,
+  opencodeFileSearchResultSchema,
   providerConnectResultSchema,
   providerOauthAuthorizationSchema,
   providerOauthCompleteResultSchema,
@@ -29,7 +31,6 @@ import {
   sendConversationPromptInputSchema,
   setSecretRequestSchema,
   setMcpServerEnabledInputSchema,
-  workspaceFileSearchResultSchema,
   type Agent,
   type AgentCatalog,
   type ChatEvent,
@@ -544,29 +545,26 @@ export async function summarizeConversation(conversationId: string): Promise<voi
 }
 
 export async function searchWorkspaceFiles(agentId: string, query: string): Promise<string[]> {
-  const result = await requestJson<{ files: string[] }>(
-    `/api/agents/${encodeURIComponent(agentId)}/workspace/files?query=${encodeURIComponent(query)}`,
-    workspaceFileSearchResultSchema,
+  return requestJson<string[]>(
+    `/api/agents/${encodeURIComponent(agentId)}/workspace/find/file?query=${encodeURIComponent(query)}`,
+    opencodeFileSearchResultSchema,
   );
-  return result.files;
 }
 
 export type FileNode = { name: string; path: string; type: "file" | "directory" };
 
 export async function getWorkspaceTree(agentId: string, path?: string): Promise<FileNode[]> {
   const params = new URLSearchParams();
-  if (path) params.set("path", path);
+  params.set("path", path ?? ".");
   const qs = params.toString();
-  const url = `/api/agents/${encodeURIComponent(agentId)}/workspace/tree${qs ? `?${qs}` : ""}`;
-  const response = await fetch(url);
+  const nodes = await requestJson(
+    `/api/agents/${encodeURIComponent(agentId)}/workspace/file?${qs}`,
+    opencodeFileListResultSchema,
+  );
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status, response.statusText));
-  }
-
-  const json = (await response.json()) as { nodes: FileNode[] };
-  return json.nodes;
+  return nodes
+    .filter((node) => !node.ignored)
+    .map((node) => ({ name: node.name, path: node.path, type: node.type }));
 }
 
 // --- SSE Event Consumer ---

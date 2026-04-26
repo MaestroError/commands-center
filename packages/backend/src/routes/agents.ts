@@ -1,6 +1,18 @@
 import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
+import {
+  opencodeFileContentQuerySchema,
+  opencodeFileContentSchema,
+  opencodeFileListQuerySchema,
+  opencodeFileListResultSchema,
+  opencodeFileSearchQuerySchema,
+  opencodeFileSearchResultSchema,
+  opencodeFileStatusResultSchema,
+  opencodeTextSearchQuerySchema,
+  opencodeTextSearchResultSchema,
+} from "@cc/shared/schemas";
+
 import { createAgentInputSchema, updateAgentInputSchema } from "../schemas/agents.js";
 
 import type { AppServer } from "../lib/fastify-zod.js";
@@ -20,14 +32,6 @@ const listAgentsQuerySchema = z.object({
   includeArchived: z.coerce.boolean().optional().default(false),
 });
 
-const workspaceFilesQuerySchema = z.object({
-  query: z.string().default(""),
-});
-
-const workspaceTreeQuerySchema = z.object({
-  path: z.string().optional(),
-});
-
 export function registerAgentRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const service = createAgentService({
@@ -35,6 +39,16 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
     config: context.config,
     opencodeService: context.opencodeService,
   });
+
+  async function requireAgent(id: string) {
+    const agent = await service.get(id);
+
+    if (!agent) {
+      throw new NotFoundError("Agent not found.");
+    }
+
+    return agent;
+  }
 
   app.get(
     "/api/agents",
@@ -135,50 +149,86 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.get(
-    "/api/agents/:id/workspace/files",
+    "/api/agents/:id/workspace/find",
     {
       schema: {
         params: agentIdParamsSchema,
-        querystring: workspaceFilesQuerySchema,
+        querystring: opencodeTextSearchQuerySchema,
+        response: {
+          200: opencodeTextSearchResultSchema,
+        },
       },
     },
     async (request) => {
-      const agent = await service.get(request.params.id);
-
-      if (!agent) {
-        throw new NotFoundError("Agent not found.");
-      }
-
-      const files = await context.opencodeService.searchWorkspaceFiles(
-        agent.workspacePath,
-        request.query.query,
-      );
-
-      return { files };
+      const agent = await requireAgent(request.params.id);
+      return context.opencodeService.findText(agent.workspacePath, request.query.pattern);
     },
   );
 
   app.get(
-    "/api/agents/:id/workspace/tree",
+    "/api/agents/:id/workspace/find/file",
     {
       schema: {
         params: agentIdParamsSchema,
-        querystring: workspaceTreeQuerySchema,
+        querystring: opencodeFileSearchQuerySchema,
+        response: {
+          200: opencodeFileSearchResultSchema,
+        },
       },
     },
     async (request) => {
-      const agent = await service.get(request.params.id);
+      const agent = await requireAgent(request.params.id);
+      return context.opencodeService.findFiles(agent.workspacePath, request.query);
+    },
+  );
 
-      if (!agent) {
-        throw new NotFoundError("Agent not found.");
-      }
+  app.get(
+    "/api/agents/:id/workspace/file",
+    {
+      schema: {
+        params: agentIdParamsSchema,
+        querystring: opencodeFileListQuerySchema,
+        response: {
+          200: opencodeFileListResultSchema,
+        },
+      },
+    },
+    async (request) => {
+      const agent = await requireAgent(request.params.id);
+      return context.opencodeService.listFiles(agent.workspacePath, request.query.path);
+    },
+  );
 
-      const nodes = await context.opencodeService.listWorkspaceTree(
-        agent.workspacePath,
-        request.query.path,
-      );
+  app.get(
+    "/api/agents/:id/workspace/file/content",
+    {
+      schema: {
+        params: agentIdParamsSchema,
+        querystring: opencodeFileContentQuerySchema,
+        response: {
+          200: opencodeFileContentSchema,
+        },
+      },
+    },
+    async (request) => {
+      const agent = await requireAgent(request.params.id);
+      return context.opencodeService.readFile(agent.workspacePath, request.query.path);
+    },
+  );
 
-      return { nodes };
+  app.get(
+    "/api/agents/:id/workspace/file/status",
+    {
+      schema: {
+        params: agentIdParamsSchema,
+        response: {
+          200: opencodeFileStatusResultSchema,
+        },
+      },
+    },
+    async (request) => {
+      const agent = await requireAgent(request.params.id);
+      return context.opencodeService.getFileStatus(agent.workspacePath);
     },
   );
 }

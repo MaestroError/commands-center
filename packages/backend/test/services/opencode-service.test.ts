@@ -208,4 +208,165 @@ describe("opencode-service", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe("file endpoints", () => {
+    it("validates text search responses from /find", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, [
+          {
+            path: { text: "README.md" },
+            lines: { text: "TODO: document this" },
+            line_number: 7,
+            absolute_offset: 99,
+            submatches: [{ match: { text: "TODO" }, start: 0, end: 4 }],
+          },
+        ]),
+      );
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      const result = await service.findText("/work/agent-a", "TODO");
+
+      expect(result).toEqual([
+        {
+          path: { text: "README.md" },
+          lines: { text: "TODO: document this" },
+          line_number: 7,
+          absolute_offset: 99,
+          submatches: [{ match: { text: "TODO" }, start: 0, end: 4 }],
+        },
+      ]);
+      const url = fetchMock.mock.calls[0]?.[0] as URL;
+      expect(url.pathname).toBe("/find");
+      expect(url.searchParams.get("directory")).toBe("/work/agent-a");
+      expect(url.searchParams.get("pattern")).toBe("TODO");
+    });
+
+    it("validates file-name search responses from /find/file", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, ["README.md", "src/README.md"]));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      const result = await service.findFiles("/work/agent-a", {
+        query: "readme",
+        type: "file",
+        limit: 5,
+      });
+
+      expect(result).toEqual(["README.md", "src/README.md"]);
+      const url = fetchMock.mock.calls[0]?.[0] as URL;
+      expect(url.pathname).toBe("/find/file");
+      expect(url.searchParams.get("query")).toBe("readme");
+      expect(url.searchParams.get("type")).toBe("file");
+      expect(url.searchParams.get("limit")).toBe("5");
+    });
+
+    it("validates file listing responses from /file", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, [
+          {
+            name: "src",
+            path: "src",
+            absolute: "/work/agent-a/src",
+            type: "directory",
+            ignored: false,
+          },
+        ]),
+      );
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      const result = await service.listFiles("/work/agent-a", "src");
+
+      expect(result).toEqual([
+        {
+          name: "src",
+          path: "src",
+          absolute: "/work/agent-a/src",
+          type: "directory",
+          ignored: false,
+        },
+      ]);
+      const url = fetchMock.mock.calls[0]?.[0] as URL;
+      expect(url.pathname).toBe("/file");
+      expect(url.searchParams.get("path")).toBe("src");
+    });
+
+    it("validates file content responses from /file/content", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, {
+          type: "text",
+          content: "hello",
+          diff: "diff --git a/README.md b/README.md",
+        }),
+      );
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      const result = await service.readFile("/work/agent-a", "README.md");
+
+      expect(result).toEqual({
+        type: "text",
+        content: "hello",
+        diff: "diff --git a/README.md b/README.md",
+      });
+      const url = fetchMock.mock.calls[0]?.[0] as URL;
+      expect(url.pathname).toBe("/file/content");
+      expect(url.searchParams.get("path")).toBe("README.md");
+    });
+
+    it("validates file status responses from /file/status", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, [
+          {
+            path: "README.md",
+            added: 2,
+            removed: 1,
+            status: "modified",
+          },
+        ]),
+      );
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      const result = await service.getFileStatus("/work/agent-a");
+
+      expect(result).toEqual([
+        {
+          path: "README.md",
+          added: 2,
+          removed: 1,
+          status: "modified",
+        },
+      ]);
+      const url = fetchMock.mock.calls[0]?.[0] as URL;
+      expect(url.pathname).toBe("/file/status");
+    });
+
+    it("rejects invalid upstream file payloads", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, [{ nope: true }]));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await expect(service.listFiles("/work/agent-a", "src")).rejects.toThrow();
+    });
+  });
 });

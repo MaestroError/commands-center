@@ -205,6 +205,117 @@ describe("agent routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("proxies agent-scoped workspace file endpoints with upstream-aligned shapes", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService,
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Files Agent",
+          role: "inspect workspace",
+          instructions: "Inspect files.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {},
+        },
+      });
+      const agent = created.json<{ id: string; workspacePath: string }>();
+
+      const textSearch = await server.inject({
+        method: "GET",
+        url: `/api/agents/${agent.id}/workspace/find?pattern=TODO`,
+      });
+      const fileSearch = await server.inject({
+        method: "GET",
+        url: `/api/agents/${agent.id}/workspace/find/file?query=readme&type=file&limit=5`,
+      });
+      const fileList = await server.inject({
+        method: "GET",
+        url: `/api/agents/${agent.id}/workspace/file?path=src`,
+      });
+      const fileContent = await server.inject({
+        method: "GET",
+        url: `/api/agents/${agent.id}/workspace/file/content?path=README.md`,
+      });
+      const fileStatus = await server.inject({
+        method: "GET",
+        url: `/api/agents/${agent.id}/workspace/file/status`,
+      });
+
+      expect(textSearch.statusCode).toBe(200);
+      expect(textSearch.json()).toEqual([
+        {
+          path: { text: "README.md" },
+          lines: { text: "TODO: document file endpoints" },
+          line_number: 3,
+          absolute_offset: 42,
+          submatches: [{ match: { text: "TODO" }, start: 0, end: 4 }],
+        },
+      ]);
+      expect(opencodeService.findText).toHaveBeenCalledWith(agent.workspacePath, "TODO");
+
+      expect(fileSearch.statusCode).toBe(200);
+      expect(fileSearch.json()).toEqual(["README.md", "docs/README.md"]);
+      expect(opencodeService.findFiles).toHaveBeenCalledWith(agent.workspacePath, {
+        query: "readme",
+        type: "file",
+        limit: 5,
+      });
+
+      expect(fileList.statusCode).toBe(200);
+      expect(fileList.json()).toEqual([
+        {
+          name: "components",
+          path: "src/components",
+          absolute: "/tmp/files-agent/src/components",
+          type: "directory",
+          ignored: false,
+        },
+        {
+          name: "index.ts",
+          path: "src/index.ts",
+          absolute: "/tmp/files-agent/src/index.ts",
+          type: "file",
+          ignored: false,
+        },
+      ]);
+      expect(opencodeService.listFiles).toHaveBeenCalledWith(agent.workspacePath, "src");
+
+      expect(fileContent.statusCode).toBe(200);
+      expect(fileContent.json()).toEqual({
+        type: "text",
+        content: "# Hello",
+      });
+      expect(opencodeService.readFile).toHaveBeenCalledWith(agent.workspacePath, "README.md");
+
+      expect(fileStatus.statusCode).toBe(200);
+      expect(fileStatus.json()).toEqual([
+        {
+          path: "README.md",
+          added: 3,
+          removed: 1,
+          status: "modified",
+        },
+      ]);
+      expect(opencodeService.getFileStatus).toHaveBeenCalledWith(agent.workspacePath);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 function createOrchestrator(): OpenCodeOrchestrator {
@@ -267,5 +378,46 @@ function createMockOpenCodeService(): OpenCodeService {
     commandSession: vi.fn(),
     summarizeSession: vi.fn(),
     shellSession: vi.fn(),
+    findText: vi.fn(() =>
+      Promise.resolve([
+        {
+          path: { text: "README.md" },
+          lines: { text: "TODO: document file endpoints" },
+          line_number: 3,
+          absolute_offset: 42,
+          submatches: [{ match: { text: "TODO" }, start: 0, end: 4 }],
+        },
+      ]),
+    ),
+    findFiles: vi.fn(() => Promise.resolve(["README.md", "docs/README.md"])),
+    listFiles: vi.fn(() =>
+      Promise.resolve([
+        {
+          name: "components",
+          path: "src/components",
+          absolute: "/tmp/files-agent/src/components",
+          type: "directory",
+          ignored: false,
+        },
+        {
+          name: "index.ts",
+          path: "src/index.ts",
+          absolute: "/tmp/files-agent/src/index.ts",
+          type: "file",
+          ignored: false,
+        },
+      ]),
+    ),
+    readFile: vi.fn(() => Promise.resolve({ type: "text", content: "# Hello" })),
+    getFileStatus: vi.fn(() =>
+      Promise.resolve([
+        {
+          path: "README.md",
+          added: 3,
+          removed: 1,
+          status: "modified",
+        },
+      ]),
+    ),
   } as unknown as OpenCodeService;
 }

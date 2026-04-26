@@ -10,6 +10,12 @@ import {
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
   mcpRuntimeStatusSchema,
+  opencodeFileContentSchema,
+  opencodeFileListResultSchema,
+  opencodeFileSearchQuerySchema,
+  opencodeFileSearchResultSchema,
+  opencodeFileStatusResultSchema,
+  opencodeTextSearchResultSchema,
   providerAuthMethodsSchema,
   providerListSchema,
   providerOauthAuthorizationSchema,
@@ -17,6 +23,11 @@ import {
   type McpAuthRemoveResult,
   type McpAuthStartResult,
   type McpRuntimeStatus,
+  type OpencodeFileContent,
+  type OpencodeFileNode,
+  type OpencodeFileSearchQuery,
+  type OpencodeFileStatus,
+  type OpencodeTextSearchMatch,
   type ProviderAuthMethods,
   type ProviderList,
   type ProviderOauthAuthorization,
@@ -483,30 +494,64 @@ export function createOpenCodeService(options: {
       });
     },
 
-    async searchWorkspaceFiles(directory: string, query: string): Promise<string[]> {
-      const scoped = createScopedOpenCodeClient(options.config, directory);
-      const result = await scoped.find.files({ query: { query } });
-      return z.array(z.string()).parse(result);
+    async findText(directory: string, pattern: string): Promise<OpencodeTextSearchMatch[]> {
+      const result = await requestOpenCodeJson({
+        config: options.config,
+        directory,
+        method: "GET",
+        path: "/find",
+        query: { pattern },
+      });
+
+      return opencodeTextSearchResultSchema.parse(result);
     },
 
-    async listWorkspaceTree(
-      directory: string,
-      path?: string,
-    ): Promise<{ name: string; path: string; type: "file" | "directory" }[]> {
-      const scoped = createScopedOpenCodeClient(options.config, directory);
-      const result = await scoped.file.list({ query: { path: path ?? "." } });
-      return z
-        .array(
-          z.object({
-            name: z.string(),
-            path: z.string(),
-            type: z.enum(["file", "directory"]),
-            ignored: z.boolean().optional(),
-          }),
-        )
-        .parse(result)
-        .filter((node) => !node.ignored)
-        .map((node) => ({ name: node.name, path: node.path, type: node.type }));
+    async findFiles(directory: string, query: OpencodeFileSearchQuery): Promise<string[]> {
+      const parsedQuery = opencodeFileSearchQuerySchema.parse(query);
+      const result = await requestOpenCodeJson({
+        config: options.config,
+        directory,
+        method: "GET",
+        path: "/find/file",
+        query: buildDefinedQuery(parsedQuery),
+      });
+
+      return opencodeFileSearchResultSchema.parse(result);
+    },
+
+    async listFiles(directory: string, path?: string): Promise<OpencodeFileNode[]> {
+      const result = await requestOpenCodeJson({
+        config: options.config,
+        directory,
+        method: "GET",
+        path: "/file",
+        query: { path: path ?? "." },
+      });
+
+      return opencodeFileListResultSchema.parse(result);
+    },
+
+    async readFile(directory: string, path: string): Promise<OpencodeFileContent> {
+      const result = await requestOpenCodeJson({
+        config: options.config,
+        directory,
+        method: "GET",
+        path: "/file/content",
+        query: { path },
+      });
+
+      return opencodeFileContentSchema.parse(result);
+    },
+
+    async getFileStatus(directory: string): Promise<OpencodeFileStatus[]> {
+      const result = await requestOpenCodeJson({
+        config: options.config,
+        directory,
+        method: "GET",
+        path: "/file/status",
+      });
+
+      return opencodeFileStatusResultSchema.parse(result);
     },
   };
 }
@@ -548,9 +593,20 @@ async function requestOpenCodeJson(options: {
   method: "GET" | "POST" | "DELETE";
   path: string;
   body?: Record<string, unknown>;
+  query?: Record<string, string | number | boolean | undefined>;
 }): Promise<unknown> {
   const url = new URL(options.path, options.config.opencode.baseUrl);
   url.searchParams.set("directory", options.directory);
+
+  if (options.query) {
+    for (const [key, value] of Object.entries(options.query)) {
+      if (value === undefined) {
+        continue;
+      }
+
+      url.searchParams.set(key, String(value));
+    }
+  }
 
   const response = await fetch(url, {
     method: options.method,
@@ -578,4 +634,14 @@ async function requestOpenCodeJson(options: {
   }
 
   return JSON.parse(text) as unknown;
+}
+
+function buildDefinedQuery<T extends Record<string, string | number | boolean | undefined>>(
+  query: T,
+): T {
+  return Object.fromEntries(
+    Object.entries(query).filter((entry): entry is [string, string | number | boolean] => {
+      return entry[1] !== undefined;
+    }),
+  ) as T;
 }

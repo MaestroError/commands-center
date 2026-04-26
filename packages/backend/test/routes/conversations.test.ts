@@ -341,8 +341,11 @@ function createMockOpenCodeService(): OpenCodeService {
     commandSession: () => Promise.resolve(),
     summarizeSession: () => Promise.resolve(),
     shellSession: () => Promise.resolve(),
-    searchWorkspaceFiles: () => Promise.resolve([]),
-    listWorkspaceTree: () => Promise.resolve([]),
+    findText: () => Promise.resolve([]),
+    findFiles: () => Promise.resolve([]),
+    listFiles: () => Promise.resolve([]),
+    readFile: () => Promise.resolve({ type: "text" as const, content: "" }),
+    getFileStatus: () => Promise.resolve([]),
   } as OpenCodeService;
 
   function mustSession(sessionID: string) {
