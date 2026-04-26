@@ -238,6 +238,8 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
             content: "",
             parts: [],
             attachments: [],
+            parentId: typeof info["parentID"] === "string" ? info["parentID"] : undefined,
+            error: sanitizeMessageError(info["error"]),
             createdAt: new Date(createdMs).toISOString(),
             updatedAt: new Date(completedMs).toISOString(),
           },
@@ -305,17 +307,13 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
 
     case "session.status": {
       const status = props["status"];
-      let statusType = "idle";
-
-      if (status && typeof status === "object" && "type" in status) {
-        statusType = String((status as { type: string }).type);
-      }
+      const mappedStatus = sanitizeSessionStatus(status);
 
       return {
         type: raw.type,
         properties: {
           sessionID,
-          status: statusType,
+          status: mappedStatus,
         },
       };
     }
@@ -362,6 +360,48 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function sanitizeSessionStatus(status: unknown) {
+  if (!isRecord(status)) {
+    return { type: "idle" as const };
+  }
+
+  if (status["type"] === "busy") {
+    return { type: "busy" as const };
+  }
+
+  if (
+    status["type"] === "retry" &&
+    typeof status["attempt"] === "number" &&
+    typeof status["message"] === "string" &&
+    typeof status["next"] === "number"
+  ) {
+    return {
+      type: "retry" as const,
+      attempt: status["attempt"],
+      message: status["message"],
+      next: status["next"],
+    };
+  }
+
+  return { type: "idle" as const };
+}
+
+function sanitizeMessageError(error: unknown) {
+  if (
+    !isRecord(error) ||
+    typeof error["name"] !== "string" ||
+    typeof error["message"] !== "string"
+  ) {
+    return undefined;
+  }
+
+  return {
+    name: error["name"],
+    message: error["message"],
+    data: isRecord(error["data"]) ? error["data"] : undefined,
+  };
 }
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {

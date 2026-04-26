@@ -95,7 +95,7 @@ describe("MessageTimeline", () => {
       <MessageTimeline
         messages={[userMessage, assistantMessage]}
         parts={{ [assistantMessage.id]: assistantMessage.parts }}
-        agentStatus="idle"
+        sessionStatus={{ type: "idle" }}
       />,
     );
 
@@ -110,7 +110,7 @@ describe("MessageTimeline", () => {
       <MessageTimeline
         messages={[makeMessage({ id: "user-1", role: "user", content: "Waiting" })]}
         parts={{}}
-        agentStatus="busy"
+        sessionStatus={{ type: "busy" }}
       />,
     );
 
@@ -118,13 +118,13 @@ describe("MessageTimeline", () => {
   });
 
   it('shows "Thinking..." when busy and there are no messages', () => {
-    render(<MessageTimeline messages={[]} parts={{}} agentStatus="busy" />);
+    render(<MessageTimeline messages={[]} parts={{}} sessionStatus={{ type: "busy" }} />);
 
     expect(screen.getByText("Thinking...")).toBeInTheDocument();
   });
 
   it('does not show "Thinking..." when agentStatus is idle', () => {
-    render(<MessageTimeline messages={[]} parts={{}} agentStatus="idle" />);
+    render(<MessageTimeline messages={[]} parts={{}} sessionStatus={{ type: "idle" }} />);
 
     expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
   });
@@ -141,7 +141,7 @@ describe("MessageTimeline", () => {
       <MessageTimeline
         messages={[assistantMessage]}
         parts={{ [assistantMessage.id]: assistantMessage.parts }}
-        agentStatus="busy"
+        sessionStatus={{ type: "busy" }}
       />,
     );
 
@@ -156,7 +156,7 @@ describe("MessageTimeline", () => {
       <MessageTimeline
         messages={[hiddenMessage]}
         parts={{ [hiddenMessage.id]: [makePart({ text: hiddenText })] }}
-        agentStatus="idle"
+        sessionStatus={{ type: "idle" }}
       />,
     );
 
@@ -175,7 +175,7 @@ describe("MessageTimeline", () => {
       <MessageTimeline
         messages={[interruptedMessage]}
         parts={{ [interruptedMessage.id]: interruptedMessage.parts }}
-        agentStatus="idle"
+        sessionStatus={{ type: "idle" }}
       />,
     );
 
@@ -197,7 +197,7 @@ describe("MessageTimeline", () => {
       <MessageTimeline
         messages={[completedMessage]}
         parts={{ [completedMessage.id]: completedMessage.parts }}
-        agentStatus="idle"
+        sessionStatus={{ type: "idle" }}
       />,
     );
 
@@ -223,7 +223,7 @@ describe("MessageTimeline", () => {
 
     render(
       <MessageTimeline
-        agentStatus="idle"
+        sessionStatus={{ type: "idle" }}
         messages={[userMessage]}
         onAttachmentClick={onAttachmentClick}
         parts={{}}
@@ -233,5 +233,38 @@ describe("MessageTimeline", () => {
     await user.click(screen.getByRole("button", { name: "Carpenter Vacancy Redberry.pdf" }));
 
     expect(onAttachmentClick).toHaveBeenCalledWith("Carpenter Vacancy Redberry.pdf");
+  });
+
+  it("renders retry status details instead of failing silently", () => {
+    render(
+      <MessageTimeline
+        messages={[]}
+        parts={{}}
+        sessionStatus={{
+          type: "retry",
+          attempt: 2,
+          message: "OpenAI rate limit reached",
+          next: Date.now() + 5_000,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("OpenAI rate limit reached")).toBeInTheDocument();
+    expect(screen.getByText(/Retrying automatically/i)).toBeInTheDocument();
+    expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
+  });
+
+  it("renders a visible prompt send error", () => {
+    render(
+      <MessageTimeline
+        messages={[]}
+        parts={{}}
+        sessionStatus={{ type: "idle" }}
+        sendError="Request failed with status 429."
+      />,
+    );
+
+    expect(screen.getByText("Message failed to send")).toBeInTheDocument();
+    expect(screen.getByText("Request failed with status 429.")).toBeInTheDocument();
   });
 });

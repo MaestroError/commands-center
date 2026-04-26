@@ -2,6 +2,12 @@ import { z } from "zod";
 
 const looseRecordSchema = z.record(z.string(), z.unknown());
 
+export const conversationMessageErrorSchema = z.object({
+  name: z.string().min(1),
+  message: z.string().min(1),
+  data: looseRecordSchema.optional(),
+});
+
 export const conversationStatusSchema = z.enum(["active", "archived"]);
 
 export const conversationAttachmentSchema = z.object({
@@ -27,6 +33,8 @@ export const conversationMessageSchema = z.object({
   content: z.string(),
   parts: z.array(conversationPartSchema),
   attachments: z.array(conversationAttachmentSchema),
+  parentId: z.string().min(1).optional(),
+  error: conversationMessageErrorSchema.optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -91,6 +99,7 @@ export const sendConversationCommandInputSchema = z.object({
 
 export type ConversationAttachment = z.infer<typeof conversationAttachmentSchema>;
 export type ConversationDetail = z.infer<typeof conversationDetailSchema>;
+export type ConversationMessageError = z.infer<typeof conversationMessageErrorSchema>;
 export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
 export type ConversationPart = z.infer<typeof conversationPartSchema>;
 export type ConversationSnapshot = z.infer<typeof conversationSnapshotSchema>;

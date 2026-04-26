@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ConversationMessage, ConversationPart } from "@cc/shared/schemas";
+import type { ConversationMessage, ConversationPart, SessionStatus } from "@cc/shared/schemas";
 
 import { AssistantMessage } from "./AssistantMessage";
 import { InterruptedDivider } from "./InterruptedDivider";
@@ -10,14 +10,16 @@ import { isHiddenUserMessage, isInterruptedMessage } from "./message-timeline-ut
 type MessageTimelineProps = {
   messages: ConversationMessage[];
   parts: Record<string, ConversationPart[]>;
-  agentStatus: "idle" | "busy" | "retry";
+  sessionStatus: SessionStatus;
+  sendError?: string | null;
   onAttachmentClick?: (filename: string) => void;
 };
 
 export function MessageTimeline({
   messages,
   parts,
-  agentStatus,
+  sessionStatus,
+  sendError,
   onAttachmentClick,
 }: MessageTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -39,11 +41,15 @@ export function MessageTimeline({
     if (!userScrolledUp) {
       scrollToBottom();
     }
-  }, [messages, agentStatus, userScrolledUp, scrollToBottom]);
+  }, [messages, sessionStatus, sendError, userScrolledUp, scrollToBottom]);
 
   const lastMessage = messages.at(-1);
   const showThinking =
-    agentStatus === "busy" && (lastMessage?.role === "user" || messages.length === 0);
+    sessionStatus.type === "busy" && (lastMessage?.role === "user" || messages.length === 0);
+  const retrySeconds =
+    sessionStatus.type === "retry"
+      ? Math.max(0, Math.round((sessionStatus.next - Date.now()) / 1000))
+      : 0;
 
   return (
     <div
@@ -81,6 +87,27 @@ export function MessageTimeline({
           </div>
         );
       })}
+
+      {sessionStatus.type === "retry" ? (
+        <div className="flex justify-start">
+          <div className="max-w-[90%] rounded-lg border border-warning/30 bg-warning/10 px-4 py-3">
+            <p className="text-sm text-text-primary">{sessionStatus.message}</p>
+            <p className="mt-1 text-xs text-text-secondary">
+              Retrying automatically{retrySeconds > 0 ? ` in ${String(retrySeconds)}s` : " soon"}.
+              Attempt {String(sessionStatus.attempt)}.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {sendError ? (
+        <div className="flex justify-start">
+          <div className="max-w-[90%] rounded-lg border border-danger/30 bg-danger/10 px-4 py-3">
+            <p className="text-sm font-medium text-text-primary">Message failed to send</p>
+            <p className="mt-1 text-xs text-text-secondary">{sendError}</p>
+          </div>
+        </div>
+      ) : null}
 
       {showThinking ? (
         <div className="flex justify-start">

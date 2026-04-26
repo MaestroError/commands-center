@@ -114,7 +114,7 @@ describe("HYDRATE", () => {
   it("resets agentStatus, pendingPermission, pendingQuestion, and todos", () => {
     const dirtyState: ConversationState = {
       ...initialState,
-      agentStatus: "busy",
+      sessionStatus: { type: "busy" },
       pendingPermissions: [
         {
           id: "perm-1",
@@ -132,7 +132,7 @@ describe("HYDRATE", () => {
       type: "HYDRATE",
       snapshot: { current: makeConversation(), previous: [] },
     });
-    expect(next.agentStatus).toBe("idle");
+    expect(next.sessionStatus).toEqual({ type: "idle" });
     expect(next.pendingPermissions).toEqual([]);
     expect(next.pendingQuestion).toBeNull();
     expect(next.todos).toEqual([]);
@@ -187,7 +187,7 @@ describe("HYDRATE_DETAIL", () => {
   it("resets agentStatus, pendingPermission, pendingQuestion, and todos", () => {
     const dirtyState: ConversationState = {
       ...initialState,
-      agentStatus: "busy",
+      sessionStatus: { type: "busy" },
       pendingPermissions: [
         {
           id: "perm-1",
@@ -204,7 +204,7 @@ describe("HYDRATE_DETAIL", () => {
       type: "HYDRATE_DETAIL",
       detail: makeConversation(),
     });
-    expect(next.agentStatus).toBe("idle");
+    expect(next.sessionStatus).toEqual({ type: "idle" });
     expect(next.pendingPermissions).toEqual([]);
     expect(next.todos).toEqual([]);
   });
@@ -249,29 +249,65 @@ describe("SSE_EVENT: session.status", () => {
   it("sets agentStatus to busy", () => {
     const event: ChatEvent = {
       type: "session.status",
-      properties: { sessionID: "s", status: "busy" },
+      properties: { sessionID: "s", status: { type: "busy" } },
     };
     const next = conversationReducer(initialState, { type: "SSE_EVENT", event });
-    expect(next.agentStatus).toBe("busy");
+    expect(next.sessionStatus).toEqual({ type: "busy" });
   });
 
   it("sets agentStatus to idle", () => {
-    const state = { ...initialState, agentStatus: "busy" as const };
+    const state = { ...initialState, sessionStatus: { type: "busy" as const } };
     const event: ChatEvent = {
       type: "session.status",
-      properties: { sessionID: "s", status: "idle" },
+      properties: { sessionID: "s", status: { type: "idle" } },
     };
     const next = conversationReducer(state, { type: "SSE_EVENT", event });
-    expect(next.agentStatus).toBe("idle");
+    expect(next.sessionStatus).toEqual({ type: "idle" });
   });
 
-  it("sets agentStatus to retry", () => {
+  it("stores retry metadata", () => {
     const event: ChatEvent = {
       type: "session.status",
-      properties: { sessionID: "s", status: "retry" },
+      properties: {
+        sessionID: "s",
+        status: { type: "retry", attempt: 2, message: "Rate limited", next: 1_700_000_000_000 },
+      },
     };
     const next = conversationReducer(initialState, { type: "SSE_EVENT", event });
-    expect(next.agentStatus).toBe("retry");
+    expect(next.sessionStatus).toEqual({
+      type: "retry",
+      attempt: 2,
+      message: "Rate limited",
+      next: 1_700_000_000_000,
+    });
+  });
+});
+
+describe("SEND_FAILED", () => {
+  it("stores a visible send error and resets session status to idle", () => {
+    const state: ConversationState = {
+      ...initialState,
+      sessionStatus: { type: "busy" },
+    };
+
+    const next = conversationReducer(state, {
+      type: "SEND_FAILED",
+      message: "Rate limit exceeded",
+    });
+
+    expect(next.sessionStatus).toEqual({ type: "idle" });
+    expect(next.sendError).toBe("Rate limit exceeded");
+  });
+
+  it("clears a visible send error", () => {
+    const state: ConversationState = {
+      ...initialState,
+      sendError: "Rate limit exceeded",
+    };
+
+    const next = conversationReducer(state, { type: "CLEAR_SEND_ERROR" });
+
+    expect(next.sendError).toBeNull();
   });
 });
 

@@ -79,6 +79,15 @@ function renderGroupedEntry(entry: GroupedEntry, index: number) {
 
 export function AssistantMessage({ message, parts }: AssistantMessageProps) {
   const hasParts = parts.length > 0;
+  const messageError = message.error?.message;
+
+  if (messageError && !hasParts && !message.content) {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-text-primary">
+        <p>{messageError}</p>
+      </div>
+    );
+  }
 
   if (!hasParts) {
     return (
@@ -93,10 +102,11 @@ export function AssistantMessage({ message, parts }: AssistantMessageProps) {
   const hasVisible = renderedEntries.some(Boolean);
 
   if (!hasVisible) {
-    if (!message.content) return null;
+    if (!message.content && !messageError) return null;
     return (
       <div className="bg-chat-agent rounded-lg px-4 py-3 space-y-3">
-        <Markdown content={message.content} />
+        {message.content ? <Markdown content={message.content} /> : null}
+        {messageError ? <p className="text-sm text-danger">{messageError}</p> : null}
       </div>
     );
   }

@@ -136,7 +136,8 @@ export function WorkspaceChatPage() {
             <MessageTimeline
               messages={conv.conversation.messages}
               parts={conv.parts}
-              agentStatus={conv.agentStatus}
+              sessionStatus={conv.sessionStatus}
+              sendError={conv.sendError}
               onAttachmentClick={handleAttachmentMediaSearch}
             />
 

@@ -25,6 +25,7 @@ import type {
   ConversationPart,
   ConversationSummary,
   SendConversationAttachmentInput,
+  SessionStatus,
   TodoItem,
 } from "@cc/shared/schemas";
 
@@ -56,7 +57,7 @@ type QuestionRequest = {
  * parts carry content, and they're linked by messageID.
  */
 export type ConversationState = {
-  agentStatus: "idle" | "busy" | "retry";
+  sessionStatus: SessionStatus;
   conversation: ConversationDetail | null;
   /** Parts keyed by messageID — populated by SSE events */
   parts: Record<string, ConversationPart[]>;
@@ -64,22 +65,26 @@ export type ConversationState = {
   pendingPermissions: PermissionRequest[];
   pendingQuestion: QuestionRequest | null;
   todos: TodoItem[];
+  sendError: string | null;
 };
 
 export type Action =
   | { type: "HYDRATE"; snapshot: { current: ConversationDetail; previous: ConversationSummary[] } }
   | { type: "HYDRATE_DETAIL"; detail: ConversationDetail; previous?: ConversationSummary[] }
   | { type: "OPTIMISTIC_USER_MESSAGE"; message: ConversationMessage }
+  | { type: "SEND_FAILED"; message: string }
+  | { type: "CLEAR_SEND_ERROR" }
   | { type: "SSE_EVENT"; event: ChatEvent };
 
 export const initialState: ConversationState = {
-  agentStatus: "idle",
+  sessionStatus: { type: "idle" },
   conversation: null,
   parts: {},
   previousConversations: [],
   pendingPermissions: [],
   pendingQuestion: null,
   todos: [],
+  sendError: null,
 };
 
 /**
@@ -104,10 +109,11 @@ export function conversationReducer(state: ConversationState, action: Action): C
         conversation: action.snapshot.current,
         parts: buildPartsMap(action.snapshot.current.messages),
         previousConversations: action.snapshot.previous,
-        agentStatus: "idle",
+        sessionStatus: { type: "idle" },
         pendingPermissions: [],
         pendingQuestion: null,
         todos: [],
+        sendError: null,
       };
 
     case "HYDRATE_DETAIL":
@@ -116,10 +122,11 @@ export function conversationReducer(state: ConversationState, action: Action): C
         conversation: action.detail,
         parts: buildPartsMap(action.detail.messages),
         previousConversations: action.previous ?? state.previousConversations,
-        agentStatus: "idle",
+        sessionStatus: { type: "idle" },
         pendingPermissions: [],
         pendingQuestion: null,
         todos: [],
+        sendError: null,
       };
 
     case "OPTIMISTIC_USER_MESSAGE": {
@@ -135,8 +142,26 @@ export function conversationReducer(state: ConversationState, action: Action): C
           ...state.parts,
           [msg.id]: msg.parts,
         },
+        sendError: null,
       };
     }
+
+    case "SEND_FAILED":
+      return {
+        ...state,
+        sessionStatus: { type: "idle" },
+        sendError: action.message,
+      };
+
+    case "CLEAR_SEND_ERROR":
+      if (!state.sendError) {
+        return state;
+      }
+
+      return {
+        ...state,
+        sendError: null,
+      };
 
     case "SSE_EVENT":
       return applySseEvent(state, action.event);
@@ -149,7 +174,7 @@ export function conversationReducer(state: ConversationState, action: Action): C
 function applySseEvent(state: ConversationState, event: ChatEvent): ConversationState {
   switch (event.type) {
     case "session.status":
-      return { ...state, agentStatus: event.properties.status };
+      return { ...state, sessionStatus: event.properties.status };
 
     case "message.updated": {
       if (!state.conversation) return state;
@@ -286,6 +311,8 @@ export type UseConversationReturn = {
   error: string | null;
   agent: Agent | null;
   agentStatus: "idle" | "busy" | "retry";
+  sessionStatus: SessionStatus;
+  sendError: string | null;
   conversation: ConversationDetail | null;
   /** Parts keyed by messageID — use this to render message content */
   parts: Record<string, ConversationPart[]>;
@@ -310,6 +337,7 @@ export type UseConversationReturn = {
   replyPermission: (requestId: string, reply: "once" | "always" | "reject") => void;
   replyQuestion: (requestId: string, answers: string[][]) => void;
   rejectQuestion: (requestId: string) => void;
+  clearSendError: () => void;
   /** Dev-only: inject a mock SSE event into the reducer */
   __injectEvent?: (event: ChatEvent) => void;
 };
@@ -453,12 +481,19 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
       void sendPrompt(state.conversation.id, { text, attachments: attachments ?? [] }).catch(
         (err) => {
-          console.error("Failed to send prompt:", err);
+          dispatch({
+            type: "SEND_FAILED",
+            message: err instanceof Error && err.message ? err.message : "Failed to send prompt.",
+          });
         },
       );
     },
     [state.conversation],
   );
+
+  const clearSendError = useCallback(() => {
+    dispatch({ type: "CLEAR_SEND_ERROR" });
+  }, []);
 
   const sendShell = useCallback(
     (command: string) => {
@@ -548,7 +583,9 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     status,
     error,
     agent,
-    agentStatus: state.agentStatus,
+    agentStatus: state.sessionStatus.type,
+    sessionStatus: state.sessionStatus,
+    sendError: state.sendError,
     conversation: state.conversation,
     parts: state.parts,
     previousConversations: state.previousConversations,
@@ -568,6 +605,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     replyPermission: replyPerm,
     replyQuestion: replyQ,
     rejectQuestion: rejectQ,
+    clearSendError,
     ...(import.meta.env.DEV && {
       __injectEvent: (event: ChatEvent) => dispatch({ type: "SSE_EVENT", event }),
     }),

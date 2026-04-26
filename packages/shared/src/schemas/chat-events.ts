@@ -6,6 +6,21 @@ import { conversationAttachmentSchema, conversationPartSchema } from "./conversa
 
 const looseRecordSchema = z.record(z.string(), z.unknown());
 
+const sessionStatusSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("idle"),
+  }),
+  z.object({
+    type: z.literal("busy"),
+  }),
+  z.object({
+    type: z.literal("retry"),
+    attempt: z.number().int(),
+    message: z.string(),
+    next: z.number(),
+  }),
+]);
+
 // Relaxed message schema for SSE events — conversationId may be empty since
 // OpenCode events don't carry our internal conversation identifier.
 const sseMessageSchema = z.object({
@@ -15,6 +30,14 @@ const sseMessageSchema = z.object({
   content: z.string().default(""),
   parts: z.array(conversationPartSchema).default([]),
   attachments: z.array(conversationAttachmentSchema).default([]),
+  parentId: z.string().min(1).optional(),
+  error: z
+    .object({
+      name: z.string().min(1),
+      message: z.string().min(1),
+      data: looseRecordSchema.optional(),
+    })
+    .optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -33,7 +56,7 @@ const sessionStatusEventSchema = z.object({
   type: z.literal("session.status"),
   properties: z.object({
     sessionID: z.string().min(1),
-    status: z.enum(["idle", "busy", "retry"]),
+    status: sessionStatusSchema,
   }),
 });
 
@@ -178,6 +201,7 @@ export type QuestionOption = z.infer<typeof questionOptionSchema>;
 
 // Narrowed event types for convenience
 export type SessionStatusEvent = z.infer<typeof sessionStatusEventSchema>;
+export type SessionStatus = z.infer<typeof sessionStatusSchema>;
 export type MessageUpdatedEvent = z.infer<typeof messageUpdatedEventSchema>;
 export type MessagePartDeltaEvent = z.infer<typeof messagePartDeltaEventSchema>;
 export type MessagePartUpdatedEvent = z.infer<typeof messagePartUpdatedEventSchema>;
