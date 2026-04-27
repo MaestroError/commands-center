@@ -238,7 +238,8 @@ describe("FileManagerPage", () => {
     await screen.findAllByText("AGENTS.md");
     expect(getRootTab("Workspace")).toHaveAttribute("aria-pressed", "true");
 
-    fireEvent.click(screen.getByRole("button", { name: /AGENTS\.md/i }));
+    const agentsMdButtons = screen.getAllByRole("button", { name: /AGENTS\.md/i });
+    fireEvent.click(agentsMdButtons[0]!);
     fireEvent.click(screen.getByRole("button", { name: "Copy file path" }));
 
     await waitFor(() => {

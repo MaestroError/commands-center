@@ -132,7 +132,7 @@ export function MonacoFileEditor(props: Props) {
           {errorMessage}
         </div>
       ) : null}
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 sm:max-h-full max-h-[60vh]">
         <Suspense
           fallback={
             <div className="flex h-full items-center justify-center text-sm text-text-secondary">

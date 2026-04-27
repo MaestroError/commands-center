@@ -39,7 +39,7 @@ export function EditorTabsSurface(props: Props) {
 
   return (
     <div
-      className="flex h-full min-h-[28rem] flex-col"
+      className="flex h-full min-h-[60vh] flex-col"
       data-testid="editor-tabs-surface"
       id="editor-surface-panel"
     >
@@ -50,7 +50,7 @@ export function EditorTabsSurface(props: Props) {
         onMove={controller.move}
         tabs={controller.tabs}
       />
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-auto">
         {activeTab ? (
           <ActiveTabPane key={activeTab.key} controller={controller} tab={activeTab} />
         ) : (
@@ -156,7 +156,7 @@ function ActiveTabPane(props: { tab: EditorTab; controller: UseEditorTabs }) {
         <PreviewFrame name={tab.name} path={tab.path}>
           <img
             alt={tab.name}
-            className="max-h-full max-w-full rounded border border-border bg-surface"
+            className="max-w-full rounded border border-border bg-surface sm:max-h-full"
             src={`data:${tab.mimeType};base64,${tab.binaryContentBase64}`}
           />
         </PreviewFrame>
@@ -167,7 +167,7 @@ function ActiveTabPane(props: { tab: EditorTab; controller: UseEditorTabs }) {
       return (
         <PreviewFrame name={tab.name} path={tab.path}>
           <video
-            className="max-h-full max-w-full rounded border border-border bg-surface"
+            className="max-w-full rounded border border-border bg-surface sm:max-h-full"
             controls
             src={`data:${tab.mimeType};base64,${tab.binaryContentBase64}`}
           />
@@ -197,7 +197,7 @@ function PreviewFrame(props: { name: string; path: string; children: React.React
   return (
     <div className="flex h-full min-h-[24rem] flex-col">
       <PreviewHeader name={props.name} path={props.path} />
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-background p-6">
+      <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto bg-background p-6 sm:items-center">
         {props.children}
       </div>
     </div>

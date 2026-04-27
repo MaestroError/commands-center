@@ -76,23 +76,47 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
   return (
     <div className="flex h-[calc(100vh-5.3rem)] flex-col gap-2" data-testid="workspace-layout">
       {!isDesktop && (props.contextPane || props.bottomPane) ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {props.contextPane ? (
             <button
-              className="cc-button cc-button-secondary"
+              aria-label="Open context pane"
+              className="cc-button cc-button-secondary ml-auto"
               onClick={() => setMobileContextOpen(true)}
               type="button"
             >
-              Open context pane
+              <svg
+                fill="none"
+                height="14"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                width="14"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
             </button>
           ) : null}
           {props.bottomPane ? (
             <button
+              aria-label="Open bottom pane"
               className="cc-button cc-button-secondary"
               onClick={() => setMobileBottomOpen(true)}
               type="button"
             >
-              Open bottom pane
+              <svg
+                fill="none"
+                height="14"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                width="14"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
             </button>
           ) : null}
         </div>

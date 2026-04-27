@@ -97,7 +97,9 @@ export function AppShell() {
                     <Menu className="h-4 w-4" />
                   </button>
                 ) : null}
-                <h1 className="text-xl font-semibold text-text-primary">{title}</h1>
+                <h1 className="whitespace-nowrap text-sm font-semibold text-text-primary sm:text-xl">
+                  {title}
+                </h1>
                 <EngineStatusBadge state={engineState} />
               </div>
               <div className="flex items-center gap-2">

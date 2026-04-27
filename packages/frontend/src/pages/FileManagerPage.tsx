@@ -299,8 +299,8 @@ export function FileManagerPage() {
           ],
         }}
         primary={
-          <div className="grid h-full min-h-[28rem] grid-cols-1 gap-2 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-            <div className="flex h-full min-h-[28rem] flex-col rounded-lg border border-border bg-surface">
+          <div className="flex flex-col gap-2 overflow-y-auto lg:grid h-full lg:min-h-[28rem] lg:grid-cols-[minmax(16rem,22rem)_1fr] lg:overflow-visible">
+            <div className="flex flex-col rounded-lg border border-border bg-surface lg:h-full lg:min-h-[28rem]">
               <div className="border-b border-border px-4 py-4">
                 <div className="flex flex-wrap gap-1 border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {(["workspace", "all-agents", "host-filesystem"] as const).map((option) => {
@@ -326,7 +326,7 @@ export function FileManagerPage() {
                     );
                   })}
                 </div>
-                <div className="mt-4 flex items-start justify-between gap-4 text-xs text-text-secondary">
+                <div className="mt-4 flex items-start justify-between text-xs text-text-secondary">
                   <div className="flex min-w-0 flex-1 flex-col gap-2">
                     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                       <button
@@ -375,7 +375,7 @@ export function FileManagerPage() {
                       >
                         <ArrowLeft className="h-4 w-4" />
                       </button>
-                      <div className="ml-2 inline-flex shrink-0 overflow-hidden rounded-full border border-border bg-surface">
+                      <div className="ml-auto inline-flex shrink-0 overflow-hidden rounded-full border border-border bg-surface">
                         <button
                           className="inline-flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-text-primary transition hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={busyAction !== undefined}
@@ -386,7 +386,7 @@ export function FileManagerPage() {
                           type="button"
                         >
                           <FilePlus className="h-3.5 w-3.5" />
-                          New file
+                          <span className="hidden sm:inline">New file</span>
                         </button>
                         <button
                           className="inline-flex items-center gap-1.5 border-l border-border px-3 py-2 text-[11px] font-medium text-text-primary transition hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-50"
@@ -398,7 +398,7 @@ export function FileManagerPage() {
                           type="button"
                         >
                           <FolderPlus className="h-3.5 w-3.5" />
-                          New folder
+                          <span className="hidden sm:inline">New folder</span>
                         </button>
                         <button
                           className="inline-flex items-center gap-1.5 border-l border-border px-3 py-2 text-[11px] font-medium text-text-primary transition hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-50"
@@ -407,7 +407,7 @@ export function FileManagerPage() {
                           type="button"
                         >
                           <Upload className="h-3.5 w-3.5" />
-                          Upload
+                          <span className="hidden sm:inline">Upload</span>
                         </button>
                       </div>
                     </div>
@@ -445,8 +445,8 @@ export function FileManagerPage() {
                 <div
                   className={
                     dropzone.isDragActive
-                      ? "min-h-0 flex-1 overflow-auto border-t border-accent bg-accent/5 p-2"
-                      : "min-h-0 flex-1 overflow-auto p-2"
+                      ? "min-h-0 flex-1 overflow-auto border-t border-accent bg-accent/5 p-2 sm:mr-0 mr-10 sm:max-h-full max-h-[40vh]"
+                      : "min-h-0 flex-1 overflow-auto p-2 sm:mr-0 mr-10 sm:max-h-full max-h-[40vh]"
                   }
                   data-testid="file-manager-list-dropzone"
                   {...dropzone.getRootProps()}
@@ -487,43 +487,28 @@ export function FileManagerPage() {
                             }
                           }}
                         >
-                          {node.type === "directory" ? (
-                            <button
-                              aria-label={`Open ${node.name}`}
-                              className="shrink-0 text-base leading-none"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openNode(node);
-                              }}
-                              type="button"
-                            >
-                              📁
-                            </button>
-                          ) : (
-                            <span className="shrink-0 text-base leading-none" aria-hidden="true">
-                              📄
-                            </span>
-                          )}
-                          {node.type === "directory" ? (
-                            <button
-                              className="max-w-[10rem] truncate text-xs font-medium text-text-primary underline-offset-4 hover:underline"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openNode(node);
-                              }}
-                              title={node.name}
-                              type="button"
-                            >
-                              {node.name}
-                            </button>
-                          ) : (
-                            <span
-                              className="max-w-[10rem] truncate text-xs font-medium text-text-primary"
-                              title={node.name}
-                            >
-                              {node.name}
-                            </span>
-                          )}
+                          <button
+                            aria-label={`Open ${node.name}`}
+                            className="shrink-0 text-base leading-none"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openNode(node);
+                            }}
+                            type="button"
+                          >
+                            {node.type === "directory" ? "📁" : "📄"}
+                          </button>
+                          <button
+                            className="max-w-[10rem] truncate text-xs font-medium text-text-primary underline-offset-4 hover:underline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openNode(node);
+                            }}
+                            title={node.name}
+                            type="button"
+                          >
+                            {node.name}
+                          </button>
                           {node.isCritical ? (
                             <span className="shrink-0 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
                               Critical
@@ -593,7 +578,12 @@ export function FileManagerPage() {
                 </div>
               )}
             </div>
-            <div className="flex h-full min-h-[28rem] flex-col overflow-hidden rounded-lg border border-border bg-surface">
+            <div
+              className={[
+                "flex-col rounded-lg border border-border bg-surface lg:h-full lg:overflow-auto",
+                tabsController.tabs.length === 0 ? "hidden lg:flex" : "flex",
+              ].join(" ")}
+            >
               <EditorTabsSurface controller={tabsController} />
             </div>
           </div>
