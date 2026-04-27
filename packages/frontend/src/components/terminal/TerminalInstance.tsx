@@ -302,6 +302,7 @@ export function TerminalInstance(props: Props) {
       terminal.loadAddon(webLinksAddon);
 
       terminal.open(containerRef.current);
+      terminal.focus();
       const restoreBuffer = window.localStorage.getItem(bufferSnapshotKey);
       if (restoreBuffer) {
         queueOutput(terminal, restoreBuffer);
@@ -329,22 +330,9 @@ export function TerminalInstance(props: Props) {
           void navigator.clipboard.writeText(selection).catch(() => undefined);
         };
 
-        const handlePaste: EventListener = (event) => {
-          const clipboardEvent = event as ClipboardEvent;
-          const text = clipboardEvent.clipboardData?.getData("text/plain");
-          if (!text) {
-            return;
-          }
-
-          clipboardEvent.preventDefault();
-          terminal.paste(text);
-        };
-
         terminalElement.addEventListener("copy", handleCopy, true);
-        terminalElement.addEventListener("paste", handlePaste, true);
         cleanupClipboardHandlers = () => {
           terminalElement.removeEventListener("copy", handleCopy, true);
-          terminalElement.removeEventListener("paste", handlePaste, true);
         };
       }
 
