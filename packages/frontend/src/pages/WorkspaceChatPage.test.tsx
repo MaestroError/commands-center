@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -27,11 +27,15 @@ vi.mock("@/components/layout/WorkspaceLayout", () => ({
   WorkspaceLayout: ({
     primary,
     contextPane,
+    bottomPane,
   }: {
     primary: React.ReactNode;
     contextPane?: {
       activeTabId?: string;
       onTabChange?: (tabId: string) => void;
+      tabs: Array<{ id: string; label: string; content: React.ReactNode }>;
+    };
+    bottomPane?: {
       tabs: Array<{ id: string; label: string; content: React.ReactNode }>;
     };
   }) => (
@@ -43,13 +47,31 @@ vi.mock("@/components/layout/WorkspaceLayout", () => ({
           <div key={tab.id}>{tab.content}</div>
         ))}
       </div>
+      <div data-testid="bottom-pane-content">
+        {bottomPane?.tabs.map((tab) => (
+          <div key={tab.id}>{tab.content}</div>
+        ))}
+      </div>
       {primary}
     </div>
   ),
 }));
 
 vi.mock("@/components/chat/ChatHeader", () => ({
-  ChatHeader: () => <div data-testid="chat-header">ChatHeader</div>,
+  ChatHeader: ({ onToggleTerminal }: { onToggleTerminal?: () => void }) => (
+    <div>
+      <button data-testid="chat-terminal-toggle" onClick={onToggleTerminal} type="button">
+        Toggle terminal
+      </button>
+      <div data-testid="chat-header">ChatHeader</div>
+    </div>
+  ),
+}));
+
+vi.mock("@/components/chat/WorkspaceTerminalPane", () => ({
+  WorkspaceTerminalPane: () => (
+    <div data-testid="workspace-terminal-pane">WorkspaceTerminalPane</div>
+  ),
 }));
 
 vi.mock("@/components/chat/MessageTimeline", () => ({
@@ -303,5 +325,29 @@ describe("WorkspaceChatPage", () => {
     expect(screen.getByTestId("media-tab")).toHaveTextContent(
       "MediaTab:conv-1:Carpenter Vacancy Redberry.pdf",
     );
+  });
+
+  it("lazy-mounts and unmounts the workspace terminal bottom pane from the chat header toggle", async () => {
+    const user = userEvent.setup();
+
+    mockParams = { agentId: "planner", conversationId: "conv-1" };
+    useConversationMock.mockReturnValue(
+      makeConversation({ conversation: { id: "conv-1", messages: [] } }),
+    );
+    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+
+    render(<WorkspaceChatPage />);
+
+    expect(screen.queryByTestId("workspace-terminal-pane")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("chat-terminal-toggle"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workspace-terminal-pane")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("chat-terminal-toggle"));
+
+    expect(screen.queryByTestId("workspace-terminal-pane")).not.toBeInTheDocument();
   });
 });

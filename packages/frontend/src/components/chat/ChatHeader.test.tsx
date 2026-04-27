@@ -66,4 +66,13 @@ describe("ChatHeader", () => {
 
     expect(onStartFresh).toHaveBeenCalled();
   });
+
+  it("calls onToggleTerminal when the terminal button is clicked", () => {
+    const onToggleTerminal = vi.fn();
+    renderHeader({ onToggleTerminal });
+
+    fireEvent.click(screen.getByTitle("Workspace terminal"));
+
+    expect(onToggleTerminal).toHaveBeenCalled();
+  });
 });

@@ -20,6 +20,12 @@ const DevDebugPanel = import.meta.env.DEV
   ? lazy(() => import("@/components/dev/DevDebugPanel").then((m) => ({ default: m.DevDebugPanel })))
   : null;
 
+const WorkspaceTerminalPane = lazy(() =>
+  import("@/components/chat/WorkspaceTerminalPane").then((m) => ({
+    default: m.WorkspaceTerminalPane,
+  })),
+);
+
 export function WorkspaceChatPage() {
   const { agentId: agentSlug, conversationId: urlConversationId } = useParams<{
     agentId: string;
@@ -30,6 +36,8 @@ export function WorkspaceChatPage() {
   const { data: catalog } = useAgentCatalogQuery();
   const [activeContextTabId, setActiveContextTabId] = useState("files");
   const [mediaSearchQuery, setMediaSearchQuery] = useState("");
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [bottomPaneHeight, setBottomPaneHeight] = useState<number>();
 
   // Sync URL when conversation changes (initial load or switching)
   const prevConvIdRef = useRef<string | undefined>(undefined);
@@ -55,6 +63,11 @@ export function WorkspaceChatPage() {
     setMediaSearchQuery("");
     setActiveContextTabId("files");
   }, [conv.conversation?.id]);
+
+  useEffect(() => {
+    const defaultHeight = Math.round(window.innerHeight * 0.4);
+    setBottomPaneHeight(defaultHeight);
+  }, []);
 
   useEffect(() => {
     if (!conv.agent) {
@@ -122,6 +135,35 @@ export function WorkspaceChatPage() {
           ],
           defaultTabId: "files",
         }}
+        bottomPane={
+          terminalOpen
+            ? {
+                title: "Workspace terminal",
+                tabs: [
+                  {
+                    id: "terminal",
+                    label: "Terminal",
+                    content: (
+                      <Suspense
+                        fallback={
+                          <div className="flex h-full items-center justify-center text-sm text-text-secondary">
+                            Loading terminal...
+                          </div>
+                        }
+                      >
+                        <WorkspaceTerminalPane />
+                      </Suspense>
+                    ),
+                  },
+                ],
+                defaultHeight: bottomPaneHeight,
+                minHeight: 160,
+                maxHeight: Math.round(window.innerHeight * 0.7),
+                open: terminalOpen,
+                onOpenChange: setTerminalOpen,
+              }
+            : undefined
+        }
         primary={
           <div className="flex h-full flex-col">
             <ChatHeader
@@ -131,6 +173,8 @@ export function WorkspaceChatPage() {
               currentConversationId={conv.conversation.id}
               onStartFresh={conv.startFresh}
               onSelectConversation={conv.switchConversation}
+              terminalOpen={terminalOpen}
+              onToggleTerminal={() => setTerminalOpen((current) => !current)}
             />
 
             <MessageTimeline

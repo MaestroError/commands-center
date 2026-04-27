@@ -27,6 +27,11 @@ type WorkspaceLayoutProps = {
     title: string;
     tabs: Tab[];
     defaultTabId?: string;
+    defaultHeight?: number;
+    minHeight?: number;
+    maxHeight?: number;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
   };
 };
 
@@ -35,9 +40,9 @@ const EMPTY_TABS: Tab[] = [];
 export function WorkspaceLayout(props: WorkspaceLayoutProps) {
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [contextCollapsed, setContextCollapsed] = useState(false);
-  const [bottomCollapsed, setBottomCollapsed] = useState(false);
+  const [bottomCollapsed, setBottomCollapsed] = useState(!(props.bottomPane?.open ?? true));
   const [contextWidth, setContextWidth] = useState(360);
-  const [bottomHeight, setBottomHeight] = useState(220);
+  const [bottomHeight, setBottomHeight] = useState(props.bottomPane?.defaultHeight ?? 220);
   const [mobileContextOpen, setMobileContextOpen] = useState(false);
   const [mobileBottomOpen, setMobileBottomOpen] = useState(false);
   const contextTabs = props.contextPane?.tabs ?? EMPTY_TABS;
@@ -63,6 +68,22 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
       setMobileContextOpen(false);
     }
   }, [isDesktop]);
+
+  useEffect(() => {
+    if (props.bottomPane?.open === undefined) {
+      return;
+    }
+
+    setBottomCollapsed(!props.bottomPane.open);
+  }, [props.bottomPane?.open]);
+
+  useEffect(() => {
+    if (props.bottomPane?.defaultHeight === undefined) {
+      return;
+    }
+
+    setBottomHeight(props.bottomPane.defaultHeight);
+  }, [props.bottomPane?.defaultHeight]);
 
   const activeContextContent = useMemo(
     () => contextTabs.find((tab) => tab.id === activeContextTab)?.content,
@@ -102,7 +123,10 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
             <button
               aria-label="Open bottom pane"
               className="cc-button cc-button-secondary"
-              onClick={() => setMobileBottomOpen(true)}
+              onClick={() => {
+                setMobileBottomOpen(true);
+                props.bottomPane?.onOpenChange?.(true);
+              }}
               type="button"
             >
               <svg
@@ -188,7 +212,14 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                 aria-hidden="true"
                 className="hidden h-1.5 cursor-row-resize rounded-full bg-border/70 transition hover:bg-accent lg:block"
                 onPointerDown={(event) =>
-                  startDrag(event, "vertical", setBottomHeight, 160, 360, -1)
+                  startDrag(
+                    event,
+                    "vertical",
+                    setBottomHeight,
+                    props.bottomPane?.minHeight ?? 160,
+                    props.bottomPane?.maxHeight ?? 360,
+                    -1,
+                  )
                 }
               />
             ) : null}
@@ -200,7 +231,10 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
               >
                 <PaneHeader
                   title={props.bottomPane.title}
-                  onToggle={() => setBottomCollapsed(true)}
+                  onToggle={() => {
+                    setBottomCollapsed(true);
+                    props.bottomPane?.onOpenChange?.(false);
+                  }}
                   toggleLabel="Collapse bottom pane"
                 />
                 <TabBar
@@ -214,7 +248,10 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
               <button
                 aria-label="Restore bottom pane"
                 className="cc-button cc-button-secondary hidden self-start lg:inline-flex"
-                onClick={() => setBottomCollapsed(false)}
+                onClick={() => {
+                  setBottomCollapsed(false);
+                  props.bottomPane?.onOpenChange?.(true);
+                }}
                 type="button"
               >
                 Restore bottom pane
@@ -242,7 +279,10 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
         <MobilePane
           bottom
           title={props.bottomPane.title}
-          onClose={() => setMobileBottomOpen(false)}
+          onClose={() => {
+            setMobileBottomOpen(false);
+            props.bottomPane?.onOpenChange?.(false);
+          }}
         >
           <TabBar
             activeTabId={activeBottomTab}
@@ -278,7 +318,7 @@ function PaneHeader(props: { title: string; onToggle: () => void; toggleLabel: s
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </button>
-      <span className="text-sm font-medium text-text-primary">Context</span>
+      <span className="text-sm font-medium text-text-primary">{props.title}</span>
     </div>
   );
 }

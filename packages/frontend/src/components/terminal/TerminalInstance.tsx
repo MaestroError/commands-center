@@ -185,7 +185,28 @@ export function TerminalInstance(props: Props) {
         if (disposed || wsRef.current !== ws) {
           return;
         }
-        queueOutput(terminal, typeof event.data === "string" ? event.data : String(event.data));
+
+        if (typeof event.data === "string") {
+          queueOutput(terminal, event.data);
+          return;
+        }
+
+        if (event.data instanceof Blob) {
+          void event.data.text().then((text) => {
+            if (disposed || wsRef.current !== ws) {
+              return;
+            }
+            queueOutput(terminal, text);
+          });
+          return;
+        }
+
+        if (event.data instanceof ArrayBuffer) {
+          queueOutput(terminal, new TextDecoder().decode(event.data));
+          return;
+        }
+
+        queueOutput(terminal, String(event.data));
       };
 
       ws.onerror = () => {

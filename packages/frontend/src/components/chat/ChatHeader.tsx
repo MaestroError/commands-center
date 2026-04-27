@@ -9,6 +9,8 @@ type ChatHeaderProps = {
   currentConversationId: string;
   onStartFresh: () => void;
   onSelectConversation: (id: string) => void;
+  terminalOpen?: boolean;
+  onToggleTerminal?: () => void;
 };
 
 export function ChatHeader({
@@ -18,6 +20,8 @@ export function ChatHeader({
   currentConversationId,
   onStartFresh,
   onSelectConversation,
+  terminalOpen = false,
+  onToggleTerminal,
 }: ChatHeaderProps) {
   const [showHistory, setShowHistory] = useState(false);
 
@@ -50,6 +54,34 @@ export function ChatHeader({
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
           </svg>
         </button>
+
+        {onToggleTerminal ? (
+          <button
+            type="button"
+            title="Workspace terminal"
+            className={[
+              "flex h-8 w-8 items-center justify-center rounded-md transition",
+              terminalOpen
+                ? "bg-surface-elevated text-text-primary"
+                : "text-text-secondary hover:bg-surface-elevated hover:text-text-primary",
+            ].join(" ")}
+            onClick={onToggleTerminal}
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="4 17 10 11 4 5" />
+              <line x1="12" x2="20" y1="19" y2="19" />
+            </svg>
+          </button>
+        ) : null}
 
         {/* History */}
         <button
