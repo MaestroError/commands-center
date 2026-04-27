@@ -13,6 +13,8 @@ import {
   fileManagerRenameEntryResponseSchema,
   fileManagerSaveFileInputSchema,
   fileManagerSaveFileResponseSchema,
+  fileManagerUploadInputSchema,
+  fileManagerUploadResponseSchema,
   fileManagerUpdatePreferencesInputSchema,
 } from "@cc/shared/schemas";
 
@@ -46,6 +48,32 @@ export function registerFileManagerRoutes(server: AppServer, context: RuntimeCon
       });
 
       return fileManagerService.listDirectory(root, request.query);
+    },
+  );
+
+  app.post(
+    "/api/file-manager/uploads",
+    {
+      bodyLimit: 75 * 1024 * 1024,
+      schema: {
+        body: fileManagerUploadInputSchema,
+        response: {
+          200: fileManagerUploadResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const root = resolveFileManagerRoot({
+        kind: request.body.root,
+        config: context.config,
+      });
+      const preferences = await preferencesService.get();
+
+      return fileManagerService.uploadEntries(root, request.body, {
+        allowHostFilesystemEdits: preferences.allowHostFilesystemEdits,
+        maxUploadSizeBytes: preferences.fileUploads.maxUploadSizeBytes,
+        allowDangerousFiles: preferences.fileUploads.allowDangerousFiles,
+      });
     },
   );
 

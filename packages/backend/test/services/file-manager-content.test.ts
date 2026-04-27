@@ -191,7 +191,13 @@ describe("file-manager-preferences-service", () => {
   it("returns defaults when the preferences file does not exist", async () => {
     const ctx = await setupService();
     try {
-      expect(await ctx.preferences.get()).toEqual({ allowHostFilesystemEdits: false });
+      expect(await ctx.preferences.get()).toEqual({
+        allowHostFilesystemEdits: false,
+        fileUploads: {
+          maxUploadSizeBytes: 50 * 1024 * 1024,
+          allowDangerousFiles: false,
+        },
+      });
     } finally {
       await ctx.testDb.cleanup();
     }
@@ -200,8 +206,20 @@ describe("file-manager-preferences-service", () => {
   it("persists and reads back updated preferences", async () => {
     const ctx = await setupService();
     try {
-      await ctx.preferences.update({ allowHostFilesystemEdits: true });
-      expect(await ctx.preferences.get()).toEqual({ allowHostFilesystemEdits: true });
+      await ctx.preferences.update({
+        allowHostFilesystemEdits: true,
+        fileUploads: {
+          maxUploadSizeBytes: 1024,
+          allowDangerousFiles: true,
+        },
+      });
+      expect(await ctx.preferences.get()).toEqual({
+        allowHostFilesystemEdits: true,
+        fileUploads: {
+          maxUploadSizeBytes: 1024,
+          allowDangerousFiles: true,
+        },
+      });
     } finally {
       await ctx.testDb.cleanup();
     }

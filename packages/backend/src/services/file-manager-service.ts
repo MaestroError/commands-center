@@ -12,13 +12,34 @@ import type {
   FileManagerListQuery,
   FileManagerListResponse,
   FileManagerNode,
+  FileManagerRejectedUploadEntry,
   FileManagerRenameEntryInput,
   FileManagerRootKind,
   FileManagerSaveFileInput,
   FileManagerSaveFileResponse,
+  FileManagerUploadInput,
+  FileManagerUploadResponse,
 } from "@cc/shared/schemas";
 
 export const FILE_EDITOR_MAX_BYTES = 2 * 1024 * 1024;
+const DEFAULT_MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024;
+const DANGEROUS_UPLOAD_EXTENSIONS = new Set([
+  ".zip",
+  ".rar",
+  ".7z",
+  ".tar",
+  ".gz",
+  ".exe",
+  ".msi",
+  ".dll",
+  ".bat",
+  ".cmd",
+  ".sh",
+  ".app",
+  ".pkg",
+  ".dmg",
+  ".iso",
+]);
 
 type RootReference = {
   kind: FileManagerRootKind;
@@ -76,6 +97,10 @@ const CRITICAL_WORKSPACE_PATH_RULES: CriticalWorkspacePathRule[] = [
   {
     resolvePath: (config) => resolve(config.paths.workspaceDir, "opencode.jsonc"),
     reason: "This file stores workspace-level OpenCode configuration managed by CommandsCenter.",
+  },
+  {
+    resolvePath: (config) => config.paths.subdirectories.agents,
+    reason: "This path contains agent workspaces managed by CommandsCenter.",
   },
   {
     resolvePath: (config) => resolve(config.paths.subdirectories.agents, ".archived"),
@@ -168,6 +193,11 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
       const currentAbsolutePath = resolveEntryPath(root, input.path);
       const name = validateEntryName(input.name);
       const targetPath = resolve(dirname(currentAbsolutePath), name);
+      const criticalReason = getCriticalReason(currentAbsolutePath, false, options.config);
+
+      if (criticalReason) {
+        throw new ForbiddenError(criticalReason);
+      }
 
       ensureDescendant(root, targetPath);
       await assertPresent(currentAbsolutePath);
@@ -179,6 +209,12 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
 
     async deleteEntry(root: RootReference, input: FileManagerDeleteEntryQuery): Promise<void> {
       const absolutePath = resolveEntryPath(root, input.path);
+      const criticalReason = getCriticalReason(absolutePath, true, options.config);
+
+      if (criticalReason) {
+        throw new ForbiddenError(criticalReason);
+      }
+
       await assertPresent(absolutePath);
       await rm(absolutePath, { recursive: true, force: false });
     },
@@ -201,8 +237,10 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
       const relativePath = toRelativePath(root, absolutePath);
       const name = basename(absolutePath);
       const mimeType = guessMimeType(name);
+      const isPreviewableMedia =
+        mimeType !== undefined && (mimeType.startsWith("image/") || mimeType.startsWith("video/"));
 
-      if (sizeBytes > FILE_EDITOR_MAX_BYTES) {
+      if (sizeBytes > FILE_EDITOR_MAX_BYTES && !isPreviewableMedia) {
         return {
           root: root.kind,
           path: relativePath,
@@ -216,7 +254,7 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
         };
       }
 
-      const binary = isBinaryBuffer(buffer);
+      const binary = isPreviewableMedia || isBinaryBuffer(buffer);
 
       if (binary) {
         return {
@@ -303,6 +341,68 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
         },
       };
     },
+
+    async uploadEntries(
+      root: RootReference,
+      input: FileManagerUploadInput,
+      uploadOptions: {
+        allowHostFilesystemEdits: boolean;
+        maxUploadSizeBytes: number;
+        allowDangerousFiles: boolean;
+      },
+    ): Promise<FileManagerUploadResponse> {
+      if (root.kind === "host-filesystem" && !uploadOptions.allowHostFilesystemEdits) {
+        throw new ForbiddenError(
+          "Host filesystem uploads are disabled. Enable host filesystem edits in Settings to upload outside the workspace.",
+        );
+      }
+
+      const destinationPath = sanitizeRelativePath(input.destinationPath);
+      const destinationAbsolutePath = resolveEntryPath(root, destinationPath);
+      const destinationStats = await statOrNotFound(destinationAbsolutePath);
+
+      if (!destinationStats.isDirectory()) {
+        throw new BadRequestError("Upload destination must be a directory.");
+      }
+
+      const uploaded: FileManagerUploadResponse["uploaded"] = [];
+      const rejected: FileManagerRejectedUploadEntry[] = [];
+
+      for (const entry of input.entries) {
+        const relativePath = sanitizeUploadRelativePath(entry.relativePath);
+        const targetAbsolutePath = resolve(destinationAbsolutePath, relativePath);
+        ensureDescendant(root, targetAbsolutePath);
+
+        const rejection = await getUploadRejection({
+          root,
+          targetAbsolutePath,
+          relativePath,
+          entry,
+          config: options.config,
+          uploadOptions,
+        });
+
+        if (rejection) {
+          rejected.push(rejection);
+          continue;
+        }
+
+        const parentAbsolutePath = dirname(targetAbsolutePath);
+        ensureDescendant(root, parentAbsolutePath);
+        await mkdir(parentAbsolutePath, { recursive: true });
+        await writeFile(targetAbsolutePath, Buffer.from(entry.contentBase64, "base64"), {
+          flag: "wx",
+        });
+
+        uploaded.push({
+          name: entry.name,
+          relativePath,
+          path: toRelativePath(root, targetAbsolutePath),
+        });
+      }
+
+      return { uploaded, rejected };
+    },
   };
 
   async function readDirectory(path: string) {
@@ -368,6 +468,73 @@ function sanitizeRelativePath(path: string | undefined): string {
   }
 
   return trimmed;
+}
+
+function sanitizeUploadRelativePath(path: string): string {
+  const trimmed = path.trim();
+
+  if (trimmed.length === 0 || trimmed === "." || trimmed === "..") {
+    throw new BadRequestError("Upload path is invalid.");
+  }
+
+  const segments = trimmed.split(/[\\/]/).filter(Boolean);
+
+  if (segments.length === 0 || segments.some((segment) => segment === "." || segment === "..")) {
+    throw new BadRequestError("Upload path escapes the selected root.");
+  }
+
+  return segments.join("/");
+}
+
+async function getUploadRejection(options: {
+  root: RootReference;
+  targetAbsolutePath: string;
+  relativePath: string;
+  entry: FileManagerUploadInput["entries"][number];
+  config: RuntimeConfig;
+  uploadOptions: {
+    maxUploadSizeBytes: number;
+    allowDangerousFiles: boolean;
+  };
+}): Promise<FileManagerRejectedUploadEntry | undefined> {
+  const normalizedSizeLimit =
+    options.uploadOptions.maxUploadSizeBytes > 0
+      ? options.uploadOptions.maxUploadSizeBytes
+      : DEFAULT_MAX_UPLOAD_SIZE_BYTES;
+
+  if (options.entry.sizeBytes > normalizedSizeLimit) {
+    return {
+      name: options.entry.name,
+      relativePath: options.relativePath,
+      reason: `File exceeds the ${formatUploadSize(normalizedSizeLimit)} upload limit.`,
+    };
+  }
+
+  const ext = extname(options.entry.name).toLowerCase();
+  if (!options.uploadOptions.allowDangerousFiles && DANGEROUS_UPLOAD_EXTENSIONS.has(ext)) {
+    return {
+      name: options.entry.name,
+      relativePath: options.relativePath,
+      reason: "This file type is blocked by the current dangerous-file policy.",
+    };
+  }
+
+  try {
+    await access(options.targetAbsolutePath);
+    return {
+      name: options.entry.name,
+      relativePath: options.relativePath,
+      reason: getCriticalReason(options.targetAbsolutePath, false, options.config)
+        ? "This upload would overwrite a protected CommandsCenter-managed file."
+        : "An entry with this name already exists in the destination folder.",
+    };
+  } catch (error) {
+    if (isMissingError(error)) {
+      return undefined;
+    }
+
+    throw error;
+  }
 }
 
 function validateEntryName(name: string): string {
@@ -602,4 +769,16 @@ const MIME_TYPES: Record<string, string> = {
 function guessMimeType(name: string): string | undefined {
   const ext = extname(name).toLowerCase();
   return MIME_TYPES[ext];
+}
+
+function formatUploadSize(sizeBytes: number): string {
+  if (sizeBytes >= 1024 * 1024) {
+    return `${Math.round(sizeBytes / (1024 * 1024))} MB`;
+  }
+
+  if (sizeBytes >= 1024) {
+    return `${Math.round(sizeBytes / 1024)} KB`;
+  }
+
+  return `${sizeBytes} B`;
 }

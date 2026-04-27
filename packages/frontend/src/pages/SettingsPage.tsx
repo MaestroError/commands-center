@@ -40,7 +40,13 @@ export function SettingsPage() {
 }
 
 function FileManagerTab() {
-  const [allowHostEdits, setAllowHostEdits] = useState<boolean>();
+  const [preferences, setPreferences] = useState<{
+    allowHostFilesystemEdits: boolean;
+    fileUploads: {
+      maxUploadSizeBytes: number;
+      allowDangerousFiles: boolean;
+    };
+  }>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -50,7 +56,7 @@ function FileManagerTab() {
     void getFileManagerPreferences()
       .then((preferences) => {
         if (cancelled) return;
-        setAllowHostEdits(preferences.allowHostFilesystemEdits);
+        setPreferences(preferences);
         setLoading(false);
       })
       .catch((nextError: unknown) => {
@@ -63,12 +69,28 @@ function FileManagerTab() {
     };
   }, []);
 
-  async function toggle(next: boolean) {
+  async function updatePreferences(next: {
+    allowHostFilesystemEdits?: boolean;
+    maxUploadSizeBytes?: number;
+    allowDangerousFiles?: boolean;
+  }) {
+    if (!preferences) {
+      return;
+    }
+
     setSaving(true);
     setError(undefined);
     try {
-      const result = await updateFileManagerPreferences({ allowHostFilesystemEdits: next });
-      setAllowHostEdits(result.allowHostFilesystemEdits);
+      const result = await updateFileManagerPreferences({
+        allowHostFilesystemEdits:
+          next.allowHostFilesystemEdits ?? preferences.allowHostFilesystemEdits,
+        fileUploads: {
+          maxUploadSizeBytes: next.maxUploadSizeBytes ?? preferences.fileUploads.maxUploadSizeBytes,
+          allowDangerousFiles:
+            next.allowDangerousFiles ?? preferences.fileUploads.allowDangerousFiles,
+        },
+      });
+      setPreferences(result);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to save preferences.");
     } finally {
@@ -91,10 +113,12 @@ function FileManagerTab() {
       {error ? <ErrorState description={error} title="Could not save preferences." /> : null}
       <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface p-4">
         <input
-          checked={allowHostEdits ?? false}
+          checked={preferences?.allowHostFilesystemEdits ?? false}
           className="mt-1"
           disabled={saving}
-          onChange={(event) => void toggle(event.target.checked)}
+          onChange={(event) =>
+            void updatePreferences({ allowHostFilesystemEdits: event.target.checked })
+          }
           type="checkbox"
         />
         <span>
@@ -104,6 +128,43 @@ function FileManagerTab() {
           <span className="mt-1 block text-sm text-text-secondary">
             When disabled, files browsed from the Host Filesystem root are read-only in the editor.
             The Workspace and All Agents roots remain editable regardless of this setting.
+          </span>
+        </span>
+      </label>
+      <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
+        <span className="font-medium">Max upload size (bytes)</span>
+        <input
+          className="cc-input"
+          disabled={saving}
+          min={1}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            if (Number.isFinite(value) && value > 0) {
+              void updatePreferences({ maxUploadSizeBytes: value });
+            }
+          }}
+          type="number"
+          value={preferences?.fileUploads.maxUploadSizeBytes ?? 50 * 1024 * 1024}
+        />
+        <span className="text-text-secondary">
+          File uploads larger than this limit are rejected by the backend.
+        </span>
+      </label>
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface p-4">
+        <input
+          checked={preferences?.fileUploads.allowDangerousFiles ?? false}
+          className="mt-1"
+          disabled={saving}
+          onChange={(event) =>
+            void updatePreferences({ allowDangerousFiles: event.target.checked })
+          }
+          type="checkbox"
+        />
+        <span>
+          <span className="block font-medium text-text-primary">Allow dangerous file uploads</span>
+          <span className="mt-1 block text-sm text-text-secondary">
+            When disabled, archive, executable, installer, shell, and disk image file types are
+            rejected.
           </span>
         </span>
       </label>

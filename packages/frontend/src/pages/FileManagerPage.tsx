@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useDropzone } from "react-dropzone";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, FilePlus, FolderPlus, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, FilePlus, FolderPlus, Pencil, RefreshCw, Trash2, Upload } from "lucide-react";
 
-import type { FileManagerNode, FileManagerRootKind } from "@cc/shared/schemas";
+import type {
+  FileManagerNode,
+  FileManagerRootKind,
+  FileManagerUploadInput,
+  FileManagerUploadResponse,
+} from "@cc/shared/schemas";
 
 import { CopyIdButton } from "@/components/chat/CopyIdButton";
-import { PageHeader } from "@/components/common/PageHeader";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { EditorTabsSurface } from "@/components/workspace/EditorTabsSurface";
 import { useEditorTabs } from "@/hooks/use-editor-tabs";
@@ -14,12 +19,13 @@ import {
   deleteFileManagerEntry,
   listFileManagerNodes,
   renameFileManagerEntry,
+  uploadFileManagerEntries,
 } from "@/lib/api";
 
 const ROOT_LABELS: Record<FileManagerRootKind, string> = {
   workspace: "Workspace",
   "all-agents": "All Agents",
-  "host-filesystem": "Host Filesystem",
+  "host-filesystem": "Root",
 };
 
 export function FileManagerPage() {
@@ -42,7 +48,23 @@ export function FileManagerPage() {
   const [renameTarget, setRenameTarget] = useState<FileManagerNode>();
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<FileManagerNode>();
+  const [uploadMode, setUploadMode] = useState<"files" | "folder">("files");
+  const [uploadPanelOpen, setUploadPanelOpen] = useState(false);
+  const [uploadState, setUploadState] = useState<{
+    status: "idle" | "uploading" | "completed";
+    message?: string;
+    result?: FileManagerUploadResponse;
+  }>({ status: "idle" });
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const tabsController = useEditorTabs();
+
+  const dropzone = useDropzone({
+    noClick: true,
+    noKeyboard: true,
+    onDrop: (acceptedFiles: File[]) => {
+      void handleUploadFiles(acceptedFiles, uploadMode);
+    },
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams);
@@ -186,41 +208,60 @@ export function FileManagerPage() {
     }
   }
 
+  async function refreshCurrentDirectory(): Promise<void> {
+    const response = await listFileManagerNodes({ root, path: currentPath });
+    setData(response);
+  }
+
+  async function handleUploadFiles(files: File[], mode: "files" | "folder"): Promise<void> {
+    if (files.length === 0) {
+      return;
+    }
+
+    setBusyAction("upload");
+    setError(undefined);
+    setUploadState({
+      status: "uploading",
+      message: `Uploading ${files.length} entr${files.length === 1 ? "y" : "ies"}...`,
+    });
+
+    try {
+      const entries = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          relativePath: resolveUploadRelativePath(file, mode),
+          contentBase64: await readFileAsBase64(file),
+          sizeBytes: file.size,
+        })),
+      );
+
+      const result = await uploadFileManagerEntries({
+        root,
+        destinationPath: currentPath,
+        entries,
+      } satisfies FileManagerUploadInput);
+
+      await refreshCurrentDirectory();
+      setUploadState({
+        status: "completed",
+        message: buildUploadSummaryMessage(result),
+        result,
+      });
+    } catch (nextError) {
+      const message = nextError instanceof Error ? nextError.message : "Failed to upload files.";
+      setError(message);
+      setUploadState({ status: "completed", message });
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
+  function toggleUploadPanel() {
+    setUploadPanelOpen((current) => !current);
+  }
+
   return (
-    <div className="grid gap-4">
-      <PageHeader
-        actions={
-          <>
-            <button
-              className="cc-button cc-button-secondary"
-              disabled={busyAction !== undefined}
-              onClick={() => {
-                setCreateType("file");
-                setCreateValue("");
-              }}
-              type="button"
-            >
-              <FilePlus className="mr-2 h-4 w-4" />
-              New file
-            </button>
-            <button
-              className="cc-button cc-button-secondary"
-              disabled={busyAction !== undefined}
-              onClick={() => {
-                setCreateType("directory");
-                setCreateValue("");
-              }}
-              type="button"
-            >
-              <FolderPlus className="mr-2 h-4 w-4" />
-              New folder
-            </button>
-          </>
-        }
-        description="Browse current agent workspaces, all agent folders, and the host filesystem from one dedicated workspace."
-        eyebrow="File Manager"
-        title="Browse and manage files"
-      />
+    <>
       <WorkspaceLayout
         contextPane={{
           title: "File details",
@@ -258,18 +299,19 @@ export function FileManagerPage() {
           ],
         }}
         primary={
-          <div className="grid h-full min-h-[28rem] grid-cols-1 gap-2 lg:grid-cols-[minmax(20rem,28rem)_1fr]">
+          <div className="grid h-full min-h-[28rem] grid-cols-1 gap-2 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
             <div className="flex h-full min-h-[28rem] flex-col rounded-lg border border-border bg-surface">
               <div className="border-b border-border px-4 py-4">
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1 border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {(["workspace", "all-agents", "host-filesystem"] as const).map((option) => {
                     return (
                       <button
                         aria-pressed={root === option}
+                        aria-selected={root === option}
                         className={
                           root === option
-                            ? "rounded-full border border-accent bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent"
-                            : "rounded-full border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                            ? "relative shrink-0 px-3 py-2 text-[11px] text-text-primary after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-accent"
+                            : "relative shrink-0 px-3 py-2 text-[11px] text-text-secondary transition hover:text-text-primary after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent disabled:cursor-not-allowed disabled:opacity-50"
                         }
                         key={option}
                         onClick={() => {
@@ -284,46 +326,114 @@ export function FileManagerPage() {
                     );
                   })}
                 </div>
-                <div className="mt-4 flex items-start justify-between gap-4 text-sm text-text-secondary">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                    <button
-                      className="cc-button cc-button-secondary"
-                      disabled={parentPath === undefined}
-                      onClick={() => {
-                        if (!parentPath) {
-                          return;
-                        }
+                <div className="mt-4 flex items-start justify-between gap-4 text-xs text-text-secondary">
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <button
+                        className="rounded px-0 py-1 text-sm font-medium text-text-primary transition hover:bg-surface-elevated"
+                        onClick={() => {
+                          setCurrentPath(".");
+                          setSelectedPath("");
+                        }}
+                        type="button"
+                      >
+                        {ROOT_LABELS[root]}
+                      </button>
+                      {visibleBreadcrumbs.map((crumb) => (
+                        <div className="flex min-w-0 items-center gap-2" key={crumb.path}>
+                          <span aria-hidden="true" className="text-text-secondary">
+                            /
+                          </span>
+                          <button
+                            className="max-w-[18rem] truncate rounded px-0 py-1 text-sm transition hover:bg-surface-elevated hover:text-text-primary"
+                            onClick={() => {
+                              setCurrentPath(crumb.path);
+                              setSelectedPath("");
+                            }}
+                            title={crumb.label}
+                            type="button"
+                          >
+                            {crumb.label}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        aria-label="Go to parent folder"
+                        className="inline-flex h-8 w-8 items-center justify-center text-text-secondary transition hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={parentPath === undefined}
+                        onClick={() => {
+                          if (!parentPath) {
+                            return;
+                          }
 
-                        setCurrentPath(parentPath);
-                        setSelectedPath("");
-                      }}
-                      type="button"
-                    >
-                      <ArrowLeft className="mr-2 h-4 w-4" />
-                      Back
-                    </button>
-                    <span className="font-medium text-text-primary">{ROOT_LABELS[root]}</span>
-                    {visibleBreadcrumbs.map((crumb) => (
-                      <div className="flex min-w-0 items-center gap-2" key={crumb.path}>
-                        <span aria-hidden="true" className="text-text-secondary">
-                          /
-                        </span>
+                          setCurrentPath(parentPath);
+                          setSelectedPath("");
+                        }}
+                        type="button"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                      </button>
+                      <div className="ml-2 inline-flex shrink-0 overflow-hidden rounded-full border border-border bg-surface">
                         <button
-                          className="max-w-[18rem] truncate rounded px-2 py-1 transition hover:bg-surface-elevated hover:text-text-primary"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-text-primary transition hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={busyAction !== undefined}
                           onClick={() => {
-                            setCurrentPath(crumb.path);
-                            setSelectedPath("");
+                            setCreateType("file");
+                            setCreateValue("");
                           }}
-                          title={crumb.label}
                           type="button"
                         >
-                          {crumb.label}
+                          <FilePlus className="h-3.5 w-3.5" />
+                          New file
+                        </button>
+                        <button
+                          className="inline-flex items-center gap-1.5 border-l border-border px-3 py-2 text-[11px] font-medium text-text-primary transition hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={busyAction !== undefined}
+                          onClick={() => {
+                            setCreateType("directory");
+                            setCreateValue("");
+                          }}
+                          type="button"
+                        >
+                          <FolderPlus className="h-3.5 w-3.5" />
+                          New folder
+                        </button>
+                        <button
+                          className="inline-flex items-center gap-1.5 border-l border-border px-3 py-2 text-[11px] font-medium text-text-primary transition hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={busyAction !== undefined}
+                          onClick={toggleUploadPanel}
+                          type="button"
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          Upload
                         </button>
                       </div>
-                    ))}
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2" aria-hidden="true" />
                 </div>
+                {uploadPanelOpen ? (
+                  <UploadPanel
+                    active={dropzone.isDragActive}
+                    busy={busyAction === "upload"}
+                    inputProps={dropzone.getInputProps()}
+                    message={uploadState.message}
+                    mode={uploadMode}
+                    onSelectFiles={() => {
+                      setUploadMode("files");
+                      dropzone.open();
+                    }}
+                    onSelectFolder={() => {
+                      setUploadMode("folder");
+                      folderInputRef.current?.click();
+                    }}
+                    result={uploadState.result}
+                    rootProps={dropzone.getRootProps()}
+                    testId="file-manager-upload-panel"
+                  />
+                ) : null}
               </div>
               {loading ? (
                 <div className="flex flex-1 items-center justify-center px-4 py-10 text-sm text-text-secondary">
@@ -332,8 +442,20 @@ export function FileManagerPage() {
               ) : error ? (
                 <div className="px-4 py-10 text-sm text-danger">{error}</div>
               ) : data && data.nodes.length > 0 ? (
-                <div className="min-h-0 flex-1 overflow-auto p-3">
-                  <div className="grid gap-2">
+                <div
+                  className={
+                    dropzone.isDragActive
+                      ? "min-h-0 flex-1 overflow-auto border-t border-accent bg-accent/5 p-2"
+                      : "min-h-0 flex-1 overflow-auto p-2"
+                  }
+                  data-testid="file-manager-list-dropzone"
+                  {...dropzone.getRootProps()}
+                >
+                  <input {...dropzone.getInputProps()} />
+                  <div className="mb-2 px-1 text-[11px] leading-4 text-text-secondary">
+                    Drop files here.
+                  </div>
+                  <div className="grid gap-1">
                     {data.nodes.map((node) => {
                       const isSelected = node.path === selectedPath;
                       const actionBusy = busyAction?.endsWith(node.path) ?? false;
@@ -341,10 +463,11 @@ export function FileManagerPage() {
                       return (
                         <div
                           aria-pressed={isSelected}
+                          data-testid={`file-row-${node.path}`}
                           className={
                             isSelected
-                              ? "flex items-center gap-3 rounded-xl border border-accent bg-accent/5 px-3 py-3"
-                              : "flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-3"
+                              ? "flex items-center gap-1.5 rounded-md border border-accent bg-accent/5 px-2 py-1"
+                              : "flex items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1"
                           }
                           key={node.path}
                           onClick={() => setSelectedPath(node.path)}
@@ -364,41 +487,67 @@ export function FileManagerPage() {
                             }
                           }}
                         >
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-lg" aria-hidden="true">
-                                {node.type === "directory" ? "📁" : "📄"}
-                              </span>
-                              {node.type === "directory" ? (
-                                <button
-                                  className="truncate font-medium text-text-primary underline-offset-4 hover:underline"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    openNode(node);
-                                  }}
-                                  type="button"
-                                >
-                                  {node.name}
-                                </button>
-                              ) : (
-                                <span className="truncate font-medium text-text-primary">
-                                  {node.name}
-                                </span>
-                              )}
-                              {node.isCritical ? (
-                                <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                                  Critical
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="mt-1 truncate text-xs text-text-secondary">
-                              {node.path === "." ? "/" : node.path}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 gap-2">
+                          {node.type === "directory" ? (
+                            <button
+                              aria-label={`Open ${node.name}`}
+                              className="shrink-0 text-base leading-none"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openNode(node);
+                              }}
+                              type="button"
+                            >
+                              📁
+                            </button>
+                          ) : (
+                            <span className="shrink-0 text-base leading-none" aria-hidden="true">
+                              📄
+                            </span>
+                          )}
+                          {node.type === "directory" ? (
+                            <button
+                              className="max-w-[10rem] truncate text-xs font-medium text-text-primary underline-offset-4 hover:underline"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openNode(node);
+                              }}
+                              title={node.name}
+                              type="button"
+                            >
+                              {node.name}
+                            </button>
+                          ) : (
+                            <span
+                              className="max-w-[10rem] truncate text-xs font-medium text-text-primary"
+                              title={node.name}
+                            >
+                              {node.name}
+                            </span>
+                          )}
+                          {node.isCritical ? (
+                            <span className="shrink-0 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                              Critical
+                            </span>
+                          ) : null}
+                          {node.isCritical ? null : (
+                            <button
+                              aria-label="Rename"
+                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary disabled:opacity-50"
+                              disabled={actionBusy}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setRenameTarget(node);
+                                setRenameValue(node.name);
+                              }}
+                              type="button"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                          )}
+                          <div className="ml-auto flex shrink-0 items-center gap-1">
                             {node.type === "directory" ? (
                               <button
-                                className="cc-button cc-button-secondary"
+                                className="rounded-md border border-border bg-surface px-2 py-0.5 text-xs font-medium text-text-secondary transition hover:border-accent hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled={actionBusy}
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -410,33 +559,18 @@ export function FileManagerPage() {
                               </button>
                             ) : null}
                             {node.isCritical ? null : (
-                              <>
-                                <button
-                                  aria-label="Rename"
-                                  className="flex h-10 w-10 items-center justify-center rounded-full border border-amber-400/40 bg-amber-500/10 text-amber-700 transition hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-300"
-                                  disabled={actionBusy}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setRenameTarget(node);
-                                    setRenameValue(node.name);
-                                  }}
-                                  type="button"
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </button>
-                                <button
-                                  aria-label="Delete"
-                                  className="flex h-10 w-10 items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger transition hover:bg-danger/20 disabled:opacity-50"
-                                  disabled={actionBusy}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setDeleteTarget(node);
-                                  }}
-                                  type="button"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </>
+                              <button
+                                aria-label="Delete"
+                                className="flex h-6 w-6 items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger transition hover:bg-danger/20 disabled:opacity-50"
+                                disabled={actionBusy}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setDeleteTarget(node);
+                                }}
+                                type="button"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
                             )}
                           </div>
                         </div>
@@ -445,8 +579,17 @@ export function FileManagerPage() {
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-1 items-center justify-center px-4 py-10 text-sm text-text-secondary">
-                  This folder is empty.
+                <div
+                  className={
+                    dropzone.isDragActive
+                      ? "flex flex-1 items-center justify-center border-t border-accent bg-accent/5 px-4 py-10 text-sm text-text-secondary"
+                      : "flex flex-1 items-center justify-center px-4 py-10 text-sm text-text-secondary"
+                  }
+                  data-testid="file-manager-list-dropzone"
+                  {...dropzone.getRootProps()}
+                >
+                  <input {...dropzone.getInputProps()} />
+                  Drop files or folders here to upload into this empty folder.
                 </div>
               )}
             </div>
@@ -490,7 +633,20 @@ export function FileManagerPage() {
           onSubmit={() => void handleCreate(createType)}
         />
       ) : null}
-    </div>
+      <input
+        className="sr-only"
+        multiple
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          void handleUploadFiles(files, "folder");
+          event.target.value = "";
+        }}
+        ref={folderInputRef}
+        // @ts-expect-error webkitdirectory is supported in browsers we target.
+        webkitdirectory=""
+        type="file"
+      />
+    </>
   );
 
   function openNode(node: FileManagerNode) {
@@ -571,6 +727,76 @@ function SelectionDetails(props: {
   );
 }
 
+function UploadPanel(props: {
+  busy: boolean;
+  active: boolean;
+  mode: "files" | "folder";
+  message?: string;
+  result?: FileManagerUploadResponse;
+  onSelectFiles: () => void;
+  onSelectFolder: () => void;
+  rootProps: React.HTMLAttributes<HTMLDivElement>;
+  inputProps: React.InputHTMLAttributes<HTMLInputElement>;
+  testId: string;
+}) {
+  return (
+    <div
+      className={
+        props.active
+          ? "mt-4 rounded-xl border border-accent bg-accent/5 p-4"
+          : "mt-4 rounded-xl border border-dashed border-border bg-surface-elevated/60 p-4"
+      }
+      data-testid={props.testId}
+      {...props.rootProps}
+    >
+      <input {...props.inputProps} />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-medium text-text-primary">Upload files or folders</p>
+          <p className="mt-1 text-sm text-text-secondary">
+            Drop files or folders here, or choose a picker. Folder uploads keep relative paths.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="cc-button cc-button-secondary"
+            onClick={props.onSelectFiles}
+            type="button"
+          >
+            Files
+          </button>
+          <button
+            className="cc-button cc-button-secondary"
+            onClick={props.onSelectFolder}
+            type="button"
+          >
+            Folder
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-3 text-sm text-text-secondary">
+        {props.busy ? (
+          <RefreshCw className="h-4 w-4 animate-spin" />
+        ) : (
+          <Upload className="h-4 w-4" />
+        )}
+        <span>
+          {props.message ?? `Ready to upload ${props.mode === "folder" ? "a folder" : "files"}.`}
+        </span>
+      </div>
+      {props.result && props.result.rejected.length > 0 ? (
+        <div className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-3 py-3 text-sm text-danger">
+          {props.result.rejected.map((entry) => (
+            <p key={`${entry.relativePath}:${entry.reason}`}>
+              {entry.relativePath}: {entry.reason}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function SelectionActions(props: {
   selectedNode?: FileManagerNode;
   busyAction?: string;
@@ -633,13 +859,12 @@ function getInitialRoot(searchParams: URLSearchParams): FileManagerRootKind {
 }
 
 function buildBreadcrumbs(currentPath: string): Array<{ label: string; path: string }> {
-  const crumbs = [{ label: "root", path: "." }];
-
   if (currentPath === ".") {
-    return crumbs;
+    return [];
   }
 
   const segments = currentPath.split(/[\\/]/).filter(Boolean);
+  const crumbs: Array<{ label: string; path: string }> = [];
   let activePath = "";
 
   for (const segment of segments) {
@@ -653,26 +878,22 @@ function buildBreadcrumbs(currentPath: string): Array<{ label: string; path: str
 function collapseBreadcrumbs(
   breadcrumbs: Array<{ label: string; path: string }>,
 ): Array<{ label: string; path: string }> {
-  const root = breadcrumbs[0];
-
-  if (!root) {
+  if (breadcrumbs.length === 0) {
     return [];
   }
 
-  const segments = breadcrumbs.slice(1);
-
-  if (segments.length <= 3) {
-    return [root, ...segments];
+  if (breadcrumbs.length <= 3) {
+    return breadcrumbs;
   }
 
-  const firstVisibleIndex = segments.length - 3;
-  const hiddenJumpTarget = segments[firstVisibleIndex - 1];
+  const firstVisibleIndex = breadcrumbs.length - 3;
+  const hiddenJumpTarget = breadcrumbs[firstVisibleIndex - 1];
 
   if (!hiddenJumpTarget) {
-    return [root, ...segments.slice(-3)];
+    return breadcrumbs.slice(-3);
   }
 
-  return [root, { label: "...", path: hiddenJumpTarget.path }, ...segments.slice(-3)];
+  return [{ label: "...", path: hiddenJumpTarget.path }, ...breadcrumbs.slice(-3)];
 }
 
 function getParentPath(currentPath: string): string | undefined {
@@ -687,6 +908,41 @@ function getParentPath(currentPath: string): string | undefined {
   }
 
   return segments.slice(0, -1).join("/");
+}
+
+function resolveUploadRelativePath(file: File, mode: "files" | "folder"): string {
+  if (mode === "folder") {
+    const candidate = "webkitRelativePath" in file ? file.webkitRelativePath : "";
+
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate;
+    }
+  }
+
+  return file.name;
+}
+
+async function readFileAsBase64(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(arrayBuffer);
+
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+
+  return btoa(binary);
+}
+
+function buildUploadSummaryMessage(result: FileManagerUploadResponse): string {
+  const uploadedCount = result.uploaded.length;
+  const rejectedCount = result.rejected.length;
+
+  if (rejectedCount === 0) {
+    return `Uploaded ${uploadedCount} entr${uploadedCount === 1 ? "y" : "ies"}.`;
+  }
+
+  return `Uploaded ${uploadedCount} entr${uploadedCount === 1 ? "y" : "ies"}; ${rejectedCount} rejected.`;
 }
 
 function DetailValue(props: { label: string; value: string }) {

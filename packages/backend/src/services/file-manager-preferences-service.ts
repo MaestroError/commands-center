@@ -8,6 +8,10 @@ import type { RuntimeConfig } from "../lib/runtime-config.js";
 const PREFERENCES_FILE = "file-manager.json";
 const DEFAULT_PREFERENCES: FileManagerPreferences = {
   allowHostFilesystemEdits: false,
+  fileUploads: {
+    maxUploadSizeBytes: 50 * 1024 * 1024,
+    allowDangerousFiles: false,
+  },
 };
 
 export type FileManagerPreferencesService = ReturnType<typeof createFileManagerPreferencesService>;

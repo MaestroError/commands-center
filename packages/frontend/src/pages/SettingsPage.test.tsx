@@ -1,16 +1,27 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
+import type * as ApiModule from "@/lib/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsPage } from "./SettingsPage";
 
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
+import { getFileManagerPreferences, updateFileManagerPreferences } from "@/lib/api";
 import { queryClient } from "@/lib/query-client";
 
 vi.mock("@/hooks/use-secrets-query", () => ({
   useSecretsQuery: vi.fn(),
   useSecretMutations: vi.fn(),
 }));
+
+vi.mock("@/lib/api", async () => {
+  const actual = await vi.importActual<typeof ApiModule>("@/lib/api");
+  return {
+    ...actual,
+    getFileManagerPreferences: vi.fn(),
+    updateFileManagerPreferences: vi.fn(),
+  };
+});
 
 const setMutateAsync = vi.fn();
 const removeMutateAsync = vi.fn();
@@ -30,6 +41,14 @@ beforeEach(() => {
     set: { mutateAsync: setMutateAsync, isPending: false },
     remove: { mutateAsync: removeMutateAsync, isPending: false },
   } as never);
+  vi.mocked(getFileManagerPreferences).mockResolvedValue({
+    allowHostFilesystemEdits: false,
+    fileUploads: {
+      maxUploadSizeBytes: 50 * 1024 * 1024,
+      allowDangerousFiles: false,
+    },
+  });
+  vi.mocked(updateFileManagerPreferences).mockImplementation((input) => Promise.resolve(input));
 });
 
 describe("SettingsPage", () => {
@@ -69,6 +88,26 @@ describe("SettingsPage", () => {
 
     await waitFor(() => {
       expect(removeMutateAsync).toHaveBeenCalledWith({ key: "CC_MCP_GITHUB_TOKEN" });
+    });
+  });
+
+  it("loads and updates file manager upload preferences", async () => {
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "File Manager" }));
+
+    expect(await screen.findByDisplayValue(String(50 * 1024 * 1024))).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Allow dangerous file uploads/i }));
+
+    await waitFor(() => {
+      expect(updateFileManagerPreferences).toHaveBeenCalledWith({
+        allowHostFilesystemEdits: false,
+        fileUploads: {
+          maxUploadSizeBytes: 50 * 1024 * 1024,
+          allowDangerousFiles: true,
+        },
+      });
     });
   });
 });

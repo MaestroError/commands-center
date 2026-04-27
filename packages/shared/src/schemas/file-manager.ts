@@ -55,6 +55,36 @@ export const fileManagerDeleteEntryQuerySchema = z.object({
   path: z.string().min(1),
 });
 
+export const fileManagerUploadEntryInputSchema = z.object({
+  name: z.string().trim().min(1),
+  relativePath: z.string().trim().min(1),
+  contentBase64: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+});
+
+export const fileManagerUploadInputSchema = z.object({
+  root: fileManagerRootKindSchema,
+  destinationPath: z.string().min(1).optional(),
+  entries: z.array(fileManagerUploadEntryInputSchema).min(1),
+});
+
+export const fileManagerUploadedEntrySchema = z.object({
+  name: z.string().min(1),
+  relativePath: z.string().min(1),
+  path: z.string().min(1),
+});
+
+export const fileManagerRejectedUploadEntrySchema = z.object({
+  name: z.string().min(1),
+  relativePath: z.string().min(1),
+  reason: z.string().min(1),
+});
+
+export const fileManagerUploadResponseSchema = z.object({
+  uploaded: z.array(fileManagerUploadedEntrySchema),
+  rejected: z.array(fileManagerRejectedUploadEntrySchema),
+});
+
 export const fileManagerFileRevisionSchema = z.object({
   mtimeMs: z.number(),
   sizeBytes: z.number().int().nonnegative(),
@@ -100,11 +130,22 @@ export const fileManagerConflictDetailsSchema = z.object({
 
 export const fileManagerPreferencesSchema = z.object({
   allowHostFilesystemEdits: z.boolean().default(false),
+  fileUploads: z
+    .object({
+      maxUploadSizeBytes: z
+        .number()
+        .int()
+        .positive()
+        .default(50 * 1024 * 1024),
+      allowDangerousFiles: z.boolean().default(false),
+    })
+    .default({
+      maxUploadSizeBytes: 50 * 1024 * 1024,
+      allowDangerousFiles: false,
+    }),
 });
 
-export const fileManagerUpdatePreferencesInputSchema = z.object({
-  allowHostFilesystemEdits: z.boolean(),
-});
+export const fileManagerUpdatePreferencesInputSchema = fileManagerPreferencesSchema;
 
 export type FileManagerRootKind = z.infer<typeof fileManagerRootKindSchema>;
 export type FileManagerEntryType = z.infer<typeof fileManagerEntryTypeSchema>;
@@ -116,6 +157,11 @@ export type FileManagerCreateEntryResponse = z.infer<typeof fileManagerCreateEnt
 export type FileManagerRenameEntryInput = z.infer<typeof fileManagerRenameEntryInputSchema>;
 export type FileManagerRenameEntryResponse = z.infer<typeof fileManagerRenameEntryResponseSchema>;
 export type FileManagerDeleteEntryQuery = z.infer<typeof fileManagerDeleteEntryQuerySchema>;
+export type FileManagerUploadEntryInput = z.infer<typeof fileManagerUploadEntryInputSchema>;
+export type FileManagerUploadInput = z.infer<typeof fileManagerUploadInputSchema>;
+export type FileManagerUploadedEntry = z.infer<typeof fileManagerUploadedEntrySchema>;
+export type FileManagerRejectedUploadEntry = z.infer<typeof fileManagerRejectedUploadEntrySchema>;
+export type FileManagerUploadResponse = z.infer<typeof fileManagerUploadResponseSchema>;
 export type FileManagerFileRevision = z.infer<typeof fileManagerFileRevisionSchema>;
 export type FileManagerFileContentKind = z.infer<typeof fileManagerFileContentKindSchema>;
 export type FileManagerFileContentQuery = z.infer<typeof fileManagerFileContentQuerySchema>;

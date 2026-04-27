@@ -21,6 +21,8 @@ import {
   fileManagerRenameEntryResponseSchema,
   fileManagerSaveFileInputSchema,
   fileManagerSaveFileResponseSchema,
+  fileManagerUploadInputSchema,
+  fileManagerUploadResponseSchema,
   fileManagerUpdatePreferencesInputSchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
@@ -57,6 +59,8 @@ import {
   type FileManagerRenameEntryInput,
   type FileManagerSaveFileInput,
   type FileManagerSaveFileResponse,
+  type FileManagerUploadInput,
+  type FileManagerUploadResponse,
   type FileManagerUpdatePreferencesInput,
   type McpAuthRemoveResult,
   type McpAuthStartResult,
@@ -283,6 +287,19 @@ export async function deleteFileManagerEntry(query: FileManagerDeleteEntryQuery)
     const payload = (await response.json().catch(() => undefined)) as unknown;
     throw new Error(readApiError(payload, response.status, response.statusText));
   }
+}
+
+export async function uploadFileManagerEntries(
+  input: FileManagerUploadInput,
+): Promise<FileManagerUploadResponse> {
+  return requestJson<FileManagerUploadResponse>(
+    "/api/file-manager/uploads",
+    fileManagerUploadResponseSchema,
+    {
+      method: "POST",
+      body: fileManagerUploadInputSchema.parse(input),
+    },
+  );
 }
 
 export async function getFileManagerFileContent(

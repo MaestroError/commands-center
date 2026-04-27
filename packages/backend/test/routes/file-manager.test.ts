@@ -73,7 +73,7 @@ describe("file manager routes", () => {
         expect.arrayContaining([
           expect.objectContaining({
             name: "agents",
-            isCritical: false,
+            isCritical: true,
             absolutePath: testDb.config.paths.subdirectories.agents,
           }),
           expect.objectContaining({
@@ -136,6 +136,25 @@ describe("file manager routes", () => {
       ).toEqual(
         expect.arrayContaining([expect.objectContaining({ name: agent.slug, isCritical: true })]),
       );
+
+      const renameAgents = await server.inject({
+        method: "PATCH",
+        url: "/api/file-manager/entries",
+        payload: {
+          root: "workspace",
+          path: "agents",
+          name: "agents-renamed",
+        },
+      });
+
+      expect(renameAgents.statusCode).toBe(403);
+
+      const deleteAgents = await server.inject({
+        method: "DELETE",
+        url: `/api/file-manager/entries?root=workspace&path=${encodeURIComponent("agents")}`,
+      });
+
+      expect(deleteAgents.statusCode).toBe(403);
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -354,7 +373,125 @@ describe("file manager content routes", () => {
         url: "/api/file-manager/preferences",
       });
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toEqual({ allowHostFilesystemEdits: false });
+      expect(response.json()).toEqual({
+        allowHostFilesystemEdits: false,
+        fileUploads: {
+          maxUploadSizeBytes: 50 * 1024 * 1024,
+          allowDangerousFiles: false,
+        },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("uploads files into the current folder and rejects dangerous files by default", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      await mkdir(join(testDb.config.paths.workspaceDir, "uploads"), { recursive: true });
+
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/file-manager/uploads",
+        payload: {
+          root: "workspace",
+          destinationPath: "uploads",
+          entries: [
+            {
+              name: "notes.txt",
+              relativePath: "notes.txt",
+              contentBase64: Buffer.from("hello", "utf8").toString("base64"),
+              sizeBytes: 5,
+            },
+            {
+              name: "script.sh",
+              relativePath: "script.sh",
+              contentBase64: Buffer.from("echo hi", "utf8").toString("base64"),
+              sizeBytes: 7,
+            },
+          ],
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        uploaded: [{ name: "notes.txt", relativePath: "notes.txt", path: "uploads/notes.txt" }],
+        rejected: [
+          {
+            name: "script.sh",
+            relativePath: "script.sh",
+            reason: "This file type is blocked by the current dangerous-file policy.",
+          },
+        ],
+      });
+      expect(
+        await readFile(join(testDb.config.paths.workspaceDir, "uploads", "notes.txt"), "utf8"),
+      ).toBe("hello");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("preserves folder relative paths and rejects overwriting protected files", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      await mkdir(join(testDb.config.paths.subdirectories.agents, "agent-a"), { recursive: true });
+      await writeFile(
+        join(testDb.config.paths.subdirectories.agents, "agent-a", "AGENTS.md"),
+        "keep",
+        "utf8",
+      );
+
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/file-manager/uploads",
+        payload: {
+          root: "all-agents",
+          destinationPath: "agent-a",
+          entries: [
+            {
+              name: "todo.md",
+              relativePath: "docs/todo.md",
+              contentBase64: Buffer.from("next", "utf8").toString("base64"),
+              sizeBytes: 4,
+            },
+            {
+              name: "AGENTS.md",
+              relativePath: "AGENTS.md",
+              contentBase64: Buffer.from("replace", "utf8").toString("base64"),
+              sizeBytes: 7,
+            },
+          ],
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(
+        response.json<{ uploaded: Array<{ path: string }>; rejected: Array<{ reason: string }> }>(),
+      ).toEqual({
+        uploaded: [{ name: "todo.md", relativePath: "docs/todo.md", path: "agent-a/docs/todo.md" }],
+        rejected: [
+          {
+            name: "AGENTS.md",
+            relativePath: "AGENTS.md",
+            reason: "This upload would overwrite a protected CommandsCenter-managed file.",
+          },
+        ],
+      });
+      expect(
+        await readFile(
+          join(testDb.config.paths.subdirectories.agents, "agent-a", "docs", "todo.md"),
+          "utf8",
+        ),
+      ).toBe("next");
+      expect(
+        await readFile(
+          join(testDb.config.paths.subdirectories.agents, "agent-a", "AGENTS.md"),
+          "utf8",
+        ),
+      ).toBe("keep");
     } finally {
       await server.close();
       await testDb.cleanup();

@@ -24,6 +24,15 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
+vi.mock("react-dropzone", () => ({
+  useDropzone: () => ({
+    getRootProps: () => ({}),
+    getInputProps: () => ({}),
+    isDragActive: false,
+    open: vi.fn(),
+  }),
+}));
+
 vi.mock("@monaco-editor/react", () => ({
   default: ({
     value,
@@ -120,11 +129,8 @@ describe("FileManagerPage", () => {
 
     await screen.findByText("index.ts");
 
-    expect(screen.getByRole("button", { name: "Workspace" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.getByText("Workspace / src")).toBeInTheDocument();
+    expect(getRootTab("Workspace")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "src" })).toBeInTheDocument();
     expect(listFileManagerNodes).toHaveBeenCalledWith({
       root: "workspace",
       path: "src",
@@ -136,7 +142,7 @@ describe("FileManagerPage", () => {
 
     await screen.findByText("index.ts");
 
-    fireEvent.click(screen.getByRole("button", { name: "All Agents" }));
+    fireEvent.click(getRootTab("All Agents"));
 
     await waitFor(() => {
       expect(listFileManagerNodes).toHaveBeenLastCalledWith({
@@ -144,10 +150,7 @@ describe("FileManagerPage", () => {
         path: ".",
       });
     });
-    expect(screen.getByRole("button", { name: "All Agents" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(getRootTab("All Agents")).toHaveAttribute("aria-pressed", "true");
   });
 
   it("selects folders without auto-opening them and opens them explicitly", async () => {
@@ -155,7 +158,7 @@ describe("FileManagerPage", () => {
 
     await screen.findAllByText("src");
 
-    fireEvent.click(screen.getByText("src", { selector: "p" }).closest('[role="button"]')!);
+    fireEvent.click(screen.getByTestId("file-row-src"));
 
     expect(screen.getByText("/tmp/.cc/workspace/src")).toBeInTheDocument();
     expect(listFileManagerNodes).toHaveBeenCalledTimes(1);
@@ -175,10 +178,10 @@ describe("FileManagerPage", () => {
 
     await screen.findAllByText("src");
 
-    const folderRow = screen.getByText("src", { selector: "p" }).closest('[role="button"]');
+    const folderRow = screen.getByTestId("file-row-src");
     expect(folderRow).not.toBeNull();
 
-    fireEvent.doubleClick(folderRow!);
+    fireEvent.doubleClick(folderRow);
 
     await waitFor(() => {
       expect(listFileManagerNodes).toHaveBeenLastCalledWith({
@@ -217,9 +220,9 @@ describe("FileManagerPage", () => {
       "/files?root=host-filesystem&path=root/System/Library/Accounts/Authentication/AAIDSAuthenticationPlugin.bundle/Contents/_CodeSignature",
     );
 
-    await screen.findByRole("button", { name: "Back" });
+    await screen.findByRole("button", { name: "Go to parent folder" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Go to parent folder" }));
 
     await waitFor(() => {
       expect(listFileManagerNodes).toHaveBeenLastCalledWith({
@@ -233,10 +236,7 @@ describe("FileManagerPage", () => {
     renderWithRoute("/files");
 
     await screen.findAllByText("AGENTS.md");
-    expect(screen.getByRole("button", { name: "Workspace" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(getRootTab("Workspace")).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(screen.getByRole("button", { name: /AGENTS\.md/i }));
     fireEvent.click(screen.getByRole("button", { name: "Copy file path" }));
@@ -298,7 +298,7 @@ describe("FileManagerPage", () => {
 
     await screen.findAllByText("src");
 
-    fireEvent.click(screen.getByText("src", { selector: "p" }).closest('[role="button"]')!);
+    fireEvent.click(screen.getByTestId("file-row-src"));
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
 
     expect(screen.getByRole("dialog", { name: "Rename entry" })).toBeInTheDocument();
@@ -317,7 +317,7 @@ describe("FileManagerPage", () => {
       });
     });
 
-    fireEvent.click(screen.getByText("src", { selector: "p" }).closest('[role="button"]')!);
+    fireEvent.click(screen.getByTestId("file-row-src"));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(screen.getByRole("dialog", { name: "Delete entry" })).toBeInTheDocument();
@@ -331,6 +331,13 @@ describe("FileManagerPage", () => {
         path: "src",
       });
     });
+  });
+
+  it("shows a files-list drop target for direct uploads", async () => {
+    renderWithRoute("/files");
+
+    const dropzone = await screen.findByTestId("file-manager-list-dropzone");
+    expect(dropzone).toHaveTextContent("Drop files here.");
   });
 
   it("hides rename and delete actions for critical workspace files", async () => {
@@ -351,6 +358,12 @@ describe("FileManagerPage", () => {
     expect(screen.queryByRole("button", { name: /Delete file/i })).not.toBeInTheDocument();
   });
 });
+
+function getRootTab(name: string) {
+  return screen
+    .getAllByRole("button", { name })
+    .find((element) => element.hasAttribute("aria-pressed")) as HTMLElement;
+}
 
 function renderWithRoute(route: string) {
   return render(

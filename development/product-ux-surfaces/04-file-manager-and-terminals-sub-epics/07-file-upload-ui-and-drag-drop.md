@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add the file-manager upload experience: one upload trigger that supports both file and folder uploads, a drag-and-drop upload area below breadcrumbs, upload progress, and clear messaging about folder support.
+Add the file-manager upload experience: one upload trigger that supports both file and folder uploads, a drag-and-drop upload area below breadcrumbs, upload progress, clear messaging about folder support, and the same drag-and-drop affordance directly inside the files list.
 
 ## Why this is a separate PR
 
@@ -39,6 +39,13 @@ This is the frontend/product layer on top of the upload backend. It introduces n
 - Dragging files/folders onto the panel should upload directly when supported by browser APIs and `react-dropzone` integration.
 - The panel copy should explicitly state that folders are supported, so the user understands drag-and-drop is not file-only.
 
+### Files List Drop Target
+
+- The current folder file list itself must also behave as a drop target, not just the upload panel below breadcrumbs.
+- Users should be able to drag files or folders directly from the host system into the visible files list and start an upload without needing to target the breadcrumb-area panel first.
+- The files-list drop target should still upload into the currently open folder.
+- The files list should show clear drop-target affordance/copy so the behavior is discoverable even when the upload panel is collapsed.
+
 ### Picker Behavior
 
 - File upload mode should open a normal file picker.
@@ -70,6 +77,7 @@ This is the frontend/product layer on top of the upload backend. It introduces n
 - Use one upload button/entry point if possible, not two permanent buttons.
 - The drag-and-drop area belongs below breadcrumbs so it is obviously scoped to the current directory.
 - The drag-and-drop area must mention folder upload explicitly.
+- The files list is also a valid drop surface for the same current-directory upload action.
 - Uploads into critical directories remain allowed; blocked cases come from backend policy, not the UI alone.
 
 ## Out of Scope
@@ -87,6 +95,7 @@ This is the frontend/product layer on top of the upload backend. It introduces n
 - The upload section clearly communicates that both files and folders can be uploaded.
 - Clicking the upload section opens the picker.
 - Dropping files/folders onto the section uploads them.
+- Dragging files/folders directly into the files list also uploads them into the current folder.
 - Upload progress/state is visible during upload.
 - Upload validation failures are surfaced clearly.
 - Successful uploads refresh the current folder contents without navigating away.
