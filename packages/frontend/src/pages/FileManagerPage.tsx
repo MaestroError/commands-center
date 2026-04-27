@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, FilePlus, FolderPlus, Pencil, RefreshCw, Trash2, Upload } from "lucide-react";
+import {
+  ArrowLeft,
+  FilePlus,
+  FolderPlus,
+  Pencil,
+  RefreshCw,
+  Shield,
+  Trash2,
+  Upload,
+} from "lucide-react";
 
 import type {
   FileManagerNode,
@@ -510,8 +519,12 @@ export function FileManagerPage() {
                             {node.name}
                           </button>
                           {node.isCritical ? (
-                            <span className="shrink-0 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
-                              Critical
+                            <span
+                              aria-label="Critical"
+                              className="shrink-0 rounded-full border border-amber-400/40 bg-amber-500/10 p-0.5 text-amber-700 dark:text-amber-300"
+                              title="Critical"
+                            >
+                              <Shield className="h-3 w-3" />
                             </span>
                           ) : null}
                           {node.isCritical ? null : (

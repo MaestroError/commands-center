@@ -8,16 +8,23 @@ Implement the shared terminal foundation for CommandsCenter, including the dedic
 
 - U0 Frontend Foundation is complete.
 - E3 API and Realtime Foundation is complete.
-- OpenCode remains the terminal engine; CC does not introduce a second PTY backend.
 - For the embedded agent terminal, the direct chat layout from U3 is already in place.
 
 ## Scope
 
+### Dual PTY Backend Architecture
+
+- Implement a `TerminalBackend` interface with methods: `spawn()`, `resize()`, `write()`, `onData()`, `onExit()`.
+- **OpenCode PTY Backend** (default): Proxy to OpenCode's `/pty`, `/pty/:ptyID`, `/pty/:ptyID/connect` endpoints. Use for everyday agent-scoped terminal sessions.
+- **node-pty Backend** (fallback): Native node-pty spawn for root-access terminal when OpenCode is unavailable. Provides full root access when CC is run as root.
+- Support backend selection per session (user chooses in terminal settings) or global default in app settings.
+- Implement auto-fallback: if OpenCode engine is unavailable/unhealthy, automatically use node-pty for new sessions.
+- Expose backend choice in UI: "OpenCode Engine" (default) vs "Direct Terminal (root)".
+
 ### Shared Terminal Foundation
 
 - Build a reusable terminal session UI using `xterm.js`.
-- Integrate with OpenCode PTY session management and connection endpoints.
-- Support session create, attach/connect, input, output, resize, reconnect, and close flows based on the upstream PTY contract.
+- Support session create, attach/connect, input, output, resize, reconnect, and close flows.
 - Support multiple sessions as tabs.
 
 ### Global Terminal Screen
@@ -43,7 +50,6 @@ Implement the shared terminal foundation for CommandsCenter, including the dedic
 
 ## Out of Scope
 
-- Building a separate PTY backend in CC.
 - Shell history sync across sessions.
 - Rich terminal persistence beyond what OpenCode already provides.
 - File-manager editing features.
@@ -57,6 +63,9 @@ Implement the shared terminal foundation for CommandsCenter, including the dedic
 - The embedded agent terminal is closed by default and supports multiple sessions.
 - Terminal output remains usable during high-throughput commands.
 - Mobile layouts preserve the terminal session workflow for both global and agent-scoped terminals.
+- Users can choose between "OpenCode Engine" (default) or "Direct Terminal" backend per session.
+- When OpenCode engine is unavailable, new terminal sessions automatically fall back to node-pty.
+- Running CC as root enables root-access terminal via node-pty.
 
 ## Key Files to Create/Modify
 
@@ -64,9 +73,13 @@ Implement the shared terminal foundation for CommandsCenter, including the dedic
 - `packages/frontend/src/pages/WorkspaceChatPage.tsx` to host the embedded agent terminal surface
 - `packages/frontend/src/components/terminal/` shared terminal session, tab strip, and workspace components
 - `packages/frontend/src/lib/api.ts` PTY session helpers if not already present
-- `packages/backend/src/services/opencode-service.ts` PTY helper methods that proxy to OpenCode's PTY endpoints
+- `packages/backend/src/services/terminal-backend.ts` TerminalBackend interface and factory
+- `packages/backend/src/services/terminal/opencode-pty-backend.ts` OpenCode PTY implementation
+- `packages/backend/src/services/terminal/node-pty-backend.ts` node-pty implementation
+- `packages/backend/src/services/opencode-service.ts` PTY helper methods that proxy to OpenCode's PTY endpoints (for OpenCode backend)
 - `packages/backend/src/routes/` PTY-facing API routes if CC needs a backend facade over OpenCode
 - `packages/shared/src/schemas/` PTY session payload/event schemas as needed
+- `packages/shared/src/types/` TerminalBackend type definitions
 
 ## Reference
 
@@ -76,3 +89,4 @@ Implement the shared terminal foundation for CommandsCenter, including the dedic
 - Agent-terminal product requirements: `GOAL.md`, `PRD.md`
 - Direct chat note deferring terminal until U4: `development/product-ux-surfaces/03-direct-chat-sub-epics/03-rich-display-and-sidebar.md`
 - OpenCode PTY notes from parent epic and upstream PTY endpoints
+- node-pty documentation: https://github.com/microsoft/node-pty
