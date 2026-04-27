@@ -89,6 +89,10 @@ Run after Path A starts stabilizing. Integration epics (I2, I3, I5) and the cust
 
 Result: MCP server management, file browsing/editing, custom tools, workspace skills, Composio integration, global and agent terminals, health visibility, user preferences, theming, and self-updating.
 
+Future enhancement after U4 stabilization:
+
+- `product-ux-surfaces/04-file-manager-and-terminals-sub-epics/08-emergency-local-terminal.md`
+
 ### Path C: Complete the MVP operating loop
 
 Run after agents and direct chat execution are stable.

@@ -20,7 +20,7 @@ await build({
   target: "node22",
   format: "esm",
   outfile: resolve(cliDir, "dist/bin.mjs"),
-  external: ["better-sqlite3", "node-pty", "pino-pretty", "fsevents"],
+  external: ["better-sqlite3", "pino-pretty", "fsevents"],
   banner: {
     js: [
       "import { createRequire as __createRequire } from 'node:module';",

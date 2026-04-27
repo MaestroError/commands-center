@@ -2,6 +2,45 @@ import "@testing-library/jest-dom/vitest";
 
 import { vi } from "vitest";
 
+vi.mock("@xterm/xterm", () => {
+  class MockTerminal {
+    cols = 80;
+    rows = 24;
+
+    loadAddon = vi.fn();
+    open = vi.fn();
+    write = vi.fn();
+    dispose = vi.fn();
+    onData = vi.fn(() => ({ dispose: vi.fn() }));
+  }
+
+  return { Terminal: MockTerminal };
+});
+
+vi.mock("@xterm/addon-fit", () => {
+  class MockFitAddon {
+    fit = vi.fn();
+  }
+
+  return { FitAddon: MockFitAddon };
+});
+
+vi.mock("@xterm/addon-web-links", () => {
+  class MockWebLinksAddon {}
+
+  return { WebLinksAddon: MockWebLinksAddon };
+});
+
+vi.mock("@xterm/addon-serialize", () => {
+  class MockSerializeAddon {
+    serialize = vi.fn(() => "");
+  }
+
+  return { SerializeAddon: MockSerializeAddon };
+});
+
+vi.mock("@xterm/xterm/css/xterm.css", () => ({}));
+
 const storage = new Map<string, string>();
 
 Object.defineProperty(window, "localStorage", {

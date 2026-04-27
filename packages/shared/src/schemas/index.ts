@@ -234,3 +234,21 @@ export {
   type SecretMeta,
   type SetSecretRequest,
 } from "./secrets.js";
+export {
+  terminalBackendTypeSchema,
+  terminalCreateInputSchema,
+  terminalCreateResponseSchema,
+  terminalListResponseSchema,
+  terminalResizeInputSchema,
+  terminalSessionResponseSchema,
+  terminalSessionSchema,
+  type TerminalBackend,
+  type TerminalBackendType,
+  type TerminalCreateInput,
+  type TerminalCreateResponse,
+  type TerminalListResponse,
+  type TerminalResizeInput,
+  type TerminalSession,
+  type TerminalSessionHandle,
+  type TerminalSessionResponse,
+} from "./terminal.js";

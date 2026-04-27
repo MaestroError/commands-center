@@ -21,6 +21,7 @@ import { AgentEditorPage } from "@/pages/AgentEditorPage";
 import { AgentsPage } from "@/pages/AgentsPage";
 import { BuiltInSkillsPage } from "@/pages/BuiltInSkillsPage";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
+import { LazyGlobalTerminalPage } from "@/pages/LazyGlobalTerminalPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { ProviderConnectionsPage } from "@/pages/ProviderConnectionsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
@@ -83,13 +84,7 @@ export const appRoutes = [
     title: "Global Terminal",
     navLabel: "Global Terminal",
     navIcon: <Terminal className="h-4 w-4 shrink-0" />,
-    element: (
-      <GenericPlaceholderPage
-        title="Global Terminal"
-        description="Host-level terminals will live in the bottom work surface without leaving the shared shell."
-        withBottomPane
-      />
-    ),
+    element: <LazyGlobalTerminalPage />,
   },
   {
     path: "/automations",

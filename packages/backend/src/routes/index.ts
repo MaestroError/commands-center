@@ -8,6 +8,7 @@ import { registerHealthRoutes } from "./health.js";
 import { registerMcpServerRoutes } from "./mcp-servers.js";
 import { registerProviderRoutes } from "./providers.js";
 import { registerSecretRoutes } from "./secrets.js";
+import { registerTerminalRoutes } from "./terminal.js";
 
 export function registerApiRoutes(server: AppServer, context: RuntimeContext): void {
   registerHealthRoutes(server, context);
@@ -18,4 +19,5 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerMcpServerRoutes(server, context);
   registerProviderRoutes(server, context);
   registerSecretRoutes(server, context);
+  registerTerminalRoutes(server, context);
 }

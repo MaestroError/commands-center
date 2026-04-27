@@ -22,9 +22,8 @@ This is a complete workspace-interaction feature slice and can ship after the da
 
 - Implement file manager screen with tree, breadcrumbs, editor, and create/rename/delete flows
 - Implement critical-file warnings for agent-sensitive files
-- Implement global terminal screen with dual PTY backend: OpenCode PTY (default) and node-pty (fallback/root access)
+- Implement global terminal screen backed by OpenCode PTY sessions
 - Reuse OpenCode PTY session model for chat-embedded agent terminals, with workspace directory passed per agent
-- node-pty provides root-access terminal when OpenCode is unavailable or when user explicitly chooses "Direct Terminal"
 - Support opening files and folders from chat sidebar into file manager or terminal context
 - Ensure file manager and terminal screens are responsive on mobile viewports
 
@@ -45,13 +44,11 @@ This is a complete workspace-interaction feature slice and can ship after the da
 - Unsupported or non-text files should still be openable in the file manager, but may fall back to read-only metadata/preview behavior instead of full editing.
 - Terminal work should reuse one shared terminal UI foundation across the global terminal page and the chat-embedded agent terminal.
 - The chat-embedded agent terminal remains part of U4 even though it does not yet have its own dedicated design screen; its behavior should follow `GOAL.md` and `PRD.md`: bottom-docked, closed by default, multi-session capable, and scoped to the current agent workspace.
+- Local machine or emergency terminal access is intentionally deferred into a separate future enhancement so the main terminal experience can stay aligned with OpenCode PTY semantics.
 
 ## OpenCode Findings
 
 - OpenCode already exposes PTY session management routes (`/pty`, `/pty/:ptyID`, `/pty/:ptyID/connect`) and uses them in its own app for terminal support
-- CommandsCenter treats OpenCode as the primary terminal engine (like chat), but adds node-pty as a secondary backend for:
-  - Emergency fallback when OpenCode is unavailable (e.g., troubleshooting OpenCode crashes)
-  - Root-access terminal when user runs CC as root
 - Terminal-specific reconnect, cursor replay, and resize behavior should follow the upstream PTY contract so we stay aligned with OpenCode semantics
 - If upstream PTY throughput needs additional smoothing in the UI, prefer frontend-side buffering/render strategies first; avoid forking backend PTY transport unless OpenCode proves insufficient
 
@@ -61,8 +58,6 @@ This is a complete workspace-interaction feature slice and can ship after the da
 - The user can browse the wider machine filesystem where allowed by the app model
 - The user can open a global terminal and run interactive commands
 - Terminal output renders smoothly during high-throughput operations without UI freezing while using OpenCode's PTY transport
-- The user can choose between OpenCode PTY (default) or node-pty (root access) backend per session
-- When OpenCode is unavailable, terminal automatically falls back to node-pty so users can troubleshoot
 - The user can open an agent terminal in workspace context and maintain multiple sessions
 - File manager and terminal flows interoperate with direct chat entry points
 - File manager and terminal layouts adapt correctly to mobile viewports

@@ -41,7 +41,7 @@
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "esbuild",
-      "node-pty"
+      "fsevents"
     ]
   },
   "lint-staged": {
