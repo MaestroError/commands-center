@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 
 import { useGlobalTerminalController } from "@/hooks/use-global-terminal-controller";
 
@@ -8,8 +8,21 @@ const GlobalTerminalSurface = lazy(() =>
   })),
 );
 
-export function WorkspaceTerminalPane() {
-  const { controller, loadError } = useGlobalTerminalController();
+export function WorkspaceTerminalPane(props: { defaultCwd?: string }) {
+  const { controller, loadError, didHydrate, initialSessionCount } = useGlobalTerminalController({
+    defaultCwd: props.defaultCwd,
+  });
+  const { create, isLoading } = controller;
+  const didAutoCreateRef = useRef(false);
+
+  useEffect(() => {
+    if (!didHydrate || isLoading || initialSessionCount > 0 || didAutoCreateRef.current) {
+      return;
+    }
+
+    didAutoCreateRef.current = true;
+    void create();
+  }, [create, didHydrate, initialSessionCount, isLoading]);
 
   return (
     <Suspense

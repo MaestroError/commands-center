@@ -213,3 +213,7 @@ textarea {
 .cc-eyebrow {
   @apply text-xs font-semibold uppercase tracking-[0.24em] text-accent;
 }
+
+.terminal.xterm {
+  padding: 4px;
+}

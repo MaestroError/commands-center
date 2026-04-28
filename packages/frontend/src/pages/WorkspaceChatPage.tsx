@@ -151,7 +151,7 @@ export function WorkspaceChatPage() {
                           </div>
                         }
                       >
-                        <WorkspaceTerminalPane />
+                        <WorkspaceTerminalPane defaultCwd={conv.agent?.workspacePath} />
                       </Suspense>
                     ),
                   },
@@ -161,6 +161,7 @@ export function WorkspaceChatPage() {
                 maxHeight: Math.round(window.innerHeight * 0.7),
                 open: terminalOpen,
                 onOpenChange: setTerminalOpen,
+                compactHeader: true,
               }
             : undefined
         }

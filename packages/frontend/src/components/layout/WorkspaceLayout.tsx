@@ -32,6 +32,7 @@ type WorkspaceLayoutProps = {
     maxHeight?: number;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
+    compactHeader?: boolean;
   };
 };
 
@@ -84,6 +85,14 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
 
     setBottomHeight(props.bottomPane.defaultHeight);
   }, [props.bottomPane?.defaultHeight]);
+
+  useEffect(() => {
+    if (!props.bottomPane) {
+      return;
+    }
+
+    setActiveBottomTab(props.bottomPane.defaultTabId ?? bottomTabs[0]?.id);
+  }, [bottomTabs, props.bottomPane, props.bottomPane?.defaultTabId]);
 
   const activeContextContent = useMemo(
     () => contextTabs.find((tab) => tab.id === activeContextTab)?.content,
@@ -178,7 +187,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                   }}
                   tabs={contextTabs}
                 />
-                <div className="min-h-0 flex-1 overflow-auto p-4">{activeContextContent}</div>
+                <div className="min-h-0 flex-1 overflow-auto p-2">{activeContextContent}</div>
               </aside>
               {contextCollapsed ? (
                 <button
@@ -210,7 +219,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
             {!bottomCollapsed ? (
               <div
                 aria-hidden="true"
-                className="hidden h-1.5 cursor-row-resize rounded-full bg-border/70 transition hover:bg-accent lg:block"
+                className="hidden h-[3px] cursor-row-resize rounded-full bg-border/70 transition hover:bg-accent lg:block"
                 onPointerDown={(event) =>
                   startDrag(
                     event,
@@ -229,20 +238,56 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                 data-testid="bottom-pane"
                 style={{ height: `${String(bottomHeight)}px` }}
               >
-                <PaneHeader
-                  title={props.bottomPane.title}
-                  onToggle={() => {
-                    setBottomCollapsed(true);
-                    props.bottomPane?.onOpenChange?.(false);
-                  }}
-                  toggleLabel="Collapse bottom pane"
-                />
-                <TabBar
-                  activeTabId={activeBottomTab}
-                  onTabChange={setActiveBottomTab}
-                  tabs={bottomTabs}
-                />
-                <div className="min-h-0 flex-1 overflow-auto p-4">{activeBottomContent}</div>
+                {props.bottomPane.compactHeader ? (
+                  <div className="flex items-center border-b border-border">
+                    <button
+                      aria-label="Collapse bottom pane"
+                      className="ml-3 flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
+                      onClick={() => {
+                        setBottomCollapsed(true);
+                        props.bottomPane?.onOpenChange?.(false);
+                      }}
+                      type="button"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <TabBar
+                        activeTabId={activeBottomTab}
+                        onTabChange={setActiveBottomTab}
+                        tabs={bottomTabs}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <PaneHeader
+                      title={props.bottomPane.title}
+                      onToggle={() => {
+                        setBottomCollapsed(true);
+                        props.bottomPane?.onOpenChange?.(false);
+                      }}
+                      toggleLabel="Collapse bottom pane"
+                    />
+                    <TabBar
+                      activeTabId={activeBottomTab}
+                      onTabChange={setActiveBottomTab}
+                      tabs={bottomTabs}
+                    />
+                  </>
+                )}
+                <div className="min-h-0 flex-1 overflow-auto p-0">{activeBottomContent}</div>
               </section>
             ) : (
               <button

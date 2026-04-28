@@ -29,6 +29,10 @@ function getTerminalBufferSnapshotKey(sessionId: string) {
   return `cc.global-terminal.buffer.${sessionId}`;
 }
 
+function stripTerminalControlFrames(text: string) {
+  return text.replace(/\{\s*"cursor"\s*:\s*\d+\s*\}/g, "");
+}
+
 export function TerminalInstance(props: Props) {
   const { session, onResize, onExit } = props;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -87,7 +91,12 @@ export function TerminalInstance(props: Props) {
     };
 
     const queueOutput = (terminal: XTermInstance, data: string) => {
-      pendingOutput.push(data);
+      const sanitized = stripTerminalControlFrames(data);
+      if (!sanitized) {
+        return;
+      }
+
+      pendingOutput.push(sanitized);
       if (outputFlushTimeout !== null) {
         return;
       }
@@ -410,9 +419,10 @@ export function TerminalInstance(props: Props) {
 
   return (
     <div
-      ref={containerRef}
-      className="h-full w-full overflow-hidden bg-surface-elevated p-2"
+      className="h-full w-full overflow-hidden bg-surface-elevated"
       data-testid={`terminal-instance-${session.id}`}
-    />
+    >
+      <div ref={containerRef} className="h-full w-full overflow-hidden" />
+    </div>
   );
 }

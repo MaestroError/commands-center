@@ -69,8 +69,8 @@ vi.mock("@/components/chat/ChatHeader", () => ({
 }));
 
 vi.mock("@/components/chat/WorkspaceTerminalPane", () => ({
-  WorkspaceTerminalPane: () => (
-    <div data-testid="workspace-terminal-pane">WorkspaceTerminalPane</div>
+  WorkspaceTerminalPane: ({ defaultCwd }: { defaultCwd?: string }) => (
+    <div data-testid="workspace-terminal-pane">WorkspaceTerminalPane:{defaultCwd ?? ""}</div>
   ),
 }));
 
@@ -132,6 +132,7 @@ function makeConversation(overrides: Record<string, unknown> = {}) {
       slug: "planner",
       name: "Planner",
       role: "Plans work",
+      workspacePath: "/workspace/planner",
       capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
     },
     agentStatus: "idle",
@@ -345,6 +346,9 @@ describe("WorkspaceChatPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("workspace-terminal-pane")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("workspace-terminal-pane")).toHaveTextContent(
+      "WorkspaceTerminalPane:/workspace/planner",
+    );
 
     await user.click(screen.getByTestId("chat-terminal-toggle"));
 
