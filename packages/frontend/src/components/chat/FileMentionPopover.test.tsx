@@ -5,7 +5,7 @@ import { FileMentionPopover } from "./FileMentionPopover";
 import * as api from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
-  searchWorkspaceFiles: vi.fn(),
+  searchAgentWorkspaceFiles: vi.fn(),
 }));
 
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
@@ -30,7 +30,7 @@ afterAll(() => {
 
 describe("FileMentionPopover", () => {
   it("loads file-name search results from the agent workspace", async () => {
-    vi.mocked(api.searchWorkspaceFiles).mockResolvedValueOnce(["README.md", "src/index.ts"]);
+    vi.mocked(api.searchAgentWorkspaceFiles).mockResolvedValueOnce(["README.md", "src/index.ts"]);
 
     render(
       <FileMentionPopover
@@ -44,11 +44,11 @@ describe("FileMentionPopover", () => {
 
     expect(await screen.findByRole("button", { name: /README\.md/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /src\/index\.ts/i })).toBeInTheDocument();
-    expect(api.searchWorkspaceFiles).toHaveBeenCalledWith("agent-1", "read");
+    expect(api.searchAgentWorkspaceFiles).toHaveBeenCalledWith("agent-1", "read");
   });
 
   it("selects the active result when Enter is pressed", async () => {
-    vi.mocked(api.searchWorkspaceFiles).mockResolvedValueOnce(["README.md", "src/index.ts"]);
+    vi.mocked(api.searchAgentWorkspaceFiles).mockResolvedValueOnce(["README.md", "src/index.ts"]);
     const onSelect = vi.fn();
     const onKeyDown = vi.fn();
 
