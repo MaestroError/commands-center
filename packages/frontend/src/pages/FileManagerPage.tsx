@@ -66,6 +66,13 @@ export function FileManagerPage() {
   }>({ status: "idle" });
   const folderInputRef = useRef<HTMLInputElement>(null);
   const tabsController = useEditorTabs();
+  const rootRef = useRef(root);
+  const currentPathRef = useRef(currentPath);
+  const selectedPathRef = useRef(selectedPath);
+
+  rootRef.current = root;
+  currentPathRef.current = currentPath;
+  selectedPathRef.current = selectedPath;
 
   const dropzone = useDropzone({
     noClick: true,
@@ -124,6 +131,24 @@ export function FileManagerPage() {
     };
   }, [currentPath, root]);
 
+  useEffect(() => {
+    const nextRoot = getInitialRoot(searchParams);
+    const nextPath = searchParams.get("path") ?? ".";
+    const nextSelectedPath = searchParams.get("select") ?? "";
+
+    if (nextRoot !== rootRef.current) {
+      setRoot(nextRoot);
+    }
+
+    if (nextPath !== currentPathRef.current) {
+      setCurrentPath(nextPath);
+    }
+
+    if (nextSelectedPath !== selectedPathRef.current) {
+      setSelectedPath(nextSelectedPath);
+    }
+  }, [searchParams]);
+
   const selectedNode = useMemo(
     () => data?.nodes.find((node) => node.path === selectedPath),
     [data?.nodes, selectedPath],
@@ -131,6 +156,11 @@ export function FileManagerPage() {
   const breadcrumbs = useMemo(() => buildBreadcrumbs(currentPath), [currentPath]);
   const visibleBreadcrumbs = useMemo(() => collapseBreadcrumbs(breadcrumbs), [breadcrumbs]);
   const parentPath = useMemo(() => getParentPath(currentPath), [currentPath]);
+  const selectedRowRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    selectedRowRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [selectedPath, data?.currentPath]);
 
   async function handleCreate(type: "file" | "directory") {
     const name = createValue.trim();
@@ -479,6 +509,7 @@ export function FileManagerPage() {
                               : "flex items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1"
                           }
                           key={node.path}
+                          ref={isSelected ? selectedRowRef : null}
                           onClick={() => setSelectedPath(node.path)}
                           onDoubleClick={() => {
                             openNode(node);

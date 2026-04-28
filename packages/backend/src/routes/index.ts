@@ -7,6 +7,7 @@ import { registerFileManagerRoutes } from "./file-manager.js";
 import { registerHealthRoutes } from "./health.js";
 import { registerMcpServerRoutes } from "./mcp-servers.js";
 import { registerProviderRoutes } from "./providers.js";
+import { registerSearchRoutes } from "./search.js";
 import { registerSecretRoutes } from "./secrets.js";
 import { registerTerminalRoutes } from "./terminal.js";
 
@@ -16,6 +17,7 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerConversationRoutes(server, context);
   registerConversationEventRoutes(server, context);
   registerFileManagerRoutes(server, context);
+  registerSearchRoutes(server, context);
   registerMcpServerRoutes(server, context);
   registerProviderRoutes(server, context);
   registerSecretRoutes(server, context);

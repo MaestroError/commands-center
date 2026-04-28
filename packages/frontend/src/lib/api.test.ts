@@ -4,6 +4,7 @@ import {
   connectConversationEvents,
   deleteConversation,
   readApiError,
+  searchWorkspaceFiles,
   sendCommand,
   summarizeConversation,
 } from "./api";
@@ -129,6 +130,34 @@ describe("sendCommand", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ command: "compact", arguments: "" }),
+    });
+  });
+});
+
+describe("searchWorkspaceFiles", () => {
+  it("requests the global workspace file search endpoint", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          nameMatches: [{ path: "src/index.ts" }],
+          contentMatches: [{ path: "README.md", lineNumber: 3, lineText: "hello world" }],
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+
+    await expect(searchWorkspaceFiles("index")).resolves.toEqual({
+      nameMatches: [{ path: "src/index.ts" }],
+      contentMatches: [{ path: "README.md", lineNumber: 3, lineText: "hello world" }],
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/search/files?query=index", {
+      method: "GET",
+      headers: undefined,
+      body: undefined,
     });
   });
 });

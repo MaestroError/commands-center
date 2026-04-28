@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronLeft, Menu } from "lucide-react";
+import { ChevronLeft, Menu, Search } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
+import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useEngineStatusQuery } from "@/hooks/use-engine-status-query";
 import { useTheme } from "@/context/use-theme";
@@ -24,6 +25,7 @@ export function AppShell() {
   const { theme, themes, setTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
   const recentAgents = readRecentAgents();
   const engineQuery = useEngineStatusQuery();
   const engineState = engineQuery.data?.state;
@@ -34,7 +36,37 @@ export function AppShell() {
 
   useEffect(() => {
     setMobileSidebarOpen(false);
+    setSearchPaletteOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) {
+        return;
+      }
+
+      if (event.key.toLowerCase() !== "f") {
+        return;
+      }
+
+      const target = event.target;
+      const isTypingTarget =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+
+      if (isTypingTarget) {
+        return;
+      }
+
+      event.preventDefault();
+      setSearchPaletteOpen(true);
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return (
     <div className="min-h-screen bg-app-bg text-text-primary">
@@ -104,6 +136,18 @@ export function AppShell() {
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  aria-label="Open global search"
+                  className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
+                  onClick={() => setSearchPaletteOpen(true)}
+                  type="button"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Search</span>
+                  <kbd className="hidden rounded border border-border px-1.5 py-0.5 text-[10px] text-text-secondary lg:inline-block">
+                    cmd+Shift+F
+                  </kbd>
+                </button>
+                <button
                   className="hidden rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary sm:inline-flex"
                   onClick={() => {
                     const idx = themes.indexOf(theme ?? themes[0] ?? "dark");
@@ -127,6 +171,7 @@ export function AppShell() {
           </main>
         </div>
       </div>
+      <GlobalSearchPalette onClose={() => setSearchPaletteOpen(false)} open={searchPaletteOpen} />
     </div>
   );
 }

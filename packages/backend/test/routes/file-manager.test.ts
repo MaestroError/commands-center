@@ -160,6 +160,57 @@ describe("file manager routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("searches workspace files by path and content through the global facade", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    vi.mocked(opencodeService.findFiles).mockResolvedValue(["src/index.ts", "docs/README.md"]);
+    vi.mocked(opencodeService.findText).mockResolvedValue([
+      {
+        path: { text: "README.md" },
+        lines: { text: "plan the release" },
+        line_number: 7,
+        absolute_offset: 0,
+        submatches: [],
+      },
+    ]);
+
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService,
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/search/files?query=plan",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        nameMatches: [{ path: "src/index.ts" }, { path: "docs/README.md" }],
+        contentMatches: [{ path: "README.md", lineNumber: 7, lineText: "plan the release" }],
+      });
+      expect(opencodeService.findFiles).toHaveBeenCalledWith(testDb.config.paths.workspaceDir, {
+        query: "plan",
+        type: "file",
+        limit: 20,
+      });
+      expect(opencodeService.findText).toHaveBeenCalledWith(
+        testDb.config.paths.workspaceDir,
+        "plan",
+      );
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 function createOrchestrator(): OpenCodeOrchestrator {

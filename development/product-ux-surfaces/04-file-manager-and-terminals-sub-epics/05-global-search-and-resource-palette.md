@@ -1,4 +1,4 @@
-# U4.5 Global Search and Resource Palette
+# U4.5 Global Search and Resource Palette✅
 
 ## Goal
 

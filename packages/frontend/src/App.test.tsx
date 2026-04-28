@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -72,6 +72,70 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Open navigation" }));
 
     expect(screen.getByRole("link", { name: "Integrations" })).toBeInTheDocument();
+  });
+
+  it("opens global search from the keyboard shortcut and searches agents and files", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (typeof input !== "string") {
+        return Promise.reject(new Error("Unexpected fetch input."));
+      }
+
+      if (input === "/api/opencode") {
+        return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/agents") {
+        return Promise.resolve(
+          jsonResponse(200, [
+            {
+              id: "agent-1",
+              slug: "planner",
+              name: "Planner",
+              role: "Plans work",
+              instructions: "Plan work.",
+              defaultModel: "openai/gpt-4.1",
+              workspacePath: "/tmp/planner",
+              status: "active",
+              capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ]),
+        );
+      }
+
+      if (input === "/api/search/files?query=plan") {
+        return Promise.resolve(
+          jsonResponse(200, {
+            nameMatches: [{ path: "docs/planning.md" }],
+            contentMatches: [],
+          }),
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${input}`));
+    });
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: "F", metaKey: true, shiftKey: true });
+
+    const input = await screen.findByRole("textbox", { name: "Search resources" });
+    expect(screen.getByRole("dialog", { name: "Global search" })).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.type(input, "plan");
+
+    await screen.findByText("Planner");
+    await screen.findByText((_, element) => element?.textContent === "docs/planning.md");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/agents",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/search/files?query=plan",
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 
   it("shows up to three recent agents in the expanded agents section", () => {

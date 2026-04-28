@@ -185,6 +185,16 @@ export {
   type TodoUpdatedEvent,
 } from "./chat-events.js";
 export {
+  globalSearchFileContentMatchSchema,
+  globalSearchFileNameMatchSchema,
+  globalSearchQuerySchema,
+  globalSearchWorkspaceFilesResponseSchema,
+  type GlobalSearchFileContentMatch,
+  type GlobalSearchFileNameMatch,
+  type GlobalSearchQuery,
+  type GlobalSearchWorkspaceFilesResponse,
+} from "./global-search.js";
+export {
   databaseStatusSchema,
   engineStateSchema,
   engineStatusSchema,

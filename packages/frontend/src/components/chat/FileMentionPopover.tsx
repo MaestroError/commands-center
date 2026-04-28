@@ -35,7 +35,7 @@ export function FileMentionPopover({
           return [];
         }
         try {
-          const files = await api.searchWorkspaceFiles(agentId, q);
+          const files = await api.searchAgentWorkspaceFiles(agentId, q);
           return files.map((path) => ({ path, display: path }));
         } catch {
           return [];

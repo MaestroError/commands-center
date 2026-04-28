@@ -262,6 +262,28 @@ export function useEditorTabs(): UseEditorTabs {
   stateRef.current = state;
 
   useEffect(() => {
+    const routeTabs = parseTabsParam(searchParams.get(TABS_PARAM));
+    const routeActive = parseActiveParam(
+      searchParams.get(ACTIVE_TAB_PARAM),
+      searchParams.get(TABS_PARAM),
+    );
+    const routeSerialized = serializeTabsParam(routeTabs);
+    const stateSerialized = serializeTabsParam(stateRef.current.tabs);
+
+    if (routeSerialized === stateSerialized && routeActive === stateRef.current.activeKey) {
+      return;
+    }
+
+    dispatch({
+      type: "seed",
+      tabs: routeTabs.map(
+        (routeTab) => stateRef.current.tabs.find((tab) => tab.key === routeTab.key) ?? routeTab,
+      ),
+      activeKey: routeActive,
+    });
+  }, [searchParams]);
+
+  useEffect(() => {
     const next = new URLSearchParams(searchParams);
     const serialized = serializeTabsParam(state.tabs);
     if (serialized) {

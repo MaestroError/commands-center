@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { BrowserRouter, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FileManagerPage } from "./FileManagerPage";
@@ -56,8 +56,9 @@ describe("FileManagerPage", () => {
   beforeEach(() => {
     confirmSpy.mockReset();
     confirmSpy.mockReturnValue(true);
-    Object.assign(navigator, {
-      clipboard: {
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: {
         writeText: writeTextSpy,
       },
     });
@@ -66,6 +67,7 @@ describe("FileManagerPage", () => {
     vi.mocked(deleteFileManagerEntry).mockReset();
     vi.mocked(renameFileManagerEntry).mockReset();
     vi.mocked(listFileManagerNodes).mockReset();
+    vi.mocked(getFileManagerFileContent).mockReset();
     vi.mocked(listFileManagerNodes).mockImplementation(({ path }) =>
       Promise.resolve({
         root: "workspace",
@@ -117,6 +119,19 @@ describe("FileManagerPage", () => {
                     "This file stores workspace-level OpenCode configuration managed by CommandsCenter.",
                 },
               ],
+      }),
+    );
+    vi.mocked(getFileManagerFileContent).mockImplementation(({ root, path }) =>
+      Promise.resolve({
+        root,
+        path,
+        absolutePath: `/abs/${path}`,
+        name: path,
+        kind: "text",
+        content: `// ${path}`,
+        revision: { mtimeMs: 1, sizeBytes: 32, sha256: "a".repeat(64) },
+        isWritable: true,
+        mimeType: "text/plain",
       }),
     );
     vi.mocked(createFileManagerEntry).mockResolvedValue({ path: "src/new-file.ts" });
@@ -357,6 +372,38 @@ describe("FileManagerPage", () => {
     expect(within(criticalRow!).queryByLabelText("Delete")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Rename file/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Delete file/i })).not.toBeInTheDocument();
+  });
+
+  it("reacts to same-route search param handoffs for file reveal and editor opening", async () => {
+    window.history.replaceState({}, "", "/files?root=workspace");
+
+    render(
+      <BrowserRouter>
+        <Routes>
+          <Route element={<FileManagerPage />} path="/files" />
+        </Routes>
+      </BrowserRouter>,
+    );
+
+    await screen.findAllByText("AGENTS.md");
+
+    act(() => {
+      window.history.pushState(
+        {},
+        "",
+        "/files?root=workspace&path=src&select=src%2Findex.ts&tabs=workspace:src%252Findex.ts&active=workspace:src/index.ts",
+      );
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    await waitFor(() => {
+      expect(listFileManagerNodes).toHaveBeenLastCalledWith({
+        root: "workspace",
+        path: "src",
+      });
+    });
+    expect(screen.getByTestId("file-row-src/index.ts")).toHaveAttribute("aria-pressed", "true");
+    await screen.findByTestId("editor-tab-workspace:src/index.ts");
   });
 });
 

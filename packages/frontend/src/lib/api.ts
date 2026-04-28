@@ -24,6 +24,8 @@ import {
   fileManagerUploadInputSchema,
   fileManagerUploadResponseSchema,
   fileManagerUpdatePreferencesInputSchema,
+  globalSearchQuerySchema,
+  globalSearchWorkspaceFilesResponseSchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
   mcpServerListSchema,
@@ -65,6 +67,7 @@ import {
   type FileManagerUploadInput,
   type FileManagerUploadResponse,
   type FileManagerUpdatePreferencesInput,
+  type GlobalSearchWorkspaceFilesResponse,
   type McpAuthRemoveResult,
   type McpAuthStartResult,
   type McpServer,
@@ -209,6 +212,19 @@ export async function deleteSecret(key: string): Promise<void> {
 
 export async function listAgents(): Promise<Agent[]> {
   return requestJson<Agent[]>("/api/agents", agentListSchema);
+}
+
+export async function searchWorkspaceFiles(
+  query: string,
+): Promise<GlobalSearchWorkspaceFilesResponse> {
+  const parsed = globalSearchQuerySchema.parse({ query });
+  const params = new URLSearchParams();
+  params.set("query", parsed.query);
+
+  return requestJson<GlobalSearchWorkspaceFilesResponse>(
+    `/api/search/files?${params.toString()}`,
+    globalSearchWorkspaceFilesResponseSchema,
+  );
 }
 
 export async function getAgentBySlug(slug: string): Promise<Agent> {
@@ -650,7 +666,7 @@ export async function summarizeConversation(conversationId: string): Promise<voi
   }
 }
 
-export async function searchWorkspaceFiles(agentId: string, query: string): Promise<string[]> {
+export async function searchAgentWorkspaceFiles(agentId: string, query: string): Promise<string[]> {
   return requestJson<string[]>(
     `/api/agents/${encodeURIComponent(agentId)}/workspace/find/file?query=${encodeURIComponent(query)}`,
     opencodeFileSearchResultSchema,

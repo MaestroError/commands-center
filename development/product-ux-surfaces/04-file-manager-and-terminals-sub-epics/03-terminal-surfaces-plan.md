@@ -1,4 +1,4 @@
-# U4.3 Terminal Surfaces - Implementation Plan
+# U4.3 Terminal Surfaces - Implementation Plan✅
 
 ## Overview
 
