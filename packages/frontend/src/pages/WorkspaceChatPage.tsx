@@ -111,7 +111,9 @@ export function WorkspaceChatPage() {
             {
               id: "files",
               label: "Files",
-              content: <WorkspaceFilesTab agentId={conv.agent?.id ?? ""} />,
+              content: (
+                <WorkspaceFilesTab agentId={conv.agent?.id ?? ""} agentSlug={agentSlug ?? ""} />
+              ),
             },
             {
               id: "media",

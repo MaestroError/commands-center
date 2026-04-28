@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspaceFilesTab } from "./WorkspaceFilesTab";
@@ -27,7 +28,7 @@ describe("WorkspaceFilesTab", () => {
   it("shows loading state while the initial fetch is in progress", () => {
     vi.mocked(api.getWorkspaceTree).mockReturnValue(new Promise(() => {}));
 
-    render(<WorkspaceFilesTab agentId="agent-1" />);
+    renderWithRouter();
 
     expect(screen.getByText("Loading files...")).toBeInTheDocument();
   });
@@ -35,7 +36,7 @@ describe("WorkspaceFilesTab", () => {
   it("shows error state when the initial fetch fails", async () => {
     vi.mocked(api.getWorkspaceTree).mockRejectedValueOnce(new Error("Failed root load"));
 
-    render(<WorkspaceFilesTab agentId="agent-1" />);
+    renderWithRouter();
 
     expect(await screen.findByText("Failed root load")).toBeInTheDocument();
   });
@@ -43,7 +44,7 @@ describe("WorkspaceFilesTab", () => {
   it("shows empty state when the root returns no nodes", async () => {
     vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce([]);
 
-    render(<WorkspaceFilesTab agentId="agent-1" />);
+    renderWithRouter();
 
     expect(await screen.findByText("No files in workspace")).toBeInTheDocument();
   });
@@ -51,22 +52,22 @@ describe("WorkspaceFilesTab", () => {
   it("renders file and directory nodes from the API response", async () => {
     vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce(rootNodes);
 
-    render(<WorkspaceFilesTab agentId="agent-1" />);
+    renderWithRouter();
 
-    expect(await screen.findByRole("button", { name: /src/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /README.md/i })).toBeInTheDocument();
+    expect(await screen.findByText("src")).toBeInTheDocument();
+    expect(screen.getByText("README.md")).toBeInTheDocument();
   });
 
   it("highlights a file node when it is clicked", async () => {
     vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce(rootNodes);
     const user = userEvent.setup();
 
-    render(<WorkspaceFilesTab agentId="agent-1" />);
+    renderWithRouter();
 
-    const fileButton = await screen.findByRole("button", { name: /README.md/i });
+    const fileButton = await screen.findByRole("button", { name: /^README.md$/i });
     await user.click(fileButton);
 
-    expect(fileButton.className).toContain("text-accent");
+    expect(fileButton.parentElement?.className).toContain("text-accent");
   });
 
   it("clicking a directory triggers a child getWorkspaceTree call", async () => {
@@ -75,14 +76,14 @@ describe("WorkspaceFilesTab", () => {
       .mockResolvedValueOnce(srcChildren);
     const user = userEvent.setup();
 
-    render(<WorkspaceFilesTab agentId="agent-1" />);
+    renderWithRouter();
 
-    await user.click(await screen.findByRole("button", { name: /src/i }));
+    await user.click(getNodeButton(await screen.findByText("src")));
 
     await waitFor(() => {
       expect(api.getWorkspaceTree).toHaveBeenNthCalledWith(2, "agent-1", "src");
     });
-    expect(await screen.findByRole("button", { name: /index.ts/i })).toBeInTheDocument();
+    expect(await screen.findByText("index.ts")).toBeInTheDocument();
   });
 
   it("does not re-fetch when expanding the same directory a second time", async () => {
@@ -91,11 +92,11 @@ describe("WorkspaceFilesTab", () => {
       .mockResolvedValueOnce(srcChildren);
     const user = userEvent.setup();
 
-    render(<WorkspaceFilesTab agentId="agent-1" />);
+    renderWithRouter();
 
-    const dirButton = await screen.findByRole("button", { name: /src/i });
+    const dirButton = getNodeButton(await screen.findByText("src"));
     await user.click(dirButton);
-    await screen.findByRole("button", { name: /index.ts/i });
+    await screen.findByText("index.ts");
     await user.click(dirButton);
     await user.click(dirButton);
 
@@ -108,16 +109,59 @@ describe("WorkspaceFilesTab", () => {
       .mockResolvedValueOnce(srcChildren);
     const user = userEvent.setup();
 
-    render(<WorkspaceFilesTab agentId="agent-1" />);
+    renderWithRouter();
 
-    const dirButton = await screen.findByRole("button", { name: /src/i });
+    const dirButton = getNodeButton(await screen.findByText("src"));
     await user.click(dirButton);
-    expect(await screen.findByRole("button", { name: /index.ts/i })).toBeInTheDocument();
+    expect(await screen.findByText("index.ts")).toBeInTheDocument();
 
     await user.click(dirButton);
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /index.ts/i })).not.toBeInTheDocument();
+      expect(screen.queryByText("index.ts")).not.toBeInTheDocument();
+    });
+  });
+
+  it("routes the location button to the file manager reveal view", async () => {
+    vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce(rootNodes);
+    const user = userEvent.setup();
+
+    renderWithRouter();
+
+    await user.click(await screen.findByRole("button", { name: "Show README.md in file manager" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location-probe")).toHaveTextContent(
+        "/files?root=workspace&path=agents%2Ftesting-agent&select=agents%2Ftesting-agent%2FREADME.md",
+      );
     });
   });
 });
+
+function renderWithRouter() {
+  return render(
+    <MemoryRouter initialEntries={["/chat/agent-1/conversation-1"]}>
+      <Routes>
+        <Route
+          element={
+            <>
+              <WorkspaceFilesTab agentId="agent-1" agentSlug="testing-agent" />
+              <LocationProbe />
+            </>
+          }
+          path="*"
+        />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+function LocationProbe() {
+  const location = useLocation();
+
+  return <div data-testid="location-probe">{`${location.pathname}${location.search}`}</div>;
+}
+
+function getNodeButton(label: HTMLElement) {
+  return label.closest("button") as HTMLButtonElement;
+}

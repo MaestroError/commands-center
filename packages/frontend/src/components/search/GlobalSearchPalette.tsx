@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { Agent, GlobalSearchWorkspaceFilesResponse } from "@cc/shared/schemas";
 
 import { listAgents, searchWorkspaceFiles } from "@/lib/api";
-import { makeTabKey, parseTabsParam, serializeTabsParam } from "@/hooks/use-editor-tabs";
+import { buildFileManagerHref } from "@/lib/file-manager-href";
 import { queryKeys } from "@/lib/query-keys";
 
 type GlobalSearchPaletteProps = {
@@ -293,13 +293,22 @@ function buildFileResults(props: {
     .map((entry) => {
       const openPreview = () => {
         void props.navigate(
-          buildFileManagerHref(entry.path, props.currentPathname, props.locationSearch, true),
+          buildFileManagerHref({
+            path: entry.path,
+            currentPathname: props.currentPathname,
+            currentSearch: props.locationSearch,
+            openInEditor: true,
+          }),
         );
         props.onClose();
       };
       const showLocation = () => {
         void props.navigate(
-          buildFileManagerHref(entry.path, props.currentPathname, props.locationSearch, false),
+          buildFileManagerHref({
+            path: entry.path,
+            currentPathname: props.currentPathname,
+            currentSearch: props.locationSearch,
+          }),
         );
         props.onClose();
       };
@@ -361,50 +370,4 @@ function highlightMatch(value: string, query: string): React.ReactNode {
       {after}
     </>
   );
-}
-
-function buildFileManagerHref(
-  path: string,
-  currentPathname: string,
-  currentSearch: string,
-  openInEditor: boolean,
-): string {
-  const params = new URLSearchParams(currentPathname === "/files" ? currentSearch : "");
-  params.set("root", "workspace");
-  params.set("path", dirname(path));
-  params.set("select", path);
-
-  if (openInEditor) {
-    const existingTabs = parseTabsParam(params.get("tabs"));
-    const key = makeTabKey("workspace", path);
-    const nextTabs = existingTabs.some((tab) => tab.key === key)
-      ? existingTabs
-      : [
-          ...existingTabs,
-          {
-            key,
-            root: "workspace" as const,
-            path,
-            name: basename(path),
-            loading: false,
-            dirty: false,
-          },
-        ];
-
-    params.set("tabs", serializeTabsParam(nextTabs));
-    params.set("active", key);
-  }
-
-  return `/files?${params.toString()}`;
-}
-
-function dirname(path: string): string {
-  const segments = path.split("/");
-  segments.pop();
-  return segments.length === 0 ? "." : segments.join("/");
-}
-
-function basename(path: string): string {
-  const segments = path.split("/").filter(Boolean);
-  return segments[segments.length - 1] ?? path;
 }
