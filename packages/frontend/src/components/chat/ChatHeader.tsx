@@ -11,6 +11,9 @@ type ChatHeaderProps = {
   onSelectConversation: (id: string) => void;
   terminalOpen?: boolean;
   onToggleTerminal?: () => void;
+  quickEditorOpen?: boolean;
+  quickEditorAvailable?: boolean;
+  onToggleQuickEditor?: () => void;
 };
 
 export function ChatHeader({
@@ -22,6 +25,9 @@ export function ChatHeader({
   onSelectConversation,
   terminalOpen = false,
   onToggleTerminal,
+  quickEditorOpen = false,
+  quickEditorAvailable = false,
+  onToggleQuickEditor,
 }: ChatHeaderProps) {
   const [showHistory, setShowHistory] = useState(false);
 
@@ -50,8 +56,8 @@ export function ChatHeader({
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
           </svg>
         </button>
 
@@ -109,6 +115,36 @@ export function ChatHeader({
             <polyline points="12 6 12 12 16 14" />
           </svg>
         </button>
+
+        {onToggleQuickEditor ? (
+          <button
+            aria-pressed={quickEditorOpen}
+            disabled={!quickEditorAvailable}
+            type="button"
+            title="Quick editor"
+            className={[
+              "flex h-8 w-8 items-center justify-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-50",
+              quickEditorOpen
+                ? "bg-surface-elevated text-text-primary"
+                : "text-text-secondary hover:bg-surface-elevated hover:text-text-primary",
+            ].join(" ")}
+            onClick={onToggleQuickEditor}
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          </button>
+        ) : null}
       </div>
 
       {showHistory && (

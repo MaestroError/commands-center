@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderSearch } from "lucide-react";
+import { FilePenLine, FolderSearch } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
+import { resolveAgentWorkspacePath } from "@/lib/agent-workspace-path";
 import { buildFileManagerHref } from "@/lib/file-manager-href";
 
 import { getWorkspaceTree, type FileNode } from "../../lib/api";
@@ -9,6 +10,7 @@ import { getWorkspaceTree, type FileNode } from "../../lib/api";
 type WorkspaceFilesTabProps = {
   agentId: string;
   agentSlug: string;
+  onOpenFile?: (path: string) => void;
 };
 
 type TreeNodeProps = {
@@ -17,6 +19,7 @@ type TreeNodeProps = {
   onSelect: (path: string) => void;
   depth: number;
   onOpenLocation: (path: string) => void;
+  onOpenFile?: (path: string) => void;
   onToggleDirectory: (path: string) => Promise<FileNode[]>;
 };
 
@@ -26,6 +29,7 @@ function TreeNode({
   onSelect,
   depth,
   onOpenLocation,
+  onOpenFile,
   onToggleDirectory,
 }: TreeNodeProps) {
   const [expanded, setExpanded] = useState(false);
@@ -70,6 +74,11 @@ function TreeNode({
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-1.5 px-1 py-0.5 text-left text-xs"
+          onDoubleClick={() => {
+            if (!isDir) {
+              onOpenFile?.(node.path);
+            }
+          }}
           onClick={() => void handleToggle()}
         >
           {isDir ? (
@@ -113,7 +122,7 @@ function TreeNode({
         </button>
         <button
           aria-label={`Show ${node.name} in file manager`}
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary opacity-0 transition hover:text-text-primary group-hover:opacity-100 focus-visible:opacity-100"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary opacity-100 transition hover:text-text-primary sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
           onClick={(event) => {
             event.stopPropagation();
             onOpenLocation(node.path);
@@ -123,6 +132,21 @@ function TreeNode({
         >
           <FolderSearch className="h-3.5 w-3.5" />
         </button>
+        {!isDir ? (
+          <button
+            aria-label={`Open ${node.name} in quick editor`}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary opacity-100 transition hover:text-text-primary sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect(node.path);
+              onOpenFile?.(node.path);
+            }}
+            title="Open in quick editor"
+            type="button"
+          >
+            <FilePenLine className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
       </div>
 
       {expanded && children && (
@@ -135,6 +159,7 @@ function TreeNode({
               onSelect={onSelect}
               depth={depth + 1}
               onOpenLocation={onOpenLocation}
+              onOpenFile={onOpenFile}
               onToggleDirectory={onToggleDirectory}
             />
           ))}
@@ -144,7 +169,7 @@ function TreeNode({
   );
 }
 
-export function WorkspaceFilesTab({ agentId, agentSlug }: WorkspaceFilesTabProps) {
+export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceFilesTabProps) {
   const navigate = useNavigate();
   const [roots, setRoots] = useState<FileNode[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -212,16 +237,10 @@ export function WorkspaceFilesTab({ agentId, agentSlug }: WorkspaceFilesTabProps
           onSelect={setSelectedPath}
           depth={0}
           onOpenLocation={openLocation}
+          onOpenFile={onOpenFile}
           onToggleDirectory={loadDirectory}
         />
       ))}
     </div>
   );
-}
-
-function resolveAgentWorkspacePath(agentSlug: string, path: string): string {
-  const normalizedPath = path.replace(/^\/+/, "");
-  return normalizedPath.length === 0
-    ? `agents/${agentSlug}`
-    : `agents/${agentSlug}/${normalizedPath}`;
 }

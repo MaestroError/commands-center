@@ -136,16 +136,44 @@ describe("WorkspaceFilesTab", () => {
       );
     });
   });
+
+  it("opens a file in the quick editor from the secondary icon", async () => {
+    vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce(rootNodes);
+    const onOpenFile = vi.fn();
+    const user = userEvent.setup();
+
+    renderWithRouter({ onOpenFile });
+
+    await user.click(await screen.findByRole("button", { name: "Open README.md in quick editor" }));
+
+    expect(onOpenFile).toHaveBeenCalledWith("README.md");
+  });
+
+  it("opens a file in the quick editor on double click", async () => {
+    vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce(rootNodes);
+    const onOpenFile = vi.fn();
+    const user = userEvent.setup();
+
+    renderWithRouter({ onOpenFile });
+
+    await user.dblClick(await screen.findByRole("button", { name: /^README.md$/i }));
+
+    expect(onOpenFile).toHaveBeenCalledWith("README.md");
+  });
 });
 
-function renderWithRouter() {
+function renderWithRouter(options?: { onOpenFile?: (path: string) => void }) {
   return render(
     <MemoryRouter initialEntries={["/chat/agent-1/conversation-1"]}>
       <Routes>
         <Route
           element={
             <>
-              <WorkspaceFilesTab agentId="agent-1" agentSlug="testing-agent" />
+              <WorkspaceFilesTab
+                agentId="agent-1"
+                agentSlug="testing-agent"
+                onOpenFile={options?.onOpenFile}
+              />
               <LocationProbe />
             </>
           }

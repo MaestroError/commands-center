@@ -75,4 +75,19 @@ describe("ChatHeader", () => {
 
     expect(onToggleTerminal).toHaveBeenCalled();
   });
+
+  it("calls onToggleQuickEditor when the quick editor button is clicked", () => {
+    const onToggleQuickEditor = vi.fn();
+    renderHeader({ onToggleQuickEditor, quickEditorAvailable: true });
+
+    fireEvent.click(screen.getByTitle("Quick editor"));
+
+    expect(onToggleQuickEditor).toHaveBeenCalled();
+  });
+
+  it("disables the quick editor button when no file is available", () => {
+    renderHeader({ onToggleQuickEditor: vi.fn(), quickEditorAvailable: false });
+
+    expect(screen.getByTitle("Quick editor")).toBeDisabled();
+  });
 });

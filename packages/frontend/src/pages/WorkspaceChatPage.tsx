@@ -3,6 +3,7 @@ import { lazy, Suspense, useMemo, useEffect, useRef, useState } from "react";
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatHeader } from "@/components/chat/ChatHeader";
+import { ChatSplitPaneLayout } from "@/components/chat/ChatSplitPaneLayout";
 import { MediaTab } from "@/components/chat/MediaTab";
 import { MessageTimeline } from "@/components/chat/MessageTimeline";
 import { PermissionDock } from "@/components/chat/PermissionDock";
@@ -11,9 +12,14 @@ import { SessionSettingsTab } from "@/components/chat/SessionSettingsTab";
 import { TodoDock } from "@/components/chat/TodoDock";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
+import { QuickFileModal } from "@/components/workspace/QuickFileModal";
+import { QuickFilePanel } from "@/components/workspace/QuickFilePanel";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { useQuickFile } from "@/hooks/use-quick-file";
 import { useConversation } from "@/hooks/use-conversation";
 import { useAgentCatalogQuery } from "@/hooks/use-agents-query";
+import { resolveAgentWorkspacePath } from "@/lib/agent-workspace-path";
 import { recordRecentAgent } from "@/lib/recent-agents";
 
 const DevDebugPanel = import.meta.env.DEV
@@ -34,8 +40,11 @@ export function WorkspaceChatPage() {
   const navigate = useNavigate();
   const conv = useConversation(agentSlug ?? "", urlConversationId);
   const { data: catalog } = useAgentCatalogQuery();
+  const isDesktop = useMediaQuery("(min-width: 1200px)");
+  const quickFile = useQuickFile();
   const [activeContextTabId, setActiveContextTabId] = useState("files");
   const [mediaSearchQuery, setMediaSearchQuery] = useState("");
+  const [quickEditorOpen, setQuickEditorOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [bottomPaneHeight, setBottomPaneHeight] = useState<number>();
 
@@ -87,6 +96,19 @@ export function WorkspaceChatPage() {
     setActiveContextTabId("media");
   };
 
+  const handleOpenQuickFile = (path: string) => {
+    if (!agentSlug) {
+      return;
+    }
+
+    void quickFile.open({
+      root: "workspace",
+      path: resolveAgentWorkspacePath(agentSlug, path),
+      displayPath: path,
+    });
+    setQuickEditorOpen(true);
+  };
+
   if (conv.status === "loading") {
     return <LoadingState />;
   }
@@ -112,7 +134,11 @@ export function WorkspaceChatPage() {
               id: "files",
               label: "Files",
               content: (
-                <WorkspaceFilesTab agentId={conv.agent?.id ?? ""} agentSlug={agentSlug ?? ""} />
+                <WorkspaceFilesTab
+                  agentId={conv.agent?.id ?? ""}
+                  agentSlug={agentSlug ?? ""}
+                  onOpenFile={handleOpenQuickFile}
+                />
               ),
             },
             {
@@ -168,7 +194,7 @@ export function WorkspaceChatPage() {
             : undefined
         }
         primary={
-          <div className="flex h-full flex-col">
+          <div className="relative flex h-full flex-col overflow-hidden">
             <ChatHeader
               agentId={conv.agent?.id ?? ""}
               agentName={conv.agent?.name ?? agentSlug ?? "Agent"}
@@ -177,53 +203,73 @@ export function WorkspaceChatPage() {
               onStartFresh={conv.startFresh}
               onSelectConversation={conv.switchConversation}
               terminalOpen={terminalOpen}
+              quickEditorAvailable={quickFile.file !== undefined}
+              quickEditorOpen={quickEditorOpen && quickFile.file !== undefined}
+              onToggleQuickEditor={() => setQuickEditorOpen((current) => !current)}
               onToggleTerminal={() => setTerminalOpen((current) => !current)}
             />
 
-            <MessageTimeline
-              messages={conv.conversation.messages}
-              parts={conv.parts}
-              sessionStatus={conv.sessionStatus}
-              sendError={conv.sendError}
-              onAttachmentClick={handleAttachmentMediaSearch}
-            />
+            <ChatSplitPaneLayout
+              main={
+                <div className="flex h-full min-h-0 flex-col overflow-hidden">
+                  <MessageTimeline
+                    messages={conv.conversation.messages}
+                    parts={conv.parts}
+                    sessionStatus={conv.sessionStatus}
+                    sendError={conv.sendError}
+                    onAttachmentClick={handleAttachmentMediaSearch}
+                  />
 
-            {conv.pendingPermission ? (
-              <PermissionDock
-                permission={conv.pendingPermission}
-                pendingCount={conv.pendingPermissionCount}
-                onReply={conv.replyPermission}
-              />
-            ) : conv.pendingQuestion ? (
-              <QuestionDock
-                question={conv.pendingQuestion}
-                onReply={conv.replyQuestion}
-                onReject={conv.rejectQuestion}
-              />
-            ) : (
-              <>
-                {conv.todos.length > 0 && <TodoDock todos={conv.todos} />}
-                <ChatComposer
-                  onSend={(input) =>
-                    conv.sendUserPrompt(input.text, input.attachments, input.model)
-                  }
-                  onShell={conv.sendShell}
-                  onCommand={conv.sendCommand}
-                  onSummarize={conv.summarize}
-                  onAbort={conv.abort}
-                  onStartFresh={conv.startFresh}
-                  agentStatus={conv.agentStatus}
-                  agentId={conv.agent?.id ?? ""}
-                  autoApprove={conv.autoApprove}
-                  onAutoApproveChange={conv.setAutoApprove}
-                  skills={skills}
-                  autoFocusKey={conv.conversation.id}
-                />
-              </>
-            )}
+                  {conv.pendingPermission ? (
+                    <PermissionDock
+                      permission={conv.pendingPermission}
+                      pendingCount={conv.pendingPermissionCount}
+                      onReply={conv.replyPermission}
+                    />
+                  ) : conv.pendingQuestion ? (
+                    <QuestionDock
+                      question={conv.pendingQuestion}
+                      onReply={conv.replyQuestion}
+                      onReject={conv.rejectQuestion}
+                    />
+                  ) : (
+                    <>
+                      {conv.todos.length > 0 && <TodoDock todos={conv.todos} />}
+                      <ChatComposer
+                        onSend={(input) =>
+                          conv.sendUserPrompt(input.text, input.attachments, input.model)
+                        }
+                        onShell={conv.sendShell}
+                        onCommand={conv.sendCommand}
+                        onSummarize={conv.summarize}
+                        onAbort={conv.abort}
+                        onStartFresh={conv.startFresh}
+                        agentStatus={conv.agentStatus}
+                        agentId={conv.agent?.id ?? ""}
+                        autoApprove={conv.autoApprove}
+                        onAutoApproveChange={conv.setAutoApprove}
+                        skills={skills}
+                        autoFocusKey={conv.conversation.id}
+                      />
+                    </>
+                  )}
+                </div>
+              }
+              sidePane={
+                isDesktop && quickEditorOpen && quickFile.file ? (
+                  <QuickFilePanel
+                    controller={quickFile}
+                    onClosePane={() => setQuickEditorOpen(false)}
+                  />
+                ) : undefined
+              }
+            />
           </div>
         }
       />
+      {!isDesktop && quickEditorOpen && quickFile.file ? (
+        <QuickFileModal controller={quickFile} onClosePane={() => setQuickEditorOpen(false)} />
+      ) : null}
       {DevDebugPanel && conv.__injectEvent && (
         <Suspense>
           <DevDebugPanel

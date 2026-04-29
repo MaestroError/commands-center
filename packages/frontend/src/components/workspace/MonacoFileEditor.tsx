@@ -19,6 +19,7 @@ type Props = {
   mimeType?: string;
   conflict?: { currentRevision?: FileManagerFileRevision; message: string };
   errorMessage?: string;
+  showPathLabel?: boolean;
   onDraftChange: (draft: string) => void;
   onSaveRequested: (overrideRevision?: FileManagerFileRevision) => void;
   onReloadRequested: () => void;
@@ -40,6 +41,7 @@ export function MonacoFileEditor(props: Props) {
     onSaveRequested,
     onDiscardConflict,
     path,
+    showPathLabel = true,
   } = props;
 
   const language = useMemo(() => guessLanguage(name, mimeType), [name, mimeType]);
@@ -64,9 +66,11 @@ export function MonacoFileEditor(props: Props) {
     <div className="flex h-full min-h-[24rem] flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-border bg-surface px-3 py-1.5">
         <div className="flex min-w-0 items-center gap-2">
-          <p className="truncate text-xs text-text-secondary" title={path}>
-            {path}
-          </p>
+          {showPathLabel ? (
+            <p className="truncate text-xs text-text-secondary" title={path}>
+              {path}
+            </p>
+          ) : null}
           {dirty ? (
             <span
               aria-label="Unsaved changes"
