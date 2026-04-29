@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { ChatSidePaneHost } from "@/components/chat/ChatSidePaneHost";
 
 import { WorkspaceFileSurface } from "./WorkspaceFileSurface";
 
@@ -15,14 +15,15 @@ export function QuickFilePanel(props: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col" data-testid="quick-file-panel">
-      <QuickFileHeader
-        path={props.controller.file.displayPath ?? props.controller.file.path}
+    <div data-testid="quick-file-panel">
+      <ChatSidePaneHost
+        closeLabel="Close quick editor"
         onClose={() => {
           props.onClosePane?.();
         }}
-      />
-      <div className="min-h-0 flex-1 overflow-hidden">
+        title={props.controller.file.displayPath ?? props.controller.file.path}
+        titleClassName="[direction:rtl]"
+      >
         <WorkspaceFileSurface
           busy={props.controller.busy}
           conflict={props.controller.conflict}
@@ -35,25 +36,7 @@ export function QuickFilePanel(props: Props) {
           onReloadRequested={() => void props.controller.reload()}
           onSaveRequested={(overrideRevision) => void props.controller.save(overrideRevision)}
         />
-      </div>
-    </div>
-  );
-}
-
-function QuickFileHeader(props: { path: string; onClose: () => void }) {
-  return (
-    <div className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3">
-      <p className="min-w-0 truncate text-sm text-text-primary [direction:rtl]" title={props.path}>
-        {props.path}
-      </p>
-      <button
-        aria-label="Close quick editor"
-        className="inline-flex h-8 w-8 items-center justify-center rounded text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
-        onClick={props.onClose}
-        type="button"
-      >
-        <X className="h-4 w-4" />
-      </button>
+      </ChatSidePaneHost>
     </div>
   );
 }
