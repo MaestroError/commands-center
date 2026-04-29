@@ -11,11 +11,15 @@ import {
   engineStatusSchema,
   fileManagerCreateEntryInputSchema,
   fileManagerCreateEntryResponseSchema,
+  fileManagerDirectorySearchQuerySchema,
+  fileManagerDirectorySearchResponseSchema,
   fileManagerDeleteEntryQuerySchema,
   fileManagerFileContentQuerySchema,
   fileManagerFileContentResponseSchema,
   fileManagerListQuerySchema,
   fileManagerListResponseSchema,
+  fileManagerMoveEntryInputSchema,
+  fileManagerMoveEntryResponseSchema,
   fileManagerPreferencesSchema,
   fileManagerRenameEntryInputSchema,
   fileManagerRenameEntryResponseSchema,
@@ -44,6 +48,7 @@ import {
   terminalListResponseSchema,
   terminalResizeInputSchema,
   terminalSessionSchema,
+  workspaceWatchEventSchema,
   type Agent,
   type AgentCatalog,
   type ChatEvent,
@@ -55,11 +60,15 @@ import {
   type EngineStatus,
   type FileManagerCreateEntryInput,
   type FileManagerDeleteEntryQuery,
+  type FileManagerDirectorySearchQuery,
+  type FileManagerDirectorySearchResponse,
   type FileManagerFileContentQuery,
   type FileManagerFileContentResponse,
   type FileManagerFileRevision,
   type FileManagerListQuery,
   type FileManagerListResponse,
+  type FileManagerMoveEntryInput,
+  type FileManagerMoveEntryResponse,
   type FileManagerPreferences,
   type FileManagerRenameEntryInput,
   type FileManagerSaveFileInput,
@@ -82,6 +91,7 @@ import {
   type TerminalResizeInput,
   type UpdateAgentInput,
   type UpdateMcpServerInput,
+  type WorkspaceWatchEvent,
   updateAgentInputSchema,
   updateMcpServerInputSchema,
 } from "@cc/shared/schemas";
@@ -673,7 +683,13 @@ export async function searchAgentWorkspaceFiles(agentId: string, query: string):
   );
 }
 
-export type FileNode = { name: string; path: string; type: "file" | "directory" };
+export type FileNode = {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  isCritical?: boolean;
+  criticalReason?: string;
+};
 
 export async function getWorkspaceTree(agentId: string, path?: string): Promise<FileNode[]> {
   const params = new URLSearchParams();
@@ -686,7 +702,65 @@ export async function getWorkspaceTree(agentId: string, path?: string): Promise<
 
   return nodes
     .filter((node) => !node.ignored)
-    .map((node) => ({ name: node.name, path: node.path, type: node.type }));
+    .map((node) => ({
+      name: node.name,
+      path: node.path,
+      type: node.type,
+      isCritical: node.isCritical,
+      criticalReason: node.criticalReason,
+    }));
+}
+
+export async function moveFileManagerEntry(
+  input: FileManagerMoveEntryInput,
+): Promise<FileManagerMoveEntryResponse> {
+  return requestJson<FileManagerMoveEntryResponse>(
+    "/api/file-manager/entries/move",
+    fileManagerMoveEntryResponseSchema,
+    {
+      method: "POST",
+      body: fileManagerMoveEntryInputSchema.parse(input),
+    },
+  );
+}
+
+export async function searchFileManagerDirectories(
+  query: FileManagerDirectorySearchQuery,
+): Promise<FileManagerDirectorySearchResponse> {
+  const parsed = fileManagerDirectorySearchQuerySchema.parse(query);
+  const params = new URLSearchParams();
+  params.set("root", parsed.root);
+  if (parsed.query && parsed.query.length > 0) {
+    params.set("query", parsed.query);
+  }
+  if (parsed.excludePath && parsed.excludePath.length > 0) {
+    params.set("excludePath", parsed.excludePath);
+  }
+  if (parsed.limit !== undefined) {
+    params.set("limit", String(parsed.limit));
+  }
+
+  return requestJson<FileManagerDirectorySearchResponse>(
+    `/api/file-manager/directories?${params.toString()}`,
+    fileManagerDirectorySearchResponseSchema,
+  );
+}
+
+export async function* connectWorkspaceEvents(
+  agentId: string,
+  signal: AbortSignal,
+): AsyncGenerator<WorkspaceWatchEvent> {
+  const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/workspace/events`, {
+    method: "GET",
+    headers: { Accept: "text/event-stream" },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Workspace SSE connection failed with status ${String(response.status)}`);
+  }
+
+  yield* parseSse(response, workspaceWatchEventSchema);
 }
 
 // --- SSE Event Consumer ---
@@ -705,6 +779,13 @@ export async function* connectConversationEvents(
     throw new Error(`SSE connection failed with status ${String(response.status)}`);
   }
 
+  yield* parseSse(response, chatEventSchema);
+}
+
+async function* parseSse<T>(
+  response: Response,
+  schema: { parse: (value: unknown) => T },
+): AsyncGenerator<T> {
   if (!response.body) {
     throw new Error("SSE response has no body");
   }
@@ -739,8 +820,7 @@ export async function* connectConversationEvents(
 
         try {
           const json = JSON.parse(dataLines.join("\n")) as unknown;
-          const event = chatEventSchema.parse(json);
-          yield event;
+          yield schema.parse(json);
         } catch (err) {
           console.warn("[SSE] Failed to parse event:", dataLines.join("\n"), err);
         }

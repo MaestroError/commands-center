@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -209,5 +209,24 @@ describe("ChatComposer", () => {
       text: 'Use skill "review". check this file',
       attachments: [],
     });
+  });
+
+  it("adds a file mention when a workspace file is dropped onto the composer", async () => {
+    const user = userEvent.setup();
+    const { props } = renderComposer();
+    const composer = screen
+      .getByPlaceholderText('Type a message... Use "#" to mention')
+      .closest(".relative") as HTMLElement;
+    const dataTransfer = {
+      files: [] as File[],
+      getData: (type: string) => (type === "application/x-cc-file-mention" ? "src/index.ts" : ""),
+    } as unknown as DataTransfer;
+
+    fireEvent.drop(composer, { dataTransfer });
+
+    expect(screen.getByText("index.ts")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(props.onSend).toHaveBeenCalledWith({ text: "#src/index.ts ", attachments: [] });
   });
 });

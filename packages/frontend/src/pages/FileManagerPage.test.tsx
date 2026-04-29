@@ -9,13 +9,17 @@ import {
   deleteFileManagerEntry,
   getFileManagerFileContent,
   listFileManagerNodes,
+  moveFileManagerEntry,
   renameFileManagerEntry,
+  searchFileManagerDirectories,
 } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   listFileManagerNodes: vi.fn(),
   createFileManagerEntry: vi.fn(),
   renameFileManagerEntry: vi.fn(),
+  moveFileManagerEntry: vi.fn(),
+  searchFileManagerDirectories: vi.fn(),
   deleteFileManagerEntry: vi.fn(),
   getFileManagerFileContent: vi.fn(),
   saveFileManagerFileContent: vi.fn(),
@@ -66,6 +70,8 @@ describe("FileManagerPage", () => {
     vi.mocked(createFileManagerEntry).mockReset();
     vi.mocked(deleteFileManagerEntry).mockReset();
     vi.mocked(renameFileManagerEntry).mockReset();
+    vi.mocked(moveFileManagerEntry).mockReset();
+    vi.mocked(searchFileManagerDirectories).mockReset();
     vi.mocked(listFileManagerNodes).mockReset();
     vi.mocked(getFileManagerFileContent).mockReset();
     vi.mocked(listFileManagerNodes).mockImplementation(({ path }) =>
@@ -136,6 +142,10 @@ describe("FileManagerPage", () => {
     );
     vi.mocked(createFileManagerEntry).mockResolvedValue({ path: "src/new-file.ts" });
     vi.mocked(renameFileManagerEntry).mockResolvedValue({ path: "src/renamed.ts" });
+    vi.mocked(moveFileManagerEntry).mockResolvedValue({ path: "src/index.ts" });
+    vi.mocked(searchFileManagerDirectories).mockResolvedValue({
+      directories: [".", "src", "docs", "tools-docs"],
+    });
     vi.mocked(deleteFileManagerEntry).mockResolvedValue();
   });
 
@@ -315,7 +325,8 @@ describe("FileManagerPage", () => {
     await screen.findAllByText("src");
 
     fireEvent.click(screen.getByTestId("file-row-src"));
-    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
 
     expect(screen.getByRole("dialog", { name: "Rename entry" })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "New name" }), {
@@ -334,7 +345,8 @@ describe("FileManagerPage", () => {
     });
 
     fireEvent.click(screen.getByTestId("file-row-src"));
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
     expect(screen.getByRole("dialog", { name: "Delete entry" })).toBeInTheDocument();
     fireEvent.click(
@@ -345,6 +357,53 @@ describe("FileManagerPage", () => {
       expect(deleteFileManagerEntry).toHaveBeenCalledWith({
         root: "workspace",
         path: "src",
+      });
+    });
+  });
+
+  it("moves an entry with the move dialog", async () => {
+    renderWithRoute("/files");
+
+    await screen.findAllByText("src");
+
+    fireEvent.click(screen.getByTestId("file-row-src"));
+    fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Move directory" }));
+
+    expect(screen.getByRole("dialog", { name: "Move entry" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(searchFileManagerDirectories).toHaveBeenCalledWith({
+        root: "workspace",
+        query: "",
+        excludePath: "src",
+        limit: 200,
+      });
+    });
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search destination folders" }), {
+      target: { value: "docs" },
+    });
+    await waitFor(() => {
+      expect(searchFileManagerDirectories).toHaveBeenCalledWith({
+        root: "workspace",
+        query: "docs",
+        excludePath: "src",
+        limit: 200,
+      });
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: /docs/i }));
+    expect(screen.getByText("Selected destination: docs")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("dialog", { name: "Move entry" }).querySelector('button[type="submit"]')!,
+    );
+
+    await waitFor(() => {
+      expect(moveFileManagerEntry).toHaveBeenCalledWith({
+        root: "workspace",
+        path: "src",
+        destinationPath: "docs",
       });
     });
   });

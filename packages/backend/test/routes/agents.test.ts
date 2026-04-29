@@ -1,3 +1,6 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { createSchedulerService } from "../../src/services/scheduler-service";
@@ -6,6 +9,7 @@ import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
 import type { OpenCodeService } from "../../src/services/opencode-service";
+import type { WorkspaceWatchService } from "../../src/services/workspace-watch-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("agent routes", () => {
@@ -18,6 +22,7 @@ describe("agent routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      workspaceWatchService: createWorkspaceWatchServiceMock(),
       secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
@@ -108,6 +113,7 @@ describe("agent routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      workspaceWatchService: createWorkspaceWatchServiceMock(),
       secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
@@ -167,6 +173,7 @@ describe("agent routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
+      workspaceWatchService: createWorkspaceWatchServiceMock(),
       secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
@@ -216,6 +223,7 @@ describe("agent routes", () => {
       orchestrator: createOrchestrator(),
       opencodeService,
       openCodeEventService: { subscribe: () => {} },
+      workspaceWatchService: createWorkspaceWatchServiceMock(),
       secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
       scheduler: createSchedulerService(),
     });
@@ -233,6 +241,8 @@ describe("agent routes", () => {
         },
       });
       const agent = created.json<{ id: string; workspacePath: string }>();
+      await mkdir(join(agent.workspacePath, "src", "components"), { recursive: true });
+      await writeFile(join(agent.workspacePath, "src", "index.ts"), "export {}\n", "utf8");
 
       const textSearch = await server.inject({
         method: "GET",
@@ -280,19 +290,23 @@ describe("agent routes", () => {
         {
           name: "components",
           path: "src/components",
-          absolute: "/tmp/files-agent/src/components",
+          absolute: join(agent.workspacePath, "src", "components"),
           type: "directory",
           ignored: false,
+          isCritical: false,
+          criticalReason: undefined,
         },
         {
           name: "index.ts",
           path: "src/index.ts",
-          absolute: "/tmp/files-agent/src/index.ts",
+          absolute: join(agent.workspacePath, "src", "index.ts"),
           type: "file",
           ignored: false,
+          isCritical: false,
+          criticalReason: undefined,
         },
       ]);
-      expect(opencodeService.listFiles).toHaveBeenCalledWith(agent.workspacePath, "src");
+      expect(opencodeService.listFiles).not.toHaveBeenCalled();
 
       expect(fileContent.statusCode).toBe(200);
       expect(fileContent.json()).toEqual({
@@ -420,4 +434,11 @@ function createMockOpenCodeService(): OpenCodeService {
       ]),
     ),
   } as unknown as OpenCodeService;
+}
+
+function createWorkspaceWatchServiceMock(): WorkspaceWatchService {
+  return {
+    subscribe: vi.fn(),
+    dispose: vi.fn(),
+  };
 }

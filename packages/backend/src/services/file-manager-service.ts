@@ -7,10 +7,12 @@ import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from ".
 import type {
   FileManagerCreateEntryInput,
   FileManagerDeleteEntryQuery,
+  FileManagerDirectorySearchQuery,
   FileManagerFileContentResponse,
   FileManagerFileRevision,
   FileManagerListQuery,
   FileManagerListResponse,
+  FileManagerMoveEntryInput,
   FileManagerNode,
   FileManagerRejectedUploadEntry,
   FileManagerRenameEntryInput,
@@ -23,6 +25,8 @@ import type {
 
 export const FILE_EDITOR_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024;
+const DEFAULT_DIRECTORY_SEARCH_LIMIT = 200;
+const MAX_DIRECTORY_SEARCH_VISITS = 5000;
 const DANGEROUS_UPLOAD_EXTENSIONS = new Set([
   ".zip",
   ".rar",
@@ -207,6 +211,110 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
       return toRelativePath(root, targetPath);
     },
 
+    async moveEntry(root: RootReference, input: FileManagerMoveEntryInput): Promise<string> {
+      const sourceAbsolutePath = resolveEntryPath(root, input.path);
+      const destinationDirectoryAbsolutePath = resolveEntryPath(root, input.destinationPath);
+      const sourceStats = await statOrNotFound(sourceAbsolutePath);
+      const destinationStats = await statOrNotFound(destinationDirectoryAbsolutePath);
+      const criticalReason = getCriticalReason(
+        sourceAbsolutePath,
+        sourceStats.isDirectory(),
+        options.config,
+      );
+
+      if (criticalReason) {
+        throw new ForbiddenError(criticalReason);
+      }
+
+      if (!destinationStats.isDirectory()) {
+        throw new BadRequestError("Move destination must be a directory.");
+      }
+
+      const targetPath = resolve(destinationDirectoryAbsolutePath, basename(sourceAbsolutePath));
+
+      ensureDescendant(root, targetPath);
+
+      if (sourceAbsolutePath === targetPath) {
+        return toRelativePath(root, targetPath);
+      }
+
+      if (sourceStats.isDirectory() && isEqualOrDescendant(targetPath, sourceAbsolutePath)) {
+        throw new BadRequestError("Cannot move a folder into itself.");
+      }
+
+      await assertMissing(targetPath);
+      await rename(sourceAbsolutePath, targetPath);
+
+      return toRelativePath(root, targetPath);
+    },
+
+    async searchDirectories(
+      root: RootReference,
+      query: Omit<FileManagerDirectorySearchQuery, "root">,
+    ): Promise<string[]> {
+      const normalizedLimit = query.limit ?? DEFAULT_DIRECTORY_SEARCH_LIMIT;
+      const queryText = query.query?.trim().toLowerCase() ?? "";
+      const excludedAbsolutePath = query.excludePath
+        ? resolveEntryPath(root, query.excludePath)
+        : undefined;
+      const directories: string[] = ["."];
+      const queue: string[] = [root.basePath];
+      const seen = new Set<string>([root.basePath]);
+
+      while (
+        queue.length > 0 &&
+        directories.length < normalizedLimit &&
+        seen.size <= MAX_DIRECTORY_SEARCH_VISITS
+      ) {
+        const currentAbsolutePath = queue.shift();
+
+        if (!currentAbsolutePath) {
+          continue;
+        }
+
+        const currentRelativePath = toRelativePath(root, currentAbsolutePath);
+
+        if (currentRelativePath !== ".") {
+          if (
+            excludedAbsolutePath &&
+            (currentAbsolutePath === excludedAbsolutePath ||
+              isEqualOrDescendant(currentAbsolutePath, excludedAbsolutePath))
+          ) {
+            continue;
+          }
+
+          if (queryText.length === 0 || currentRelativePath.toLowerCase().includes(queryText)) {
+            directories.push(currentRelativePath);
+          }
+        }
+
+        let entries;
+        try {
+          entries = await readdir(currentAbsolutePath, { withFileTypes: true });
+        } catch (error) {
+          if (isMissingError(error)) {
+            continue;
+          }
+          throw error;
+        }
+
+        const childDirectories = entries
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => resolve(currentAbsolutePath, entry.name))
+          .sort((left, right) => left.localeCompare(right));
+
+        for (const childAbsolutePath of childDirectories) {
+          if (seen.has(childAbsolutePath)) {
+            continue;
+          }
+          seen.add(childAbsolutePath);
+          queue.push(childAbsolutePath);
+        }
+      }
+
+      return directories;
+    },
+
     async deleteEntry(root: RootReference, input: FileManagerDeleteEntryQuery): Promise<void> {
       const absolutePath = resolveEntryPath(root, input.path);
       const criticalReason = getCriticalReason(absolutePath, true, options.config);
@@ -238,7 +346,10 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
       const name = basename(absolutePath);
       const mimeType = guessMimeType(name);
       const isPreviewableMedia =
-        mimeType !== undefined && (mimeType.startsWith("image/") || mimeType.startsWith("video/"));
+        mimeType !== undefined &&
+        (mimeType.startsWith("image/") ||
+          mimeType.startsWith("video/") ||
+          mimeType === "application/pdf");
 
       if (sizeBytes > FILE_EDITOR_MAX_BYTES && !isPreviewableMedia) {
         return {
@@ -430,6 +541,11 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
       throw error;
     }
   }
+}
+
+function isEqualOrDescendant(candidatePath: string, parentPath: string): boolean {
+  const rel = relative(parentPath, candidatePath);
+  return rel === "" || (!rel.startsWith("..") && !rel.startsWith(sep));
 }
 
 export function resolveFileManagerRoot(options: {

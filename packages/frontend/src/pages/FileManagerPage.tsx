@@ -27,9 +27,12 @@ import {
   createFileManagerEntry,
   deleteFileManagerEntry,
   listFileManagerNodes,
+  moveFileManagerEntry,
   renameFileManagerEntry,
+  searchFileManagerDirectories,
   uploadFileManagerEntries,
 } from "@/lib/api";
+import { normalizeUploadableFiles, toFileManagerUploadEntries } from "@/lib/file-transfer";
 
 const ROOT_LABELS: Record<FileManagerRootKind, string> = {
   workspace: "Workspace",
@@ -56,6 +59,8 @@ export function FileManagerPage() {
   const [createValue, setCreateValue] = useState("");
   const [renameTarget, setRenameTarget] = useState<FileManagerNode>();
   const [renameValue, setRenameValue] = useState("");
+  const [moveTarget, setMoveTarget] = useState<FileManagerNode>();
+  const [moveValue, setMoveValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<FileManagerNode>();
   const [uploadMode, setUploadMode] = useState<"files" | "folder">("files");
   const [uploadPanelOpen, setUploadPanelOpen] = useState(false);
@@ -247,6 +252,39 @@ export function FileManagerPage() {
     }
   }
 
+  async function handleMove(node: FileManagerNode) {
+    if (node.isCritical) {
+      return;
+    }
+
+    const destinationPath = moveValue.trim();
+    if (destinationPath.length === 0) {
+      return;
+    }
+
+    setBusyAction(`move-${node.path}`);
+    setError(undefined);
+
+    try {
+      const response = await moveFileManagerEntry({
+        root,
+        path: node.path,
+        destinationPath,
+      });
+      if (selectedPath === node.path) {
+        setSelectedPath(response.path);
+      }
+      const nextListing = await listFileManagerNodes({ root, path: currentPath });
+      setData(nextListing);
+      setMoveTarget(undefined);
+      setMoveValue("");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to move entry.");
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
   async function refreshCurrentDirectory(): Promise<void> {
     const response = await listFileManagerNodes({ root, path: currentPath });
     setData(response);
@@ -265,14 +303,7 @@ export function FileManagerPage() {
     });
 
     try {
-      const entries = await Promise.all(
-        files.map(async (file) => ({
-          name: file.name,
-          relativePath: resolveUploadRelativePath(file, mode),
-          contentBase64: await readFileAsBase64(file),
-          sizeBytes: file.size,
-        })),
-      );
+      const entries = await toFileManagerUploadEntries(normalizeUploadableFiles(files, mode));
 
       const result = await uploadFileManagerEntries({
         root,
@@ -326,6 +357,10 @@ export function FileManagerPage() {
                 <SelectionActions
                   busyAction={busyAction}
                   onOpen={openNode}
+                  onStartMove={(node) => {
+                    setMoveTarget(node);
+                    setMoveValue(currentPath);
+                  }}
                   onStartDelete={(node) => setDeleteTarget(node)}
                   onStartRename={(node) => {
                     setRenameTarget(node);
@@ -654,6 +689,21 @@ export function FileManagerPage() {
           onConfirm={() => void handleDelete(deleteTarget)}
         />
       ) : null}
+      {moveTarget ? (
+        <MoveEntryDialog
+          busy={busyAction === `move-${moveTarget.path}`}
+          currentPath={currentPath}
+          destinationPath={moveValue}
+          node={moveTarget}
+          root={root}
+          onChange={setMoveValue}
+          onClose={() => {
+            setMoveTarget(undefined);
+            setMoveValue("");
+          }}
+          onSubmit={() => void handleMove(moveTarget)}
+        />
+      ) : null}
       {createType ? (
         <CreateEntryDialog
           busy={busyAction === `create-${createType}`}
@@ -835,6 +885,7 @@ function SelectionActions(props: {
   selectedNode?: FileManagerNode;
   busyAction?: string;
   onOpen: (node: FileManagerNode) => void;
+  onStartMove: (node: FileManagerNode) => void;
   onStartRename: (node: FileManagerNode) => void;
   onStartDelete: (node: FileManagerNode) => void;
 }) {
@@ -863,6 +914,14 @@ function SelectionActions(props: {
           <button
             className="cc-button cc-button-secondary"
             disabled={actionBusy}
+            onClick={() => props.onStartMove(props.selectedNode!)}
+            type="button"
+          >
+            Move {props.selectedNode.type}
+          </button>
+          <button
+            className="cc-button cc-button-secondary"
+            disabled={actionBusy}
             onClick={() => props.onStartRename(props.selectedNode!)}
             type="button"
           >
@@ -879,6 +938,167 @@ function SelectionActions(props: {
         </>
       )}
     </div>
+  );
+}
+
+function MoveEntryDialog(props: {
+  root: FileManagerRootKind;
+  currentPath: string;
+  node: FileManagerNode;
+  destinationPath: string;
+  busy: boolean;
+  onClose: () => void;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const [query, setQuery] = useState(props.destinationPath === "." ? "" : props.destinationPath);
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  const [directories, setDirectories] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const searching = loading || query !== debouncedQuery;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query), 400);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setLoading(true);
+    void searchFileManagerDirectories({
+      root: props.root,
+      query: debouncedQuery,
+      excludePath: props.node.path,
+      limit: 200,
+    })
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+
+        const filtered = result.directories.filter((path) => {
+          if (path === props.node.path) {
+            return false;
+          }
+
+          return !props.node.path.startsWith(`${path}/`);
+        });
+
+        setDirectories(filtered);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDirectories(["."]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedQuery, props.node.path, props.root]);
+
+  useEffect(() => {
+    setQuery(props.destinationPath === "." ? "" : props.destinationPath);
+  }, [props.currentPath, props.destinationPath, props.node.path, props.root]);
+
+  return (
+    <ModalFrame ariaLabel="Move entry" onClose={props.onClose}>
+      <form
+        className="flex h-full flex-col"
+        onSubmit={(event) => {
+          event.preventDefault();
+          props.onSubmit();
+        }}
+      >
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="text-base font-semibold text-text-primary">Move {props.node.type}</h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            Move `{props.node.name}` into another folder. Use `.` for the current root folder.
+          </p>
+        </div>
+        <div className="grid gap-3 px-4 py-4">
+          <label className="grid gap-2 text-sm text-text-primary">
+            <span>Destination folder</span>
+            <span className="relative">
+              <input
+                aria-label="Search destination folders"
+                autoFocus
+                className="cc-input pr-10"
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  props.onChange("");
+                }}
+                placeholder="Search folders from this root"
+                value={query}
+              />
+              {searching ? (
+                <RefreshCw
+                  aria-label="Searching folders"
+                  className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-text-secondary"
+                />
+              ) : null}
+            </span>
+          </label>
+          <div className="max-h-64 overflow-y-auto rounded-xl border border-border bg-surface-elevated/60">
+            {directories.length === 0 ? (
+              <p className="px-3 py-4 text-center text-sm text-text-secondary">No folders found.</p>
+            ) : (
+              directories.map((directory) => {
+                const selected = props.destinationPath === directory;
+                return (
+                  <button
+                    aria-pressed={selected}
+                    className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition ${
+                      selected
+                        ? "bg-accent/10 text-accent"
+                        : "text-text-secondary hover:bg-surface-elevated hover:text-text-primary"
+                    }`}
+                    key={directory}
+                    onClick={() => {
+                      props.onChange(directory);
+                      setQuery(directory === "." ? "" : directory);
+                    }}
+                    type="button"
+                  >
+                    <span className="min-w-0 truncate font-mono text-xs">
+                      {directory === "." ? "/" : directory}
+                    </span>
+                    {selected ? <span className="text-xs font-medium">Selected</span> : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+          {props.destinationPath.trim().length > 0 ? (
+            <p className="text-xs text-text-secondary">
+              Selected destination: {props.destinationPath === "." ? "/" : props.destinationPath}
+            </p>
+          ) : (
+            <p className="text-xs text-text-secondary">
+              Choose a destination folder from the results.
+            </p>
+          )}
+        </div>
+        <div className="mt-auto flex justify-end gap-2 border-t border-border px-4 py-4">
+          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+            Cancel
+          </button>
+          <button
+            className="cc-button"
+            disabled={props.busy || props.destinationPath.trim().length === 0}
+            type="submit"
+          >
+            {props.busy ? "Moving..." : "Move"}
+          </button>
+        </div>
+      </form>
+    </ModalFrame>
   );
 }
 
@@ -942,30 +1162,6 @@ function getParentPath(currentPath: string): string | undefined {
   }
 
   return segments.slice(0, -1).join("/");
-}
-
-function resolveUploadRelativePath(file: File, mode: "files" | "folder"): string {
-  if (mode === "folder") {
-    const candidate = "webkitRelativePath" in file ? file.webkitRelativePath : "";
-
-    if (typeof candidate === "string" && candidate.trim().length > 0) {
-      return candidate;
-    }
-  }
-
-  return file.name;
-}
-
-async function readFileAsBase64(file: File): Promise<string> {
-  const arrayBuffer = await file.arrayBuffer();
-  let binary = "";
-  const bytes = new Uint8Array(arrayBuffer);
-
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-
-  return btoa(binary);
 }
 
 function buildUploadSummaryMessage(result: FileManagerUploadResponse): string {

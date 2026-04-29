@@ -45,6 +45,8 @@ export const opencodeFileNodeSchema = z.object({
   absolute: z.string(),
   type: z.enum(["file", "directory"]),
   ignored: z.boolean(),
+  isCritical: z.boolean().optional(),
+  criticalReason: z.string().optional(),
 });
 
 export const opencodeFileListResultSchema = z.array(opencodeFileNodeSchema);

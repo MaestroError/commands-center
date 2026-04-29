@@ -118,9 +118,48 @@ describe("file manager routes", () => {
       expect(renamed.statusCode).toBe(200);
       expect(renamed.json()).toEqual({ path: "notes/done.txt" });
 
+      const moved = await server.inject({
+        method: "POST",
+        url: "/api/file-manager/entries/move",
+        payload: {
+          root: "workspace",
+          path: "notes/done.txt",
+          destinationPath: ".",
+        },
+      });
+
+      expect(moved.statusCode).toBe(200);
+      expect(moved.json()).toEqual({ path: "done.txt" });
+
+      const movedIntoCriticalDestination = await server.inject({
+        method: "POST",
+        url: "/api/file-manager/entries/move",
+        payload: {
+          root: "workspace",
+          path: "done.txt",
+          destinationPath: "agents",
+        },
+      });
+
+      expect(movedIntoCriticalDestination.statusCode).toBe(200);
+      expect(movedIntoCriticalDestination.json()).toEqual({ path: "agents/done.txt" });
+
+      const movedBackFromCriticalDestination = await server.inject({
+        method: "POST",
+        url: "/api/file-manager/entries/move",
+        payload: {
+          root: "workspace",
+          path: "agents/done.txt",
+          destinationPath: ".",
+        },
+      });
+
+      expect(movedBackFromCriticalDestination.statusCode).toBe(200);
+      expect(movedBackFromCriticalDestination.json()).toEqual({ path: "done.txt" });
+
       const deleted = await server.inject({
         method: "DELETE",
-        url: `/api/file-manager/entries?root=workspace&path=${encodeURIComponent("notes/done.txt")}`,
+        url: `/api/file-manager/entries?root=workspace&path=${encodeURIComponent("done.txt")}`,
       });
 
       expect(deleted.statusCode).toBe(204);
@@ -155,6 +194,15 @@ describe("file manager routes", () => {
       });
 
       expect(deleteAgents.statusCode).toBe(403);
+
+      const directorySearch = await server.inject({
+        method: "GET",
+        url: "/api/file-manager/directories?root=workspace&query=note&excludePath=notes&limit=50",
+      });
+
+      expect(directorySearch.statusCode).toBe(200);
+      expect(directorySearch.json<{ directories: string[] }>().directories).toContain(".");
+      expect(directorySearch.json<{ directories: string[] }>().directories).not.toContain("notes");
     } finally {
       await server.close();
       await testDb.cleanup();

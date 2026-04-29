@@ -3,11 +3,15 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import {
   fileManagerCreateEntryInputSchema,
   fileManagerCreateEntryResponseSchema,
+  fileManagerDirectorySearchQuerySchema,
+  fileManagerDirectorySearchResponseSchema,
   fileManagerDeleteEntryQuerySchema,
   fileManagerFileContentQuerySchema,
   fileManagerFileContentResponseSchema,
   fileManagerListQuerySchema,
   fileManagerListResponseSchema,
+  fileManagerMoveEntryInputSchema,
+  fileManagerMoveEntryResponseSchema,
   fileManagerPreferencesSchema,
   fileManagerRenameEntryInputSchema,
   fileManagerRenameEntryResponseSchema,
@@ -77,6 +81,32 @@ export function registerFileManagerRoutes(server: AppServer, context: RuntimeCon
     },
   );
 
+  app.get(
+    "/api/file-manager/directories",
+    {
+      schema: {
+        querystring: fileManagerDirectorySearchQuerySchema,
+        response: {
+          200: fileManagerDirectorySearchResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const root = resolveFileManagerRoot({
+        kind: request.query.root,
+        config: context.config,
+      });
+
+      const directories = await fileManagerService.searchDirectories(root, {
+        query: request.query.query,
+        excludePath: request.query.excludePath,
+        limit: request.query.limit,
+      });
+
+      return { directories };
+    },
+  );
+
   app.post(
     "/api/file-manager/entries",
     {
@@ -115,6 +145,27 @@ export function registerFileManagerRoutes(server: AppServer, context: RuntimeCon
         config: context.config,
       });
       const path = await fileManagerService.renameEntry(root, request.body);
+
+      return { path };
+    },
+  );
+
+  app.post(
+    "/api/file-manager/entries/move",
+    {
+      schema: {
+        body: fileManagerMoveEntryInputSchema,
+        response: {
+          200: fileManagerMoveEntryResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const root = resolveFileManagerRoot({
+        kind: request.body.root,
+        config: context.config,
+      });
+      const path = await fileManagerService.moveEntry(root, request.body);
 
       return { path };
     },

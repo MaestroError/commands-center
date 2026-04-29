@@ -1,13 +1,18 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspaceFilesTab } from "./WorkspaceFilesTab";
 import * as api from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
+  connectWorkspaceEvents: vi.fn(),
+  createFileManagerEntry: vi.fn(),
+  deleteFileManagerEntry: vi.fn(),
   getWorkspaceTree: vi.fn(),
+  moveFileManagerEntry: vi.fn(),
+  uploadFileManagerEntries: vi.fn(),
 }));
 
 const rootNodes = [
@@ -22,6 +27,15 @@ const srcChildren = [
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+beforeEach(() => {
+  vi.mocked(api.connectWorkspaceEvents).mockImplementation(async function* () {});
+  vi.mocked(api.createFileManagerEntry).mockResolvedValue({ path: "new-folder" });
+  vi.mocked(api.deleteFileManagerEntry).mockResolvedValue();
+  vi.mocked(api.moveFileManagerEntry).mockResolvedValue({ path: "src/README.md" });
+  vi.mocked(api.uploadFileManagerEntries).mockResolvedValue({ uploaded: [], rejected: [] });
 });
 
 describe("WorkspaceFilesTab", () => {
@@ -54,8 +68,31 @@ describe("WorkspaceFilesTab", () => {
 
     renderWithRouter();
 
+    expect(
+      await screen.findByText(
+        "Upload files here, or drag files into the message area to mention them.",
+      ),
+    ).toBeInTheDocument();
     expect(await screen.findByText("src")).toBeInTheDocument();
     expect(screen.getByText("README.md")).toBeInTheDocument();
+  });
+
+  it("hides critical entries from the workspace file tab", async () => {
+    vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce([
+      ...rootNodes,
+      {
+        name: "AGENTS.md",
+        path: "AGENTS.md",
+        type: "file",
+        isCritical: true,
+        criticalReason: "Protected",
+      },
+    ]);
+
+    renderWithRouter();
+
+    expect(await screen.findByText("src")).toBeInTheDocument();
+    expect(screen.queryByText("AGENTS.md")).not.toBeInTheDocument();
   });
 
   it("highlights a file node when it is clicked", async () => {
@@ -160,6 +197,69 @@ describe("WorkspaceFilesTab", () => {
 
     expect(onOpenFile).toHaveBeenCalledWith("README.md");
   });
+
+  it("refreshes the visible tree after a workspace change event", async () => {
+    vi.mocked(api.getWorkspaceTree)
+      .mockResolvedValueOnce(rootNodes)
+      .mockResolvedValueOnce([
+        ...rootNodes,
+        { name: "new-file.md", path: "new-file.md", type: "file" as const },
+      ]);
+    vi.mocked(api.connectWorkspaceEvents).mockImplementation(() => makeWorkspaceEvents());
+
+    renderWithRouter();
+
+    expect(await screen.findByText("README.md")).toBeInTheDocument();
+
+    await waitFor(
+      () => {
+        expect(api.getWorkspaceTree).toHaveBeenCalledTimes(2);
+      },
+      { timeout: 1500 },
+    );
+    expect(await screen.findByText("new-file.md")).toBeInTheDocument();
+  });
+
+  it("creates a folder from the inline root action", async () => {
+    vi.mocked(api.getWorkspaceTree)
+      .mockResolvedValueOnce(rootNodes)
+      .mockResolvedValueOnce(rootNodes);
+    const user = userEvent.setup();
+
+    renderWithRouter();
+
+    await user.click(await screen.findByRole("button", { name: "Create folder" }));
+    await user.type(screen.getByRole("textbox", { name: "New folder name" }), "new-folder");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(api.createFileManagerEntry).toHaveBeenCalledWith({
+        root: "workspace",
+        parentPath: "agents/testing-agent",
+        name: "new-folder",
+        type: "directory",
+      });
+    });
+  });
+
+  it("deletes a non-critical node from the row action", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(api.getWorkspaceTree)
+      .mockResolvedValueOnce(rootNodes)
+      .mockResolvedValueOnce(rootNodes);
+    const user = userEvent.setup();
+
+    renderWithRouter();
+
+    await user.click(await screen.findByRole("button", { name: "Delete README.md" }));
+
+    await waitFor(() => {
+      expect(api.deleteFileManagerEntry).toHaveBeenCalledWith({
+        root: "workspace",
+        path: "agents/testing-agent/README.md",
+      });
+    });
+  });
 });
 
 function renderWithRouter(options?: { onOpenFile?: (path: string) => void }) {
@@ -192,4 +292,9 @@ function LocationProbe() {
 
 function getNodeButton(label: HTMLElement) {
   return label.closest("button") as HTMLButtonElement;
+}
+
+async function* makeWorkspaceEvents() {
+  await Promise.resolve();
+  yield { type: "workspace.changed" as const, properties: { version: 1 } };
 }

@@ -300,6 +300,19 @@ export function ChatComposer({
     [text, getCursorPosition, setCursorPosition],
   );
 
+  const addMentionedFile = useCallback((path: string) => {
+    const isFolder = path.endsWith("/");
+    const display = isFolder ? path : (path.split("/").pop() ?? path);
+
+    setMentionedFiles((prev) => {
+      if (prev.some((file) => file.path === path)) {
+        return prev;
+      }
+
+      return [...prev, { path, filename: display }];
+    });
+  }, []);
+
   const handleSlashCommandSelect = useCallback(
     (command: SlashCommand) => {
       setActivePopover(null);
@@ -352,9 +365,16 @@ export function ChatComposer({
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      const fileMentionPath = e.dataTransfer.getData("application/x-cc-file-mention");
+      if (fileMentionPath.length > 0) {
+        addMentionedFile(fileMentionPath);
+        textareaRef.current?.focus();
+        return;
+      }
+
       handleFileSelect(e.dataTransfer.files);
     },
-    [handleFileSelect],
+    [addMentionedFile, handleFileSelect],
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {

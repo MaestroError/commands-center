@@ -120,6 +120,22 @@ export function WorkspaceFileSurface(props: Props) {
         </PreviewFrame>
       );
     }
+
+    if (file.mimeType === "application/pdf") {
+      return (
+        <PreviewFrame
+          name={file.name}
+          path={file.displayPath ?? file.path}
+          showHeader={props.showPreviewHeader}
+        >
+          <iframe
+            className="h-[75vh] w-full rounded border border-border bg-surface"
+            src={`data:${file.mimeType};base64,${file.binaryContentBase64}`}
+            title={file.name}
+          />
+        </PreviewFrame>
+      );
+    }
   }
 
   return <FallbackCard file={file} showHeader={props.showPreviewHeader} />;

@@ -58,6 +58,22 @@ describe("file-manager-service file content", () => {
     }
   });
 
+  it("returns binary kind for PDFs so they can be previewed", async () => {
+    const ctx = await setupService();
+    try {
+      const filePath = join(ctx.testDb.config.paths.workspaceDir, "doc.pdf");
+      await writeFile(filePath, Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]));
+
+      const result = await ctx.service.readFileContent(ctx.workspaceRoot, "doc.pdf");
+
+      expect(result.kind).toBe("binary");
+      expect(result.mimeType).toBe("application/pdf");
+      expect(result.encoding).toBe("base64");
+    } finally {
+      await ctx.testDb.cleanup();
+    }
+  });
+
   it("returns too-large kind without inline content above the editor cap", async () => {
     const ctx = await setupService();
     try {

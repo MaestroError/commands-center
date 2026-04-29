@@ -50,6 +50,27 @@ export const fileManagerRenameEntryResponseSchema = z.object({
   path: z.string().min(1),
 });
 
+export const fileManagerMoveEntryInputSchema = z.object({
+  root: fileManagerRootKindSchema,
+  path: z.string().min(1),
+  destinationPath: z.string().min(1),
+});
+
+export const fileManagerMoveEntryResponseSchema = z.object({
+  path: z.string().min(1),
+});
+
+export const fileManagerDirectorySearchQuerySchema = z.object({
+  root: fileManagerRootKindSchema,
+  query: z.string().trim().optional(),
+  excludePath: z.string().min(1).optional(),
+  limit: z.coerce.number().int().positive().max(500).optional(),
+});
+
+export const fileManagerDirectorySearchResponseSchema = z.object({
+  directories: z.array(z.string().min(1)),
+});
+
 export const fileManagerDeleteEntryQuerySchema = z.object({
   root: fileManagerRootKindSchema,
   path: z.string().min(1),
@@ -147,6 +168,19 @@ export const fileManagerPreferencesSchema = z.object({
 
 export const fileManagerUpdatePreferencesInputSchema = fileManagerPreferencesSchema;
 
+export const workspaceWatchEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("heartbeat"),
+    properties: z.object({}),
+  }),
+  z.object({
+    type: z.literal("workspace.changed"),
+    properties: z.object({
+      version: z.number().int().nonnegative(),
+    }),
+  }),
+]);
+
 export type FileManagerRootKind = z.infer<typeof fileManagerRootKindSchema>;
 export type FileManagerEntryType = z.infer<typeof fileManagerEntryTypeSchema>;
 export type FileManagerNode = z.infer<typeof fileManagerNodeSchema>;
@@ -156,6 +190,12 @@ export type FileManagerCreateEntryInput = z.infer<typeof fileManagerCreateEntryI
 export type FileManagerCreateEntryResponse = z.infer<typeof fileManagerCreateEntryResponseSchema>;
 export type FileManagerRenameEntryInput = z.infer<typeof fileManagerRenameEntryInputSchema>;
 export type FileManagerRenameEntryResponse = z.infer<typeof fileManagerRenameEntryResponseSchema>;
+export type FileManagerMoveEntryInput = z.infer<typeof fileManagerMoveEntryInputSchema>;
+export type FileManagerMoveEntryResponse = z.infer<typeof fileManagerMoveEntryResponseSchema>;
+export type FileManagerDirectorySearchQuery = z.infer<typeof fileManagerDirectorySearchQuerySchema>;
+export type FileManagerDirectorySearchResponse = z.infer<
+  typeof fileManagerDirectorySearchResponseSchema
+>;
 export type FileManagerDeleteEntryQuery = z.infer<typeof fileManagerDeleteEntryQuerySchema>;
 export type FileManagerUploadEntryInput = z.infer<typeof fileManagerUploadEntryInputSchema>;
 export type FileManagerUploadInput = z.infer<typeof fileManagerUploadInputSchema>;
@@ -173,3 +213,4 @@ export type FileManagerPreferences = z.infer<typeof fileManagerPreferencesSchema
 export type FileManagerUpdatePreferencesInput = z.infer<
   typeof fileManagerUpdatePreferencesInputSchema
 >;
+export type WorkspaceWatchEvent = z.infer<typeof workspaceWatchEventSchema>;

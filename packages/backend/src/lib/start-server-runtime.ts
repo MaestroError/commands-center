@@ -12,6 +12,10 @@ import {
   createOpenCodeEventService,
   type OpenCodeEventService,
 } from "../services/opencode-event-service.js";
+import {
+  createWorkspaceWatchService,
+  type WorkspaceWatchService,
+} from "../services/workspace-watch-service.js";
 import { createSecretService, type SecretService } from "../services/secret-service.js";
 import { createSchedulerService, type SchedulerService } from "../services/scheduler-service.js";
 import { bootstrapRuntimePaths } from "./runtime-paths.js";
@@ -43,6 +47,7 @@ export type RuntimeContext = {
   orchestrator: OpenCodeOrchestrator;
   opencodeService: OpenCodeService;
   openCodeEventService: OpenCodeEventService;
+  workspaceWatchService?: WorkspaceWatchService;
   secretService: SecretService;
   scheduler: SchedulerService;
 };
@@ -78,6 +83,7 @@ export async function startServerRuntime(
   const opencodeClient = createOpenCodeClient(config);
   const opencodeService = createOpenCodeService({ client: opencodeClient, config, logger });
   const openCodeEventService = createOpenCodeEventService({ config, logger });
+  const workspaceWatchService = createWorkspaceWatchService({ logger });
   const scheduler = createSchedulerService();
 
   const context: RuntimeContext = {
@@ -87,6 +93,7 @@ export async function startServerRuntime(
     orchestrator,
     opencodeService,
     openCodeEventService,
+    workspaceWatchService,
     secretService,
     scheduler,
   };
@@ -105,6 +112,7 @@ export async function startServerRuntime(
       },
       terminateChildProcesses: async () => {
         await orchestrator.stop();
+        workspaceWatchService.dispose();
         database.close();
       },
       ...options?.extraDrainHandlers,

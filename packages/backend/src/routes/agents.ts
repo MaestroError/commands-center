@@ -1,3 +1,4 @@
+import type { ServerResponse } from "node:http";
 import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
@@ -19,6 +20,10 @@ import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { NotFoundError } from "../lib/api-error.js";
 import { createAgentService } from "../services/agent-service.js";
+import {
+  createFileManagerService,
+  resolveFileManagerRoot,
+} from "../services/file-manager-service.js";
 
 const agentIdParamsSchema = z.object({
   id: z.string().min(1),
@@ -39,6 +44,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
     config: context.config,
     opencodeService: context.opencodeService,
   });
+  const fileManagerService = createFileManagerService({ config: context.config });
 
   async function requireAgent(id: string) {
     const agent = await service.get(id);
@@ -195,7 +201,20 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
     },
     async (request) => {
       const agent = await requireAgent(request.params.id);
-      return context.opencodeService.listFiles(agent.workspacePath, request.query.path);
+      const root = resolveFileManagerRoot({ kind: "workspace", config: context.config });
+      const listing = await fileManagerService.listDirectory(root, {
+        path: joinAgentWorkspacePath(agent.slug, request.query.path),
+      });
+
+      return listing.nodes.map((node) => ({
+        name: node.name,
+        path: trimAgentWorkspacePrefix(agent.slug, node.path),
+        absolute: node.absolutePath,
+        type: node.type,
+        ignored: false,
+        isCritical: node.isCritical,
+        criticalReason: node.criticalReason,
+      }));
     },
   );
 
@@ -231,4 +250,81 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
       return context.opencodeService.getFileStatus(agent.workspacePath);
     },
   );
+
+  app.get(
+    "/api/agents/:id/workspace/events",
+    {
+      schema: {
+        params: agentIdParamsSchema,
+      },
+    },
+    async (request, reply) => {
+      const agent = await requireAgent(request.params.id);
+
+      reply.hijack();
+      const raw = reply.raw;
+
+      raw.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+
+      const abortController = new AbortController();
+
+      request.raw.on("close", () => {
+        abortController.abort();
+      });
+
+      const heartbeatInterval = setInterval(() => {
+        if (!raw.destroyed) {
+          writeSseEvent(raw, { type: "heartbeat", properties: {} });
+        }
+      }, 15_000);
+
+      abortController.signal.addEventListener(
+        "abort",
+        () => {
+          clearInterval(heartbeatInterval);
+        },
+        { once: true },
+      );
+
+      context.workspaceWatchService?.subscribe({
+        directory: agent.workspacePath,
+        signal: abortController.signal,
+        onChange: (event) => {
+          if (!raw.destroyed) {
+            writeSseEvent(raw, event);
+          }
+        },
+      });
+    },
+  );
+}
+
+function writeSseEvent(
+  raw: ServerResponse,
+  event: { type: string; properties: Record<string, unknown> },
+): void {
+  raw.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function joinAgentWorkspacePath(agentSlug: string, path?: string): string {
+  const normalizedPath = !path || path === "." ? "" : path.replace(/^\/+/, "");
+  return normalizedPath.length === 0
+    ? `agents/${agentSlug}`
+    : `agents/${agentSlug}/${normalizedPath}`;
+}
+
+function trimAgentWorkspacePrefix(agentSlug: string, path: string): string {
+  const rootPath = `agents/${agentSlug}`;
+  const prefix = `${rootPath}/`;
+
+  if (path === rootPath) {
+    return ".";
+  }
+
+  return path.startsWith(prefix) ? path.slice(prefix.length) : path;
 }
