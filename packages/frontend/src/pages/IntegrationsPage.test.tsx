@@ -69,8 +69,9 @@ beforeEach(() => {
   updateAgentMutateAsync.mockReset();
   confirmSpy.mockReset();
   confirmSpy.mockReturnValue(true);
-  Object.assign(navigator, {
-    clipboard: {
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: {
       writeText: writeClipboardSpy,
     },
   });
@@ -112,7 +113,7 @@ beforeEach(() => {
         defaultModel: "openai/gpt-4.1",
         workspacePath: "/tmp/writer",
         status: "active",
-        capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
+        capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
         createdAt: "2026-04-22T10:00:00.000Z",
         updatedAt: "2026-04-22T10:00:00.000Z",
       },
@@ -125,7 +126,7 @@ beforeEach(() => {
         defaultModel: "openai/gpt-4.1",
         workspacePath: "/tmp/reviewer",
         status: "active",
-        capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
+        capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
         createdAt: "2026-04-22T10:00:00.000Z",
         updatedAt: "2026-04-22T10:00:00.000Z",
       },
@@ -310,6 +311,7 @@ describe("IntegrationsPage", () => {
         input: {
           capabilities: {
             builtInSkills: [],
+            customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "allow" }],
             toolPermissions: [],
           },

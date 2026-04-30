@@ -108,13 +108,44 @@ beforeEach(() => {
   } as never);
 
   vi.mocked(useCustomToolsQuery).mockReturnValue({
-    data: [],
+    data: [
+      {
+        id: "tool-1",
+        slug: "release-helper",
+        name: "Release Helper",
+        description: "Draft release notes.",
+        entryFile: "tool.ts",
+        entryPath: "/tmp/tool.ts",
+        directoryPath: "/tmp/release-helper",
+        fingerprint: "fp-1",
+        enabled: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        warnings: [],
+        usage: [],
+      },
+    ],
     isLoading: false,
     error: null,
   } as never);
 
   vi.mocked(useAgentCustomToolsQuery).mockReturnValue({
-    data: [],
+    data: [
+      {
+        slug: "release-helper",
+        name: "Release Helper",
+        description: "Draft release notes.",
+        entryFile: "release-helper.ts",
+        entryPath: "/tmp/release-helper.ts",
+        fingerprint: "fp-2",
+        status: "modified",
+        isManaged: true,
+        sourceToolSlug: "legacy-release-helper",
+        sourceFingerprint: "fp-1",
+        copiedAt: "2026-01-01T00:00:00.000Z",
+        warnings: [],
+      },
+    ],
     isLoading: false,
     error: null,
   } as never);
@@ -193,6 +224,28 @@ describe("AgentEditorPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Save failed")).toBeInTheDocument();
+    });
+  });
+
+  it("saves selected custom tools and collects overwrite slugs for existing local copies", async () => {
+    updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(updateMutateAsync).toHaveBeenCalledWith({
+        id: "agent-1",
+        input: expect.objectContaining({
+          customToolOverwriteSlugs: ["release-helper"],
+          capabilities: expect.objectContaining({
+            customTools: ["release-helper"],
+          }),
+        }),
+      });
     });
   });
 });

@@ -138,6 +138,7 @@ describe("agent flows", () => {
           workspacePath: "/tmp/agents/planner",
         }),
       ],
+      "GET /api/agents/agent-3/custom-tools": [jsonResponse(200, [])],
     });
     window.history.replaceState({}, "", "/agents/new");
     render(<App />);

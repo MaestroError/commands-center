@@ -92,6 +92,73 @@ describe("custom tool routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("supports rename on copy and removing agent-local tools", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const toolCreated = await server.inject({
+        method: "POST",
+        url: "/api/custom-tools",
+        payload: {
+          name: "Release Helper",
+          description: "Draft release notes.",
+        },
+      });
+      const tool = toolCreated.json<{ tool: { slug: string } }>().tool;
+
+      const agentCreated = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Writer",
+          role: "write docs",
+          instructions: "Write release docs.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {},
+        },
+      });
+      const agent = agentCreated.json<{ id: string }>();
+
+      const copied = await server.inject({
+        method: "POST",
+        url: `/api/custom-tools/${tool.slug}/copy-to-agents`,
+        payload: {
+          agentIds: [agent.id],
+          destinationName: "Release Helper Copy",
+          overwrite: false,
+        },
+      });
+      expect(copied.statusCode).toBe(200);
+
+      const listedAgentTools = await server.inject({
+        method: "GET",
+        url: `/api/agents/${agent.id}/custom-tools`,
+      });
+      expect(listedAgentTools.json<Array<{ slug: string }>>().map((entry) => entry.slug)).toContain(
+        "release-helper-copy",
+      );
+
+      const removed = await server.inject({
+        method: "DELETE",
+        url: `/api/agents/${agent.id}/custom-tools/release-helper-copy`,
+      });
+      expect(removed.statusCode).toBe(204);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 function createMockOpenCodeService(): OpenCodeService {

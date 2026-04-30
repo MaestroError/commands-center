@@ -9,8 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test": "NODE_OPTIONS='--max-old-space-size=8192' vitest run --maxWorkers=1",
+    "test:coverage": "NODE_OPTIONS='--max-old-space-size=8192' vitest run --coverage --maxWorkers=1",
     "test:e2e": "playwright test",
     "clean": "rm -rf dist"
   },
