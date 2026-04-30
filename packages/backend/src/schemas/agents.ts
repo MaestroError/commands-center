@@ -31,7 +31,9 @@ export const agentCatalogSchema = z.object({
   ),
   customTools: z.array(
     z.object({
+      slug: z.string().min(1),
       name: z.string().min(1),
+      description: z.string(),
       enabled: z.boolean(),
     }),
   ),
@@ -50,6 +52,7 @@ export const agentMcpServerSchema = z.object({
 
 export const agentCapabilitySelectionSchema = z.object({
   builtInSkills: z.array(z.string().min(1)).default([]),
+  customTools: z.array(z.string().min(1)).default([]),
   mcpServers: z.array(agentMcpServerSchema).default([]),
   toolPermissions: z.array(agentPermissionRuleSchema).default([]),
 });
@@ -60,6 +63,7 @@ export const createAgentInputSchema = z.object({
   instructions: z.string().trim().min(1),
   defaultModel: z.string().trim().min(1),
   iconPath: z.string().trim().min(1).optional(),
+  customToolOverwriteSlugs: z.array(z.string().min(1)).default([]),
   capabilities: agentCapabilitySelectionSchema,
 });
 
@@ -95,5 +99,5 @@ export type Agent = z.infer<typeof agentSchema>;
 export type AgentCatalog = z.infer<typeof agentCatalogSchema>;
 export type AgentCapabilitySelection = z.infer<typeof agentCapabilitySelectionSchema>;
 export type BuiltInSkill = z.infer<typeof builtInSkillSchema>;
-export type CreateAgentInput = z.infer<typeof createAgentInputSchema>;
-export type UpdateAgentInput = z.infer<typeof updateAgentInputSchema>;
+export type CreateAgentInput = z.input<typeof createAgentInputSchema>;
+export type UpdateAgentInput = z.input<typeof updateAgentInputSchema>;

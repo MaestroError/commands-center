@@ -17,12 +17,13 @@ import {
 } from "../schemas/agents.js";
 
 import { createId, now } from "../db/ids.js";
-import { agents, custom_tools, mcp_servers } from "../db/schema/index.js";
+import { agents, mcp_servers } from "../db/schema/index.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { AppDb } from "../db/client.js";
 import { ConflictError } from "../lib/api-error.js";
 import type { OpenCodeService } from "./opencode-service.js";
 import { normalizeAgentCapabilities } from "./agent-capability-sync.js";
+import type { CustomToolService } from "./custom-tool-service.js";
 import { createProviderService } from "./provider-service.js";
 import {
   archiveWorkspace,
@@ -39,6 +40,7 @@ export function createAgentService(options: {
   db: AppDb;
   config: RuntimeConfig;
   opencodeService: OpenCodeService;
+  customToolService?: CustomToolService;
   skillRoot?: string;
 }) {
   const skillRoot = options.skillRoot ?? getBuiltInSkillRoot(options.config);
@@ -87,10 +89,19 @@ export function createAgentService(options: {
         config: options.config,
         workspacePath,
         input: {
-          ...parsed,
+          name: parsed.name,
+          role: parsed.role,
+          instructions: parsed.instructions,
+          defaultModel: parsed.defaultModel,
           capabilities,
         },
         skillRoot,
+      });
+
+      await options.customToolService?.syncAgentAssignments({
+        workspacePath,
+        selectedToolSlugs: capabilities.customTools,
+        overwriteSlugs: parsed.customToolOverwriteSlugs,
       });
 
       const [row] = await options.db
@@ -152,6 +163,12 @@ export function createAgentService(options: {
         workspacePath: nextWorkspacePath,
         input: workspaceInput,
         skillRoot,
+      });
+
+      await options.customToolService?.syncAgentAssignments({
+        workspacePath: nextWorkspacePath,
+        selectedToolSlugs: normalizedCapabilities.customTools,
+        overwriteSlugs: parsed.customToolOverwriteSlugs,
       });
 
       await options.opencodeService.dispose(nextWorkspacePath).catch(() => {});
@@ -220,9 +237,7 @@ export function createAgentService(options: {
         options.db
           .select({ name: mcp_servers.name, enabled: mcp_servers.enabled })
           .from(mcp_servers),
-        options.db
-          .select({ name: custom_tools.name, enabled: custom_tools.enabled })
-          .from(custom_tools),
+        options.customToolService?.listGlobal() ?? Promise.resolve([]),
         providerService.listModels(),
       ]);
 
@@ -238,7 +253,12 @@ export function createAgentService(options: {
           ).values(),
         ),
         mcpServers: mcpRows,
-        customTools: toolRows,
+        customTools: toolRows.map((tool) => ({
+          slug: tool.slug,
+          name: tool.name,
+          description: tool.description,
+          enabled: tool.enabled,
+        })),
       });
     },
   };

@@ -5,12 +5,16 @@ import type {
   Agent,
   AgentCatalog,
   AgentCapabilitySelection,
+  CreateAgentInput,
+  CustomToolAgentCopy,
+  CustomToolDriftStatus,
   McpServer,
   UpdateAgentInput,
 } from "@cc/shared/schemas";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
+import { useAgentCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
 import {
   useAgentCatalogQuery,
   useAgentMutations,
@@ -56,6 +60,8 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
   const catalog = catalogQuery.data;
   const agents = agentsQuery.data ?? [];
   const agent = agentQuery.data;
+  const customToolsQuery = useCustomToolsQuery();
+  const agentCustomToolsQuery = useAgentCustomToolsQuery(agent?.id);
   const hasProviderModels = (catalog?.providerModels.length ?? 0) > 0;
   const slug = slugify(form.name);
   const slugTaken = agents.some((entry) => entry.slug === slug && entry.id !== agent?.id);
@@ -265,6 +271,119 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
           <section className="cc-panel p-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
+                <h2 className="text-lg font-semibold text-text-primary">Custom tools</h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Selected global tools are copied into the agent workspace as snapshots. Existing
+                  local copies can drift from the global library.
+                </p>
+              </div>
+              <Link className="cc-button cc-button-secondary" to="/tools">
+                Open tools library
+              </Link>
+            </div>
+
+            {customToolsQuery.isLoading ? (
+              <div className="mt-5">
+                <LoadingState />
+              </div>
+            ) : customToolsQuery.error ? (
+              <div className="mt-5 rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+                {readError(customToolsQuery.error)}
+              </div>
+            ) : (customToolsQuery.data?.length ?? 0) > 0 ? (
+              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {customToolsQuery.data?.map((tool) => {
+                  const selected = form.capabilities.customTools.includes(tool.slug);
+
+                  return (
+                    <label
+                      className={
+                        selected
+                          ? "rounded-xl border border-accent/30 bg-accent/5 p-4"
+                          : "rounded-xl border border-border bg-surface p-4"
+                      }
+                      key={tool.slug}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          checked={selected}
+                          onChange={() => toggleCustomTool(tool.slug)}
+                          type="checkbox"
+                        />
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-text-primary">{tool.name}</p>
+                            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                              {tool.slug}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-text-secondary">
+                            {tool.description || "No description yet."}
+                          </p>
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-5">
+                <EmptyState
+                  description="Create a global tool before assigning it to an agent."
+                  title="No custom tools available"
+                />
+              </div>
+            )}
+
+            {props.mode === "edit" ? (
+              <div className="mt-6 grid gap-3 border-t border-border pt-6">
+                <div>
+                  <h3 className="text-base font-semibold text-text-primary">
+                    Current agent-local tools
+                  </h3>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    These are the actual tools currently present in the workspace, including
+                    modified or manual copies.
+                  </p>
+                </div>
+                {agentCustomToolsQuery.isLoading ? <LoadingState /> : null}
+                {agentCustomToolsQuery.error ? (
+                  <div className="rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+                    {readError(agentCustomToolsQuery.error)}
+                  </div>
+                ) : null}
+                {!agentCustomToolsQuery.isLoading &&
+                !agentCustomToolsQuery.error &&
+                agentCustomToolsQuery.data?.length ? (
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {agentCustomToolsQuery.data.map((tool) => (
+                      <article
+                        className="rounded-xl border border-border bg-app-bg p-4"
+                        key={tool.slug}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-text-primary">{tool.name}</p>
+                          <StatusBadge status={tool.status} />
+                        </div>
+                        <p className="mt-2 text-sm text-text-secondary">
+                          {tool.description || "No description available."}
+                        </p>
+                        {!tool.isManaged ? (
+                          <p className="mt-2 text-xs text-text-secondary">
+                            This tool is not CC-managed and will not be removed automatically.
+                          </p>
+                        ) : null}
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
+
+          <section className="cc-panel p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
                 <h2 className="text-lg font-semibold text-text-primary">MCP permissions</h2>
                 <p className="mt-1 text-sm text-text-secondary">
                   Enable global MCP servers per agent, then opt tools into allow, ask, or deny.
@@ -376,6 +495,18 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     }));
   }
 
+  function toggleCustomTool(toolSlug: string) {
+    setForm((current) => ({
+      ...current,
+      capabilities: {
+        ...current.capabilities,
+        customTools: current.capabilities.customTools.includes(toolSlug)
+          ? current.capabilities.customTools.filter((value) => value !== toolSlug)
+          : [...current.capabilities.customTools, toolSlug],
+      },
+    }));
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSuccessMessage(undefined);
@@ -387,20 +518,28 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
       return;
     }
 
+    const overwriteSlugs = resolveCustomToolOverwriteSlugs(
+      form.capabilities.customTools,
+      agentCustomToolsQuery.data ?? [],
+    );
+
+    if (overwriteSlugs === undefined) {
+      return;
+    }
+
     const payload: UpdateAgentInput = {
       name: form.name.trim(),
       role: form.role.trim(),
       instructions: form.instructions.trim(),
       defaultModel: form.defaultModel.trim(),
       iconPath: form.iconPath.trim() || undefined,
+      customToolOverwriteSlugs: overwriteSlugs,
       capabilities: form.capabilities,
     };
 
     try {
       if (props.mode === "create") {
-        const created = await agentMutations.create.mutateAsync(
-          payload as AgentFormState & UpdateAgentInput,
-        );
+        const created = await agentMutations.create.mutateAsync(payload as CreateAgentInput);
         void navigate(`/agents/${created.slug}/edit`, { replace: true });
         setSuccessMessage(`${created.name} created.`);
         return;
@@ -454,6 +593,7 @@ function createEmptyForm(): AgentFormState {
     defaultModel: "",
     capabilities: {
       builtInSkills: [],
+      customTools: [],
       mcpServers: [],
       toolPermissions: [],
     },
@@ -471,6 +611,7 @@ function createInitialForm(catalog: AgentCatalog, agent?: Agent): AgentFormState
     defaultModel: resolveInitialModelId(catalog, agent?.defaultModel),
     capabilities: {
       builtInSkills: existingCapabilities.builtInSkills,
+      customTools: existingCapabilities.customTools,
       mcpServers: existingCapabilities.mcpServers,
       toolPermissions: existingCapabilities.toolPermissions,
     },
@@ -558,6 +699,50 @@ function statusBadgeClassName(server: McpServer): string {
     default:
       return "rounded-full bg-surface-elevated px-2 py-0.5 text-xs font-medium text-text-secondary";
   }
+}
+
+function StatusBadge(props: { status: CustomToolDriftStatus }) {
+  const label = {
+    global_only: "Global only",
+    agent_only: "Agent only",
+    matching: "Matching",
+    outdated: "Outdated",
+    modified: "Modified",
+    unknown: "Unknown",
+  }[props.status];
+  const className = {
+    global_only: "rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary",
+    agent_only: "rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary",
+    matching:
+      "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-700 dark:text-emerald-300",
+    outdated:
+      "rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300",
+    modified:
+      "rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-xs text-rose-700 dark:text-rose-300",
+    unknown: "rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary",
+  }[props.status];
+
+  return <span className={className}>{label}</span>;
+}
+
+function resolveCustomToolOverwriteSlugs(
+  selectedSlugs: string[],
+  agentTools: CustomToolAgentCopy[],
+): string[] | undefined {
+  const collisions = agentTools.filter(
+    (tool) =>
+      selectedSlugs.includes(tool.slug) && (!tool.isManaged || tool.sourceToolSlug !== tool.slug),
+  );
+
+  if (collisions.length === 0) {
+    return [];
+  }
+
+  const confirmed = window.confirm(
+    `The agent already has local tool copies for: ${collisions.map((tool) => tool.slug).join(", ")}. Overwrite them with the selected global versions?`,
+  );
+
+  return confirmed ? collisions.map((tool) => tool.slug) : undefined;
 }
 
 function validateForm(

@@ -41,6 +41,7 @@ describe("conversation routes", () => {
       defaultModel: "openai/gpt-4.1",
       capabilities: {
         builtInSkills: [],
+        customTools: [],
         mcpServers: [],
         toolPermissions: [],
       },

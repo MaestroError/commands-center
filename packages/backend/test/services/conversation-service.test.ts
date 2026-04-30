@@ -33,6 +33,7 @@ describe("createConversationService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          customTools: [],
           mcpServers: [],
           toolPermissions: [],
         },
@@ -108,6 +109,7 @@ describe("createConversationService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          customTools: [],
           mcpServers: [],
           toolPermissions: [],
         },
@@ -153,6 +155,7 @@ describe("createConversationService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          customTools: [],
           mcpServers: [],
           toolPermissions: [],
         },
@@ -235,6 +238,7 @@ describe("createConversationService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          customTools: [],
           mcpServers: [],
           toolPermissions: [],
         },

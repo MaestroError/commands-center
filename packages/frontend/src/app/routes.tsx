@@ -20,6 +20,7 @@ import { GenericPlaceholderPage } from "@/pages/GenericPlaceholderPage";
 import { AgentEditorPage } from "@/pages/AgentEditorPage";
 import { AgentsPage } from "@/pages/AgentsPage";
 import { BuiltInSkillsPage } from "@/pages/BuiltInSkillsPage";
+import { CustomToolsPage } from "@/pages/CustomToolsPage";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
 import { LazyGlobalTerminalPage } from "@/pages/LazyGlobalTerminalPage";
 import { ProfilePage } from "@/pages/ProfilePage";
@@ -103,12 +104,7 @@ export const appRoutes = [
     title: "Custom Tools",
     navLabel: "Custom Tools",
     navIcon: <Wrench className="h-4 w-4 shrink-0" />,
-    element: (
-      <GenericPlaceholderPage
-        title="Custom Tools"
-        description="Global tool definitions will share the same loading, empty, and error patterns introduced here."
-      />
-    ),
+    element: <CustomToolsPage />,
   },
   {
     path: "/skills",

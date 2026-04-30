@@ -10,6 +10,7 @@ import {
   useAgentQuery,
   useAgentsQuery,
 } from "@/hooks/use-agents-query";
+import { useAgentCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 
 vi.mock("@/hooks/use-agents-query", () => ({
@@ -21,6 +22,11 @@ vi.mock("@/hooks/use-agents-query", () => ({
 
 vi.mock("@/hooks/use-mcp-servers-query", () => ({
   useMcpServersQuery: vi.fn(),
+}));
+
+vi.mock("@/hooks/use-custom-tools-query", () => ({
+  useCustomToolsQuery: vi.fn(),
+  useAgentCustomToolsQuery: vi.fn(),
 }));
 
 const createMutateAsync = vi.fn();
@@ -52,7 +58,7 @@ beforeEach(() => {
         defaultModel: "openai/gpt-4.1",
         workspacePath: "/tmp/agents/writer",
         status: "active",
-        capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
+        capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
@@ -71,7 +77,7 @@ beforeEach(() => {
       defaultModel: "openai/gpt-4.1",
       workspacePath: "/tmp/agents/writer",
       status: "active",
-      capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
+      capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
@@ -101,6 +107,18 @@ beforeEach(() => {
     error: null,
   } as never);
 
+  vi.mocked(useCustomToolsQuery).mockReturnValue({
+    data: [],
+    isLoading: false,
+    error: null,
+  } as never);
+
+  vi.mocked(useAgentCustomToolsQuery).mockReturnValue({
+    data: [],
+    isLoading: false,
+    error: null,
+  } as never);
+
   vi.mocked(useAgentMutations).mockReturnValue({
     create: { mutateAsync: createMutateAsync, isPending: false },
     update: { mutateAsync: updateMutateAsync, isPending: false },
@@ -126,8 +144,10 @@ describe("AgentEditorPage", () => {
           instructions: "Write useful docs.",
           defaultModel: "openai/gpt-4.1",
           iconPath: undefined,
+          customToolOverwriteSlugs: [],
           capabilities: {
             builtInSkills: [],
+            customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "allow" }],
             toolPermissions: [],
           },
@@ -153,8 +173,10 @@ describe("AgentEditorPage", () => {
           instructions: "Write useful docs.",
           defaultModel: "openai/gpt-4.1",
           iconPath: undefined,
+          customToolOverwriteSlugs: [],
           capabilities: {
             builtInSkills: [],
+            customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "ask" }],
             toolPermissions: [],
           },

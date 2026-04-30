@@ -173,7 +173,7 @@ export function loadRuntimeConfig(options?: {
         mcp: resolve(workspaceDir, "mcp"),
         preferences: resolve(workspaceDir, "preferences"),
         sessions: resolve(workspaceDir, "sessions"),
-        tools: resolve(workspaceDir, "tools"),
+        tools: resolve(workspaceDir, "custom-tools"),
         tmp: resolve(workspaceDir, "tmp"),
       },
       databaseFile: resolve(workspaceDir, "database", "local.db"),

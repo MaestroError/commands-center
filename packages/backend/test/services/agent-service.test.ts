@@ -48,6 +48,7 @@ describe("createAgentService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: ["reviewer"],
+          customTools: [],
           mcpServers: [{ name: "github", enabled: true, action: "allow" }],
           toolPermissions: [{ pattern: "custom_review", action: "ask" }],
         },
@@ -92,6 +93,7 @@ describe("createAgentService", () => {
         defaultModel: "anthropic/claude-sonnet-4",
         capabilities: {
           builtInSkills: [],
+          customTools: [],
           mcpServers: [],
           toolPermissions: [],
         },
@@ -102,6 +104,7 @@ describe("createAgentService", () => {
         instructions: "Plan before editing.",
         capabilities: {
           builtInSkills: ["planner"],
+          customTools: [],
           mcpServers: [{ name: "jira", enabled: false, action: "deny" }],
           toolPermissions: [{ pattern: "task_*", action: "allow" }],
         },
@@ -144,6 +147,7 @@ describe("createAgentService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          customTools: [],
           mcpServers: [],
           toolPermissions: [],
         },
@@ -182,6 +186,7 @@ describe("createAgentService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: ["screen-writer"],
+          customTools: [],
           mcpServers: [],
           toolPermissions: [],
         },
@@ -230,6 +235,7 @@ describe("createAgentService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          customTools: [],
           mcpServers: [],
           toolPermissions: [],
         },
@@ -243,6 +249,7 @@ describe("createAgentService", () => {
           defaultModel: "openai/gpt-4.1",
           capabilities: {
             builtInSkills: [],
+            customTools: [],
             mcpServers: [],
             toolPermissions: [],
           },
@@ -270,6 +277,7 @@ describe("createAgentService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          customTools: [],
           mcpServers: [{ name: "github", enabled: true, action: "allow" }],
           toolPermissions: [
             { pattern: "github_create_issue", action: "ask" },
@@ -310,6 +318,7 @@ describe("createAgentService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          customTools: [],
           mcpServers: [],
           toolPermissions: [],
         },

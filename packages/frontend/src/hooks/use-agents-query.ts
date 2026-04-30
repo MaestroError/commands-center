@@ -46,6 +46,7 @@ export function useAgentMutations() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.agents }),
       queryClient.invalidateQueries({ queryKey: queryKeys.agentCatalog }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.customTools }),
     ]);
   };
 
@@ -67,6 +68,7 @@ export function useAgentMutations() {
         );
         await invalidateAgents();
         queryClient.setQueryData(queryKeys.agentBySlug(agent.slug), agent);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.agentCustomTools(agent.id) });
       },
     }),
     archive: useMutation({

@@ -1,0 +1,764 @@
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+
+import type {
+  Agent,
+  CustomTool,
+  CustomToolAgentCopy,
+  CustomToolDriftStatus,
+} from "@cc/shared/schemas";
+
+import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
+import { PageHeader } from "@/components/common/PageHeader";
+import { useAgentsQuery } from "@/hooks/use-agents-query";
+import {
+  useAgentCustomToolsQuery,
+  useCustomToolMutations,
+  useCustomToolsQuery,
+} from "@/hooks/use-custom-tools-query";
+
+type CopyConflictState =
+  | {
+      kind: "copy-to-agents";
+      tool: CustomTool;
+      selectedAgentIds: string[];
+      destinationName: string;
+    }
+  | {
+      kind: "copy-to-global";
+      agentId: string;
+      tool: CustomToolAgentCopy;
+      destinationName: string;
+    };
+
+export function CustomToolsPage() {
+  const customToolsQuery = useCustomToolsQuery();
+  const agentsQuery = useAgentsQuery();
+  const mutations = useCustomToolMutations();
+  const [search, setSearch] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [actionError, setActionError] = useState<string>();
+  const [selectedAgentId, setSelectedAgentId] = useState<string>();
+  const [copyTool, setCopyTool] = useState<CustomTool>();
+  const [selectedCopyAgentIds, setSelectedCopyAgentIds] = useState<string[]>([]);
+  const [copyConflict, setCopyConflict] = useState<CopyConflictState>();
+  const [removeTool, setRemoveTool] = useState<CustomToolAgentCopy>();
+  const agents = agentsQuery.data ?? [];
+  const globalTools = customToolsQuery.data ?? [];
+  const filteredTools = useMemo(
+    () => filterTools(customToolsQuery.data ?? [], search),
+    [customToolsQuery.data, search],
+  );
+  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
+  const agentToolsQuery = useAgentCustomToolsQuery(selectedAgent?.id);
+  const agentTools = agentToolsQuery.data ?? [];
+
+  async function handleCreateTool() {
+    setActionError(undefined);
+
+    try {
+      const created = await mutations.create.mutateAsync({
+        name: newName,
+        description: newDescription,
+      });
+      setNewName("");
+      setNewDescription("");
+      window.location.assign(buildGlobalToolFileManagerUrl(created.tool));
+    } catch (error) {
+      setActionError(readError(error));
+    }
+  }
+
+  async function handleDeleteTool(tool: CustomTool) {
+    if (
+      !window.confirm(
+        `Delete global tool '${tool.name}'? Existing agent copies will remain untouched.`,
+      )
+    ) {
+      return;
+    }
+
+    setActionError(undefined);
+
+    try {
+      await mutations.delete.mutateAsync(tool.slug);
+    } catch (error) {
+      setActionError(readError(error));
+    }
+  }
+
+  async function handleCopyToAgents(input?: {
+    overwrite?: boolean;
+    destinationName?: string;
+    selectedAgentIds?: string[];
+    tool?: CustomTool;
+  }) {
+    const tool = input?.tool ?? copyTool;
+    const agentIds = input?.selectedAgentIds ?? selectedCopyAgentIds;
+
+    if (!tool || agentIds.length === 0) {
+      return;
+    }
+
+    setActionError(undefined);
+
+    try {
+      await mutations.copyToAgents.mutateAsync({
+        slug: tool.slug,
+        input: {
+          agentIds,
+          destinationName: input?.destinationName?.trim() || undefined,
+          overwrite: input?.overwrite ?? false,
+        },
+      });
+      setCopyTool(undefined);
+      setSelectedCopyAgentIds([]);
+      setCopyConflict(undefined);
+    } catch (error) {
+      const message = readError(error);
+
+      if ((input?.overwrite ?? false) === false && isCopyConflictError(message)) {
+        setCopyConflict({
+          kind: "copy-to-agents",
+          tool,
+          selectedAgentIds: agentIds,
+          destinationName: input?.destinationName?.trim() || tool.name,
+        });
+        return;
+      }
+
+      setActionError(message);
+    }
+  }
+
+  async function handleCopyAgentToolToGlobal(
+    tool: CustomToolAgentCopy,
+    input?: {
+      overwrite?: boolean;
+      destinationName?: string;
+    },
+  ) {
+    if (!selectedAgent) {
+      return;
+    }
+
+    setActionError(undefined);
+
+    try {
+      await mutations.copyAgentToGlobal.mutateAsync({
+        agentId: selectedAgent.id,
+        slug: tool.slug,
+        input: {
+          destinationName: input?.destinationName?.trim() || undefined,
+          overwrite: input?.overwrite ?? false,
+        },
+      });
+      setCopyConflict(undefined);
+    } catch (error) {
+      const message = readError(error);
+      if ((input?.overwrite ?? false) === false && isCopyConflictError(message)) {
+        setCopyConflict({
+          kind: "copy-to-global",
+          agentId: selectedAgent.id,
+          tool,
+          destinationName: input?.destinationName?.trim() || tool.name,
+        });
+        return;
+      }
+
+      setActionError(message);
+    }
+  }
+
+  async function handleRemoveAgentTool(tool: CustomToolAgentCopy) {
+    if (!selectedAgent) {
+      return;
+    }
+
+    setActionError(undefined);
+
+    try {
+      await mutations.deleteAgentTool.mutateAsync({ agentId: selectedAgent.id, slug: tool.slug });
+      setRemoveTool(undefined);
+    } catch (error) {
+      setActionError(readError(error));
+    }
+  }
+
+  return (
+    <div className="grid gap-4">
+      <PageHeader
+        description="Manage portable global custom tools, inspect agent-local copies, and open tool folders in the file manager for editing."
+        eyebrow="Custom Tools"
+        title="Custom tools"
+      />
+
+      {actionError ? <section className="cc-alert">{actionError}</section> : null}
+
+      <section className="cc-panel grid gap-4 p-6 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)]">
+        <div className="grid gap-3">
+          <h2 className="text-lg font-semibold text-text-primary">Global library</h2>
+          <p className="text-sm text-text-secondary">
+            Create a starter tool folder here, then open it in the file manager to edit the source
+            files.
+          </p>
+          <label className="grid gap-2 text-sm text-text-primary">
+            <span>Name</span>
+            <input
+              className="cc-input"
+              onChange={(event) => setNewName(event.target.value)}
+              value={newName}
+            />
+          </label>
+          <label className="grid gap-2 text-sm text-text-primary">
+            <span>Description</span>
+            <input
+              className="cc-input"
+              onChange={(event) => setNewDescription(event.target.value)}
+              placeholder="Optional"
+              value={newDescription}
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="cc-button"
+              disabled={mutations.create.isPending || newName.trim().length === 0}
+              onClick={() => void handleCreateTool()}
+              type="button"
+            >
+              {mutations.create.isPending ? "Creating..." : "Create starter tool"}
+            </button>
+            <Link
+              className="cc-button cc-button-secondary"
+              to="/files?root=workspace&path=custom-tools"
+            >
+              Browse tool files
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid gap-3 rounded-xl border border-border bg-surface p-4">
+          <h3 className="text-base font-semibold text-text-primary">Drift model</h3>
+          <p className="text-sm text-text-secondary">
+            Global tools are copied into agent workspaces as snapshots. Later edits do not sync
+            automatically.
+          </p>
+          <ul className="grid gap-2 text-sm text-text-secondary">
+            <li>
+              <StatusBadge status="matching" /> agent copy matches the current global tool.
+            </li>
+            <li>
+              <StatusBadge status="outdated" /> global changed after the copy was created.
+            </li>
+            <li>
+              <StatusBadge status="modified" /> the agent copy was edited locally after copying.
+            </li>
+            <li>
+              <StatusBadge status="unknown" /> CC cannot safely prove the relationship.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="cc-panel grid gap-4 p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Global tools</h2>
+            <p className="mt-1 text-sm text-text-secondary">
+              Search, inspect usage, open folders, and copy tools into agent workspaces.
+            </p>
+          </div>
+          <input
+            className="cc-input w-full sm:max-w-xs"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search tools"
+            value={search}
+          />
+        </div>
+
+        {customToolsQuery.isLoading ? <LoadingState /> : null}
+        {customToolsQuery.error ? (
+          <ErrorState
+            description={readError(customToolsQuery.error)}
+            title="Global tools could not be loaded."
+          />
+        ) : null}
+
+        {!customToolsQuery.isLoading && !customToolsQuery.error && filteredTools.length === 0 ? (
+          <EmptyState
+            description="Create your first starter tool or adjust the search query."
+            title={globalTools.length === 0 ? "No custom tools yet" : "No matching tools"}
+          />
+        ) : null}
+
+        {!customToolsQuery.isLoading && !customToolsQuery.error && filteredTools.length > 0 ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {filteredTools.map((tool) => (
+              <article className="rounded-xl border border-border bg-surface p-4" key={tool.slug}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-semibold text-text-primary">{tool.name}</h3>
+                      <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                        {tool.slug}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-text-secondary">
+                      {tool.description || "No description yet."}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
+                      <span className="rounded-full border border-border px-2 py-1">
+                        {tool.entryFile}
+                      </span>
+                      <span className="rounded-full border border-border px-2 py-1">
+                        {tool.usage.length} agent copy{tool.usage.length === 1 ? "" : "ies"}
+                      </span>
+                    </div>
+                    {tool.warnings.length > 0 ? (
+                      <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                        {tool.warnings.map((warning) => warning.message).join(" ")}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      className="cc-button cc-button-secondary"
+                      to={buildGlobalToolFileManagerUrl(tool)}
+                    >
+                      Open
+                    </Link>
+                    <button
+                      className="cc-button cc-button-secondary"
+                      onClick={() => {
+                        setCopyTool(tool);
+                        setSelectedCopyAgentIds([]);
+                      }}
+                      type="button"
+                    >
+                      Copy to agents
+                    </button>
+                    <button
+                      className="cc-button cc-button-secondary"
+                      onClick={() => void handleDeleteTool(tool)}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+                {tool.usage.length > 0 ? (
+                  <div className="mt-4 grid gap-2 border-t border-border pt-4">
+                    {tool.usage.map((usage) => (
+                      <div
+                        className="flex flex-wrap items-center gap-2 text-sm text-text-secondary"
+                        key={`${tool.slug}-${usage.agentId}`}
+                      >
+                        <StatusBadge status={usage.status} />
+                        <Link
+                          className="text-text-primary underline-offset-4 hover:underline"
+                          to={`/agents/${usage.agentSlug}/edit`}
+                        >
+                          {usage.agentName}
+                        </Link>
+                        <span className="text-xs">
+                          {usage.copiedAt ? new Date(usage.copiedAt).toLocaleString() : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="cc-panel grid gap-4 p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Agent-local tools</h2>
+            <p className="mt-1 text-sm text-text-secondary">
+              Inspect agent copies, promote them back into the global library, or remove them from
+              the agent workspace.
+            </p>
+          </div>
+          <select
+            className="cc-input w-full sm:max-w-xs"
+            onChange={(event) => setSelectedAgentId(event.target.value || undefined)}
+            value={selectedAgentId ?? ""}
+          >
+            <option value="">Select an agent</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {!selectedAgent ? (
+          <EmptyState
+            description="Choose an agent to inspect its local tools."
+            title="No agent selected"
+          />
+        ) : agentToolsQuery.isLoading ? (
+          <LoadingState />
+        ) : agentToolsQuery.error ? (
+          <ErrorState
+            description={readError(agentToolsQuery.error)}
+            title="Agent tools could not be loaded."
+          />
+        ) : agentTools.length === 0 ? (
+          <EmptyState
+            description="This agent does not currently expose any local custom tools."
+            title="No agent-local tools"
+          />
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {agentTools.map((tool) => (
+              <article className="rounded-xl border border-border bg-surface p-4" key={tool.slug}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-semibold text-text-primary">{tool.name}</h3>
+                      <StatusBadge status={tool.status} />
+                      {!tool.isManaged ? (
+                        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                          Manual
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 text-sm text-text-secondary">
+                      {tool.description || "No description available."}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      className="cc-button cc-button-secondary"
+                      to={buildAgentToolFileManagerUrl(selectedAgent, tool)}
+                    >
+                      Open
+                    </Link>
+                    <button
+                      className="cc-button cc-button-secondary"
+                      onClick={() => void handleCopyAgentToolToGlobal(tool)}
+                      type="button"
+                    >
+                      Copy to global
+                    </button>
+                    <button
+                      className="cc-button cc-button-secondary"
+                      onClick={() => setRemoveTool(tool)}
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                {tool.warnings.length > 0 ? (
+                  <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                    {tool.warnings.map((warning) => warning.message).join(" ")}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {copyTool ? (
+        <section className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">
+                  Copy {copyTool.name} to agents
+                </h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Existing agent copies may be replaced if you confirm an overwrite.
+                </p>
+              </div>
+              <button
+                className="cc-button cc-button-secondary"
+                onClick={() => setCopyTool(undefined)}
+                type="button"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4 grid max-h-80 gap-3 overflow-auto">
+              {agents.map((agent) => {
+                const checked = selectedCopyAgentIds.includes(agent.id);
+
+                return (
+                  <label
+                    className="flex items-start gap-3 rounded-xl border border-border bg-app-bg px-4 py-3"
+                    key={agent.id}
+                  >
+                    <input
+                      checked={checked}
+                      onChange={() =>
+                        setSelectedCopyAgentIds((current) =>
+                          current.includes(agent.id)
+                            ? current.filter((value) => value !== agent.id)
+                            : [...current, agent.id],
+                        )
+                      }
+                      type="checkbox"
+                    />
+                    <div>
+                      <p className="font-medium text-text-primary">{agent.name}</p>
+                      <p className="text-sm text-text-secondary">{agent.slug}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                className="cc-button"
+                disabled={selectedCopyAgentIds.length === 0 || mutations.copyToAgents.isPending}
+                onClick={() => void handleCopyToAgents()}
+                type="button"
+              >
+                {mutations.copyToAgents.isPending ? "Copying..." : "Copy selected agents"}
+              </button>
+              <button
+                className="cc-button cc-button-secondary"
+                onClick={() => setCopyTool(undefined)}
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {copyConflict ? (
+        <CopyConflictDialog
+          busy={
+            copyConflict.kind === "copy-to-agents"
+              ? mutations.copyToAgents.isPending
+              : mutations.copyAgentToGlobal.isPending
+          }
+          currentName={
+            copyConflict.kind === "copy-to-agents" ? copyConflict.tool.name : copyConflict.tool.name
+          }
+          destinationName={copyConflict.destinationName}
+          message={
+            copyConflict.kind === "copy-to-agents"
+              ? "A tool with this name already exists in at least one selected agent. Rewrite it or copy a renamed variant."
+              : "A tool with this name already exists globally. Rewrite it or copy a renamed variant."
+          }
+          onCancel={() => setCopyConflict(undefined)}
+          onChange={(value) =>
+            setCopyConflict((current) =>
+              current ? { ...current, destinationName: value } : current,
+            )
+          }
+          onCopyWithNewName={() => {
+            if (copyConflict.kind === "copy-to-agents") {
+              void handleCopyToAgents({
+                tool: copyConflict.tool,
+                selectedAgentIds: copyConflict.selectedAgentIds,
+                destinationName: copyConflict.destinationName,
+                overwrite: false,
+              });
+              return;
+            }
+
+            void handleCopyAgentToolToGlobal(copyConflict.tool, {
+              destinationName: copyConflict.destinationName,
+              overwrite: false,
+            });
+          }}
+          onRewrite={() => {
+            if (copyConflict.kind === "copy-to-agents") {
+              void handleCopyToAgents({
+                tool: copyConflict.tool,
+                selectedAgentIds: copyConflict.selectedAgentIds,
+                overwrite: true,
+              });
+              return;
+            }
+
+            void handleCopyAgentToolToGlobal(copyConflict.tool, { overwrite: true });
+          }}
+        />
+      ) : null}
+
+      {removeTool && selectedAgent ? (
+        <RemoveAgentToolDialog
+          busy={mutations.deleteAgentTool.isPending}
+          name={removeTool.name}
+          onCancel={() => setRemoveTool(undefined)}
+          onConfirm={() => void handleRemoveAgentTool(removeTool)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function filterTools(tools: CustomTool[], search: string): CustomTool[] {
+  const query = search.trim().toLowerCase();
+
+  if (query.length === 0) {
+    return tools;
+  }
+
+  return tools.filter((tool) => {
+    const haystack = [tool.name, tool.slug, tool.description].join(" ").toLowerCase();
+    return haystack.includes(query);
+  });
+}
+
+function buildGlobalToolFileManagerUrl(tool: CustomTool): string {
+  const params = new URLSearchParams({
+    root: "workspace",
+    path: `custom-tools/${tool.slug}`,
+    select: `custom-tools/${tool.slug}/${tool.entryFile}`,
+  });
+  return `/files?${params.toString()}`;
+}
+
+function buildAgentToolFileManagerUrl(agent: Agent, tool: CustomToolAgentCopy): string {
+  const selectedRelativePath = tool.isManaged
+    ? `agents/${agent.slug}/.opencode/tools/${tool.slug}/tool.ts`
+    : `agents/${agent.slug}/.opencode/tools/${tool.entryFile}`;
+  const params = new URLSearchParams({
+    root: "workspace",
+    path: `agents/${agent.slug}/.opencode/tools`,
+    select: selectedRelativePath,
+  });
+  return `/files?${params.toString()}`;
+}
+
+function StatusBadge(props: { status: CustomToolDriftStatus }) {
+  const label = {
+    global_only: "Global only",
+    agent_only: "Agent only",
+    matching: "Matching",
+    outdated: "Outdated",
+    modified: "Modified",
+    unknown: "Unknown",
+  }[props.status];
+  const className = {
+    global_only: "border-border bg-surface-elevated text-text-secondary",
+    agent_only: "border-border bg-surface-elevated text-text-secondary",
+    matching: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    outdated: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    modified: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+    unknown: "border-border bg-surface-elevated text-text-secondary",
+  }[props.status];
+
+  return <span className={`rounded-full border px-2 py-0.5 text-xs ${className}`}>{label}</span>;
+}
+
+function readError(error: unknown): string {
+  return error instanceof Error && error.message ? error.message : "Custom tools request failed.";
+}
+
+function isCopyConflictError(message: string): boolean {
+  return (
+    message.includes("already exists") ||
+    message.includes("local differences") ||
+    message.includes("Confirm overwrite")
+  );
+}
+
+function slugify(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+
+  return slug || "tool";
+}
+
+function CopyConflictDialog(props: {
+  currentName: string;
+  destinationName: string;
+  message: string;
+  busy: boolean;
+  onChange: (value: string) => void;
+  onCancel: () => void;
+  onRewrite: () => void;
+  onCopyWithNewName: () => void;
+}) {
+  const rewriteEnabled = slugify(props.destinationName) === slugify(props.currentName);
+  const renameEnabled = props.destinationName.trim().length > 0 && !rewriteEnabled;
+
+  return (
+    <section className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/80 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-xl rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+        <h2 className="text-lg font-semibold text-text-primary">Tool name conflict</h2>
+        <p className="mt-2 text-sm text-text-secondary">{props.message}</p>
+        <label className="mt-4 grid gap-2 text-sm text-text-primary">
+          <span>Name</span>
+          <input
+            className="cc-input"
+            onChange={(event) => props.onChange(event.target.value)}
+            value={props.destinationName}
+          />
+        </label>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+            Cancel
+          </button>
+          <button
+            className="cc-button cc-button-secondary"
+            disabled={!rewriteEnabled || props.busy}
+            onClick={props.onRewrite}
+            type="button"
+          >
+            Rewrite
+          </button>
+          <button
+            className="cc-button"
+            disabled={!renameEnabled || props.busy}
+            onClick={props.onCopyWithNewName}
+            type="button"
+          >
+            Copy with new name
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RemoveAgentToolDialog(props: {
+  name: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <section className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/80 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+        <h2 className="text-lg font-semibold text-text-primary">Remove agent-local tool</h2>
+        <p className="mt-2 text-sm text-text-secondary">
+          Remove <span className="font-medium text-text-primary">{props.name}</span> from this agent
+          workspace.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+            Cancel
+          </button>
+          <button
+            className="cc-button"
+            disabled={props.busy}
+            onClick={props.onConfirm}
+            type="button"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}

@@ -34,6 +34,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       defaultModel: "openai/gpt-4.1",
       capabilities: {
         builtInSkills: ["writer"],
+        customTools: [],
         mcpServers: [{ name: "github", enabled: true, action: "allow" }],
         toolPermissions: [{ pattern: "custom_write", action: "ask" }],
       },
@@ -67,6 +68,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       defaultModel: "openai/gpt-4.1",
       capabilities: {
         builtInSkills: [],
+        customTools: [],
         mcpServers: [{ name: "github", enabled: true, action: "deny" }],
         toolPermissions: [{ pattern: "github_create_issue", action: "ask" }],
       },
@@ -114,6 +116,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
           defaultModel: "openai/gpt-4.1",
           capabilities: {
             builtInSkills: ["writer"],
+            customTools: [],
             mcpServers: [],
             toolPermissions: [],
           },

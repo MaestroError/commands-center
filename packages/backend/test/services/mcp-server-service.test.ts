@@ -142,6 +142,7 @@ describe("mcp-server-service", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          customTools: [],
           mcpServers: [{ name: "github", enabled: true, action: "deny" }],
           toolPermissions: [{ pattern: "github_create_issue", action: "ask" }],
         },
@@ -194,6 +195,7 @@ describe("mcp-server-service", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          customTools: [],
           mcpServers: [{ name: "github", enabled: true, action: "deny" }],
           toolPermissions: [{ pattern: "github_create_issue", action: "ask" }],
         },

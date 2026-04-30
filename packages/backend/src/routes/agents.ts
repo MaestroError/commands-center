@@ -20,10 +20,12 @@ import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { NotFoundError } from "../lib/api-error.js";
 import { createAgentService } from "../services/agent-service.js";
+import { createCustomToolService } from "../services/custom-tool-service.js";
 import {
   createFileManagerService,
   resolveFileManagerRoot,
 } from "../services/file-manager-service.js";
+import { importAgentCustomToolInputSchema } from "@cc/shared/schemas";
 
 const agentIdParamsSchema = z.object({
   id: z.string().min(1),
@@ -39,10 +41,25 @@ const listAgentsQuerySchema = z.object({
 
 export function registerAgentRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
+  const customToolService = createCustomToolService({
+    config: context.config,
+    db: context.database.db,
+    opencodeService: context.opencodeService,
+    listAgents: async () => {
+      const agents = await service.list();
+      return agents.map((agent) => ({
+        id: agent.id,
+        slug: agent.slug,
+        name: agent.name,
+        workspacePath: agent.workspacePath,
+      }));
+    },
+  });
   const service = createAgentService({
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,
+    customToolService,
   });
   const fileManagerService = createFileManagerService({ config: context.config });
 
@@ -151,6 +168,98 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
       }
 
       return agent;
+    },
+  );
+
+  app.get(
+    "/api/agents/:id/custom-tools",
+    {
+      schema: {
+        params: agentIdParamsSchema,
+      },
+    },
+    async (request) => {
+      const agent = await requireAgent(request.params.id);
+      return customToolService.listAgentTools(agent);
+    },
+  );
+
+  app.post(
+    "/api/agents/:id/custom-tools/:slug/copy-to-global",
+    {
+      schema: {
+        params: z.object({ id: z.string().min(1), slug: z.string().min(1) }),
+        body: importAgentCustomToolInputSchema,
+      },
+    },
+    async (request) => {
+      const agent = await requireAgent(request.params.id);
+      return customToolService.copyAgentToolToGlobal({
+        agent,
+        toolSlug: request.params.slug,
+        destinationName: request.body.destinationName,
+        overwrite: request.body.overwrite,
+      });
+    },
+  );
+
+  app.post(
+    "/api/agents/:id/custom-tools/:slug/move-to-global",
+    {
+      schema: {
+        params: z.object({ id: z.string().min(1), slug: z.string().min(1) }),
+        body: importAgentCustomToolInputSchema,
+      },
+    },
+    async (request) => {
+      const agent = await requireAgent(request.params.id);
+      return customToolService.moveAgentToolToGlobal({
+        agent,
+        toolSlug: request.params.slug,
+        destinationName: request.body.destinationName,
+        overwrite: request.body.overwrite,
+      });
+    },
+  );
+
+  app.delete(
+    "/api/agents/:id/custom-tools/:slug",
+    {
+      schema: {
+        params: z.object({ id: z.string().min(1), slug: z.string().min(1) }),
+      },
+    },
+    async (request, reply) => {
+      const agent = await requireAgent(request.params.id);
+      const tools = await customToolService.listAgentTools(agent);
+      const target = tools.find((tool) => tool.slug === request.params.slug);
+
+      if (!target) {
+        throw new NotFoundError("Agent custom tool not found.");
+      }
+
+      if (agent.capabilities.customTools.includes(target.slug)) {
+        const updated = await service.update(agent.id, {
+          capabilities: {
+            ...agent.capabilities,
+            customTools: agent.capabilities.customTools.filter((slug) => slug !== target.slug),
+          },
+          customToolOverwriteSlugs: [],
+        });
+
+        if (!updated) {
+          throw new NotFoundError("Agent not found.");
+        }
+      } else {
+        await customToolService.removeAgentTool({
+          workspacePath: agent.workspacePath,
+          toolSlug: target.slug,
+        });
+        await context.opencodeService.dispose(agent.workspacePath).catch(() => {});
+      }
+
+      reply.code(204);
+      return reply.send();
     },
   );
 

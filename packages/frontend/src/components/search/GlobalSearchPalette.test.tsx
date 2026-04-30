@@ -29,7 +29,7 @@ describe("GlobalSearchPalette", () => {
         defaultModel: "openai/gpt-4.1",
         workspacePath: "/tmp/planner",
         status: "active",
-        capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
+        capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },

@@ -2,22 +2,22 @@
 
 ## Purpose
 
-Custom Tools is the global screen for defining reusable user-configured tools in CommandsCenter. It should let the single operator create and maintain HTTP-based tool definitions that can later be assigned to agents.
+Custom Tools is the global screen for discovering, creating, inspecting, and moving portable OpenCode custom tools in CommandsCenter.
 
 ## Functional Description
 
-- Show all globally defined custom tools in one place.
-- Let the user create, edit, and delete a custom tool with a name, MCP-facing description, HTTP request configuration, and optional extra instructions.
-- Treat each custom tool as a reusable global resource that can later be granted to one or more agents.
-- Let the user review and update existing tool definitions without editing agent records directly.
-- Let the user delete a custom tool permanently when it is no longer needed.
-- Save custom tool definitions inside the workspace so they remain portable with the rest of the application state.
+- Show all globally defined custom tools stored under the workspace tool library.
+- Let the user create a new starter tool by entering a name, generating a folder and starter files, then opening that tool in the file manager.
+- Let the user inspect each global tool's metadata, usage, and drift state across agent copies.
+- Let the user copy a global tool into one or more agent workspaces.
+- Let the user inspect agent-local tools for a selected agent and copy or move them back into the global library.
+- Use the file manager as the editing surface for tool implementation.
+- Make it clear that global and agent-local tools are copied snapshots that do not sync automatically.
 
 ## User Stories
 
-- As a single user, I want to see all custom tools in one global library, so that I can manage reusable tools separately from agent setup.
-- As a single user, I want to define a custom tool as an HTTP request with a name and description, so that agents can call external workflows such as n8n endpoints.
-- As a single user, I want to add optional extra instructions to a custom tool, so that the tool can contribute guidance to the agent when sessions start.
-- As a single user, I want to edit an existing custom tool, so that I can improve or fix its configuration without recreating it.
-- As a single user, I want to delete a custom tool, so that I can remove tools I no longer need.
-- As a single user, I want custom tools to stay in the workspace, so that tool definitions survive restarts and workspace moves.
+- As a single user, I want one global tool library, so I can manage reusable tools separately from a single agent.
+- As a single user, I want to create a starter tool quickly and then edit its files directly, so CC does not need a second code editor.
+- As a single user, I want to copy a global tool into multiple agents, so I can reuse the same tool implementation across workspaces.
+- As a single user, I want to inspect agent-local copies and see whether they match or drift from the global source, so I understand the current state clearly.
+- As a single user, I want to move or copy an agent-local tool back into the global library, so local experimentation can become reusable later.

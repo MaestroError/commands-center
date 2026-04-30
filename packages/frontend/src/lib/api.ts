@@ -1,5 +1,10 @@
 import {
   agentCatalogSchema,
+  copyCustomToolToAgentsInputSchema,
+  customToolAgentCopyListSchema,
+  customToolBulkCopyResultSchema,
+  customToolListSchema,
+  customToolMutationResultSchema,
   agentListSchema,
   agentSchema,
   chatEventSchema,
@@ -7,6 +12,7 @@ import {
   conversationListSchema,
   conversationSnapshotSchema,
   createAgentInputSchema,
+  createCustomToolInputSchema,
   createMcpServerInputSchema,
   engineStatusSchema,
   fileManagerCreateEntryInputSchema,
@@ -30,6 +36,7 @@ import {
   fileManagerUpdatePreferencesInputSchema,
   globalSearchQuerySchema,
   globalSearchWorkspaceFilesResponseSchema,
+  importAgentCustomToolInputSchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
   mcpServerListSchema,
@@ -51,6 +58,11 @@ import {
   workspaceWatchEventSchema,
   type Agent,
   type AgentCatalog,
+  type CopyCustomToolToAgentsInput,
+  type CreateCustomToolInput,
+  type CustomTool,
+  type CustomToolAgentCopy,
+  type CustomToolMutationResult,
   type ChatEvent,
   type CreateAgentInput,
   type CreateMcpServerInput,
@@ -77,6 +89,7 @@ import {
   type FileManagerUploadResponse,
   type FileManagerUpdatePreferencesInput,
   type GlobalSearchWorkspaceFilesResponse,
+  type ImportAgentCustomToolInput,
   type McpAuthRemoveResult,
   type McpAuthStartResult,
   type McpServer,
@@ -243,6 +256,99 @@ export async function getAgentBySlug(slug: string): Promise<Agent> {
 
 export async function getAgentCatalog(): Promise<AgentCatalog> {
   return requestJson<AgentCatalog>("/api/agents/catalog", agentCatalogSchema);
+}
+
+export async function listCustomTools(): Promise<CustomTool[]> {
+  return requestJson<CustomTool[]>("/api/custom-tools", customToolListSchema);
+}
+
+export async function createCustomTool(
+  input: CreateCustomToolInput,
+): Promise<CustomToolMutationResult> {
+  return requestJson<CustomToolMutationResult>(
+    "/api/custom-tools",
+    customToolMutationResultSchema,
+    {
+      method: "POST",
+      body: createCustomToolInputSchema.parse(input),
+    },
+  );
+}
+
+export async function deleteCustomTool(slug: string): Promise<void> {
+  const response = await fetch(`/api/custom-tools/${encodeURIComponent(slug)}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
+}
+
+export async function copyCustomToolToAgents(
+  slug: string,
+  input: CopyCustomToolToAgentsInput,
+): Promise<{ copied: Array<{ agentId: string; agentSlug: string; overwritten: boolean }> }> {
+  return requestJson(
+    `/api/custom-tools/${encodeURIComponent(slug)}/copy-to-agents`,
+    customToolBulkCopyResultSchema,
+    {
+      method: "POST",
+      body: copyCustomToolToAgentsInputSchema.parse(input),
+    },
+  );
+}
+
+export async function listAgentCustomTools(agentId: string): Promise<CustomToolAgentCopy[]> {
+  return requestJson<CustomToolAgentCopy[]>(
+    `/api/agents/${encodeURIComponent(agentId)}/custom-tools`,
+    customToolAgentCopyListSchema,
+  );
+}
+
+export async function copyAgentCustomToolToGlobal(
+  agentId: string,
+  slug: string,
+  input: ImportAgentCustomToolInput,
+): Promise<CustomToolMutationResult> {
+  return requestJson<CustomToolMutationResult>(
+    `/api/agents/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}/copy-to-global`,
+    customToolMutationResultSchema,
+    {
+      method: "POST",
+      body: importAgentCustomToolInputSchema.parse(input),
+    },
+  );
+}
+
+export async function moveAgentCustomToolToGlobal(
+  agentId: string,
+  slug: string,
+  input: ImportAgentCustomToolInput,
+): Promise<CustomToolMutationResult> {
+  return requestJson<CustomToolMutationResult>(
+    `/api/agents/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}/move-to-global`,
+    customToolMutationResultSchema,
+    {
+      method: "POST",
+      body: importAgentCustomToolInputSchema.parse(input),
+    },
+  );
+}
+
+export async function deleteAgentCustomTool(agentId: string, slug: string): Promise<void> {
+  const response = await fetch(
+    `/api/agents/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
 }
 
 export async function createAgent(input: CreateAgentInput): Promise<Agent> {
