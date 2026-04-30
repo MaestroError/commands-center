@@ -9,7 +9,6 @@ import type {
 } from "@cc/shared/schemas";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
-import { PageHeader } from "@/components/common/PageHeader";
 import { useAgentsQuery } from "@/hooks/use-agents-query";
 import {
   useAgentCustomToolsQuery,
@@ -44,6 +43,7 @@ export function CustomToolsPage() {
   const [selectedCopyAgentIds, setSelectedCopyAgentIds] = useState<string[]>([]);
   const [copyConflict, setCopyConflict] = useState<CopyConflictState>();
   const [removeTool, setRemoveTool] = useState<CustomToolAgentCopy>();
+  const [showMobileDrift, setShowMobileDrift] = useState(false);
   const agents = agentsQuery.data ?? [];
   const globalTools = customToolsQuery.data ?? [];
   const filteredTools = useMemo(
@@ -187,284 +187,284 @@ export function CustomToolsPage() {
   }
 
   return (
-    <div className="grid gap-4">
-      <PageHeader
-        description="Manage portable global custom tools, inspect agent-local copies, and open tool folders in the file manager for editing."
-        eyebrow="Custom Tools"
-        title="Custom tools"
-      />
+    <div className="relative grid gap-4">
+      <section className="cc-panel p-8">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+          <div className="grid gap-6">
+            <div>
+              <p className="cc-eyebrow">Custom Tools</p>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-text-primary">
+                Custom tools
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">
+                Global library and agent copies.
+              </p>
+            </div>
+
+            <div className="grid max-w-2xl gap-2">
+              <input
+                className="cc-input"
+                onChange={(event) => setNewName(event.target.value)}
+                placeholder="Tool name"
+                value={newName}
+              />
+              <input
+                className="cc-input"
+                onChange={(event) => setNewDescription(event.target.value)}
+                placeholder="Description"
+                value={newDescription}
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="cc-button"
+                  disabled={mutations.create.isPending || newName.trim().length === 0}
+                  onClick={() => void handleCreateTool()}
+                  type="button"
+                >
+                  {mutations.create.isPending ? "Creating..." : "Create"}
+                </button>
+                <Link
+                  className="cc-button cc-button-secondary"
+                  to="/files?root=workspace&path=custom-tools"
+                >
+                  Browse
+                </Link>
+              </div>
+            </div>
+
+            <div className="lg:hidden">
+              <button
+                className="cc-button cc-button-secondary"
+                onClick={() => setShowMobileDrift((current) => !current)}
+                type="button"
+              >
+                {showMobileDrift ? "Hide drift" : "Show drift"}
+              </button>
+              {showMobileDrift ? <MobileDriftLegend /> : null}
+            </div>
+          </div>
+
+          <div className="hidden lg:block lg:justify-self-end">
+            <div className="rounded-xl border border-border bg-surface/90 p-4 backdrop-blur-sm">
+              <DesktopDriftLegend />
+            </div>
+          </div>
+        </div>
+      </section>
 
       {actionError ? <section className="cc-alert">{actionError}</section> : null}
 
-      <section className="cc-panel grid gap-4 p-6 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)]">
-        <div className="grid gap-3">
-          <h2 className="text-lg font-semibold text-text-primary">Global library</h2>
-          <p className="text-sm text-text-secondary">
-            Create a starter tool folder here, then open it in the file manager to edit the source
-            files.
-          </p>
-          <label className="grid gap-2 text-sm text-text-primary">
-            <span>Name</span>
+      <section className="grid gap-4 xl:grid-cols-3">
+        <section className="cc-panel grid gap-4 p-6 xl:col-span-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-text-primary">Global tools</h2>
+            </div>
             <input
-              className="cc-input"
-              onChange={(event) => setNewName(event.target.value)}
-              value={newName}
+              className="cc-input w-full sm:max-w-xs"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search tools"
+              value={search}
             />
-          </label>
-          <label className="grid gap-2 text-sm text-text-primary">
-            <span>Description</span>
-            <input
-              className="cc-input"
-              onChange={(event) => setNewDescription(event.target.value)}
-              placeholder="Optional"
-              value={newDescription}
+          </div>
+
+          {customToolsQuery.isLoading ? <LoadingState /> : null}
+          {customToolsQuery.error ? (
+            <ErrorState
+              description={readError(customToolsQuery.error)}
+              title="Global tools could not be loaded."
             />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <button
-              className="cc-button"
-              disabled={mutations.create.isPending || newName.trim().length === 0}
-              onClick={() => void handleCreateTool()}
-              type="button"
-            >
-              {mutations.create.isPending ? "Creating..." : "Create starter tool"}
-            </button>
-            <Link
-              className="cc-button cc-button-secondary"
-              to="/files?root=workspace&path=custom-tools"
-            >
-              Browse tool files
-            </Link>
-          </div>
-        </div>
+          ) : null}
 
-        <div className="grid gap-3 rounded-xl border border-border bg-surface p-4">
-          <h3 className="text-base font-semibold text-text-primary">Drift model</h3>
-          <p className="text-sm text-text-secondary">
-            Global tools are copied into agent workspaces as snapshots. Later edits do not sync
-            automatically.
-          </p>
-          <ul className="grid gap-2 text-sm text-text-secondary">
-            <li>
-              <StatusBadge status="matching" /> agent copy matches the current global tool.
-            </li>
-            <li>
-              <StatusBadge status="outdated" /> global changed after the copy was created.
-            </li>
-            <li>
-              <StatusBadge status="modified" /> the agent copy was edited locally after copying.
-            </li>
-            <li>
-              <StatusBadge status="unknown" /> CC cannot safely prove the relationship.
-            </li>
-          </ul>
-        </div>
-      </section>
+          {!customToolsQuery.isLoading && !customToolsQuery.error && filteredTools.length === 0 ? (
+            <EmptyState
+              description="Create a tool or change the search."
+              title={globalTools.length === 0 ? "No custom tools yet" : "No matching tools"}
+            />
+          ) : null}
 
-      <section className="cc-panel grid gap-4 p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-text-primary">Global tools</h2>
-            <p className="mt-1 text-sm text-text-secondary">
-              Search, inspect usage, open folders, and copy tools into agent workspaces.
-            </p>
-          </div>
-          <input
-            className="cc-input w-full sm:max-w-xs"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search tools"
-            value={search}
-          />
-        </div>
-
-        {customToolsQuery.isLoading ? <LoadingState /> : null}
-        {customToolsQuery.error ? (
-          <ErrorState
-            description={readError(customToolsQuery.error)}
-            title="Global tools could not be loaded."
-          />
-        ) : null}
-
-        {!customToolsQuery.isLoading && !customToolsQuery.error && filteredTools.length === 0 ? (
-          <EmptyState
-            description="Create your first starter tool or adjust the search query."
-            title={globalTools.length === 0 ? "No custom tools yet" : "No matching tools"}
-          />
-        ) : null}
-
-        {!customToolsQuery.isLoading && !customToolsQuery.error && filteredTools.length > 0 ? (
-          <div className="grid gap-4 xl:grid-cols-2">
-            {filteredTools.map((tool) => (
-              <article className="rounded-xl border border-border bg-surface p-4" key={tool.slug}>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold text-text-primary">{tool.name}</h3>
-                      <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
-                        {tool.slug}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm text-text-secondary">
-                      {tool.description || "No description yet."}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
-                      <span className="rounded-full border border-border px-2 py-1">
-                        {tool.entryFile}
-                      </span>
-                      <span className="rounded-full border border-border px-2 py-1">
-                        {tool.usage.length} agent copy{tool.usage.length === 1 ? "" : "ies"}
-                      </span>
-                    </div>
-                    {tool.warnings.length > 0 ? (
-                      <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                        {tool.warnings.map((warning) => warning.message).join(" ")}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      className="cc-button cc-button-secondary"
-                      to={buildGlobalToolFileManagerUrl(tool)}
-                    >
-                      Open
-                    </Link>
-                    <button
-                      className="cc-button cc-button-secondary"
-                      onClick={() => {
-                        setCopyTool(tool);
-                        setSelectedCopyAgentIds([]);
-                      }}
-                      type="button"
-                    >
-                      Copy to agents
-                    </button>
-                    <button
-                      className="cc-button cc-button-secondary"
-                      onClick={() => void handleDeleteTool(tool)}
-                      type="button"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-                {tool.usage.length > 0 ? (
-                  <div className="mt-4 grid gap-2 border-t border-border pt-4">
-                    {tool.usage.map((usage) => (
-                      <div
-                        className="flex flex-wrap items-center gap-2 text-sm text-text-secondary"
-                        key={`${tool.slug}-${usage.agentId}`}
-                      >
-                        <StatusBadge status={usage.status} />
-                        <Link
-                          className="text-text-primary underline-offset-4 hover:underline"
-                          to={`/agents/${usage.agentSlug}/edit`}
-                        >
-                          {usage.agentName}
-                        </Link>
-                        <span className="text-xs">
-                          {usage.copiedAt ? new Date(usage.copiedAt).toLocaleString() : ""}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        ) : null}
-      </section>
-
-      <section className="cc-panel grid gap-4 p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-text-primary">Agent-local tools</h2>
-            <p className="mt-1 text-sm text-text-secondary">
-              Inspect agent copies, promote them back into the global library, or remove them from
-              the agent workspace.
-            </p>
-          </div>
-          <select
-            className="cc-input w-full sm:max-w-xs"
-            onChange={(event) => setSelectedAgentId(event.target.value || undefined)}
-            value={selectedAgentId ?? ""}
-          >
-            <option value="">Select an agent</option>
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {!selectedAgent ? (
-          <EmptyState
-            description="Choose an agent to inspect its local tools."
-            title="No agent selected"
-          />
-        ) : agentToolsQuery.isLoading ? (
-          <LoadingState />
-        ) : agentToolsQuery.error ? (
-          <ErrorState
-            description={readError(agentToolsQuery.error)}
-            title="Agent tools could not be loaded."
-          />
-        ) : agentTools.length === 0 ? (
-          <EmptyState
-            description="This agent does not currently expose any local custom tools."
-            title="No agent-local tools"
-          />
-        ) : (
-          <div className="grid gap-4 xl:grid-cols-2">
-            {agentTools.map((tool) => (
-              <article className="rounded-xl border border-border bg-surface p-4" key={tool.slug}>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold text-text-primary">{tool.name}</h3>
-                      <StatusBadge status={tool.status} />
-                      {!tool.isManaged ? (
+          {!customToolsQuery.isLoading && !customToolsQuery.error && filteredTools.length > 0 ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {filteredTools.map((tool) => (
+                <article className="rounded-xl border border-border bg-surface p-4" key={tool.slug}>
+                  <div className="grid gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-semibold text-text-primary">{tool.name}</h3>
                         <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
-                          Manual
+                          {tool.slug}
                         </span>
+                      </div>
+                      <p className="mt-2 text-sm text-text-secondary">
+                        {tool.description || "No description yet."}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
+                        <span className="rounded-full border border-border px-2 py-1">
+                          {tool.entryFile}
+                        </span>
+                        <span className="rounded-full border border-border px-2 py-1">
+                          {tool.usage.length} agent copy{tool.usage.length === 1 ? "" : "ies"}
+                        </span>
+                      </div>
+                      {tool.warnings.length > 0 ? (
+                        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                          {tool.warnings.map((warning) => warning.message).join(" ")}
+                        </div>
                       ) : null}
                     </div>
-                    <p className="mt-2 text-sm text-text-secondary">
-                      {tool.description || "No description available."}
-                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Link
+                        className="cc-button cc-button-secondary"
+                        to={buildGlobalToolFileManagerUrl(tool)}
+                      >
+                        Open
+                      </Link>
+                      <button
+                        className="cc-button cc-button-secondary"
+                        onClick={() => {
+                          setCopyTool(tool);
+                          setSelectedCopyAgentIds([]);
+                        }}
+                        type="button"
+                      >
+                        Copy to agents
+                      </button>
+                      <button
+                        className="cc-button cc-button-secondary"
+                        onClick={() => void handleDeleteTool(tool)}
+                        type="button"
+                      >
+                        Delete
+                      </button>
+                      <button
+                        className="cc-button cc-button-secondary"
+                        disabled={!selectedAgent}
+                        onClick={() =>
+                          selectedAgent
+                            ? void handleCopyToAgents({
+                                tool,
+                                selectedAgentIds: [selectedAgent.id],
+                              })
+                            : undefined
+                        }
+                        title={
+                          selectedAgent ? `Copy to ${selectedAgent.name}` : "Select an agent first"
+                        }
+                        type="button"
+                      >
+                        &gt;&gt;
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      className="cc-button cc-button-secondary"
-                      to={buildAgentToolFileManagerUrl(selectedAgent, tool)}
-                    >
-                      Open
-                    </Link>
-                    <button
-                      className="cc-button cc-button-secondary"
-                      onClick={() => void handleCopyAgentToolToGlobal(tool)}
-                      type="button"
-                    >
-                      Copy to global
-                    </button>
-                    <button
-                      className="cc-button cc-button-secondary"
-                      onClick={() => setRemoveTool(tool)}
-                      type="button"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-                {tool.warnings.length > 0 ? (
-                  <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                    {tool.warnings.map((warning) => warning.message).join(" ")}
-                  </div>
-                ) : null}
-              </article>
-            ))}
+                  {tool.usage.length > 0 ? (
+                    <div className="mt-4 grid gap-2 border-t border-border pt-4">
+                      {tool.usage.map((usage) => (
+                        <div
+                          className="flex flex-wrap items-center gap-2 text-sm text-text-secondary"
+                          key={`${tool.slug}-${usage.agentId}`}
+                        >
+                          <StatusBadge status={usage.status} />
+                          <Link
+                            className="text-text-primary underline-offset-4 hover:underline"
+                            to={`/agents/${usage.agentSlug}/edit`}
+                          >
+                            {usage.agentName}
+                          </Link>
+                          <span className="text-xs">
+                            {usage.copiedAt ? new Date(usage.copiedAt).toLocaleString() : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        <section className="cc-panel grid gap-4 p-6">
+          <div className="flex flex-col gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-text-primary">Agent tools</h2>
+            </div>
+            <select
+              className="cc-input"
+              onChange={(event) => setSelectedAgentId(event.target.value || undefined)}
+              value={selectedAgentId ?? ""}
+            >
+              <option value="">Select an agent</option>
+              {agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
           </div>
-        )}
+
+          {!selectedAgent ? (
+            <EmptyState description="Choose an agent." title="No agent selected" />
+          ) : agentToolsQuery.isLoading ? (
+            <LoadingState />
+          ) : agentToolsQuery.error ? (
+            <ErrorState
+              description={readError(agentToolsQuery.error)}
+              title="Agent tools could not be loaded."
+            />
+          ) : agentTools.length === 0 ? (
+            <EmptyState description="No local tools in this workspace." title="No agent tools" />
+          ) : (
+            <div className="grid gap-4">
+              {agentTools.map((tool) => (
+                <article className="rounded-xl border border-border bg-surface p-4" key={tool.slug}>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-semibold text-text-primary">{tool.name}</h3>
+                        <StatusBadge status={tool.status} />
+                        {!tool.isManaged ? (
+                          <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                            Manual
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-sm text-text-secondary">
+                        {tool.description || "No description available."}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Link
+                        className="cc-button cc-button-secondary"
+                        to={buildAgentToolFileManagerUrl(selectedAgent, tool)}
+                      >
+                        Open
+                      </Link>
+                      <button
+                        className="cc-button cc-button-secondary"
+                        onClick={() => void handleCopyAgentToolToGlobal(tool)}
+                        type="button"
+                      >
+                        Copy to global
+                      </button>
+                      <button
+                        className="cc-button cc-button-secondary"
+                        onClick={() => setRemoveTool(tool)}
+                        type="button"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  {tool.warnings.length > 0 ? (
+                    <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                      {tool.warnings.map((warning) => warning.message).join(" ")}
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
       </section>
 
       {copyTool ? (
@@ -658,6 +658,46 @@ function StatusBadge(props: { status: CustomToolDriftStatus }) {
 
 function readError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "Custom tools request failed.";
+}
+
+function DesktopDriftLegend() {
+  return (
+    <div className="grid gap-2 text-sm text-text-secondary">
+      <span className="font-medium text-text-primary">Drift</span>
+      <span className="flex items-center gap-2">
+        <StatusBadge status="matching" /> up to date
+      </span>
+      <span className="flex items-center gap-2">
+        <StatusBadge status="outdated" /> needs refresh
+      </span>
+      <span className="flex items-center gap-2">
+        <StatusBadge status="modified" /> local edits
+      </span>
+      <span className="flex items-center gap-2">
+        <StatusBadge status="unknown" /> no proof
+      </span>
+    </div>
+  );
+}
+
+function MobileDriftLegend() {
+  return (
+    <div className="mt-3 grid gap-2 rounded-xl border border-border bg-surface p-4 text-sm text-text-secondary">
+      <span className="font-medium text-text-primary">Drift</span>
+      <span className="flex items-center gap-2">
+        <StatusBadge status="matching" /> up to date
+      </span>
+      <span className="flex items-center gap-2">
+        <StatusBadge status="outdated" /> needs refresh
+      </span>
+      <span className="flex items-center gap-2">
+        <StatusBadge status="modified" /> local edits
+      </span>
+      <span className="flex items-center gap-2">
+        <StatusBadge status="unknown" /> no proof
+      </span>
+    </div>
+  );
 }
 
 function isCopyConflictError(message: string): boolean {
