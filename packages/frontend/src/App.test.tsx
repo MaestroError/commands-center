@@ -142,7 +142,14 @@ describe("App", () => {
     window.localStorage.setItem(
       RECENT_AGENTS_STORAGE_KEY,
       JSON.stringify([
-        { id: "a1", slug: "planner", name: "Planner", role: "Plans", lastVisitedAt: "1" },
+        {
+          id: "a1",
+          slug: "planner",
+          name: "Planner",
+          role: "Plans",
+          iconPath: "emoji:🤖",
+          lastVisitedAt: "1",
+        },
         { id: "a2", slug: "reviewer", name: "Reviewer", role: "Reviews", lastVisitedAt: "2" },
         { id: "a3", slug: "builder", name: "Builder", role: "Builds", lastVisitedAt: "3" },
         { id: "a4", slug: "extra", name: "Extra", role: "Extra", lastVisitedAt: "4" },
@@ -151,19 +158,20 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(screen.getByRole("link", { name: "Planner Plans" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "🤖 Planner Plans" })).toHaveAttribute(
       "href",
       "/chat/planner",
     );
-    expect(screen.getByRole("link", { name: "Reviewer Reviews" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "R Reviewer Reviews" })).toHaveAttribute(
       "href",
       "/chat/reviewer",
     );
-    expect(screen.getByRole("link", { name: "Builder Builds" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "B Builder Builds" })).toHaveAttribute(
       "href",
       "/chat/builder",
     );
     expect(screen.queryByRole("link", { name: "Extra Extra" })).not.toBeInTheDocument();
+    expect(screen.getByText("🤖")).toBeInTheDocument();
   });
 
   it("updates active navigation and header title when navigating", async () => {

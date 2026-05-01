@@ -3,6 +3,7 @@ export type RecentAgent = {
   slug: string;
   name: string;
   role: string;
+  iconPath?: string;
   lastVisitedAt: string;
 };
 
@@ -54,6 +55,9 @@ function isRecentAgent(value: unknown): value is RecentAgent {
     typeof value.name === "string" &&
     "role" in value &&
     typeof value.role === "string" &&
+    (!("iconPath" in value) ||
+      value.iconPath === undefined ||
+      typeof value.iconPath === "string") &&
     "lastVisitedAt" in value &&
     typeof value.lastVisitedAt === "string"
   );

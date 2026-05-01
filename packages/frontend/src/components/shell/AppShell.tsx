@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ChevronLeft, Menu, Search } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useEngineStatusQuery } from "@/hooks/use-engine-status-query";
@@ -287,8 +288,15 @@ function SidebarContent(props: {
                       onClick={props.onNavigate}
                       to={`/chat/${encodeURIComponent(agent.slug)}`}
                     >
-                      <p className="truncate text-sm font-medium text-text-primary">{agent.name}</p>
-                      <p className="truncate text-xs text-text-secondary">{agent.role}</p>
+                      <div className="flex items-center gap-3">
+                        <AgentAvatar iconPath={agent.iconPath} name={agent.name} size="sm" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-text-primary">
+                            {agent.name}
+                          </p>
+                          <p className="truncate text-xs text-text-secondary">{agent.role}</p>
+                        </div>
+                      </div>
                     </NavLink>
                   ))}
                 </div>

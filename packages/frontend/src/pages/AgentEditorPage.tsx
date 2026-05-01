@@ -12,6 +12,7 @@ import type {
   UpdateAgentInput,
 } from "@cc/shared/schemas";
 
+import { AgentAvatarPicker } from "@/components/agents/AgentAvatarPicker";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useAgentCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
@@ -150,11 +151,10 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
               />
             </Field>
             <div className="lg:col-span-2">
-              <Field label="Icon or image URL" error={undefined}>
-                <input
-                  className="cc-input"
-                  onChange={(event) => updateField("iconPath", event.target.value)}
-                  placeholder="Optional image URL"
+              <Field label="Avatar" error={undefined}>
+                <AgentAvatarPicker
+                  name={form.name}
+                  onChange={(value) => updateField("iconPath", value)}
                   value={form.iconPath}
                 />
               </Field>

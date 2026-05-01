@@ -43,11 +43,14 @@ test("creates and edits an agent", async ({ page }) => {
   await page.getByLabel(/Role/).fill("plan work");
   await page.getByLabel(/Instructions/).fill("Plan before editing.");
   await page.getByLabel(/Model/).selectOption("openai/gpt-4.1");
+  await page.getByRole("button", { name: "Emoji" }).click();
+  await page.getByLabel(/Emoji/).fill("🤖");
   await page.getByText("screen-requirements-writing").click();
   await page.getByRole("button", { name: "Create agent" }).click();
 
   await expect(page).toHaveURL(/\/agents\/planner\/edit$/);
   await expect(page.getByLabel(/Name/)).toHaveValue("Planner");
+  await expect(page.getByText("🤖")).toBeVisible();
   await page.getByLabel(/Role/).fill("plan features");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByLabel(/Role/)).toHaveValue("plan features");

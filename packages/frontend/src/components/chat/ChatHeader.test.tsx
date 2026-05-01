@@ -19,6 +19,7 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof ChatHeader>
     agentId: "agent-1",
     agentName: "Planner",
     agentRole: "Plans implementation work",
+    agentIconPath: undefined,
     currentConversationId: "conv-1",
     onStartFresh: vi.fn(),
     onSelectConversation: vi.fn(),
@@ -39,6 +40,12 @@ describe("ChatHeader", () => {
     renderHeader();
 
     expect(screen.getByText("Plans implementation work")).toBeInTheDocument();
+  });
+
+  it("renders emoji avatars when provided", () => {
+    renderHeader({ agentIconPath: "emoji:🤖" });
+
+    expect(screen.getByText("🤖")).toBeInTheDocument();
   });
 
   it("opens ConversationHistoryModal when the history button is clicked", () => {

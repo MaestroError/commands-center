@@ -88,6 +88,7 @@ export function WorkspaceChatPage() {
       slug: conv.agent.slug,
       name: conv.agent.name,
       role: conv.agent.role,
+      iconPath: conv.agent.iconPath,
     });
   }, [conv.agent]);
 
@@ -197,6 +198,7 @@ export function WorkspaceChatPage() {
           <div className="relative flex h-full flex-col overflow-hidden">
             <ChatHeader
               agentId={conv.agent?.id ?? ""}
+              agentIconPath={conv.agent?.iconPath}
               agentName={conv.agent?.name ?? agentSlug ?? "Agent"}
               agentRole={conv.agent?.role ?? ""}
               currentConversationId={conv.conversation.id}

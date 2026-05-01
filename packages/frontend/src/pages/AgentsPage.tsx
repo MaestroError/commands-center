@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import type { Agent } from "@cc/shared/schemas";
 
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useAgentMutations, useAgentsQuery } from "@/hooks/use-agents-query";
@@ -107,17 +108,7 @@ export function AgentsPage() {
           {filteredAgents.map((agent) => (
             <article className="cc-panel flex min-h-72 flex-col p-5" key={agent.id}>
               <div className="flex items-start gap-4">
-                {agent.iconPath ? (
-                  <img
-                    alt=""
-                    className="h-14 w-14 rounded-lg border border-border object-cover"
-                    src={agent.iconPath}
-                  />
-                ) : (
-                  <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-border bg-surface-elevated text-lg font-semibold text-accent">
-                    {readInitials(agent.name)}
-                  </div>
-                )}
+                <AgentAvatar iconPath={agent.iconPath} name={agent.name} size="lg" />
                 <div className="min-w-0">
                   <h2 className="truncate text-xl font-semibold text-text-primary">{agent.name}</h2>
                   <p className="mt-1 text-sm text-text-secondary">{agent.role}</p>
@@ -207,16 +198,6 @@ export function AgentsPage() {
     await agentMutations.archive.mutateAsync(pendingDelete.id);
     setPendingDelete(undefined);
   }
-}
-
-function readInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  return (
-    parts
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? "")
-      .join("") || "A"
-  );
 }
 
 function readError(error: unknown): string {

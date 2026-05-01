@@ -1,11 +1,14 @@
 import { useState } from "react";
 
+import { AgentAvatar } from "@/components/agents/agent-avatar";
+
 import { ConversationHistoryModal } from "./ConversationHistoryModal";
 
 type ChatHeaderProps = {
   agentId: string;
   agentName: string;
   agentRole: string;
+  agentIconPath?: string;
   currentConversationId: string;
   onStartFresh: () => void;
   onSelectConversation: (id: string) => void;
@@ -20,6 +23,7 @@ export function ChatHeader({
   agentId,
   agentName,
   agentRole,
+  agentIconPath,
   currentConversationId,
   onStartFresh,
   onSelectConversation,
@@ -33,9 +37,12 @@ export function ChatHeader({
 
   return (
     <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3 bg-surface">
-      <div className="min-w-0">
-        <h2 className="text-base font-semibold text-text-primary truncate">{agentName}</h2>
-        <p className="text-xs text-text-secondary truncate">{agentRole}</p>
+      <div className="flex min-w-0 items-center gap-3">
+        <AgentAvatar iconPath={agentIconPath} name={agentName} size="md" />
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-text-primary truncate">{agentName}</h2>
+          <p className="text-xs text-text-secondary truncate">{agentRole}</p>
+        </div>
       </div>
 
       <div className="flex items-center gap-1 shrink-0">

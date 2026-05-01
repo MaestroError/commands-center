@@ -227,6 +227,44 @@ describe("AgentEditorPage", () => {
     });
   });
 
+  it("saves emoji avatars through the picker", async () => {
+    updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
+
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("button", { name: "Emoji" }));
+    fireEvent.change(screen.getByPlaceholderText("🤖"), { target: { value: "🧠" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(updateMutateAsync).toHaveBeenCalledWith({
+        id: "agent-1",
+        input: expect.objectContaining({
+          iconPath: "emoji:🧠",
+        }),
+      });
+    });
+  });
+
+  it("saves icon avatars through the picker", async () => {
+    updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
+
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("button", { name: "Icon" }));
+    fireEvent.click(screen.getByRole("button", { name: "Builder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(updateMutateAsync).toHaveBeenCalledWith({
+        id: "agent-1",
+        input: expect.objectContaining({
+          iconPath: "icon:hammer",
+        }),
+      });
+    });
+  });
+
   it("saves selected custom tools and collects overwrite slugs for existing local copies", async () => {
     updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
     vi.spyOn(window, "confirm").mockReturnValue(true);

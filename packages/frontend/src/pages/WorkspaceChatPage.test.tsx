@@ -189,6 +189,7 @@ function makeConversation(overrides: Record<string, unknown> = {}) {
       slug: "planner",
       name: "Planner",
       role: "Plans work",
+      iconPath: undefined,
       workspacePath: "/workspace/planner",
       capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
     },
