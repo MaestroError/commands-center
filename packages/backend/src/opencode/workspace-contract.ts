@@ -117,6 +117,7 @@ export async function writeOpenCodeWorkspace(options: {
   workspacePath: string;
   input: OpenCodeWorkspaceInput;
   skillRoot: string;
+  workspaceSkillRoot: string;
 }): Promise<void> {
   const paths = getOpenCodeWorkspacePaths(options.workspacePath);
   const rendered = renderOpenCodeWorkspace(options.input);
@@ -128,7 +129,11 @@ export async function writeOpenCodeWorkspace(options: {
   await mkdir(paths.skillsDir, { recursive: true });
 
   for (const skill of options.input.capabilities.builtInSkills) {
-    await copyBuiltInSkill(options.skillRoot, paths.skillsDir, skill);
+    await copySkill(options.skillRoot, paths.skillsDir, skill);
+  }
+
+  for (const skill of options.input.capabilities.workspaceSkills) {
+    await copySkill(options.workspaceSkillRoot, paths.skillsDir, skill);
   }
 
   await writeFile(paths.rulesFile, rendered.rulesMarkdown, "utf8");
@@ -303,7 +308,7 @@ async function listSkillFiles(root: string, baseRoot = root): Promise<string[]> 
   return files.flat().sort((left, right) => left.localeCompare(right));
 }
 
-async function copyBuiltInSkill(root: string, targetRoot: string, slug: string): Promise<void> {
+async function copySkill(root: string, targetRoot: string, slug: string): Promise<void> {
   const source = join(root, slug);
   await validateSkillDirectory(source, slug);
   await cp(source, join(targetRoot, slug), { recursive: true });

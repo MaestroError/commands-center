@@ -108,8 +108,8 @@ export const appRoutes = [
   },
   {
     path: "/skills",
-    title: "Built-in Skills",
-    navLabel: "Built-in Skills",
+    title: "Skills Library",
+    navLabel: "Skills",
     navIcon: <Sparkles className="h-4 w-4 shrink-0" />,
     element: <BuiltInSkillsPage />,
   },

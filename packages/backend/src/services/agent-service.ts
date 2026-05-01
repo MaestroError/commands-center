@@ -9,6 +9,7 @@ import {
   builtInSkillListSchema,
   createAgentInputSchema,
   updateAgentInputSchema,
+  workspaceSkillListSchema,
   type Agent,
   type AgentCapabilitySelection,
   type AgentCatalog,
@@ -28,6 +29,7 @@ import { createProviderService } from "./provider-service.js";
 import {
   archiveWorkspace,
   getBuiltInSkillRoot,
+  getWorkspaceSkillRoot,
   listBuiltInSkills,
   moveWorkspace,
   prepareWorkspace,
@@ -44,6 +46,7 @@ export function createAgentService(options: {
   skillRoot?: string;
 }) {
   const skillRoot = options.skillRoot ?? getBuiltInSkillRoot(options.config);
+  const workspaceSkillRoot = getWorkspaceSkillRoot(options.config);
   const providerService = createProviderService({
     config: options.config,
     opencodeService: options.opencodeService,
@@ -96,6 +99,7 @@ export function createAgentService(options: {
           capabilities,
         },
         skillRoot,
+        workspaceSkillRoot,
       });
 
       await options.customToolService?.syncAgentAssignments({
@@ -163,6 +167,7 @@ export function createAgentService(options: {
         workspacePath: nextWorkspacePath,
         input: workspaceInput,
         skillRoot,
+        workspaceSkillRoot,
       });
 
       await options.customToolService?.syncAgentAssignments({
@@ -232,8 +237,9 @@ export function createAgentService(options: {
     },
 
     async getCatalog(): Promise<AgentCatalog> {
-      const [skills, mcpRows, toolRows, providerModels] = await Promise.all([
+      const [skills, workspaceSkills, mcpRows, toolRows, providerModels] = await Promise.all([
         listBuiltInSkills(skillRoot),
+        listBuiltInSkills(workspaceSkillRoot),
         options.db
           .select({ name: mcp_servers.name, enabled: mcp_servers.enabled })
           .from(mcp_servers),
@@ -243,6 +249,7 @@ export function createAgentService(options: {
 
       return agentCatalogSchema.parse({
         builtInSkills: builtInSkillListSchema.parse(skills),
+        workspaceSkills: workspaceSkillListSchema.parse(workspaceSkills),
         providerModels: Array.from(
           new Map(
             providerModels.map((model) => {

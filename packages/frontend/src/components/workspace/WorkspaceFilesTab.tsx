@@ -359,7 +359,7 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
     return (
       <>
         <p className="px-1 pb-2 text-[11px] text-text-secondary">
-          Upload files here, or drag files into the message area to mention them.
+          Drop files here to upload. Drag files into message area to mention.
         </p>
         <CreateFolderRow
           busy={actionBusyKey === "create-folder"}

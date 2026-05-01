@@ -70,7 +70,7 @@ describe("WorkspaceFilesTab", () => {
 
     expect(
       await screen.findByText(
-        "Upload files here, or drag files into the message area to mention them.",
+        "Drop files here to upload. Drag files into message area to mention.",
       ),
     ).toBeInTheDocument();
     expect(await screen.findByText("src")).toBeInTheDocument();

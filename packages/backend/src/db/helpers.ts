@@ -68,6 +68,8 @@ export async function createAgentRecord(
       status: "active",
       capabilities_json: JSON.stringify({
         builtInSkills: [],
+        workspaceSkills: [],
+        customTools: [],
         mcpServers: [],
         toolPermissions: [],
       }),

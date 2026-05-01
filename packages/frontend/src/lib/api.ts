@@ -5,6 +5,7 @@ import {
   customToolBulkCopyResultSchema,
   customToolListSchema,
   customToolMutationResultSchema,
+  createWorkspaceSkillInputSchema,
   agentListSchema,
   agentSchema,
   chatEventSchema,
@@ -56,6 +57,9 @@ import {
   terminalResizeInputSchema,
   terminalSessionSchema,
   workspaceWatchEventSchema,
+  workspaceSkillListSchema,
+  workspaceSkillMutationResultSchema,
+  workspaceSkillUploadInputSchema,
   type Agent,
   type AgentCatalog,
   type CopyCustomToolToAgentsInput,
@@ -63,6 +67,7 @@ import {
   type CustomTool,
   type CustomToolAgentCopy,
   type CustomToolMutationResult,
+  type CreateWorkspaceSkillInput,
   type ChatEvent,
   type CreateAgentInput,
   type CreateMcpServerInput,
@@ -105,6 +110,9 @@ import {
   type UpdateAgentInput,
   type UpdateMcpServerInput,
   type WorkspaceWatchEvent,
+  type WorkspaceSkill,
+  type WorkspaceSkillMutationResult,
+  type WorkspaceSkillUploadInput,
   updateAgentInputSchema,
   updateMcpServerInputSchema,
 } from "@cc/shared/schemas";
@@ -262,6 +270,10 @@ export async function listCustomTools(): Promise<CustomTool[]> {
   return requestJson<CustomTool[]>("/api/custom-tools", customToolListSchema);
 }
 
+export async function listWorkspaceSkills(): Promise<WorkspaceSkill[]> {
+  return requestJson<WorkspaceSkill[]>("/api/workspace-skills", workspaceSkillListSchema);
+}
+
 export async function createCustomTool(
   input: CreateCustomToolInput,
 ): Promise<CustomToolMutationResult> {
@@ -277,6 +289,43 @@ export async function createCustomTool(
 
 export async function deleteCustomTool(slug: string): Promise<void> {
   const response = await fetch(`/api/custom-tools/${encodeURIComponent(slug)}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
+}
+
+export async function createWorkspaceSkill(
+  input: CreateWorkspaceSkillInput,
+): Promise<WorkspaceSkillMutationResult> {
+  return requestJson<WorkspaceSkillMutationResult>(
+    "/api/workspace-skills",
+    workspaceSkillMutationResultSchema,
+    {
+      method: "POST",
+      body: createWorkspaceSkillInputSchema.parse(input),
+    },
+  );
+}
+
+export async function uploadWorkspaceSkill(
+  input: WorkspaceSkillUploadInput,
+): Promise<WorkspaceSkillMutationResult> {
+  return requestJson<WorkspaceSkillMutationResult>(
+    "/api/workspace-skills/upload",
+    workspaceSkillMutationResultSchema,
+    {
+      method: "POST",
+      body: workspaceSkillUploadInputSchema.parse(input),
+    },
+  );
+}
+
+export async function deleteWorkspaceSkill(slug: string): Promise<void> {
+  const response = await fetch(`/api/workspace-skills/${encodeURIComponent(slug)}`, {
     method: "DELETE",
   });
 

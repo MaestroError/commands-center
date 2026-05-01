@@ -47,6 +47,7 @@ export function useAgentMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents }),
       queryClient.invalidateQueries({ queryKey: queryKeys.agentCatalog }),
       queryClient.invalidateQueries({ queryKey: queryKeys.customTools }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaceSkills }),
     ]);
   };
 

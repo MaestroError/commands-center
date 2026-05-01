@@ -89,6 +89,7 @@ describe("agent routes", () => {
       const catalogBody = catalog.json<{ builtInSkills: Array<{ slug: string }> }>();
       expect(catalogBody.builtInSkills.map((skill) => skill.slug)).toEqual([
         "concise-summarizer",
+        "custom-skill-authoring",
         "custom-tool-authoring",
         "final-review",
         "task-planner",

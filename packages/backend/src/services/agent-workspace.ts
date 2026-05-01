@@ -23,6 +23,10 @@ export function getBuiltInSkillRoot(config: RuntimeConfig): string {
   return resolveBuiltInSkillsRoot();
 }
 
+export function getWorkspaceSkillRoot(config: RuntimeConfig): string {
+  return config.paths.subdirectories.skills;
+}
+
 export async function listBuiltInSkills(root: string): Promise<BuiltInSkill[]> {
   return listContractBuiltInSkills(root);
 }
@@ -32,11 +36,13 @@ export async function prepareWorkspace(options: {
   workspacePath: string;
   input: AgentWorkspaceInput;
   skillRoot?: string;
+  workspaceSkillRoot?: string;
 }): Promise<void> {
   await writeOpenCodeWorkspace({
     workspacePath: options.workspacePath,
     input: options.input,
     skillRoot: options.skillRoot ?? getBuiltInSkillRoot(options.config),
+    workspaceSkillRoot: options.workspaceSkillRoot ?? getWorkspaceSkillRoot(options.config),
   });
 }
 

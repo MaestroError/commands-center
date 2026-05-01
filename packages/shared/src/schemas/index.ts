@@ -83,6 +83,8 @@ export {
   createAgentInputSchema,
   permissionActionSchema,
   updateAgentInputSchema,
+  workspaceSkillListSchema,
+  workspaceSkillSchema,
   type Agent,
   type AgentCatalog,
   type AgentCapabilitySelection,
@@ -92,7 +94,16 @@ export {
   type BuiltInSkill,
   type CreateAgentInput,
   type UpdateAgentInput,
+  type WorkspaceSkill,
 } from "./agents.js";
+export {
+  createWorkspaceSkillInputSchema,
+  workspaceSkillMutationResultSchema,
+  workspaceSkillUploadInputSchema,
+  type CreateWorkspaceSkillInput,
+  type WorkspaceSkillMutationResult,
+  type WorkspaceSkillUploadInput,
+} from "./custom-skills.js";
 export {
   copyCustomToolToAgentsInputSchema,
   createCustomToolInputSchema,

@@ -20,6 +20,7 @@ const catalog = {
       files: ["SKILL.md"],
     },
   ],
+  workspaceSkills: [],
   mcpServers: [{ name: "github", enabled: true }],
   customTools: [
     { slug: "custom_write", name: "custom_write", description: "Write output.", enabled: true },
@@ -39,6 +40,7 @@ const agents = [
     status: "active",
     capabilities: {
       builtInSkills: ["screen-requirements-writing"],
+      workspaceSkills: [],
       customTools: [],
       mcpServers: [],
       toolPermissions: [],
@@ -55,7 +57,13 @@ const agents = [
     defaultModel: "openai/gpt-4.1",
     workspacePath: "/tmp/agents/reviewer",
     status: "active",
-    capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
+    capabilities: {
+      builtInSkills: [],
+      workspaceSkills: [],
+      customTools: [],
+      mcpServers: [],
+      toolPermissions: [],
+    },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   },
@@ -102,6 +110,28 @@ describe("agent flows", () => {
   it("creates an agent and navigates to edit state", async () => {
     mockApi({
       "GET /api/agents/catalog": [jsonResponse(200, catalog), jsonResponse(200, catalog)],
+      "GET /api/agents": [
+        jsonResponse(200, agents),
+        jsonResponse(200, [
+          ...agents,
+          {
+            ...agents[0],
+            id: "agent-3",
+            slug: "planner",
+            name: "Planner",
+            role: "plan work",
+            instructions: "Plan before editing.",
+            capabilities: {
+              builtInSkills: ["screen-requirements-writing"],
+              workspaceSkills: [],
+              customTools: [],
+              mcpServers: [{ name: "github", enabled: true, action: "ask" }],
+              toolPermissions: [{ pattern: "custom_write", action: "allow" }],
+            },
+            workspacePath: "/tmp/agents/planner",
+          },
+        ]),
+      ],
       "GET /api/custom-tools": [jsonResponse(200, []), jsonResponse(200, [])],
       "GET /api/mcp-servers": [jsonResponse(200, []), jsonResponse(200, [])],
       "POST /api/agents": [
@@ -114,6 +144,7 @@ describe("agent flows", () => {
           instructions: "Plan before editing.",
           capabilities: {
             builtInSkills: ["screen-requirements-writing"],
+            workspaceSkills: [],
             customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "ask" }],
             toolPermissions: [{ pattern: "custom_write", action: "allow" }],
@@ -131,6 +162,7 @@ describe("agent flows", () => {
           instructions: "Plan before editing.",
           capabilities: {
             builtInSkills: ["screen-requirements-writing"],
+            workspaceSkills: [],
             customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "ask" }],
             toolPermissions: [{ pattern: "custom_write", action: "allow" }],
@@ -162,6 +194,7 @@ describe("agent flows", () => {
   it("renders the built-in skills browser and detail pane", async () => {
     mockApi({
       "GET /api/agents/catalog": [jsonResponse(200, catalog)],
+      "GET /api/agents": [jsonResponse(200, agents)],
       "GET /api/custom-tools": [jsonResponse(200, [])],
     });
     window.history.replaceState({}, "", "/skills");

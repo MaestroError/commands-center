@@ -8,6 +8,7 @@ import type { AppDb } from "../db/client.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import {
   getBuiltInSkillRoot,
+  getWorkspaceSkillRoot,
   prepareWorkspace,
   resolveAgentWorkspacePath,
 } from "./agent-workspace.js";
@@ -27,6 +28,7 @@ export function normalizeAgentCapabilities(
 
   return {
     builtInSkills: capabilities.builtInSkills,
+    workspaceSkills: capabilities.workspaceSkills,
     customTools: capabilities.customTools,
     mcpServers: dedupeMcpServers(nextMcpServers),
     toolPermissions: capabilities.toolPermissions.filter(
@@ -41,6 +43,7 @@ export function removeMcpReferences(
 ): AgentCapabilitySelection {
   return {
     builtInSkills: capabilities.builtInSkills,
+    workspaceSkills: capabilities.workspaceSkills,
     customTools: capabilities.customTools,
     mcpServers: capabilities.mcpServers.filter((server) => server.name !== mcpName),
     toolPermissions: capabilities.toolPermissions.filter(
@@ -56,6 +59,7 @@ export function renameMcpReferences(
 ): AgentCapabilitySelection {
   return {
     builtInSkills: capabilities.builtInSkills,
+    workspaceSkills: capabilities.workspaceSkills,
     customTools: capabilities.customTools,
     mcpServers: dedupeMcpServers(
       capabilities.mcpServers.map((server) =>
@@ -104,6 +108,7 @@ export async function rewriteAgentsForMcpChange(options: {
         capabilities: nextCapabilities,
       },
       skillRoot: getBuiltInSkillRoot(options.config),
+      workspaceSkillRoot: getWorkspaceSkillRoot(options.config),
     });
 
     if (typeof options.opencodeService.dispose === "function") {

@@ -39,6 +39,7 @@ beforeEach(() => {
   vi.mocked(useAgentCatalogQuery).mockReturnValue({
     data: {
       builtInSkills: [],
+      workspaceSkills: [],
       mcpServers: [{ name: "github", enabled: true }],
       customTools: [],
       providerModels: [{ id: "openai/gpt-4.1", label: "openai/gpt-4.1" }],
@@ -178,6 +179,7 @@ describe("AgentEditorPage", () => {
           customToolOverwriteSlugs: [],
           capabilities: {
             builtInSkills: [],
+            workspaceSkills: [],
             customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "allow" }],
             toolPermissions: [],
@@ -207,6 +209,7 @@ describe("AgentEditorPage", () => {
           customToolOverwriteSlugs: [],
           capabilities: {
             builtInSkills: [],
+            workspaceSkills: [],
             customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "ask" }],
             toolPermissions: [],

@@ -25,7 +25,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |  |- I1 Provider Connections
  |  |  \- ✅ U2 Agents and Agent Editor
  |  \- ✅ I2 Integrations and MCP Management
- |     |- I3 Custom Tools Platform
+ |     |- ✅ I3 Custom Tools Platform
  |     |- I5 Composio Integration
  |     \- I6 App-Provided MCP Server
  |- ✅ E3 API and Realtime Foundation
@@ -43,7 +43,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
     |  |- U2 Agents and Agent Editor
      |  |- ✅ U3 Direct Chat Screen
     |  |- ✅ I2 Integrations and MCP Management
-    |  |- I3 Custom Tools Platform
+    |  |- ✅ I3 Custom Tools Platform
     |  \- I5 Composio Integration
     |- ✅ C3 Direct Chat Session Model
     |  |- U3 Direct Chat Screen
@@ -81,8 +81,8 @@ Run after Path A starts stabilizing. Integration epics (I2, I3, I5) and the cust
 
 1. `✅ integrations-automation/02-integrations-and-mcp-management.md`
 2. `✅ product-ux-surfaces/04-file-manager-and-terminals.md`
-3. `integrations-automation/03-custom-tools-platform.md`
-4. `product-ux-surfaces/06-custom-skills-library.md`
+3. `✅ integrations-automation/03-custom-tools-platform.md`
+4. `✅ product-ux-surfaces/06-custom-skills-library.md`
 5. `integrations-automation/05-composio-integration.md`
 6. `integrations-automation/06-app-provided-mcp-server.md`
 7. `engine-infrastructure/04-self-updating-and-version-management.md`
@@ -161,8 +161,8 @@ Each epic PR should:
 
 - ✅ I2 Integrations and MCP Management
 - ✅ U4 File Manager and Terminals
-- I3 Custom Tools Platform
-- U6 Custom Skills Library
+- ✅ I3 Custom Tools Platform
+- ✅ U6 Custom Skills Library
 - I5 Composio Integration
 
 ### Milestone 3: Workspace Interaction and Polish

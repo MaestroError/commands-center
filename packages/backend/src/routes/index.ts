@@ -11,6 +11,7 @@ import { registerProviderRoutes } from "./providers.js";
 import { registerSearchRoutes } from "./search.js";
 import { registerSecretRoutes } from "./secrets.js";
 import { registerTerminalRoutes } from "./terminal.js";
+import { registerWorkspaceSkillRoutes } from "./workspace-skills.js";
 
 export function registerApiRoutes(server: AppServer, context: RuntimeContext): void {
   registerHealthRoutes(server, context);
@@ -18,6 +19,7 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerConversationRoutes(server, context);
   registerConversationEventRoutes(server, context);
   registerCustomToolRoutes(server, context);
+  registerWorkspaceSkillRoutes(server, context);
   registerFileManagerRoutes(server, context);
   registerSearchRoutes(server, context);
   registerMcpServerRoutes(server, context);

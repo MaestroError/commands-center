@@ -2,7 +2,7 @@
 
 ## Outcome
 
-The user can create reusable workspace-local custom skills, browse them alongside curated built-in skills, assign them to agents, and have CC materialize the selected skills into each agent workspace the same way built-in skills are materialized today.
+The user can create reusable workspace-local custom skills, browse them alongside curated built-in skills, assign them to agents, and have CC materialize the selected skills into each agent workspace the same way built-in skills and custom tools are materialized today.
 
 ## Why this is a separate PR
 

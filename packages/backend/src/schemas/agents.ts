@@ -15,8 +15,11 @@ export const builtInSkillSchema = z.object({
   files: z.array(z.string().min(1)).default([]),
 });
 
+export const workspaceSkillSchema = builtInSkillSchema;
+
 export const agentCatalogSchema = z.object({
   builtInSkills: z.array(builtInSkillSchema),
+  workspaceSkills: z.array(workspaceSkillSchema),
   providerModels: z.array(
     z.object({
       id: z.string().min(1),
@@ -52,6 +55,7 @@ export const agentMcpServerSchema = z.object({
 
 export const agentCapabilitySelectionSchema = z.object({
   builtInSkills: z.array(z.string().min(1)).default([]),
+  workspaceSkills: z.array(z.string().min(1)).default([]),
   customTools: z.array(z.string().min(1)).default([]),
   mcpServers: z.array(agentMcpServerSchema).default([]),
   toolPermissions: z.array(agentPermissionRuleSchema).default([]),
@@ -94,10 +98,12 @@ export const agentSchema = z.object({
 });
 
 export const builtInSkillListSchema = z.array(builtInSkillSchema);
+export const workspaceSkillListSchema = z.array(workspaceSkillSchema);
 
 export type Agent = z.infer<typeof agentSchema>;
 export type AgentCatalog = z.infer<typeof agentCatalogSchema>;
 export type AgentCapabilitySelection = z.infer<typeof agentCapabilitySelectionSchema>;
 export type BuiltInSkill = z.infer<typeof builtInSkillSchema>;
+export type WorkspaceSkill = z.infer<typeof workspaceSkillSchema>;
 export type CreateAgentInput = z.input<typeof createAgentInputSchema>;
 export type UpdateAgentInput = z.input<typeof updateAgentInputSchema>;

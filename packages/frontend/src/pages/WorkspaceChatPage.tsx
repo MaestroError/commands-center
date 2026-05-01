@@ -62,8 +62,11 @@ export function WorkspaceChatPage() {
 
   const skills = useMemo(() => {
     if (!conv.agent || !catalog) return undefined;
-    const slugs = new Set(conv.agent.capabilities.builtInSkills);
-    return catalog.builtInSkills
+    const slugs = new Set([
+      ...conv.agent.capabilities.builtInSkills,
+      ...(conv.agent.capabilities.workspaceSkills ?? []),
+    ]);
+    return [...catalog.builtInSkills, ...(catalog.workspaceSkills ?? [])]
       .filter((s) => slugs.has(s.slug))
       .map((s) => ({ slug: s.slug, description: s.description }));
   }, [conv.agent, catalog]);

@@ -34,6 +34,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       defaultModel: "openai/gpt-4.1",
       capabilities: {
         builtInSkills: ["writer"],
+        workspaceSkills: [],
         customTools: [],
         mcpServers: [{ name: "github", enabled: true, action: "allow" }],
         toolPermissions: [{ pattern: "custom_write", action: "ask" }],
@@ -68,6 +69,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       defaultModel: "openai/gpt-4.1",
       capabilities: {
         builtInSkills: [],
+        workspaceSkills: [],
         customTools: [],
         mcpServers: [{ name: "github", enabled: true, action: "deny" }],
         toolPermissions: [{ pattern: "github_create_issue", action: "ask" }],
@@ -116,12 +118,14 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
           defaultModel: "openai/gpt-4.1",
           capabilities: {
             builtInSkills: ["writer"],
+            workspaceSkills: [],
             customTools: [],
             mcpServers: [],
             toolPermissions: [],
           },
         },
         skillRoot,
+        workspaceSkillRoot: testDb.config.paths.subdirectories.skills,
       });
 
       const paths = getOpenCodeWorkspacePaths(

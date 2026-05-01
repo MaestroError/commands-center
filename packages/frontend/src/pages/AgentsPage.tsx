@@ -38,7 +38,7 @@ export function AgentsPage() {
             Create agent
           </Link>
         }
-        description="Browse, search, edit, delete, and launch every agent from a single grid without relying on sidebar shortcuts."
+        description="Browse, search, edit, delete, and launch agents."
         eyebrow="Agents"
         title="All workspace agents"
       />
@@ -123,7 +123,10 @@ export function AgentsPage() {
                 <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent">
                   {agent.defaultModel}
                 </span>
-                {agent.capabilities.builtInSkills.map((skill) => (
+                {[
+                  ...agent.capabilities.builtInSkills,
+                  ...(agent.capabilities.workspaceSkills ?? []),
+                ].map((skill) => (
                   <span
                     className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary"
                     key={skill}

@@ -211,7 +211,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
           <section className="cc-panel p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-text-primary">Built-in skills</h2>
+                <h2 className="text-lg font-semibold text-text-primary">Skills</h2>
                 <p className="mt-1 text-sm text-text-secondary">
                   Assigned skills are copied into the agent workspace when the form is saved.
                 </p>
@@ -221,49 +221,127 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
               </Link>
             </div>
 
-            {(catalog?.builtInSkills.length ?? 0) > 0 ? (
-              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {catalog?.builtInSkills.map((skill) => {
-                  const selected = form.capabilities.builtInSkills.includes(skill.slug);
+            {(catalog?.builtInSkills.length ?? 0) > 0 ||
+            (catalog?.workspaceSkills?.length ?? 0) > 0 ? (
+              <div className="mt-5 grid gap-6">
+                {(catalog?.builtInSkills.length ?? 0) > 0 ? (
+                  <div className="grid gap-3">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-text-primary">Built-in</h3>
+                      <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                        Curated
+                      </span>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {catalog?.builtInSkills.map((skill) => {
+                        const selected = form.capabilities.builtInSkills.includes(skill.slug);
 
-                  return (
-                    <label
-                      className={
-                        selected
-                          ? "rounded-xl border border-accent/30 bg-accent/5 p-4"
-                          : "rounded-xl border border-border bg-surface p-4"
-                      }
-                      key={skill.slug}
-                    >
-                      <div className="flex items-start gap-3">
-                        <input
-                          checked={selected}
-                          onChange={() => toggleSkill(skill.slug)}
-                          type="checkbox"
-                        />
-                        <div>
-                          <p className="font-semibold text-text-primary">{skill.name}</p>
-                          <p className="mt-1 text-sm text-text-secondary">{skill.description}</p>
-                          <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
-                            <span className="rounded-full border border-border px-2 py-1">
-                              {skill.category}
-                            </span>
-                            {skill.version ? (
-                              <span className="rounded-full border border-border px-2 py-1">
-                                v{skill.version}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })}
+                        return (
+                          <label
+                            className={
+                              selected
+                                ? "rounded-xl border border-accent/30 bg-accent/5 p-4"
+                                : "rounded-xl border border-border bg-surface p-4"
+                            }
+                            key={skill.slug}
+                          >
+                            <div className="flex items-start gap-3">
+                              <input
+                                checked={selected}
+                                onChange={() => toggleSkill(skill.slug)}
+                                type="checkbox"
+                              />
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-semibold text-text-primary">{skill.name}</p>
+                                  <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                                    Built-in
+                                  </span>
+                                </div>
+                                <p className="mt-1 text-sm text-text-secondary">
+                                  {skill.description}
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
+                                  <span className="rounded-full border border-border px-2 py-1">
+                                    {skill.category}
+                                  </span>
+                                  {skill.version ? (
+                                    <span className="rounded-full border border-border px-2 py-1">
+                                      v{skill.version}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {(catalog?.workspaceSkills?.length ?? 0) > 0 ? (
+                  <div className="grid gap-3">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-text-primary">Workspace</h3>
+                      <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                        Portable
+                      </span>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {(catalog?.workspaceSkills ?? []).map((skill) => {
+                        const selected = (form.capabilities.workspaceSkills ?? []).includes(
+                          skill.slug,
+                        );
+
+                        return (
+                          <label
+                            className={
+                              selected
+                                ? "rounded-xl border border-accent/30 bg-accent/5 p-4"
+                                : "rounded-xl border border-border bg-surface p-4"
+                            }
+                            key={skill.slug}
+                          >
+                            <div className="flex items-start gap-3">
+                              <input
+                                checked={selected}
+                                onChange={() => toggleWorkspaceSkill(skill.slug)}
+                                type="checkbox"
+                              />
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-semibold text-text-primary">{skill.name}</p>
+                                  <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                                    Workspace
+                                  </span>
+                                </div>
+                                <p className="mt-1 text-sm text-text-secondary">
+                                  {skill.description}
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
+                                  <span className="rounded-full border border-border px-2 py-1">
+                                    {skill.category}
+                                  </span>
+                                  {skill.version ? (
+                                    <span className="rounded-full border border-border px-2 py-1">
+                                      v{skill.version}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <EmptyState
-                description="No curated skills are available in this workspace yet."
-                title="No built-in skills available"
+                description="Create a workspace skill or use a built-in skill to extend this agent."
+                title="No skills available"
               />
             )}
           </section>
@@ -495,6 +573,18 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     }));
   }
 
+  function toggleWorkspaceSkill(skillSlug: string) {
+    setForm((current) => ({
+      ...current,
+      capabilities: {
+        ...current.capabilities,
+        workspaceSkills: (current.capabilities.workspaceSkills ?? []).includes(skillSlug)
+          ? (current.capabilities.workspaceSkills ?? []).filter((value) => value !== skillSlug)
+          : [...(current.capabilities.workspaceSkills ?? []), skillSlug],
+      },
+    }));
+  }
+
   function toggleCustomTool(toolSlug: string) {
     setForm((current) => ({
       ...current,
@@ -593,6 +683,7 @@ function createEmptyForm(): AgentFormState {
     defaultModel: "",
     capabilities: {
       builtInSkills: [],
+      workspaceSkills: [],
       customTools: [],
       mcpServers: [],
       toolPermissions: [],
@@ -611,6 +702,7 @@ function createInitialForm(catalog: AgentCatalog, agent?: Agent): AgentFormState
     defaultModel: resolveInitialModelId(catalog, agent?.defaultModel),
     capabilities: {
       builtInSkills: existingCapabilities.builtInSkills,
+      workspaceSkills: existingCapabilities.workspaceSkills ?? [],
       customTools: existingCapabilities.customTools,
       mcpServers: existingCapabilities.mcpServers,
       toolPermissions: existingCapabilities.toolPermissions,

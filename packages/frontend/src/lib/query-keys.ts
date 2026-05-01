@@ -8,6 +8,7 @@ export const queryKeys = {
   agentBySlug: (slug: string) => ["agent", slug] as const,
   agentCustomTools: (agentId: string) => ["agent-custom-tools", agentId] as const,
   customTools: ["custom-tools"] as const,
+  workspaceSkills: ["workspace-skills"] as const,
   conversationSnapshot: (agentId: string) => ["conversation-snapshot", agentId] as const,
   conversation: (agentId: string, conversationId: string) =>
     ["conversation", agentId, conversationId] as const,
