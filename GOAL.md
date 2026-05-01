@@ -76,7 +76,7 @@ The user should be able to globally:
 
 - Add any custom skills + Browse curated skill library from us (Founders)
 - Add MCPs, including with OAuth + Our built-in integrations
-- Auth Integrations from Composio (built-in MCP suggestion — user provides their own API key, CC authorizes globally via OpenCode, per-agent tool access via workspace config)
+- Auth Integrations from Composio (built-in MCP suggestion with dedicated UI — user provides only a name plus OAuth or API key, CC pre-registers the MCP endpoint globally via OpenCode, per-agent tool access via workspace config)
 
 Then while creating the agent, the user specifies what it should have access to, plus the role, name, and instructions. Optionally the icon/image too. See **What is an Agent** above for what this produces on disk.
 
@@ -426,11 +426,11 @@ cc/
 
 ## AI & Integrations
 
-| Category              | Technology                                           | Notes                                                                                                                                                   |
-| --------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Agent Engine**      | `opencode-ai` (binary) + `@opencode-ai/sdk` (JS SDK) | Official JS SDK (`createOpencodeClient`) for type-safe programmatic interaction + single persistent `opencode serve` daemon managed by the orchestrator |
-| **Tool Protocol**     | MCP SDK (`@modelcontextprotocol/sdk`)                | `StdioServerTransport` / `SSEServerTransport`, dynamic tool registration, `listChanged` notifications                                                   |
-| **External API Auth** | Composio (MCP mode)                         | Built-in MCP suggestion: user-provided API key or OAuth, global auth via OpenCode, per-agent tool permissions via workspace config. Enterprise multi-profile planned for future phase. |
+| Category              | Technology                                           | Notes                                                                                                                                                                                  |
+| --------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Agent Engine**      | `opencode-ai` (binary) + `@opencode-ai/sdk` (JS SDK) | Official JS SDK (`createOpencodeClient`) for type-safe programmatic interaction + single persistent `opencode serve` daemon managed by the orchestrator                                |
+| **Tool Protocol**     | MCP SDK (`@modelcontextprotocol/sdk`)                | `StdioServerTransport` / `SSEServerTransport`, dynamic tool registration, `listChanged` notifications                                                                                  |
+| **External API Auth** | Composio (MCP mode)                                  | Built-in MCP suggestion: user-provided API key or OAuth, global auth via OpenCode, per-agent tool permissions via workspace config. Enterprise multi-profile planned for future phase. |
 
 ## Testing & Quality
 
@@ -531,9 +531,9 @@ All runtime configuration is managed through environment variables. Validated at
 
 ## Workspace & Storage
 
-| Variable           | Default          | Required | Description                                              |
-| ------------------ | ---------------- | -------- | -------------------------------------------------------- |
-| `CC_WORKSPACE_DIR` | `.cc/workspace`  | No       | Portable workspace directory (DB, configs, agent state). Relative paths are resolved against cwd. |
+| Variable           | Default         | Required | Description                                                                                       |
+| ------------------ | --------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `CC_WORKSPACE_DIR` | `.cc/workspace` | No       | Portable workspace directory (DB, configs, agent state). Relative paths are resolved against cwd. |
 
 ## Automations (Cron)
 
@@ -544,8 +544,8 @@ All runtime configuration is managed through environment variables. Validated at
 
 ## Integrations
 
-| Variable           | Default | Required | Description                                                           |
-| ------------------ | ------- | -------- | --------------------------------------------------------------------- |
+| Variable           | Default | Required | Description                                                                                                                                    |
+| ------------------ | ------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `COMPOSIO_API_KEY` | —       | No       | User-provided Composio API key for the built-in MCP suggestion. Stored encrypted in DB, injected into OpenCode's global MCP config at runtime. |
 
 ## Auth Timeouts

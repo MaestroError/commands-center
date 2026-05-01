@@ -43,6 +43,8 @@ type SuggestedMcpServer = {
   form: FormState;
 };
 
+type ComposioAuthMode = "oauth" | "api-key";
+
 const EMPTY_FORM_BASE = {
   url: "",
   headersText: "",
@@ -53,6 +55,9 @@ const EMPTY_FORM_BASE = {
 const CONFIGURED_SECTION_STORAGE_KEY = "cc-integrations-configured-expanded";
 const SUGGESTED_SECTION_STORAGE_KEY = "cc-integrations-suggested-expanded";
 const SUGGESTED_SHOW_ALL_STORAGE_KEY = "cc-integrations-suggested-show-all";
+const COMPOSIO_SERVER_URL = "https://connect.composio.dev/mcp";
+const COMPOSIO_API_KEY_HEADER = "x-consumer-api-key";
+const DEFAULT_COMPOSIO_NAME = "composio";
 
 const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
   {
@@ -355,6 +360,7 @@ export function IntegrationsPage() {
   const secretsQuery = useSecretsQuery();
   const [dialog, setDialog] = useState<DialogState>();
   const [authServer, setAuthServer] = useState<McpServer>();
+  const [composioDialogOpen, setComposioDialogOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string>();
   const [configuredExpanded, setConfiguredExpanded] = usePersistentBooleanState(
     CONFIGURED_SECTION_STORAGE_KEY,
@@ -362,6 +368,8 @@ export function IntegrationsPage() {
   );
   const queryError = mcpServersQuery.error ? readError(mcpServersQuery.error) : undefined;
   const mcpServers = mcpServersQuery.data ?? [];
+  const composioServer = mcpServers.find(isComposioServer);
+  const customMcpServers = mcpServers.filter((server) => !isComposioServer(server));
   const agents = agentsQuery.data ?? [];
   const secretMeta = secretsQuery.data ?? [];
   const secretKeys = secretMeta.map((secret) => secret.key);
@@ -417,8 +425,66 @@ export function IntegrationsPage() {
       {mcpServersQuery.isLoading ? <LoadingState testId="mcp-loading" /> : null}
 
       {!mcpServersQuery.isLoading && !queryError ? (
+        <ComposioSection
+          busy={
+            mcpMutations.create.isPending ||
+            mcpMutations.authenticate.isPending ||
+            mcpMutations.remove.isPending ||
+            mcpMutations.removeAuth.isPending ||
+            mcpMutations.setEnabled.isPending
+          }
+          onActivate={() => setComposioDialogOpen(true)}
+          onAuthenticate={async () => {
+            if (!composioServer) {
+              return;
+            }
+
+            setSuccessMessage(undefined);
+            const updated = await mcpMutations.authenticate.mutateAsync({ id: composioServer.id });
+            setSuccessMessage(`${updated.name} authenticated.`);
+          }}
+          onDeactivate={async () => {
+            if (!composioServer) {
+              return;
+            }
+
+            if (!window.confirm(`Deactivate Composio MCP server '${composioServer.name}'?`)) {
+              return;
+            }
+
+            setSuccessMessage(undefined);
+            await mcpMutations.remove.mutateAsync({ id: composioServer.id });
+            setSuccessMessage("Composio deactivated.");
+          }}
+          onRemoveAuth={async () => {
+            if (!composioServer) {
+              return;
+            }
+
+            setSuccessMessage(undefined);
+            await mcpMutations.removeAuth.mutateAsync({ id: composioServer.id });
+            setSuccessMessage(`${composioServer.name} credentials removed.`);
+          }}
+          onToggleEnabled={async () => {
+            if (!composioServer) {
+              return;
+            }
+
+            setSuccessMessage(undefined);
+            const nextEnabled = !composioServer.enabled;
+            await mcpMutations.setEnabled.mutateAsync({
+              id: composioServer.id,
+              enabled: nextEnabled,
+            });
+            setSuccessMessage(`Composio ${nextEnabled ? "enabled" : "disabled"}.`);
+          }}
+          server={composioServer}
+        />
+      ) : null}
+
+      {!mcpServersQuery.isLoading && !queryError ? (
         <SuggestedMcpServersSection
-          configuredNames={mcpServers.map((server) => server.name)}
+          configuredNames={customMcpServers.map((server) => server.name)}
           onSelect={(suggestion) => setDialog({ mode: "create", prefill: suggestion.form })}
         />
       ) : null}
@@ -441,13 +507,13 @@ export function IntegrationsPage() {
               </p>
             </div>
             <div className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-text-secondary">
-              {mcpServers.length} server{mcpServers.length === 1 ? "" : "s"}
+              {customMcpServers.length} server{customMcpServers.length === 1 ? "" : "s"}
             </div>
           </div>
 
-          {configuredExpanded && mcpServers.length > 0 ? (
+          {configuredExpanded && customMcpServers.length > 0 ? (
             <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {mcpServers.map((server) => (
+              {customMcpServers.map((server) => (
                 <McpServerCard
                   key={server.id}
                   onAuthenticate={() => setAuthServer(server)}
@@ -484,7 +550,7 @@ export function IntegrationsPage() {
             </div>
           ) : null}
 
-          {configuredExpanded && mcpServers.length === 0 ? (
+          {configuredExpanded && customMcpServers.length === 0 ? (
             <div className="mt-5">
               <EmptyState
                 description="Add an external MCP server to register it globally for this workspace."
@@ -562,6 +628,42 @@ export function IntegrationsPage() {
               nextServerName: updated.name,
             });
             setSuccessMessage(buildAssignmentMessage(`${updated.name} updated.`, agentIds.length));
+          }}
+        />
+      ) : null}
+
+      {composioDialogOpen ? (
+        <ComposioDialog
+          busy={mcpMutations.create.isPending}
+          onClose={() => setComposioDialogOpen(false)}
+          onSubmit={async (input) => {
+            setSuccessMessage(undefined);
+
+            const created = await mcpMutations.create.mutateAsync({
+              enabled: true,
+              name: input.name,
+              config:
+                input.authMode === "oauth"
+                  ? {
+                      transport: "streamable-http",
+                      url: COMPOSIO_SERVER_URL,
+                      authMethod: "oauth",
+                      headers: [],
+                    }
+                  : {
+                      transport: "streamable-http",
+                      url: COMPOSIO_SERVER_URL,
+                      authMethod: "headers",
+                      headers: [{ key: COMPOSIO_API_KEY_HEADER, value: input.apiKey }],
+                    },
+            });
+
+            setSuccessMessage("Composio activated.");
+            setComposioDialogOpen(false);
+
+            if (input.authMode === "oauth" && created.runtimeStatus?.status !== "connected") {
+              setAuthServer(created);
+            }
           }}
         />
       ) : null}
@@ -697,6 +799,296 @@ function McpServerCard(props: {
       </div>
     </article>
   );
+}
+
+function ComposioSection(props: {
+  server?: McpServer;
+  busy: boolean;
+  onActivate: () => void;
+  onAuthenticate: () => Promise<void>;
+  onRemoveAuth: () => Promise<void>;
+  onToggleEnabled: () => Promise<void>;
+  onDeactivate: () => Promise<void>;
+}) {
+  if (!props.server) {
+    return (
+      <section className="cc-panel p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-semibold text-text-primary">Composio</h2>
+            </div>
+            <p className="mt-2 text-sm text-text-secondary">
+              Connect to unlock actions across apps like GitHub, Slack, Notion, Linear, HubSpot, and
+              more.
+            </p>
+            <p className="mt-2 text-xs text-text-secondary">
+              <a
+                className="inline-flex items-center rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text-primary transition hover:border-accent hover:text-accent"
+                href="https://composio.dev/for-you"
+                rel="noreferrer"
+                target="_blank"
+              >
+                Learn More
+              </a>
+            </p>
+            <p className="mt-1 text-[11px] text-text-secondary">
+              Composio has a generous free plan for getting started.
+            </p>
+            <p className="mt-2 text-xs text-text-secondary">
+              <a
+                className="font-mono hover:text-text-primary"
+                href={COMPOSIO_SERVER_URL}
+                rel="noreferrer"
+                target="_blank"
+              >
+                {COMPOSIO_SERVER_URL}
+              </a>{" "}
+              is preconfigured by CC.
+            </p>
+          </div>
+          <button className="cc-button" onClick={props.onActivate} type="button">
+            Connect Composio
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  const status = props.server.runtimeStatus ?? {
+    status: props.server.enabled ? "disconnected" : "disabled",
+  };
+  const authLabel =
+    props.server.config.transport === "stdio"
+      ? "local"
+      : props.server.config.authMethod === "headers"
+        ? "API key"
+        : "OAuth";
+
+  return (
+    <section className="cc-panel p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-xl font-semibold text-text-primary">Composio</h2>
+            <span className={statusBadgeClass(status)}>{friendlyStatus(status)}</span>
+            {!props.server.enabled ? (
+              <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                Globally disabled
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-sm text-text-secondary">
+            Connect your workspace to external apps through Composio, including GitHub, Slack,
+            Notion, Linear, HubSpot, and other supported services.
+          </p>
+          <p className="mt-2 text-xs text-text-secondary">
+            Server <code>{props.server.name}</code> via {authLabel}. Endpoint:{" "}
+            <code>{COMPOSIO_SERVER_URL}</code>
+          </p>
+          <p className="mt-2 text-xs text-text-secondary">
+            <a
+              className="inline-flex items-center rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text-primary transition hover:border-accent hover:text-accent"
+              href="https://dashboard.composio.dev/"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open Dashboard
+            </a>
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {props.server.config.transport !== "stdio" &&
+          props.server.config.authMethod === "oauth" ? (
+            <button
+              className="cc-button cc-button-secondary"
+              onClick={() => void props.onAuthenticate()}
+              type="button"
+            >
+              {status.status === "connected" ? "Re-authenticate" : "Authenticate"}
+            </button>
+          ) : null}
+          {props.server.config.transport !== "stdio" &&
+          props.server.config.authMethod === "oauth" &&
+          status.status === "connected" ? (
+            <button
+              className="cc-button cc-button-secondary"
+              onClick={() => void props.onRemoveAuth()}
+              type="button"
+            >
+              Remove auth
+            </button>
+          ) : null}
+          <button
+            className="cc-button cc-button-secondary"
+            onClick={() => void props.onToggleEnabled()}
+            type="button"
+          >
+            {props.busy ? "Updating..." : props.server.enabled ? "Disable" : "Enable"}
+          </button>
+          <button
+            className="cc-button cc-button-danger"
+            onClick={() => void props.onDeactivate()}
+            type="button"
+          >
+            Deactivate
+          </button>
+        </div>
+      </div>
+
+      {"error" in status ? <p className="mt-3 text-sm text-danger">{status.error}</p> : null}
+    </section>
+  );
+}
+
+function ComposioDialog(props: {
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (input: { name: string; authMode: ComposioAuthMode; apiKey: string }) => Promise<void>;
+}) {
+  const [name, setName] = useState(DEFAULT_COMPOSIO_NAME);
+  const [authMode, setAuthMode] = useState<ComposioAuthMode>("oauth");
+  const [apiKey, setApiKey] = useState("");
+  const [submitError, setSubmitError] = useState<string>();
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/60 p-4 backdrop-blur-sm"
+      onClick={props.onClose}
+    >
+      <div
+        className="cc-panel flex min-h-0 max-h-[calc(100vh-8rem)] w-full max-w-xl flex-col overflow-hidden p-6"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Connect Composio</h2>
+            <p className="mt-1 text-sm text-text-secondary">
+              CC manages the endpoint and transport. Choose how to authenticate this MCP server.
+            </p>
+          </div>
+          <button
+            className="rounded-md p-2 text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
+            onClick={props.onClose}
+            type="button"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <form className="mt-6 grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
+          <Field label="Name" required>
+            <input
+              aria-label="Composio name"
+              className="cc-input"
+              onChange={(event) => {
+                setName(event.target.value);
+                setSubmitError(undefined);
+              }}
+              value={name}
+            />
+          </Field>
+
+          <fieldset className="grid gap-3">
+            <legend className="text-sm font-medium text-text-primary">Authentication</legend>
+            <label className="rounded-lg border border-border bg-surface p-4">
+              <div className="flex items-start gap-3">
+                <input
+                  aria-label="OAuth"
+                  checked={authMode === "oauth"}
+                  name="composio-auth-mode"
+                  onChange={() => {
+                    setAuthMode("oauth");
+                    setSubmitError(undefined);
+                  }}
+                  type="radio"
+                />
+                <div>
+                  <p className="text-sm font-medium text-text-primary">OAuth (Recommended)</p>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    Browser-based sign-in delegated to the standard OpenCode MCP auth flow.
+                  </p>
+                </div>
+              </div>
+            </label>
+
+            <label className="rounded-lg border border-border bg-surface p-4">
+              <div className="flex items-start gap-3">
+                <input
+                  aria-label="API key"
+                  checked={authMode === "api-key"}
+                  name="composio-auth-mode"
+                  onChange={() => {
+                    setAuthMode("api-key");
+                    setSubmitError(undefined);
+                  }}
+                  type="radio"
+                />
+                <div>
+                  <p className="text-sm font-medium text-text-primary">API key</p>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    Sends your consumer key through the predefined{" "}
+                    <code>{COMPOSIO_API_KEY_HEADER}</code> header.
+                  </p>
+                </div>
+              </div>
+            </label>
+          </fieldset>
+
+          {authMode === "api-key" ? (
+            <Field label="Consumer API key" required>
+              <input
+                aria-label="Consumer API key"
+                className="cc-input"
+                onChange={(event) => {
+                  setApiKey(event.target.value);
+                  setSubmitError(undefined);
+                }}
+                type="password"
+                value={apiKey}
+              />
+            </Field>
+          ) : null}
+
+          {submitError ? <p className="text-sm text-danger">{submitError}</p> : null}
+
+          <div className="mt-2 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+            <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+              Cancel
+            </button>
+            <button className="cc-button" disabled={props.busy} type="submit">
+              {props.busy ? "Connecting..." : "Activate Composio"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitError(undefined);
+
+    if (!name.trim()) {
+      setSubmitError("Name is required.");
+      return;
+    }
+
+    if (authMode === "api-key" && !apiKey.trim()) {
+      setSubmitError("Consumer API key is required.");
+      return;
+    }
+
+    try {
+      await props.onSubmit({
+        name: name.trim(),
+        authMode,
+        apiKey: apiKey.trim(),
+      });
+    } catch (error) {
+      setSubmitError(readError(error));
+    }
+  }
 }
 
 function McpAuthDialog(props: {
@@ -1332,6 +1724,10 @@ function createForm(server?: McpServer): FormState {
             .map(([key, value]) => `${key}=${value}`)
             .join("\n"),
   };
+}
+
+function isComposioServer(server: McpServer): boolean {
+  return server.config.transport !== "stdio" && server.config.url === COMPOSIO_SERVER_URL;
 }
 
 function validateForm(form: FormState): FormErrors {

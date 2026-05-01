@@ -156,6 +156,95 @@ describe("IntegrationsPage", () => {
     expect(container.querySelectorAll(".animate-pulse")).toHaveLength(6);
   });
 
+  it("renders the dedicated Composio section before suggested MCPs", () => {
+    render(<IntegrationsPage />);
+
+    expect(screen.getByRole("heading", { name: "Composio" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect Composio" })).toBeInTheDocument();
+    expect(screen.queryByText("Built-in MCP")).not.toBeInTheDocument();
+  });
+
+  it("activates Composio with OAuth using the predefined MCP config", async () => {
+    createMutateAsync.mockResolvedValue({
+      id: "mcp-composio",
+      name: "composio",
+      enabled: true,
+      config: {
+        url: "https://connect.composio.dev/mcp",
+        transport: "streamable-http",
+        authMethod: "oauth",
+        headers: [],
+      },
+      runtimeStatus: { status: "needs_auth" },
+      tools: [],
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T10:00:00.000Z",
+    });
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect Composio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Activate Composio" }));
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalledWith({
+        enabled: true,
+        name: "composio",
+        config: {
+          url: "https://connect.composio.dev/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+    });
+
+    expect(screen.getByRole("button", { name: "Authenticate in browser" })).toBeInTheDocument();
+  });
+
+  it("activates Composio with API key using the predefined header", async () => {
+    createMutateAsync.mockResolvedValue({
+      id: "mcp-composio",
+      name: "my-composio",
+      enabled: true,
+      config: {
+        url: "https://connect.composio.dev/mcp",
+        transport: "streamable-http",
+        authMethod: "headers",
+        headers: [{ key: "x-consumer-api-key", value: "secret-key" }],
+      },
+      runtimeStatus: { status: "connected" },
+      tools: [],
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T10:00:00.000Z",
+    });
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect Composio" }));
+    fireEvent.click(screen.getByLabelText("API key"));
+    fireEvent.change(screen.getByLabelText("Composio name"), {
+      target: { value: "my-composio" },
+    });
+    fireEvent.change(screen.getByLabelText("Consumer API key"), {
+      target: { value: "secret-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Activate Composio" }));
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalledWith({
+        enabled: true,
+        name: "my-composio",
+        config: {
+          url: "https://connect.composio.dev/mcp",
+          transport: "streamable-http",
+          authMethod: "headers",
+          headers: [{ key: "x-consumer-api-key", value: "secret-key" }],
+        },
+      });
+    });
+  });
+
   it("renders MCP server cards and toggles enabled state", async () => {
     setEnabledMutateAsync.mockResolvedValue(undefined);
     vi.mocked(useMcpServersQuery).mockReturnValue({
@@ -672,10 +761,74 @@ describe("IntegrationsPage", () => {
     expect(screen.queryByLabelText("Search suggested MCPs")).not.toBeInTheDocument();
   });
 
-  it("does not render the Composio panel", () => {
+  it("shows active Composio state separately from configured MCP servers", () => {
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        {
+          id: "mcp-composio",
+          name: "composio",
+          enabled: true,
+          config: {
+            url: "https://connect.composio.dev/mcp",
+            transport: "streamable-http",
+            authMethod: "oauth",
+            headers: [],
+          },
+          runtimeStatus: { status: "connected" },
+          tools: [{ id: "composio_SLACK_SEND_MESSAGE", name: "SLACK_SEND_MESSAGE" }],
+          createdAt: "2026-04-22T10:00:00.000Z",
+          updatedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
     render(<IntegrationsPage />);
 
-    expect(screen.queryByText("Composio")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Composio" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Connect your workspace to external apps through Composio", {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No MCP servers configured yet")).toBeInTheDocument();
+  });
+
+  it("deactivates Composio from the dedicated section", async () => {
+    removeMutateAsync.mockResolvedValue(undefined);
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        {
+          id: "mcp-composio",
+          name: "composio",
+          enabled: true,
+          config: {
+            url: "https://connect.composio.dev/mcp",
+            transport: "streamable-http",
+            authMethod: "oauth",
+            headers: [],
+          },
+          runtimeStatus: { status: "connected" },
+          tools: [],
+          createdAt: "2026-04-22T10:00:00.000Z",
+          updatedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Deactivate" }));
+
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalledWith("Deactivate Composio MCP server 'composio'?");
+      expect(removeMutateAsync).toHaveBeenCalledWith({ id: "mcp-composio" });
+    });
   });
 
   it("prefills the add MCP server dialog from a suggestion", () => {

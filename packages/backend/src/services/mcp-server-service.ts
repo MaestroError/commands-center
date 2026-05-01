@@ -131,6 +131,7 @@ export function createMcpServerService(options: {
       }
 
       await syncGlobalConfig();
+      await options.opencodeService.disposeGlobal();
       return readOne(row);
     },
 
@@ -151,6 +152,7 @@ export function createMcpServerService(options: {
       }
 
       await syncGlobalConfig();
+      await options.opencodeService.disposeGlobal();
       return readOne(row);
     },
 
@@ -187,6 +189,7 @@ export function createMcpServerService(options: {
         options.opencodeService.authenticateMcp(options.config.paths.workspaceDir, row.name),
       );
 
+      await options.opencodeService.disposeGlobal();
       return readOne(row);
     },
 
@@ -202,6 +205,7 @@ export function createMcpServerService(options: {
       await callOpencode(row.name, "complete authentication for", () =>
         options.opencodeService.completeMcpAuth(options.config.paths.workspaceDir, row.name, code),
       );
+      await options.opencodeService.disposeGlobal();
       return readOne(row);
     },
 
@@ -216,6 +220,7 @@ export function createMcpServerService(options: {
       const result = await callOpencode(row.name, "remove credentials for", () =>
         options.opencodeService.removeMcpAuth(options.config.paths.workspaceDir, row.name),
       );
+      await options.opencodeService.disposeGlobal();
       return mcpAuthRemoveResultSchema.parse(result);
     },
 

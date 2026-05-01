@@ -103,7 +103,7 @@ describe("mcp-server-service", () => {
       };
 
       expect(rendered.mcp).toEqual({});
-      expect(opencodeService.disposeGlobal).toHaveBeenCalledTimes(2);
+      expect(opencodeService.disposeGlobal).toHaveBeenCalledTimes(3);
     } finally {
       await testDb.cleanup();
     }
@@ -714,7 +714,7 @@ describe("mcp-server-service", () => {
   });
 
   describe("disposeGlobal call sites", () => {
-    it("does not call disposeGlobal on update, setEnabled, or any auth flow", async () => {
+    it("calls disposeGlobal after update, setEnabled, authenticate, completeAuth, and removeAuth", async () => {
       const testDb = await createTestDatabase();
       const opencodeService = createMockOpenCodeService();
       const service = createMcpServerService({
@@ -754,7 +754,7 @@ describe("mcp-server-service", () => {
         await service.completeAuth(created.id, "code");
         await service.removeAuth(created.id);
 
-        expect(opencodeService.disposeGlobal).not.toHaveBeenCalled();
+        expect(opencodeService.disposeGlobal).toHaveBeenCalledTimes(6);
       } finally {
         await testDb.cleanup();
       }
