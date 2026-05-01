@@ -3,6 +3,7 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
   createWorkspaceSkillInputSchema,
+  updateWorkspaceSkillCategoryInputSchema,
   workspaceSkillListSchema,
   workspaceSkillMutationResultSchema,
   workspaceSkillUploadInputSchema,
@@ -100,5 +101,19 @@ export function registerWorkspaceSkillRoutes(server: AppServer, context: Runtime
       reply.code(204);
       return reply.send();
     },
+  );
+
+  app.patch(
+    "/api/workspace-skills/:slug/category",
+    {
+      schema: {
+        params: workspaceSkillSlugParamsSchema,
+        body: updateWorkspaceSkillCategoryInputSchema,
+        response: {
+          200: workspaceSkillMutationResultSchema,
+        },
+      },
+    },
+    async (request) => workspaceSkillService.updateCategory(request.params.slug, request.body),
   );
 }

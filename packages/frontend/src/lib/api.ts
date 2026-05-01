@@ -109,6 +109,7 @@ import {
   type TerminalResizeInput,
   type UpdateAgentInput,
   type UpdateMcpServerInput,
+  type UpdateWorkspaceSkillCategoryInput,
   type WorkspaceWatchEvent,
   type WorkspaceSkill,
   type WorkspaceSkillMutationResult,
@@ -314,14 +315,44 @@ export async function createWorkspaceSkill(
 export async function uploadWorkspaceSkill(
   input: WorkspaceSkillUploadInput,
 ): Promise<WorkspaceSkillMutationResult> {
-  return requestJson<WorkspaceSkillMutationResult>(
-    "/api/workspace-skills/upload",
-    workspaceSkillMutationResultSchema,
-    {
-      method: "POST",
-      body: workspaceSkillUploadInputSchema.parse(input),
-    },
-  );
+  const body = workspaceSkillUploadInputSchema.parse(input);
+  const response = await fetch("/api/workspace-skills/upload", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json().catch(() => undefined)) as unknown;
+
+  if (response.status === 400) {
+    const details =
+      payload && typeof payload === "object" && "error" in payload
+        ? (
+            payload as {
+              error?: {
+                details?: { renameSuggestedFrom?: string; renameSuggestedTo?: string };
+              };
+            }
+          ).error?.details
+        : undefined;
+
+    if (
+      details?.renameSuggestedFrom &&
+      details?.renameSuggestedTo &&
+      details.renameSuggestedFrom !== details.renameSuggestedTo
+    ) {
+      throw new WorkspaceSkillUploadRenameError(
+        readApiError(payload, response.status, response.statusText),
+        details.renameSuggestedFrom,
+        details.renameSuggestedTo,
+      );
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
+
+  return workspaceSkillMutationResultSchema.parse(payload);
 }
 
 export async function deleteWorkspaceSkill(slug: string): Promise<void> {
@@ -333,6 +364,24 @@ export async function deleteWorkspaceSkill(slug: string): Promise<void> {
     const payload = (await response.json().catch(() => undefined)) as unknown;
     throw new Error(readApiError(payload, response.status, response.statusText));
   }
+}
+
+export async function updateWorkspaceSkillCategory(
+  slug: string,
+  input: UpdateWorkspaceSkillCategoryInput,
+): Promise<WorkspaceSkillMutationResult> {
+  const response = await fetch(`/api/workspace-skills/${encodeURIComponent(slug)}/category`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json().catch(() => undefined)) as unknown;
+
+  if (!response.ok) {
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
+
+  return workspaceSkillMutationResultSchema.parse(payload);
 }
 
 export async function copyCustomToolToAgents(
@@ -508,6 +557,18 @@ export class FileSaveConflictError extends Error {
     super(message);
     this.name = "FileSaveConflictError";
     this.currentRevision = currentRevision;
+  }
+}
+
+export class WorkspaceSkillUploadRenameError extends Error {
+  readonly renameSuggestedFrom: string;
+  readonly renameSuggestedTo: string;
+
+  constructor(message: string, renameSuggestedFrom: string, renameSuggestedTo: string) {
+    super(message);
+    this.name = "WorkspaceSkillUploadRenameError";
+    this.renameSuggestedFrom = renameSuggestedFrom;
+    this.renameSuggestedTo = renameSuggestedTo;
   }
 }
 

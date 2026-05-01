@@ -1,9 +1,10 @@
 import { Buffer } from "node:buffer";
-import { mkdir, mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import {
   createWorkspaceSkillInputSchema,
+  updateWorkspaceSkillCategoryInputSchema,
   workspaceSkillMutationResultSchema,
   workspaceSkillUploadInputSchema,
   type CreateWorkspaceSkillInput,
@@ -12,8 +13,12 @@ import {
 } from "@cc/shared/schemas";
 
 import type { RuntimeConfig } from "../lib/runtime-config.js";
-import { ConflictError, NotFoundError } from "../lib/api-error.js";
-import { listBuiltInSkills, validateSkillDirectory } from "../opencode/workspace-contract.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
+import {
+  listBuiltInSkills,
+  parseSkillFrontmatter,
+  validateSkillDirectory,
+} from "../opencode/workspace-contract.js";
 import { resolveBuiltInSkillsRoot } from "../lib/builtin-skills.js";
 
 export type WorkspaceSkillService = ReturnType<typeof createWorkspaceSkillService>;
@@ -45,7 +50,11 @@ export function createWorkspaceSkillService(options: { config: RuntimeConfig }) 
       await mkdir(directoryPath, { recursive: true });
       await writeFile(
         join(directoryPath, "SKILL.md"),
-        renderSkillTemplate({ slug, description: parsed.description }),
+        renderSkillTemplate({
+          slug,
+          category: parsed.category?.trim() || "custom",
+          description: parsed.description,
+        }),
         "utf8",
       );
 
@@ -61,6 +70,26 @@ export function createWorkspaceSkillService(options: { config: RuntimeConfig }) 
       }
 
       await rm(getWorkspaceSkillDirectoryPath(slug), { recursive: true, force: true });
+    },
+
+    async updateCategory(slug: string, input: { category: string }) {
+      const parsed = updateWorkspaceSkillCategoryInputSchema.parse(input);
+      const directoryPath = getWorkspaceSkillDirectoryPath(slug);
+      const filePath = join(directoryPath, "SKILL.md");
+      const markdown = await readSkillMarkdown(filePath, slug);
+      const frontmatter = parseSkillFrontmatter(markdown);
+      const nextMarkdown = renderExistingSkillTemplate(markdown, {
+        ...frontmatter,
+        metadata: {
+          ...(frontmatter.metadata ?? {}),
+          category: parsed.category,
+        },
+      });
+
+      await writeFile(filePath, nextMarkdown, "utf8");
+
+      const skill = await materializeWorkspaceSkill(slug);
+      return workspaceSkillMutationResultSchema.parse({ skill, overwritten: false });
     },
 
     async upload(input: WorkspaceSkillUploadInput) {
@@ -80,7 +109,7 @@ export function createWorkspaceSkillService(options: { config: RuntimeConfig }) 
           await writeFile(targetPath, Buffer.from(entry.contentBase64, "base64"), "utf8");
         }
 
-        await validateSkillDirectory(tempSkillDir, slug);
+        await validateUploadedSkillDirectory(tempSkillDir, slug);
 
         const destinationPath = getWorkspaceSkillDirectoryPath(slug);
 
@@ -137,14 +166,18 @@ export function createWorkspaceSkillService(options: { config: RuntimeConfig }) 
   }
 }
 
-function renderSkillTemplate(options: { slug: string; description: string }): string {
+function renderSkillTemplate(options: {
+  slug: string;
+  category: string;
+  description: string;
+}): string {
   return [
     "---",
     `name: ${options.slug}`,
     `description: ${options.description.trim()}`,
     "compatibility: opencode",
     "metadata:",
-    "  category: workspace",
+    `  category: ${options.category.trim() || "custom"}`,
     "  version: 1.0.0",
     "---",
     "",
@@ -157,6 +190,88 @@ function renderSkillTemplate(options: { slug: string; description: string }): st
     "Add the instructions, examples, and supporting files this skill needs.",
     "",
   ].join("\n");
+}
+
+async function validateUploadedSkillDirectory(dir: string, slug: string): Promise<void> {
+  try {
+    await validateSkillDirectory(dir, slug);
+  } catch (error) {
+    const validation = readWorkspaceSkillValidation(error, slug);
+    throw new BadRequestError(validation.message, validation.details);
+  }
+}
+
+async function readSkillMarkdown(filePath: string, slug: string): Promise<string> {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch (error) {
+    if (isMissingError(error)) {
+      throw new NotFoundError(`Workspace skill '${slug}' is missing SKILL.md.`);
+    }
+
+    throw error;
+  }
+}
+
+function renderExistingSkillTemplate(
+  markdown: string,
+  frontmatter: {
+    name: string;
+    description: string;
+    compatibility?: string;
+    license?: string;
+    metadata?: Record<string, string>;
+  },
+): string {
+  const body = markdown.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
+  const lines = ["---", `name: ${frontmatter.name}`, `description: ${frontmatter.description}`];
+
+  if (frontmatter.compatibility) {
+    lines.push(`compatibility: ${frontmatter.compatibility}`);
+  }
+
+  if (frontmatter.license) {
+    lines.push(`license: ${frontmatter.license}`);
+  }
+
+  if (frontmatter.metadata && Object.keys(frontmatter.metadata).length > 0) {
+    lines.push("metadata:");
+
+    for (const [key, value] of Object.entries(frontmatter.metadata)) {
+      lines.push(`  ${key}: ${value}`);
+    }
+  }
+
+  lines.push("---", "", body, "");
+  return lines.join("\n");
+}
+
+function readWorkspaceSkillValidation(
+  error: unknown,
+  slug: string,
+): { message: string; details?: { renameSuggestedFrom: string; renameSuggestedTo: string } } {
+  const message = error instanceof Error ? error.message : "Uploaded skill is invalid.";
+  const nameMismatch = message.match(
+    /^OpenCode skill directory '(.+)' must match frontmatter name '(.+)'.$/,
+  );
+
+  if (nameMismatch) {
+    const directoryName = nameMismatch[1] ?? slug;
+    const frontmatterName = nameMismatch[2] ?? slug;
+    return {
+      message: `Uploaded skill folder '${directoryName}' does not match SKILL.md frontmatter name '${frontmatterName}'. Rename the folder to '${frontmatterName}' or update the SKILL.md 'name' field to match the folder name.`,
+      details: {
+        renameSuggestedFrom: directoryName,
+        renameSuggestedTo: frontmatterName,
+      },
+    };
+  }
+
+  if (message === "OpenCode skill must start with YAML frontmatter.") {
+    return { message: "Uploaded skill is missing valid YAML frontmatter at the top of SKILL.md." };
+  }
+
+  return { message: `Uploaded skill '${slug}' is invalid: ${message}` };
 }
 
 function getUploadedSkillSlug(paths: string[]): string {

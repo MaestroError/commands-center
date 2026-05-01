@@ -227,7 +227,7 @@ export async function validateSkillDirectory(dir: string, slug: string): Promise
     name: frontmatter.name,
     slug,
     description: frontmatter.description,
-    category: frontmatter.metadata?.["category"] ?? frontmatter.metadata?.["area"] ?? "General",
+    category: frontmatter.metadata?.["category"] ?? frontmatter.metadata?.["area"] ?? "custom",
     version: frontmatter.metadata?.["version"],
     license: frontmatter.license,
     compatibility: frontmatter.compatibility,

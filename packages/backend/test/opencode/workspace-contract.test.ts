@@ -99,7 +99,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
           name: "writer",
           slug: "writer",
           description: "Writing helper",
-          category: "General",
+          category: "custom",
           version: undefined,
           license: undefined,
           compatibility: "opencode",

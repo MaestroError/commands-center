@@ -109,6 +109,105 @@ describe("workspace skill routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("returns a readable validation error when uploaded skill folder and SKILL.md name differ", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/workspace-skills/upload",
+        payload: {
+          overwrite: false,
+          entries: [
+            {
+              name: "SKILL.md",
+              relativePath: "content-curator 2/SKILL.md",
+              contentBase64: Buffer.from(
+                [
+                  "---",
+                  "name: content-curator",
+                  "description: Curate content.",
+                  "compatibility: opencode",
+                  "metadata:",
+                  "  category: writing",
+                  "---",
+                  "",
+                  "# content-curator",
+                ].join("\n"),
+                "utf8",
+              ).toString("base64"),
+              sizeBytes: 128,
+            },
+          ],
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      const payload = response.json<{
+        error: {
+          message: string;
+          details?: { renameSuggestedFrom?: string; renameSuggestedTo?: string };
+        };
+      }>();
+      expect(payload.error.message).toContain("Rename the folder to 'content-curator'");
+      expect(payload.error.details).toEqual({
+        renameSuggestedFrom: "content-curator 2",
+        renameSuggestedTo: "content-curator",
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("updates the category of a workspace skill", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      await server.inject({
+        method: "POST",
+        url: "/api/workspace-skills",
+        payload: {
+          name: "Release Planning",
+          category: "planning",
+          description: "Plan release work.",
+        },
+      });
+
+      const response = await server.inject({
+        method: "PATCH",
+        url: "/api/workspace-skills/release-planning/category",
+        payload: { category: "workflow" },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json<{ skill: { category: string } }>().skill.category).toBe("workflow");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 function createMockOpenCodeService(): OpenCodeService {

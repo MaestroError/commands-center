@@ -14,6 +14,7 @@ describe("createWorkspaceSkillService", () => {
     try {
       const created = await service.create({
         name: "Release Planning",
+        category: "planning",
         description: "Plan release work.",
       });
 
@@ -23,7 +24,7 @@ describe("createWorkspaceSkillService", () => {
           join(testDb.config.paths.subdirectories.skills, "release-planning", "SKILL.md"),
           "utf8",
         ),
-      ).resolves.toContain("description: Plan release work.");
+      ).resolves.toContain("category: planning");
     } finally {
       await testDb.cleanup();
     }

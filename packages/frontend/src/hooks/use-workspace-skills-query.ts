@@ -4,10 +4,15 @@ import {
   createWorkspaceSkill,
   deleteWorkspaceSkill,
   listWorkspaceSkills,
+  updateWorkspaceSkillCategory,
   uploadWorkspaceSkill,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import type { CreateWorkspaceSkillInput, WorkspaceSkillUploadInput } from "@cc/shared/schemas";
+import type {
+  CreateWorkspaceSkillInput,
+  UpdateWorkspaceSkillCategoryInput,
+  WorkspaceSkillUploadInput,
+} from "@cc/shared/schemas";
 
 export function useWorkspaceSkillsQuery() {
   return useQuery({
@@ -38,6 +43,11 @@ export function useWorkspaceSkillMutations() {
     }),
     delete: useMutation({
       mutationFn: (slug: string) => deleteWorkspaceSkill(slug),
+      onSuccess: invalidate,
+    }),
+    updateCategory: useMutation({
+      mutationFn: (input: { slug: string; body: UpdateWorkspaceSkillCategoryInput }) =>
+        updateWorkspaceSkillCategory(input.slug, input.body),
       onSuccess: invalidate,
     }),
   };

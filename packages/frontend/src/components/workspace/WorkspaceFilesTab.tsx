@@ -530,7 +530,7 @@ function TreeNode(props: TreeNodeProps) {
         >
           {isDir ? (
             <>
-              <span className="text-text-secondary w-3 text-center text-[10px]">
+              <span className="text-text-secondary w-3 text-center text-[14px]">
                 {isLoading ? "…" : isExpanded ? "▾" : "▸"}
               </span>
               <svg

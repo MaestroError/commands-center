@@ -98,9 +98,11 @@ export {
 } from "./agents.js";
 export {
   createWorkspaceSkillInputSchema,
+  updateWorkspaceSkillCategoryInputSchema,
   workspaceSkillMutationResultSchema,
   workspaceSkillUploadInputSchema,
   type CreateWorkspaceSkillInput,
+  type UpdateWorkspaceSkillCategoryInput,
   type WorkspaceSkillMutationResult,
   type WorkspaceSkillUploadInput,
 } from "./custom-skills.js";

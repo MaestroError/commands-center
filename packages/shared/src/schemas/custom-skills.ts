@@ -5,6 +5,7 @@ import { workspaceSkillSchema } from "./agents.js";
 
 export const createWorkspaceSkillInputSchema = z.object({
   name: z.string().trim().min(1),
+  category: z.string().trim().optional(),
   description: z.string().trim().min(1),
 });
 
@@ -18,6 +19,13 @@ export const workspaceSkillUploadInputSchema = z.object({
   overwrite: z.boolean().default(false),
 });
 
+export const updateWorkspaceSkillCategoryInputSchema = z.object({
+  category: z.string().trim().min(1),
+});
+
 export type CreateWorkspaceSkillInput = z.infer<typeof createWorkspaceSkillInputSchema>;
 export type WorkspaceSkillMutationResult = z.infer<typeof workspaceSkillMutationResultSchema>;
 export type WorkspaceSkillUploadInput = z.infer<typeof workspaceSkillUploadInputSchema>;
+export type UpdateWorkspaceSkillCategoryInput = z.infer<
+  typeof updateWorkspaceSkillCategoryInputSchema
+>;
