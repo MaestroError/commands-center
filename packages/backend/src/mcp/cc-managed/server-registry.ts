@@ -2,8 +2,8 @@ import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat";
 
 import type { AppDb } from "../../db/client.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
-import type { AgentService } from "../../services/agent-service.js";
 import type { ConversationService } from "../../services/conversation-service.js";
+import type { CustomToolActionService } from "../../services/custom-tool-action-service.js";
 import type { CustomToolService } from "../../services/custom-tool-service.js";
 import type { LiveRequestService } from "../../services/live-request-service.js";
 import type { OpenCodeService } from "../../services/opencode-service.js";
@@ -51,7 +51,7 @@ export function createCcManagedMcpServerRegistry(options: {
   config?: RuntimeConfig;
   opencodeService?: OpenCodeService;
   customToolService: CustomToolService;
-  agentService?: AgentService;
+  customToolActionService?: CustomToolActionService;
   conversationService?: ConversationService;
   liveRequestService?: LiveRequestService;
   secretService?: SecretService;
@@ -83,11 +83,10 @@ export function createCcManagedMcpServerRegistry(options: {
     createCreateCustomToolDefinition({ customToolService: options.customToolService }),
   ];
 
-  if (options.agentService) {
+  if (options.customToolActionService) {
     toolManagementTools.push(
       createCopyCustomToolToAgentDefinition({
-        customToolService: options.customToolService,
-        agentService: options.agentService,
+        customToolActionService: options.customToolActionService,
         conversationService: options.conversationService,
         liveRequestService: options.liveRequestService,
       }),

@@ -26,6 +26,7 @@ import { custom_tools } from "../db/schema/index.js";
 import type { AppDb } from "../db/client.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
+import { slugifyIdentifier } from "../lib/slug.js";
 import type { OpenCodeService } from "./opencode-service.js";
 
 const GLOBAL_METADATA_FILE = "cc-tool.json";
@@ -920,12 +921,5 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 function slugify(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-
-  return slug || "tool";
+  return slugifyIdentifier(value);
 }

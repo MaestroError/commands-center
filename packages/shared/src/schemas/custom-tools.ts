@@ -96,6 +96,7 @@ export type CreateCustomToolInput = z.infer<typeof createCustomToolInputSchema>;
 export type CopyCustomToolToAgentsInput = z.infer<typeof copyCustomToolToAgentsInputSchema>;
 export type CustomTool = z.infer<typeof customToolSchema>;
 export type CustomToolAgentCopy = z.infer<typeof customToolAgentCopySchema>;
+export type CustomToolBulkCopyResult = z.infer<typeof customToolBulkCopyResultSchema>;
 export type CustomToolDriftStatus = z.infer<typeof customToolDriftStatusSchema>;
 export type CustomToolMutationResult = z.infer<typeof customToolMutationResultSchema>;
 export type CustomToolUsage = z.infer<typeof customToolUsageSchema>;

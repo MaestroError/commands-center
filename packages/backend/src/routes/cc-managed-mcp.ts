@@ -7,6 +7,7 @@ import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-regis
 import { createCcManagedMcpService } from "../mcp/cc-managed/service.js";
 import { createAgentService } from "../services/agent-service.js";
 import { createConversationService } from "../services/conversation-service.js";
+import { createCustomToolActionService } from "../services/custom-tool-action-service.js";
 import { createCustomToolService } from "../services/custom-tool-service.js";
 
 const paramsSchema = z.object({
@@ -41,12 +42,16 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
     config: context.config,
     opencodeService: context.opencodeService,
   });
+  const customToolActionService = createCustomToolActionService({
+    customToolService,
+    agentService,
+  });
   const registry = createCcManagedMcpServerRegistry({
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,
     customToolService,
-    agentService,
+    customToolActionService,
     conversationService,
     liveRequestService: context.liveRequestService,
     secretService: context.secretService,

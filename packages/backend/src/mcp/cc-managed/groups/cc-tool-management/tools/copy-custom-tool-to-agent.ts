@@ -1,9 +1,10 @@
 import { z } from "zod";
 
-import { ConflictError, NotFoundError } from "../../../../../lib/api-error.js";
-import type { AgentService } from "../../../../../services/agent-service.js";
 import type { ConversationService } from "../../../../../services/conversation-service.js";
-import type { CustomToolService } from "../../../../../services/custom-tool-service.js";
+import type {
+  CustomToolActionService,
+  CustomToolCopyConflict,
+} from "../../../../../services/custom-tool-action-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
 
 const copyCustomToolToAgentInputSchema = z.object({
@@ -24,8 +25,7 @@ const copyDecisionSchema = z.object({
 });
 
 export function createCopyCustomToolToAgentDefinition(options: {
-  customToolService: CustomToolService;
-  agentService: AgentService;
+  customToolActionService: CustomToolActionService;
   conversationService?: ConversationService;
   liveRequestService?: LiveRequestService;
 }) {
@@ -39,80 +39,49 @@ export function createCopyCustomToolToAgentDefinition(options: {
       try {
         const parsed = copyCustomToolToAgentInputSchema.parse(args);
         const targetAgentSlug = parsed.agentSlug ?? context.agentSlug;
-        const tool = await options.customToolService.getGlobal(parsed.toolSlug);
-        const agent = await findAgentBySlug(options.agentService, targetAgentSlug);
+        const firstAttempt = await options.customToolActionService.copyGlobalToolToAgent({
+          slug: parsed.toolSlug,
+          agentSlug: targetAgentSlug,
+          overwrite: false,
+        });
 
-        try {
-          const result = await options.customToolService.copyGlobalToAgents({
-            slug: tool.slug,
-            agentIds: [agent.id],
-            overwrite: false,
-          });
-
+        if (firstAttempt.status === "copied") {
           return successResult({
-            toolSlug: tool.slug,
-            destinationSlug: tool.slug,
+            toolSlug: parsed.toolSlug,
+            destinationSlug: firstAttempt.destinationSlug,
             agentSlug: targetAgentSlug,
-            overwritten: result.copied[0]?.overwritten ?? false,
-          });
-        } catch (error) {
-          if (
-            !(error instanceof ConflictError) ||
-            !options.liveRequestService ||
-            !options.conversationService
-          ) {
-            throw error;
-          }
-
-          const response = await options.liveRequestService.create({
-            conversationId: await resolveConversationId(options.conversationService, agent.id),
-            kind: "custom_tool_copy_conflict",
-            closable: false,
-            presentation: {
-              title: "Tool name conflict",
-              description:
-                "A tool with this name already exists in the selected agent workspace. Rewrite it or copy a renamed variant.",
-              submitLabel: "Continue",
-              cancelLabel: "Cancel",
-            },
-            fields: [
-              {
-                type: "text" as const,
-                name: "destinationName",
-                label: "Name",
-                required: true,
-                defaultValue: tool.name,
-              },
-            ],
-            metadata: {
-              toolName: tool.name,
-              toolSlug: tool.slug,
-              agentSlug: targetAgentSlug,
-              conflictMessage: error.message,
-              actions: [
-                { id: "rewrite", label: "Rewrite" },
-                { id: "rename", label: "Copy with new name" },
-              ],
-              currentName: tool.name,
-            },
-          });
-          const decision = copyDecisionSchema.parse(response.values);
-          const destinationName = decision.destinationName?.trim() || tool.name;
-          const overwrite = decision.action === "rewrite";
-          const result = await options.customToolService.copyGlobalToAgents({
-            slug: tool.slug,
-            agentIds: [agent.id],
-            destinationName: overwrite ? undefined : destinationName,
-            overwrite,
-          });
-
-          return successResult({
-            toolSlug: tool.slug,
-            destinationSlug: slugify(overwrite ? tool.name : destinationName),
-            agentSlug: targetAgentSlug,
-            overwritten: result.copied[0]?.overwritten ?? overwrite,
+            overwritten: firstAttempt.result.copied[0]?.overwritten ?? false,
           });
         }
+
+        if (!options.liveRequestService || !options.conversationService) {
+          throw new Error(firstAttempt.conflict.message);
+        }
+
+        const decision = await requestConflictDecision({
+          conflict: firstAttempt.conflict,
+          conversationService: options.conversationService,
+          liveRequestService: options.liveRequestService,
+        });
+        const overwrite = decision.action === "rewrite";
+        const destinationName = decision.destinationName?.trim() || firstAttempt.conflict.toolName;
+        const finalAttempt = await options.customToolActionService.copyGlobalToolToAgent({
+          slug: firstAttempt.conflict.toolSlug,
+          agentSlug: firstAttempt.conflict.agentSlug,
+          destinationName: overwrite ? undefined : destinationName,
+          overwrite,
+        });
+
+        if (finalAttempt.status === "conflict") {
+          throw new Error(finalAttempt.conflict.message);
+        }
+
+        return successResult({
+          toolSlug: firstAttempt.conflict.toolSlug,
+          destinationSlug: finalAttempt.destinationSlug,
+          agentSlug: firstAttempt.conflict.agentSlug,
+          overwritten: finalAttempt.result.copied[0]?.overwritten ?? overwrite,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to copy custom tool.";
 
@@ -125,22 +94,56 @@ export function createCopyCustomToolToAgentDefinition(options: {
   };
 }
 
-async function findAgentBySlug(agentService: AgentService, slug: string) {
-  const agent = await agentService.getBySlug(slug);
-
-  if (!agent) {
-    throw new NotFoundError("Agent not found.");
-  }
-
-  return agent;
-}
-
 async function resolveConversationId(
   conversationService: ConversationService,
   agentId: string,
 ): Promise<string> {
   const snapshot = await conversationService.resolveCurrent(agentId);
   return snapshot.current.id;
+}
+
+async function requestConflictDecision(options: {
+  conflict: CustomToolCopyConflict;
+  conversationService: ConversationService;
+  liveRequestService: LiveRequestService;
+}) {
+  const response = await options.liveRequestService.create({
+    conversationId: await resolveConversationId(
+      options.conversationService,
+      options.conflict.agentId,
+    ),
+    kind: "custom_tool_copy_conflict",
+    closable: false,
+    presentation: {
+      title: "Tool name conflict",
+      description:
+        "A tool with this name already exists in the selected agent workspace. Rewrite it or copy a renamed variant.",
+      submitLabel: "Continue",
+      cancelLabel: "Cancel",
+    },
+    fields: [
+      {
+        type: "text" as const,
+        name: "destinationName",
+        label: "Name",
+        required: true,
+        defaultValue: options.conflict.toolName,
+      },
+    ],
+    metadata: {
+      toolName: options.conflict.toolName,
+      toolSlug: options.conflict.toolSlug,
+      agentSlug: options.conflict.agentSlug,
+      conflictMessage: options.conflict.message,
+      actions: [
+        { id: "rewrite", label: "Rewrite" },
+        { id: "rename", label: "Copy with new name" },
+      ],
+      currentName: options.conflict.currentName,
+    },
+  });
+
+  return copyDecisionSchema.parse(response.values);
 }
 
 function successResult(input: {
@@ -160,15 +163,4 @@ function successResult(input: {
       },
     ],
   };
-}
-
-function slugify(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-
-  return slug || "tool";
 }

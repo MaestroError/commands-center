@@ -125,6 +125,7 @@ export {
   type CreateCustomToolInput,
   type CustomTool,
   type CustomToolAgentCopy,
+  type CustomToolBulkCopyResult,
   type CustomToolDriftStatus,
   type CustomToolMutationResult,
   type CustomToolUsage,
