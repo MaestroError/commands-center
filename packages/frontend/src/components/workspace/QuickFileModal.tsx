@@ -7,7 +7,11 @@ import type { UseChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
 type Props = {
   controller: UseChatInspectionTabs;
   onClosePane?: () => void;
-  onResolveLiveRequest?: (requestId: string, values: Record<string, string>) => Promise<void>;
+  onResolveLiveRequest?: (
+    requestId: string,
+    action: string,
+    values: Record<string, string>,
+  ) => Promise<void>;
   onCancelLiveRequest?: (requestId: string, reason?: string) => Promise<void>;
 };
 

@@ -25,8 +25,33 @@ export const liveRequestFormFieldSchema = z.discriminatedUnion("type", [
 export const liveRequestPresentationSchema = z.object({
   title: z.string().trim().min(1),
   description: z.string().trim().optional(),
-  submitLabel: z.string().trim().min(1),
+  submitLabel: z.string().trim().min(1).optional(),
   cancelLabel: z.string().trim().min(1).default("Cancel"),
+});
+
+export const liveRequestActionDisabledWhenSchema = z.discriminatedUnion("rule", [
+  z.object({
+    rule: z.literal("field_empty"),
+    field: z.string().trim().min(1),
+  }),
+  z.object({
+    rule: z.literal("field_slug_equals"),
+    field: z.string().trim().min(1),
+    value: z.string(),
+  }),
+  z.object({
+    rule: z.literal("field_slug_differs"),
+    field: z.string().trim().min(1),
+    value: z.string(),
+  }),
+]);
+
+export const liveRequestActionSchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().min(1),
+  variant: z.enum(["primary", "secondary", "danger"]).default("secondary"),
+  kind: z.enum(["submit", "cancel"]).default("submit"),
+  disabledWhen: z.array(liveRequestActionDisabledWhenSchema).default([]),
 });
 
 export const liveRequestSchema = z.object({
@@ -35,12 +60,14 @@ export const liveRequestSchema = z.object({
   kind: z.string().trim().min(1),
   presentation: liveRequestPresentationSchema,
   fields: z.array(liveRequestFormFieldSchema),
+  actions: z.array(liveRequestActionSchema).default([]),
   metadata: z.record(z.string(), z.unknown()).default({}),
   closable: z.boolean().default(false),
   createdAt: z.string(),
 });
 
 export const liveRequestResolveInputSchema = z.object({
+  action: z.string().trim().min(1).default("submit"),
   values: z.record(z.string().trim().min(1), z.string()),
 });
 
@@ -52,6 +79,8 @@ export const liveRequestResolveResultSchema = z.object({
   ok: z.literal(true),
 });
 
+export type LiveRequestAction = z.infer<typeof liveRequestActionSchema>;
+export type LiveRequestActionDisabledWhen = z.infer<typeof liveRequestActionDisabledWhenSchema>;
 export type LiveRequestFormField = z.infer<typeof liveRequestFormFieldSchema>;
 export type LiveRequestPresentation = z.infer<typeof liveRequestPresentationSchema>;
 export type LiveRequest = z.infer<typeof liveRequestSchema>;

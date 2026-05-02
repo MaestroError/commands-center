@@ -360,7 +360,11 @@ export type UseConversationReturn = {
   replyPermission: (requestId: string, reply: "once" | "always" | "reject") => void;
   replyQuestion: (requestId: string, answers: string[][]) => void;
   rejectQuestion: (requestId: string) => void;
-  resolveLiveRequest: (requestId: string, values: Record<string, string>) => Promise<void>;
+  resolveLiveRequest: (
+    requestId: string,
+    action: string,
+    values: Record<string, string>,
+  ) => Promise<void>;
   cancelLiveRequest: (requestId: string, reason?: string) => Promise<void>;
   clearSendError: () => void;
   /** Dev-only: inject a mock SSE event into the reducer */
@@ -590,9 +594,9 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   );
 
   const resolveLive = useCallback(
-    async (requestId: string, values: Record<string, string>) => {
+    async (requestId: string, action: string, values: Record<string, string>) => {
       if (!state.conversation) return;
-      await apiResolveLiveRequest(state.conversation.id, requestId, { values });
+      await apiResolveLiveRequest(state.conversation.id, requestId, { action, values });
     },
     [state.conversation],
   );

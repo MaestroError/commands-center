@@ -38,10 +38,12 @@ describe("live request service", () => {
     }
 
     service.resolve("conv-1", openedEvent.properties.request.id, {
+      action: "submit",
       values: { key: "API_TOKEN", value: "secret" },
     });
 
     await expect(pending).resolves.toEqual({
+      action: "submit",
       values: { key: "API_TOKEN", value: "secret" },
     });
     expect(events.map((event) => event.type)).toEqual([

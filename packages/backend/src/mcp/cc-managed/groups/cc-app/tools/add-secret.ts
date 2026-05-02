@@ -20,6 +20,14 @@ const addSecretOutputSchema = z.object({
   stored: z.literal(true),
 });
 
+const addSecretDecisionSchema = z.object({
+  action: z.literal("submit"),
+  values: z.object({
+    key: z.string().trim().min(1),
+    value: z.string().min(1),
+  }),
+});
+
 export function createAddSecretDefinition(options: {
   db: AppDb;
   config: RuntimeConfig;
@@ -82,14 +90,30 @@ export function createAddSecretDefinition(options: {
               required: true,
             },
           ],
+          actions: [
+            {
+              id: "submit",
+              label: parsed.submitLabel ?? "Add secret",
+              variant: "primary" as const,
+              kind: "submit" as const,
+              disabledWhen: [
+                { rule: "field_empty" as const, field: "key" },
+                { rule: "field_empty" as const, field: "value" },
+              ],
+            },
+            {
+              id: "cancel",
+              label: "Cancel",
+              variant: "secondary" as const,
+              kind: "cancel" as const,
+              disabledWhen: [],
+            },
+          ],
         });
 
-        const key = response.values["key"]?.trim();
-        const value = response.values["value"];
-
-        if (!key || !value) {
-          throw new Error("Secret key and value are required.");
-        }
+        const decision = addSecretDecisionSchema.parse(response);
+        const key = decision.values.key;
+        const value = decision.values.value;
 
         await options.secretService.set(key, value);
         void options.orchestrator.restart("secret updated");

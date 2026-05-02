@@ -21,7 +21,9 @@ const copyCustomToolToAgentOutputSchema = z.object({
 
 const copyDecisionSchema = z.object({
   action: z.enum(["rewrite", "rename"]),
-  destinationName: z.string().trim().min(1).optional(),
+  values: z.object({
+    destinationName: z.string().trim().min(1),
+  }),
 });
 
 export function createCopyCustomToolToAgentDefinition(options: {
@@ -64,7 +66,7 @@ export function createCopyCustomToolToAgentDefinition(options: {
           liveRequestService: options.liveRequestService,
         });
         const overwrite = decision.action === "rewrite";
-        const destinationName = decision.destinationName?.trim() || firstAttempt.conflict.toolName;
+        const destinationName = decision.values.destinationName;
         const finalAttempt = await options.customToolActionService.copyGlobalToolToAgent({
           slug: firstAttempt.conflict.toolSlug,
           agentSlug: firstAttempt.conflict.agentSlug,
@@ -135,15 +137,47 @@ async function requestConflictDecision(options: {
       toolSlug: options.conflict.toolSlug,
       agentSlug: options.conflict.agentSlug,
       conflictMessage: options.conflict.message,
-      actions: [
-        { id: "rewrite", label: "Rewrite" },
-        { id: "rename", label: "Copy with new name" },
-      ],
       currentName: options.conflict.currentName,
     },
+    actions: [
+      {
+        id: "cancel",
+        label: "Cancel",
+        variant: "secondary" as const,
+        kind: "cancel" as const,
+        disabledWhen: [],
+      },
+      {
+        id: "rewrite",
+        label: "Rewrite",
+        variant: "secondary" as const,
+        kind: "submit" as const,
+        disabledWhen: [
+          {
+            rule: "field_slug_differs" as const,
+            field: "destinationName",
+            value: options.conflict.currentName,
+          },
+        ],
+      },
+      {
+        id: "rename",
+        label: "Copy with new name",
+        variant: "primary" as const,
+        kind: "submit" as const,
+        disabledWhen: [
+          { rule: "field_empty" as const, field: "destinationName" },
+          {
+            rule: "field_slug_equals" as const,
+            field: "destinationName",
+            value: options.conflict.currentName,
+          },
+        ],
+      },
+    ],
   });
 
-  return copyDecisionSchema.parse(response.values);
+  return copyDecisionSchema.parse(response);
 }
 
 function successResult(input: {

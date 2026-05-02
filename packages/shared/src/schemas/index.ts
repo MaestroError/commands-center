@@ -238,12 +238,16 @@ export {
 } from "./chat-events.js";
 export {
   liveRequestCancelInputSchema,
+  liveRequestActionDisabledWhenSchema,
+  liveRequestActionSchema,
   liveRequestFormFieldSchema,
   liveRequestPresentationSchema,
   liveRequestResolveInputSchema,
   liveRequestResolveResultSchema,
   liveRequestSchema,
   type LiveRequest,
+  type LiveRequestAction,
+  type LiveRequestActionDisabledWhen,
   type LiveRequestCancelInput,
   type LiveRequestFormField,
   type LiveRequestPresentation,

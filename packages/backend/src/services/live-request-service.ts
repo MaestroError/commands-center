@@ -16,7 +16,8 @@ type SubscribeOptions = {
   onEvent: (event: ChatEvent) => void;
 };
 
-type CreateLiveRequestInput = Omit<LiveRequest, "id" | "createdAt" | "metadata"> & {
+type CreateLiveRequestInput = Omit<LiveRequest, "id" | "createdAt" | "metadata" | "actions"> & {
+  actions?: LiveRequest["actions"];
   metadata?: Record<string, unknown>;
   timeoutMs?: number;
 };
@@ -33,6 +34,7 @@ export function createLiveRequestService() {
     create(input: CreateLiveRequestInput): Promise<LiveRequestResolveInput> {
       const request: LiveRequest = {
         ...input,
+        actions: input.actions ?? [],
         metadata: input.metadata ?? {},
         id: createId(),
         createdAt: new Date().toISOString(),
