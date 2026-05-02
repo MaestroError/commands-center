@@ -15,8 +15,8 @@ import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { QuickFileModal } from "@/components/workspace/QuickFileModal";
 import { QuickFilePanel } from "@/components/workspace/QuickFilePanel";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
+import { useChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { useQuickFile } from "@/hooks/use-quick-file";
 import { useConversation } from "@/hooks/use-conversation";
 import { useAgentCatalogQuery } from "@/hooks/use-agents-query";
 import { resolveAgentWorkspacePath } from "@/lib/agent-workspace-path";
@@ -41,10 +41,9 @@ export function WorkspaceChatPage() {
   const conv = useConversation(agentSlug ?? "", urlConversationId);
   const { data: catalog } = useAgentCatalogQuery();
   const isDesktop = useMediaQuery("(min-width: 1200px)");
-  const quickFile = useQuickFile();
+  const inspection = useChatInspectionTabs(conv.conversation?.id);
   const [activeContextTabId, setActiveContextTabId] = useState("files");
   const [mediaSearchQuery, setMediaSearchQuery] = useState("");
-  const [quickEditorOpen, setQuickEditorOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [bottomPaneHeight, setBottomPaneHeight] = useState<number>();
 
@@ -105,12 +104,11 @@ export function WorkspaceChatPage() {
       return;
     }
 
-    void quickFile.open({
+    inspection.openFile({
       root: "workspace",
       path: resolveAgentWorkspacePath(agentSlug, path),
       displayPath: path,
     });
-    setQuickEditorOpen(true);
   };
 
   if (conv.status === "loading") {
@@ -151,6 +149,7 @@ export function WorkspaceChatPage() {
               content: (
                 <MediaTab
                   conversationId={conv.conversation.id}
+                  onOpenItem={inspection.openMedia}
                   onSearchQueryChange={setMediaSearchQuery}
                   searchQuery={mediaSearchQuery}
                 />
@@ -208,9 +207,9 @@ export function WorkspaceChatPage() {
               onStartFresh={conv.startFresh}
               onSelectConversation={conv.switchConversation}
               terminalOpen={terminalOpen}
-              quickEditorAvailable={quickFile.file !== undefined}
-              quickEditorOpen={quickEditorOpen && quickFile.file !== undefined}
-              onToggleQuickEditor={() => setQuickEditorOpen((current) => !current)}
+              quickEditorAvailable={inspection.tabs.length > 0}
+              quickEditorOpen={inspection.open && inspection.tabs.length > 0}
+              onToggleQuickEditor={() => inspection.setOpen(!inspection.open)}
               onToggleTerminal={() => setTerminalOpen((current) => !current)}
             />
 
@@ -261,10 +260,10 @@ export function WorkspaceChatPage() {
                 </div>
               }
               sidePane={
-                isDesktop && quickEditorOpen && quickFile.file ? (
+                isDesktop && inspection.open && inspection.tabs.length > 0 ? (
                   <QuickFilePanel
-                    controller={quickFile}
-                    onClosePane={() => setQuickEditorOpen(false)}
+                    controller={inspection}
+                    onClosePane={() => inspection.setOpen(false)}
                   />
                 ) : undefined
               }
@@ -272,8 +271,8 @@ export function WorkspaceChatPage() {
           </div>
         }
       />
-      {!isDesktop && quickEditorOpen && quickFile.file ? (
-        <QuickFileModal controller={quickFile} onClosePane={() => setQuickEditorOpen(false)} />
+      {!isDesktop && inspection.open && inspection.tabs.length > 0 ? (
+        <QuickFileModal controller={inspection} onClosePane={() => inspection.setOpen(false)} />
       ) : null}
       {DevDebugPanel && conv.__injectEvent && (
         <Suspense>

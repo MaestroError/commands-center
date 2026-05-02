@@ -12,6 +12,7 @@ type MediaTabProps = {
   conversationId: string;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
+  onOpenItem?: (item: SessionMediaItem) => void;
 };
 
 type GroupedMedia = {
@@ -20,7 +21,12 @@ type GroupedMedia = {
   other: SessionMediaItem[];
 };
 
-export function MediaTab({ conversationId, searchQuery, onSearchQueryChange }: MediaTabProps) {
+export function MediaTab({
+  conversationId,
+  searchQuery,
+  onSearchQueryChange,
+  onOpenItem,
+}: MediaTabProps) {
   const [selectedImage, setSelectedImage] = useState<SessionMediaItem | null>(null);
   const {
     data = [],
@@ -136,7 +142,14 @@ export function MediaTab({ conversationId, searchQuery, onSearchQueryChange }: M
                   <button
                     aria-label={`Preview ${item.filename ?? "image"}`}
                     className="block w-full text-left"
-                    onClick={() => setSelectedImage(item)}
+                    onClick={() => {
+                      if (onOpenItem) {
+                        onOpenItem(item);
+                        return;
+                      }
+
+                      setSelectedImage(item);
+                    }}
                     type="button"
                   >
                     <img
@@ -160,11 +173,11 @@ export function MediaTab({ conversationId, searchQuery, onSearchQueryChange }: M
         ) : null}
 
         {filteredData.length > 0 && grouped.documents.length > 0 ? (
-          <MediaListSection items={grouped.documents} title="Documents" />
+          <MediaListSection items={grouped.documents} onOpenItem={onOpenItem} title="Documents" />
         ) : null}
 
         {filteredData.length > 0 && grouped.other.length > 0 ? (
-          <MediaListSection items={grouped.other} title="Other files" />
+          <MediaListSection items={grouped.other} onOpenItem={onOpenItem} title="Other files" />
         ) : null}
       </div>
 
@@ -181,7 +194,11 @@ export function MediaTab({ conversationId, searchQuery, onSearchQueryChange }: M
   );
 }
 
-function MediaListSection(props: { title: string; items: SessionMediaItem[] }) {
+function MediaListSection(props: {
+  title: string;
+  items: SessionMediaItem[];
+  onOpenItem?: (item: SessionMediaItem) => void;
+}) {
   return (
     <section className="space-y-3">
       <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">
@@ -197,9 +214,20 @@ function MediaListSection(props: { title: string; items: SessionMediaItem[] }) {
               <FileIcon />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-text-primary">
-                {item.filename ?? "Untitled"}
-              </p>
+              {props.onOpenItem ? (
+                <button
+                  aria-label={`Inspect ${item.filename ?? "file"}`}
+                  className="block w-full truncate text-left text-sm font-medium text-text-primary"
+                  onClick={() => props.onOpenItem?.(item)}
+                  type="button"
+                >
+                  {item.filename ?? "Untitled"}
+                </button>
+              ) : (
+                <p className="truncate text-sm font-medium text-text-primary">
+                  {item.filename ?? "Untitled"}
+                </p>
+              )}
               <p className="truncate text-xs text-text-secondary">
                 {item.mime} · {formatTimestamp(item.createdAt)}
               </p>

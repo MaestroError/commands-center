@@ -1,16 +1,16 @@
 import { X } from "lucide-react";
 
-import { WorkspaceFileSurface } from "./WorkspaceFileSurface";
+import { QuickInspectorSurface } from "./QuickInspectorSurface";
 
-import type { UseQuickFile } from "@/hooks/use-quick-file";
+import type { UseChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
 
 type Props = {
-  controller: UseQuickFile;
+  controller: UseChatInspectionTabs;
   onClosePane?: () => void;
 };
 
 export function QuickFileModal(props: Props) {
-  if (!props.controller.file) {
+  if (!props.controller.open || props.controller.tabs.length === 0) {
     return null;
   }
 
@@ -28,9 +28,7 @@ export function QuickFileModal(props: Props) {
       >
         <div className="flex h-full w-full flex-col">
           <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-            <ReverseTruncatePath
-              path={props.controller.file.displayPath ?? props.controller.file.path}
-            />
+            <p className="min-w-0 truncate text-sm text-text-primary">Inspection</p>
             <button
               aria-label="Close quick editor"
               className="cc-button cc-button-secondary inline-flex h-8 w-8 items-center justify-center p-0"
@@ -43,29 +41,10 @@ export function QuickFileModal(props: Props) {
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            <WorkspaceFileSurface
-              busy={props.controller.busy}
-              conflict={props.controller.conflict}
-              errorMessage={props.controller.errorMessage}
-              file={props.controller.file}
-              showPreviewHeader={false}
-              showTextPathLabel={false}
-              onDiscardConflict={() => undefined}
-              onDraftChange={props.controller.updateDraft}
-              onReloadRequested={() => void props.controller.reload()}
-              onSaveRequested={(overrideRevision) => void props.controller.save(overrideRevision)}
-            />
+            <QuickInspectorSurface controller={props.controller} />
           </div>
         </div>
       </section>
     </div>
-  );
-}
-
-function ReverseTruncatePath(props: { path: string }) {
-  return (
-    <p className="min-w-0 truncate text-sm text-text-primary [direction:rtl]" title={props.path}>
-      {props.path}
-    </p>
   );
 }

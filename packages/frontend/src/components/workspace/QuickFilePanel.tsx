@@ -1,42 +1,20 @@
-import { ChatSidePaneHost } from "@/components/chat/ChatSidePaneHost";
+import { QuickInspectorSurface } from "./QuickInspectorSurface";
 
-import { WorkspaceFileSurface } from "./WorkspaceFileSurface";
-
-import type { UseQuickFile } from "@/hooks/use-quick-file";
+import type { UseChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
 
 type Props = {
-  controller: UseQuickFile;
+  controller: UseChatInspectionTabs;
   onClosePane?: () => void;
 };
 
 export function QuickFilePanel(props: Props) {
-  if (!props.controller.file) {
+  if (!props.controller.open || props.controller.tabs.length === 0) {
     return null;
   }
 
   return (
     <div data-testid="quick-file-panel">
-      <ChatSidePaneHost
-        closeLabel="Close quick editor"
-        onClose={() => {
-          props.onClosePane?.();
-        }}
-        title={props.controller.file.displayPath ?? props.controller.file.path}
-        titleClassName="[direction:rtl]"
-      >
-        <WorkspaceFileSurface
-          busy={props.controller.busy}
-          conflict={props.controller.conflict}
-          errorMessage={props.controller.errorMessage}
-          file={props.controller.file}
-          showPreviewHeader={false}
-          showTextPathLabel={false}
-          onDiscardConflict={() => undefined}
-          onDraftChange={props.controller.updateDraft}
-          onReloadRequested={() => void props.controller.reload()}
-          onSaveRequested={(overrideRevision) => void props.controller.save(overrideRevision)}
-        />
-      </ChatSidePaneHost>
+      <QuickInspectorSurface controller={props.controller} />
     </div>
   );
 }

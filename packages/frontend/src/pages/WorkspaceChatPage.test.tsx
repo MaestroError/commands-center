@@ -8,7 +8,6 @@ const navigateMock = vi.fn();
 const useConversationMock = vi.fn();
 const useAgentCatalogQueryMock = vi.fn();
 const useMediaQueryMock = vi.fn();
-const quickFileOpenMock = vi.fn();
 
 let mockParams: { agentId?: string; conversationId?: string } = {};
 
@@ -27,25 +26,6 @@ vi.mock("@/hooks/use-agents-query", () => ({
 
 vi.mock("@/hooks/use-media-query", () => ({
   useMediaQuery: (query: string) => Boolean(useMediaQueryMock(query)),
-}));
-
-vi.mock("@/hooks/use-quick-file", () => ({
-  useQuickFile: () => ({
-    file: {
-      name: "README.md",
-      path: "agents/planner/README.md",
-      loading: false,
-      dirty: false,
-    },
-    busy: false,
-    conflict: undefined,
-    errorMessage: undefined,
-    open: quickFileOpenMock,
-    close: vi.fn(),
-    updateDraft: vi.fn(),
-    reload: vi.fn(),
-    save: vi.fn(),
-  }),
 }));
 
 vi.mock("@/components/layout/WorkspaceLayout", () => ({
@@ -155,14 +135,14 @@ vi.mock("@/components/workspace/WorkspaceFilesTab", () => ({
 }));
 
 vi.mock("@/components/workspace/QuickFilePanel", () => ({
-  QuickFilePanel: ({ controller }: { controller: { file?: { path: string } } }) => (
-    <div data-testid="quick-file-panel">{controller.file?.path ?? "closed"}</div>
+  QuickFilePanel: ({ controller }: { controller: { activeKey?: string } }) => (
+    <div data-testid="quick-file-panel">{controller.activeKey ?? "closed"}</div>
   ),
 }));
 
 vi.mock("@/components/workspace/QuickFileModal", () => ({
-  QuickFileModal: ({ controller }: { controller: { file?: { path: string } } }) => (
-    <div data-testid="quick-file-modal">{controller.file?.path ?? "closed"}</div>
+  QuickFileModal: ({ controller }: { controller: { activeKey?: string } }) => (
+    <div data-testid="quick-file-modal">{controller.activeKey ?? "closed"}</div>
   ),
 }));
 
@@ -226,7 +206,7 @@ afterEach(() => {
   useConversationMock.mockReset();
   useAgentCatalogQueryMock.mockReset();
   useMediaQueryMock.mockReset();
-  quickFileOpenMock.mockReset();
+  window.sessionStorage.clear();
 });
 
 describe("WorkspaceChatPage", () => {
@@ -419,7 +399,7 @@ describe("WorkspaceChatPage", () => {
     expect(screen.queryByTestId("workspace-terminal-pane")).not.toBeInTheDocument();
   });
 
-  it("opens the quick editor with an agent-scoped workspace path", async () => {
+  it("opens the inspection pane with an agent-scoped workspace path", async () => {
     const user = userEvent.setup();
 
     mockParams = { agentId: "planner", conversationId: "conv-1" };
@@ -432,15 +412,13 @@ describe("WorkspaceChatPage", () => {
 
     await user.click(screen.getByTestId("workspace-files-open"));
 
-    expect(quickFileOpenMock).toHaveBeenCalledWith({
-      displayPath: "README.md",
-      root: "workspace",
-      path: "agents/planner/README.md",
-    });
     expect(screen.getByTestId("quick-file-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("quick-file-panel")).toHaveTextContent(
+      "file:workspace:agents/planner/README.md",
+    );
   });
 
-  it("toggles the desktop quick editor pane from the chat header", async () => {
+  it("toggles the desktop inspection pane from the chat header", async () => {
     const user = userEvent.setup();
 
     mockParams = { agentId: "planner", conversationId: "conv-1" };
@@ -453,16 +431,20 @@ describe("WorkspaceChatPage", () => {
 
     expect(screen.queryByTestId("quick-file-panel")).not.toBeInTheDocument();
 
-    await user.click(screen.getByTestId("chat-quick-editor-toggle"));
+    await user.click(screen.getByTestId("workspace-files-open"));
 
     expect(screen.getByTestId("quick-file-panel")).toBeInTheDocument();
 
     await user.click(screen.getByTestId("chat-quick-editor-toggle"));
 
     expect(screen.queryByTestId("quick-file-panel")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("chat-quick-editor-toggle"));
+
+    expect(screen.getByTestId("quick-file-panel")).toBeInTheDocument();
   });
 
-  it("keeps the mobile quick file modal closed until toggled open", async () => {
+  it("keeps the mobile inspection modal closed until toggled open", async () => {
     const user = userEvent.setup();
 
     mockParams = { agentId: "planner", conversationId: "conv-1" };
@@ -477,8 +459,12 @@ describe("WorkspaceChatPage", () => {
     expect(screen.queryByTestId("quick-file-modal")).not.toBeInTheDocument();
     expect(screen.queryByTestId("quick-file-panel")).not.toBeInTheDocument();
 
+    await user.click(screen.getByTestId("workspace-files-open"));
+
+    expect(screen.queryByTestId("quick-file-modal")).toBeInTheDocument();
+
     await user.click(screen.getByTestId("chat-quick-editor-toggle"));
 
-    expect(screen.getByTestId("quick-file-modal")).toBeInTheDocument();
+    expect(screen.queryByTestId("quick-file-modal")).not.toBeInTheDocument();
   });
 });
