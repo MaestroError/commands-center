@@ -52,7 +52,7 @@ describe("createAgentService", () => {
           customTools: [],
           mcpServers: [{ name: "github", enabled: true, action: "allow" }],
           toolPermissions: [{ pattern: "custom_review", action: "ask" }],
-          appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+          appMcpServers: [{ name: "cc_tool_management", enabled: true, action: "allow" }],
           appToolPermissions: [],
         },
       });
@@ -71,8 +71,8 @@ describe("createAgentService", () => {
       expect(config).toContain('"model": "openai/gpt-4.1"');
       expect(config).toContain('"github_*": "allow"');
       expect(config).toContain('"custom_review": "ask"');
-      expect(config).toContain('"cc_app": {');
-      expect(config).toContain('"cc_app_*": "allow"');
+      expect(config).toContain('"cc_tool_management": {');
+      expect(config).toContain('"cc_tool_management_*": "allow"');
       expect(dispose).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
@@ -235,6 +235,12 @@ describe("createAgentService", () => {
           name: "cc_app",
           enabledByDefault: false,
           description: "CommandsCenter app-managed capabilities for this agent.",
+        },
+        {
+          name: "cc_tool_management",
+          enabledByDefault: false,
+          description:
+            "CommandsCenter-managed tool creation and library maintenance for this agent.",
         },
       ]);
     } finally {

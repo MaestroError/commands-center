@@ -47,6 +47,12 @@ beforeEach(() => {
           enabledByDefault: false,
           description: "CommandsCenter app-managed capabilities for this agent.",
         },
+        {
+          name: "cc_tool_management",
+          enabledByDefault: false,
+          description:
+            "CommandsCenter-managed tool creation and library maintenance for this agent.",
+        },
       ],
       customTools: [],
       providerModels: [{ id: "openai/gpt-4.1", label: "openai/gpt-4.1" }],
@@ -260,6 +266,27 @@ describe("AgentEditorPage", () => {
         input: expect.objectContaining({
           capabilities: expect.objectContaining({
             appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+            appToolPermissions: [],
+          }),
+        }),
+      });
+    });
+  });
+
+  it("saves tool management MCP group permission when selected", async () => {
+    updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
+
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("button", { name: "cc_tool_management Allow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(updateMutateAsync).toHaveBeenCalledWith({
+        id: "agent-1",
+        input: expect.objectContaining({
+          capabilities: expect.objectContaining({
+            appMcpServers: [{ name: "cc_tool_management", enabled: true, action: "allow" }],
             appToolPermissions: [],
           }),
         }),

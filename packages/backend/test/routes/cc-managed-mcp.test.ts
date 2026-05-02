@@ -12,7 +12,7 @@ import { createSecretService } from "../../src/services/secret-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("cc-managed MCP routes", () => {
-  it("serves the cc_app MCP endpoint with agent-scoped auth", async () => {
+  it("serves the cc_tool_management MCP endpoint with agent-scoped auth", async () => {
     const testDb = await createTestDatabase();
     testDb.config.server.port = 43123;
     const server = await createServer({
@@ -43,7 +43,7 @@ describe("cc-managed MCP routes", () => {
             customTools: [],
             mcpServers: [],
             toolPermissions: [],
-            appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+            appMcpServers: [{ name: "cc_tool_management", enabled: true, action: "allow" }],
             appToolPermissions: [],
           },
         },
@@ -56,23 +56,23 @@ describe("cc-managed MCP routes", () => {
       ) as {
         mcp: Record<string, { url: string; headers: Record<string, string> }>;
       };
-      const ccApp = config.mcp["cc_app"];
+      const ccToolManagement = config.mcp["cc_tool_management"];
 
-      expect(ccApp).toBeDefined();
-      expect(ccApp?.url).toContain("/api/mcp/cc/cc-app/agents/writer");
-      expect(ccApp?.headers["Authorization"]).toContain("Bearer ");
+      expect(ccToolManagement).toBeDefined();
+      expect(ccToolManagement?.url).toContain("/api/mcp/cc/cc-tool-management/agents/writer");
+      expect(ccToolManagement?.headers["Authorization"]).toContain("Bearer ");
 
-      if (!ccApp) {
-        throw new Error("Expected cc_app config entry.");
+      if (!ccToolManagement) {
+        throw new Error("Expected cc_tool_management config entry.");
       }
 
-      const authHeader = ccApp.headers["Authorization"];
+      const authHeader = ccToolManagement.headers["Authorization"];
 
       if (!authHeader) {
-        throw new Error("Expected cc_app authorization header.");
+        throw new Error("Expected cc_tool_management authorization header.");
       }
 
-      const initializeResponse = await fetch(ccApp.url, {
+      const initializeResponse = await fetch(ccToolManagement.url, {
         method: "POST",
         headers: {
           Authorization: authHeader,
@@ -96,12 +96,12 @@ describe("cc-managed MCP routes", () => {
       const initializeBody = await initializeResponse.text();
 
       expect(initializeResponse.headers.get("mcp-session-id")).toBeTruthy();
-      expect(initializeBody).toContain('"name":"cc_app"');
+      expect(initializeBody).toContain('"name":"cc_tool_management"');
       expect(initializeBody).toContain('"listChanged":true');
 
       const sessionId = initializeResponse.headers.get("mcp-session-id");
 
-      const listToolsResponse = await fetch(ccApp.url, {
+      const listToolsResponse = await fetch(ccToolManagement.url, {
         method: "POST",
         headers: {
           Authorization: authHeader,
@@ -120,9 +120,9 @@ describe("cc-managed MCP routes", () => {
       expect(listToolsResponse.ok).toBe(true);
       const listToolsBody = await listToolsResponse.text();
 
-      expect(listToolsBody).toContain('"name":"create_custom_ts_tool"');
+      expect(listToolsBody).toContain('"name":"create_custom_tool"');
 
-      const callToolResponse = await fetch(ccApp.url, {
+      const callToolResponse = await fetch(ccToolManagement.url, {
         method: "POST",
         headers: {
           Authorization: authHeader,
@@ -135,7 +135,7 @@ describe("cc-managed MCP routes", () => {
           id: 3,
           method: "tools/call",
           params: {
-            name: "create_custom_ts_tool",
+            name: "create_custom_tool",
             arguments: {
               name: "Release Helper",
               description: "Draft release notes.",
@@ -168,7 +168,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("rejects missing bearer auth for cc_app", async () => {
+  it("rejects missing bearer auth for cc_tool_management", async () => {
     const testDb = await createTestDatabase();
     const server = await createServer({
       config: testDb.config,
@@ -184,7 +184,7 @@ describe("cc-managed MCP routes", () => {
     try {
       const response = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-app/agents/writer",
+        url: "/api/mcp/cc/cc-tool-management/agents/writer",
         payload: {
           jsonrpc: "2.0",
           id: 1,

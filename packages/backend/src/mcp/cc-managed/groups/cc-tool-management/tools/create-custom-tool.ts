@@ -2,33 +2,33 @@ import { z } from "zod";
 
 import type { CustomToolService } from "../../../../../services/custom-tool-service.js";
 
-export const createCustomTsToolInputSchema = z.object({
+export const createCustomToolInputSchema = z.object({
   name: z.string().trim().min(1),
   description: z.string().trim().default(""),
 });
 
-export const createCustomTsToolOutputSchema = z.object({
+export const createCustomToolOutputSchema = z.object({
   toolName: z.string().min(1),
   toolSlug: z.string().min(1),
   directoryPath: z.string().min(1),
   entryPath: z.string().min(1),
 });
 
-export function createCreateCustomTsToolDefinition(options: {
+export function createCreateCustomToolDefinition(options: {
   customToolService: CustomToolService;
 }) {
   return {
-    name: "create_custom_ts_tool",
+    name: "create_custom_tool",
     description:
-      "Create a blank CommandsCenter TypeScript custom tool and return the folder path the agent should edit.",
-    inputSchema: createCustomTsToolInputSchema,
-    outputSchema: createCustomTsToolOutputSchema,
+      "Create a blank CommandsCenter custom tool and return the folder path the agent should edit.",
+    inputSchema: createCustomToolInputSchema,
+    outputSchema: createCustomToolOutputSchema,
     async execute(args: unknown) {
       try {
         const created = await options.customToolService.create(
-          createCustomTsToolInputSchema.parse(args),
+          createCustomToolInputSchema.parse(args),
         );
-        const structuredContent = createCustomTsToolOutputSchema.parse({
+        const structuredContent = createCustomToolOutputSchema.parse({
           toolName: created.tool.name,
           toolSlug: created.tool.slug,
           directoryPath: created.tool.directoryPath,
@@ -56,4 +56,4 @@ export function createCreateCustomTsToolDefinition(options: {
   };
 }
 
-export type CreateCustomTsToolDefinition = ReturnType<typeof createCreateCustomTsToolDefinition>;
+export type CreateCustomToolDefinition = ReturnType<typeof createCreateCustomToolDefinition>;

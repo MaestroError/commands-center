@@ -1,7 +1,7 @@
 import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat";
 
 import type { CustomToolService } from "../../services/custom-tool-service.js";
-import { createCreateCustomTsToolDefinition } from "./groups/cc-app/tools/create-custom-ts-tool.js";
+import { createCreateCustomToolDefinition } from "./groups/cc-tool-management/tools/create-custom-tool.js";
 
 export type CcManagedToolDefinition = {
   name: string;
@@ -38,7 +38,14 @@ export function createCcManagedMcpServerRegistry(options: {
       routeSegment: "cc-app",
       description: "CommandsCenter app-managed capabilities for this agent.",
       enabledByDefault: false,
-      tools: [createCreateCustomTsToolDefinition({ customToolService: options.customToolService })],
+      tools: [],
+    },
+    {
+      name: "cc_tool_management",
+      routeSegment: "cc-tool-management",
+      description: "CommandsCenter-managed tool creation and library maintenance for this agent.",
+      enabledByDefault: false,
+      tools: [createCreateCustomToolDefinition({ customToolService: options.customToolService })],
     },
   ] as const satisfies readonly CcManagedMcpServerDefinition[];
 }

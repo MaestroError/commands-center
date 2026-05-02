@@ -38,13 +38,13 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
         customTools: [],
         mcpServers: [{ name: "github", enabled: true, action: "allow" }],
         toolPermissions: [{ pattern: "custom_write", action: "ask" }],
-        appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
-        appToolPermissions: [{ pattern: "cc_app_schedule_task", action: "ask" }],
+        appMcpServers: [{ name: "cc_tool_management", enabled: true, action: "allow" }],
+        appToolPermissions: [{ pattern: "cc_tool_management_create_custom_tool", action: "ask" }],
       },
       appMcpEntries: {
-        cc_app: {
+        cc_tool_management: {
           type: "remote",
-          url: "http://127.0.0.1:3000/api/mcp/cc/cc-app/agents/writer",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/agents/writer",
           enabled: true,
           oauth: false,
           headers: {
@@ -64,9 +64,9 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       model: "openai/gpt-4.1",
       mcp: {
         github: { enabled: true },
-        cc_app: {
+        cc_tool_management: {
           type: "remote",
-          url: "http://127.0.0.1:3000/api/mcp/cc/cc-app/agents/writer",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/agents/writer",
           enabled: true,
           oauth: false,
           headers: {
@@ -77,8 +77,8 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       permission: {
         "github_*": "allow",
         custom_write: "ask",
-        "cc_app_*": "allow",
-        cc_app_schedule_task: "ask",
+        "cc_tool_management_*": "allow",
+        cc_tool_management_create_custom_tool: "ask",
       },
     });
 
@@ -101,9 +101,9 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
         appToolPermissions: [],
       },
       appMcpEntries: {
-        cc_app: {
+        cc_tool_management: {
           type: "remote",
-          url: "http://127.0.0.1:3000/api/mcp/cc/cc-app/agents/writer",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/agents/writer",
           enabled: false,
           oauth: false,
           headers: {
@@ -115,8 +115,12 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
 
     const parsed = JSON.parse(rendered.configJsonc) as { permission: Record<string, string> };
 
-    expect(Object.keys(parsed.permission)).toEqual(["github_*", "github_create_issue", "cc_app_*"]);
-    expect(parsed.permission["cc_app_*"]).toBe("deny");
+    expect(Object.keys(parsed.permission)).toEqual([
+      "github_*",
+      "github_create_issue",
+      "cc_tool_management_*",
+    ]);
+    expect(parsed.permission["cc_tool_management_*"]).toBe("deny");
   });
 
   it("copies validated skills into the documented .opencode path", async () => {
