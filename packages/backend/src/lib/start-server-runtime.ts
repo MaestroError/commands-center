@@ -6,6 +6,7 @@ import {
   createOpenCodeOrchestrator,
   type OpenCodeOrchestrator,
 } from "../orchestrator/opencode-orchestrator.js";
+import { syncCcManagedMcpAgentWorkspaces } from "../mcp/cc-managed/workspace-sync-service.js";
 import { createOpenCodeClient } from "./opencode-client.js";
 import { createOpenCodeService, type OpenCodeService } from "../services/opencode-service.js";
 import {
@@ -102,6 +103,12 @@ export async function startServerRuntime(
   if (options?.register) {
     await options.register(server, context);
   }
+
+  await syncCcManagedMcpAgentWorkspaces({
+    db: database.db,
+    config,
+    logger,
+  });
 
   const drainController = createDrainController({
     logger,

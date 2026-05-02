@@ -10,6 +10,17 @@ const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 const permissionActionSchema = z.enum(["allow", "ask", "deny"]);
 const permissionRuleSchema = z.record(z.string().min(1), permissionActionSchema);
+const workspaceMcpEnabledSchema = z.object({ enabled: z.boolean() }).strict();
+const workspaceRemoteMcpSchema = z
+  .object({
+    type: z.literal("remote"),
+    url: z.string().trim().url(),
+    enabled: z.boolean(),
+    oauth: z.union([z.boolean(), z.object({}).passthrough()]).optional(),
+    headers: z.record(z.string().min(1), z.string()).optional(),
+    timeout: z.number().int().positive().optional(),
+  })
+  .strict();
 
 const skillFrontmatterSchema = z
   .object({
@@ -25,7 +36,9 @@ const workspaceConfigSchema = z
   .object({
     $schema: z.literal(OPENCODE_CONFIG_SCHEMA_URL),
     model: z.string().trim().min(1),
-    mcp: z.record(z.string().min(1), z.object({ enabled: z.boolean() }).strict()).default({}),
+    mcp: z
+      .record(z.string().min(1), z.union([workspaceMcpEnabledSchema, workspaceRemoteMcpSchema]))
+      .default({}),
     permission: z
       .record(z.string().min(1), z.union([permissionActionSchema, permissionRuleSchema]))
       .default({}),
@@ -78,6 +91,7 @@ export type OpenCodeWorkspaceInput = {
   instructions: string;
   defaultModel: string;
   capabilities: AgentCapabilitySelection;
+  appMcpEntries?: Record<string, z.infer<typeof workspaceRemoteMcpSchema>>;
 };
 
 export function getOpenCodeWorkspacePaths(root: string): {
@@ -128,11 +142,11 @@ export async function writeOpenCodeWorkspace(options: {
   await rm(paths.skillsDir, { recursive: true, force: true });
   await mkdir(paths.skillsDir, { recursive: true });
 
-  for (const skill of options.input.capabilities.builtInSkills) {
+  for (const skill of options.input.capabilities.builtInSkills ?? []) {
     await copySkill(options.skillRoot, paths.skillsDir, skill);
   }
 
-  for (const skill of options.input.capabilities.workspaceSkills) {
+  for (const skill of options.input.capabilities.workspaceSkills ?? []) {
     await copySkill(options.workspaceSkillRoot, paths.skillsDir, skill);
   }
 
@@ -150,18 +164,35 @@ export function renderOpenCodeWorkspace(input: OpenCodeWorkspaceInput): {
     role: input.role,
     instructions: input.instructions,
   });
+  const appMcpSelections = new Map(
+    (input.capabilities.appMcpServers ?? []).map((server) => [server.name, server.action]),
+  );
   const config = workspaceConfigSchema.parse({
     $schema: OPENCODE_CONFIG_SCHEMA_URL,
     model: input.defaultModel,
-    mcp: Object.fromEntries(
-      input.capabilities.mcpServers.map((server) => [server.name, { enabled: server.enabled }]),
-    ),
+    mcp: {
+      ...Object.fromEntries(
+        (input.capabilities.mcpServers ?? []).map((server) => [
+          server.name,
+          { enabled: server.enabled },
+        ]),
+      ),
+      ...(input.appMcpEntries ?? {}),
+    },
     permission: {
       ...Object.fromEntries([
-        ...input.capabilities.mcpServers.map(
+        ...(input.capabilities.mcpServers ?? []).map(
           (server) => [`${server.name}_*`, server.action] as const,
         ),
-        ...input.capabilities.toolPermissions.map((rule) => [rule.pattern, rule.action] as const),
+        ...(input.capabilities.toolPermissions ?? []).map(
+          (rule) => [rule.pattern, rule.action] as const,
+        ),
+        ...Object.keys(input.appMcpEntries ?? {}).map(
+          (serverName) => [`${serverName}_*`, appMcpSelections.get(serverName) ?? "deny"] as const,
+        ),
+        ...(input.capabilities.appToolPermissions ?? []).map(
+          (rule) => [rule.pattern, rule.action] as const,
+        ),
       ]),
     },
   });

@@ -16,6 +16,16 @@ export type AgentWorkspaceInput = {
   instructions: string;
   defaultModel: string;
   capabilities: AgentCapabilitySelection;
+  appMcpEntries?: Record<
+    string,
+    {
+      type: "remote";
+      url: string;
+      enabled: boolean;
+      oauth: false;
+      headers: Record<string, string>;
+    }
+  >;
 };
 
 export function getBuiltInSkillRoot(config: RuntimeConfig): string {

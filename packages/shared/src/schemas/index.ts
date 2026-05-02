@@ -73,6 +73,7 @@ export {
 export {
   agentCapabilitySelectionSchema,
   agentCatalogSchema,
+  agentAppMcpServerSchema,
   agentListSchema,
   agentMcpServerSchema,
   agentPermissionRuleSchema,
@@ -86,6 +87,7 @@ export {
   workspaceSkillListSchema,
   workspaceSkillSchema,
   type Agent,
+  type AgentAppMcpServer,
   type AgentCatalog,
   type AgentCapabilitySelection,
   type AgentMcpServer,

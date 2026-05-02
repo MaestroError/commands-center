@@ -1,11 +1,18 @@
 import { eq } from "drizzle-orm";
 
-import type { AgentCapabilitySelection } from "../schemas/agents.js";
+import {
+  agentCapabilitySelectionSchema,
+  type AgentCapabilitySelection,
+} from "../schemas/agents.js";
 
 import { now } from "../db/ids.js";
 import { agents } from "../db/schema/index.js";
 import type { AppDb } from "../db/client.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
+import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
+import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
+import { createCcManagedMcpToolAccessService } from "../mcp/cc-managed/tool-access-service.js";
+import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/workspace-entry-service.js";
 import {
   getBuiltInSkillRoot,
   getWorkspaceSkillRoot,
@@ -17,22 +24,38 @@ import type { OpenCodeService } from "./opencode-service.js";
 export function normalizeAgentCapabilities(
   capabilities: AgentCapabilitySelection,
   availableMcpNames: readonly string[],
+  availableAppMcpNames: readonly string[],
 ): AgentCapabilitySelection {
   const available = new Set(availableMcpNames);
-  const nextMcpServers = capabilities.mcpServers.filter((server) => available.has(server.name));
+  const availableApp = new Set(availableAppMcpNames);
+  const nextMcpServers = (capabilities.mcpServers ?? []).filter((server) =>
+    available.has(server.name),
+  );
   const staleNames = new Set(
-    capabilities.mcpServers
+    (capabilities.mcpServers ?? [])
       .filter((server) => !available.has(server.name))
+      .map((server) => server.name),
+  );
+  const nextAppMcpServers = (capabilities.appMcpServers ?? []).filter((server) =>
+    availableApp.has(server.name),
+  );
+  const staleAppNames = new Set(
+    (capabilities.appMcpServers ?? [])
+      .filter((server) => !availableApp.has(server.name))
       .map((server) => server.name),
   );
 
   return {
     builtInSkills: capabilities.builtInSkills,
-    workspaceSkills: capabilities.workspaceSkills,
-    customTools: capabilities.customTools,
+    workspaceSkills: capabilities.workspaceSkills ?? [],
+    customTools: capabilities.customTools ?? [],
     mcpServers: dedupeMcpServers(nextMcpServers),
-    toolPermissions: capabilities.toolPermissions.filter(
+    toolPermissions: (capabilities.toolPermissions ?? []).filter(
       (rule) => !matchesAnyMcpPrefix(rule.pattern, staleNames),
+    ),
+    appMcpServers: dedupeMcpServers(nextAppMcpServers),
+    appToolPermissions: (capabilities.appToolPermissions ?? []).filter(
+      (rule) => !matchesAnyMcpPrefix(rule.pattern, staleAppNames),
     ),
   };
 }
@@ -43,12 +66,14 @@ export function removeMcpReferences(
 ): AgentCapabilitySelection {
   return {
     builtInSkills: capabilities.builtInSkills,
-    workspaceSkills: capabilities.workspaceSkills,
-    customTools: capabilities.customTools,
-    mcpServers: capabilities.mcpServers.filter((server) => server.name !== mcpName),
-    toolPermissions: capabilities.toolPermissions.filter(
+    workspaceSkills: capabilities.workspaceSkills ?? [],
+    customTools: capabilities.customTools ?? [],
+    mcpServers: (capabilities.mcpServers ?? []).filter((server) => server.name !== mcpName),
+    toolPermissions: (capabilities.toolPermissions ?? []).filter(
       (rule) => !matchesMcpPrefix(rule.pattern, mcpName),
     ),
+    appMcpServers: capabilities.appMcpServers ?? [],
+    appToolPermissions: capabilities.appToolPermissions ?? [],
   };
 }
 
@@ -59,19 +84,21 @@ export function renameMcpReferences(
 ): AgentCapabilitySelection {
   return {
     builtInSkills: capabilities.builtInSkills,
-    workspaceSkills: capabilities.workspaceSkills,
-    customTools: capabilities.customTools,
+    workspaceSkills: capabilities.workspaceSkills ?? [],
+    customTools: capabilities.customTools ?? [],
     mcpServers: dedupeMcpServers(
-      capabilities.mcpServers.map((server) =>
+      (capabilities.mcpServers ?? []).map((server) =>
         server.name === previousName ? { ...server, name: nextName } : server,
       ),
     ),
-    toolPermissions: capabilities.toolPermissions.map((rule) => ({
+    toolPermissions: (capabilities.toolPermissions ?? []).map((rule) => ({
       ...rule,
       pattern: matchesMcpPrefix(rule.pattern, previousName)
         ? `${nextName}${rule.pattern.slice(previousName.length)}`
         : rule.pattern,
     })),
+    appMcpServers: capabilities.appMcpServers ?? [],
+    appToolPermissions: capabilities.appToolPermissions ?? [],
   };
 }
 
@@ -81,6 +108,13 @@ export async function rewriteAgentsForMcpChange(options: {
   opencodeService: OpenCodeService;
   transform: (capabilities: AgentCapabilitySelection) => AgentCapabilitySelection;
 }): Promise<number> {
+  const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
+    config: options.config,
+    authTokenService: createCcManagedMcpAuthTokenService({
+      authStateStore: createCcManagedMcpAuthStateStore(options.config),
+    }),
+    toolAccessService: createCcManagedMcpToolAccessService(),
+  });
   const rows = await options.db.query.agents.findMany();
   let updatedCount = 0;
 
@@ -97,6 +131,11 @@ export async function rewriteAgentsForMcpChange(options: {
       continue;
     }
 
+    const appMcpEntries = await appMcpWorkspaceEntryService.buildEntries({
+      slug: row.slug,
+      capabilities: nextCapabilities,
+    });
+
     await prepareWorkspace({
       config: options.config,
       workspacePath,
@@ -106,6 +145,7 @@ export async function rewriteAgentsForMcpChange(options: {
         instructions: row.instructions,
         defaultModel: row.default_model,
         capabilities: nextCapabilities,
+        appMcpEntries,
       },
       skillRoot: getBuiltInSkillRoot(options.config),
       workspaceSkillRoot: getWorkspaceSkillRoot(options.config),
@@ -130,11 +170,11 @@ export async function rewriteAgentsForMcpChange(options: {
 }
 
 function parseCapabilities(value: string): AgentCapabilitySelection {
-  return JSON.parse(value) as AgentCapabilitySelection;
+  return agentCapabilitySelectionSchema.parse(JSON.parse(value));
 }
 
 function dedupeMcpServers(capabilities: AgentCapabilitySelection["mcpServers"]) {
-  const unique = new Map(capabilities.map((server) => [server.name, server]));
+  const unique = new Map((capabilities ?? []).map((server) => [server.name, server]));
   return Array.from(unique.values());
 }
 

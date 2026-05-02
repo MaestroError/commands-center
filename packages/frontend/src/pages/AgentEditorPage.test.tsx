@@ -41,6 +41,13 @@ beforeEach(() => {
       builtInSkills: [],
       workspaceSkills: [],
       mcpServers: [{ name: "github", enabled: true }],
+      appMcpServers: [
+        {
+          name: "cc_app",
+          enabledByDefault: false,
+          description: "CommandsCenter app-managed capabilities for this agent.",
+        },
+      ],
       customTools: [],
       providerModels: [{ id: "openai/gpt-4.1", label: "openai/gpt-4.1" }],
     },
@@ -59,7 +66,15 @@ beforeEach(() => {
         defaultModel: "openai/gpt-4.1",
         workspacePath: "/tmp/agents/writer",
         status: "active",
-        capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
+        capabilities: {
+          builtInSkills: [],
+          workspaceSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+          appMcpServers: [],
+          appToolPermissions: [],
+        },
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
@@ -78,7 +93,15 @@ beforeEach(() => {
       defaultModel: "openai/gpt-4.1",
       workspacePath: "/tmp/agents/writer",
       status: "active",
-      capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
+      capabilities: {
+        builtInSkills: [],
+        workspaceSkills: [],
+        customTools: [],
+        mcpServers: [],
+        toolPermissions: [],
+        appMcpServers: [],
+        appToolPermissions: [],
+      },
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
@@ -183,6 +206,8 @@ describe("AgentEditorPage", () => {
             customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "allow" }],
             toolPermissions: [],
+            appMcpServers: [],
+            appToolPermissions: [],
           },
         },
       });
@@ -213,8 +238,31 @@ describe("AgentEditorPage", () => {
             customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "ask" }],
             toolPermissions: [],
+            appMcpServers: [],
+            appToolPermissions: [],
           },
         },
+      });
+    });
+  });
+
+  it("saves CC-managed MCP group permission when selected", async () => {
+    updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
+
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("button", { name: "cc_app Allow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(updateMutateAsync).toHaveBeenCalledWith({
+        id: "agent-1",
+        input: expect.objectContaining({
+          capabilities: expect.objectContaining({
+            appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+            appToolPermissions: [],
+          }),
+        }),
       });
     });
   });

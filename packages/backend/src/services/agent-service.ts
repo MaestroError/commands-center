@@ -26,6 +26,11 @@ import type { OpenCodeService } from "./opencode-service.js";
 import { normalizeAgentCapabilities } from "./agent-capability-sync.js";
 import type { CustomToolService } from "./custom-tool-service.js";
 import { createProviderService } from "./provider-service.js";
+import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
+import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
+import { listCcManagedMcpServers } from "../mcp/cc-managed/server-registry.js";
+import { createCcManagedMcpToolAccessService } from "../mcp/cc-managed/tool-access-service.js";
+import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/workspace-entry-service.js";
 import {
   archiveWorkspace,
   getBuiltInSkillRoot,
@@ -50,6 +55,16 @@ export function createAgentService(options: {
   const providerService = createProviderService({
     config: options.config,
     opencodeService: options.opencodeService,
+  });
+  const appMcpAuthStateStore = createCcManagedMcpAuthStateStore(options.config);
+  const appMcpAuthTokenService = createCcManagedMcpAuthTokenService({
+    authStateStore: appMcpAuthStateStore,
+  });
+  const appMcpToolAccessService = createCcManagedMcpToolAccessService();
+  const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
+    config: options.config,
+    authTokenService: appMcpAuthTokenService,
+    toolAccessService: appMcpToolAccessService,
   });
 
   return {
@@ -87,6 +102,10 @@ export function createAgentService(options: {
       const timestamp = now();
       const workspacePath = buildWorkspacePath(slug);
       const capabilities = await normalizeCapabilities(parsed.capabilities);
+      const appMcpEntries = await appMcpWorkspaceEntryService.buildEntries({
+        slug,
+        capabilities,
+      });
 
       await prepareWorkspace({
         config: options.config,
@@ -97,6 +116,7 @@ export function createAgentService(options: {
           instructions: parsed.instructions,
           defaultModel: parsed.defaultModel,
           capabilities,
+          appMcpEntries,
         },
         skillRoot,
         workspaceSkillRoot,
@@ -104,7 +124,7 @@ export function createAgentService(options: {
 
       await options.customToolService?.syncAgentAssignments({
         workspacePath,
-        selectedToolSlugs: capabilities.customTools,
+        selectedToolSlugs: capabilities.customTools ?? [],
         overwriteSlugs: parsed.customToolOverwriteSlugs,
       });
 
@@ -154,12 +174,17 @@ export function createAgentService(options: {
 
       const capabilities = parsed.capabilities ?? parseCapabilities(existing.capabilities_json);
       const normalizedCapabilities = await normalizeCapabilities(capabilities);
+      const appMcpEntries = await appMcpWorkspaceEntryService.buildEntries({
+        slug: nextSlug,
+        capabilities: normalizedCapabilities,
+      });
       const workspaceInput = {
         name: nextName,
         role: parsed.role ?? existing.role,
         instructions: parsed.instructions ?? existing.instructions,
         defaultModel: parsed.defaultModel ?? existing.default_model,
         capabilities: normalizedCapabilities,
+        appMcpEntries,
       };
 
       await prepareWorkspace({
@@ -172,7 +197,7 @@ export function createAgentService(options: {
 
       await options.customToolService?.syncAgentAssignments({
         workspacePath: nextWorkspacePath,
-        selectedToolSlugs: normalizedCapabilities.customTools,
+        selectedToolSlugs: normalizedCapabilities.customTools ?? [],
         overwriteSlugs: parsed.customToolOverwriteSlugs,
       });
 
@@ -260,6 +285,11 @@ export function createAgentService(options: {
           ).values(),
         ),
         mcpServers: mcpRows,
+        appMcpServers: listCcManagedMcpServers().map((server) => ({
+          name: server.name,
+          enabledByDefault: server.enabledByDefault,
+          description: server.description,
+        })),
         customTools: toolRows.map((tool) => ({
           slug: tool.slug,
           name: tool.name,
@@ -323,9 +353,12 @@ export function createAgentService(options: {
     capabilities: AgentCapabilitySelection,
   ): Promise<AgentCapabilitySelection> {
     const rows = await options.db.select({ name: mcp_servers.name }).from(mcp_servers);
-    return normalizeAgentCapabilities(
-      capabilities,
-      rows.map((row) => row.name),
+    return agentCapabilitySelectionSchema.parse(
+      normalizeAgentCapabilities(
+        capabilities,
+        rows.map((row) => row.name),
+        listCcManagedMcpServers().map((row) => row.name),
+      ),
     );
   }
 

@@ -48,9 +48,12 @@ describe("createAgentService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: ["reviewer"],
+          workspaceSkills: [],
           customTools: [],
           mcpServers: [{ name: "github", enabled: true, action: "allow" }],
           toolPermissions: [{ pattern: "custom_review", action: "ask" }],
+          appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+          appToolPermissions: [],
         },
       });
 
@@ -68,6 +71,8 @@ describe("createAgentService", () => {
       expect(config).toContain('"model": "openai/gpt-4.1"');
       expect(config).toContain('"github_*": "allow"');
       expect(config).toContain('"custom_review": "ask"');
+      expect(config).toContain('"cc_app": {');
+      expect(config).toContain('"cc_app_*": "allow"');
       expect(dispose).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
@@ -93,9 +98,12 @@ describe("createAgentService", () => {
         defaultModel: "anthropic/claude-sonnet-4",
         capabilities: {
           builtInSkills: [],
+          workspaceSkills: [],
           customTools: [],
           mcpServers: [],
           toolPermissions: [],
+          appMcpServers: [],
+          appToolPermissions: [],
         },
       });
 
@@ -104,9 +112,12 @@ describe("createAgentService", () => {
         instructions: "Plan before editing.",
         capabilities: {
           builtInSkills: ["planner"],
+          workspaceSkills: [],
           customTools: [],
           mcpServers: [{ name: "jira", enabled: false, action: "deny" }],
           toolPermissions: [{ pattern: "task_*", action: "allow" }],
+          appMcpServers: [],
+          appToolPermissions: [],
         },
       });
 
@@ -147,9 +158,12 @@ describe("createAgentService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          workspaceSkills: [],
           customTools: [],
           mcpServers: [],
           toolPermissions: [],
+          appMcpServers: [],
+          appToolPermissions: [],
         },
       });
       const archived = await service.archive(created.id);
@@ -186,9 +200,12 @@ describe("createAgentService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: ["screen-writer"],
+          workspaceSkills: [],
           customTools: [],
           mcpServers: [],
           toolPermissions: [],
+          appMcpServers: [],
+          appToolPermissions: [],
         },
       });
 
@@ -213,6 +230,13 @@ describe("createAgentService", () => {
           files: ["SKILL.md"],
         },
       ]);
+      expect(catalog.appMcpServers).toEqual([
+        {
+          name: "cc_app",
+          enabledByDefault: false,
+          description: "CommandsCenter app-managed capabilities for this agent.",
+        },
+      ]);
     } finally {
       await testDb.cleanup();
     }
@@ -235,9 +259,12 @@ describe("createAgentService", () => {
         defaultModel: "openai/gpt-4.1",
         capabilities: {
           builtInSkills: [],
+          workspaceSkills: [],
           customTools: [],
           mcpServers: [],
           toolPermissions: [],
+          appMcpServers: [],
+          appToolPermissions: [],
         },
       });
 
@@ -249,9 +276,12 @@ describe("createAgentService", () => {
           defaultModel: "openai/gpt-4.1",
           capabilities: {
             builtInSkills: [],
+            workspaceSkills: [],
             customTools: [],
             mcpServers: [],
             toolPermissions: [],
+            appMcpServers: [],
+            appToolPermissions: [],
           },
         }),
       ).rejects.toThrow("Agent identifier 'testing-agent' is already in use.");

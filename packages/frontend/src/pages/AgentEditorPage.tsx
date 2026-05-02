@@ -23,7 +23,12 @@ import {
   useAgentsQuery,
 } from "@/hooks/use-agents-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
-import { getMcpServerAction, setMcpServerAction } from "@/lib/agent-capabilities";
+import {
+  getAppMcpServerAction,
+  getMcpServerAction,
+  setAppMcpServerAction,
+  setMcpServerAction,
+} from "@/lib/agent-capabilities";
 import { resolveInitialModelId } from "@/lib/agent-form";
 
 type AgentEditorPageProps = {
@@ -43,7 +48,7 @@ type FormErrors = Partial<
   Record<keyof Pick<AgentFormState, "name" | "role" | "instructions" | "defaultModel">, string>
 >;
 
-type PermissionAction = AgentCapabilitySelection["mcpServers"][number]["action"];
+type PermissionAction = "allow" | "ask" | "deny";
 
 export function AgentEditorPage(props: AgentEditorPageProps) {
   const params = useParams<{ slug: string }>();
@@ -234,7 +239,9 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                     </div>
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                       {catalog?.builtInSkills.map((skill) => {
-                        const selected = form.capabilities.builtInSkills.includes(skill.slug);
+                        const selected = (form.capabilities.builtInSkills ?? []).includes(
+                          skill.slug,
+                        );
 
                         return (
                           <label
@@ -371,7 +378,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
             ) : (customToolsQuery.data?.length ?? 0) > 0 ? (
               <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {customToolsQuery.data?.map((tool) => {
-                  const selected = form.capabilities.customTools.includes(tool.slug);
+                  const selected = (form.capabilities.customTools ?? []).includes(tool.slug);
 
                   return (
                     <label
@@ -457,6 +464,56 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                 ) : null}
               </div>
             ) : null}
+          </section>
+
+          <section className="cc-panel p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">CommandsCenter tools</h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Enable CC-managed MCP groups per agent. These are internal app capabilities, not
+                  external integrations.
+                </p>
+              </div>
+            </div>
+
+            {(catalog?.appMcpServers.length ?? 0) > 0 ? (
+              <div className="mt-5 grid gap-4">
+                {catalog?.appMcpServers.map((server) => (
+                  <article
+                    className="rounded-xl border border-border bg-surface p-4"
+                    key={server.name}
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-base font-semibold text-text-primary">
+                            {server.name}
+                          </h3>
+                          <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                            CC-managed
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm text-text-secondary">{server.description}</p>
+                      </div>
+
+                      <McpServerPermissionControl
+                        label={server.name}
+                        onChange={(action) => setAppMcpServerPermission(server.name, action)}
+                        value={getAppMcpServerAction(form.capabilities, server.name)}
+                      />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-5">
+                <EmptyState
+                  description="No CommandsCenter-managed MCP groups are registered in this build."
+                  title="No CC-managed tools available"
+                />
+              </div>
+            )}
           </section>
 
           <section className="cc-panel p-6">
@@ -566,9 +623,9 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
       ...current,
       capabilities: {
         ...current.capabilities,
-        builtInSkills: current.capabilities.builtInSkills.includes(skillSlug)
-          ? current.capabilities.builtInSkills.filter((value) => value !== skillSlug)
-          : [...current.capabilities.builtInSkills, skillSlug],
+        builtInSkills: (current.capabilities.builtInSkills ?? []).includes(skillSlug)
+          ? (current.capabilities.builtInSkills ?? []).filter((value) => value !== skillSlug)
+          : [...(current.capabilities.builtInSkills ?? []), skillSlug],
       },
     }));
   }
@@ -590,9 +647,9 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
       ...current,
       capabilities: {
         ...current.capabilities,
-        customTools: current.capabilities.customTools.includes(toolSlug)
-          ? current.capabilities.customTools.filter((value) => value !== toolSlug)
-          : [...current.capabilities.customTools, toolSlug],
+        customTools: (current.capabilities.customTools ?? []).includes(toolSlug)
+          ? (current.capabilities.customTools ?? []).filter((value) => value !== toolSlug)
+          : [...(current.capabilities.customTools ?? []), toolSlug],
       },
     }));
   }
@@ -609,7 +666,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     }
 
     const overwriteSlugs = resolveCustomToolOverwriteSlugs(
-      form.capabilities.customTools,
+      form.capabilities.customTools ?? [],
       agentCustomToolsQuery.data ?? [],
     );
 
@@ -654,6 +711,14 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     }));
     setSaveError(undefined);
   }
+
+  function setAppMcpServerPermission(serverName: string, action: PermissionAction) {
+    setForm((current) => ({
+      ...current,
+      capabilities: setAppMcpServerAction(current.capabilities, serverName, action),
+    }));
+    setSaveError(undefined);
+  }
 }
 
 function Field(props: {
@@ -687,6 +752,8 @@ function createEmptyForm(): AgentFormState {
       customTools: [],
       mcpServers: [],
       toolPermissions: [],
+      appMcpServers: [],
+      appToolPermissions: [],
     },
   };
 }
@@ -706,6 +773,8 @@ function createInitialForm(catalog: AgentCatalog, agent?: Agent): AgentFormState
       customTools: existingCapabilities.customTools,
       mcpServers: existingCapabilities.mcpServers,
       toolPermissions: existingCapabilities.toolPermissions,
+      appMcpServers: existingCapabilities.appMcpServers ?? [],
+      appToolPermissions: existingCapabilities.appToolPermissions ?? [],
     },
   };
 }
