@@ -1,0 +1,59 @@
+import { z } from "zod";
+
+import type { CustomToolService } from "../../../../../services/custom-tool-service.js";
+
+export const createCustomTsToolInputSchema = z.object({
+  name: z.string().trim().min(1),
+  description: z.string().trim().default(""),
+});
+
+export const createCustomTsToolOutputSchema = z.object({
+  toolName: z.string().min(1),
+  toolSlug: z.string().min(1),
+  directoryPath: z.string().min(1),
+  entryPath: z.string().min(1),
+});
+
+export function createCreateCustomTsToolDefinition(options: {
+  customToolService: CustomToolService;
+}) {
+  return {
+    name: "create_custom_ts_tool",
+    description:
+      "Create a blank CommandsCenter TypeScript custom tool and return the folder path the agent should edit.",
+    inputSchema: createCustomTsToolInputSchema,
+    outputSchema: createCustomTsToolOutputSchema,
+    async execute(args: unknown) {
+      try {
+        const created = await options.customToolService.create(
+          createCustomTsToolInputSchema.parse(args),
+        );
+        const structuredContent = createCustomTsToolOutputSchema.parse({
+          toolName: created.tool.name,
+          toolSlug: created.tool.slug,
+          directoryPath: created.tool.directoryPath,
+          entryPath: created.tool.entryPath,
+        });
+
+        return {
+          structuredContent,
+          content: [
+            {
+              type: "text" as const,
+              text: `Created custom tool '${structuredContent.toolSlug}' at ${structuredContent.directoryPath}. Edit ${structuredContent.entryPath} to implement it.`,
+            },
+          ],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to create custom tool.";
+
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: message }],
+        };
+      }
+    },
+  };
+}
+
+export type CreateCustomTsToolDefinition = ReturnType<typeof createCreateCustomTsToolDefinition>;

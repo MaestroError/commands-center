@@ -98,6 +98,70 @@ describe("cc-managed MCP routes", () => {
       expect(initializeResponse.headers.get("mcp-session-id")).toBeTruthy();
       expect(initializeBody).toContain('"name":"cc_app"');
       expect(initializeBody).toContain('"listChanged":true');
+
+      const sessionId = initializeResponse.headers.get("mcp-session-id");
+
+      const listToolsResponse = await fetch(ccApp.url, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          Accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+          ...(sessionId ? { "mcp-session-id": sessionId } : {}),
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+          params: {},
+        }),
+      });
+
+      expect(listToolsResponse.ok).toBe(true);
+      const listToolsBody = await listToolsResponse.text();
+
+      expect(listToolsBody).toContain('"name":"create_custom_ts_tool"');
+
+      const callToolResponse = await fetch(ccApp.url, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          Accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+          ...(sessionId ? { "mcp-session-id": sessionId } : {}),
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: {
+            name: "create_custom_ts_tool",
+            arguments: {
+              name: "Release Helper",
+              description: "Draft release notes.",
+            },
+          },
+        }),
+      });
+
+      expect(callToolResponse.ok).toBe(true);
+      const callToolJson = parseSseJson(await callToolResponse.text()) as {
+        result?: {
+          structuredContent?: {
+            toolSlug?: string;
+            directoryPath?: string;
+            entryPath?: string;
+          };
+        };
+      };
+
+      expect(callToolJson.result?.structuredContent?.toolSlug).toBe("release-helper");
+      expect(callToolJson.result?.structuredContent?.directoryPath).toContain(
+        "/custom-tools/release-helper",
+      );
+      expect(callToolJson.result?.structuredContent?.entryPath).toContain(
+        "/custom-tools/release-helper/tool.ts",
+      );
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -141,6 +205,20 @@ describe("cc-managed MCP routes", () => {
     }
   });
 });
+
+function parseSseJson(body: string): unknown {
+  const dataLine = body
+    .split("\n")
+    .find(
+      (line) => line.startsWith("data: ") && line.slice("data: ".length).trim().startsWith("{"),
+    );
+
+  if (!dataLine) {
+    throw new Error(`Expected SSE data line in response: ${body}`);
+  }
+
+  return JSON.parse(dataLine.slice("data: ".length));
+}
 
 function createOrchestrator(): OpenCodeOrchestrator {
   return {

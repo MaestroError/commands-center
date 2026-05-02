@@ -42,6 +42,7 @@ export function createCcManagedMcpService(options: {
   db: AppDb;
   config: RuntimeConfig;
   logger: Logger;
+  registry: readonly CcManagedMcpServerDefinition[];
   authStateStore?: CcManagedMcpAuthStateStore;
   authTokenService?: CcManagedMcpAuthTokenService;
 }) {
@@ -88,7 +89,10 @@ export function createCcManagedMcpService(options: {
       parsedBody?: unknown;
     },
   ): Promise<void> {
-    const definition = getCcManagedMcpServerByRouteSegment(context.routeServerName);
+    const definition = getCcManagedMcpServerByRouteSegment(
+      options.registry,
+      context.routeServerName,
+    );
 
     if (!definition) {
       writeText(context.rawReply, 404, "Unknown MCP server.");
@@ -198,12 +202,10 @@ export function createCcManagedMcpService(options: {
         tool.name,
         {
           description: tool.description,
-          inputSchema: {},
+          inputSchema: tool.inputSchema,
+          outputSchema: tool.outputSchema,
         },
-        () => ({
-          isError: true,
-          content: [{ type: "text", text: `Tool '${tool.name}' is not implemented yet.` }],
-        }),
+        (args: unknown) => tool.execute(args),
       );
     }
 

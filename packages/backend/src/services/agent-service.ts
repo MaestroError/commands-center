@@ -24,11 +24,14 @@ import type { AppDb } from "../db/client.js";
 import { ConflictError } from "../lib/api-error.js";
 import type { OpenCodeService } from "./opencode-service.js";
 import { normalizeAgentCapabilities } from "./agent-capability-sync.js";
-import type { CustomToolService } from "./custom-tool-service.js";
+import { createCustomToolService, type CustomToolService } from "./custom-tool-service.js";
 import { createProviderService } from "./provider-service.js";
 import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
 import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
-import { listCcManagedMcpServers } from "../mcp/cc-managed/server-registry.js";
+import {
+  createCcManagedMcpServerRegistry,
+  listCcManagedMcpServers,
+} from "../mcp/cc-managed/server-registry.js";
 import { createCcManagedMcpToolAccessService } from "../mcp/cc-managed/tool-access-service.js";
 import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/workspace-entry-service.js";
 import {
@@ -56,7 +59,17 @@ export function createAgentService(options: {
     config: options.config,
     opencodeService: options.opencodeService,
   });
+  const customToolService =
+    options.customToolService ??
+    createCustomToolService({
+      config: options.config,
+      db: options.db,
+      opencodeService: options.opencodeService,
+    });
   const appMcpAuthStateStore = createCcManagedMcpAuthStateStore(options.config);
+  const appMcpRegistry = createCcManagedMcpServerRegistry({
+    customToolService,
+  });
   const appMcpAuthTokenService = createCcManagedMcpAuthTokenService({
     authStateStore: appMcpAuthStateStore,
   });
@@ -65,6 +78,7 @@ export function createAgentService(options: {
     config: options.config,
     authTokenService: appMcpAuthTokenService,
     toolAccessService: appMcpToolAccessService,
+    registry: appMcpRegistry,
   });
 
   return {
@@ -122,7 +136,7 @@ export function createAgentService(options: {
         workspaceSkillRoot,
       });
 
-      await options.customToolService?.syncAgentAssignments({
+      await customToolService.syncAgentAssignments({
         workspacePath,
         selectedToolSlugs: capabilities.customTools ?? [],
         overwriteSlugs: parsed.customToolOverwriteSlugs,
@@ -195,7 +209,7 @@ export function createAgentService(options: {
         workspaceSkillRoot,
       });
 
-      await options.customToolService?.syncAgentAssignments({
+      await customToolService.syncAgentAssignments({
         workspacePath: nextWorkspacePath,
         selectedToolSlugs: normalizedCapabilities.customTools ?? [],
         overwriteSlugs: parsed.customToolOverwriteSlugs,
@@ -285,7 +299,7 @@ export function createAgentService(options: {
           ).values(),
         ),
         mcpServers: mcpRows,
-        appMcpServers: listCcManagedMcpServers().map((server) => ({
+        appMcpServers: listCcManagedMcpServers(appMcpRegistry).map((server) => ({
           name: server.name,
           enabledByDefault: server.enabledByDefault,
           description: server.description,
@@ -357,7 +371,7 @@ export function createAgentService(options: {
       normalizeAgentCapabilities(
         capabilities,
         rows.map((row) => row.name),
-        listCcManagedMcpServers().map((row) => row.name),
+        listCcManagedMcpServers(appMcpRegistry).map((row) => row.name),
       ),
     );
   }

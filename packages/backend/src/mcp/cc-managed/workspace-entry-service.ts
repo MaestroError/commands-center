@@ -1,13 +1,14 @@
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { AgentCapabilitySelection } from "../../schemas/agents.js";
 import type { CcManagedMcpAuthTokenService } from "./auth-token-service.js";
-import { listCcManagedMcpServers } from "./server-registry.js";
+import { listCcManagedMcpServers, type CcManagedMcpServerDefinition } from "./server-registry.js";
 import type { CcManagedMcpToolAccessService } from "./tool-access-service.js";
 
 export function createCcManagedMcpWorkspaceEntryService(options: {
   config: RuntimeConfig;
   authTokenService: CcManagedMcpAuthTokenService;
   toolAccessService: CcManagedMcpToolAccessService;
+  registry: readonly CcManagedMcpServerDefinition[];
 }) {
   return {
     async buildEntries(agent: { slug: string; capabilities: AgentCapabilitySelection }): Promise<
@@ -23,7 +24,7 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
       >
     > {
       const entries = await Promise.all(
-        listCcManagedMcpServers().map(async (server) => {
+        listCcManagedMcpServers(options.registry).map(async (server) => {
           const token = await options.authTokenService.issueToken(agent.slug, server.name);
 
           return [

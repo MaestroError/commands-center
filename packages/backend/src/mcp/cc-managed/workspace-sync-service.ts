@@ -5,6 +5,8 @@ import type { Logger } from "pino";
 import { agentCapabilitySelectionSchema } from "../../schemas/agents.js";
 import type { AppDb } from "../../db/client.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
+import type { OpenCodeService } from "../../services/opencode-service.js";
+import { createCustomToolService } from "../../services/custom-tool-service.js";
 import {
   getBuiltInSkillRoot,
   getWorkspaceSkillRoot,
@@ -12,6 +14,7 @@ import {
 } from "../../services/agent-workspace.js";
 import { createCcManagedMcpAuthStateStore } from "./auth-state-store.js";
 import { createCcManagedMcpAuthTokenService } from "./auth-token-service.js";
+import { createCcManagedMcpServerRegistry } from "./server-registry.js";
 import { createCcManagedMcpToolAccessService } from "./tool-access-service.js";
 import { createCcManagedMcpWorkspaceEntryService } from "./workspace-entry-service.js";
 import { writeOpenCodeWorkspace } from "../../opencode/workspace-contract.js";
@@ -24,10 +27,18 @@ export async function syncCcManagedMcpAgentWorkspaces(options: {
   const authStateStore = createCcManagedMcpAuthStateStore(options.config);
   const authTokenService = createCcManagedMcpAuthTokenService({ authStateStore });
   const toolAccessService = createCcManagedMcpToolAccessService();
+  const registry = createCcManagedMcpServerRegistry({
+    customToolService: createCustomToolService({
+      config: options.config,
+      db: options.db,
+      opencodeService: createNoopOpenCodeService(),
+    }),
+  });
   const workspaceEntryService = createCcManagedMcpWorkspaceEntryService({
     config: options.config,
     authTokenService,
     toolAccessService,
+    registry,
   });
   const rows = await options.db.query.agents.findMany();
   let updatedCount = 0;
@@ -69,6 +80,12 @@ export async function syncCcManagedMcpAgentWorkspaces(options: {
 
   options.logger.info({ updatedCount }, "cc-managed MCP workspace sync completed");
   return updatedCount;
+}
+
+function createNoopOpenCodeService(): OpenCodeService {
+  return {
+    dispose: async () => {},
+  } as unknown as OpenCodeService;
 }
 
 async function readWorkspaceConfig(workspacePath: string): Promise<Record<string, unknown> | null> {

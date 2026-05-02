@@ -387,6 +387,10 @@ export function CustomToolsPage() {
           <div className="flex flex-col gap-3">
             <div>
               <h2 className="text-lg font-semibold text-text-primary">Agent tools</h2>
+              <p className="mt-1 text-sm text-text-secondary">
+                Tool changes apply to new chats. Start a fresh chat with this agent to use an
+                updated tool set.
+              </p>
             </div>
             <select
               className="cc-input"
@@ -477,6 +481,10 @@ export function CustomToolsPage() {
                 </h2>
                 <p className="mt-1 text-sm text-text-secondary">
                   Existing agent copies may be replaced if you confirm an overwrite.
+                </p>
+                <p className="mt-2 text-sm text-text-secondary">
+                  Newly copied tools are picked up in new chats. If the agent already has an open
+                  chat, start a fresh chat after copying.
                 </p>
               </div>
               <button

@@ -11,6 +11,7 @@ import type { AppDb } from "../db/client.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
 import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
+import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-registry.js";
 import { createCcManagedMcpToolAccessService } from "../mcp/cc-managed/tool-access-service.js";
 import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/workspace-entry-service.js";
 import {
@@ -19,6 +20,7 @@ import {
   prepareWorkspace,
   resolveAgentWorkspacePath,
 } from "./agent-workspace.js";
+import { createCustomToolService } from "./custom-tool-service.js";
 import type { OpenCodeService } from "./opencode-service.js";
 
 export function normalizeAgentCapabilities(
@@ -108,12 +110,20 @@ export async function rewriteAgentsForMcpChange(options: {
   opencodeService: OpenCodeService;
   transform: (capabilities: AgentCapabilitySelection) => AgentCapabilitySelection;
 }): Promise<number> {
+  const registry = createCcManagedMcpServerRegistry({
+    customToolService: createCustomToolService({
+      config: options.config,
+      db: options.db,
+      opencodeService: options.opencodeService,
+    }),
+  });
   const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
     config: options.config,
     authTokenService: createCcManagedMcpAuthTokenService({
       authStateStore: createCcManagedMcpAuthStateStore(options.config),
     }),
     toolAccessService: createCcManagedMcpToolAccessService(),
+    registry,
   });
   const rows = await options.db.query.agents.findMany();
   let updatedCount = 0;

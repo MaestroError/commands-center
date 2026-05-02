@@ -114,6 +114,9 @@ describe("CustomToolsPage", () => {
     renderPage();
 
     expect(screen.getByRole("button", { name: ">>" })).toBeDisabled();
+    expect(
+      screen.getByText(/Tool changes apply to new chats\. Start a fresh chat/i),
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "agent-1" } });
 
@@ -131,6 +134,10 @@ describe("CustomToolsPage", () => {
 
     renderPage();
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "agent-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Copy to agents" }));
+
+    expect(screen.getByText(/Newly copied tools are picked up in new chats/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     fireEvent.click(screen.getByRole("button", { name: ">>" }));
 
     await screen.findByText("Tool name conflict");

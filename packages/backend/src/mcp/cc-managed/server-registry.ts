@@ -1,6 +1,24 @@
+import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat";
+
+import type { CustomToolService } from "../../services/custom-tool-service.js";
+import { createCreateCustomTsToolDefinition } from "./groups/cc-app/tools/create-custom-ts-tool.js";
+
 export type CcManagedToolDefinition = {
   name: string;
   description: string;
+  inputSchema?: AnySchema;
+  outputSchema?: AnySchema;
+  execute: (args: unknown) =>
+    | {
+        content: Array<{ type: "text"; text: string }>;
+        structuredContent?: Record<string, unknown>;
+        isError?: boolean;
+      }
+    | Promise<{
+        content: Array<{ type: "text"; text: string }>;
+        structuredContent?: Record<string, unknown>;
+        isError?: boolean;
+      }>;
 };
 
 export type CcManagedMcpServerDefinition = {
@@ -11,26 +29,36 @@ export type CcManagedMcpServerDefinition = {
   tools: readonly CcManagedToolDefinition[];
 };
 
-const CC_MANAGED_MCP_SERVERS = [
-  {
-    name: "cc_app",
-    routeSegment: "cc-app",
-    description: "CommandsCenter app-managed capabilities for this agent.",
-    enabledByDefault: false,
-    tools: [],
-  },
-] as const satisfies readonly CcManagedMcpServerDefinition[];
-
-export function listCcManagedMcpServers(): readonly CcManagedMcpServerDefinition[] {
-  return CC_MANAGED_MCP_SERVERS;
+export function createCcManagedMcpServerRegistry(options: {
+  customToolService: CustomToolService;
+}): readonly CcManagedMcpServerDefinition[] {
+  return [
+    {
+      name: "cc_app",
+      routeSegment: "cc-app",
+      description: "CommandsCenter app-managed capabilities for this agent.",
+      enabledByDefault: false,
+      tools: [createCreateCustomTsToolDefinition({ customToolService: options.customToolService })],
+    },
+  ] as const satisfies readonly CcManagedMcpServerDefinition[];
 }
 
-export function getCcManagedMcpServer(name: string): CcManagedMcpServerDefinition | undefined {
-  return CC_MANAGED_MCP_SERVERS.find((server) => server.name === name);
+export function listCcManagedMcpServers(
+  registry: readonly CcManagedMcpServerDefinition[],
+): readonly CcManagedMcpServerDefinition[] {
+  return registry;
+}
+
+export function getCcManagedMcpServer(
+  registry: readonly CcManagedMcpServerDefinition[],
+  name: string,
+): CcManagedMcpServerDefinition | undefined {
+  return registry.find((server) => server.name === name);
 }
 
 export function getCcManagedMcpServerByRouteSegment(
+  registry: readonly CcManagedMcpServerDefinition[],
   routeSegment: string,
 ): CcManagedMcpServerDefinition | undefined {
-  return CC_MANAGED_MCP_SERVERS.find((server) => server.routeSegment === routeSegment);
+  return registry.find((server) => server.routeSegment === routeSegment);
 }
