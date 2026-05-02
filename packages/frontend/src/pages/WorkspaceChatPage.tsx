@@ -94,6 +94,20 @@ export function WorkspaceChatPage() {
     });
   }, [conv.agent]);
 
+  useEffect(() => {
+    const activeIds = new Set(conv.liveRequests.map((request) => request.id));
+
+    for (const request of conv.liveRequests) {
+      inspection.openLiveRequest(request);
+    }
+
+    for (const tab of inspection.tabs) {
+      if (tab.tabType === "live-request" && !activeIds.has(tab.request.id)) {
+        inspection.removeLiveRequest(tab.request.id);
+      }
+    }
+  }, [conv.liveRequests, inspection]);
+
   const handleAttachmentMediaSearch = (filename: string) => {
     setMediaSearchQuery(filename);
     setActiveContextTabId("media");
@@ -263,7 +277,9 @@ export function WorkspaceChatPage() {
                 isDesktop && inspection.open && inspection.tabs.length > 0 ? (
                   <QuickFilePanel
                     controller={inspection}
+                    onCancelLiveRequest={conv.cancelLiveRequest}
                     onClosePane={() => inspection.setOpen(false)}
+                    onResolveLiveRequest={conv.resolveLiveRequest}
                   />
                 ) : undefined
               }
@@ -272,7 +288,12 @@ export function WorkspaceChatPage() {
         }
       />
       {!isDesktop && inspection.open && inspection.tabs.length > 0 ? (
-        <QuickFileModal controller={inspection} onClosePane={() => inspection.setOpen(false)} />
+        <QuickFileModal
+          controller={inspection}
+          onCancelLiveRequest={conv.cancelLiveRequest}
+          onClosePane={() => inspection.setOpen(false)}
+          onResolveLiveRequest={conv.resolveLiveRequest}
+        />
       ) : null}
       {DevDebugPanel && conv.__injectEvent && (
         <Suspense>

@@ -205,7 +205,7 @@ export function createCcManagedMcpService(options: {
           inputSchema: tool.inputSchema,
           outputSchema: tool.outputSchema,
         },
-        (args: unknown) => tool.execute(args),
+        (args: unknown) => tool.execute(args, { agentSlug }),
       );
     }
 

@@ -4,6 +4,7 @@ import type {
   FileManagerFileContentResponse,
   FileManagerFileRevision,
   FileManagerRootKind,
+  LiveRequest,
   SessionMediaItem,
 } from "@cc/shared/schemas";
 
@@ -31,7 +32,16 @@ type MediaTab = {
   item: SessionMediaItem;
 };
 
-export type ChatInspectionTab = FileTab | MediaTab;
+type LiveRequestTab = {
+  tabType: "live-request";
+  key: string;
+  name: string;
+  dirty: false;
+  closable: boolean;
+  request: LiveRequest;
+};
+
+export type ChatInspectionTab = FileTab | MediaTab | LiveRequestTab;
 
 type State = {
   tabs: ChatInspectionTab[];
@@ -43,6 +53,7 @@ type StoredState = {
   tabs: Array<
     | { tabType: "file"; root: FileManagerRootKind; path: string; displayPath?: string }
     | { tabType: "media"; item: SessionMediaItem }
+    | { tabType: "live-request"; request: LiveRequest }
   >;
   activeKey?: string;
   open: boolean;
@@ -53,6 +64,8 @@ type Action =
   | { type: "set-open"; open: boolean }
   | { type: "open-file"; root: FileManagerRootKind; path: string; displayPath?: string }
   | { type: "open-media"; item: SessionMediaItem }
+  | { type: "open-live-request"; request: LiveRequest }
+  | { type: "remove-live-request"; requestId: string }
   | { type: "set-active"; key: string }
   | { type: "close"; key: string }
   | { type: "loading"; key: string }
@@ -68,6 +81,8 @@ export type UseChatInspectionTabs = {
   open: boolean;
   openFile: (input: { root: FileManagerRootKind; path: string; displayPath?: string }) => void;
   openMedia: (item: SessionMediaItem) => void;
+  openLiveRequest: (request: LiveRequest) => void;
+  removeLiveRequest: (requestId: string) => void;
   close: (key: string) => void;
   setActive: (key: string) => void;
   setOpen: (open: boolean) => void;
@@ -151,10 +166,22 @@ export function useChatInspectionTabs(conversationId?: string): UseChatInspectio
     dispatch({ type: "open-media", item });
   }, []);
 
+  const openLiveRequest = useCallback<UseChatInspectionTabs["openLiveRequest"]>((request) => {
+    dispatch({ type: "open-live-request", request });
+  }, []);
+
+  const removeLiveRequest = useCallback<UseChatInspectionTabs["removeLiveRequest"]>((requestId) => {
+    dispatch({ type: "remove-live-request", requestId });
+  }, []);
+
   const close = useCallback<UseChatInspectionTabs["close"]>((key) => {
     const tab = stateRef.current.tabs.find((item) => item.key === key);
 
     if (!tab) {
+      return;
+    }
+
+    if (tab.tabType === "live-request" && !tab.closable) {
       return;
     }
 
@@ -231,6 +258,8 @@ export function useChatInspectionTabs(conversationId?: string): UseChatInspectio
     open: state.open && state.tabs.length > 0,
     openFile,
     openMedia,
+    openLiveRequest,
+    removeLiveRequest,
     close,
     setActive,
     setOpen,
@@ -286,29 +315,42 @@ function reducer(state: State, action: Action): State {
       };
     }
 
+    case "open-live-request": {
+      const key = makeLiveRequestTabKey(action.request.id);
+      const existing = state.tabs.find((tab) => tab.key === key);
+
+      if (existing) {
+        return {
+          ...state,
+          tabs: state.tabs.map((tab) =>
+            tab.key === key ? createLiveRequestTab(action.request) : tab,
+          ),
+          activeKey: key,
+          open: true,
+        };
+      }
+
+      if (state.tabs.length >= MAX_OPEN_TABS) {
+        return { ...state, open: true };
+      }
+
+      return {
+        tabs: [...state.tabs, createLiveRequestTab(action.request)],
+        activeKey: key,
+        open: true,
+      };
+    }
+
+    case "remove-live-request":
+      return closeTab(state, makeLiveRequestTabKey(action.requestId));
+
     case "set-active":
       return state.tabs.some((tab) => tab.key === action.key)
         ? { ...state, activeKey: action.key }
         : state;
 
     case "close": {
-      const index = state.tabs.findIndex((tab) => tab.key === action.key);
-
-      if (index === -1) {
-        return state;
-      }
-
-      const nextTabs = state.tabs.filter((tab) => tab.key !== action.key);
-      const nextActive =
-        state.activeKey === action.key
-          ? (state.tabs[index - 1] ?? state.tabs[index + 1])?.key
-          : state.activeKey;
-
-      return {
-        tabs: nextTabs,
-        activeKey: nextActive,
-        open: nextTabs.length > 0 && state.open,
-      };
+      return closeTab(state, action.key);
     }
 
     case "loading":
@@ -367,6 +409,26 @@ function reducer(state: State, action: Action): State {
   }
 }
 
+function closeTab(state: State, key: string): State {
+  const index = state.tabs.findIndex((tab) => tab.key === key);
+
+  if (index === -1) {
+    return state;
+  }
+
+  const nextTabs = state.tabs.filter((tab) => tab.key !== key);
+  const nextActive =
+    state.activeKey === key
+      ? (state.tabs[index - 1] ?? state.tabs[index + 1])?.key
+      : state.activeKey;
+
+  return {
+    tabs: nextTabs,
+    activeKey: nextActive,
+    open: nextTabs.length > 0 && state.open,
+  };
+}
+
 function createInitialState(conversationId?: string): State {
   if (!conversationId) {
     return { tabs: [], activeKey: undefined, open: false };
@@ -390,6 +452,10 @@ function createInitialState(conversationId?: string): State {
 
       if (tab && typeof tab === "object" && tab.tabType === "media") {
         tabs.push(createMediaTab(tab.item));
+      }
+
+      if (tab && typeof tab === "object" && tab.tabType === "live-request") {
+        tabs.push(createLiveRequestTab(tab.request));
       }
     }
     const activeKey =
@@ -434,6 +500,17 @@ function createMediaTab(item: SessionMediaItem): MediaTab {
   };
 }
 
+function createLiveRequestTab(request: LiveRequest): LiveRequestTab {
+  return {
+    tabType: "live-request",
+    key: makeLiveRequestTabKey(request.id),
+    name: request.presentation.title,
+    dirty: false,
+    closable: request.closable,
+    request,
+  };
+}
+
 function mapFileTab(state: State, key: string, update: (tab: FileTab) => FileTab): State {
   let changed = false;
   const tabs = state.tabs.map((tab) => {
@@ -455,19 +532,28 @@ function mapFileTab(state: State, key: string, update: (tab: FileTab) => FileTab
 
 function toStoredState(state: State): StoredState {
   return {
-    tabs: state.tabs.map((tab) =>
-      tab.tabType === "file"
-        ? {
-            tabType: "file",
-            root: tab.root,
-            path: tab.path,
-            displayPath: tab.displayPath,
-          }
-        : {
-            tabType: "media",
-            item: tab.item,
-          },
-    ),
+    tabs: state.tabs.map((tab) => {
+      if (tab.tabType === "file") {
+        return {
+          tabType: "file" as const,
+          root: tab.root,
+          path: tab.path,
+          displayPath: tab.displayPath,
+        };
+      }
+
+      if (tab.tabType === "media") {
+        return {
+          tabType: "media" as const,
+          item: tab.item,
+        };
+      }
+
+      return {
+        tabType: "live-request" as const,
+        request: tab.request,
+      };
+    }),
     activeKey: state.activeKey,
     open: state.open,
   };
@@ -489,4 +575,8 @@ function makeFileTabKey(root: FileManagerRootKind, path: string): string {
 
 function makeMediaTabKey(id: string): string {
   return `media:${id}`;
+}
+
+function makeLiveRequestTabKey(id: string): string {
+  return `live-request:${id}`;
 }

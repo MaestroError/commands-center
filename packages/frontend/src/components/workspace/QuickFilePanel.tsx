@@ -5,6 +5,8 @@ import type { UseChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
 type Props = {
   controller: UseChatInspectionTabs;
   onClosePane?: () => void;
+  onResolveLiveRequest?: (requestId: string, values: Record<string, string>) => Promise<void>;
+  onCancelLiveRequest?: (requestId: string, reason?: string) => Promise<void>;
 };
 
 export function QuickFilePanel(props: Props) {
@@ -14,7 +16,11 @@ export function QuickFilePanel(props: Props) {
 
   return (
     <div data-testid="quick-file-panel">
-      <QuickInspectorSurface controller={props.controller} />
+      <QuickInspectorSurface
+        controller={props.controller}
+        onCancelLiveRequest={props.onCancelLiveRequest}
+        onResolveLiveRequest={props.onResolveLiveRequest}
+      />
     </div>
   );
 }

@@ -10,8 +10,10 @@ import {
   sendCommand as apiSendCommand,
   summarizeConversation,
   abortConversation,
+  cancelLiveRequest as apiCancelLiveRequest,
   replyPermission as apiReplyPermission,
   replyQuestion as apiReplyQuestion,
+  resolveLiveRequest as apiResolveLiveRequest,
   rejectQuestion as apiRejectQuestion,
   connectConversationEvents,
 } from "@/lib/api";
@@ -24,6 +26,7 @@ import type {
   ConversationMessage,
   ConversationPart,
   ConversationSummary,
+  LiveRequest,
   SendConversationAttachmentInput,
   SessionStatus,
   TodoItem,
@@ -64,6 +67,7 @@ export type ConversationState = {
   previousConversations: ConversationSummary[];
   pendingPermissions: PermissionRequest[];
   pendingQuestion: QuestionRequest | null;
+  liveRequests: LiveRequest[];
   todos: TodoItem[];
   sendError: string | null;
 };
@@ -83,6 +87,7 @@ export const initialState: ConversationState = {
   previousConversations: [],
   pendingPermissions: [],
   pendingQuestion: null,
+  liveRequests: [],
   todos: [],
   sendError: null,
 };
@@ -112,6 +117,7 @@ export function conversationReducer(state: ConversationState, action: Action): C
         sessionStatus: { type: "idle" },
         pendingPermissions: [],
         pendingQuestion: null,
+        liveRequests: [],
         todos: [],
         sendError: null,
       };
@@ -125,6 +131,7 @@ export function conversationReducer(state: ConversationState, action: Action): C
         sessionStatus: { type: "idle" },
         pendingPermissions: [],
         pendingQuestion: null,
+        liveRequests: [],
         todos: [],
         sendError: null,
       };
@@ -299,6 +306,21 @@ function applySseEvent(state: ConversationState, event: ChatEvent): Conversation
     case "todo.updated":
       return { ...state, todos: event.properties.todos };
 
+    case "cc.live_request.opened":
+      return {
+        ...state,
+        liveRequests: upsertLiveRequest(state.liveRequests, event.properties.request),
+      };
+
+    case "cc.live_request.resolved":
+    case "cc.live_request.cancelled":
+      return {
+        ...state,
+        liveRequests: state.liveRequests.filter(
+          (request) => request.id !== event.properties.requestId,
+        ),
+      };
+
     default:
       return state;
   }
@@ -320,6 +342,7 @@ export type UseConversationReturn = {
   pendingPermission: PermissionRequest | null;
   pendingPermissionCount: number;
   pendingQuestion: QuestionRequest | null;
+  liveRequests: LiveRequest[];
   todos: TodoItem[];
   autoApprove: boolean;
   setAutoApprove: (enabled: boolean) => void;
@@ -337,6 +360,8 @@ export type UseConversationReturn = {
   replyPermission: (requestId: string, reply: "once" | "always" | "reject") => void;
   replyQuestion: (requestId: string, answers: string[][]) => void;
   rejectQuestion: (requestId: string) => void;
+  resolveLiveRequest: (requestId: string, values: Record<string, string>) => Promise<void>;
+  cancelLiveRequest: (requestId: string, reason?: string) => Promise<void>;
   clearSendError: () => void;
   /** Dev-only: inject a mock SSE event into the reducer */
   __injectEvent?: (event: ChatEvent) => void;
@@ -564,6 +589,22 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     [state.conversation],
   );
 
+  const resolveLive = useCallback(
+    async (requestId: string, values: Record<string, string>) => {
+      if (!state.conversation) return;
+      await apiResolveLiveRequest(state.conversation.id, requestId, { values });
+    },
+    [state.conversation],
+  );
+
+  const cancelLive = useCallback(
+    async (requestId: string, reason?: string) => {
+      if (!state.conversation) return;
+      await apiCancelLiveRequest(state.conversation.id, requestId, { reason });
+    },
+    [state.conversation],
+  );
+
   // --- Derived status ---
 
   let status: "loading" | "ready" | "error" = "loading";
@@ -592,6 +633,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     pendingPermission: state.pendingPermissions[0] ?? null,
     pendingPermissionCount: state.pendingPermissions.length,
     pendingQuestion: state.pendingQuestion,
+    liveRequests: state.liveRequests,
     todos: state.todos,
     autoApprove,
     setAutoApprove,
@@ -605,11 +647,23 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     replyPermission: replyPerm,
     replyQuestion: replyQ,
     rejectQuestion: rejectQ,
+    resolveLiveRequest: resolveLive,
+    cancelLiveRequest: cancelLive,
     clearSendError,
     ...(import.meta.env.DEV && {
       __injectEvent: (event: ChatEvent) => dispatch({ type: "SSE_EVENT", event }),
     }),
   };
+}
+
+function upsertLiveRequest(requests: LiveRequest[], nextRequest: LiveRequest): LiveRequest[] {
+  const existingIndex = requests.findIndex((request) => request.id === nextRequest.id);
+
+  if (existingIndex >= 0) {
+    return requests.map((request, index) => (index === existingIndex ? nextRequest : request));
+  }
+
+  return [...requests, nextRequest];
 }
 
 function upsertPermissionRequest(

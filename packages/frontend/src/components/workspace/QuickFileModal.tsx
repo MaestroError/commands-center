@@ -7,6 +7,8 @@ import type { UseChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
 type Props = {
   controller: UseChatInspectionTabs;
   onClosePane?: () => void;
+  onResolveLiveRequest?: (requestId: string, values: Record<string, string>) => Promise<void>;
+  onCancelLiveRequest?: (requestId: string, reason?: string) => Promise<void>;
 };
 
 export function QuickFileModal(props: Props) {
@@ -41,7 +43,11 @@ export function QuickFileModal(props: Props) {
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            <QuickInspectorSurface controller={props.controller} />
+            <QuickInspectorSurface
+              controller={props.controller}
+              onCancelLiveRequest={props.onCancelLiveRequest}
+              onResolveLiveRequest={props.onResolveLiveRequest}
+            />
           </div>
         </div>
       </section>

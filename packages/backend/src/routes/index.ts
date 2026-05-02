@@ -7,6 +7,7 @@ import { registerConversationRoutes } from "./conversations.js";
 import { registerCustomToolRoutes } from "./custom-tools.js";
 import { registerFileManagerRoutes } from "./file-manager.js";
 import { registerHealthRoutes } from "./health.js";
+import { registerLiveRequestRoutes } from "./live-requests.js";
 import { registerMcpServerRoutes } from "./mcp-servers.js";
 import { registerProviderRoutes } from "./providers.js";
 import { registerSearchRoutes } from "./search.js";
@@ -20,6 +21,7 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerAgentRoutes(server, context);
   registerConversationRoutes(server, context);
   registerConversationEventRoutes(server, context);
+  registerLiveRequestRoutes(server, context);
   registerCustomToolRoutes(server, context);
   registerWorkspaceSkillRoutes(server, context);
   registerFileManagerRoutes(server, context);

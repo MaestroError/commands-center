@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { conversationAttachmentSchema, conversationPartSchema } from "./conversations.js";
+import { liveRequestSchema } from "./live-requests.js";
 
 // --- SSE Event Schemas ---
 
@@ -177,6 +178,28 @@ const questionRejectedEventSchema = z.object({
   }),
 });
 
+const liveRequestOpenedEventSchema = z.object({
+  type: z.literal("cc.live_request.opened"),
+  properties: z.object({
+    request: liveRequestSchema,
+  }),
+});
+
+const liveRequestResolvedEventSchema = z.object({
+  type: z.literal("cc.live_request.resolved"),
+  properties: z.object({
+    requestId: z.string().min(1),
+  }),
+});
+
+const liveRequestCancelledEventSchema = z.object({
+  type: z.literal("cc.live_request.cancelled"),
+  properties: z.object({
+    requestId: z.string().min(1),
+    reason: z.string().optional(),
+  }),
+});
+
 export const chatEventSchema = z.discriminatedUnion("type", [
   connectedEventSchema,
   heartbeatEventSchema,
@@ -192,6 +215,9 @@ export const chatEventSchema = z.discriminatedUnion("type", [
   questionAskedEventSchema,
   questionRepliedEventSchema,
   questionRejectedEventSchema,
+  liveRequestOpenedEventSchema,
+  liveRequestResolvedEventSchema,
+  liveRequestCancelledEventSchema,
 ]);
 
 export type ChatEvent = z.infer<typeof chatEventSchema>;
@@ -208,6 +234,9 @@ export type MessagePartUpdatedEvent = z.infer<typeof messagePartUpdatedEventSche
 export type PermissionAskedEvent = z.infer<typeof permissionAskedEventSchema>;
 export type QuestionAskedEvent = z.infer<typeof questionAskedEventSchema>;
 export type TodoUpdatedEvent = z.infer<typeof todoUpdatedEventSchema>;
+export type LiveRequestOpenedEvent = z.infer<typeof liveRequestOpenedEventSchema>;
+export type LiveRequestResolvedEvent = z.infer<typeof liveRequestResolvedEventSchema>;
+export type LiveRequestCancelledEvent = z.infer<typeof liveRequestCancelledEventSchema>;
 
 // --- Interactive Reply Input Schemas ---
 

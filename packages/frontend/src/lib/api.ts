@@ -38,6 +38,9 @@ import {
   globalSearchQuerySchema,
   globalSearchWorkspaceFilesResponseSchema,
   importAgentCustomToolInputSchema,
+  liveRequestCancelInputSchema,
+  liveRequestResolveInputSchema,
+  liveRequestResolveResultSchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
   mcpServerListSchema,
@@ -95,6 +98,9 @@ import {
   type FileManagerUpdatePreferencesInput,
   type GlobalSearchWorkspaceFilesResponse,
   type ImportAgentCustomToolInput,
+  type LiveRequestCancelInput,
+  type LiveRequestResolveInput,
+  type LiveRequestResolveResult,
   type McpAuthRemoveResult,
   type McpAuthStartResult,
   type McpServer,
@@ -240,6 +246,36 @@ export async function deleteSecret(key: string): Promise<void> {
     const payload = (await response.json().catch(() => undefined)) as unknown;
     throw new Error(readApiError(payload, response.status, response.statusText));
   }
+}
+
+export async function resolveLiveRequest(
+  conversationId: string,
+  requestId: string,
+  input: LiveRequestResolveInput,
+): Promise<LiveRequestResolveResult> {
+  return requestJson<LiveRequestResolveResult>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/live-requests/${encodeURIComponent(requestId)}/resolve`,
+    liveRequestResolveResultSchema,
+    {
+      method: "POST",
+      body: liveRequestResolveInputSchema.parse(input),
+    },
+  );
+}
+
+export async function cancelLiveRequest(
+  conversationId: string,
+  requestId: string,
+  input: LiveRequestCancelInput = {},
+): Promise<LiveRequestResolveResult> {
+  return requestJson<LiveRequestResolveResult>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/live-requests/${encodeURIComponent(requestId)}/cancel`,
+    liveRequestResolveResultSchema,
+    {
+      method: "POST",
+      body: liveRequestCancelInputSchema.parse(input),
+    },
+  );
 }
 
 export async function listAgents(): Promise<Agent[]> {

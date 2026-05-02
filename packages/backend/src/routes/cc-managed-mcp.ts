@@ -19,7 +19,15 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
     db: context.database.db,
     opencodeService: context.opencodeService,
   });
-  const registry = createCcManagedMcpServerRegistry({ customToolService });
+  const registry = createCcManagedMcpServerRegistry({
+    db: context.database.db,
+    config: context.config,
+    opencodeService: context.opencodeService,
+    customToolService,
+    liveRequestService: context.liveRequestService,
+    secretService: context.secretService,
+    orchestrator: context.orchestrator,
+  });
   const service = createCcManagedMcpService({
     db: context.database.db,
     config: context.config,

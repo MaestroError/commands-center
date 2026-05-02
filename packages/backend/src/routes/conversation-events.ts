@@ -75,6 +75,16 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
           void service.updateTitle(loaded.conversation.id, title);
         },
       });
+
+      context.liveRequestService?.subscribe({
+        conversationId: loaded.conversation.id,
+        signal: abortController.signal,
+        onEvent: (event) => {
+          if (!raw.destroyed) {
+            writeSseEvent(raw, event);
+          }
+        },
+      });
     },
   );
 }

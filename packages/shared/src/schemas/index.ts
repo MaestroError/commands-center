@@ -221,6 +221,9 @@ export {
   type MessagePartDeltaEvent,
   type MessagePartUpdatedEvent,
   type MessageUpdatedEvent,
+  type LiveRequestCancelledEvent,
+  type LiveRequestOpenedEvent,
+  type LiveRequestResolvedEvent,
   type PermissionAskedEvent,
   type QuestionAskedEvent,
   type QuestionItem,
@@ -232,6 +235,20 @@ export {
   type TodoItem,
   type TodoUpdatedEvent,
 } from "./chat-events.js";
+export {
+  liveRequestCancelInputSchema,
+  liveRequestFormFieldSchema,
+  liveRequestPresentationSchema,
+  liveRequestResolveInputSchema,
+  liveRequestResolveResultSchema,
+  liveRequestSchema,
+  type LiveRequest,
+  type LiveRequestCancelInput,
+  type LiveRequestFormField,
+  type LiveRequestPresentation,
+  type LiveRequestResolveInput,
+  type LiveRequestResolveResult,
+} from "./live-requests.js";
 export {
   globalSearchFileContentMatchSchema,
   globalSearchFileNameMatchSchema,

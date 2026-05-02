@@ -70,6 +70,45 @@ describe("useChatInspectionTabs", () => {
     expect(result.current.open).toBe(true);
   });
 
+  it("opens a non-closable live request tab and removes it by request id", () => {
+    const { result } = renderHook(() => useChatInspectionTabs("conv-1"));
+
+    act(() => {
+      result.current.openLiveRequest({
+        id: "req-1",
+        conversationId: "conv-1",
+        kind: "add_secret",
+        closable: false,
+        createdAt: "2026-05-02T10:00:00.000Z",
+        presentation: {
+          title: "Add GitHub token",
+          description: "Enter the token while the agent waits.",
+          submitLabel: "Store token",
+          cancelLabel: "Cancel",
+        },
+        fields: [
+          { type: "text", name: "key", label: "Secret key", required: true },
+          { type: "password", name: "value", label: "Secret value", required: true },
+        ],
+      });
+    });
+
+    expect(result.current.activeKey).toBe("live-request:req-1");
+    expect(result.current.activeTab?.tabType).toBe("live-request");
+
+    act(() => {
+      result.current.close("live-request:req-1");
+    });
+
+    expect(result.current.tabs).toHaveLength(1);
+
+    act(() => {
+      result.current.removeLiveRequest("req-1");
+    });
+
+    expect(result.current.tabs).toHaveLength(0);
+  });
+
   it("restores open tabs and active tab from session storage for the same conversation", async () => {
     const { result, unmount } = renderHook(() => useChatInspectionTabs("conv-1"));
 

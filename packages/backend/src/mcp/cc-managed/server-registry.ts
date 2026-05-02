@@ -1,14 +1,28 @@
 import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat";
 
+import type { AppDb } from "../../db/client.js";
+import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { CustomToolService } from "../../services/custom-tool-service.js";
+import type { LiveRequestService } from "../../services/live-request-service.js";
+import type { OpenCodeService } from "../../services/opencode-service.js";
+import type { SecretService } from "../../services/secret-service.js";
+import type { OpenCodeOrchestrator } from "../../orchestrator/opencode-orchestrator.js";
+import { createAddSecretDefinition } from "./groups/cc-app/tools/add-secret.js";
 import { createCreateCustomToolDefinition } from "./groups/cc-tool-management/tools/create-custom-tool.js";
+
+export type CcManagedToolContext = {
+  agentSlug: string;
+};
 
 export type CcManagedToolDefinition = {
   name: string;
   description: string;
   inputSchema?: AnySchema;
   outputSchema?: AnySchema;
-  execute: (args: unknown) =>
+  execute: (
+    args: unknown,
+    context: CcManagedToolContext,
+  ) =>
     | {
         content: Array<{ type: "text"; text: string }>;
         structuredContent?: Record<string, unknown>;
@@ -30,15 +44,43 @@ export type CcManagedMcpServerDefinition = {
 };
 
 export function createCcManagedMcpServerRegistry(options: {
+  db?: AppDb;
+  config?: RuntimeConfig;
+  opencodeService?: OpenCodeService;
   customToolService: CustomToolService;
+  liveRequestService?: LiveRequestService;
+  secretService?: SecretService;
+  orchestrator?: OpenCodeOrchestrator;
 }): readonly CcManagedMcpServerDefinition[] {
+  const ccAppTools: CcManagedToolDefinition[] = [];
+
+  if (
+    options.db &&
+    options.config &&
+    options.opencodeService &&
+    options.liveRequestService &&
+    options.secretService &&
+    options.orchestrator
+  ) {
+    ccAppTools.push(
+      createAddSecretDefinition({
+        db: options.db,
+        config: options.config,
+        opencodeService: options.opencodeService,
+        liveRequestService: options.liveRequestService,
+        secretService: options.secretService,
+        orchestrator: options.orchestrator,
+      }),
+    );
+  }
+
   return [
     {
       name: "cc_app",
       routeSegment: "cc-app",
       description: "CommandsCenter app-managed capabilities for this agent.",
       enabledByDefault: false,
-      tools: [],
+      tools: ccAppTools,
     },
     {
       name: "cc_tool_management",

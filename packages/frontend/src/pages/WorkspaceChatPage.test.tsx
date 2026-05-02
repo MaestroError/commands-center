@@ -183,6 +183,7 @@ function makeConversation(overrides: Record<string, unknown> = {}) {
     pendingPermissionCount: 0,
     pendingPermission: null,
     pendingQuestion: null,
+    liveRequests: [],
     todos: [],
     autoApprove: false,
     setAutoApprove: vi.fn(),
@@ -196,6 +197,8 @@ function makeConversation(overrides: Record<string, unknown> = {}) {
     replyPermission: vi.fn(),
     replyQuestion: vi.fn(),
     rejectQuestion: vi.fn(),
+    resolveLiveRequest: vi.fn(),
+    cancelLiveRequest: vi.fn(),
     ...overrides,
   };
 }
