@@ -191,6 +191,7 @@ function LiveRequestPane(props: {
   onCancel?: (requestId: string, reason?: string) => Promise<void>;
 }) {
   const { request } = props.tab;
+  const copyConflict = readCopyConflictMetadata(request.metadata);
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       request.fields.map((field) => [
@@ -217,7 +218,7 @@ function LiveRequestPane(props: {
     setErrorMessage(undefined);
   }, [request]);
 
-  async function handleSubmit() {
+  async function handleSubmit(action?: string) {
     if (!props.onResolve || busy) {
       return;
     }
@@ -233,7 +234,7 @@ function LiveRequestPane(props: {
     setErrorMessage(undefined);
 
     try {
-      await props.onResolve(request.id, values);
+      await props.onResolve(request.id, action ? { ...values, action } : values);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to submit request.");
     } finally {
@@ -308,26 +309,85 @@ function LiveRequestPane(props: {
         {errorMessage ? <p className="mt-4 text-sm text-destructive">{errorMessage}</p> : null}
 
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          <button
-            className="cc-button"
-            disabled={busy}
-            type="button"
-            onClick={() => void handleSubmit()}
-          >
-            {request.presentation.submitLabel}
-          </button>
-          <button
-            className="cc-button-secondary"
-            disabled={busy}
-            type="button"
-            onClick={() => void handleCancel()}
-          >
-            {request.presentation.cancelLabel}
-          </button>
+          {copyConflict ? (
+            <>
+              <button
+                className="cc-button cc-button-secondary"
+                disabled={busy}
+                type="button"
+                onClick={() => void handleCancel()}
+              >
+                {request.presentation.cancelLabel}
+              </button>
+              <button
+                className="cc-button cc-button-secondary"
+                disabled={busy || !canRewrite(copyConflict.currentName, values["destinationName"])}
+                type="button"
+                onClick={() => void handleSubmit("rewrite")}
+              >
+                Rewrite
+              </button>
+              <button
+                className="cc-button"
+                disabled={busy || !canRename(copyConflict.currentName, values["destinationName"])}
+                type="button"
+                onClick={() => void handleSubmit("rename")}
+              >
+                Copy with new name
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="cc-button"
+                disabled={busy}
+                type="button"
+                onClick={() => void handleSubmit()}
+              >
+                {request.presentation.submitLabel}
+              </button>
+              <button
+                className="cc-button-secondary"
+                disabled={busy}
+                type="button"
+                onClick={() => void handleCancel()}
+              >
+                {request.presentation.cancelLabel}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+function readCopyConflictMetadata(metadata: Record<string, unknown>) {
+  if (metadata["currentName"] && typeof metadata["currentName"] === "string") {
+    return { currentName: metadata["currentName"] };
+  }
+
+  return undefined;
+}
+
+function canRewrite(currentName: string, destinationName?: string): boolean {
+  return slugify(destinationName ?? "") === slugify(currentName);
+}
+
+function canRename(currentName: string, destinationName?: string): boolean {
+  const trimmed = destinationName?.trim() ?? "";
+  return trimmed.length > 0 && slugify(trimmed) !== slugify(currentName);
+}
+
+function slugify(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+
+  return slug || "tool";
 }
 
 function renderMediaItem(item: Extract<ChatInspectionTab, { tabType: "media" }>["item"]) {

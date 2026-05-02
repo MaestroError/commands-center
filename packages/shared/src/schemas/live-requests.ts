@@ -35,6 +35,7 @@ export const liveRequestSchema = z.object({
   kind: z.string().trim().min(1),
   presentation: liveRequestPresentationSchema,
   fields: z.array(liveRequestFormFieldSchema),
+  metadata: z.record(z.string(), z.unknown()).default({}),
   closable: z.boolean().default(false),
   createdAt: z.string(),
 });

@@ -2,12 +2,15 @@ import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat";
 
 import type { AppDb } from "../../db/client.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
+import type { AgentService } from "../../services/agent-service.js";
+import type { ConversationService } from "../../services/conversation-service.js";
 import type { CustomToolService } from "../../services/custom-tool-service.js";
 import type { LiveRequestService } from "../../services/live-request-service.js";
 import type { OpenCodeService } from "../../services/opencode-service.js";
 import type { SecretService } from "../../services/secret-service.js";
 import type { OpenCodeOrchestrator } from "../../orchestrator/opencode-orchestrator.js";
 import { createAddSecretDefinition } from "./groups/cc-app/tools/add-secret.js";
+import { createCopyCustomToolToAgentDefinition } from "./groups/cc-tool-management/tools/copy-custom-tool-to-agent.js";
 import { createCreateCustomToolDefinition } from "./groups/cc-tool-management/tools/create-custom-tool.js";
 
 export type CcManagedToolContext = {
@@ -48,6 +51,8 @@ export function createCcManagedMcpServerRegistry(options: {
   config?: RuntimeConfig;
   opencodeService?: OpenCodeService;
   customToolService: CustomToolService;
+  agentService?: AgentService;
+  conversationService?: ConversationService;
   liveRequestService?: LiveRequestService;
   secretService?: SecretService;
   orchestrator?: OpenCodeOrchestrator;
@@ -74,6 +79,21 @@ export function createCcManagedMcpServerRegistry(options: {
     );
   }
 
+  const toolManagementTools: CcManagedToolDefinition[] = [
+    createCreateCustomToolDefinition({ customToolService: options.customToolService }),
+  ];
+
+  if (options.agentService) {
+    toolManagementTools.push(
+      createCopyCustomToolToAgentDefinition({
+        customToolService: options.customToolService,
+        agentService: options.agentService,
+        conversationService: options.conversationService,
+        liveRequestService: options.liveRequestService,
+      }),
+    );
+  }
+
   return [
     {
       name: "cc_app",
@@ -87,7 +107,7 @@ export function createCcManagedMcpServerRegistry(options: {
       routeSegment: "cc-tool-management",
       description: "CommandsCenter-managed tool creation and library maintenance for this agent.",
       enabledByDefault: false,
-      tools: [createCreateCustomToolDefinition({ customToolService: options.customToolService })],
+      tools: toolManagementTools,
     },
   ] as const satisfies readonly CcManagedMcpServerDefinition[];
 }
