@@ -11,23 +11,34 @@ metadata:
 
 Use this skill when creating or updating custom OpenCode tools for CommandsCenter.
 
-## First decision: global or agent-local
+## Start Here
 
-- Put reusable tools in the CommandsCenter global library: `.cc/workspace/custom-tools/<slug>/`.
-- Put one-off tools directly in one agent workspace: `.cc/workspace/agents/<agent-slug>/.opencode/tools/`.
-- Prefer the global library unless the user clearly says the tool belongs only to one agent.
-- Global tools are source assets. Agent tools are copied snapshots. A change in the global library does not automatically update agent copies. User should explicitly choose when to copy, replace, move, or copy-back tools between global and agent scopes via CC UI.
-- If an agent copy has diverged from the global source, say so and recommend an explicit copy, replace, move, or copy-back action instead of pretending they sync.
+- Before creating or editing a custom tool, check whether you have the required CommandsCenter MCP tools available.
+- Custom tool creation must use the `cc_tool_management` MCP server. Do not create tool metadata or starter directories manually when the MCP tool is available.
+- If the required MCP server or tool is missing, stop and ask the user to enable the needed MCP server and tools for this agent. Be specific: ask for `cc_tool_management_*` and the required tool, such as `create_custom_tool`.
+- If the requested tool needs stored credentials or tokens, check if you have `cc_app_add_secret` tool available. If not, ask the user to enable that tool too.
 
-## Preferred creation flow
+## Scope
 
-- If CommandsCenter provides a starter/template creator, use it before writing files by hand. The app's custom tools page already creates the required starter files from a name and description.
-- If a CLI helper exists, prefer a command shaped like `ccenter create-tool --name "Tool Name" --description "What it does"` and use the returned global tool directory path.
-- If no helper exists, create the files manually using the layout below.
+- Create only global CommandsCenter custom tools, only using `cc_tool_management_*` MCP server tools.
+- `create_custom_tool` creates a global tool scaffold under and returns directory you should use for further development.
+- Do not offer agent-local tool creation as an option.
+- When a global tool needs to be assigned to an agent, use CommandsCenter's managed copy flow from `cc_tool_management_*` instead of writing into an agent workspace manually.
 
-## Global tool layout
+## Required Creation Flow
 
-Use this structure for reusable tools:
+1. Confirm the tool purpose, expected inputs, expected output, and any external services it needs.
+2. Use `cc_tool_management_create_custom_tool` to create the global tool scaffold.
+3. Edit the created global tool files under the provided directory.
+4. Implement `tool.ts` with a default OpenCode tool export.
+5. Keep helper files next to `tool.ts` inside the global tool directory.
+6. Do not manage CommandsCenter metadata fields, IDs, timestamps, or fingerprints manually.
+7. When finished, ask the user whether they want this tool enabled for any existing agent now.
+8. If the user wants it enabled, use the CommandsCenter managed flow, such as `cc_tool_management_copy_custom_tool_to_agent`, when that tool is available. When not, Do not write directly into an agent workspace, Ask user to enable the tool for specific agents from CC's Tools page.
+
+## Global Tool Layout
+
+CommandsCenter global tools use this structure:
 
 ```text
 .cc/workspace/custom-tools/<slug>/
@@ -38,53 +49,12 @@ Use this structure for reusable tools:
 ```
 
 - `<slug>` is lowercase kebab-case derived from the user-facing name, limited to simple ASCII letters, numbers, and hyphens.
-- `tool.ts` is the single primary OpenCode tool entry file for MVP global tools.
+- `tool.ts` is the single primary OpenCode tool entry file.
 - `cc-tool.json` is CommandsCenter metadata used for discovery and rendering without importing arbitrary tool code.
+- Treat `cc-tool.json` as CC-owned after scaffold creation. Do not manually edit it unless the user is deliberately repairing metadata.
 - Do not ask the user to manage fingerprints. CommandsCenter computes and refreshes fingerprints when it creates, reads, copies, imports, or indexes tools.
-- Do not manually edit CC-owned metadata fields unless the user is deliberately repairing metadata. If manual creation is unavoidable, include only the metadata needed for CC to discover the tool and let CC refresh computed fields later.
 
-Minimum metadata shape for manual global creation:
-
-```json
-{
-  "version": 1,
-  "id": "replace-with-generated-id-if-no-helper-exists",
-  "slug": "release-helper",
-  "name": "Release Helper",
-  "description": "Draft release notes from recent changes.",
-  "entryFile": "tool.ts",
-  "createdAt": "2026-05-01T00:00:00.000Z",
-  "updatedAt": "2026-05-01T00:00:00.000Z",
-  "enabled": true
-}
-```
-
-If the current implementation still requires a fingerprint field when reading metadata, prefer using the app/API/template creator instead of hand-writing `cc-tool.json`. If forced to unblock a manual draft, use a temporary non-empty placeholder and tell the user CC should regenerate it on the next indexing pass.
-
-## Agent-local layout
-
-OpenCode discovers local project tools from `.opencode/tools/` inside the active agent workspace.
-
-For an agent-only tool, a simple direct file is valid:
-
-```text
-.cc/workspace/agents/<agent-slug>/.opencode/tools/<tool-name>.ts
-```
-
-For a CC-managed copy from the global library, CommandsCenter uses a wrapper plus support directory:
-
-```text
-.cc/workspace/agents/<agent-slug>/.opencode/tools/<slug>.ts
-.cc/workspace/agents/<agent-slug>/.opencode/tools/<slug>/tool.ts
-.cc/workspace/agents/<agent-slug>/.opencode/tools/<slug>.cc-tool-copy.json
-```
-
-- The top-level `<slug>.ts` file is required because OpenCode names tools from files directly under `.opencode/tools/`.
-- The support directory contains the copied global implementation and helper files.
-- The `.cc-tool-copy.json` file marks CC-managed copied snapshots and records copy provenance for drift detection.
-- Do not remove or overwrite non-CC-managed agent-local tools unless the user explicitly asks.
-
-## OpenCode tool file contract
+## OpenCode Tool File Contract
 
 Custom tools are TypeScript or JavaScript files that export a tool definition. Prefer TypeScript and the `tool()` helper:
 
@@ -105,8 +75,9 @@ export default tool({
 });
 ```
 
-- The default export creates a tool named after the file. In CC global tools, copied agents ultimately expose the top-level wrapper filename, usually `<slug>`.
-- OpenCode also supports multiple named exports from one file, named `<filename>_<exportName>`, but CommandsCenter MVP should use one default export per tool.
+- Use one default export per tool.
+- The default export creates a tool named after the file used by OpenCode after CommandsCenter copies it to an agent.
+- OpenCode also supports multiple named exports from one file, named `<filename>_<exportName>`, but CommandsCenter tools should use one default export per tool unless the user explicitly asks otherwise.
 - Custom tools can override built-in OpenCode tools if they use the same name. Avoid built-in names such as `bash`, `read`, `write`, `edit`, `grep`, `glob`, `webfetch`, `task`, `todo`, `skill`, or `apply_patch` unless the user explicitly wants an override.
 
 ## Arguments
@@ -134,7 +105,16 @@ export default {
 };
 ```
 
-## Execution context
+## Secrets And Environment
+
+- Never hard-code secrets, tokens, API keys, private URLs, or credentials in tool source, metadata, examples, tests, or documentation.
+- Tools must read secrets from environment variables, for example `process.env.LINEAR_API_KEY`.
+- Document required environment variable names in the tool description or a nearby README.
+- If the tool needs a secret that is not already available, use `cc_app_add_secret` to ask the operator for it and store it through CommandsCenter.
+- If `cc_app_add_secret` is unavailable, stop and ask the user to enable the `cc_app` MCP server and the `add_secret` tool for this agent or instruct to add the secret manually from settings.
+- Keep test fixtures secret-free. Use fake tokens like `test-token` only when a real external call is not made.
+
+## Execution Context
 
 The `execute(args, context)` function receives OpenCode session context.
 
@@ -144,49 +124,47 @@ The `execute(args, context)` function receives OpenCode session context.
 - Avoid absolute paths that point outside the CommandsCenter workspace unless the user explicitly requested them.
 - Keep outputs concise and useful for the model. Return strings or JSON-serializable data that summarizes the result.
 
-## Dependencies and helper code
+## Dependencies And Helper Code
 
 - The tool definition itself must be TypeScript or JavaScript.
-- A tool may call helper scripts in other languages, but keep those scripts inside the tool directory so the tool remains portable with `.cc/workspace`.
+- A tool may call helper scripts in other languages, but keep those scripts inside the global tool directory so the tool remains portable with `.cc/workspace`.
 - Prefer Node built-ins and dependencies already available to the CommandsCenter/OpenCode runtime.
 - Do not introduce dependency installation steps for MVP tools unless the user explicitly accepts the portability tradeoff.
 - If you need to run another process, use safe argument passing from JavaScript APIs. Do not build shell commands by concatenating untrusted model arguments.
-- If you use environment variables or secrets, document the required names in the tool description or adjacent README, but never hard-code secrets.
 - For HTTP tools, prefer `fetch`, validate required URL parts, set timeouts where practical, and return a compact response with status and relevant body fields.
 
-## Naming rules
+## Naming Rules
 
 - Tool slug and file names should be kebab-case: `release-helper`, `ticket-lookup`, `sync-linear-issue`.
 - Exported JavaScript identifiers, helper functions, and argument names should be camelCase.
 - The user-facing `name` in CC metadata can use title case with spaces.
-- The OpenCode callable name comes from the top-level `.opencode/tools/<name>.ts` filename, so renaming files changes the tool name.
-- Check for duplicate names in the same scope before creating a tool.
+- The OpenCode callable name comes from the top-level copied `.opencode/tools/<name>.ts` filename, so renaming files changes the tool name.
+- Check for duplicate global tool names before creating a tool when the catalog is available.
 
-## Editing workflow
+## Testing Workflow
 
-1. Decide whether the tool is global or agent-local.
-2. Use the starter creator when available; otherwise create the correct directory and files manually.
-3. Implement `tool.ts` with a default `tool({ description, args, execute })` export.
-4. Put helper files next to the global `tool.ts`, or in the agent support directory for copied tools.
-5. Do not manage fingerprints by hand.
-6. If assigning a global tool to an agent, copy through CommandsCenter so the wrapper and `.cc-tool-copy.json` metadata are created correctly.
-7. After changing assigned agent tools, expect the affected OpenCode instance to need disposal/reload before it sees the new files.
+- If the test path is obvious and local-only, test the tool yourself before reporting completion. Examples: calculators, string formatters, parsers, local file transforms, deterministic data extraction, or tools that can run entirely against fake fixtures.
+- If the tool needs real external systems, credentials, production-like data, or unclear business rules, ask the user what test data and environment you should use.
+- If the tool uses secrets, do not ask the user to paste secrets into chat. Use `cc_app_add_secret` when a secret must be provided.
+- Prefer deterministic fixtures in the global tool directory for local tests.
+- Report exactly what was tested and what was not tested.
 
-## Review checklist
+## Review Checklist
 
-- The tool lives under `.cc/workspace`, not in a host-global directory like `~/.config/opencode/tools`.
-- Global tools use `.cc/workspace/custom-tools/<slug>/tool.ts`.
-- Agent-discovered tools have a top-level `.opencode/tools/<tool-name>.ts` or `.js` file.
+- The tool was created through `cc_tool_management_create_custom_tool`.
+- The tool lives under `.cc/workspace/custom-tools/<slug>/`.
+- No files were written directly under an agent `.opencode/tools/` directory.
 - Argument schemas are narrow, described, and safe for model-provided input.
 - The tool name does not accidentally collide with a built-in OpenCode tool.
 - Helper files and scripts are portable with the workspace.
 - Secrets are referenced through environment variables, not written into source.
-- Agent copies are treated as snapshots, with drift called out when relevant.
+- Required secrets are collected with `cc_app_add_secret` when needed.
+- The tool was tested when a safe local test path was clear, or the user was asked for test data when it was not clear.
+- The user was asked whether to enable the finished tool for one or more agents.
 
-## Output style
+## Output Style
 
-- Prefer practical file-by-file instructions.
-- Say whether the change belongs in the global library or a single agent workspace.
-- Include the exact paths to create or edit.
-- Include a compact `tool.ts` example when authoring a new tool.
-- Call out when a copied agent tool has diverged and should be copied, replaced, moved, or copied back to global.
+- Be explicit about required MCP capabilities when they are missing.
+- Include the exact global paths created or edited.
+- Include a compact summary of the tool arguments, environment variables, and test result.
+- At the end, ask whether the user wants to enable the finished global tool for any agent unless they already answered that.
