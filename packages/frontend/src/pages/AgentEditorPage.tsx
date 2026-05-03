@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { Switch } from "@/components/common/Switch";
+
 import type {
   Agent,
   AgentCatalog,
@@ -28,12 +30,10 @@ import {
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import {
   getAppMcpServerAction,
-  getAppMcpServerPerToolPermissionsEnabled,
   getAppMcpToolAction,
   getMcpServerAction,
   setAppMcpServerAction,
-  setAppMcpServerPerToolPermissionsEnabled,
-  setAppMcpToolAction,
+  setAppMcpToolEnabled,
   setMcpServerAction,
 } from "@/lib/agent-capabilities";
 import { resolveInitialModelId } from "@/lib/agent-form";
@@ -434,10 +434,6 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
               <div className="grid gap-4">
                 {catalog?.appMcpServers.map((server) => {
                   const serverAction = getAppMcpServerAction(form.capabilities, server.name);
-                  const perToolEnabled = getAppMcpServerPerToolPermissionsEnabled(
-                    form.capabilities,
-                    server.name,
-                  );
 
                   return (
                     <article
@@ -464,62 +460,39 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                         />
                       </div>
 
-                      {serverAction !== "deny" ? (
-                        <div className="mt-4 rounded-lg border border-border bg-background p-3">
-                          <label className="flex items-start gap-3 text-sm text-text-primary">
-                            <input
-                              checked={perToolEnabled}
-                              className="mt-1"
-                              onChange={(event) =>
-                                setAppMcpServerPerToolMode(server.name, event.target.checked)
-                              }
-                              type="checkbox"
-                            />
-                            <span>
-                              <span className="block font-medium">
-                                Configure tools individually
-                              </span>
-                              <span className="mt-1 block text-text-secondary">
-                                When enabled, the wildcard permission is denied and only explicitly
-                                configured tools are available.
-                              </span>
-                            </span>
-                          </label>
+                      {serverAction !== "deny" && server.tools.length > 0 ? (
+                        <div className="mt-4 grid gap-3">
+                          {server.tools.map((tool) => {
+                            const toolEnabled =
+                              getAppMcpToolAction(form.capabilities, server.name, tool.name) ===
+                              "allow";
 
-                          {perToolEnabled ? (
-                            <div className="mt-4 grid gap-3">
-                              {server.tools.length > 0 ? (
-                                server.tools.map((tool) => (
-                                  <div
-                                    className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-3 md:flex-row md:items-start md:justify-between"
-                                    key={tool.name}
-                                  >
-                                    <div className="min-w-0">
-                                      <p className="font-medium text-text-primary">{tool.name}</p>
-                                      <p className="mt-1 text-sm text-text-secondary">
-                                        {tool.description}
-                                      </p>
-                                    </div>
-                                    <McpServerPermissionControl
-                                      label={`${server.name} ${tool.name}`}
-                                      onChange={(action) =>
-                                        setAppMcpToolPermission(server.name, tool.name, action)
-                                      }
-                                      value={getAppMcpToolAction(
-                                        form.capabilities,
-                                        server.name,
-                                        tool.name,
-                                      )}
-                                    />
-                                  </div>
-                                ))
-                              ) : (
-                                <p className="text-sm text-text-secondary">
-                                  No tools are registered for this MCP group yet.
-                                </p>
-                              )}
-                            </div>
-                          ) : null}
+                            return (
+                              <div
+                                className="flex flex-col gap-3 rounded-lg border border-border bg-background p-3 md:flex-row md:items-start md:justify-between"
+                                key={tool.name}
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-medium text-text-primary">{tool.name}</p>
+                                  <p className="mt-1 text-sm text-text-secondary">
+                                    {tool.description}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <Switch
+                                    aria-label={`${server.name} ${tool.name}`}
+                                    checked={toolEnabled}
+                                    onChange={(enabled) =>
+                                      setAppMcpToolPermission(server.name, tool.name, enabled)
+                                    }
+                                  />
+                                  <span className="text-xs text-text-secondary">
+                                    {toolEnabled ? "Enabled" : "Disabled"}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       ) : null}
                     </article>
@@ -751,22 +724,10 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     setSaveError(undefined);
   }
 
-  function setAppMcpServerPerToolMode(serverName: string, enabled: boolean) {
+  function setAppMcpToolPermission(serverName: string, toolName: string, enabled: boolean) {
     setForm((current) => ({
       ...current,
-      capabilities: setAppMcpServerPerToolPermissionsEnabled(
-        current.capabilities,
-        serverName,
-        enabled,
-      ),
-    }));
-    setSaveError(undefined);
-  }
-
-  function setAppMcpToolPermission(serverName: string, toolName: string, action: PermissionAction) {
-    setForm((current) => ({
-      ...current,
-      capabilities: setAppMcpToolAction(current.capabilities, serverName, toolName, action),
+      capabilities: setAppMcpToolEnabled(current.capabilities, serverName, toolName, enabled),
     }));
     setSaveError(undefined);
   }

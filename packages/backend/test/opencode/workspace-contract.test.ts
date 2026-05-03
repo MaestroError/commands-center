@@ -77,8 +77,6 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       permission: {
         "github_*": "allow",
         custom_write: "ask",
-        "cc_tool_management_*": "allow",
-        cc_tool_management_create_custom_tool: "ask",
       },
     });
 
@@ -115,15 +113,10 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
 
     const parsed = JSON.parse(rendered.configJsonc) as { permission: Record<string, string> };
 
-    expect(Object.keys(parsed.permission)).toEqual([
-      "github_*",
-      "github_create_issue",
-      "cc_tool_management_*",
-    ]);
-    expect(parsed.permission["cc_tool_management_*"]).toBe("deny");
+    expect(Object.keys(parsed.permission)).toEqual(["github_*", "github_create_issue"]);
   });
 
-  it("denies CC-managed wildcard when per-tool permissions are enabled", () => {
+  it("does not write CC-managed tool permissions to opencode.jsonc", () => {
     const rendered = renderOpenCodeWorkspace({
       name: "Writer",
       role: "write docs",
@@ -140,10 +133,9 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
             name: "cc_tool_management",
             enabled: true,
             action: "allow",
-            perToolPermissionsEnabled: true,
           },
         ],
-        appToolPermissions: [{ pattern: "cc_tool_management_create_custom_tool", action: "ask" }],
+        appToolPermissions: [{ pattern: "cc_tool_management_create_custom_tool", action: "allow" }],
       },
       appMcpEntries: {
         cc_tool_management: {
@@ -160,8 +152,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
 
     const parsed = JSON.parse(rendered.configJsonc) as { permission: Record<string, string> };
 
-    expect(parsed.permission["cc_tool_management_*"]).toBe("deny");
-    expect(parsed.permission["cc_tool_management_create_custom_tool"]).toBe("ask");
+    expect(parsed.permission).toEqual({});
   });
 
   it("copies validated skills into the documented .opencode path", async () => {

@@ -164,9 +164,6 @@ export function renderOpenCodeWorkspace(input: OpenCodeWorkspaceInput): {
     role: input.role,
     instructions: input.instructions,
   });
-  const appMcpSelections = new Map(
-    (input.capabilities.appMcpServers ?? []).map((server) => [server.name, server]),
-  );
   const config = workspaceConfigSchema.parse({
     $schema: OPENCODE_CONFIG_SCHEMA_URL,
     model: input.defaultModel,
@@ -185,18 +182,6 @@ export function renderOpenCodeWorkspace(input: OpenCodeWorkspaceInput): {
           (server) => [`${server.name}_*`, server.action] as const,
         ),
         ...(input.capabilities.toolPermissions ?? []).map(
-          (rule) => [rule.pattern, rule.action] as const,
-        ),
-        ...Object.keys(input.appMcpEntries ?? {}).map(
-          (serverName) =>
-            [
-              `${serverName}_*`,
-              appMcpSelections.get(serverName)?.perToolPermissionsEnabled
-                ? "deny"
-                : (appMcpSelections.get(serverName)?.action ?? "deny"),
-            ] as const,
-        ),
-        ...(input.capabilities.appToolPermissions ?? []).map(
           (rule) => [rule.pattern, rule.action] as const,
         ),
       ]),

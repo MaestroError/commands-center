@@ -42,13 +42,7 @@ export function createCcManagedMcpToolAccessService() {
         return exact.action;
       }
 
-      const selection = capabilities.appMcpServers?.find((entry) => entry.name === serverName);
-
-      if (selection?.perToolPermissionsEnabled) {
-        return "deny";
-      }
-
-      return selection?.action ?? "deny";
+      return "allow";
     },
   };
 }

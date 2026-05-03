@@ -275,7 +275,6 @@ describe("AgentEditorPage", () => {
                 name: "cc_app",
                 enabled: true,
                 action: "allow",
-                perToolPermissionsEnabled: false,
               },
             ],
             appToolPermissions: [],
@@ -303,7 +302,6 @@ describe("AgentEditorPage", () => {
                 name: "cc_tool_management",
                 enabled: true,
                 action: "allow",
-                perToolPermissionsEnabled: false,
               },
             ],
             appToolPermissions: [],
@@ -313,15 +311,14 @@ describe("AgentEditorPage", () => {
     });
   });
 
-  it("saves per-tool CC-managed MCP permissions when enabled", async () => {
+  it("saves per-tool CC-managed MCP permissions when toggled", async () => {
     updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
 
     renderEditor();
 
     fireEvent.click(screen.getByRole("button", { name: "cc_tool_management Allow" }));
-    fireEvent.click(screen.getByLabelText(/Configure tools individually/i));
     fireEvent.click(
-      screen.getByRole("button", { name: "cc_tool_management copy_custom_tool_to_agent Ask" }),
+      screen.getByRole("switch", { name: "cc_tool_management copy_custom_tool_to_agent" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -335,11 +332,10 @@ describe("AgentEditorPage", () => {
                 name: "cc_tool_management",
                 enabled: true,
                 action: "allow",
-                perToolPermissionsEnabled: true,
               },
             ],
             appToolPermissions: [
-              { pattern: "cc_tool_management_copy_custom_tool_to_agent", action: "ask" },
+              { pattern: "cc_tool_management_copy_custom_tool_to_agent", action: "deny" },
             ],
           }),
         }),

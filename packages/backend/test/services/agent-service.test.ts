@@ -72,7 +72,7 @@ describe("createAgentService", () => {
       expect(config).toContain('"github_*": "allow"');
       expect(config).toContain('"custom_review": "ask"');
       expect(config).toContain('"cc_tool_management": {');
-      expect(config).toContain('"cc_tool_management_*": "allow"');
+      expect(config).not.toContain('"cc_tool_management_*"');
       expect(dispose).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();

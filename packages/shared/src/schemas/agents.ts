@@ -72,7 +72,6 @@ export const agentAppMcpServerSchema = z.object({
   name: z.string().min(1),
   enabled: z.boolean().default(true),
   action: permissionActionSchema,
-  perToolPermissionsEnabled: z.boolean().default(false),
 });
 
 export const agentCapabilitySelectionSchema = z.object({
