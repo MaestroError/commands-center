@@ -102,6 +102,39 @@ Version status is also exposed over HTTP:
 curl http://127.0.0.1:3000/api/system/version
 ```
 
+### Automatic Service Installer
+
+The repository includes a cross-platform installer for Ubuntu/Linux with systemd and macOS with launchd. It checks for Node.js, installs missing requirements when possible, installs CommandsCenter globally, creates an `.env` file, starts the app as a background service, and prints the app URLs plus filesystem locations.
+
+After npm publish:
+
+```bash
+bash scripts/install-ccenter-service.sh
+```
+
+Before npm publish, point it at a local tarball:
+
+```bash
+pnpm --filter commandscenter build
+cd packages/cli
+npm pack
+cd ../..
+CCENTER_PACKAGE_SPEC="$PWD/packages/cli/commandscenter-0.1.0.tgz" bash scripts/install-ccenter-service.sh
+```
+
+Useful overrides:
+
+```bash
+CCENTER_INSTALL_DIR=/opt/commandscenter \
+CCENTER_WORKSPACE_DIR=/opt/commandscenter/.cc/workspace \
+CCENTER_ENV_FILE=/opt/commandscenter/.env \
+CCENTER_HOST=127.0.0.1 \
+CCENTER_PORT=3000 \
+bash scripts/install-ccenter-service.sh
+```
+
+On Ubuntu, the script writes `/etc/systemd/system/commandscenter.service`. On macOS, it writes `~/Library/LaunchAgents/com.commandscenter.app.plist`.
+
 ### VPS With Systemd
 
 Use a global npm install plus a systemd service. Keep runtime files and `.env` in `/opt/commandscenter`.

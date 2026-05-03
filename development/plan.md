@@ -11,7 +11,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
 - `engine-infrastructure`: runtime bootstrap, OpenCode engine lifecycle, API backbone, self-updating
 - `core-data-state`: database, portable workspace state, agent lifecycle, direct chat persistence
 - `product-ux-surfaces`: app shell, dashboard, agent UX, chat UX, file manager, terminals, profile, settings, theming
-- `integrations-automation`: provider auth, MCP/integrations, custom tools, automations
+- `integrations-automation`: provider auth, MCP/integrations, custom tools, tasks
 
 ## Dependency Tree
 
@@ -21,7 +21,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |  |- ✅ E5 OpenCode Workspace Contract
  |  |- ✅ C3 Direct Chat Session Model
  |  |  |- ✅ U3 Direct Chat Screen
- |  |  \- I4 Automations
+ |  |  \- I4 Tasks
  |  |- I1 Provider Connections
  |  |  \- ✅ U2 Agents and Agent Editor
  |  \- ✅ I2 Integrations and MCP Management
@@ -36,7 +36,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |  |  |- ✅ U3 Direct Chat Screen
  |  |  |- ✅ U4 File Manager and Terminals
  |  |  \- ✅ U5 Profile, Settings, and Theming
- |  \- I4 Automations
+ |  \- I4 Tasks
  \- ✅ C1 Database and Workspace Foundation
     |- ✅ C2 Agent Workspace Lifecycle
     |  |- ✅ E5 OpenCode Workspace Contract
@@ -47,7 +47,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
     |  \- ✅ I5 Composio Integration
     |- ✅ C3 Direct Chat Session Model
     |  |- U3 Direct Chat Screen
-    |  \- I4 Automations
+    |  \- I4 Tasks
     |- ✅ U4 File Manager and Terminals
     \- ✅ U5 Profile, Settings, and Theming
 
@@ -98,20 +98,20 @@ Future enhancement after U4 stabilization:
 
 Run after agents and direct chat execution are stable.
 
-1. `integrations-automation/04-automations.md`
+1. `integrations-automation/04-automations.md` (I4 Tasks)
 2. `product-ux-surfaces/01-app-shell-and-dashboard.md`
 
-Result: scheduled prompts with isolated sessions and run history.
+Result: manual and scheduled tasks with isolated OpenCode sessions, task-scoped permissions, active run visibility, and run history.
 
 ## Cross-Cutting Architectural Principles
 
 ### Service-First Architecture
 
-All business actions (agent CRUD, session management, automation CRUD, custom tool management, etc.) MUST be implemented as backend services first, then exposed via REST API routes for the frontend. Services are the single source of truth for all business logic — no business rules in route handlers, CLI commands, or MCP tools.
+All business actions (agent CRUD, session management, task CRUD, custom tool management, etc.) MUST be implemented as backend services first, then exposed via REST API routes for the frontend. Services are the single source of truth for all business logic — no business rules in route handlers, CLI commands, or MCP tools.
 
 This decoupling ensures that any action can be surfaced through additional interfaces (MCP tools, CLI commands, etc.) in the future without reimplementing logic. The web UI, a CLI command, and an MCP tool must all call the same service method and produce the same result.
 
-**Currently confirmed for MCP exposure:** automation one-time task scheduling and status checks, so AI agents can create and monitor scheduled jobs programmatically.
+**Currently confirmed for MCP exposure:** task creation, manual task triggering, one-time task scheduling, and status checks, so AI agents can create and monitor jobs programmatically.
 
 ### OpenCode as Engine Dependency
 
@@ -127,7 +127,7 @@ Every screen and panel MUST be usable on mobile viewports. This is not optional 
 
 ### Portable Workspace (.cc/workspace)
 
-The `.cc` directory is the application root (created on first run, like OpenCode's `.opencode`). Within it, `.cc/workspace/` is the single portable state directory containing all user data: agents, database, preferences, auth credentials, MCP configs, automations history, and everything else. Copying `.cc/workspace/` to another machine and running `ccenter start` MUST produce the exact same application state — zero external dependencies on the originating host.
+The `.cc` directory is the application root (created on first run, like OpenCode's `.opencode`). Within it, `.cc/workspace/` is the single portable state directory containing all user data: agents, database, preferences, auth credentials, MCP configs, task history, and everything else. Copying `.cc/workspace/` to another machine and running `ccenter start` MUST produce the exact same application state — zero external dependencies on the originating host.
 
 ## PR Rules
 
@@ -173,7 +173,7 @@ Each epic PR should:
 
 ### Milestone 4: MVP Completion
 
-- I4 Automations
+- I4 Tasks
 - ✅ I6 App-Provided MCP Server
 
 ## Long-Term Plan
@@ -184,4 +184,4 @@ Build on the same agent, session, attachment, and permission systems. Add shared
 
 ### Phase 3: Kanban Board
 
-Build on automation, session orchestration, and shared context. Add task entities, board state, card execution history, and agent assignment workflows.
+Build on Tasks, session orchestration, and shared context. Add board state, card execution history, and agent assignment workflows.
