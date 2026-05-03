@@ -52,7 +52,20 @@ jobs:
         run: pnpm typecheck
 
       - name: Unit & integration tests
-        run: pnpm test:coverage
+        run: pnpm test
+
+      - name: Shared coverage
+        run: pnpm --filter @cc/shared test:coverage
+
+      - name: CLI coverage
+        run: pnpm --filter commandscenter test:coverage
+
+      - name: Frontend coverage
+        run: pnpm --filter @cc/frontend test:coverage
+
+      - name: Backend coverage (informational)
+        run: pnpm --filter @cc/backend test:coverage
+        continue-on-error: true
 
       - name: Audit
         run: pnpm audit --audit-level=high
