@@ -133,6 +133,9 @@ importers:
         specifier: ^1.14.22
         version: 1.14.22
     devDependencies:
+      '@cc/backend':
+        specifier: workspace:*
+        version: link:../backend
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.17
