@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { agents } from "../../src/db/schema/index";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createTaskExecutionService } from "../../src/services/task-execution-service";
+import { createTaskSchedulerService } from "../../src/services/task-scheduler-service";
+import { createTaskService } from "../../src/services/task-service";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { AppDb } from "../../src/db/client";
@@ -13,6 +16,13 @@ import { createTestDatabase } from "../helpers/db";
 describe("task routes", () => {
   it("supports task lifecycle and run history endpoints", async () => {
     const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const taskSchedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService: taskExecutionService,
+    });
     const server = createServer({
       config: testDb.config,
       logger: createLogger(testDb.config),
@@ -21,7 +31,10 @@ describe("task routes", () => {
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
       secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
-      scheduler: createSchedulerService(),
+      scheduler: createSchedulerService({ delegate: taskSchedulerService }),
+      taskService,
+      taskExecutionService,
+      taskSchedulerService,
     });
 
     try {
@@ -62,7 +75,17 @@ describe("task routes", () => {
         method: "POST",
         url: `/api/tasks/${task.id}/restore`,
       });
+      const triggered = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/trigger`,
+        payload: { triggerSource: "manual" },
+      });
       const runs = await server.inject({ method: "GET", url: `/api/tasks/${task.id}/runs` });
+      const activeRuns = await server.inject({ method: "GET", url: "/api/tasks/runs/active" });
+      const schedulerState = await server.inject({
+        method: "GET",
+        url: "/api/tasks/scheduler/state",
+      });
       const deleted = await server.inject({ method: "DELETE", url: `/api/tasks/${task.id}` });
       const afterDelete = await server.inject({ method: "GET", url: `/api/tasks/${task.id}` });
 
@@ -79,10 +102,16 @@ describe("task routes", () => {
       expect(restored.statusCode).toBe(200);
       expect(restored.json().archived).toBe(false);
       expect(runs.statusCode).toBe(200);
-      expect(runs.json()).toEqual([]);
+      expect(runs.json()).toHaveLength(1);
+      expect(triggered.statusCode).toBe(200);
+      expect(triggered.json().status).toBe("completed");
+      expect(activeRuns.statusCode).toBe(200);
+      expect(activeRuns.json()).toEqual([]);
+      expect(schedulerState.statusCode).toBe(200);
       expect(deleted.statusCode).toBe(204);
       expect(afterDelete.statusCode).toBe(404);
     } finally {
+      taskSchedulerService.stop();
       await server.close();
       await testDb.cleanup();
     }
@@ -91,6 +120,13 @@ describe("task routes", () => {
   it("returns validation failures and max limit conflicts", async () => {
     const testDb = await createTestDatabase();
     const config = { ...testDb.config, tasks: { maxTasks: 1 } };
+    const taskService = createTaskService({ db: testDb.client.db, config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const taskSchedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService: taskExecutionService,
+    });
     const server = createServer({
       config,
       logger: createLogger(config),
@@ -99,7 +135,10 @@ describe("task routes", () => {
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
       secretService: createSecretService({ db: testDb.client.db, config }),
-      scheduler: createSchedulerService(),
+      scheduler: createSchedulerService({ delegate: taskSchedulerService }),
+      taskService,
+      taskExecutionService,
+      taskSchedulerService,
     });
 
     try {
@@ -125,6 +164,7 @@ describe("task routes", () => {
       expect(second.statusCode).toBe(409);
       expect(second.json().error.message).toBe("Maximum task limit reached.");
     } finally {
+      taskSchedulerService.stop();
       await server.close();
       await testDb.cleanup();
     }

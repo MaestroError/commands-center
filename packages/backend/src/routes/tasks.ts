@@ -2,19 +2,25 @@ import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
+  activeTaskRunListSchema,
+  cancelTaskRunInputSchema,
   createTaskInputSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
   taskListSchema,
   taskRunListSchema,
   taskRunSchema,
+  taskSchedulerStateListSchema,
   taskSchema,
+  triggerTaskInputSchema,
   updateTaskInputSchema,
 } from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { NotFoundError } from "../lib/api-error.js";
+import { createTaskExecutionService } from "../services/task-execution-service.js";
+import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
 import { createTaskService } from "../services/task-service.js";
 
 const taskIdParamsSchema = z.object({
@@ -31,6 +37,52 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     db: context.database.db,
     config: context.config,
   });
+  const executionService =
+    context.taskExecutionService ?? createTaskExecutionService({ taskService: service });
+  const taskSchedulerService =
+    context.taskSchedulerService ??
+    createTaskSchedulerService({
+      db: context.database.db,
+      taskService: service,
+      executionService,
+      logger: context.logger,
+    });
+
+  app.get(
+    "/api/tasks/runs/active",
+    {
+      schema: {
+        response: {
+          200: activeTaskRunListSchema,
+        },
+      },
+    },
+    async () => executionService.listActiveRuns(),
+  );
+
+  app.get(
+    "/api/tasks/scheduler/state",
+    {
+      schema: {
+        response: {
+          200: taskSchedulerStateListSchema,
+        },
+      },
+    },
+    async () => taskSchedulerService.listStates(),
+  );
+
+  app.post(
+    "/api/tasks/scheduler/tick",
+    {
+      schema: {
+        response: {
+          200: taskSchedulerStateListSchema,
+        },
+      },
+    },
+    async () => taskSchedulerService.tick(),
+  );
 
   app.get(
     "/api/tasks",
@@ -220,6 +272,20 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     async (request) => service.listRuns(request.params.id, request.query),
   );
 
+  app.post(
+    "/api/tasks/:id/trigger",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: triggerTaskInputSchema,
+        response: {
+          200: taskRunSchema,
+        },
+      },
+    },
+    async (request) => executionService.trigger(request.params.id, request.body),
+  );
+
   app.get(
     "/api/tasks/:id/runs/:runId",
     {
@@ -239,5 +305,19 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
 
       return run;
     },
+  );
+
+  app.post(
+    "/api/tasks/:id/runs/:runId/cancel",
+    {
+      schema: {
+        params: taskRunParamsSchema,
+        body: cancelTaskRunInputSchema,
+        response: {
+          200: taskRunSchema,
+        },
+      },
+    },
+    async (request) => executionService.cancel(request.params.runId, request.body),
   );
 }

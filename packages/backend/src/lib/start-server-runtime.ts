@@ -23,6 +23,15 @@ import {
   type LiveRequestService,
 } from "../services/live-request-service.js";
 import { createSchedulerService, type SchedulerService } from "../services/scheduler-service.js";
+import {
+  createTaskExecutionService,
+  type TaskExecutionService,
+} from "../services/task-execution-service.js";
+import {
+  createTaskSchedulerService,
+  type TaskSchedulerService,
+} from "../services/task-scheduler-service.js";
+import { createTaskService, type TaskService } from "../services/task-service.js";
 import { bootstrapRuntimePaths } from "./runtime-paths.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
 import { createLogger, flushLogger } from "./logger.js";
@@ -61,6 +70,9 @@ export type RuntimeContext = {
   secretService: SecretService;
   liveRequestService?: LiveRequestService;
   scheduler: SchedulerService;
+  taskService?: TaskService;
+  taskExecutionService?: TaskExecutionService;
+  taskSchedulerService?: TaskSchedulerService;
   systemVersionService?: SystemVersionService;
 };
 
@@ -97,7 +109,15 @@ export async function startServerRuntime(
   const openCodeEventService = createOpenCodeEventService({ config, logger });
   const workspaceWatchService = createWorkspaceWatchService({ logger });
   const liveRequestService = createLiveRequestService();
-  const scheduler = createSchedulerService();
+  const taskService = createTaskService({ db: database.db, config });
+  const taskExecutionService = createTaskExecutionService({ taskService });
+  const taskSchedulerService = createTaskSchedulerService({
+    db: database.db,
+    taskService,
+    executionService: taskExecutionService,
+    logger,
+  });
+  const scheduler = createSchedulerService({ delegate: taskSchedulerService });
   const packageInfo = readPackageInfo();
   const drainRuntime: {
     drain?: (signal: NodeJS.Signals | "manual") => Promise<void>;
@@ -124,6 +144,9 @@ export async function startServerRuntime(
     secretService,
     liveRequestService,
     scheduler,
+    taskService,
+    taskExecutionService,
+    taskSchedulerService,
     systemVersionService,
   };
   const server = await createServer(context);
@@ -147,6 +170,7 @@ export async function startServerRuntime(
       },
       terminateChildProcesses: async () => {
         systemVersionService.stop();
+        taskSchedulerService.stop();
         await orchestrator.stop();
         liveRequestService.dispose();
         workspaceWatchService.dispose();
@@ -160,6 +184,7 @@ export async function startServerRuntime(
   });
   drainRuntime.drain = drainController.drain;
   systemVersionService.start();
+  taskSchedulerService.start();
 
   if (options?.installSignalHandlers !== false) {
     installSignalHandlers(drainController.drain, logger);

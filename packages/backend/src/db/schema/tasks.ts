@@ -68,3 +68,18 @@ export const task_runs = sqliteTable(
     index("task_runs_created_at_idx").on(table.created_at),
   ],
 );
+
+export const task_scheduler_state = sqliteTable(
+  "task_scheduler_state",
+  {
+    task_id: text("task_id")
+      .primaryKey()
+      .references(() => tasks.id),
+    next_run_at: integer("next_run_at", { mode: "timestamp_ms" }),
+    last_scheduled_at: integer("last_scheduled_at", { mode: "timestamp_ms" }),
+    last_error: text("last_error"),
+    created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("task_scheduler_state_next_run_at_idx").on(table.next_run_at)],
+);

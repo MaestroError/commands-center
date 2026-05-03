@@ -22,6 +22,7 @@ import {
   type ListTasksQuery,
   type Task,
   type TaskRun,
+  type TaskRunStatus,
   type TaskSchedule,
   type TaskStatus,
   type TaskTodo,
@@ -296,6 +297,36 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return row ? mapTaskRun(row) : undefined;
     },
 
+    async getRunById(runId: string): Promise<TaskRun | undefined> {
+      const row = await options.db.query.task_runs.findFirst({
+        where: (table, operators) => operators.eq(table.id, runId),
+      });
+
+      return row ? mapTaskRun(row) : undefined;
+    },
+
+    async listActiveRuns(): Promise<TaskRun[]> {
+      const rows = await options.db.query.task_runs.findMany({
+        where: (table, operators) => operators.inArray(table.status, ["queued", "running"]),
+        orderBy: (table, operators) => [operators.desc(table.created_at)],
+      });
+
+      return taskRunListSchema.parse(rows.map(mapTaskRun));
+    },
+
+    async getActiveRunForTask(taskId: string): Promise<TaskRun | undefined> {
+      const row = await options.db.query.task_runs.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.task_id, taskId),
+            operators.inArray(table.status, ["queued", "running"]),
+          ),
+        orderBy: (table, operators) => [operators.desc(table.created_at)],
+      });
+
+      return row ? mapTaskRun(row) : undefined;
+    },
+
     async createRun(input: CreateTaskRunInput): Promise<TaskRun> {
       const parsed = createTaskRunInputSchema.parse(input);
       const task = await requireTask(parsed.taskId, { includeArchived: true });
@@ -383,6 +414,14 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       }
 
       return mapTaskRun(row);
+    },
+
+    async setRunStatus(
+      id: string,
+      status: TaskRunStatus,
+      input: Omit<UpdateTaskRunInput, "status"> = {},
+    ): Promise<TaskRun | undefined> {
+      return this.updateRun(id, { ...input, status });
     },
   };
 

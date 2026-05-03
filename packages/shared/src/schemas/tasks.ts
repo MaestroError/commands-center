@@ -117,6 +117,15 @@ export const listTaskRunsQuerySchema = z.object({
   triggerSource: taskRunTriggerSourceSchema.optional(),
 });
 
+export const triggerTaskInputSchema = z.object({
+  triggerSource: taskRunTriggerSourceSchema.default("manual"),
+  metadata: looseRecordSchema.optional(),
+});
+
+export const cancelTaskRunInputSchema = z.object({
+  reason: z.string().trim().min(1).optional(),
+});
+
 export const taskSchema = z.object({
   id: z.string().min(1),
   agentId: z.string().min(1),
@@ -157,9 +166,21 @@ export const createTaskRunInputSchema = z.object({
   cancellationReason: z.string().optional(),
 });
 
-export const updateTaskRunInputSchema = createTaskRunInputSchema
-  .omit({ taskId: true, agentId: true, triggerSource: true })
-  .partial();
+export const updateTaskRunInputSchema = z.object({
+  status: taskRunStatusSchema.optional(),
+  opencodeSessionId: z.string().trim().min(1).optional(),
+  renderedPrompt: z.string().optional(),
+  renderedContext: looseRecordSchema.optional(),
+  effectivePermissions: taskPermissionProfileSchema.optional(),
+  resultSummary: z.string().optional(),
+  result: looseRecordSchema.optional(),
+  errorMessage: z.string().optional(),
+  errorDetails: looseRecordSchema.optional(),
+  startedAt: z.string().datetime().optional(),
+  completedAt: z.string().datetime().optional(),
+  cancelledAt: z.string().datetime().optional(),
+  cancellationReason: z.string().optional(),
+});
 
 export const taskRunSchema = z.object({
   id: z.string().min(1),
@@ -185,8 +206,22 @@ export const taskRunSchema = z.object({
 
 export const taskRunListSchema = z.array(taskRunSchema);
 
+export const activeTaskRunListSchema = taskRunListSchema;
+
+export const taskSchedulerStateSchema = z.object({
+  taskId: z.string().min(1),
+  nextRunAt: z.string().datetime().optional(),
+  lastScheduledAt: z.string().datetime().optional(),
+  lastError: z.string().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const taskSchedulerStateListSchema = z.array(taskSchedulerStateSchema);
+
 export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
 export type CreateTaskRunInput = z.input<typeof createTaskRunInputSchema>;
+export type CancelTaskRunInput = z.input<typeof cancelTaskRunInputSchema>;
 export type ListTaskRunsQuery = z.infer<typeof listTaskRunsQuerySchema>;
 export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;
 export type Task = z.infer<typeof taskSchema>;
@@ -194,10 +229,12 @@ export type TaskPermissionProfile = z.infer<typeof taskPermissionProfileSchema>;
 export type TaskRun = z.infer<typeof taskRunSchema>;
 export type TaskRunStatus = z.infer<typeof taskRunStatusSchema>;
 export type TaskRunTriggerSource = z.infer<typeof taskRunTriggerSourceSchema>;
+export type TaskSchedulerState = z.infer<typeof taskSchedulerStateSchema>;
 export type TaskSchedule = z.infer<typeof taskScheduleSchema>;
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 export type TaskTodo = z.infer<typeof taskTodoSchema>;
 export type TaskTriggerMode = z.infer<typeof taskTriggerModeSchema>;
+export type TriggerTaskInput = z.input<typeof triggerTaskInputSchema>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
 export type UpdateTaskRunInput = z.input<typeof updateTaskRunInputSchema>;
 export { permissionActionSchema };

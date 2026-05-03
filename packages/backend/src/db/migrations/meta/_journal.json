@@ -43,6 +43,13 @@
       "when": 1777841445331,
       "tag": "0005_add_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1777842781003,
+      "tag": "0006_add_task_scheduler_state",
+      "breakpoints": true
     }
   ]
 }
