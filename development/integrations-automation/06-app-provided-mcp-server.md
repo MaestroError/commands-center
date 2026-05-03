@@ -83,10 +83,11 @@ packages/backend/src/mcp/
 - Register the app-provided MCP server in each agent workspace `opencode.jsonc` using an agent-specific URL that resolves by agent slug
 - Add a dedicated service that resolves enabled app tools for a given agent
 - Add a dedicated registry file or module where app tools are declared with stable names and descriptions
-- Implement initial app-provided tools through that registry, starting with the automation hooks required by I4
+- Implement initial app-provided tools through that registry, starting with task-run-safe execution helpers required by I4
 - Support dynamic tool registration and agent-scoped `listChanged` notifications when an agent's enabled app tool set changes
 - Enforce per-agent tool enable or disable in the backend service, not only in workspace permission rules
 - Add endpoint auth, origin validation, and lifecycle cleanup for the app MCP transport
+- Keep chat-oriented Tasks Management MCP tools out of `cc_app`; those belong to a separate MCP surface owned by I4.6
 
 ## Implementation Notes
 
@@ -116,5 +117,6 @@ packages/backend/src/mcp/
 - Custom tools MCP server (owned by I3)
 - Composio integration (owned by I5)
 - Specific automation business logic implementation (owned by I4, which registers tools into this server)
+- Chat-based Tasks Management MCP tooling (owned by I4.6)
 - One separate OS process per agent for the app MCP surface
 - Using Fastify alone as the MCP implementation without the official SDK

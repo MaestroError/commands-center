@@ -26,13 +26,14 @@ This is a full product feature with its own task model, scheduler, execution lif
 - Support three trigger modes: manual trigger only, one-time scheduled run, and repeated schedule using cron-like expressions
 - Implement scheduler abstraction for local mode, with persisted scheduler state in the portable workspace database
 - Implement task CRUD, archive, restore, delete, enable, disable, manual trigger, run cancel, and status behavior as backend services exposed via REST API routes
-- Expose one-time task scheduling, manual task trigger, and status check via the app-provided MCP server, so AI agents can create and monitor jobs programmatically
+- Expose task-run-safe execution helpers through `cc_app`, and expose chat-based task management through a separate Tasks Management MCP surface, so AI agents can both manage tasks in chat and operate inside task sessions safely
 - Enforce optional max-task limit from config
 - Run each task execution as a separate OpenCode agent session with enriched prompt context that includes task title, description, context, todos, trigger metadata, and previous relevant run result when useful
 - Persist every task run with status, started/completed timestamps, trigger source, rendered prompt/context, error details, result summary, and linked OpenCode session ID
 - Persist OpenCode sessions triggered by task runs so users can inspect them later and continue the same session from direct chat when appropriate
 - Catch and persist execution failures, including scheduler errors, OpenCode request failures, permission failures, and cancellation
-- Add per-task tool and MCP permission scoping so task runs can allow a different subset of tools than the base agent, while explicitly excluding unsafe/live tools unless the user enables them for that task
+- Add per-task tool and MCP permission scoping so task runs can allow a different subset of tools than the base agent, while explicitly excluding unsafe/live tools from all task sessions
+- Ensure task sessions do not depend on interactive approval. Task runs must use auto-approve or an equivalent no-`ask` effective permission profile
 - Ensure task-scoped permissions are applied only for that run and do not mutate the agent's default permission profile unless explicitly requested
 - Add active task run indicator in the top app header showing when one or more tasks are running, with a link to the active runs/tasks view
 - Prevent or clearly warn before refresh/upgrade/shutdown operations when task runs are active
@@ -52,13 +53,16 @@ This is a full product feature with its own task model, scheduler, execution lif
 
 - Each task can define a task-specific permission profile for built-in tools, custom tools, app-provided MCP servers, external MCP servers, and tool approval policy
 - Task permissions should default to the assigned agent's permissions, then apply task-specific overrides
-- Live/interactive tools must be denied by default for scheduled and repeated runs unless explicitly enabled for that task
+- Live/interactive tools must be denied for all task sessions
 - Automation-only tools can be enabled for task runs without exposing them in normal direct chat
+- Task-run-only tools on `cc_app` can be enabled for task sessions without exposing them in normal direct chat
+- Chat-based task management tools belong to a separate Tasks Management MCP surface and never appear inside task sessions
 - The effective permission profile used for each run must be persisted on `task_runs` for auditability and future replay/diagnosis
 
 ## Session Requirements
 
 - Each task run creates or records a dedicated OpenCode session linked from `task_runs`
+- Task sessions must not require interactive user responses for tool approvals during execution
 - Users can open a completed or failed run and inspect the exact session transcript/context
 - Users can continue a task-created OpenCode session in chat when the session is still valid for the agent workspace
 - Failed session creation or failed prompt execution must produce a failed run record with a human-readable error message and structured diagnostic details
@@ -84,11 +88,12 @@ This is a full product feature with its own task model, scheduler, execution lif
 - Configured limits are enforced when present and ignored when disabled
 - Failed runs are recorded and remain visible for diagnosis
 - Task-specific tool/MCP permissions are applied to task runs and persisted with run records
-- Live/interactive tools are unavailable to scheduled/repeated runs by default
+- Live/interactive tools are unavailable to all task sessions
+- Task sessions do not expose tools in `ask` mode and do not require user approval during execution
 - Active task run indicator appears in the top header whenever one or more task runs are running
 - Upgrade/shutdown/refresh-sensitive operations warn or block when active runs exist
 - Tasks list, task detail, task editor, active runs, and run history adapt correctly to mobile viewports
-- One-time task scheduling, manual task trigger, and status check are available via the app-provided MCP server, enabling AI agents to create and monitor jobs
+- Task-run-safe execution helpers are available through `cc_app`, and chat-based task management is available through a separate Tasks Management MCP surface
 
 ## Non-Goals
 
@@ -115,7 +120,8 @@ This epic should be split into sub-epics. It is now too broad for one safe PR be
 
 4. **I4.4 Task-Scoped Tool and MCP Permissions** — `development/integrations-automation/04-tasks-sub-epics/04-task-scoped-tool-and-mcp-permissions.md`
    - Define effective permission merging from agent defaults plus task overrides
-   - Deny live/interactive tools by default for scheduled runs
+   - Deny live/interactive tools for all task sessions
+   - Ensure task runs do not rely on `ask` approvals
    - Persist effective permissions per run
 
 5. **I4.5 Tasks UI and Active Run Indicator** — `development/integrations-automation/04-tasks-sub-epics/05-tasks-ui-and-active-run-indicator.md`
@@ -123,6 +129,6 @@ This epic should be split into sub-epics. It is now too broad for one safe PR be
    - Build list/editor/detail/run history/run detail/active runs UI
    - Add top-header active task indicator and mobile responsive behavior
 
-6. **I4.6 App MCP Task Management Tools** — `development/integrations-automation/04-tasks-sub-epics/06-app-mcp-task-management-tools.md`
-   - Expose task creation, manual trigger, one-time scheduling, and status checks via the app-provided MCP server
+6. **I4.6 Tasks Management MCP** — `development/integrations-automation/04-tasks-sub-epics/06-app-mcp-task-management-tools.md`
+   - Expose task creation, manual trigger, one-time scheduling, list/read, and status checks via a separate chat-oriented Tasks Management MCP
    - Ensure MCP tools call the same task services as REST/UI
