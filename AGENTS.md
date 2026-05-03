@@ -131,6 +131,7 @@ The CLI bundles backend + frontend into `packages/cli/dist/`. The backend expose
 - Do not use `enum`. Use `as const` objects or Zod union literals.
 - Do not use `class` unless there is a clear lifecycle to manage (e.g., the orchestrator). Prefer plain functions and modules.
 - Do not use default exports. Use named exports everywhere for refactoring safety.
+- Do not use inline SVG icons in React components. Always use `lucide-react` for icons — it is already installed in the frontend package.
 
 ---
 
@@ -281,8 +282,12 @@ it("supports opening, prompting, listing, and starting fresh", async () => {
 // Good: one behavior per test, shared setup via beforeAll.
 describe("conversation routes", () => {
   let server, agentId;
-  beforeAll(async () => { /* create DB, server, agent */ });
-  afterAll(async () => { /* close server, cleanup DB */ });
+  beforeAll(async () => {
+    /* create DB, server, agent */
+  });
+  afterAll(async () => {
+    /* close server, cleanup DB */
+  });
 
   it("resolves the active conversation for an agent", async () => {
     const response = await server.inject({ method: "GET", url: activeUrl });
@@ -297,9 +302,13 @@ describe("conversation routes", () => {
     expect(response.json().messages).toHaveLength(2);
   });
 
-  it("lists all conversations for an agent", async () => { /* ... */ });
+  it("lists all conversations for an agent", async () => {
+    /* ... */
+  });
 
-  it("start-fresh creates a new session and preserves the previous one", async () => { /* ... */ });
+  it("start-fresh creates a new session and preserves the previous one", async () => {
+    /* ... */
+  });
 });
 ```
 

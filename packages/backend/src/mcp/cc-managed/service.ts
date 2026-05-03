@@ -1,9 +1,7 @@
-import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types";
 import type { Logger } from "pino";
 
 import { agentCapabilitySelectionSchema } from "../../schemas/agents.js";
@@ -22,13 +20,6 @@ import {
   type CcManagedMcpAuthTokenService,
 } from "./auth-token-service.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
-
-type SessionRecord = {
-  transport: StreamableHTTPServerTransport;
-  server: McpServer;
-  agentSlug: string;
-  serverName: string;
-};
 
 type RouteContext = {
   rawRequest: IncomingMessage;
@@ -50,7 +41,6 @@ export function createCcManagedMcpService(options: {
   const authTokenService =
     options.authTokenService ?? createCcManagedMcpAuthTokenService({ authStateStore });
   const toolAccessService = createCcManagedMcpToolAccessService();
-  const sessions = new Map<string, SessionRecord>();
 
   return {
     async handlePost(context: RouteContext): Promise<void> {
@@ -66,21 +56,12 @@ export function createCcManagedMcpService(options: {
     },
 
     notifyListChanged(agentSlug: string, serverName: string): void {
-      for (const session of sessions.values()) {
-        if (session.agentSlug === agentSlug && session.serverName === serverName) {
-          session.server.sendToolListChanged();
-        }
-      }
+      void agentSlug;
+      void serverName;
     },
 
     async close(): Promise<void> {
-      await Promise.all(
-        Array.from(sessions.values()).map(async (session) => {
-          await session.transport.close().catch(() => {});
-          await session.server.close().catch(() => {});
-        }),
-      );
-      sessions.clear();
+      await Promise.resolve();
     },
   };
 
@@ -111,28 +92,7 @@ export function createCcManagedMcpService(options: {
     }
 
     try {
-      const sessionId = readSessionId(context.rawRequest);
-      let session = sessionId ? sessions.get(sessionId) : undefined;
-
-      if (!session) {
-        if (sessionId) {
-          writeText(context.rawReply, 404, "Unknown MCP session.");
-          return;
-        }
-
-        if (!isInitializeRequest(context.parsedBody)) {
-          writeText(context.rawReply, 400, "Initialization request required.");
-          return;
-        }
-
-        const created = await createSession(definition, context.routeAgentSlug);
-        session = created;
-      }
-
-      if (session.agentSlug !== context.routeAgentSlug || session.serverName !== definition.name) {
-        writeText(context.rawReply, 403, "Session scope mismatch.");
-        return;
-      }
+      const session = await createSession(definition, context.routeAgentSlug);
 
       await session.transport.handleRequest(
         context.rawRequest,
@@ -170,7 +130,7 @@ export function createCcManagedMcpService(options: {
   async function createSession(
     definition: CcManagedMcpServerDefinition,
     agentSlug: string,
-  ): Promise<SessionRecord> {
+  ): Promise<{ transport: StreamableHTTPServerTransport; server: McpServer }> {
     const agent = await loadAgent(agentSlug);
 
     if (!agent) {
@@ -210,29 +170,11 @@ export function createCcManagedMcpService(options: {
     }
 
     const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-      onsessioninitialized: (sessionId) => {
-        sessions.set(sessionId, record);
-      },
+      sessionIdGenerator: undefined,
     });
 
-    transport.onclose = () => {
-      const sessionId = transport.sessionId;
-
-      if (sessionId) {
-        sessions.delete(sessionId);
-      }
-    };
-
-    const record: SessionRecord = {
-      transport,
-      server,
-      agentSlug,
-      serverName: definition.name,
-    };
-
     await server.connect(transport);
-    return record;
+    return { transport, server };
   }
 
   async function authenticateRequest(
@@ -295,16 +237,6 @@ export function createCcManagedMcpService(options: {
       capabilities: agentCapabilitySelectionSchema.parse(JSON.parse(row.capabilities_json)),
     };
   }
-}
-
-function readSessionId(request: IncomingMessage): string | undefined {
-  const header = request.headers["mcp-session-id"];
-
-  if (typeof header === "string" && header.length > 0) {
-    return header;
-  }
-
-  return undefined;
 }
 
 function readBearerToken(header: string | string[] | undefined): string | undefined {

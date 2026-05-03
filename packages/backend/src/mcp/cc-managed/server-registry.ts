@@ -13,6 +13,10 @@ import {
   addSecretToolMetadata,
   createAddSecretDefinition,
 } from "./groups/cc-app/tools/add-secret.js";
+import {
+  createShowFileToUserDefinition,
+  showFileToUserToolMetadata,
+} from "./groups/cc-app/tools/show-file-to-user.js";
 import { createCopyCustomToolToAgentDefinition } from "./groups/cc-tool-management/tools/copy-custom-tool-to-agent.js";
 import { copyCustomToolToAgentMetadata } from "./groups/cc-tool-management/tools/copy-custom-tool-to-agent.js";
 import {
@@ -72,24 +76,28 @@ export function createCcManagedMcpServerRegistry(options: {
 }): readonly CcManagedMcpServerDefinition[] {
   const ccAppTools: CcManagedToolDefinition[] = [];
 
-  if (
-    options.db &&
-    options.config &&
-    options.opencodeService &&
-    options.liveRequestService &&
-    options.secretService &&
-    options.orchestrator
-  ) {
+  if (options.db && options.config && options.opencodeService && options.liveRequestService) {
     ccAppTools.push(
-      createAddSecretDefinition({
+      createShowFileToUserDefinition({
         db: options.db,
         config: options.config,
         opencodeService: options.opencodeService,
         liveRequestService: options.liveRequestService,
-        secretService: options.secretService,
-        orchestrator: options.orchestrator,
       }),
     );
+
+    if (options.secretService && options.orchestrator) {
+      ccAppTools.unshift(
+        createAddSecretDefinition({
+          db: options.db,
+          config: options.config,
+          opencodeService: options.opencodeService,
+          liveRequestService: options.liveRequestService,
+          secretService: options.secretService,
+          orchestrator: options.orchestrator,
+        }),
+      );
+    }
   }
 
   const toolManagementTools: CcManagedToolDefinition[] = [
@@ -112,7 +120,7 @@ export function createCcManagedMcpServerRegistry(options: {
       routeSegment: "cc-app",
       description: "CommandsCenter app-managed capabilities for this agent.",
       enabledByDefault: false,
-      catalogTools: [addSecretToolMetadata],
+      catalogTools: [addSecretToolMetadata, showFileToUserToolMetadata],
       tools: ccAppTools,
     },
     {

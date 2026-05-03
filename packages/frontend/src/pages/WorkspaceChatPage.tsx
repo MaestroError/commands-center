@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { lazy, Suspense, useMemo, useEffect, useRef, useState } from "react";
+import type { LiveRequest } from "@cc/shared/schemas";
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatHeader } from "@/components/chat/ChatHeader";
@@ -42,10 +43,12 @@ export function WorkspaceChatPage() {
   const { data: catalog } = useAgentCatalogQuery();
   const isDesktop = useMediaQuery("(min-width: 1200px)");
   const inspection = useChatInspectionTabs(conv.conversation?.id);
+  const resolveLiveRequest = conv.resolveLiveRequest;
   const [activeContextTabId, setActiveContextTabId] = useState("files");
   const [mediaSearchQuery, setMediaSearchQuery] = useState("");
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [bottomPaneHeight, setBottomPaneHeight] = useState<number>();
+  const autoResolvedLiveRequestIdsRef = useRef(new Set<string>());
 
   // Sync URL when conversation changes (initial load or switching)
   const prevConvIdRef = useRef<string | undefined>(undefined);
@@ -98,6 +101,24 @@ export function WorkspaceChatPage() {
     const activeIds = new Set(conv.liveRequests.map((request) => request.id));
 
     for (const request of conv.liveRequests) {
+      if (request.kind === "show_file_to_user") {
+        const path = getShowFilePath(request, agentSlug);
+
+        if (path && agentSlug && !autoResolvedLiveRequestIdsRef.current.has(request.id)) {
+          autoResolvedLiveRequestIdsRef.current.add(request.id);
+          inspection.openFile({
+            root: "workspace",
+            path: resolveAgentWorkspacePath(agentSlug, path),
+            displayPath: path,
+          });
+          void resolveLiveRequest(request.id, "opened", {}).catch(() => {
+            autoResolvedLiveRequestIdsRef.current.delete(request.id);
+          });
+        }
+
+        continue;
+      }
+
       inspection.openLiveRequest(request);
     }
 
@@ -106,7 +127,7 @@ export function WorkspaceChatPage() {
         inspection.removeLiveRequest(tab.request.id);
       }
     }
-  }, [conv.liveRequests, inspection]);
+  }, [agentSlug, conv.liveRequests, inspection, resolveLiveRequest]);
 
   const handleAttachmentMediaSearch = (filename: string) => {
     setMediaSearchQuery(filename);
@@ -306,6 +327,34 @@ export function WorkspaceChatPage() {
       )}
     </>
   );
+}
+
+function getShowFilePath(request: LiveRequest, agentSlug?: string): string | undefined {
+  const path = request.metadata["path"];
+
+  if (typeof path !== "string") {
+    return undefined;
+  }
+
+  const normalizedPath = path.trim().replace(/^\/+/, "");
+
+  if (normalizedPath.length === 0) {
+    return undefined;
+  }
+
+  if (!agentSlug) {
+    return normalizedPath;
+  }
+
+  const agentPrefix = `agents/${agentSlug}/`;
+  const agentPrefixIndex = normalizedPath.lastIndexOf(agentPrefix);
+
+  if (agentPrefixIndex >= 0) {
+    const relativePath = normalizedPath.slice(agentPrefixIndex + agentPrefix.length);
+    return relativePath.length > 0 ? relativePath : undefined;
+  }
+
+  return normalizedPath;
 }
 
 function SettingsIcon() {

@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -32,6 +32,16 @@ function makePart(overrides: Partial<ConversationPart> = {}): ConversationPart {
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
+});
+
+let writeClipboardSpy: ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  writeClipboardSpy = vi.fn(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: writeClipboardSpy },
+  });
 });
 
 describe("isHiddenUserMessage", () => {
@@ -233,6 +243,44 @@ describe("MessageTimeline", () => {
     await user.click(screen.getByRole("button", { name: "Carpenter Vacancy Redberry.pdf" }));
 
     expect(onAttachmentClick).toHaveBeenCalledWith("Carpenter Vacancy Redberry.pdf");
+  });
+
+  it("copies user message text", async () => {
+    render(
+      <MessageTimeline
+        messages={[makeMessage({ id: "user-copy", role: "user", content: "Copy this" })]}
+        parts={{}}
+        sessionStatus={{ type: "idle" }}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Copy message" }));
+
+    expect(writeClipboardSpy).toHaveBeenCalledWith("Copy this");
+  });
+
+  it("copies assistant text parts", async () => {
+    const assistantMessage = makeMessage({
+      id: "assistant-copy",
+      role: "assistant",
+      content: "",
+      parts: [
+        makePart({ id: "text-1", text: "First" }),
+        makePart({ id: "text-2", text: "Second" }),
+      ],
+    });
+
+    render(
+      <MessageTimeline
+        messages={[assistantMessage]}
+        parts={{ [assistantMessage.id]: assistantMessage.parts }}
+        sessionStatus={{ type: "idle" }}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Copy message" }));
+
+    expect(writeClipboardSpy).toHaveBeenCalledWith("First\n\nSecond");
   });
 
   it("renders retry status details instead of failing silently", () => {

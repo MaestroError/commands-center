@@ -241,6 +241,11 @@ describe("createAgentService", () => {
               description:
                 "Ask the CommandsCenter operator to securely enter a workspace secret while the agent waits.",
             },
+            {
+              name: "show_file_to_user",
+              description:
+                "Open a file from this agent workspace in the CommandsCenter operator's preview tab while the agent waits. Accepts either an agent-relative path or an absolute path inside this agent workspace.",
+            },
           ],
         },
         {

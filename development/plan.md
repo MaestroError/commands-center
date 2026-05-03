@@ -27,7 +27,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |  \- ✅ I2 Integrations and MCP Management
  |     |- ✅ I3 Custom Tools Platform
  |     |- ✅ I5 Composio Integration
- |     \- I6 App-Provided MCP Server
+ |     \- ✅ I6 App-Provided MCP Server
  |- ✅ E3 API and Realtime Foundation
  |  |- E4 Self-Updating and Version Management
  |  |- ✅ U0 Frontend Foundation
@@ -84,7 +84,7 @@ Run after Path A starts stabilizing. Integration epics (I2, I3, I5) and the cust
 3. `✅ integrations-automation/03-custom-tools-platform.md`
 4. `✅ product-ux-surfaces/06-custom-skills-library.md`
 5. `✅ integrations-automation/05-composio-integration.md`
-6. `integrations-automation/06-app-provided-mcp-server.md`
+6. `✅ integrations-automation/06-app-provided-mcp-server.md`
 7. `engine-infrastructure/04-self-updating-and-version-management.md`
 8. `product-ux-surfaces/01-app-shell-and-dashboard.md`
 9. `product-ux-surfaces/05-profile-settings-and-theming.md`
@@ -174,7 +174,7 @@ Each epic PR should:
 ### Milestone 4: MVP Completion
 
 - I4 Automations
-- I6 App-Provided MCP Server
+- ✅ I6 App-Provided MCP Server
 
 ## Long-Term Plan
 

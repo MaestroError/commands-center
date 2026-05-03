@@ -37,13 +37,13 @@ export function QuickFileModal(props: Props) {
             <p className="min-w-0 truncate text-sm text-text-primary">Inspection</p>
             <button
               aria-label="Close quick editor"
-              className="cc-button cc-button-secondary inline-flex h-8 w-8 items-center justify-center p-0"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface-elevated text-text-primary shadow-sm transition hover:border-accent/50 hover:text-accent"
               onClick={() => {
                 props.onClosePane?.();
               }}
               type="button"
             >
-              <X className="h-4 w-4" />
+              <X className="h-5 w-5" />
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">

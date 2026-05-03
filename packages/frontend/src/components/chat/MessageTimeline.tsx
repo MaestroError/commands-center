@@ -1,3 +1,4 @@
+import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ConversationMessage, ConversationPart, SessionStatus } from "@cc/shared/schemas";
@@ -59,6 +60,7 @@ export function MessageTimeline({
     >
       {messages.map((msg) => {
         const msgParts = parts[msg.id] ?? msg.parts;
+        const copyText = getMessageCopyText(msg, msgParts);
         // Skip empty assistant message shells (no parts yet, no content)
         if (msg.role === "assistant" && msgParts.length === 0 && !msg.content) {
           return null;
@@ -71,16 +73,20 @@ export function MessageTimeline({
         return (
           <div key={msg.id}>
             <div className={msg.role === "user" ? "flex justify-end" : "flex justify-start"}>
-              <div className={msg.role === "user" ? "max-w-[80%]" : "max-w-[90%]"}>
-                {msg.role === "user" ? (
-                  <UserMessage
-                    message={msg}
-                    onAttachmentClick={onAttachmentClick}
-                    parts={msgParts}
-                  />
-                ) : (
-                  <AssistantMessage message={msg} parts={msgParts} />
-                )}
+              <div className={msg.role === "user" ? "group max-w-[80%]" : "group max-w-[90%]"}>
+                <div className="flex items-start gap-2">
+                  {msg.role === "user" ? <MessageCopyButton copyText={copyText} /> : null}
+                  {msg.role === "user" ? (
+                    <UserMessage
+                      message={msg}
+                      onAttachmentClick={onAttachmentClick}
+                      parts={msgParts}
+                    />
+                  ) : (
+                    <AssistantMessage message={msg} parts={msgParts} />
+                  )}
+                  {msg.role !== "user" ? <MessageCopyButton copyText={copyText} /> : null}
+                </div>
               </div>
             </div>
             {interrupted && <InterruptedDivider />}
@@ -131,4 +137,63 @@ export function MessageTimeline({
       <div ref={sentinelRef} />
     </div>
   );
+}
+
+function MessageCopyButton(props: { copyText: string }) {
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  if (!props.copyText) {
+    return null;
+  }
+
+  const handleClick = () => {
+    void navigator.clipboard
+      .writeText(props.copyText)
+      .then(() => {
+        setCopied(true);
+        timeoutRef.current = setTimeout(() => {
+          setCopied(false);
+          timeoutRef.current = null;
+        }, 2000);
+      })
+      .catch(() => undefined);
+  };
+
+  return (
+    <button
+      aria-label={copied ? "Copied" : "Copy message"}
+      className="mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-secondary opacity-70 transition hover:border-accent/50 hover:text-text-primary focus:opacity-100 group-hover:opacity-100"
+      onClick={handleClick}
+      title={copied ? "Copied!" : "Copy message"}
+      type="button"
+    >
+      {copied ? (
+        <Check aria-hidden="true" className="h-3.5 w-3.5 text-green-500" />
+      ) : (
+        <Copy aria-hidden="true" className="h-3.5 w-3.5" />
+      )}
+    </button>
+  );
+}
+
+function getMessageCopyText(message: ConversationMessage, parts: ConversationPart[]): string {
+  const textParts = parts
+    .filter((part) => part.type === "text" && typeof part["text"] === "string")
+    .map((part) => part["text"] as string)
+    .filter((text) => text.trim().length > 0);
+
+  if (textParts.length > 0) {
+    return textParts.join("\n\n");
+  }
+
+  return message.content;
 }

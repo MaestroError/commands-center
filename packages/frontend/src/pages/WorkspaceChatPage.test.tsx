@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -204,6 +204,7 @@ function makeConversation(overrides: Record<string, unknown> = {}) {
 }
 
 afterEach(() => {
+  cleanup();
   mockParams = {};
   navigateMock.mockReset();
   useConversationMock.mockReset();
@@ -419,6 +420,93 @@ describe("WorkspaceChatPage", () => {
     expect(screen.getByTestId("quick-file-panel")).toHaveTextContent(
       "file:workspace:agents/planner/README.md",
     );
+  });
+
+  it("opens a requested file preview and resolves the live request", async () => {
+    const resolveLiveRequest = vi.fn(() => Promise.resolve());
+
+    mockParams = { agentId: "planner", conversationId: "conv-1" };
+    useConversationMock.mockReturnValue(
+      makeConversation({
+        conversation: { id: "conv-1", messages: [] },
+        resolveLiveRequest,
+        liveRequests: [
+          {
+            id: "req-1",
+            conversationId: "conv-1",
+            kind: "show_file_to_user",
+            closable: true,
+            metadata: { path: "notes/plan.md" },
+            actions: [],
+            fields: [],
+            createdAt: "2026-05-03T10:00:00.000Z",
+            presentation: {
+              title: "Opening notes/plan.md",
+              cancelLabel: "Dismiss",
+            },
+          },
+        ],
+      }),
+    );
+    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+
+    render(<WorkspaceChatPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("quick-file-panel")).toHaveTextContent(
+        "file:workspace:agents/planner/notes/plan.md",
+      );
+    });
+    expect(resolveLiveRequest).toHaveBeenCalledWith("req-1", "opened", {});
+  });
+
+  it("normalizes a full workspace path from a file preview live request", async () => {
+    const resolveLiveRequest = vi.fn(() => Promise.resolve());
+
+    mockParams = { agentId: "testing-agent", conversationId: "conv-1" };
+    useConversationMock.mockReturnValue(
+      makeConversation({
+        agent: {
+          id: "agent-1",
+          slug: "testing-agent",
+          name: "Testing Agent",
+          role: "Tests work",
+          iconPath: undefined,
+          workspacePath: "/workspace/testing-agent",
+          capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
+        },
+        conversation: { id: "conv-1", messages: [] },
+        resolveLiveRequest,
+        liveRequests: [
+          {
+            id: "req-1",
+            conversationId: "conv-1",
+            kind: "show_file_to_user",
+            closable: true,
+            metadata: {
+              path: "/Users/revazgh/cc-dev/.cc/workspace/agents/testing-agent/mermaid.png",
+            },
+            actions: [],
+            fields: [],
+            createdAt: "2026-05-03T10:00:00.000Z",
+            presentation: {
+              title: "Opening mermaid.png",
+              cancelLabel: "Dismiss",
+            },
+          },
+        ],
+      }),
+    );
+    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+
+    render(<WorkspaceChatPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("quick-file-panel")).toHaveTextContent(
+        "file:workspace:agents/testing-agent/mermaid.png",
+      );
+    });
+    expect(resolveLiveRequest).toHaveBeenCalledWith("req-1", "opened", {});
   });
 
   it("toggles the desktop inspection pane from the chat header", async () => {

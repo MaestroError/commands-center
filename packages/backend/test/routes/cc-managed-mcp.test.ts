@@ -9,6 +9,8 @@ import { createServer } from "../../src/server";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createCcManagedMcpAuthStateStore } from "../../src/mcp/cc-managed/auth-state-store";
+import { createCcManagedMcpAuthTokenService } from "../../src/mcp/cc-managed/auth-token-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("cc-managed MCP routes", () => {
@@ -27,8 +29,6 @@ describe("cc-managed MCP routes", () => {
     });
 
     try {
-      await server.listen({ host: "127.0.0.1", port: testDb.config.server.port });
-
       const created = await server.inject({
         method: "POST",
         url: "/api/agents",
@@ -72,14 +72,15 @@ describe("cc-managed MCP routes", () => {
         throw new Error("Expected cc_tool_management authorization header.");
       }
 
-      const initializeResponse = await fetch(ccToolManagement.url, {
+      const initializeResponse = await server.inject({
         method: "POST",
+        url: "/api/mcp/cc/cc-tool-management/agents/writer",
         headers: {
           Authorization: authHeader,
           Accept: "application/json, text/event-stream",
           "content-type": "application/json",
         },
-        body: JSON.stringify({
+        payload: {
           jsonrpc: "2.0",
           id: 1,
           method: "initialize",
@@ -88,49 +89,47 @@ describe("cc-managed MCP routes", () => {
             capabilities: {},
             clientInfo: { name: "test-client", version: "1.0.0" },
           },
-        }),
+        },
       });
 
-      expect(initializeResponse.ok).toBe(true);
+      expect(initializeResponse.statusCode).toBe(200);
 
-      const initializeBody = await initializeResponse.text();
+      const initializeBody = initializeResponse.body;
 
-      expect(initializeResponse.headers.get("mcp-session-id")).toBeTruthy();
+      expect(initializeResponse.headers["mcp-session-id"]).toBeUndefined();
       expect(initializeBody).toContain('"name":"cc_tool_management"');
       expect(initializeBody).toContain('"listChanged":true');
 
-      const sessionId = initializeResponse.headers.get("mcp-session-id");
-
-      const listToolsResponse = await fetch(ccToolManagement.url, {
+      const listToolsResponse = await server.inject({
         method: "POST",
+        url: "/api/mcp/cc/cc-tool-management/agents/writer",
         headers: {
           Authorization: authHeader,
           Accept: "application/json, text/event-stream",
           "content-type": "application/json",
-          ...(sessionId ? { "mcp-session-id": sessionId } : {}),
         },
-        body: JSON.stringify({
+        payload: {
           jsonrpc: "2.0",
           id: 2,
           method: "tools/list",
           params: {},
-        }),
+        },
       });
 
-      expect(listToolsResponse.ok).toBe(true);
-      const listToolsBody = await listToolsResponse.text();
+      expect(listToolsResponse.statusCode).toBe(200);
+      const listToolsBody = listToolsResponse.body;
 
       expect(listToolsBody).toContain('"name":"create_custom_tool"');
 
-      const callToolResponse = await fetch(ccToolManagement.url, {
+      const callToolResponse = await server.inject({
         method: "POST",
+        url: "/api/mcp/cc/cc-tool-management/agents/writer",
         headers: {
           Authorization: authHeader,
           Accept: "application/json, text/event-stream",
           "content-type": "application/json",
-          ...(sessionId ? { "mcp-session-id": sessionId } : {}),
         },
-        body: JSON.stringify({
+        payload: {
           jsonrpc: "2.0",
           id: 3,
           method: "tools/call",
@@ -141,11 +140,11 @@ describe("cc-managed MCP routes", () => {
               description: "Draft release notes.",
             },
           },
-        }),
+        },
       });
 
-      expect(callToolResponse.ok).toBe(true);
-      const callToolJson = parseSseJson(await callToolResponse.text()) as {
+      expect(callToolResponse.statusCode).toBe(200);
+      const callToolJson = parseSseJson(callToolResponse.body) as {
         result?: {
           structuredContent?: {
             toolSlug?: string;
@@ -199,6 +198,71 @@ describe("cc-managed MCP routes", () => {
 
       expect(response.statusCode).toBe(401);
       expect(response.body).toContain("Missing bearer token");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("ignores stale MCP session headers for stateless cc-managed tools", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Writer",
+          role: "write docs",
+          instructions: "Write useful docs.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            builtInSkills: [],
+            workspaceSkills: [],
+            customTools: [],
+            mcpServers: [],
+            toolPermissions: [],
+            appMcpServers: [{ name: "cc_tool_management", enabled: true, action: "allow" }],
+            appToolPermissions: [],
+          },
+        },
+      });
+
+      expect(created.statusCode).toBe(201);
+      const tokenService = createCcManagedMcpAuthTokenService({
+        authStateStore: createCcManagedMcpAuthStateStore(testDb.config),
+      });
+      const authHeader = `Bearer ${await tokenService.issueToken("writer", "cc_tool_management")}`;
+
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/mcp/cc/cc-tool-management/agents/writer",
+        headers: {
+          Authorization: authHeader,
+          Accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+          "mcp-session-id": "stale-session",
+        },
+        payload: {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+          params: {},
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toContain('"name":"create_custom_tool"');
     } finally {
       await server.close();
       await testDb.cleanup();
