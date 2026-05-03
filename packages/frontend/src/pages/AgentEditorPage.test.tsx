@@ -46,12 +46,17 @@ beforeEach(() => {
           name: "cc_app",
           enabledByDefault: false,
           description: "CommandsCenter app-managed capabilities for this agent.",
+          tools: [{ name: "add_secret", description: "Add a workspace secret." }],
         },
         {
           name: "cc_tool_management",
           enabledByDefault: false,
           description:
             "CommandsCenter-managed tool creation and library maintenance for this agent.",
+          tools: [
+            { name: "create_custom_tool", description: "Create a custom tool." },
+            { name: "copy_custom_tool_to_agent", description: "Copy a custom tool." },
+          ],
         },
       ],
       customTools: [],
@@ -265,7 +270,14 @@ describe("AgentEditorPage", () => {
         id: "agent-1",
         input: expect.objectContaining({
           capabilities: expect.objectContaining({
-            appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+            appMcpServers: [
+              {
+                name: "cc_app",
+                enabled: true,
+                action: "allow",
+                perToolPermissionsEnabled: false,
+              },
+            ],
             appToolPermissions: [],
           }),
         }),
@@ -286,8 +298,49 @@ describe("AgentEditorPage", () => {
         id: "agent-1",
         input: expect.objectContaining({
           capabilities: expect.objectContaining({
-            appMcpServers: [{ name: "cc_tool_management", enabled: true, action: "allow" }],
+            appMcpServers: [
+              {
+                name: "cc_tool_management",
+                enabled: true,
+                action: "allow",
+                perToolPermissionsEnabled: false,
+              },
+            ],
             appToolPermissions: [],
+          }),
+        }),
+      });
+    });
+  });
+
+  it("saves per-tool CC-managed MCP permissions when enabled", async () => {
+    updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
+
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("button", { name: "cc_tool_management Allow" }));
+    fireEvent.click(screen.getByLabelText(/Configure tools individually/i));
+    fireEvent.click(
+      screen.getByRole("button", { name: "cc_tool_management copy_custom_tool_to_agent Ask" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(updateMutateAsync).toHaveBeenCalledWith({
+        id: "agent-1",
+        input: expect.objectContaining({
+          capabilities: expect.objectContaining({
+            appMcpServers: [
+              {
+                name: "cc_tool_management",
+                enabled: true,
+                action: "allow",
+                perToolPermissionsEnabled: true,
+              },
+            ],
+            appToolPermissions: [
+              { pattern: "cc_tool_management_copy_custom_tool_to_agent", action: "ask" },
+            ],
           }),
         }),
       });
@@ -349,7 +402,10 @@ describe("AgentEditorPage", () => {
 
     renderEditor();
 
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Search global tools" }), {
+      target: { value: "release" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Release Helper/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {

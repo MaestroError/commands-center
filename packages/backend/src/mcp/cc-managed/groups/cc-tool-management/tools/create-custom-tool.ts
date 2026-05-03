@@ -14,13 +14,18 @@ export const createCustomToolOutputSchema = z.object({
   entryPath: z.string().min(1),
 });
 
+export const createCustomToolMetadata = {
+  name: "create_custom_tool",
+  description:
+    "Create a blank CommandsCenter custom tool and return the folder path the agent should edit.",
+} as const;
+
 export function createCreateCustomToolDefinition(options: {
   customToolService: CustomToolService;
 }) {
   return {
-    name: "create_custom_tool",
-    description:
-      "Create a blank CommandsCenter custom tool and return the folder path the agent should edit.",
+    name: createCustomToolMetadata.name,
+    description: createCustomToolMetadata.description,
     inputSchema: createCustomToolInputSchema,
     outputSchema: createCustomToolOutputSchema,
     async execute(args: unknown) {

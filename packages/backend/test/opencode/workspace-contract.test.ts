@@ -123,6 +123,47 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
     expect(parsed.permission["cc_tool_management_*"]).toBe("deny");
   });
 
+  it("denies CC-managed wildcard when per-tool permissions are enabled", () => {
+    const rendered = renderOpenCodeWorkspace({
+      name: "Writer",
+      role: "write docs",
+      instructions: "Write useful docs and keep them accurate.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {
+        builtInSkills: [],
+        workspaceSkills: [],
+        customTools: [],
+        mcpServers: [],
+        toolPermissions: [],
+        appMcpServers: [
+          {
+            name: "cc_tool_management",
+            enabled: true,
+            action: "allow",
+            perToolPermissionsEnabled: true,
+          },
+        ],
+        appToolPermissions: [{ pattern: "cc_tool_management_create_custom_tool", action: "ask" }],
+      },
+      appMcpEntries: {
+        cc_tool_management: {
+          type: "remote",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/agents/writer",
+          enabled: true,
+          oauth: false,
+          headers: {
+            Authorization: "Bearer token",
+          },
+        },
+      },
+    });
+
+    const parsed = JSON.parse(rendered.configJsonc) as { permission: Record<string, string> };
+
+    expect(parsed.permission["cc_tool_management_*"]).toBe("deny");
+    expect(parsed.permission["cc_tool_management_create_custom_tool"]).toBe("ask");
+  });
+
   it("copies validated skills into the documented .opencode path", async () => {
     const testDb = await createTestDatabase();
     const skillRoot = join(testDb.cwd, "builtin-skills");

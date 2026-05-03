@@ -20,6 +20,12 @@ const addSecretOutputSchema = z.object({
   stored: z.literal(true),
 });
 
+export const addSecretToolMetadata = {
+  name: "add_secret",
+  description:
+    "Ask the CommandsCenter operator to securely enter a workspace secret while the agent waits.",
+} as const;
+
 const addSecretDecisionSchema = z.object({
   action: z.literal("submit"),
   values: z.object({
@@ -37,9 +43,8 @@ export function createAddSecretDefinition(options: {
   orchestrator: OpenCodeOrchestrator;
 }) {
   return {
-    name: "add_secret",
-    description:
-      "Ask the CommandsCenter operator to securely enter a workspace secret while the agent waits.",
+    name: addSecretToolMetadata.name,
+    description: addSecretToolMetadata.description,
     inputSchema: addSecretInputSchema,
     outputSchema: addSecretOutputSchema,
     async execute(args: unknown, context: { agentSlug: string }) {

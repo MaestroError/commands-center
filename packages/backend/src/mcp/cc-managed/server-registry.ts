@@ -9,9 +9,16 @@ import type { LiveRequestService } from "../../services/live-request-service.js"
 import type { OpenCodeService } from "../../services/opencode-service.js";
 import type { SecretService } from "../../services/secret-service.js";
 import type { OpenCodeOrchestrator } from "../../orchestrator/opencode-orchestrator.js";
-import { createAddSecretDefinition } from "./groups/cc-app/tools/add-secret.js";
+import {
+  addSecretToolMetadata,
+  createAddSecretDefinition,
+} from "./groups/cc-app/tools/add-secret.js";
 import { createCopyCustomToolToAgentDefinition } from "./groups/cc-tool-management/tools/copy-custom-tool-to-agent.js";
-import { createCreateCustomToolDefinition } from "./groups/cc-tool-management/tools/create-custom-tool.js";
+import { copyCustomToolToAgentMetadata } from "./groups/cc-tool-management/tools/copy-custom-tool-to-agent.js";
+import {
+  createCustomToolMetadata,
+  createCreateCustomToolDefinition,
+} from "./groups/cc-tool-management/tools/create-custom-tool.js";
 
 export type CcManagedToolContext = {
   agentSlug: string;
@@ -38,11 +45,17 @@ export type CcManagedToolDefinition = {
       }>;
 };
 
+export type CcManagedToolMetadata = {
+  name: string;
+  description: string;
+};
+
 export type CcManagedMcpServerDefinition = {
   name: string;
   routeSegment: string;
   description: string;
   enabledByDefault: boolean;
+  catalogTools: readonly CcManagedToolMetadata[];
   tools: readonly CcManagedToolDefinition[];
 };
 
@@ -99,6 +112,7 @@ export function createCcManagedMcpServerRegistry(options: {
       routeSegment: "cc-app",
       description: "CommandsCenter app-managed capabilities for this agent.",
       enabledByDefault: false,
+      catalogTools: [addSecretToolMetadata],
       tools: ccAppTools,
     },
     {
@@ -106,6 +120,7 @@ export function createCcManagedMcpServerRegistry(options: {
       routeSegment: "cc-tool-management",
       description: "CommandsCenter-managed tool creation and library maintenance for this agent.",
       enabledByDefault: false,
+      catalogTools: [createCustomToolMetadata, copyCustomToolToAgentMetadata],
       tools: toolManagementTools,
     },
   ] as const satisfies readonly CcManagedMcpServerDefinition[];

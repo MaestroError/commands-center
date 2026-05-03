@@ -235,12 +235,31 @@ describe("createAgentService", () => {
           name: "cc_app",
           enabledByDefault: false,
           description: "CommandsCenter app-managed capabilities for this agent.",
+          tools: [
+            {
+              name: "add_secret",
+              description:
+                "Ask the CommandsCenter operator to securely enter a workspace secret while the agent waits.",
+            },
+          ],
         },
         {
           name: "cc_tool_management",
           enabledByDefault: false,
           description:
             "CommandsCenter-managed tool creation and library maintenance for this agent.",
+          tools: [
+            {
+              name: "create_custom_tool",
+              description:
+                "Create a blank CommandsCenter custom tool and return the folder path the agent should edit.",
+            },
+            {
+              name: "copy_custom_tool_to_agent",
+              description:
+                "Copy a global CommandsCenter custom tool into an agent workspace, asking the operator when overwrite or rename is needed.",
+            },
+          ],
         },
       ]);
     } finally {

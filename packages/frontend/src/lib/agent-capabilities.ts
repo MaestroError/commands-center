@@ -1,5 +1,6 @@
 import type {
   AgentCapabilitySelection,
+  AgentAppMcpServer,
   AgentMcpServer,
   AgentPermissionRule,
 } from "@cc/shared/schemas";
@@ -8,6 +9,7 @@ type MutableServerSelection = {
   name: string;
   enabled?: boolean;
   action: AgentMcpServer["action"];
+  perToolPermissionsEnabled?: boolean;
 };
 
 export function getMcpServerSelection(capabilities: AgentCapabilitySelection, serverName: string) {
@@ -85,6 +87,8 @@ export function setAppMcpServerEnabled(
         name: serverName,
         enabled: true,
         action: getAppMcpServerSelection(capabilities, serverName)?.action ?? "allow",
+        perToolPermissionsEnabled:
+          getAppMcpServerSelection(capabilities, serverName)?.perToolPermissionsEnabled ?? false,
       }),
     };
   }
@@ -115,7 +119,73 @@ export function setAppMcpServerAction(
       name: serverName,
       enabled: true,
       action,
+      perToolPermissionsEnabled:
+        getAppMcpServerSelection(capabilities, serverName)?.perToolPermissionsEnabled ?? false,
     }),
+  };
+}
+
+export function setAppMcpServerPerToolPermissionsEnabled(
+  capabilities: AgentCapabilitySelection,
+  serverName: string,
+  enabled: boolean,
+): AgentCapabilitySelection {
+  const selection = getAppMcpServerSelection(capabilities, serverName);
+
+  return {
+    ...capabilities,
+    appMcpServers: upsertMcpServerSelection(capabilities.appMcpServers ?? [], {
+      name: serverName,
+      enabled: true,
+      action: selection?.action ?? "allow",
+      perToolPermissionsEnabled: enabled,
+    }),
+    appToolPermissions: enabled
+      ? (capabilities.appToolPermissions ?? [])
+      : (capabilities.appToolPermissions ?? []).filter(
+          (rule) => !rule.pattern.startsWith(`${serverName}_`),
+        ),
+  };
+}
+
+export function getAppMcpServerPerToolPermissionsEnabled(
+  capabilities: AgentCapabilitySelection,
+  serverName: string,
+): boolean {
+  return getAppMcpServerSelection(capabilities, serverName)?.perToolPermissionsEnabled ?? false;
+}
+
+export function getAppMcpToolAction(
+  capabilities: AgentCapabilitySelection,
+  serverName: string,
+  toolName: string,
+): AgentPermissionRule["action"] {
+  const pattern = buildAppMcpToolPattern(serverName, toolName);
+  const exact = (capabilities.appToolPermissions ?? []).find((rule) => rule.pattern === pattern);
+
+  return exact?.action ?? "deny";
+}
+
+export function setAppMcpToolAction(
+  capabilities: AgentCapabilitySelection,
+  serverName: string,
+  toolName: string,
+  action: AgentPermissionRule["action"],
+): AgentCapabilitySelection {
+  const pattern = buildAppMcpToolPattern(serverName, toolName);
+  const remaining = (capabilities.appToolPermissions ?? []).filter(
+    (rule) => rule.pattern !== pattern,
+  );
+
+  return {
+    ...capabilities,
+    appMcpServers: upsertMcpServerSelection(capabilities.appMcpServers ?? [], {
+      name: serverName,
+      enabled: true,
+      action: getAppMcpServerSelection(capabilities, serverName)?.action ?? "allow",
+      perToolPermissionsEnabled: true,
+    } satisfies AgentAppMcpServer),
+    appToolPermissions: [...remaining, { pattern, action }],
   };
 }
 
@@ -124,6 +194,10 @@ export function getMcpServerAction(
   serverName: string,
 ): AgentPermissionRule["action"] {
   return getMcpServerSelection(capabilities, serverName)?.action ?? "deny";
+}
+
+function buildAppMcpToolPattern(serverName: string, toolName: string): string {
+  return `${serverName}_${toolName}`;
 }
 
 export function getAppMcpServerAction(

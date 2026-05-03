@@ -19,6 +19,12 @@ const copyCustomToolToAgentOutputSchema = z.object({
   overwritten: z.boolean(),
 });
 
+export const copyCustomToolToAgentMetadata = {
+  name: "copy_custom_tool_to_agent",
+  description:
+    "Copy a global CommandsCenter custom tool into an agent workspace, asking the operator when overwrite or rename is needed.",
+} as const;
+
 const copyDecisionSchema = z.object({
   action: z.enum(["rewrite", "rename"]),
   values: z.object({
@@ -32,9 +38,8 @@ export function createCopyCustomToolToAgentDefinition(options: {
   liveRequestService?: LiveRequestService;
 }) {
   return {
-    name: "copy_custom_tool_to_agent",
-    description:
-      "Copy a global CommandsCenter custom tool into an agent workspace, asking the operator when overwrite or rename is needed.",
+    name: copyCustomToolToAgentMetadata.name,
+    description: copyCustomToolToAgentMetadata.description,
     inputSchema: copyCustomToolToAgentInputSchema,
     outputSchema: copyCustomToolToAgentOutputSchema,
     async execute(args: unknown, context: { agentSlug: string }) {

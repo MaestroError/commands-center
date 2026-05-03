@@ -5,10 +5,13 @@ import type {
   Agent,
   AgentCatalog,
   AgentCapabilitySelection,
+  BuiltInSkill,
   CreateAgentInput,
   CustomToolAgentCopy,
   CustomToolDriftStatus,
+  CustomTool,
   McpServer,
+  WorkspaceSkill,
   UpdateAgentInput,
 } from "@cc/shared/schemas";
 
@@ -25,8 +28,12 @@ import {
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import {
   getAppMcpServerAction,
+  getAppMcpServerPerToolPermissionsEnabled,
+  getAppMcpToolAction,
   getMcpServerAction,
   setAppMcpServerAction,
+  setAppMcpServerPerToolPermissionsEnabled,
+  setAppMcpToolAction,
   setMcpServerAction,
 } from "@/lib/agent-capabilities";
 import { resolveInitialModelId } from "@/lib/agent-form";
@@ -50,6 +57,10 @@ type FormErrors = Partial<
 
 type PermissionAction = "allow" | "ask" | "deny";
 
+type SkillOption =
+  | { kind: "built-in"; skill: BuiltInSkill }
+  | { kind: "workspace"; skill: WorkspaceSkill };
+
 export function AgentEditorPage(props: AgentEditorPageProps) {
   const params = useParams<{ slug: string }>();
   const navigate = useNavigate();
@@ -62,6 +73,8 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
   const [errors, setErrors] = useState<FormErrors>({});
   const [saveError, setSaveError] = useState<string>();
   const [successMessage, setSuccessMessage] = useState<string>();
+  const [skillSearch, setSkillSearch] = useState("");
+  const [customToolSearch, setCustomToolSearch] = useState("");
   const initializedKeyRef = useRef<string | undefined>(undefined);
   const catalog = catalogQuery.data;
   const agents = agentsQuery.data ?? [];
@@ -71,6 +84,19 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
   const hasProviderModels = (catalog?.providerModels.length ?? 0) > 0;
   const slug = slugify(form.name);
   const slugTaken = agents.some((entry) => entry.slug === slug && entry.id !== agent?.id);
+  const skillOptions = buildSkillOptions(catalog);
+  const selectedSkills = skillOptions.filter((option) =>
+    isSkillSelected(form.capabilities, option),
+  );
+  const skillSearchResults = filterSkillOptions(skillOptions, form.capabilities, skillSearch);
+  const selectedCustomTools = (customToolsQuery.data ?? []).filter((tool) =>
+    (form.capabilities.customTools ?? []).includes(tool.slug),
+  );
+  const customToolSearchResults = filterCustomTools(
+    customToolsQuery.data ?? [],
+    form.capabilities,
+    customToolSearch,
+  );
 
   useEffect(() => {
     if (!catalog) {
@@ -213,137 +239,63 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
             )}
           </section>
 
-          <section className="cc-panel p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-text-primary">Skills</h2>
-                <p className="mt-1 text-sm text-text-secondary">
-                  Assigned skills are copied into the agent workspace when the form is saved.
-                </p>
-              </div>
+          <CollapsibleSection
+            action={
               <Link className="cc-button cc-button-secondary" to="/skills">
                 Browse skills
               </Link>
-            </div>
-
-            {(catalog?.builtInSkills.length ?? 0) > 0 ||
-            (catalog?.workspaceSkills?.length ?? 0) > 0 ? (
-              <div className="mt-5 grid gap-6">
-                {(catalog?.builtInSkills.length ?? 0) > 0 ? (
-                  <div className="grid gap-3">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold text-text-primary">Built-in</h3>
-                      <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
-                        Curated
-                      </span>
-                    </div>
+            }
+            description="Assigned skills are copied into the agent workspace when the form is saved."
+            title="Skills"
+          >
+            {skillOptions.length > 0 ? (
+              <div className="grid gap-5">
+                <div className="grid gap-3">
+                  <h3 className="text-sm font-semibold text-text-primary">Chosen skills</h3>
+                  {selectedSkills.length > 0 ? (
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {catalog?.builtInSkills.map((skill) => {
-                        const selected = (form.capabilities.builtInSkills ?? []).includes(
-                          skill.slug,
-                        );
-
-                        return (
-                          <label
-                            className={
-                              selected
-                                ? "rounded-xl border border-accent/30 bg-accent/5 p-4"
-                                : "rounded-xl border border-border bg-surface p-4"
-                            }
-                            key={skill.slug}
-                          >
-                            <div className="flex items-start gap-3">
-                              <input
-                                checked={selected}
-                                onChange={() => toggleSkill(skill.slug)}
-                                type="checkbox"
-                              />
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="font-semibold text-text-primary">{skill.name}</p>
-                                  <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
-                                    Built-in
-                                  </span>
-                                </div>
-                                <p className="mt-1 text-sm text-text-secondary">
-                                  {skill.description}
-                                </p>
-                                <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
-                                  <span className="rounded-full border border-border px-2 py-1">
-                                    {skill.category}
-                                  </span>
-                                  {skill.version ? (
-                                    <span className="rounded-full border border-border px-2 py-1">
-                                      v{skill.version}
-                                    </span>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </div>
-                          </label>
-                        );
-                      })}
+                      {selectedSkills.map((option) => (
+                        <SkillCard
+                          key={`${option.kind}:${option.skill.slug}`}
+                          option={option}
+                          selected
+                          onClick={() => removeSkillOption(option)}
+                        />
+                      ))}
                     </div>
-                  </div>
-                ) : null}
+                  ) : (
+                    <p className="rounded-xl border border-dashed border-border p-4 text-sm text-text-secondary">
+                      No skills chosen yet. Search below to add one.
+                    </p>
+                  )}
+                </div>
 
-                {(catalog?.workspaceSkills?.length ?? 0) > 0 ? (
-                  <div className="grid gap-3">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold text-text-primary">Workspace</h3>
-                      <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
-                        Portable
-                      </span>
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {(catalog?.workspaceSkills ?? []).map((skill) => {
-                        const selected = (form.capabilities.workspaceSkills ?? []).includes(
-                          skill.slug,
-                        );
-
-                        return (
-                          <label
-                            className={
-                              selected
-                                ? "rounded-xl border border-accent/30 bg-accent/5 p-4"
-                                : "rounded-xl border border-border bg-surface p-4"
-                            }
-                            key={skill.slug}
-                          >
-                            <div className="flex items-start gap-3">
-                              <input
-                                checked={selected}
-                                onChange={() => toggleWorkspaceSkill(skill.slug)}
-                                type="checkbox"
-                              />
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="font-semibold text-text-primary">{skill.name}</p>
-                                  <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
-                                    Workspace
-                                  </span>
-                                </div>
-                                <p className="mt-1 text-sm text-text-secondary">
-                                  {skill.description}
-                                </p>
-                                <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
-                                  <span className="rounded-full border border-border px-2 py-1">
-                                    {skill.category}
-                                  </span>
-                                  {skill.version ? (
-                                    <span className="rounded-full border border-border px-2 py-1">
-                                      v{skill.version}
-                                    </span>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
+                <div className="grid gap-3 border-t border-border pt-5">
+                  <Field label="Search skills" error={undefined}>
+                    <input
+                      className="cc-input"
+                      onChange={(event) => setSkillSearch(event.target.value)}
+                      placeholder="Search built-in and workspace skills"
+                      value={skillSearch}
+                    />
+                  </Field>
+                  {skillSearch.trim() ? (
+                    skillSearchResults.length > 0 ? (
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {skillSearchResults.map((option) => (
+                          <SkillCard
+                            key={`${option.kind}:${option.skill.slug}`}
+                            option={option}
+                            selected={false}
+                            onClick={() => addSkillOption(option)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-text-secondary">No matching unassigned skills.</p>
+                    )
+                  ) : null}
+                </div>
               </div>
             ) : (
               <EmptyState
@@ -351,68 +303,76 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                 title="No skills available"
               />
             )}
-          </section>
+          </CollapsibleSection>
 
-          <section className="cc-panel p-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-text-primary">Custom tools</h2>
-                <p className="mt-1 text-sm text-text-secondary">
-                  Selected global tools are copied into the agent workspace as snapshots. Existing
-                  local copies can drift from the global library.
-                </p>
-              </div>
+          <CollapsibleSection
+            action={
               <Link className="cc-button cc-button-secondary" to="/tools">
                 Open tools library
               </Link>
-            </div>
-
+            }
+            description="Selected global tools are copied into the agent workspace as snapshots. Existing local copies can drift from the global library."
+            title="Custom tools"
+          >
             {customToolsQuery.isLoading ? (
-              <div className="mt-5">
+              <div>
                 <LoadingState />
               </div>
             ) : customToolsQuery.error ? (
-              <div className="mt-5 rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+              <div className="rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
                 {readError(customToolsQuery.error)}
               </div>
             ) : (customToolsQuery.data?.length ?? 0) > 0 ? (
-              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {customToolsQuery.data?.map((tool) => {
-                  const selected = (form.capabilities.customTools ?? []).includes(tool.slug);
-
-                  return (
-                    <label
-                      className={
-                        selected
-                          ? "rounded-xl border border-accent/30 bg-accent/5 p-4"
-                          : "rounded-xl border border-border bg-surface p-4"
-                      }
-                      key={tool.slug}
-                    >
-                      <div className="flex items-start gap-3">
-                        <input
-                          checked={selected}
-                          onChange={() => toggleCustomTool(tool.slug)}
-                          type="checkbox"
+              <div className="grid gap-5">
+                <div className="grid gap-3">
+                  <h3 className="text-sm font-semibold text-text-primary">Chosen global tools</h3>
+                  {selectedCustomTools.length > 0 ? (
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {selectedCustomTools.map((tool) => (
+                        <CustomToolCard
+                          key={tool.slug}
+                          selected
+                          tool={tool}
+                          onClick={() => toggleCustomTool(tool.slug)}
                         />
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-semibold text-text-primary">{tool.name}</p>
-                            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
-                              {tool.slug}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-sm text-text-secondary">
-                            {tool.description || "No description yet."}
-                          </p>
-                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="rounded-xl border border-dashed border-border p-4 text-sm text-text-secondary">
+                      No global tools chosen yet. Search below to add one.
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid gap-3 border-t border-border pt-5">
+                  <Field label="Search global tools" error={undefined}>
+                    <input
+                      className="cc-input"
+                      onChange={(event) => setCustomToolSearch(event.target.value)}
+                      placeholder="Search tools by name, slug, or description"
+                      value={customToolSearch}
+                    />
+                  </Field>
+                  {customToolSearch.trim() ? (
+                    customToolSearchResults.length > 0 ? (
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {customToolSearchResults.map((tool) => (
+                          <CustomToolCard
+                            key={tool.slug}
+                            selected={false}
+                            tool={tool}
+                            onClick={() => toggleCustomTool(tool.slug)}
+                          />
+                        ))}
                       </div>
-                    </label>
-                  );
-                })}
+                    ) : (
+                      <p className="text-sm text-text-secondary">No matching unassigned tools.</p>
+                    )
+                  ) : null}
+                </div>
               </div>
             ) : (
-              <div className="mt-5">
+              <div>
                 <EmptyState
                   description="Create a global tool before assigning it to an agent."
                   title="No custom tools available"
@@ -464,81 +424,137 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                 ) : null}
               </div>
             ) : null}
-          </section>
+          </CollapsibleSection>
 
-          <section className="cc-panel p-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-text-primary">CommandsCenter tools</h2>
-                <p className="mt-1 text-sm text-text-secondary">
-                  Enable CC-managed MCP groups per agent. These are internal app capabilities, not
-                  external integrations.
-                </p>
-              </div>
-            </div>
-
+          <CollapsibleSection
+            description="Enable CC-managed MCP groups per agent. These are internal app capabilities, not external integrations."
+            title="CommandsCenter tools"
+          >
             {(catalog?.appMcpServers.length ?? 0) > 0 ? (
-              <div className="mt-5 grid gap-4">
-                {catalog?.appMcpServers.map((server) => (
-                  <article
-                    className="rounded-xl border border-border bg-surface p-4"
-                    key={server.name}
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-base font-semibold text-text-primary">
-                            {server.name}
-                          </h3>
-                          <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
-                            CC-managed
-                          </span>
+              <div className="grid gap-4">
+                {catalog?.appMcpServers.map((server) => {
+                  const serverAction = getAppMcpServerAction(form.capabilities, server.name);
+                  const perToolEnabled = getAppMcpServerPerToolPermissionsEnabled(
+                    form.capabilities,
+                    server.name,
+                  );
+
+                  return (
+                    <article
+                      className="rounded-xl border border-border bg-surface p-4"
+                      key={server.name}
+                    >
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-base font-semibold text-text-primary">
+                              {server.name}
+                            </h3>
+                            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                              CC-managed
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm text-text-secondary">{server.description}</p>
                         </div>
-                        <p className="mt-2 text-sm text-text-secondary">{server.description}</p>
+
+                        <McpServerPermissionControl
+                          label={server.name}
+                          onChange={(action) => setAppMcpServerPermission(server.name, action)}
+                          value={serverAction}
+                        />
                       </div>
 
-                      <McpServerPermissionControl
-                        label={server.name}
-                        onChange={(action) => setAppMcpServerPermission(server.name, action)}
-                        value={getAppMcpServerAction(form.capabilities, server.name)}
-                      />
-                    </div>
-                  </article>
-                ))}
+                      {serverAction !== "deny" ? (
+                        <div className="mt-4 rounded-lg border border-border bg-background p-3">
+                          <label className="flex items-start gap-3 text-sm text-text-primary">
+                            <input
+                              checked={perToolEnabled}
+                              className="mt-1"
+                              onChange={(event) =>
+                                setAppMcpServerPerToolMode(server.name, event.target.checked)
+                              }
+                              type="checkbox"
+                            />
+                            <span>
+                              <span className="block font-medium">
+                                Configure tools individually
+                              </span>
+                              <span className="mt-1 block text-text-secondary">
+                                When enabled, the wildcard permission is denied and only explicitly
+                                configured tools are available.
+                              </span>
+                            </span>
+                          </label>
+
+                          {perToolEnabled ? (
+                            <div className="mt-4 grid gap-3">
+                              {server.tools.length > 0 ? (
+                                server.tools.map((tool) => (
+                                  <div
+                                    className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-3 md:flex-row md:items-start md:justify-between"
+                                    key={tool.name}
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-text-primary">{tool.name}</p>
+                                      <p className="mt-1 text-sm text-text-secondary">
+                                        {tool.description}
+                                      </p>
+                                    </div>
+                                    <McpServerPermissionControl
+                                      label={`${server.name} ${tool.name}`}
+                                      onChange={(action) =>
+                                        setAppMcpToolPermission(server.name, tool.name, action)
+                                      }
+                                      value={getAppMcpToolAction(
+                                        form.capabilities,
+                                        server.name,
+                                        tool.name,
+                                      )}
+                                    />
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-sm text-text-secondary">
+                                  No tools are registered for this MCP group yet.
+                                </p>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
               </div>
             ) : (
-              <div className="mt-5">
+              <div>
                 <EmptyState
                   description="No CommandsCenter-managed MCP groups are registered in this build."
                   title="No CC-managed tools available"
                 />
               </div>
             )}
-          </section>
+          </CollapsibleSection>
 
-          <section className="cc-panel p-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-text-primary">MCP permissions</h2>
-                <p className="mt-1 text-sm text-text-secondary">
-                  Enable global MCP servers per agent, then opt tools into allow, ask, or deny.
-                </p>
-              </div>
+          <CollapsibleSection
+            action={
               <Link className="cc-button cc-button-secondary" to="/integrations">
                 Manage integrations
               </Link>
-            </div>
-
+            }
+            description="Enable global MCP servers per agent, then opt tools into allow, ask, or deny."
+            title="MCP permissions"
+          >
             {mcpServersQuery.isLoading ? (
-              <div className="mt-5">
+              <div>
                 <LoadingState />
               </div>
             ) : mcpServersQuery.error ? (
-              <div className="mt-5 rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+              <div className="rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
                 {readError(mcpServersQuery.error)}
               </div>
             ) : mcpServersQuery.data && mcpServersQuery.data.length > 0 ? (
-              <div className="mt-5 grid gap-4">
+              <div className="grid gap-4">
                 {mcpServersQuery.data.map((server) => {
                   return (
                     <article
@@ -577,14 +593,14 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                 })}
               </div>
             ) : (
-              <div className="mt-5">
+              <div>
                 <EmptyState
                   description="Create a global MCP integration before assigning its tools to an agent."
                   title="No MCP integrations configured"
                 />
               </div>
             )}
-          </section>
+          </CollapsibleSection>
 
           <div className="flex flex-wrap gap-2">
             {saveError ? <p className="w-full text-sm text-danger">{saveError}</p> : null}
@@ -618,26 +634,41 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     setSaveError(undefined);
   }
 
-  function toggleSkill(skillSlug: string) {
+  function addSkillOption(option: SkillOption) {
     setForm((current) => ({
       ...current,
       capabilities: {
         ...current.capabilities,
-        builtInSkills: (current.capabilities.builtInSkills ?? []).includes(skillSlug)
-          ? (current.capabilities.builtInSkills ?? []).filter((value) => value !== skillSlug)
-          : [...(current.capabilities.builtInSkills ?? []), skillSlug],
+        builtInSkills:
+          option.kind === "built-in"
+            ? addUnique(current.capabilities.builtInSkills ?? [], option.skill.slug)
+            : (current.capabilities.builtInSkills ?? []),
+        workspaceSkills:
+          option.kind === "workspace"
+            ? addUnique(current.capabilities.workspaceSkills ?? [], option.skill.slug)
+            : (current.capabilities.workspaceSkills ?? []),
       },
     }));
+    setSkillSearch("");
   }
 
-  function toggleWorkspaceSkill(skillSlug: string) {
+  function removeSkillOption(option: SkillOption) {
     setForm((current) => ({
       ...current,
       capabilities: {
         ...current.capabilities,
-        workspaceSkills: (current.capabilities.workspaceSkills ?? []).includes(skillSlug)
-          ? (current.capabilities.workspaceSkills ?? []).filter((value) => value !== skillSlug)
-          : [...(current.capabilities.workspaceSkills ?? []), skillSlug],
+        builtInSkills:
+          option.kind === "built-in"
+            ? (current.capabilities.builtInSkills ?? []).filter(
+                (value) => value !== option.skill.slug,
+              )
+            : (current.capabilities.builtInSkills ?? []),
+        workspaceSkills:
+          option.kind === "workspace"
+            ? (current.capabilities.workspaceSkills ?? []).filter(
+                (value) => value !== option.skill.slug,
+              )
+            : (current.capabilities.workspaceSkills ?? []),
       },
     }));
   }
@@ -719,6 +750,26 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     }));
     setSaveError(undefined);
   }
+
+  function setAppMcpServerPerToolMode(serverName: string, enabled: boolean) {
+    setForm((current) => ({
+      ...current,
+      capabilities: setAppMcpServerPerToolPermissionsEnabled(
+        current.capabilities,
+        serverName,
+        enabled,
+      ),
+    }));
+    setSaveError(undefined);
+  }
+
+  function setAppMcpToolPermission(serverName: string, toolName: string, action: PermissionAction) {
+    setForm((current) => ({
+      ...current,
+      capabilities: setAppMcpToolAction(current.capabilities, serverName, toolName, action),
+    }));
+    setSaveError(undefined);
+  }
 }
 
 function Field(props: {
@@ -737,6 +788,166 @@ function Field(props: {
       {props.error ? <span className="text-sm text-danger">{props.error}</span> : null}
     </label>
   );
+}
+
+function CollapsibleSection(props: {
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <section className="cc-panel p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <button
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+          onClick={() => setOpen((current) => !current)}
+          type="button"
+        >
+          <span className="mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border text-sm text-text-secondary">
+            {open ? "-" : "+"}
+          </span>
+          <span className="min-w-0">
+            <span className="block text-lg font-semibold text-text-primary">{props.title}</span>
+            <span className="mt-1 block text-sm text-text-secondary">{props.description}</span>
+          </span>
+        </button>
+        {props.action ? <div className="shrink-0">{props.action}</div> : null}
+      </div>
+
+      {open ? <div className="mt-5">{props.children}</div> : null}
+    </section>
+  );
+}
+
+function SkillCard(props: { option: SkillOption; selected: boolean; onClick: () => void }) {
+  const { option } = props;
+  const label = option.kind === "built-in" ? "Built-in" : "Workspace";
+
+  return (
+    <button
+      className={
+        props.selected
+          ? "rounded-xl border border-accent/30 bg-accent/5 p-4 text-left"
+          : "rounded-xl border border-border bg-surface p-4 text-left transition hover:border-accent/40"
+      }
+      onClick={props.onClick}
+      type="button"
+    >
+      <div className="flex items-start gap-3">
+        <input checked={props.selected} readOnly type="checkbox" />
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold text-text-primary">{option.skill.name}</p>
+            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+              {label}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-text-secondary">{option.skill.description}</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
+            <span className="rounded-full border border-border px-2 py-1">
+              {option.skill.category}
+            </span>
+            {option.skill.version ? (
+              <span className="rounded-full border border-border px-2 py-1">
+                v{option.skill.version}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function CustomToolCard(props: { tool: CustomTool; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      className={
+        props.selected
+          ? "rounded-xl border border-accent/30 bg-accent/5 p-4 text-left"
+          : "rounded-xl border border-border bg-surface p-4 text-left transition hover:border-accent/40"
+      }
+      onClick={props.onClick}
+      type="button"
+    >
+      <div className="flex items-start gap-3">
+        <input checked={props.selected} readOnly type="checkbox" />
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold text-text-primary">{props.tool.name}</p>
+            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+              {props.tool.slug}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-text-secondary">
+            {props.tool.description || "No description yet."}
+          </p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function buildSkillOptions(catalog: AgentCatalog | undefined): SkillOption[] {
+  return [
+    ...(catalog?.builtInSkills ?? []).map((skill) => ({ kind: "built-in" as const, skill })),
+    ...(catalog?.workspaceSkills ?? []).map((skill) => ({ kind: "workspace" as const, skill })),
+  ];
+}
+
+function isSkillSelected(capabilities: AgentCapabilitySelection, option: SkillOption): boolean {
+  if (option.kind === "built-in") {
+    return (capabilities.builtInSkills ?? []).includes(option.skill.slug);
+  }
+
+  return (capabilities.workspaceSkills ?? []).includes(option.skill.slug);
+}
+
+function filterSkillOptions(
+  options: SkillOption[],
+  capabilities: AgentCapabilitySelection,
+  query: string,
+): SkillOption[] {
+  const normalized = query.trim().toLowerCase();
+
+  if (!normalized) {
+    return [];
+  }
+
+  return options.filter(
+    (option) =>
+      !isSkillSelected(capabilities, option) &&
+      [option.skill.name, option.skill.slug, option.skill.description, option.skill.category]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalized),
+  );
+}
+
+function filterCustomTools(
+  tools: CustomTool[],
+  capabilities: AgentCapabilitySelection,
+  query: string,
+): CustomTool[] {
+  const normalized = query.trim().toLowerCase();
+
+  if (!normalized) {
+    return [];
+  }
+
+  return tools.filter(
+    (tool) =>
+      !(capabilities.customTools ?? []).includes(tool.slug) &&
+      [tool.name, tool.slug, tool.description].join(" ").toLowerCase().includes(normalized),
+  );
+}
+
+function addUnique(values: string[], value: string): string[] {
+  return values.includes(value) ? values : [...values, value];
 }
 
 function createEmptyForm(): AgentFormState {

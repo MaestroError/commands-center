@@ -303,6 +303,10 @@ export function createAgentService(options: {
           name: server.name,
           enabledByDefault: server.enabledByDefault,
           description: server.description,
+          tools: server.catalogTools.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+          })),
         })),
         customTools: toolRows.map((tool) => ({
           slug: tool.slug,

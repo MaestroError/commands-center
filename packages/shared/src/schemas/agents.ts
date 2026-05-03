@@ -37,6 +37,14 @@ export const agentCatalogSchema = z.object({
       name: z.string().min(1),
       enabledByDefault: z.boolean().default(false),
       description: z.string().min(1),
+      tools: z
+        .array(
+          z.object({
+            name: z.string().min(1),
+            description: z.string().min(1),
+          }),
+        )
+        .default([]),
     }),
   ),
   customTools: z.array(
@@ -64,6 +72,7 @@ export const agentAppMcpServerSchema = z.object({
   name: z.string().min(1),
   enabled: z.boolean().default(true),
   action: permissionActionSchema,
+  perToolPermissionsEnabled: z.boolean().default(false),
 });
 
 export const agentCapabilitySelectionSchema = z.object({

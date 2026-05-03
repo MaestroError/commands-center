@@ -34,7 +34,7 @@ export function createCcManagedMcpToolAccessService() {
       serverName: string,
       toolName: string,
     ): "allow" | "ask" | "deny" {
-      const pattern = `${serverName}_${toolName}`;
+      const pattern = buildCcManagedToolPermissionPattern(serverName, toolName);
       const rules = capabilities.appToolPermissions ?? [];
       const exact = rules.find((rule) => rule.pattern === pattern);
 
@@ -43,9 +43,18 @@ export function createCcManagedMcpToolAccessService() {
       }
 
       const selection = capabilities.appMcpServers?.find((entry) => entry.name === serverName);
+
+      if (selection?.perToolPermissionsEnabled) {
+        return "deny";
+      }
+
       return selection?.action ?? "deny";
     },
   };
+}
+
+export function buildCcManagedToolPermissionPattern(serverName: string, toolName: string): string {
+  return `${serverName}_${toolName}`;
 }
 
 export type CcManagedMcpToolAccessService = ReturnType<typeof createCcManagedMcpToolAccessService>;
