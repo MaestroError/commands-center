@@ -24,7 +24,7 @@ describe("live request routes", () => {
       conversationId: "conv-1",
       kind: "add-secret",
       closable: false,
-      presentation: { title: "Add secret" },
+      presentation: { title: "Add secret", cancelLabel: "Cancel" },
       fields: [{ type: "text", name: "key", label: "Key", required: true }],
     });
 
@@ -62,7 +62,7 @@ describe("live request routes", () => {
       conversationId: "conv-2",
       kind: "rename-agent",
       closable: true,
-      presentation: { title: "Rename agent" },
+      presentation: { title: "Rename agent", cancelLabel: "Cancel" },
       fields: [{ type: "text", name: "name", label: "Name", required: true }],
     });
 

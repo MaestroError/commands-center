@@ -86,7 +86,7 @@ describe("runCli", () => {
   });
 
   it("loads the default env file when one exists in INIT_CWD", async () => {
-    process.env.INIT_CWD = "/workspace";
+    process.env["INIT_CWD"] = "/workspace";
     existsSyncMock.mockImplementation((path: string) => path === "/workspace/.env");
 
     await runCli(["serve"]);
@@ -103,11 +103,11 @@ describe("runCli", () => {
   it("reports unknown commands without mutating workspace settings", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    process.env.INIT_CWD = "/workspace";
+    process.env["INIT_CWD"] = "/workspace";
 
     await runCli(["unknown", "--here"]);
 
-    expect(process.env.CC_WORKSPACE_DIR).toBeUndefined();
+    expect(process.env["CC_WORKSPACE_DIR"]).toBeUndefined();
     expect(process.exitCode).toBe(1);
     expect(consoleError).toHaveBeenCalledWith("Unknown command: unknown");
     expect(consoleLog).toHaveBeenCalled();
@@ -115,8 +115,8 @@ describe("runCli", () => {
   });
 
   it("starts the runtime in serve mode with host and port overrides", async () => {
-    delete process.env.NODE_ENV;
-    process.env.INIT_CWD = "/workspace";
+    delete process.env["NODE_ENV"];
+    process.env["INIT_CWD"] = "/workspace";
 
     await runCli(["serve", "--host", "127.0.0.1", "--port", "4010", "--here"]);
 
@@ -127,8 +127,8 @@ describe("runCli", () => {
         register: undefined,
       }),
     );
-    expect(process.env.CC_WORKSPACE_DIR).toBe(resolve("/workspace", ".cc", "workspace"));
-    expect(process.env.NODE_ENV).toBe("production");
+    expect(process.env["CC_WORKSPACE_DIR"]).toBe(resolve("/workspace", ".cc", "workspace"));
+    expect(process.env["NODE_ENV"]).toBe("production");
   });
 
   it("registers static assets and the SPA fallback in start mode", async () => {
