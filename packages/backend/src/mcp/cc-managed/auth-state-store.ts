@@ -11,34 +11,42 @@ type AuthState = {
   signingSecret: string;
 };
 
+const stateCache = new Map<string, Promise<AuthState>>();
+
 export function createCcManagedMcpAuthStateStore(config: RuntimeConfig) {
   const filePath = join(config.paths.subdirectories.auth, AUTH_STATE_FILE);
-  let cached: AuthState | undefined;
 
   return {
     async load(): Promise<AuthState> {
+      const cached = stateCache.get(filePath);
+
       if (cached) {
         return cached;
       }
 
-      await mkdir(config.paths.subdirectories.auth, { recursive: true });
-
-      try {
-        const parsed = JSON.parse(await readFile(filePath, "utf8")) as Partial<AuthState>;
-
-        if (typeof parsed.signingSecret === "string" && parsed.signingSecret.length > 0) {
-          cached = { signingSecret: parsed.signingSecret };
-          return cached;
-        }
-      } catch {
-        // Ignore missing or malformed state and rewrite below.
-      }
-
-      cached = { signingSecret: randomBytes(32).toString("hex") };
-      await writeFile(filePath, `${JSON.stringify(cached, null, 2)}\n`, "utf8");
-      return cached;
+      const loading = loadAuthState(filePath, config.paths.subdirectories.auth);
+      stateCache.set(filePath, loading);
+      return loading;
     },
   };
+}
+
+async function loadAuthState(filePath: string, authDir: string): Promise<AuthState> {
+  await mkdir(authDir, { recursive: true });
+
+  try {
+    const parsed = JSON.parse(await readFile(filePath, "utf8")) as Partial<AuthState>;
+
+    if (typeof parsed.signingSecret === "string" && parsed.signingSecret.length > 0) {
+      return { signingSecret: parsed.signingSecret };
+    }
+  } catch {
+    // Ignore missing or malformed state and rewrite below.
+  }
+
+  const state = { signingSecret: randomBytes(32).toString("hex") } satisfies AuthState;
+  await writeFile(filePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  return state;
 }
 
 export type CcManagedMcpAuthStateStore = ReturnType<typeof createCcManagedMcpAuthStateStore>;
