@@ -73,9 +73,39 @@ describe("loadRuntimeConfig", () => {
         mcpAuthMs: 90000,
         drainMs: 15000,
       },
+      updates: {
+        enabled: true,
+        intervalMs: 21600000,
+        autoUpdate: false,
+        registryUrl: "https://registry.npmjs.org/commandscenter/latest",
+        docker: false,
+      },
       logLevel: "info",
       opencodePathConfigured: true,
       secretKeyConfigured: true,
+    });
+  });
+
+  it("parses update environment configuration", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: {
+        NODE_ENV: "test",
+        CC_UPDATE_CHECK: "false",
+        CC_UPDATE_INTERVAL_MS: "60000",
+        CC_AUTO_UPDATE: "true",
+        CC_DOCKER: "true",
+        CC_UPDATE_REGISTRY_URL: "https://registry.example.test/commandscenter/latest",
+      },
+    });
+
+    expect(config.updates).toEqual({
+      enabled: false,
+      intervalMs: 60000,
+      autoUpdate: true,
+      registryUrl: "https://registry.example.test/commandscenter/latest",
+      docker: true,
+      historyFile: "/tmp/project/.cc/workspace/update-history.json",
     });
   });
 

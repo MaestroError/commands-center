@@ -277,6 +277,18 @@ export {
   type SchedulerStatus,
 } from "./health.js";
 export {
+  installModeSchema,
+  systemUpdatePreferencesSchema,
+  systemUpdateResultSchema,
+  systemVersionSchema,
+  updateSystemUpdatePreferencesInputSchema,
+  type InstallMode,
+  type SystemUpdatePreferences,
+  type SystemUpdateResult,
+  type SystemVersion,
+  type UpdateSystemUpdatePreferencesInput,
+} from "./system.js";
+export {
   createMcpServerInputSchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,

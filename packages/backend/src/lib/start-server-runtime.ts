@@ -26,12 +26,17 @@ import { createSchedulerService, type SchedulerService } from "../services/sched
 import { bootstrapRuntimePaths } from "./runtime-paths.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
 import { createLogger, flushLogger } from "./logger.js";
+import { readPackageInfo } from "./package-info.js";
 import {
   getStartupLogContext,
   loadRuntimeConfig,
   type RuntimeConfig,
   type RuntimeConfigOverrides,
 } from "./runtime-config.js";
+import {
+  createSystemVersionService,
+  type SystemVersionService,
+} from "../services/system-version-service.js";
 import { createServer } from "../server.js";
 
 type AppServer = Awaited<ReturnType<typeof createServer>>;
@@ -56,6 +61,7 @@ export type RuntimeContext = {
   secretService: SecretService;
   liveRequestService?: LiveRequestService;
   scheduler: SchedulerService;
+  systemVersionService?: SystemVersionService;
 };
 
 export type StartedServerRuntime = RuntimeContext & {
@@ -92,6 +98,20 @@ export async function startServerRuntime(
   const workspaceWatchService = createWorkspaceWatchService({ logger });
   const liveRequestService = createLiveRequestService();
   const scheduler = createSchedulerService();
+  const packageInfo = readPackageInfo();
+  const drainRuntime: {
+    drain?: (signal: NodeJS.Signals | "manual") => Promise<void>;
+  } = {};
+  const systemVersionService = createSystemVersionService({
+    config,
+    logger,
+    packageInfo,
+    packageRoot: packageInfo.packageRoot,
+    db: database.db,
+    drainController: {
+      drain: (signal) => drainRuntime.drain?.(signal) ?? Promise.resolve(),
+    },
+  });
 
   const context: RuntimeContext = {
     config,
@@ -104,6 +124,7 @@ export async function startServerRuntime(
     secretService,
     liveRequestService,
     scheduler,
+    systemVersionService,
   };
   const server = await createServer(context);
 
@@ -125,6 +146,7 @@ export async function startServerRuntime(
         await server.close();
       },
       terminateChildProcesses: async () => {
+        systemVersionService.stop();
         await orchestrator.stop();
         liveRequestService.dispose();
         workspaceWatchService.dispose();
@@ -136,6 +158,8 @@ export async function startServerRuntime(
       },
     },
   });
+  drainRuntime.drain = drainController.drain;
+  systemVersionService.start();
 
   if (options?.installSignalHandlers !== false) {
     installSignalHandlers(drainController.drain, logger);

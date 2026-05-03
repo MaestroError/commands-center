@@ -1,0 +1,13 @@
+.git
+.cc
+coverage
+dist
+node_modules
+packages/*/coverage
+packages/*/dist
+packages/*/node_modules
+examples
+*.log
+.env
+.env.*
+!.env.example

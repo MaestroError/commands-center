@@ -9,19 +9,33 @@ describe("parseCliArgs", () => {
       host: undefined,
       port: undefined,
       here: false,
+      envFile: undefined,
       help: false,
       version: false,
+      rollback: false,
     });
   });
 
   it("parses explicit host, port, and command overrides", () => {
-    expect(parseCliArgs(["serve", "--host", "127.0.0.1", "--port", "4001"])).toEqual({
+    expect(
+      parseCliArgs([
+        "serve",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "4001",
+        "--env-file",
+        "/opt/cc/.env",
+      ]),
+    ).toEqual({
       command: "serve",
       host: "127.0.0.1",
       port: 4001,
       here: false,
+      envFile: "/opt/cc/.env",
       help: false,
       version: false,
+      rollback: false,
     });
   });
 
@@ -31,8 +45,23 @@ describe("parseCliArgs", () => {
       host: undefined,
       port: undefined,
       here: true,
+      envFile: undefined,
       help: false,
       version: false,
+      rollback: false,
+    });
+  });
+
+  it("parses the upgrade rollback command", () => {
+    expect(parseCliArgs(["upgrade", "--rollback"])).toEqual({
+      command: "upgrade",
+      host: undefined,
+      port: undefined,
+      here: false,
+      envFile: undefined,
+      help: false,
+      version: false,
+      rollback: true,
     });
   });
 
@@ -42,8 +71,10 @@ describe("parseCliArgs", () => {
       host: undefined,
       port: undefined,
       here: false,
+      envFile: undefined,
       help: true,
       version: true,
+      rollback: false,
     });
   });
 });

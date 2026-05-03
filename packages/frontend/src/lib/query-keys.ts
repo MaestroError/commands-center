@@ -1,5 +1,7 @@
 export const queryKeys = {
   engineStatus: ["engine-status"] as const,
+  systemVersion: ["system-version"] as const,
+  systemUpdatePreferences: ["system-update-preferences"] as const,
   providers: ["providers"] as const,
   mcpServers: ["mcp-servers"] as const,
   secrets: ["secrets"] as const,

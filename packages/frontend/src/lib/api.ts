@@ -56,6 +56,9 @@ import {
   sendConversationPromptInputSchema,
   setSecretRequestSchema,
   setMcpServerEnabledInputSchema,
+  systemUpdateResultSchema,
+  systemUpdatePreferencesSchema,
+  systemVersionSchema,
   terminalListResponseSchema,
   terminalResizeInputSchema,
   terminalSessionSchema,
@@ -110,11 +113,15 @@ import {
   type SecretMeta,
   type SessionMediaItem,
   type SendConversationPromptInput,
+  type SystemUpdateResult,
+  type SystemUpdatePreferences,
+  type SystemVersion,
   type TerminalCreateInput,
   type TerminalSession,
   type TerminalResizeInput,
   type UpdateAgentInput,
   type UpdateMcpServerInput,
+  type UpdateSystemUpdatePreferencesInput,
   type UpdateWorkspaceSkillCategoryInput,
   type WorkspaceWatchEvent,
   type WorkspaceSkill,
@@ -122,6 +129,7 @@ import {
   type WorkspaceSkillUploadInput,
   updateAgentInputSchema,
   updateMcpServerInputSchema,
+  updateSystemUpdatePreferencesInputSchema,
 } from "@cc/shared/schemas";
 
 type RequestOptions = {
@@ -131,6 +139,36 @@ type RequestOptions = {
 
 export async function getEngineStatus(): Promise<EngineStatus> {
   return requestJson<EngineStatus>("/api/opencode", engineStatusSchema);
+}
+
+export async function getSystemVersion(): Promise<SystemVersion> {
+  return requestJson<SystemVersion>("/api/system/version", systemVersionSchema);
+}
+
+export async function updateSystem(): Promise<SystemUpdateResult> {
+  return requestJson<SystemUpdateResult>("/api/system/update", systemUpdateResultSchema, {
+    method: "POST",
+  });
+}
+
+export async function getSystemUpdatePreferences(): Promise<SystemUpdatePreferences> {
+  return requestJson<SystemUpdatePreferences>(
+    "/api/system/update-preferences",
+    systemUpdatePreferencesSchema,
+  );
+}
+
+export async function updateSystemUpdatePreferences(
+  input: UpdateSystemUpdatePreferencesInput,
+): Promise<SystemUpdatePreferences> {
+  return requestJson<SystemUpdatePreferences>(
+    "/api/system/update-preferences",
+    systemUpdatePreferencesSchema,
+    {
+      method: "PUT",
+      body: updateSystemUpdatePreferencesInputSchema.parse(input),
+    },
+  );
 }
 
 export async function listProviders(): Promise<ProviderStatus[]> {

@@ -29,13 +29,13 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |     |- ✅ I5 Composio Integration
  |     \- ✅ I6 App-Provided MCP Server
  |- ✅ E3 API and Realtime Foundation
- |  |- E4 Self-Updating and Version Management
+ |  |- ✅ E4 Self-Updating and Version Management
  |  |- ✅ U0 Frontend Foundation
  |  |  |- U1 App Shell and Dashboard
  |  |  |- ✅ U2 Agents and Agent Editor
  |  |  |- ✅ U3 Direct Chat Screen
  |  |  |- ✅ U4 File Manager and Terminals
- |  |  \- U5 Profile, Settings, and Theming
+ |  |  \- ✅ U5 Profile, Settings, and Theming
  |  \- I4 Automations
  \- ✅ C1 Database and Workspace Foundation
     |- ✅ C2 Agent Workspace Lifecycle
@@ -49,7 +49,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
     |  |- U3 Direct Chat Screen
     |  \- I4 Automations
     |- ✅ U4 File Manager and Terminals
-    \- U5 Profile, Settings, and Theming
+    \- ✅ U5 Profile, Settings, and Theming
 
 U0 blocks on: E3
 U2 blocks on: U0, C2, I1
@@ -85,9 +85,8 @@ Run after Path A starts stabilizing. Integration epics (I2, I3, I5) and the cust
 4. `✅ product-ux-surfaces/06-custom-skills-library.md`
 5. `✅ integrations-automation/05-composio-integration.md`
 6. `✅ integrations-automation/06-app-provided-mcp-server.md`
-7. `engine-infrastructure/04-self-updating-and-version-management.md`
-8. `product-ux-surfaces/01-app-shell-and-dashboard.md`
-9. `product-ux-surfaces/05-profile-settings-and-theming.md`
+7. `✅ engine-infrastructure/04-self-updating-and-version-management.md`
+8. `✅ product-ux-surfaces/05-profile-settings-and-theming.md`
 
 Result: MCP server management, file browsing/editing, custom tools, workspace skills, Composio integration, global and agent terminals, health visibility, user preferences, theming, and self-updating.
 
@@ -100,6 +99,7 @@ Future enhancement after U4 stabilization:
 Run after agents and direct chat execution are stable.
 
 1. `integrations-automation/04-automations.md`
+2. `product-ux-surfaces/01-app-shell-and-dashboard.md`
 
 Result: scheduled prompts with isolated sessions and run history.
 
@@ -168,8 +168,8 @@ Each epic PR should:
 ### Milestone 3: Workspace Interaction and Polish
 
 - U1 App Shell and Dashboard
-- U5 Profile, Settings, and Theming
-- E4 Self-Updating and Version Management
+- ✅ U5 Profile, Settings, and Theming
+- ✅ E4 Self-Updating and Version Management
 
 ### Milestone 4: MVP Completion
 

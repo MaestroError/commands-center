@@ -5,12 +5,22 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
 import { useMarkEngineRestarting } from "@/hooks/use-engine-status-query";
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
+import {
+  useSystemUpdateMutation,
+  useSystemUpdatePreferencesMutation,
+  useSystemUpdatePreferencesQuery,
+  useSystemVersionQuery,
+} from "@/hooks/use-system-version-query";
 import { getFileManagerPreferences, updateFileManagerPreferences } from "@/lib/api";
 
 export function SettingsPage() {
-  const [activeTabId, setActiveTabId] = useState("secrets");
+  const [activeTabId, setActiveTabId] = useState("system");
   const tabs = useMemo(
     () => [
+      {
+        id: "system",
+        label: "System",
+      },
       {
         id: "secrets",
         label: "Secrets",
@@ -32,11 +42,180 @@ export function SettingsPage() {
       />
       <section className="cc-panel p-6">
         <TabBar activeTabId={activeTabId} onTabChange={setActiveTabId} tabs={tabs} />
+        {activeTabId === "system" ? <SystemTab /> : null}
         {activeTabId === "secrets" ? <SecretsTab /> : null}
         {activeTabId === "file-manager" ? <FileManagerTab /> : null}
       </section>
     </div>
   );
+}
+
+function SystemTab() {
+  const versionQuery = useSystemVersionQuery();
+  const preferencesQuery = useSystemUpdatePreferencesQuery();
+  const preferencesMutation = useSystemUpdatePreferencesMutation();
+  const updateMutation = useSystemUpdateMutation();
+  const version = versionQuery.data;
+  const preferences = preferencesQuery.data;
+  const error =
+    versionQuery.error instanceof Error
+      ? versionQuery.error.message
+      : (version?.error ?? undefined);
+  const preferencesError =
+    preferencesQuery.error instanceof Error ? preferencesQuery.error.message : undefined;
+  const preferencesMutationError =
+    preferencesMutation.error instanceof Error ? preferencesMutation.error.message : undefined;
+  const updateError =
+    updateMutation.error instanceof Error ? updateMutation.error.message : undefined;
+  const updateResult = updateMutation.data;
+
+  return (
+    <div className="mt-6 grid gap-5">
+      <div>
+        <h2 className="text-xl font-semibold text-text-primary">System Updates</h2>
+        <p className="mt-1 text-sm text-text-secondary">
+          Check the installed CommandsCenter version and apply safe updates for this installation.
+        </p>
+      </div>
+
+      {versionQuery.isLoading || preferencesQuery.isLoading ? (
+        <LoadingState testId="system-version-loading" />
+      ) : null}
+      {error ? (
+        <ErrorState description={error} title="Version status could not be refreshed." />
+      ) : null}
+      {preferencesError ? (
+        <ErrorState
+          description={preferencesError}
+          title="Update preferences could not be loaded."
+        />
+      ) : null}
+
+      {version ? (
+        <article className="grid gap-5 rounded-xl border border-border bg-surface p-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <VersionMetric label="Current" value={version.current} />
+            <VersionMetric label="Latest" value={version.latest ?? "Unknown"} />
+            <VersionMetric label="Install Mode" value={formatInstallMode(version.installMode)} />
+            <VersionMetric
+              label="Status"
+              value={version.updateAvailable ? "Update available" : "Up to date"}
+            />
+          </div>
+
+          {preferences ? (
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-app-bg p-4">
+              <input
+                checked={preferences.autoUpdateEnabled}
+                className="mt-1"
+                disabled={preferencesMutation.isPending || version.installMode === "docker"}
+                onChange={(event) =>
+                  preferencesMutation.mutate({ autoUpdateEnabled: event.target.checked })
+                }
+                type="checkbox"
+              />
+              <span>
+                <span className="block font-medium text-text-primary">
+                  Enable automatic updates
+                </span>
+                <span className="mt-1 block text-sm leading-6 text-text-secondary">
+                  Overrides <code>CC_AUTO_UPDATE</code> from this workspace. Current source:{" "}
+                  {preferences.autoUpdateSource === "settings" ? "Settings" : "Environment"}.
+                  {version.installMode === "docker"
+                    ? " Docker installations never auto-update from inside the container."
+                    : " When enabled, CommandsCenter applies npm updates after a new version is detected."}
+                </span>
+              </span>
+            </label>
+          ) : null}
+
+          {preferencesMutationError ? (
+            <ErrorState
+              description={preferencesMutationError}
+              title="Auto-update setting failed."
+            />
+          ) : null}
+
+          {version.checkedAt ? (
+            <p className="text-xs text-text-secondary">
+              Last checked {new Date(version.checkedAt).toLocaleString()}.
+            </p>
+          ) : null}
+
+          {version.installMode === "docker" ? (
+            <div className="rounded-lg border border-border bg-app-bg p-4">
+              <h3 className="font-medium text-text-primary">Docker updates are operator-managed</h3>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">
+                Containers cannot safely replace their own image. Pull the newest image and restart
+                the service from the host.
+              </p>
+              <pre className="mt-3 overflow-x-auto rounded-lg bg-surface-muted p-3 text-xs text-text-primary">
+                docker compose pull{"\n"}docker compose up -d
+              </pre>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 rounded-lg border border-border bg-app-bg p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="font-medium text-text-primary">
+                  {version.updateAvailable
+                    ? "A newer version is ready"
+                    : "No update is currently available"}
+                </h3>
+                <p className="mt-1 text-sm text-text-secondary">
+                  {version.updateAvailable
+                    ? "CommandsCenter will install the latest package, drain active services, and exit so your process manager can restart it."
+                    : "You can still run the updater to reinstall the current package version."}
+                </p>
+              </div>
+              <button
+                className="cc-button sm:w-auto"
+                disabled={updateMutation.isPending}
+                onClick={() => updateMutation.mutate()}
+                type="button"
+              >
+                {updateMutation.isPending ? "Applying update..." : "Apply update"}
+              </button>
+            </div>
+          )}
+        </article>
+      ) : null}
+
+      {updateResult ? (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-text-primary">
+          <p>{updateResult.message}</p>
+          {updateResult.instructions?.length ? (
+            <ul className="mt-2 list-disc pl-5 text-text-secondary">
+              {updateResult.instructions.map((instruction) => (
+                <li key={instruction}>{instruction}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+      {updateError ? <ErrorState description={updateError} title="Update failed." /> : null}
+    </div>
+  );
+}
+
+function VersionMetric(props: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-app-bg p-4">
+      <dt className="text-xs uppercase tracking-[0.2em] text-text-muted">{props.label}</dt>
+      <dd className="mt-2 break-words font-medium text-text-primary">{props.value}</dd>
+    </div>
+  );
+}
+
+function formatInstallMode(mode: "docker" | "npm-global" | "npm-local") {
+  if (mode === "npm-global") {
+    return "NPM global";
+  }
+
+  if (mode === "npm-local") {
+    return "NPM local";
+  }
+
+  return "Docker";
 }
 
 function FileManagerTab() {

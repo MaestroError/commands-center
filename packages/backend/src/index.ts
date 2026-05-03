@@ -42,6 +42,13 @@ export {
   type OpencodeClient,
 } from "./lib/opencode-client.js";
 export { createHealthService, type HealthService } from "./services/health-service.js";
+export { readPackageInfo, type PackageInfo } from "./lib/package-info.js";
+export {
+  compareVersions,
+  createSystemVersionService,
+  detectInstallMode,
+  type SystemVersionService,
+} from "./services/system-version-service.js";
 export { createOpenCodeService, type OpenCodeService } from "./services/opencode-service.js";
 export { createProviderService, type ProviderService } from "./services/provider-service.js";
 export { createSchedulerService, type SchedulerService } from "./services/scheduler-service.js";

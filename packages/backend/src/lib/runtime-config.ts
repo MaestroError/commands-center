@@ -15,6 +15,8 @@ const DEFAULT_OPENCODE_MAX_RESTARTS = 3;
 const DEFAULT_OPENCODE_RESTART_WINDOW_MS = 60_000;
 const DEFAULT_MCP_AUTH_TIMEOUT_MS = 90_000;
 const DEFAULT_DRAIN_TIMEOUT_MS = 15_000;
+const DEFAULT_UPDATE_INTERVAL_MS = 21_600_000;
+const DEFAULT_UPDATE_REGISTRY_URL = "https://registry.npmjs.org/commandscenter/latest";
 const DEFAULT_LOG_LEVEL = "info";
 const DEFAULT_SECRET_KEY = "development-secret-key-change-me";
 
@@ -42,6 +44,32 @@ const positiveInteger = (name: string, defaultValue: number) =>
       }
 
       return parsedValue;
+    });
+
+const booleanString = (defaultValue: boolean) =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .transform((value, ctx) => {
+      if (value === undefined || value === "") {
+        return defaultValue;
+      }
+
+      if (["1", "true", "yes", "on"].includes(value.toLowerCase())) {
+        return true;
+      }
+
+      if (["0", "false", "no", "off"].includes(value.toLowerCase())) {
+        return false;
+      }
+
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "must be a boolean string",
+      });
+
+      return z.NEVER;
     });
 
 const envSchema = z.object({
@@ -75,6 +103,11 @@ const envSchema = z.object({
   ),
   CC_MCP_AUTH_TIMEOUT_MS: positiveInteger("CC_MCP_AUTH_TIMEOUT_MS", DEFAULT_MCP_AUTH_TIMEOUT_MS),
   CC_DRAIN_TIMEOUT_MS: positiveInteger("CC_DRAIN_TIMEOUT_MS", DEFAULT_DRAIN_TIMEOUT_MS),
+  CC_UPDATE_CHECK: booleanString(true),
+  CC_UPDATE_INTERVAL_MS: positiveInteger("CC_UPDATE_INTERVAL_MS", DEFAULT_UPDATE_INTERVAL_MS),
+  CC_AUTO_UPDATE: booleanString(false),
+  CC_UPDATE_REGISTRY_URL: z.string().url().optional().default(DEFAULT_UPDATE_REGISTRY_URL),
+  CC_DOCKER: booleanString(false),
   CC_LOG_LEVEL: logLevelSchema.optional().default(DEFAULT_LOG_LEVEL),
   CC_OPENCODE_PATH: z.string().trim().optional(),
   CC_SECRET_KEY: z.string().trim().optional().default(DEFAULT_SECRET_KEY),
@@ -123,6 +156,14 @@ export type RuntimeConfig = {
     port: number;
     maxRestarts: number;
     baseUrl: string;
+  };
+  updates: {
+    enabled: boolean;
+    intervalMs: number;
+    autoUpdate: boolean;
+    registryUrl: string;
+    docker: boolean;
+    historyFile: string;
   };
   logLevel: z.infer<typeof logLevelSchema>;
   opencodePath?: string;
@@ -199,6 +240,14 @@ export function loadRuntimeConfig(options?: {
       maxRestarts: parsedEnv.data.CC_OPENCODE_MAX_RESTARTS,
       baseUrl: `http://${parsedEnv.data.CC_OPENCODE_HOST}:${String(parsedEnv.data.CC_OPENCODE_PORT)}`,
     },
+    updates: {
+      enabled: parsedEnv.data.CC_UPDATE_CHECK,
+      intervalMs: parsedEnv.data.CC_UPDATE_INTERVAL_MS,
+      autoUpdate: parsedEnv.data.CC_AUTO_UPDATE,
+      registryUrl: parsedEnv.data.CC_UPDATE_REGISTRY_URL,
+      docker: parsedEnv.data.CC_DOCKER,
+      historyFile: resolve(workspaceDir, "update-history.json"),
+    },
     logLevel: parsedEnv.data.CC_LOG_LEVEL,
     opencodePath: parsedEnv.data.CC_OPENCODE_PATH || undefined,
     secretKey: parsedEnv.data.CC_SECRET_KEY,
@@ -219,6 +268,13 @@ export function getStartupLogContext(config: RuntimeConfig): Record<string, unkn
       sqlitePath: config.database.sqlitePath,
     },
     timeouts: config.timeouts,
+    updates: {
+      enabled: config.updates.enabled,
+      intervalMs: config.updates.intervalMs,
+      autoUpdate: config.updates.autoUpdate,
+      registryUrl: config.updates.registryUrl,
+      docker: config.updates.docker,
+    },
     logLevel: config.logLevel,
     opencodePathConfigured: config.opencodePath !== undefined,
     secretKeyConfigured: config.secretKey.trim().length > 0,
