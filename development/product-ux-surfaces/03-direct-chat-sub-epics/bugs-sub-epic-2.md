@@ -9,11 +9,13 @@
 ## Critical Bugs
 
 ### BUG-001: Shell Mode Not Working
+
 **Severity:** Critical
 **Component:** ChatComposer.tsx
 
 **Description:**
 Typing `!` at position 0 in an empty textarea does NOT trigger shell mode. The expected behavior is:
+
 - Visual "Shell" badge should appear
 - Textarea should switch to monospace font
 - Placeholder should change to "Shell command..."
@@ -23,6 +25,7 @@ Nothing happens. The `!` character is simply typed into the textarea with no mod
 
 **Root cause (CONFIRMED):**
 The shell mode detection in `ChatComposer.tsx` line 134 is:
+
 ```typescript
 if (e.key === "!" && cursorPosition === 0 && text === "" && mode === "normal") {
   e.preventDefault();
@@ -32,17 +35,20 @@ if (e.key === "!" && cursorPosition === 0 && text === "" && mode === "normal") {
 ```
 
 This logic is correct, but the issue is that:
+
 1. When using programmatic input (fill/type), keyDown events may not trigger
 2. More importantly, there's no visual feedback mechanism when shell mode activates
 
 However, manual testing should verify if keyDown handler fires. The likely issue is that `e.key === "!"` expects the literal character, which should work for Shift+1.
 
 **Possible issues:**
+
 - The `handleKeyDown` might not be wired up correctly to the textarea
 - The state might not be updating
 - Check if `setMode("shell")` is actually being called
 
 **Debug steps:**
+
 1. Add console.log to handleKeyDown to verify it fires
 2. Add console.log inside the shell mode detection condition
 3. Verify the mode state updates
@@ -50,6 +56,7 @@ However, manual testing should verify if keyDown handler fires. The likely issue
 ---
 
 ### BUG-002: File Mention Search Stuck on "Searching..."
+
 **Severity:** Critical
 **Component:** FileMentionPopover.tsx, use-filtered-list.ts
 
@@ -61,25 +68,30 @@ Popover should show matching files from the workspace or "No files found" after 
 
 **Network evidence:**
 The API calls ARE succeeding (HTTP 200):
+
 ```
 [GET] /api/agents/01KP3ST1K7XVQFF5EPQ1VDRJ4J/workspace/files?query=src => [200] OK
 ```
+
 Many duplicate requests are being made, suggesting debouncing may not be working.
 
 **Root cause (CONFIRMED):**
 The `useFilteredList` hook has a bug: the `items` function is in the useEffect dependency array (line 57):
+
 ```typescript
 useEffect(() => {
   // ...fetch logic
-}, [items, query, isAsyncItems]);  // <-- items here!
+}, [items, query, isAsyncItems]); // <-- items here!
 ```
 
 In `FileMentionPopover`, the `items` prop is an inline arrow function:
+
 ```typescript
 items: async (q) => { ... }
 ```
 
 This function is recreated on EVERY render, causing:
+
 1. The useEffect dependency changes
 2. Which triggers a new fetch
 3. Which triggers a re-render when `setAsyncItems` is called
@@ -87,6 +99,7 @@ This function is recreated on EVERY render, causing:
 5. INFINITE LOOP!
 
 **Fix:**
+
 - Wrap the `items` function in `useCallback` in `FileMentionPopover`
 - OR change `useFilteredList` to use `useRef` for the items function instead of putting it in deps
 
@@ -95,11 +108,13 @@ This function is recreated on EVERY render, causing:
 ## High Severity Bugs
 
 ### BUG-003: Internal Message Markers Visible
+
 **Severity:** High
 **Component:** Message rendering (ChatTimeline / MessageBubble)
 
 **Description:**
 Internal markers from the AI response are being displayed as literal text:
+
 - `[step-start]`
 - `[reasoning]`
 - `[step-finish]`
@@ -112,6 +127,7 @@ These markers should be filtered out or rendered as proper UI elements (like a "
 ---
 
 ### BUG-004: "The following tool was executed by the user" Displayed
+
 **Severity:** High
 **Component:** Message rendering
 
@@ -121,11 +137,13 @@ The text "The following tool was executed by the user" appears as a standalone u
 ---
 
 ### BUG-005: Popover Z-Index/Layering Issues
+
 **Severity:** High
 **Component:** FileMentionPopover.tsx, SlashCommandPopover.tsx
 
 **Description:**
 Both popovers have layering/positioning issues:
+
 - File mention popover overlaps with the toolbar area
 - Slash command popover shows chat content (bash card, user messages) bleeding through behind it
 
@@ -139,11 +157,13 @@ Popovers should have proper z-index and appear cleanly above all other content w
 ## Medium Severity Bugs
 
 ### BUG-006: React Duplicate Key Errors in ModelSelector
+
 **Severity:** Medium
 **Component:** ModelSelector.tsx
 
 **Description:**
 Console shows repeated React warnings about duplicate keys:
+
 ```
 Encountered two children with the same key, `gpt-5.2`
 Encountered two children with the same key, `gpt-5.2-codex`
@@ -161,6 +181,7 @@ Change key from `model.id` to `${provider.id}-${model.id}` or similar.
 ---
 
 ### BUG-007: Model Selector Text Truncation
+
 **Severity:** Medium
 **Component:** ModelSelector.tsx
 
@@ -174,6 +195,7 @@ The model name in the dropdown is truncated and hard to read. The full "Provider
 ## Low Severity Bugs
 
 ### BUG-008: History Navigation Cannot Be Verified
+
 **Severity:** Low
 **Component:** usePromptHistory.ts
 
@@ -185,6 +207,7 @@ Pressing Up/Down arrows in empty textarea does not navigate history. This may be
 ---
 
 ### BUG-009: Missing favicon (404)
+
 **Severity:** Low
 **Component:** Static assets
 
@@ -196,9 +219,11 @@ Console shows 404 error for `/favicon.ico`. Not critical but clutters console.
 ## Visual Issues
 
 ### VIS-001: Popover Positioning
+
 Both popovers use `bottom: 100%` which places them above the composer, but they overlap with other UI elements due to z-index issues.
 
 ### VIS-002: Chat Auto-Scroll
+
 The chat does not appear to auto-scroll to the bottom when new messages arrive or when the page loads with existing messages.
 
 ---
@@ -215,14 +240,14 @@ The chat does not appear to auto-scroll to the bottom when new messages arrive o
 
 ## Test Screenshots
 
-| Screenshot | Description |
-|------------|-------------|
-| `chat-page-initial.png` | Initial chat page showing internal markers |
-| `chat-page-full.png` | Full page screenshot showing layout |
-| `file-mention-popover.png` | File mention stuck on searching |
-| `slash-command-popover.png` | Slash commands with layering issues |
-| `shell-mode-test.png` | Shell mode not activating |
-| `auto-approve-toggle.png` | Auto-approve enabled state |
+| Screenshot                  | Description                                |
+| --------------------------- | ------------------------------------------ |
+| `chat-page-initial.png`     | Initial chat page showing internal markers |
+| `chat-page-full.png`        | Full page screenshot showing layout        |
+| `file-mention-popover.png`  | File mention stuck on searching            |
+| `slash-command-popover.png` | Slash commands with layering issues        |
+| `shell-mode-test.png`       | Shell mode not activating                  |
+| `auto-approve-toggle.png`   | Auto-approve enabled state                 |
 
 ---
 

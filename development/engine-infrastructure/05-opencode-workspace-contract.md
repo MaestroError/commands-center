@@ -26,6 +26,7 @@ E2 and C2 are shipped. This epic hardens the workspace file generation by ground
 ## Scope
 
 check `examples/opencode/packages/docs` for documentation, check `examples/opencode/.opencode/` for example and following links for more context:
+
 - https://opencode.ai/docs/mcp-servers/
 - https://opencode.ai/docs/skills/
 - https://opencode.ai/docs/models/

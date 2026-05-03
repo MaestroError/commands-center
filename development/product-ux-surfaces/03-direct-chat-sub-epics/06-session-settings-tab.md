@@ -23,11 +23,11 @@ No new backend endpoints are needed. The settings tab reuses the existing agent 
 
 ### Editable Fields (Subset of AgentEditorPage)
 
-| Field        | Input Type      | Validation              |
-|--------------|-----------------|-------------------------|
+| Field          | Input Type                               | Validation                   |
+| -------------- | ---------------------------------------- | ---------------------------- |
 | `defaultModel` | `<select>` from `catalog.providerModels` | Required, must be in catalog |
-| `role`       | `<input>` text  | Required, non-empty     |
-| `instructions` | `<textarea>` (resizable) | Required, non-empty |
+| `role`         | `<input>` text                           | Required, non-empty          |
+| `instructions` | `<textarea>` (resizable)                 | Required, non-empty          |
 
 Fields intentionally omitted: `name`, `iconPath`, `capabilities` (skills, MCP servers, tool permissions).
 

@@ -46,6 +46,7 @@ Upgrade from the generic JSON-dump card to purpose-built renderers for common to
 - Sidebar can be opened/closed via a toolbar button; state persisted (localStorage or similar).
 
 Note: interactions that depend on unbuilt screens are deferred:
+
 - Double-click to open in file manager → deferred (file manager not built).
 - Context menu "Open folder in terminal" → deferred (terminal not built).
 - Context menu "Open in file manager" → deferred (file manager not built).

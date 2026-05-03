@@ -33,21 +33,21 @@ The root `opencode.jsonc` defines servers with full connection details. This is 
     "playwright": {
       "type": "local",
       "command": ["npx", "-y", "@playwright/mcp@latest"],
-      "enabled": true
+      "enabled": true,
     },
     "github": {
       "type": "remote",
       "url": "https://api.github-mcp.example.com/mcp",
       "enabled": true,
-      "oauth": true
+      "oauth": true,
     },
     "composio": {
       "type": "remote",
       "url": "https://mcp.composio.dev/mcp",
       "enabled": true,
       "headers": {
-        "X-API-KEY": "{file:.secrets/composio-api-key}"
-      }
+        "X-API-KEY": "{file:.secrets/composio-api-key}",
+      },
     },
     "context7": {
       "type": "remote",
@@ -55,10 +55,10 @@ The root `opencode.jsonc` defines servers with full connection details. This is 
       "enabled": true,
       "oauth": false,
       "headers": {
-        "CONTEXT7_API_KEY": "{file:.secrets/context7-api-key}"
-      }
-    }
-  }
+        "CONTEXT7_API_KEY": "{file:.secrets/context7-api-key}",
+      },
+    },
+  },
 }
 ```
 
@@ -70,18 +70,16 @@ The workspace config uses a strict subset of the global schema:
 
 ```ts
 // From workspace-contract.ts
-const workspaceConfigSchema = z.object({
-  $schema: z.literal("https://opencode.ai/config.json"),
-  model: z.string().trim().min(1),
-  mcp: z.record(
-    z.string().min(1),
-    z.object({ enabled: z.boolean() }).strict()
-  ).default({}),
-  permission: z.record(
-    z.string().min(1),
-    z.union([permissionActionSchema, permissionRuleSchema])
-  ).default({}),
-}).strict();
+const workspaceConfigSchema = z
+  .object({
+    $schema: z.literal("https://opencode.ai/config.json"),
+    model: z.string().trim().min(1),
+    mcp: z.record(z.string().min(1), z.object({ enabled: z.boolean() }).strict()).default({}),
+    permission: z
+      .record(z.string().min(1), z.union([permissionActionSchema, permissionRuleSchema]))
+      .default({}),
+  })
+  .strict();
 ```
 
 The `mcp` section only accepts `{ enabled: boolean }` — no transport or auth fields. The `permission` section accepts `"allow" | "ask" | "deny"` values keyed by tool name patterns.
@@ -115,14 +113,14 @@ The Agent cannot use any tools from this server. OpenCode will not even connect 
     "github": { "enabled": false },
     "composio": { "enabled": false },
     "playwright": { "enabled": false },
-    "context7": { "enabled": false }
+    "context7": { "enabled": false },
   },
   "permission": {
     "github_*": "deny",
     "composio_*": "deny",
     "playwright_*": "deny",
-    "context7_*": "deny"
-  }
+    "context7_*": "deny",
+  },
 }
 ```
 
@@ -142,14 +140,14 @@ The Agent can use all tools from the server without confirmation prompts.
     "github": { "enabled": true },
     "composio": { "enabled": true },
     "playwright": { "enabled": false },
-    "context7": { "enabled": true }
+    "context7": { "enabled": true },
   },
   "permission": {
     "github_*": "allow",
     "composio_*": "allow",
     "playwright_*": "deny",
-    "context7_*": "allow"
-  }
+    "context7_*": "allow",
+  },
 }
 ```
 
@@ -167,7 +165,7 @@ The Agent can use some tools from the server but not others. Permission rules ar
     "github": { "enabled": true },
     "composio": { "enabled": true },
     "playwright": { "enabled": true },
-    "context7": { "enabled": true }
+    "context7": { "enabled": true },
   },
   "permission": {
     "github_*": "deny",
@@ -180,12 +178,13 @@ The Agent can use some tools from the server but not others. Permission rules ar
     "playwright_*": "deny",
     "playwright_browser_snapshot": "allow",
     "playwright_browser_navigate": "ask",
-    "context7_*": "allow"
-  }
+    "context7_*": "allow",
+  },
 }
 ```
 
 In this example:
+
 - **github**: Only read operations are allowed freely. Creating issues requires confirmation. All other tools (delete, merge, etc.) are denied.
 - **composio**: All Composio tools are denied by default. Only two Slack-related tools are accessible — listing channels freely and sending messages with user confirmation.
 - **playwright**: Only snapshot (read) is free. Navigation requires confirmation. All other browser actions are denied.
@@ -217,14 +216,14 @@ This renders to:
   "model": "anthropic/claude-sonnet-4-20250514",
   "mcp": {
     "github": { "enabled": true },
-    "composio": { "enabled": true }
+    "composio": { "enabled": true },
   },
   "permission": {
     "composio_SLACK_SEND_MESSAGE": "ask",
     "composio_SLACK_LIST_CHANNELS": "allow",
     "github_*": "allow",
-    "composio_*": "deny"
-  }
+    "composio_*": "deny",
+  },
 }
 ```
 
@@ -242,26 +241,27 @@ Composio-provided MCP servers follow the same model:
 3. **Per-Agent tool selection** — The Agent editor lists available Composio tools (discovered via the MCP `tools/list` call) and the user selects which tools this Agent can use. The backend writes the appropriate `permission` rules to the workspace `opencode.jsonc`.
 
 The Agent editor UI should:
+
 - Show all globally-registered MCP servers with a toggle (enabled/disabled) per Agent
 - For enabled servers, list the available tools with per-tool permission control (allow / ask / deny)
 - Default to `"deny"` for all tools of a newly-enabled server, requiring explicit opt-in
 
 ## Permission Actions Reference
 
-| Action | Behavior |
-|--------|----------|
-| `"allow"` | Tool executes without user confirmation |
-| `"ask"` | User is prompted to approve each invocation |
-| `"deny"` | Tool is removed from the LLM's available tools — it cannot be invoked |
+| Action    | Behavior                                                              |
+| --------- | --------------------------------------------------------------------- |
+| `"allow"` | Tool executes without user confirmation                               |
+| `"ask"`   | User is prompted to approve each invocation                           |
+| `"deny"`  | Tool is removed from the LLM's available tools — it cannot be invoked |
 
 ## Key Source Files
 
-| File | Purpose |
-|------|---------|
-| `opencode.jsonc` (root) | Global MCP server definitions with auth |
-| `packages/backend/src/opencode/workspace-contract.ts` | Workspace schema, rendering, and validation |
-| `packages/backend/src/schemas/agents.ts` | Agent capability schema (`mcpServers`, `toolPermissions`) |
-| `packages/backend/src/services/agent-workspace.ts` | Writes workspace files on agent create/update |
-| `examples/opencode/.../src/config/config.ts` | OpenCode engine config schema (full `Mcp` union type) |
-| `examples/opencode/.../src/mcp/index.ts` | MCP connection logic, `enabled` check, tool naming |
-| `examples/opencode/.../src/permission/index.ts` | Permission evaluation, `disabled()` filter, wildcard matching |
+| File                                                  | Purpose                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------- |
+| `opencode.jsonc` (root)                               | Global MCP server definitions with auth                       |
+| `packages/backend/src/opencode/workspace-contract.ts` | Workspace schema, rendering, and validation                   |
+| `packages/backend/src/schemas/agents.ts`              | Agent capability schema (`mcpServers`, `toolPermissions`)     |
+| `packages/backend/src/services/agent-workspace.ts`    | Writes workspace files on agent create/update                 |
+| `examples/opencode/.../src/config/config.ts`          | OpenCode engine config schema (full `Mcp` union type)         |
+| `examples/opencode/.../src/mcp/index.ts`              | MCP connection logic, `enabled` check, tool naming            |
+| `examples/opencode/.../src/permission/index.ts`       | Permission evaluation, `disabled()` filter, wildcard matching |

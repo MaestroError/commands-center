@@ -28,12 +28,12 @@ This avoids storing large base64 blobs in the DB while still providing full acce
 
 ```typescript
 interface SessionMediaItem {
-  id: string;           // part ID (prt_...)
-  messageId: string;    // parent message ID
+  id: string; // part ID (prt_...)
+  messageId: string; // parent message ID
   filename?: string;
   mime: string;
-  url: string;          // data: URL with base64 content
-  createdAt: string;    // ISO timestamp from parent message
+  url: string; // data: URL with base64 content
+  createdAt: string; // ISO timestamp from parent message
 }
 ```
 

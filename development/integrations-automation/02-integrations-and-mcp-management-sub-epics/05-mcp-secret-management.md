@@ -20,6 +20,7 @@ MCP secrets are the first consumer of a general **Secrets domain** built in this
 OpenCode's config loader replaces `{env:VAR_NAME}` tokens with `process.env[VAR_NAME]` before parsing. This means the workspace config file can hold symbolic references (`{env:CC_MCP_MYSERVER_GITHUB_TOKEN}`) instead of raw values. AI agents that read the workspace file see only the reference, never the credential.
 
 The backend is responsible for:
+
 1. Storing the real secret value encrypted in the DB via the Secrets domain.
 2. Writing the `{env:...}` reference into `opencode.jsonc` during config sync.
 3. Decrypting secrets and injecting them as env vars into the OpenCode subprocess on each spawn or reload.
@@ -33,6 +34,7 @@ CC_MCP_{SERVER_NAME_UPPER}_{FIELD_UPPER}
 ```
 
 Examples:
+
 - Server `github`, field `GITHUB_TOKEN` → `CC_MCP_GITHUB_GITHUB_TOKEN`
 - Server `linear`, header `Authorization` value → `CC_MCP_LINEAR_HEADER_AUTHORIZATION`
 
@@ -47,29 +49,29 @@ Raw values are **never** written. Instead:
       "type": "stdio",
       "command": ["github-mcp-server"],
       "environment": {
-        "GITHUB_TOKEN": "{env:CC_MCP_GITHUB_GITHUB_TOKEN}"
-      }
+        "GITHUB_TOKEN": "{env:CC_MCP_GITHUB_GITHUB_TOKEN}",
+      },
     },
     "linear": {
       "type": "sse",
       "url": "https://mcp.linear.app/sse",
       "headers": {
-        "Authorization": "{env:CC_MCP_LINEAR_HEADER_AUTHORIZATION}"
-      }
-    }
-  }
+        "Authorization": "{env:CC_MCP_LINEAR_HEADER_AUTHORIZATION}",
+      },
+    },
+  },
 }
 ```
 
 ### Lifecycle: When Env Vars Must Be (Re-)Injected
 
-| Event | Required action |
-|---|---|
-| New MCP server added with secrets | Encrypt + store secrets; write `{env:...}` refs to config; reload OpenCode with injected env |
-| Existing MCP server secrets updated | Re-encrypt; update config refs if var name changed; reload OpenCode |
-| MCP server removed | Delete secrets from DB; remove config entry; reload OpenCode |
-| Backend process (re)starts | Decrypt all active secrets from DB; inject into OpenCode spawn environment before first start |
-| App cold start / full reload | Same as backend (re)start — secrets are always sourced from DB at spawn time |
+| Event                               | Required action                                                                               |
+| ----------------------------------- | --------------------------------------------------------------------------------------------- |
+| New MCP server added with secrets   | Encrypt + store secrets; write `{env:...}` refs to config; reload OpenCode with injected env  |
+| Existing MCP server secrets updated | Re-encrypt; update config refs if var name changed; reload OpenCode                           |
+| MCP server removed                  | Delete secrets from DB; remove config entry; reload OpenCode                                  |
+| Backend process (re)starts          | Decrypt all active secrets from DB; inject into OpenCode spawn environment before first start |
+| App cold start / full reload        | Same as backend (re)start — secrets are always sourced from DB at spawn time                  |
 
 ### Encryption
 
@@ -103,16 +105,16 @@ The secrets infrastructure is built as a standalone domain, not coupled to MCP. 
 
 A single generic table for all app secrets:
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | text PK | |
-| `domain` | text | logical owner type, e.g. `"mcp_server"`, `"provider"` |
-| `owner_id` | text | ID of the owning entity (e.g. `mcp_servers.id`) |
-| `key` | text | field name within that owner, e.g. `GITHUB_TOKEN` |
-| `encrypted_value` | text | AES-256-GCM ciphertext + IV, base64-encoded |
-| `env_var_name` | text | computed name used in config references, e.g. `CC_MCP_GITHUB_GITHUB_TOKEN` |
-| `created_at` | integer | |
-| `updated_at` | integer | |
+| Column            | Type    | Notes                                                                      |
+| ----------------- | ------- | -------------------------------------------------------------------------- |
+| `id`              | text PK |                                                                            |
+| `domain`          | text    | logical owner type, e.g. `"mcp_server"`, `"provider"`                      |
+| `owner_id`        | text    | ID of the owning entity (e.g. `mcp_servers.id`)                            |
+| `key`             | text    | field name within that owner, e.g. `GITHUB_TOKEN`                          |
+| `encrypted_value` | text    | AES-256-GCM ciphertext + IV, base64-encoded                                |
+| `env_var_name`    | text    | computed name used in config references, e.g. `CC_MCP_GITHUB_GITHUB_TOKEN` |
+| `created_at`      | integer |                                                                            |
+| `updated_at`      | integer |                                                                            |
 
 Unique constraint on `(domain, owner_id, key)`.
 
@@ -140,14 +142,14 @@ New shared schema file (not inside `mcp.ts`):
 
 Domain-agnostic routes. The `domain` and `ownerId` are path parameters so any future feature can reuse them without new routes:
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/secrets/:domain/:ownerId` | List secret metadata for an owner (no values) |
-| `PUT` | `/api/secrets/:domain/:ownerId/:key` | Set or update a secret |
-| `DELETE` | `/api/secrets/:domain/:ownerId/:key` | Revoke a secret |
-| `DELETE` | `/api/secrets/:domain/:ownerId` | Revoke all secrets for an owner |
-| `GET` | `/api/secrets/status` | Global secrets status across all domains |
-| `GET` | `/api/secrets/status/:domain` | Status filtered to a single domain |
+| Method   | Path                                 | Description                                   |
+| -------- | ------------------------------------ | --------------------------------------------- |
+| `GET`    | `/api/secrets/:domain/:ownerId`      | List secret metadata for an owner (no values) |
+| `PUT`    | `/api/secrets/:domain/:ownerId/:key` | Set or update a secret                        |
+| `DELETE` | `/api/secrets/:domain/:ownerId/:key` | Revoke a secret                               |
+| `DELETE` | `/api/secrets/:domain/:ownerId`      | Revoke all secrets for an owner               |
+| `GET`    | `/api/secrets/status`                | Global secrets status across all domains      |
+| `GET`    | `/api/secrets/status/:domain`        | Status filtered to a single domain            |
 
 #### Frontend hooks — `use-secrets-query.ts`
 
@@ -175,7 +177,7 @@ Wherever the backend spawns or restarts the OpenCode process, it calls `secretSe
 ```ts
 const secretEnv = await secretService.buildEnvMap("mcp_server");
 spawnOpenCode({
-  env: { ...process.env, ...secretEnv }
+  env: { ...process.env, ...secretEnv },
 });
 ```
 
@@ -199,6 +201,7 @@ Existing secrets are shown as `{ isSet: true }` in the edit form — the user ca
 A standalone page in the settings or integrations area, reachable from the sidebar. It is domain-aware — it shows sections per domain, and MCP servers are the first section.
 
 **MCP Servers section:**
+
 - One panel per MCP server that has at least one secret.
 - Each panel shows server name, transport type, and a table of secret keys.
 - Per-secret row: key name, masked value (`••••••••`), last-updated timestamp, loaded status badge (green "Loaded" / yellow "Not loaded").
@@ -206,9 +209,11 @@ A standalone page in the settings or integrations area, reachable from the sideb
 - Add-secret button per server for new fields.
 
 **Global status banner:**
+
 - If any configured secrets are not currently injected into the OpenCode process (e.g. after a backend restart where injection was skipped, or after key rotation), a warning banner appears at the top with a **Reload OpenCode** action that re-injects all secrets and restarts the process.
 
 **Extensibility:**
+
 - When future domains (e.g. provider credentials) store secrets, they appear as additional sections on this same page without any structural changes to the page.
 
 ---
@@ -235,6 +240,7 @@ A standalone page in the settings or integrations area, reachable from the sideb
 ## Key Files to Create/Modify
 
 **Secrets domain (new, shared infrastructure):**
+
 - `packages/backend/src/db/schema/secrets.ts` — `secrets` table schema
 - `packages/backend/src/services/secret-service.ts` — general-purpose secrets service
 - `packages/backend/src/routes/secrets.ts` — domain-agnostic secret routes
@@ -244,6 +250,7 @@ A standalone page in the settings or integrations area, reachable from the sideb
 - `packages/frontend/src/pages/SecretsPage.tsx` — Secrets Management page
 
 **MCP integration (modify existing):**
+
 - `packages/backend/src/services/mcp-server-service.ts` — update `renderConfigEntry()` and `syncGlobalConfig()` to write `{env:...}` refs; update spawn path to call `buildEnvMap("mcp_server")`
 - `packages/frontend/src/pages/IntegrationsPage.tsx` — update add/edit MCP forms to use password fields and route secrets to secrets API
 
