@@ -120,9 +120,6 @@ importers:
 
   packages/cli:
     dependencies:
-      '@cc/backend':
-        specifier: workspace:*
-        version: link:../backend
       '@fastify/static':
         specifier: ^8.1.0
         version: 8.3.0
