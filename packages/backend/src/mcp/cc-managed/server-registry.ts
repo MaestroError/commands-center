@@ -8,6 +8,8 @@ import type { CustomToolService } from "../../services/custom-tool-service.js";
 import type { LiveRequestService } from "../../services/live-request-service.js";
 import type { OpenCodeService } from "../../services/opencode-service.js";
 import type { SecretService } from "../../services/secret-service.js";
+import type { TaskExecutionService } from "../../services/task-execution-service.js";
+import type { TaskService } from "../../services/task-service.js";
 import type { OpenCodeOrchestrator } from "../../orchestrator/opencode-orchestrator.js";
 import {
   addSecretToolMetadata,
@@ -23,6 +25,17 @@ import {
   createCustomToolMetadata,
   createCreateCustomToolDefinition,
 } from "./groups/cc-tool-management/tools/create-custom-tool.js";
+import {
+  createTaskToolMetadata,
+  createTasksManagementToolDefinitions,
+  getTaskRunToolMetadata,
+  getTaskToolMetadata,
+  listRecurringTaskHistoryToolMetadata,
+  listTaskRunsToolMetadata,
+  listTasksToolMetadata,
+  scheduleOneTimeTaskToolMetadata,
+  triggerTaskToolMetadata,
+} from "./groups/cc-tasks-management/tools/task-management-tools.js";
 
 export type CcManagedToolContext = {
   agentSlug: string;
@@ -77,6 +90,8 @@ export function createCcManagedMcpServerRegistry(options: {
   liveRequestService?: LiveRequestService;
   secretService?: SecretService;
   orchestrator?: OpenCodeOrchestrator;
+  taskService?: TaskService;
+  taskExecutionService?: TaskExecutionService;
 }): readonly CcManagedMcpServerDefinition[] {
   const ccAppTools: CcManagedToolDefinition[] = [];
 
@@ -118,6 +133,19 @@ export function createCcManagedMcpServerRegistry(options: {
     );
   }
 
+  const taskManagementTools: CcManagedToolDefinition[] =
+    options.db && options.taskService && options.taskExecutionService
+      ? [
+          ...createTasksManagementToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+            taskExecutionService: options.taskExecutionService,
+            conversationService: options.conversationService,
+            liveRequestService: options.liveRequestService,
+          }),
+        ]
+      : [];
+
   return [
     {
       name: "cc_app",
@@ -134,6 +162,23 @@ export function createCcManagedMcpServerRegistry(options: {
       enabledByDefault: false,
       catalogTools: [createCustomToolMetadata, copyCustomToolToAgentMetadata],
       tools: toolManagementTools,
+    },
+    {
+      name: "cc_tasks_management",
+      routeSegment: "cc-tasks-management",
+      description: "CommandsCenter task creation, scheduling, triggering, and run inspection.",
+      enabledByDefault: false,
+      catalogTools: [
+        createTaskToolMetadata,
+        listTasksToolMetadata,
+        getTaskToolMetadata,
+        triggerTaskToolMetadata,
+        scheduleOneTimeTaskToolMetadata,
+        listTaskRunsToolMetadata,
+        getTaskRunToolMetadata,
+        listRecurringTaskHistoryToolMetadata,
+      ],
+      tools: taskManagementTools,
     },
   ] as const satisfies readonly CcManagedMcpServerDefinition[];
 }
