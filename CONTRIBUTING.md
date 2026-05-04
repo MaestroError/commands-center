@@ -63,6 +63,7 @@ The shared backend and CLI bootstrap path validates these environment variables 
 | `pnpm typecheck`     | Run TypeScript type checking      |
 | `pnpm clean`         | Remove build artifacts            |
 | `pnpm build:cli`     | Build production CLI binary       |
+| `pnpm release:check` | Run the full publish gate locally |
 
 ### Package-specific
 
@@ -141,3 +142,35 @@ OpenCode uses the tracked `opencode.jsonc` project config and reads secret files
 6. Implement frontend page/component
 7. Write E2E test for the critical path
 8. Run `pnpm typecheck && pnpm test && pnpm lint`
+
+## Releasing
+
+Only the `commandscenter` CLI package (`packages/cli`) is published to npm. Its `version` field in `packages/cli/package.json` is the single source of truth — the GitHub Release UI never bumps it for you.
+
+### Release flow
+
+1. Open a PR that bumps `packages/cli/package.json` `version` to the new `X.Y.Z`.
+2. Merge the PR to `main`.
+3. On GitHub, create a new **Release** with tag `vX.Y.Z` (must match the package version exactly) targeting `main`.
+4. Publishing the release triggers `.github/workflows/publish.yml`, which:
+   - validates the tag matches `^v\d+\.\d+\.\d+$`
+   - validates the tag version equals `packages/cli/package.json` version
+   - fails if `commandscenter@X.Y.Z` is already on npm
+   - runs `pnpm release:check` (typecheck, lint, CLI tests, CLI build)
+   - runs `npm publish --access public --provenance` from `packages/cli`
+   - uploads the generated `commandscenter-X.Y.Z.tgz` as a release asset
+
+### Required configuration
+
+- Repository secret `NPM_TOKEN` with publish rights to `commandscenter` (Automation token recommended).
+- The workflow already requests `id-token: write`, which npm provenance requires.
+
+### Local dry run
+
+Before tagging a release you can run the same gate locally:
+
+```bash
+pnpm release:check
+```
+
+If it passes, the publish workflow should also pass for the same commit.

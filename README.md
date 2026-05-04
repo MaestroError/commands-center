@@ -281,6 +281,10 @@ cc/
 | [PRD.md](PRD.md)                     | Product requirements                      |
 | [tech-research.md](tech-research.md) | Architecture blueprint                    |
 
+## Releases
+
+Releases are published to npm as the `commandscenter` package. The version in `packages/cli/package.json` is the source of truth; publishing a GitHub Release with tag `vX.Y.Z` triggers `.github/workflows/publish.yml`, which validates the tag, runs the publish gate, and runs `npm publish --access public --provenance`. See the [Releasing section in CONTRIBUTING.md](CONTRIBUTING.md#releasing) for the full flow.
+
 ## Dev Debug Panel
 
 A floating panel available in development mode to test UI components that are hard to trigger manually (tool renderers, TodoDock, error cards, etc.).

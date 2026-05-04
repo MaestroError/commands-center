@@ -9,6 +9,10 @@ import {
 
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { ConversationService } from "./conversation-service.js";
+import {
+  buildOpenCodeSessionPermissions,
+  type TaskPermissionService,
+} from "./task-permission-service.js";
 import type { TaskService } from "./task-service.js";
 
 export type TaskExecutionService = ReturnType<typeof createTaskExecutionService>;
@@ -16,6 +20,7 @@ export type TaskExecutionService = ReturnType<typeof createTaskExecutionService>
 export function createTaskExecutionService(options: {
   taskService: TaskService;
   conversationService?: ConversationService;
+  taskPermissionService?: TaskPermissionService;
 }) {
   return {
     async trigger(taskId: string, input: Partial<TriggerTaskInput> = {}): Promise<TaskRun> {
@@ -28,6 +33,7 @@ export function createTaskExecutionService(options: {
       }
 
       const renderedContext = buildRenderedContext(task, parsed);
+      const effectivePermissions = await options.taskPermissionService?.compute(task);
       const run = await options.taskService.createRun({
         taskId: task.id,
         agentId: task.agentId,
@@ -35,6 +41,7 @@ export function createTaskExecutionService(options: {
         triggerSource: parsed.triggerSource,
         renderedPrompt: renderTaskRunPrompt(task, renderedContext),
         renderedContext,
+        effectivePermissions,
       });
 
       return runQueuedTask(run.id);
@@ -101,6 +108,9 @@ export function createTaskExecutionService(options: {
           taskId: task.id,
           taskRunId: running.id,
           title: `Task: ${task.title}`,
+          permission: running.effectivePermissions
+            ? buildOpenCodeSessionPermissions(running.effectivePermissions)
+            : undefined,
         });
         const sessionLinked = await options.taskService.updateRun(running.id, {
           opencodeSessionId: conversation.opencodeSessionId,

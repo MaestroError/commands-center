@@ -273,11 +273,11 @@ function createMockOpenCodeService(): OpenCodeService {
     startOauth: vi.fn(),
     completeOauth: vi.fn(() => Promise.resolve(true)),
     disconnectProvider: vi.fn(() => Promise.resolve(true)),
-    createSession: vi.fn((_directory: string, title?: string) => {
+    createSession: vi.fn((_directory: string, sessionOptions?: { title?: string }) => {
       sessionCount += 1;
       const session: OpenCodeSession = {
         id: `session-${String(sessionCount)}`,
-        title,
+        title: sessionOptions?.title,
         time: { created: nextTime(), updated: nextTime() },
       };
       sessions.set(session.id, session);

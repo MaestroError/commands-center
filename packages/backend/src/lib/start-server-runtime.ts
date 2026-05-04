@@ -32,6 +32,7 @@ import {
   createTaskSchedulerService,
   type TaskSchedulerService,
 } from "../services/task-scheduler-service.js";
+import { createTaskPermissionService } from "../services/task-permission-service.js";
 import { createTaskService, type TaskService } from "../services/task-service.js";
 import { bootstrapRuntimePaths } from "./runtime-paths.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
@@ -116,7 +117,16 @@ export async function startServerRuntime(
     config,
     opencodeService,
   });
-  const taskExecutionService = createTaskExecutionService({ taskService, conversationService });
+  const taskPermissionService = createTaskPermissionService({
+    db: database.db,
+    config,
+    opencodeService,
+  });
+  const taskExecutionService = createTaskExecutionService({
+    taskService,
+    conversationService,
+    taskPermissionService,
+  });
   const taskSchedulerService = createTaskSchedulerService({
     db: database.db,
     taskService,

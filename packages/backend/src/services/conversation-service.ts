@@ -26,7 +26,7 @@ import { BadRequestError, NotFoundError } from "../lib/api-error.js";
 import { cleanTitle, extractMediaItems, mapRemoteMessage } from "../lib/message-mapper.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { resolveAgentWorkspacePath } from "./agent-workspace.js";
-import type { OpenCodeService } from "./opencode-service.js";
+import type { OpenCodeService, OpenCodeSessionPermissionRule } from "./opencode-service.js";
 
 type AgentRow = typeof agents.$inferSelect;
 type AgentRuntimeRow = AgentRow & { workspace_path: string };
@@ -106,6 +106,7 @@ export function createConversationService(options: {
       taskId: string;
       taskRunId: string;
       title: string;
+      permission?: OpenCodeSessionPermissionRule[];
     }): Promise<ConversationDetail> {
       const agent = await getAgent(input.agentId);
       const conversation = await createConversation(agent, {
@@ -114,6 +115,7 @@ export function createConversationService(options: {
         taskId: input.taskId,
         taskRunId: input.taskRunId,
         makeCurrent: false,
+        permission: input.permission,
       });
 
       return getConversationDetail(conversation.id);
@@ -459,11 +461,15 @@ export function createConversationService(options: {
       taskId?: string;
       taskRunId?: string;
       makeCurrent?: boolean;
+      permission?: OpenCodeSessionPermissionRule[];
     } = {},
   ): Promise<ConversationRow> {
     const source = input.source ?? "chat";
     const makeCurrent = input.makeCurrent ?? source === "chat";
-    const session = await options.opencodeService.createSession(agent.workspace_path, input.title);
+    const session = await options.opencodeService.createSession(agent.workspace_path, {
+      title: input.title,
+      permission: input.permission,
+    });
     const timestamp = new Date(session.time.updated ?? session.time.created);
 
     if (makeCurrent) {

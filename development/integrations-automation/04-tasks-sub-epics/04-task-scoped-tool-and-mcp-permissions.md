@@ -1,4 +1,4 @@
-# I4.4 Task-Scoped Tool and MCP Permissions
+# ✅ I4.4 Task-Scoped Tool and MCP Permissions
 
 ## Goal
 

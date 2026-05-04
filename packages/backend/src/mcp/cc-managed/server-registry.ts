@@ -31,6 +31,7 @@ export type CcManagedToolContext = {
 export type CcManagedToolDefinition = {
   name: string;
   description: string;
+  context: CcManagedToolContextMode;
   inputSchema?: AnySchema;
   outputSchema?: AnySchema;
   execute: (
@@ -52,7 +53,10 @@ export type CcManagedToolDefinition = {
 export type CcManagedToolMetadata = {
   name: string;
   description: string;
+  context: CcManagedToolContextMode;
 };
+
+export type CcManagedToolContextMode = "chat" | "task_run" | "both";
 
 export type CcManagedMcpServerDefinition = {
   name: string;

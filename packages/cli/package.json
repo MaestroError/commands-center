@@ -13,6 +13,10 @@
   "engines": {
     "node": ">=22.0.0"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "node --import tsx/esm build.ts",
     "start": "node dist/bin.mjs start",

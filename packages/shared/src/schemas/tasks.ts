@@ -78,6 +78,15 @@ export const taskPermissionProfileSchema = z.object({
   toolPermissions: z.array(agentPermissionRuleSchema).optional(),
   appToolPermissions: z.array(agentPermissionRuleSchema).optional(),
   approvalPolicy: z.enum(["inherit", "auto_approve", "deny"]).optional(),
+  diagnostics: z
+    .array(
+      z.object({
+        code: z.string().min(1),
+        message: z.string().min(1),
+        details: looseRecordSchema.optional(),
+      }),
+    )
+    .optional(),
 });
 
 export const createTaskInputSchema = z.object({

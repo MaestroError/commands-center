@@ -19,13 +19,16 @@ export function createCcManagedMcpToolAccessService() {
     listEnabledTools(
       capabilities: AgentCapabilitySelection,
       server: CcManagedMcpServerDefinition,
+      context: "chat" | "task_run" = "chat",
     ): readonly CcManagedToolDefinition[] {
       if (!this.isServerEnabled(capabilities, server)) {
         return [];
       }
 
       return server.tools.filter(
-        (tool) => this.getToolAction(capabilities, server.name, tool.name) !== "deny",
+        (tool) =>
+          isToolAvailableInContext(tool, context) &&
+          this.getToolAction(capabilities, server.name, tool.name) !== "deny",
       );
     },
 
@@ -45,6 +48,13 @@ export function createCcManagedMcpToolAccessService() {
       return "allow";
     },
   };
+}
+
+export function isToolAvailableInContext(
+  tool: CcManagedToolDefinition | { context: CcManagedToolDefinition["context"] },
+  context: "chat" | "task_run",
+): boolean {
+  return tool.context === "both" || tool.context === context;
 }
 
 export function buildCcManagedToolPermissionPattern(serverName: string, toolName: string): string {

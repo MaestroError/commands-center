@@ -24,6 +24,7 @@ export const addSecretToolMetadata = {
   name: "add_secret",
   description:
     "Ask the CommandsCenter operator to securely enter a workspace secret while the agent waits.",
+  context: "chat",
 } as const;
 
 const addSecretDecisionSchema = z.object({
@@ -45,6 +46,7 @@ export function createAddSecretDefinition(options: {
   return {
     name: addSecretToolMetadata.name,
     description: addSecretToolMetadata.description,
+    context: addSecretToolMetadata.context,
     inputSchema: addSecretInputSchema,
     outputSchema: addSecretOutputSchema,
     async execute(args: unknown, context: { agentSlug: string }) {

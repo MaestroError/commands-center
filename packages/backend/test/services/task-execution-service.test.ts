@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AppDb } from "../../src/db/client";
 import { agents } from "../../src/db/schema/index";
 import { createConversationService } from "../../src/services/conversation-service";
+import { createTaskPermissionService } from "../../src/services/task-permission-service";
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskService } from "../../src/services/task-service";
 import type {
+  CreateOpenCodeSessionOptions,
   OpenCodeService,
   OpenCodeSession,
   OpenCodeSessionMessage,
@@ -76,6 +78,61 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("persists effective permissions and passes them to task-owned sessions", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const taskPermissionService = createTaskPermissionService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      taskPermissionService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db, {
+        toolPermissions: [{ pattern: "bash_*", action: "ask" }],
+      });
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Permissioned session task",
+        triggerMode: "manual",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      expect(run.status).toBe("completed");
+      expect(run.effectivePermissions?.toolPermissions).toEqual([
+        { pattern: "bash_*", action: "allow" },
+      ]);
+      expect(run.effectivePermissions?.diagnostics?.map((diagnostic) => diagnostic.code)).toContain(
+        "ask_mode_not_allowed_for_task_run",
+      );
+      expect(run.effectivePermissions?.diagnostics).toContainEqual(
+        expect.objectContaining({ details: { pattern: "bash_*" } }),
+      );
+      expect(opencodeService.createSession).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          permission: expect.arrayContaining([
+            { permission: "bash_*", pattern: "*", action: "allow" },
+          ]),
+        }),
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("rejects manual triggers for disabled tasks", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -122,7 +179,10 @@ describe("createTaskExecutionService", () => {
   });
 });
 
-async function insertAgent(db: AppDb): Promise<typeof agents.$inferSelect> {
+async function insertAgent(
+  db: AppDb,
+  capabilities: Record<string, unknown> = {},
+): Promise<typeof agents.$inferSelect> {
   const timestamp = new Date();
   const id = `agent-${crypto.randomUUID()}`;
   const [agent] = await db
@@ -136,7 +196,7 @@ async function insertAgent(db: AppDb): Promise<typeof agents.$inferSelect> {
       default_model: "openai/gpt-4.1",
       icon_path: null,
       status: "active",
-      capabilities_json: "{}",
+      capabilities_json: JSON.stringify(capabilities),
       created_at: timestamp,
       updated_at: timestamp,
       archived_at: null,
@@ -168,18 +228,18 @@ function createMockOpenCodeService(): OpenCodeService {
   }
 
   return {
-    createSession: (_directory, title) => {
+    createSession: vi.fn((_directory: string, sessionOptions?: CreateOpenCodeSessionOptions) => {
       sessionCount += 1;
       const session: OpenCodeSession = {
         id: `session-${String(sessionCount)}`,
-        title,
+        title: sessionOptions?.title,
         time: { created: nextTime(), updated: nextTime() },
       };
       sessions.set(session.id, session);
       messages.set(session.id, []);
       return Promise.resolve(session);
-    },
-    getSession: (_directory, sessionID) => {
+    }),
+    getSession: (_directory: string, sessionID: string) => {
       const session = sessions.get(sessionID);
 
       if (!session) {
@@ -188,8 +248,9 @@ function createMockOpenCodeService(): OpenCodeService {
 
       return Promise.resolve(session);
     },
-    listSessionMessages: (_directory, sessionID) => Promise.resolve(messages.get(sessionID) ?? []),
-    promptSession: ({ sessionID, text }) => {
+    listSessionMessages: (_directory: string, sessionID: string) =>
+      Promise.resolve(messages.get(sessionID) ?? []),
+    promptSession: ({ sessionID, text }: { sessionID: string; text: string }) => {
       const sessionMessages = messages.get(sessionID);
       const session = sessions.get(sessionID);
 
@@ -226,5 +287,5 @@ function createMockOpenCodeService(): OpenCodeService {
       session.time.updated = nextTime();
       return Promise.resolve();
     },
-  } as OpenCodeService;
+  } as unknown as OpenCodeService;
 }

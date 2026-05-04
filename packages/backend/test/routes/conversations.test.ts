@@ -208,12 +208,12 @@ function createMockOpenCodeService(): OpenCodeService {
 
   return {
     ...createBaseOpenCodeService(),
-    createSession: (_directory, title) => {
+    createSession: (_directory, sessionOptions) => {
       sessionCount += 1;
 
       const session = {
         id: `ses-${String(sessionCount)}`,
-        title,
+        title: sessionOptions?.title,
         time: { created: nextTime(), updated: nextTime() },
       };
       sessions.set(session.id, session);

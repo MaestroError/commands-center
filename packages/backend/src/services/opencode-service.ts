@@ -73,6 +73,17 @@ const openCodeSessionSchema = z
 export type OpenCodeSession = z.infer<typeof openCodeSessionSchema>;
 export type OpenCodeSessionMessage = z.infer<typeof openCodeMessageSchema>;
 
+export type OpenCodeSessionPermissionRule = {
+  permission: string;
+  pattern: string;
+  action: "allow" | "deny" | "ask";
+};
+
+export type CreateOpenCodeSessionOptions = {
+  title?: string;
+  permission?: OpenCodeSessionPermissionRule[];
+};
+
 type SessionModel = {
   providerID: string;
   modelID: string;
@@ -295,13 +306,19 @@ export function createOpenCodeService(options: {
       return mcpAuthRemoveResultSchema.parse(result);
     },
 
-    async createSession(directory: string, title?: string): Promise<OpenCodeSession> {
+    async createSession(
+      directory: string,
+      sessionOptions: CreateOpenCodeSessionOptions = {},
+    ): Promise<OpenCodeSession> {
       const result = await requestSessionJson({
         config: options.config,
         directory,
         method: "POST",
         path: "/session",
-        body: { title },
+        body: buildDefinedBody({
+          title: sessionOptions.title,
+          permission: sessionOptions.permission,
+        }),
       });
       return openCodeSessionSchema.parse(result);
     },
@@ -644,4 +661,8 @@ function buildDefinedQuery<T extends Record<string, string | number | boolean | 
       return entry[1] !== undefined;
     }),
   ) as T;
+}
+
+function buildDefinedBody<T extends Record<string, unknown>>(body: T): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(body).filter((entry) => entry[1] !== undefined));
 }

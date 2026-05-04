@@ -23,6 +23,7 @@ export const copyCustomToolToAgentMetadata = {
   name: "copy_custom_tool_to_agent",
   description:
     "Copy a global CommandsCenter custom tool into an agent workspace, asking the operator when overwrite or rename is needed.",
+  context: "chat",
 } as const;
 
 const copyDecisionSchema = z.object({
@@ -40,6 +41,7 @@ export function createCopyCustomToolToAgentDefinition(options: {
   return {
     name: copyCustomToolToAgentMetadata.name,
     description: copyCustomToolToAgentMetadata.description,
+    context: copyCustomToolToAgentMetadata.context,
     inputSchema: copyCustomToolToAgentInputSchema,
     outputSchema: copyCustomToolToAgentOutputSchema,
     async execute(args: unknown, context: { agentSlug: string }) {
