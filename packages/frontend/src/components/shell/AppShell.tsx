@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronLeft, Menu, Search } from "lucide-react";
+import { ChevronLeft, Clock3, Menu, Search } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useEngineStatusQuery } from "@/hooks/use-engine-status-query";
+import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import { useTheme } from "@/context/use-theme";
 import {
   agentsSidebarRoute,
@@ -29,7 +30,9 @@ export function AppShell() {
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
   const recentAgents = readRecentAgents();
   const engineQuery = useEngineStatusQuery();
+  const activeRunsQuery = useActiveTaskRunsQuery();
   const engineState = engineQuery.data?.state;
+  const activeRuns = activeRunsQuery.data ?? [];
 
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, sidebarCollapsed ? "true" : "false");
@@ -134,6 +137,7 @@ export function AppShell() {
                   {title}
                 </h1>
                 <EngineStatusBadge state={engineState} />
+                {activeRuns.length > 0 ? <ActiveRunsBadge count={activeRuns.length} /> : null}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -357,6 +361,19 @@ function SidebarRouteLink(props: {
     >
       {props.children}
       {!props.collapsed ? <span>{props.label}</span> : null}
+    </NavLink>
+  );
+}
+
+function ActiveRunsBadge(props: { count: number }) {
+  return (
+    <NavLink
+      className="hidden items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs text-amber-300 transition hover:border-amber-300/60 sm:inline-flex"
+      to="/tasks?status=running"
+      title="Active task runs can delay refresh, shutdown, or update operations until they finish."
+    >
+      <Clock3 className="h-3.5 w-3.5 animate-pulse" />
+      {props.count} active {props.count === 1 ? "task" : "tasks"}
     </NavLink>
   );
 }

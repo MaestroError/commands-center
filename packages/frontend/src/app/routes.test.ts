@@ -25,6 +25,14 @@ describe("getRouteTitle", () => {
     expect(getRouteTitle("/chat/agent-1/conv-1")).toBe("Direct Chat");
   });
 
+  it('returns "Tasks" for the task list route', () => {
+    expect(getRouteTitle("/tasks")).toBe("Tasks");
+  });
+
+  it('returns "Task Run" for task run details', () => {
+    expect(getRouteTitle("/tasks/task-1/runs/run-1")).toBe("Task Run");
+  });
+
   it("returns the fallback title for unknown paths", () => {
     expect(getRouteTitle("/unknown/path")).toBe("CommandsCenter");
   });

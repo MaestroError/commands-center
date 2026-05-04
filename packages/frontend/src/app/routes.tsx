@@ -26,6 +26,8 @@ import { LazyGlobalTerminalPage } from "@/pages/LazyGlobalTerminalPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { ProviderConnectionsPage } from "@/pages/ProviderConnectionsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { TaskDetailPage } from "@/pages/TaskDetailPage";
+import { TasksPage } from "@/pages/TasksPage";
 import { WorkspaceChatPage } from "@/pages/WorkspaceChatPage";
 
 type AppRouteDefinition = {
@@ -88,16 +90,37 @@ export const appRoutes = [
     element: <LazyGlobalTerminalPage />,
   },
   {
-    path: "/automations",
-    title: "Automations",
-    navLabel: "Automations",
+    path: "/tasks",
+    title: "Tasks",
+    navLabel: "Tasks",
     navIcon: <Clock3 className="h-4 w-4 shrink-0" />,
-    element: (
-      <GenericPlaceholderPage
-        title="Automations"
-        description="Scheduled prompts, run history, and automation management will build on the foundation added in this epic."
-      />
-    ),
+    navigationMatch: ["/tasks/new", "/tasks/:id", "/tasks/:id/edit", "/tasks/:id/runs/:runId"],
+    element: <TasksPage />,
+  },
+  {
+    path: "/tasks/new",
+    title: "Create Task",
+    element: <TasksPage mode="create" />,
+  },
+  {
+    path: "/tasks/:id",
+    title: "Task Detail",
+    element: <TaskDetailPage />,
+  },
+  {
+    path: "/tasks/:id/edit",
+    title: "Edit Task",
+    element: <TasksPage mode="edit" />,
+  },
+  {
+    path: "/tasks/:id/runs/:runId",
+    title: "Task Run",
+    element: <TaskDetailPage mode="run" />,
+  },
+  {
+    path: "/automations",
+    title: "Tasks",
+    element: <GenericPlaceholderPage title="Tasks" description="Automations are now Tasks." />,
   },
   {
     path: "/tools",

@@ -5,6 +5,7 @@ import type { TerminalSession } from "@cc/shared/schemas";
 import { closeTerminalSession, createTerminalSession, resizeTerminalSession } from "@/lib/api";
 
 const GLOBAL_TERMINAL_STATE_KEY = "cc.global-terminal.v1";
+const EMPTY_TERMINAL_SESSIONS: TerminalSession[] = [];
 
 type PersistedTerminalState = {
   activeId?: string;
@@ -80,17 +81,21 @@ function reducer(state: State, action: Action): State {
 }
 
 export function useTerminalSessions(
-  initialSessions: TerminalSession[] = [],
+  initialSessions?: TerminalSession[],
   initialActiveId?: string,
 ): UseTerminalSessions {
+  const sourceSessions = initialSessions ?? EMPTY_TERMINAL_SESSIONS;
+  const sourceSessionSignature = buildSessionSignature(sourceSessions);
   const persistedState = useMemo(() => readPersistedTerminalState(), []);
   const hydratedSessions = useMemo(
-    () => hydratePersistedSessions(initialSessions, persistedState),
-    [initialSessions, persistedState],
+    () => hydratePersistedSessions(sourceSessions, persistedState),
+    [persistedState, sourceSessionSignature],
   );
+  const hydratedActiveId =
+    initialActiveId ?? selectPersistedActiveId(hydratedSessions, persistedState);
   const [state, dispatch] = useReducer(reducer, {
     sessions: hydratedSessions,
-    activeId: initialActiveId ?? selectPersistedActiveId(hydratedSessions, persistedState),
+    activeId: hydratedActiveId,
     isLoading: false,
   });
 
@@ -98,9 +103,9 @@ export function useTerminalSessions(
     dispatch({
       type: "seed",
       sessions: hydratedSessions,
-      activeId: initialActiveId ?? selectPersistedActiveId(hydratedSessions, persistedState),
+      activeId: hydratedActiveId,
     });
-  }, [hydratedSessions, initialActiveId, persistedState]);
+  }, [hydratedActiveId, hydratedSessions]);
 
   useEffect(() => {
     const persistedSessionIds = persistedState.sessionIds;
@@ -232,6 +237,12 @@ function hydratePersistedSessions(
     }
     return right.createdAt - left.createdAt;
   });
+}
+
+function buildSessionSignature(sessions: TerminalSession[]): string {
+  return sessions
+    .map((session) => `${session.id}:${session.backend}:${session.cwd}:${session.createdAt}`)
+    .join("|");
 }
 
 function selectPersistedActiveId(

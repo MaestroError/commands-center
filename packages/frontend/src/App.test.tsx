@@ -49,6 +49,8 @@ describe("App", () => {
     expect(screen.getByTestId("sidebar-navigation")).toBeInTheDocument();
     expect(screen.queryByText("Frontend foundation")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Tasks" })).toHaveAttribute("href", "/tasks");
+    expect(screen.queryByText("Automations")).not.toBeInTheDocument();
     expect(screen.getByText("Provider Connections")).toBeInTheDocument();
     expect(screen.getByTestId("recent-agents-section")).toBeInTheDocument();
   });
@@ -82,6 +84,10 @@ describe("App", () => {
 
       if (input === "/api/opencode") {
         return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/tasks/runs/active") {
+        return Promise.resolve(jsonResponse(200, []));
       }
 
       if (input === "/api/agents") {
@@ -279,6 +285,10 @@ function mockFetch(responses: Response[]) {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
     if (typeof input === "string" && input === "/api/opencode") {
       return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+    }
+
+    if (typeof input === "string" && input === "/api/tasks/runs/active") {
+      return Promise.resolve(jsonResponse(200, []));
     }
 
     if (typeof input === "string" && !input.startsWith("/api/providers")) {
