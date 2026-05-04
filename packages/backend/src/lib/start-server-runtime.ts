@@ -230,16 +230,29 @@ function installSignalHandlers(
   drain: (signal: NodeJS.Signals) => Promise<void>,
   logger: Logger,
 ): void {
+  let draining = false;
+
+  const handleSignal = (signal: NodeJS.Signals): void => {
+    if (draining) {
+      logger.warn({ signal }, "received additional shutdown signal; forcing exit");
+      process.exit(process.exitCode ?? 1);
+    }
+
+    draining = true;
+
+    void drain(signal)
+      .then(() => {
+        process.exitCode = 0;
+      })
+      .catch((error: unknown) => {
+        logger.error({ err: error, signal }, "runtime drain failed");
+        process.exitCode = 1;
+      });
+  };
+
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    process.on(signal, () => {
-      void drain(signal)
-        .then(() => {
-          process.exitCode = 0;
-        })
-        .catch((error: unknown) => {
-          logger.error({ err: error, signal }, "runtime drain failed");
-          process.exitCode = 1;
-        });
+    process.once(signal, () => {
+      handleSignal(signal);
     });
   }
 }

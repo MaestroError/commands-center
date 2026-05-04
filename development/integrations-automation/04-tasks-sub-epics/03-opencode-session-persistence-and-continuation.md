@@ -1,4 +1,4 @@
-# I4.3 OpenCode Session Persistence and Continuation
+# ✅ I4.3 OpenCode Session Persistence and Continuation
 
 ## Goal
 
