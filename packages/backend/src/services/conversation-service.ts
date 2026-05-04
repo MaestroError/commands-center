@@ -5,11 +5,11 @@ import {
   conversationMessageSchema,
   conversationSnapshotSchema,
   conversationSummarySchema,
+  type ConversationDetail,
   sessionMediaListSchema,
   sendConversationCommandInputSchema,
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
-  type ConversationDetail,
   type ConversationMessage,
   type ConversationSnapshot,
   type ConversationSummary,
@@ -22,7 +22,7 @@ import {
 import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
 import { type agents, conversations, messages } from "../db/schema/index.js";
-import { NotFoundError } from "../lib/api-error.js";
+import { BadRequestError, NotFoundError } from "../lib/api-error.js";
 import { cleanTitle, extractMediaItems, mapRemoteMessage } from "../lib/message-mapper.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { resolveAgentWorkspacePath } from "./agent-workspace.js";
@@ -32,6 +32,18 @@ type AgentRow = typeof agents.$inferSelect;
 type AgentRuntimeRow = AgentRow & { workspace_path: string };
 type ConversationRow = typeof conversations.$inferSelect;
 type MessageRow = typeof messages.$inferSelect;
+
+export type TaskRunSessionDiagnostic = {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+};
+
+export type TaskRunConversationInspection = {
+  conversation?: ConversationDetail;
+  diagnostics: TaskRunSessionDiagnostic[];
+  canOpenInChat: boolean;
+};
 
 export type ConversationService = ReturnType<typeof createConversationService>;
 
@@ -48,6 +60,7 @@ export function createConversationService(options: {
           operators.and(
             operators.eq(table.agent_id, agent.id),
             operators.eq(table.is_current, true),
+            operators.eq(table.source, "chat"),
           ),
         orderBy: (table, operators) => [operators.desc(table.updated_at)],
       });
@@ -86,6 +99,124 @@ export function createConversationService(options: {
       const agent = await getAgent(agentId);
       const created = await createConversation(agent);
       return getSnapshot(agent.id, created.id);
+    },
+
+    async createTaskRunConversation(input: {
+      agentId: string;
+      taskId: string;
+      taskRunId: string;
+      title: string;
+    }): Promise<ConversationDetail> {
+      const agent = await getAgent(input.agentId);
+      const conversation = await createConversation(agent, {
+        source: "task_run",
+        title: input.title,
+        taskId: input.taskId,
+        taskRunId: input.taskRunId,
+        makeCurrent: false,
+      });
+
+      return getConversationDetail(conversation.id);
+    },
+
+    async sendTaskRunPrompt(
+      conversationId: string,
+      input: SendConversationPromptInput,
+    ): Promise<ConversationDetail> {
+      const parsed = sendConversationPromptInputSchema.parse(input);
+      const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
+
+      if (loaded.conversation.source !== "task_run") {
+        throw new BadRequestError("Conversation is not a task run session.");
+      }
+
+      await options.opencodeService.promptSession({
+        directory: loaded.agent.workspace_path,
+        sessionID: loaded.conversation.opencode_session_id,
+        agent: resolveOpenCodeAgent(loaded.agent.slug),
+        model: parseModel(loaded.agent.default_model),
+        text: parsed.text,
+        attachments: parsed.attachments,
+      });
+      await syncConversation(loaded.agent, loaded.conversation);
+      return getConversationDetail(loaded.conversation.id);
+    },
+
+    async inspectTaskRunConversation(
+      taskId: string,
+      taskRunId: string,
+    ): Promise<TaskRunConversationInspection> {
+      const conversation = await options.db.query.conversations.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.task_id, taskId),
+            operators.eq(table.task_run_id, taskRunId),
+            operators.eq(table.source, "task_run"),
+          ),
+      });
+
+      if (!conversation) {
+        return {
+          diagnostics: [
+            {
+              code: "session_not_recorded",
+              message: "No task-owned chat session is recorded for this run.",
+            },
+          ],
+          canOpenInChat: false,
+        };
+      }
+
+      const agent = await getAgent(conversation.agent_id);
+      const diagnostics: TaskRunSessionDiagnostic[] = [];
+
+      try {
+        await syncConversation(agent, conversation);
+      } catch (error) {
+        diagnostics.push({
+          code: "session_sync_failed",
+          message: error instanceof Error ? error.message : "Task session could not be synced.",
+          details: { opencodeSessionId: conversation.opencode_session_id },
+        });
+      }
+
+      return {
+        conversation: await getConversationDetail(conversation.id),
+        diagnostics,
+        canOpenInChat: diagnostics.length === 0,
+      };
+    },
+
+    async openTaskRunConversationInChat(
+      taskId: string,
+      taskRunId: string,
+    ): Promise<ConversationSnapshot> {
+      const conversation = await options.db.query.conversations.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.task_id, taskId),
+            operators.eq(table.task_run_id, taskRunId),
+            operators.eq(table.source, "task_run"),
+          ),
+      });
+
+      if (!conversation) {
+        throw new NotFoundError("Task run session not found.");
+      }
+
+      const agent = await getAgent(conversation.agent_id);
+      await syncConversation(agent, conversation);
+      await setCurrentConversation(agent.id, conversation.id);
+      await options.db
+        .update(conversations)
+        .set({
+          source: "chat",
+          converted_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(eq(conversations.id, conversation.id));
+
+      return getSnapshot(agent.id, conversation.id);
     },
 
     async sendPrompt(
@@ -234,6 +365,10 @@ export function createConversationService(options: {
 
       if (!conversation) throw new NotFoundError("Conversation not found.");
 
+      if (conversation.source === "task_run" && !conversation.converted_at) {
+        throw new BadRequestError("Task run sessions cannot be deleted from normal chat history.");
+      }
+
       // Best-effort: delete from OpenCode (session may already be gone)
       try {
         await options.opencodeService.deleteSession(
@@ -271,6 +406,7 @@ export function createConversationService(options: {
           operators.eq(table.id, conversationId),
           operators.eq(table.agent_id, agentId),
           operators.eq(table.status, "active"),
+          operators.eq(table.source, "chat"),
         ),
     });
 
@@ -281,7 +417,10 @@ export function createConversationService(options: {
     return conversation;
   }
 
-  async function getConversationAgent(conversationId: string): Promise<{
+  async function getConversationAgent(
+    conversationId: string,
+    optionsOverride: { includeTaskRun?: boolean } = {},
+  ): Promise<{
     agent: AgentRuntimeRow;
     conversation: ConversationRow;
   }> {
@@ -289,7 +428,11 @@ export function createConversationService(options: {
       where: (table, operators) => operators.eq(table.id, conversationId),
     });
 
-    if (!conversation || conversation.status !== "active") {
+    if (
+      !conversation ||
+      conversation.status !== "active" ||
+      (!optionsOverride.includeTaskRun && conversation.source !== "chat")
+    ) {
       throw new NotFoundError("Conversation not found.");
     }
 
@@ -308,14 +451,27 @@ export function createConversationService(options: {
     };
   }
 
-  async function createConversation(agent: AgentRuntimeRow): Promise<ConversationRow> {
-    const session = await options.opencodeService.createSession(agent.workspace_path, undefined);
+  async function createConversation(
+    agent: AgentRuntimeRow,
+    input: {
+      source?: "chat" | "task_run";
+      title?: string;
+      taskId?: string;
+      taskRunId?: string;
+      makeCurrent?: boolean;
+    } = {},
+  ): Promise<ConversationRow> {
+    const source = input.source ?? "chat";
+    const makeCurrent = input.makeCurrent ?? source === "chat";
+    const session = await options.opencodeService.createSession(agent.workspace_path, input.title);
     const timestamp = new Date(session.time.updated ?? session.time.created);
 
-    await options.db
-      .update(conversations)
-      .set({ is_current: false, updated_at: timestamp })
-      .where(eq(conversations.agent_id, agent.id));
+    if (makeCurrent) {
+      await options.db
+        .update(conversations)
+        .set({ is_current: false, updated_at: timestamp })
+        .where(eq(conversations.agent_id, agent.id));
+    }
 
     const [created] = await options.db
       .insert(conversations)
@@ -323,11 +479,15 @@ export function createConversationService(options: {
         id: createId(),
         agent_id: agent.id,
         opencode_session_id: session.id,
-        title: cleanTitle(session.title),
+        title: cleanTitle(session.title) ?? cleanTitle(input.title),
         status: "active",
-        is_current: true,
+        source,
+        is_current: makeCurrent,
+        task_id: input.taskId ?? null,
+        task_run_id: input.taskRunId ?? null,
         created_at: new Date(session.time.created),
         updated_at: timestamp,
+        converted_at: null,
       })
       .returning();
 
@@ -436,7 +596,11 @@ export function createConversationService(options: {
   async function listConversationSummaries(agentId: string): Promise<ConversationSummary[]> {
     const rows = await options.db.query.conversations.findMany({
       where: (table, operators) =>
-        operators.and(operators.eq(table.agent_id, agentId), operators.eq(table.status, "active")),
+        operators.and(
+          operators.eq(table.agent_id, agentId),
+          operators.eq(table.status, "active"),
+          operators.eq(table.source, "chat"),
+        ),
       orderBy: (table) => [desc(table.updated_at), desc(table.created_at)],
     });
 
@@ -457,10 +621,14 @@ export function createConversationService(options: {
       opencodeSessionId: conversation.opencode_session_id,
       title: cleanTitle(conversation.title),
       status: conversation.status,
+      source: conversation.source,
       isCurrent: conversation.is_current,
+      taskId: conversation.task_id ?? undefined,
+      taskRunId: conversation.task_run_id ?? undefined,
       messageCount: rows.length,
       createdAt: conversation.created_at.toISOString(),
       updatedAt: conversation.updated_at.toISOString(),
+      convertedAt: conversation.converted_at?.toISOString(),
     });
   }
 }

@@ -8,11 +8,15 @@ import {
 } from "@cc/shared/schemas";
 
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
+import type { ConversationService } from "./conversation-service.js";
 import type { TaskService } from "./task-service.js";
 
 export type TaskExecutionService = ReturnType<typeof createTaskExecutionService>;
 
-export function createTaskExecutionService(options: { taskService: TaskService }) {
+export function createTaskExecutionService(options: {
+  taskService: TaskService;
+  conversationService?: ConversationService;
+}) {
   return {
     async trigger(taskId: string, input: Partial<TriggerTaskInput> = {}): Promise<TaskRun> {
       const parsed = triggerTaskInputSchema.parse(input);
@@ -23,18 +27,14 @@ export function createTaskExecutionService(options: { taskService: TaskService }
         throw new ConflictError("Task already has an active run.", { runId: activeRun.id });
       }
 
+      const renderedContext = buildRenderedContext(task, parsed);
       const run = await options.taskService.createRun({
         taskId: task.id,
         agentId: task.agentId,
         status: "queued",
         triggerSource: parsed.triggerSource,
-        renderedPrompt: renderExecutionPlaceholderPrompt(task, parsed.metadata),
-        renderedContext: {
-          taskTitle: task.title,
-          taskDescription: task.description,
-          triggerSource: parsed.triggerSource,
-          triggerMetadata: parsed.metadata,
-        },
+        renderedPrompt: renderTaskRunPrompt(task, renderedContext),
+        renderedContext,
       });
 
       return runQueuedTask(run.id);
@@ -80,7 +80,7 @@ export function createTaskExecutionService(options: { taskService: TaskService }
       throw new BadRequestError("Only queued task runs can be started.");
     }
 
-    const running = await options.taskService.setRunStatus(run.id, "running", {
+    let running = await options.taskService.setRunStatus(run.id, "running", {
       startedAt: new Date().toISOString(),
     });
 
@@ -93,6 +93,44 @@ export function createTaskExecutionService(options: { taskService: TaskService }
 
       if (!task) {
         throw new NotFoundError("Task not found.");
+      }
+
+      if (options.conversationService) {
+        const conversation = await options.conversationService.createTaskRunConversation({
+          agentId: task.agentId,
+          taskId: task.id,
+          taskRunId: running.id,
+          title: `Task: ${task.title}`,
+        });
+        const sessionLinked = await options.taskService.updateRun(running.id, {
+          opencodeSessionId: conversation.opencodeSessionId,
+        });
+
+        if (!sessionLinked) {
+          throw new NotFoundError("Task run not found.");
+        }
+
+        running = sessionLinked;
+        const synced = await options.conversationService.sendTaskRunPrompt(conversation.id, {
+          text: running.renderedPrompt,
+          attachments: [],
+        });
+        const resultSummary = summarizeTaskRunConversation(synced);
+
+        const completed = await options.taskService.setRunStatus(running.id, "completed", {
+          completedAt: new Date().toISOString(),
+          resultSummary,
+          result: {
+            conversationId: synced.id,
+            messageCount: synced.messageCount,
+          },
+        });
+
+        if (!completed) {
+          throw new NotFoundError("Task run not found.");
+        }
+
+        return completed;
       }
 
       const completed = await options.taskService.setRunStatus(running.id, "completed", {
@@ -111,6 +149,7 @@ export function createTaskExecutionService(options: { taskService: TaskService }
         errorMessage: error instanceof Error ? error.message : "Task execution failed.",
         errorDetails: {
           errorName: error instanceof Error ? error.name : "UnknownError",
+          stage: running.opencodeSessionId ? "task_session_prompt" : "task_session_create",
         },
       });
 
@@ -168,19 +207,47 @@ export function createTaskExecutionService(options: { taskService: TaskService }
   }
 }
 
-function renderExecutionPlaceholderPrompt(
+function buildRenderedContext(
   task: Task,
-  metadata: Record<string, unknown> | undefined,
-): string {
+  trigger: { triggerSource: TriggerTaskInput["triggerSource"]; metadata?: Record<string, unknown> },
+): Record<string, unknown> {
+  return {
+    taskId: task.id,
+    taskTitle: task.title,
+    taskDescription: task.description,
+    assignedAgentId: task.agentId,
+    triggerSource: trigger.triggerSource,
+    triggerMetadata: trigger.metadata,
+    schedule: task.schedule,
+    todos: task.todos,
+  };
+}
+
+function renderTaskRunPrompt(task: Task, renderedContext: Record<string, unknown>): string {
   return [
     `Task: ${task.title}`,
+    `Assigned agent ID: ${task.agentId}`,
     task.description ? `Description: ${task.description}` : undefined,
     task.context ? `Context: ${task.context}` : undefined,
     task.todos.length > 0
       ? `Todos:\n${task.todos.map((todo) => `- [${todo.status === "completed" ? "x" : " "}] ${todo.content}`).join("\n")}`
       : undefined,
-    metadata ? `Trigger metadata: ${JSON.stringify(metadata)}` : undefined,
+    `Trigger source: ${String(renderedContext["triggerSource"])}`,
+    renderedContext["triggerMetadata"]
+      ? `Trigger metadata: ${JSON.stringify(renderedContext["triggerMetadata"])}`
+      : undefined,
+    `Schedule: ${JSON.stringify(task.schedule)}`,
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function summarizeTaskRunConversation(conversation: {
+  messages: { role: string; content: string }[];
+}): string {
+  const assistantMessage = [...conversation.messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.content.trim());
+
+  return assistantMessage?.content.trim() ?? "Task completed without an assistant summary.";
 }

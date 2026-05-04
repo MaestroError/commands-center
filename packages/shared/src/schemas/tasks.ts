@@ -6,6 +6,7 @@ import {
   agentPermissionRuleSchema,
   permissionActionSchema,
 } from "./agents.js";
+import { conversationDetailSchema } from "./conversations.js";
 
 const looseRecordSchema = z.record(z.string(), z.unknown());
 
@@ -219,6 +220,19 @@ export const taskSchedulerStateSchema = z.object({
 
 export const taskSchedulerStateListSchema = z.array(taskSchedulerStateSchema);
 
+export const taskRunSessionDiagnosticSchema = z.object({
+  code: z.string().min(1),
+  message: z.string().min(1),
+  details: looseRecordSchema.optional(),
+});
+
+export const taskRunSessionInspectionSchema = z.object({
+  run: taskRunSchema,
+  conversation: conversationDetailSchema.optional(),
+  diagnostics: z.array(taskRunSessionDiagnosticSchema),
+  canOpenInChat: z.boolean(),
+});
+
 export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
 export type CreateTaskRunInput = z.input<typeof createTaskRunInputSchema>;
 export type CancelTaskRunInput = z.input<typeof cancelTaskRunInputSchema>;
@@ -227,6 +241,8 @@ export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskPermissionProfile = z.infer<typeof taskPermissionProfileSchema>;
 export type TaskRun = z.infer<typeof taskRunSchema>;
+export type TaskRunSessionDiagnostic = z.infer<typeof taskRunSessionDiagnosticSchema>;
+export type TaskRunSessionInspection = z.infer<typeof taskRunSessionInspectionSchema>;
 export type TaskRunStatus = z.infer<typeof taskRunStatusSchema>;
 export type TaskRunTriggerSource = z.infer<typeof taskRunTriggerSourceSchema>;
 export type TaskSchedulerState = z.infer<typeof taskSchedulerStateSchema>;

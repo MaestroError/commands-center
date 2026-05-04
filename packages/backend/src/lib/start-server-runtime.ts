@@ -9,6 +9,7 @@ import {
 import { syncCcManagedMcpAgentWorkspaces } from "../mcp/cc-managed/workspace-sync-service.js";
 import { createOpenCodeClient } from "./opencode-client.js";
 import { createOpenCodeService, type OpenCodeService } from "../services/opencode-service.js";
+import { createConversationService } from "../services/conversation-service.js";
 import {
   createOpenCodeEventService,
   type OpenCodeEventService,
@@ -110,7 +111,12 @@ export async function startServerRuntime(
   const workspaceWatchService = createWorkspaceWatchService({ logger });
   const liveRequestService = createLiveRequestService();
   const taskService = createTaskService({ db: database.db, config });
-  const taskExecutionService = createTaskExecutionService({ taskService });
+  const conversationService = createConversationService({
+    db: database.db,
+    config,
+    opencodeService,
+  });
+  const taskExecutionService = createTaskExecutionService({ taskService, conversationService });
   const taskSchedulerService = createTaskSchedulerService({
     db: database.db,
     taskService,

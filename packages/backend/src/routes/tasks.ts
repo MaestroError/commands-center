@@ -10,6 +10,7 @@ import {
   taskListSchema,
   taskRunListSchema,
   taskRunSchema,
+  taskRunSessionInspectionSchema,
   taskSchedulerStateListSchema,
   taskSchema,
   triggerTaskInputSchema,
@@ -19,6 +20,7 @@ import {
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { NotFoundError } from "../lib/api-error.js";
+import { createConversationService } from "../services/conversation-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
 import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
 import { createTaskService } from "../services/task-service.js";
@@ -37,8 +39,14 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     db: context.database.db,
     config: context.config,
   });
+  const conversationService = createConversationService({
+    db: context.database.db,
+    config: context.config,
+    opencodeService: context.opencodeService,
+  });
   const executionService =
-    context.taskExecutionService ?? createTaskExecutionService({ taskService: service });
+    context.taskExecutionService ??
+    createTaskExecutionService({ taskService: service, conversationService });
   const taskSchedulerService =
     context.taskSchedulerService ??
     createTaskSchedulerService({
@@ -305,6 +313,46 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
 
       return run;
     },
+  );
+
+  app.get(
+    "/api/tasks/:id/runs/:runId/session",
+    {
+      schema: {
+        params: taskRunParamsSchema,
+        response: {
+          200: taskRunSessionInspectionSchema,
+        },
+      },
+    },
+    async (request) => {
+      const run = await service.getRun(request.params.id, request.params.runId);
+
+      if (!run) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      const inspection = await conversationService.inspectTaskRunConversation(
+        request.params.id,
+        request.params.runId,
+      );
+
+      return taskRunSessionInspectionSchema.parse({
+        run,
+        ...inspection,
+      });
+    },
+  );
+
+  app.post(
+    "/api/tasks/:id/runs/:runId/open-in-chat",
+    {
+      schema: {
+        params: taskRunParamsSchema,
+      },
+    },
+    async (request) =>
+      conversationService.openTaskRunConversationInChat(request.params.id, request.params.runId),
   );
 
   app.post(

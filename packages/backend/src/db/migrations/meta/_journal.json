@@ -50,6 +50,13 @@
       "when": 1777842781003,
       "tag": "0006_add_task_scheduler_state",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1777843300000,
+      "tag": "0007_add_conversation_task_ownership",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,8 @@ export const conversationMessageErrorSchema = z.object({
 
 export const conversationStatusSchema = z.enum(["active", "archived"]);
 
+export const conversationSourceSchema = z.enum(["chat", "task_run"]);
+
 export const conversationAttachmentSchema = z.object({
   id: z.string().min(1).optional(),
   type: z.enum(["file", "image", "document"]).default("file"),
@@ -45,10 +47,14 @@ export const conversationSummarySchema = z.object({
   opencodeSessionId: z.string().min(1),
   title: z.string().min(1).optional(),
   status: conversationStatusSchema,
+  source: conversationSourceSchema,
   isCurrent: z.boolean(),
+  taskId: z.string().min(1).optional(),
+  taskRunId: z.string().min(1).optional(),
   messageCount: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  convertedAt: z.string().datetime().optional(),
 });
 
 export const conversationDetailSchema = conversationSummarySchema.extend({
@@ -103,6 +109,7 @@ export type ConversationMessageError = z.infer<typeof conversationMessageErrorSc
 export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
 export type ConversationPart = z.infer<typeof conversationPartSchema>;
 export type ConversationSnapshot = z.infer<typeof conversationSnapshotSchema>;
+export type ConversationSource = z.infer<typeof conversationSourceSchema>;
 export type ConversationStatus = z.infer<typeof conversationStatusSchema>;
 export type ConversationSummary = z.infer<typeof conversationSummarySchema>;
 export type SessionMediaItem = z.infer<typeof sessionMediaItemSchema>;
