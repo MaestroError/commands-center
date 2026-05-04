@@ -55,6 +55,46 @@ describe("App", () => {
     expect(screen.getByTestId("recent-agents-section")).toBeInTheDocument();
   });
 
+  it("warns before browser refresh when task runs are active", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/opencode") {
+        return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/tasks/runs/active") {
+        return Promise.resolve(
+          jsonResponse(200, [
+            {
+              id: "run-1",
+              taskId: "task-1",
+              agentId: "agent-1",
+              status: "running",
+              triggerSource: "manual",
+              startedAt: "2026-01-01T00:00:00.000Z",
+              opencodeSessionId: "session-1",
+              renderedPrompt: "Run task",
+              renderedContext: {},
+              effectivePermissions: {},
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ]),
+        );
+      }
+
+      return Promise.reject(new Error("Unexpected fetch URL."));
+    });
+
+    render(<App />);
+
+    await screen.findByRole("link", { name: "1 active task" });
+    const event = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
+    const prevented = !window.dispatchEvent(event);
+
+    expect(prevented).toBe(true);
+    expect(event.returnValue).toBe(false);
+  });
+
   it("collapses the sidebar to icon-only navigation on desktop", async () => {
     render(<App />);
 

@@ -74,7 +74,7 @@ export function FileManagerPage() {
   const rootRef = useRef(root);
   const currentPathRef = useRef(currentPath);
   const selectedPathRef = useRef(selectedPath);
-  const routeSyncTargetRef = useRef<string>();
+  const routeSyncTargetRef = useRef<string | undefined>(undefined);
 
   rootRef.current = root;
   currentPathRef.current = currentPath;

@@ -259,7 +259,7 @@ export function useEditorTabs(): UseEditorTabs {
   }));
 
   const stateRef = useRef(state);
-  const routeSyncTargetRef = useRef<string>();
+  const routeSyncTargetRef = useRef<string | undefined>(undefined);
   stateRef.current = state;
 
   useEffect(() => {
