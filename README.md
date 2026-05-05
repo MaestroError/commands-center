@@ -17,7 +17,7 @@ No auth, no multi-tenancy. You install it, you run it, you own it.
 
 ## Prerequisites
 
-- Node.js >= 22
+- Node.js >= 24
 - pnpm (`npm install -g pnpm`)
 
 ## Quick Start
