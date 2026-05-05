@@ -6,12 +6,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsPage } from "./SettingsPage";
 
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
+import { useMarkEngineRestarting } from "@/hooks/use-engine-status-query";
 import {
   useSystemUpdateMutation,
   useSystemUpdatePreferencesMutation,
   useSystemUpdatePreferencesQuery,
   useSystemVersionQuery,
 } from "@/hooks/use-system-version-query";
+import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import { getFileManagerPreferences, updateFileManagerPreferences } from "@/lib/api";
 import { queryClient } from "@/lib/query-client";
 
@@ -27,6 +29,14 @@ vi.mock("@/hooks/use-system-version-query", () => ({
   useSystemUpdatePreferencesMutation: vi.fn(),
 }));
 
+vi.mock("@/hooks/use-engine-status-query", () => ({
+  useMarkEngineRestarting: vi.fn(),
+}));
+
+vi.mock("@/hooks/use-tasks-query", () => ({
+  useActiveTaskRunsQuery: vi.fn(),
+}));
+
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof ApiModule>("@/lib/api");
   return {
@@ -40,12 +50,16 @@ const setMutateAsync = vi.fn();
 const removeMutateAsync = vi.fn();
 const updateSystemMutate = vi.fn();
 const updatePreferencesMutate = vi.fn();
+const markEngineRestarting = vi.fn();
 
 beforeEach(() => {
   setMutateAsync.mockReset();
   removeMutateAsync.mockReset();
   updateSystemMutate.mockReset();
   updatePreferencesMutate.mockReset();
+  markEngineRestarting.mockReset();
+  vi.mocked(getFileManagerPreferences).mockReset();
+  vi.mocked(updateFileManagerPreferences).mockReset();
   vi.mocked(useSecretsQuery).mockReturnValue({
     data: [
       { key: "CC_MCP_GITHUB_TOKEN", isSet: false, updatedAt: "2026-04-24T10:00:00.000Z" },
@@ -58,6 +72,7 @@ beforeEach(() => {
     set: { mutateAsync: setMutateAsync, isPending: false },
     remove: { mutateAsync: removeMutateAsync, isPending: false },
   } as never);
+  vi.mocked(useMarkEngineRestarting).mockReturnValue(markEngineRestarting);
   vi.mocked(useSystemVersionQuery).mockReturnValue({
     data: {
       current: "1.0.0",
@@ -89,6 +104,11 @@ beforeEach(() => {
   vi.mocked(useSystemUpdatePreferencesMutation).mockReturnValue({
     mutate: updatePreferencesMutate,
     isPending: false,
+    error: null,
+  } as never);
+  vi.mocked(useActiveTaskRunsQuery).mockReturnValue({
+    data: [],
+    isLoading: false,
     error: null,
   } as never);
   vi.mocked(getFileManagerPreferences).mockResolvedValue({
@@ -183,6 +203,138 @@ describe("SettingsPage", () => {
         },
       });
     });
+  });
+
+  it("renders docker-specific system guidance and disables workspace auto-updates", () => {
+    vi.mocked(useSystemVersionQuery).mockReturnValue({
+      data: {
+        current: "1.0.0",
+        latest: "1.0.0",
+        updateAvailable: false,
+        installMode: "docker",
+        autoUpdateEnabled: false,
+        autoUpdateSource: "settings",
+        checkedAt: "2026-05-03T00:00:00.000Z",
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    renderWithQueryClient(<SettingsPage />);
+
+    expect(screen.getByText("Docker updates are operator-managed")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /Enable automatic updates/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Apply update" })).not.toBeInTheDocument();
+  });
+
+  it("disables applying updates while active task runs are in progress", () => {
+    vi.mocked(useActiveTaskRunsQuery).mockReturnValue({
+      data: [{ id: "run-1" }, { id: "run-2" }],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    renderWithQueryClient(<SettingsPage />);
+
+    expect(screen.getByText(/2 active task runs are in progress/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply update" })).toBeDisabled();
+  });
+
+  it("shows an empty state when no secrets exist", () => {
+    vi.mocked(useSecretsQuery).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    renderWithQueryClient(<SettingsPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+
+    expect(screen.getByText("No secrets yet")).toBeInTheDocument();
+  });
+
+  it("shows a filtered empty state when secret search has no matches", () => {
+    renderWithQueryClient(<SettingsPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+    fireEvent.change(screen.getByLabelText("Search secrets"), { target: { value: "missing" } });
+
+    expect(screen.getByText("No matching secrets")).toBeInTheDocument();
+  });
+
+  it("reveals and hides secret values on demand", () => {
+    renderWithQueryClient(<SettingsPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+
+    const input = screen.getByLabelText("Value for CC_MCP_GITHUB_TOKEN");
+    expect(input).toHaveAttribute("type", "password");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show CC_MCP_GITHUB_TOKEN" }));
+    expect(input).toHaveAttribute("type", "text");
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide CC_MCP_GITHUB_TOKEN" }));
+    expect(input).toHaveAttribute("type", "password");
+  });
+
+  it("shows a fallback error when deleting a secret fails", async () => {
+    removeMutateAsync.mockRejectedValue("failed");
+
+    renderWithQueryClient(<SettingsPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+
+    expect(await screen.findByText("Request failed.")).toBeInTheDocument();
+    expect(markEngineRestarting).not.toHaveBeenCalled();
+  });
+
+  it("marks the engine restarting after a secret update succeeds", async () => {
+    setMutateAsync.mockResolvedValue(undefined);
+
+    renderWithQueryClient(<SettingsPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+    fireEvent.change(screen.getByLabelText("Value for CC_MCP_GITHUB_TOKEN"), {
+      target: { value: "new-secret" },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Update" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm update" }));
+
+    await waitFor(() => {
+      expect(markEngineRestarting).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("shows file manager load errors", async () => {
+    vi.mocked(getFileManagerPreferences).mockRejectedValue(new Error("load failed"));
+
+    renderWithQueryClient(<SettingsPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "File Manager" }));
+
+    expect(await screen.findByText("Could not save preferences.")).toBeInTheDocument();
+    expect(screen.getByText("load failed")).toBeInTheDocument();
+  });
+
+  it("does not save invalid file manager upload sizes", async () => {
+    renderWithQueryClient(<SettingsPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "File Manager" }));
+
+    const input = await screen.findByDisplayValue(String(50 * 1024 * 1024));
+    fireEvent.change(input, { target: { value: "0" } });
+
+    expect(updateFileManagerPreferences).not.toHaveBeenCalled();
+  });
+
+  it("shows file manager save errors", async () => {
+    vi.mocked(updateFileManagerPreferences).mockRejectedValue(new Error("save failed"));
+
+    renderWithQueryClient(<SettingsPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "File Manager" }));
+
+    const input = await screen.findByRole("checkbox", {
+      name: /Allow editing files on the host filesystem/i,
+    });
+    fireEvent.click(input);
+
+    expect(await screen.findByText("save failed")).toBeInTheDocument();
   });
 });
 

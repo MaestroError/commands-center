@@ -11,6 +11,7 @@ import {
   useSystemUpdatePreferencesQuery,
   useSystemVersionQuery,
 } from "@/hooks/use-system-version-query";
+import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import { getFileManagerPreferences, updateFileManagerPreferences } from "@/lib/api";
 
 export function SettingsPage() {
@@ -55,8 +56,10 @@ function SystemTab() {
   const preferencesQuery = useSystemUpdatePreferencesQuery();
   const preferencesMutation = useSystemUpdatePreferencesMutation();
   const updateMutation = useSystemUpdateMutation();
+  const activeRunsQuery = useActiveTaskRunsQuery();
   const version = versionQuery.data;
   const preferences = preferencesQuery.data;
+  const activeRunCount = activeRunsQuery.data?.length ?? 0;
   const error =
     versionQuery.error instanceof Error
       ? versionQuery.error.message
@@ -166,10 +169,16 @@ function SystemTab() {
                     ? "CommandsCenter will install the latest package, drain active services, and exit so your process manager can restart it."
                     : "You can still run the updater to reinstall the current package version."}
                 </p>
+                {activeRunCount > 0 ? (
+                  <p className="mt-2 text-sm text-amber-300">
+                    {activeRunCount} active task {activeRunCount === 1 ? "run is" : "runs are"} in
+                    progress. Wait for active task work to finish before applying updates.
+                  </p>
+                ) : null}
               </div>
               <button
                 className="cc-button sm:w-auto"
-                disabled={updateMutation.isPending}
+                disabled={updateMutation.isPending || activeRunCount > 0}
                 onClick={() => updateMutation.mutate()}
                 type="button"
               >

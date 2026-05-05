@@ -392,7 +392,7 @@ describe("FileManagerPage", () => {
       });
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: /docs/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "docs" }));
     expect(screen.getByText("Selected destination: docs")).toBeInTheDocument();
 
     fireEvent.click(

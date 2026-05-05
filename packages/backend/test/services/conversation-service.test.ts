@@ -307,12 +307,12 @@ function createMockOpenCodeService(): OpenCodeService {
       }),
     completeOauth: () => Promise.resolve(true),
     disconnectProvider: () => Promise.resolve(true),
-    createSession: (_directory, title) => {
+    createSession: (_directory, sessionOptions) => {
       sessionCount += 1;
       const id = `ses-${String(sessionCount)}`;
       const session: OpenCodeSession = {
         id,
-        title,
+        title: sessionOptions?.title,
         time: {
           created: nextTime(),
           updated: nextTime(),

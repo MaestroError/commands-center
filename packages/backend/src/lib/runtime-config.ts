@@ -72,6 +72,30 @@ const booleanString = (defaultValue: boolean) =>
       return z.NEVER;
     });
 
+const optionalLimit = (name: string) =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .transform((value, ctx) => {
+      if (value === undefined || value === "") {
+        return undefined;
+      }
+
+      const parsedValue = Number.parseInt(value, 10);
+
+      if (!Number.isInteger(parsedValue) || parsedValue < 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${name} must be a non-negative integer`,
+        });
+
+        return z.NEVER;
+      }
+
+      return parsedValue === 0 ? undefined : parsedValue;
+    });
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).optional().default("development"),
   CC_PORT: positiveInteger("CC_PORT", DEFAULT_PORT),
@@ -111,6 +135,7 @@ const envSchema = z.object({
   CC_LOG_LEVEL: logLevelSchema.optional().default(DEFAULT_LOG_LEVEL),
   CC_OPENCODE_PATH: z.string().trim().optional(),
   CC_SECRET_KEY: z.string().trim().optional().default(DEFAULT_SECRET_KEY),
+  CC_MAX_TASKS: optionalLimit("CC_MAX_TASKS"),
 });
 
 export type RuntimeEnvironment = NodeJS.ProcessEnv;
@@ -168,6 +193,9 @@ export type RuntimeConfig = {
   logLevel: z.infer<typeof logLevelSchema>;
   opencodePath?: string;
   secretKey: string;
+  tasks: {
+    maxTasks?: number;
+  };
 };
 
 export type RuntimeConfigOverrides = {
@@ -251,6 +279,9 @@ export function loadRuntimeConfig(options?: {
     logLevel: parsedEnv.data.CC_LOG_LEVEL,
     opencodePath: parsedEnv.data.CC_OPENCODE_PATH || undefined,
     secretKey: parsedEnv.data.CC_SECRET_KEY,
+    tasks: {
+      maxTasks: parsedEnv.data.CC_MAX_TASKS,
+    },
   };
 }
 
@@ -278,5 +309,6 @@ export function getStartupLogContext(config: RuntimeConfig): Record<string, unkn
     logLevel: config.logLevel,
     opencodePathConfigured: config.opencodePath !== undefined,
     secretKeyConfigured: config.secretKey.trim().length > 0,
+    tasks: config.tasks,
   };
 }

@@ -259,6 +259,7 @@ export function useEditorTabs(): UseEditorTabs {
   }));
 
   const stateRef = useRef(state);
+  const routeSyncTargetRef = useRef<string | undefined>(undefined);
   stateRef.current = state;
 
   useEffect(() => {
@@ -271,8 +272,11 @@ export function useEditorTabs(): UseEditorTabs {
     const stateSerialized = serializeTabsParam(stateRef.current.tabs);
 
     if (routeSerialized === stateSerialized && routeActive === stateRef.current.activeKey) {
+      routeSyncTargetRef.current = undefined;
       return;
     }
+
+    routeSyncTargetRef.current = buildEditorRouteSignature(routeSerialized, routeActive);
 
     dispatch({
       type: "seed",
@@ -284,19 +288,39 @@ export function useEditorTabs(): UseEditorTabs {
   }, [searchParams]);
 
   useEffect(() => {
+    const currentSearch = searchParams.toString();
+    const stateSerialized = serializeTabsParam(state.tabs);
+    const stateActive =
+      state.activeKey && state.tabs.some((tab) => tab.key === state.activeKey)
+        ? state.activeKey
+        : undefined;
+    const routeSignature = routeSyncTargetRef.current;
+
+    if (routeSignature) {
+      const stateSignature = buildEditorRouteSignature(stateSerialized, stateActive);
+
+      if (stateSignature !== routeSignature) {
+        return;
+      }
+
+      routeSyncTargetRef.current = undefined;
+    }
+
     const next = new URLSearchParams(searchParams);
-    const serialized = serializeTabsParam(state.tabs);
-    if (serialized) {
-      next.set(TABS_PARAM, serialized);
+    if (stateSerialized) {
+      next.set(TABS_PARAM, stateSerialized);
     } else {
       next.delete(TABS_PARAM);
     }
-    if (state.activeKey && state.tabs.some((tab) => tab.key === state.activeKey)) {
-      next.set(ACTIVE_TAB_PARAM, state.activeKey);
+    if (stateActive) {
+      next.set(ACTIVE_TAB_PARAM, stateActive);
     } else {
       next.delete(ACTIVE_TAB_PARAM);
     }
-    if (next.toString() !== searchParams.toString()) {
+
+    const nextSearch = next.toString();
+
+    if (nextSearch !== currentSearch) {
       setSearchParams(next, { replace: true });
     }
   }, [state.tabs, state.activeKey, searchParams, setSearchParams]);
@@ -411,4 +435,8 @@ function parseActiveParam(
   if (!value) return undefined;
   const tabs = parseTabsParam(tabsValue);
   return tabs.some((tab) => tab.key === value) ? value : undefined;
+}
+
+function buildEditorRouteSignature(serializedTabs: string, activeKey?: string): string {
+  return `${serializedTabs}::${activeKey ?? ""}`;
 }

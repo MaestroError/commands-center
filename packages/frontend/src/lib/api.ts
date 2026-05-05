@@ -15,6 +15,7 @@ import {
   createAgentInputSchema,
   createCustomToolInputSchema,
   createMcpServerInputSchema,
+  createTaskInputSchema,
   engineStatusSchema,
   fileManagerCreateEntryInputSchema,
   fileManagerCreateEntryResponseSchema,
@@ -41,6 +42,7 @@ import {
   liveRequestCancelInputSchema,
   liveRequestResolveInputSchema,
   liveRequestResolveResultSchema,
+  listTasksQuerySchema,
   mcpAuthRemoveResultSchema,
   mcpAuthStartResultSchema,
   mcpServerListSchema,
@@ -59,6 +61,12 @@ import {
   systemUpdateResultSchema,
   systemUpdatePreferencesSchema,
   systemVersionSchema,
+  taskListSchema,
+  taskRunListSchema,
+  taskRunSchema,
+  taskRunSessionInspectionSchema,
+  taskSchedulerStateListSchema,
+  taskSchema,
   terminalListResponseSchema,
   terminalResizeInputSchema,
   terminalSessionSchema,
@@ -77,6 +85,7 @@ import {
   type ChatEvent,
   type CreateAgentInput,
   type CreateMcpServerInput,
+  type CreateTaskInput,
   type ConversationDetail,
   type ConversationSnapshot,
   type ConversationSummary,
@@ -104,6 +113,7 @@ import {
   type LiveRequestCancelInput,
   type LiveRequestResolveInput,
   type LiveRequestResolveResult,
+  type ListTasksQuery,
   type McpAuthRemoveResult,
   type McpAuthStartResult,
   type McpServer,
@@ -116,11 +126,16 @@ import {
   type SystemUpdateResult,
   type SystemUpdatePreferences,
   type SystemVersion,
+  type Task,
+  type TaskRun,
+  type TaskRunSessionInspection,
+  type TaskSchedulerState,
   type TerminalCreateInput,
   type TerminalSession,
   type TerminalResizeInput,
   type UpdateAgentInput,
   type UpdateMcpServerInput,
+  type UpdateTaskInput,
   type UpdateSystemUpdatePreferencesInput,
   type UpdateWorkspaceSkillCategoryInput,
   type WorkspaceWatchEvent,
@@ -129,6 +144,9 @@ import {
   type WorkspaceSkillUploadInput,
   updateAgentInputSchema,
   updateMcpServerInputSchema,
+  updateTaskInputSchema,
+  triggerTaskInputSchema,
+  type TriggerTaskInput,
   updateSystemUpdatePreferencesInputSchema,
 } from "@cc/shared/schemas";
 
@@ -541,6 +559,123 @@ export async function archiveAgent(id: string): Promise<Agent> {
   return requestJson<Agent>(`/api/agents/${encodeURIComponent(id)}`, agentSchema, {
     method: "DELETE",
   });
+}
+
+export async function listTasks(query: Partial<ListTasksQuery> = {}): Promise<Task[]> {
+  const parsed = listTasksQuerySchema.parse(query);
+  const params = new URLSearchParams();
+
+  if (parsed.status) params.set("status", parsed.status);
+  if (parsed.triggerMode) params.set("triggerMode", parsed.triggerMode);
+  if (parsed.agentId) params.set("agentId", parsed.agentId);
+  if (parsed.includeArchived) params.set("includeArchived", "true");
+
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<Task[]>(`/api/tasks${suffix}`, taskListSchema);
+}
+
+export async function createTask(input: CreateTaskInput): Promise<Task> {
+  return requestJson<Task>("/api/tasks", taskSchema, {
+    method: "POST",
+    body: createTaskInputSchema.parse(input),
+  });
+}
+
+export async function getTask(id: string): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}`, taskSchema);
+}
+
+export async function updateTask(id: string, input: UpdateTaskInput): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}`, taskSchema, {
+    method: "PATCH",
+    body: updateTaskInputSchema.parse(input),
+  });
+}
+
+export async function archiveTask(id: string): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/archive`, taskSchema, {
+    method: "POST",
+  });
+}
+
+export async function restoreTask(id: string): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/restore`, taskSchema, {
+    method: "POST",
+  });
+}
+
+export async function enableTask(id: string): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/enable`, taskSchema, {
+    method: "POST",
+  });
+}
+
+export async function disableTask(id: string): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/disable`, taskSchema, {
+    method: "POST",
+  });
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
+}
+
+export async function listTaskRuns(taskId: string): Promise<TaskRun[]> {
+  return requestJson<TaskRun[]>(`/api/tasks/${encodeURIComponent(taskId)}/runs`, taskRunListSchema);
+}
+
+export async function getTaskRun(taskId: string, runId: string): Promise<TaskRun> {
+  return requestJson<TaskRun>(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}`,
+    taskRunSchema,
+  );
+}
+
+export async function inspectTaskRunSession(
+  taskId: string,
+  runId: string,
+): Promise<TaskRunSessionInspection> {
+  return requestJson<TaskRunSessionInspection>(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/session`,
+    taskRunSessionInspectionSchema,
+  );
+}
+
+export async function openTaskRunInChat(
+  taskId: string,
+  runId: string,
+): Promise<ConversationSnapshot> {
+  return requestJson<ConversationSnapshot>(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/open-in-chat`,
+    conversationSnapshotSchema,
+    { method: "POST" },
+  );
+}
+
+export async function triggerTask(
+  id: string,
+  input: Partial<TriggerTaskInput> = { triggerSource: "manual" },
+): Promise<TaskRun> {
+  return requestJson<TaskRun>(`/api/tasks/${encodeURIComponent(id)}/trigger`, taskRunSchema, {
+    method: "POST",
+    body: triggerTaskInputSchema.parse(input),
+  });
+}
+
+export async function listActiveTaskRuns(): Promise<TaskRun[]> {
+  return requestJson<TaskRun[]>("/api/tasks/runs/active", taskRunListSchema);
+}
+
+export async function listTaskSchedulerState(): Promise<TaskSchedulerState[]> {
+  return requestJson<TaskSchedulerState[]>(
+    "/api/tasks/scheduler/state",
+    taskSchedulerStateListSchema,
+  );
 }
 
 export async function listFileManagerNodes(

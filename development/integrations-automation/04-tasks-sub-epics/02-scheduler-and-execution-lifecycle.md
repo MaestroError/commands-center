@@ -1,4 +1,4 @@
-# I4.2 Scheduler and Execution Lifecycle
+# ✅ I4.2 Scheduler and Execution Lifecycle
 
 ## Goal
 

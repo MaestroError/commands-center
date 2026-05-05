@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,6 +22,7 @@ const catalog = {
   ],
   workspaceSkills: [],
   mcpServers: [{ name: "github", enabled: true }],
+  appMcpServers: [],
   customTools: [
     { slug: "custom_write", name: "custom_write", description: "Write output.", enabled: true },
   ],
@@ -44,6 +45,8 @@ const agents = [
       customTools: [],
       mcpServers: [],
       toolPermissions: [],
+      appMcpServers: [],
+      appToolPermissions: [],
     },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -63,6 +66,8 @@ const agents = [
       customTools: [],
       mcpServers: [],
       toolPermissions: [],
+      appMcpServers: [],
+      appToolPermissions: [],
     },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -87,6 +92,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
   queryClient.clear();
 });
@@ -127,6 +133,8 @@ describe("agent flows", () => {
               customTools: [],
               mcpServers: [{ name: "github", enabled: true, action: "ask" }],
               toolPermissions: [{ pattern: "custom_write", action: "allow" }],
+              appMcpServers: [],
+              appToolPermissions: [],
             },
             workspacePath: "/tmp/agents/planner",
           },
@@ -148,6 +156,8 @@ describe("agent flows", () => {
             customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "ask" }],
             toolPermissions: [{ pattern: "custom_write", action: "allow" }],
+            appMcpServers: [],
+            appToolPermissions: [],
           },
           workspacePath: "/tmp/agents/planner",
         }),
@@ -166,6 +176,8 @@ describe("agent flows", () => {
             customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "ask" }],
             toolPermissions: [{ pattern: "custom_write", action: "allow" }],
+            appMcpServers: [],
+            appToolPermissions: [],
           },
           workspacePath: "/tmp/agents/planner",
         }),
@@ -182,6 +194,7 @@ describe("agent flows", () => {
     await user.type(screen.getByLabelText(/Role/i), "plan work");
     await user.type(screen.getByLabelText(/Instructions/i), "Plan before editing.");
     await user.selectOptions(screen.getByLabelText(/^Model/i), "openai/gpt-4.1");
+    await user.type(screen.getByLabelText(/Search skills/i), "screen-requirements-writing");
     await user.click(screen.getByText("screen-requirements-writing"));
     await user.click(screen.getByRole("button", { name: "Create agent" }));
 
@@ -232,6 +245,10 @@ function mockApi(routes: Record<string, Response[]>) {
 
     if (input === "/api/opencode") {
       return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+    }
+
+    if (input === "/api/tasks/runs/active") {
+      return Promise.resolve(jsonResponse(200, []));
     }
 
     const key = `${init?.method ?? "GET"} ${input}`;

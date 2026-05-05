@@ -5,4 +5,5 @@ export { mcp_servers } from "./mcp-servers.js";
 export { providers } from "./providers.js";
 export { secrets } from "./secrets.js";
 export { settings } from "./settings.js";
+export { task_runs, task_scheduler_state, tasks } from "./tasks.js";
 export { custom_tools } from "./tools.js";

@@ -83,7 +83,30 @@ describe("loadRuntimeConfig", () => {
       logLevel: "info",
       opencodePathConfigured: true,
       secretKeyConfigured: true,
+      tasks: {
+        maxTasks: undefined,
+      },
     });
+  });
+
+  it("parses optional task limits", () => {
+    const unlimited = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: {
+        NODE_ENV: "test",
+        CC_MAX_TASKS: "0",
+      },
+    });
+    const limited = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: {
+        NODE_ENV: "test",
+        CC_MAX_TASKS: "3",
+      },
+    });
+
+    expect(unlimited.tasks.maxTasks).toBeUndefined();
+    expect(limited.tasks.maxTasks).toBe(3);
   });
 
   it("parses update environment configuration", () => {

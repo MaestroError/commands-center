@@ -18,6 +18,7 @@ export const createCustomToolMetadata = {
   name: "create_custom_tool",
   description:
     "Create a blank CommandsCenter custom tool and return the folder path the agent should edit.",
+  context: "chat",
 } as const;
 
 export function createCreateCustomToolDefinition(options: {
@@ -26,6 +27,7 @@ export function createCreateCustomToolDefinition(options: {
   return {
     name: createCustomToolMetadata.name,
     description: createCustomToolMetadata.description,
+    context: createCustomToolMetadata.context,
     inputSchema: createCustomToolInputSchema,
     outputSchema: createCustomToolOutputSchema,
     async execute(args: unknown) {

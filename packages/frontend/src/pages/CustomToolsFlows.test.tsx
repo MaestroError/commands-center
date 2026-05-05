@@ -71,6 +71,7 @@ describe("custom tools flow", () => {
         }),
       ],
       "GET /api/opencode": [jsonResponse(200, { state: "healthy" })],
+      "GET /api/tasks/runs/active": [jsonResponse(200, [])],
     });
 
     window.history.replaceState({}, "", "/tools");

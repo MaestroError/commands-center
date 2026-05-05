@@ -74,6 +74,7 @@ export function FileManagerPage() {
   const rootRef = useRef(root);
   const currentPathRef = useRef(currentPath);
   const selectedPathRef = useRef(selectedPath);
+  const routeSyncTargetRef = useRef<string | undefined>(undefined);
 
   rootRef.current = root;
   currentPathRef.current = currentPath;
@@ -88,6 +89,40 @@ export function FileManagerPage() {
   });
 
   useEffect(() => {
+    const routeRoot = getInitialRoot(searchParams);
+    const routePath = searchParams.get("path") ?? ".";
+    const routeSelectedPath = searchParams.get("select") ?? "";
+
+    if (
+      routeRoot === rootRef.current &&
+      routePath === currentPathRef.current &&
+      routeSelectedPath === selectedPathRef.current
+    ) {
+      routeSyncTargetRef.current = undefined;
+      return;
+    }
+
+    routeSyncTargetRef.current = buildFileManagerRouteSignature(
+      routeRoot,
+      routePath,
+      routeSelectedPath,
+    );
+  }, [searchParams]);
+
+  useEffect(() => {
+    const currentSearch = searchParams.toString();
+    const routeSignature = routeSyncTargetRef.current;
+
+    if (routeSignature) {
+      const localSignature = buildFileManagerRouteSignature(root, currentPath, selectedPath);
+
+      if (localSignature !== routeSignature) {
+        return;
+      }
+
+      routeSyncTargetRef.current = undefined;
+    }
+
     const params = new URLSearchParams(searchParams);
     params.set("root", root);
     if (currentPath !== ".") {
@@ -100,7 +135,9 @@ export function FileManagerPage() {
     } else {
       params.delete("select");
     }
-    if (params.toString() !== searchParams.toString()) {
+    const nextSearch = params.toString();
+
+    if (nextSearch !== currentSearch) {
       setSearchParams(params, { replace: true });
     }
   }, [currentPath, root, selectedPath, searchParams, setSearchParams]);
@@ -1004,6 +1041,10 @@ function MoveEntryDialog(props: {
   }, [debouncedQuery, props.node.path, props.root]);
 
   useEffect(() => {
+    if (props.destinationPath.length === 0) {
+      return;
+    }
+
     setQuery(props.destinationPath === "." ? "" : props.destinationPath);
   }, [props.currentPath, props.destinationPath, props.node.path, props.root]);
 
@@ -1110,6 +1151,14 @@ function getInitialRoot(searchParams: URLSearchParams): FileManagerRootKind {
   }
 
   return "workspace";
+}
+
+function buildFileManagerRouteSignature(
+  root: FileManagerRootKind,
+  currentPath: string,
+  selectedPath: string,
+): string {
+  return `${root}::${currentPath}::${selectedPath}`;
 }
 
 function buildBreadcrumbs(currentPath: string): Array<{ label: string; path: string }> {

@@ -73,6 +73,12 @@ describe("serializeTabsParam / parseTabsParam", () => {
     ).join(",");
     expect(parseTabsParam(value)).toHaveLength(MAX_OPEN_TABS);
   });
+
+  it("drops entries with invalid encoding or missing paths", () => {
+    const parsed = parseTabsParam("workspace:%E0%A4%A,workspace:,");
+
+    expect(parsed).toEqual([]);
+  });
 });
 
 describe("useEditorTabs", () => {

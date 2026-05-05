@@ -16,4 +16,10 @@ export const queryKeys = {
     ["conversation", agentId, conversationId] as const,
   conversations: (agentId: string) => ["conversations", agentId] as const,
   conversationMedia: (conversationId: string) => ["conversation-media", conversationId] as const,
+  tasks: (query?: Record<string, unknown>) => ["tasks", query ?? {}] as const,
+  task: (taskId: string) => ["task", taskId] as const,
+  taskRuns: (taskId: string) => ["task-runs", taskId] as const,
+  taskRun: (taskId: string, runId: string) => ["task-run", taskId, runId] as const,
+  taskRunSession: (taskId: string, runId: string) => ["task-run-session", taskId, runId] as const,
+  activeTaskRuns: ["active-task-runs"] as const,
 };

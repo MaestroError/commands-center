@@ -9,6 +9,7 @@ import { registerApiRoutes } from "./routes/index.js";
 export function createServer(context: RuntimeContext) {
   const server = Fastify({
     loggerInstance: context.logger,
+    forceCloseConnections: true,
     genReqId(request) {
       return request.headers["x-request-id"]?.toString() ?? randomUUID();
     },

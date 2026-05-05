@@ -4,14 +4,21 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createLogger } from "../../src/lib/logger";
+import { agents } from "../../src/db/schema/index";
+import type { AppDb } from "../../src/db/client";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
 import { createServer } from "../../src/server";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createTaskExecutionService } from "../../src/services/task-execution-service";
+import { createTaskService } from "../../src/services/task-service";
 import { createCcManagedMcpAuthStateStore } from "../../src/mcp/cc-managed/auth-state-store";
 import { createCcManagedMcpAuthTokenService } from "../../src/mcp/cc-managed/auth-token-service";
 import { createTestDatabase } from "../helpers/db";
+
+type InjectServer = Awaited<ReturnType<typeof createServer>>;
+type TestConfig = Awaited<ReturnType<typeof createTestDatabase>>["config"];
 
 describe("cc-managed MCP routes", () => {
   it("serves the cc_tool_management MCP endpoint with agent-scoped auth", async () => {
@@ -268,6 +275,217 @@ describe("cc-managed MCP routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("serves task management tools and creates tasks through MCP", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService,
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_tasks_management");
+      const listToolsResponse = await callMcpToolRoute(server, authHeader, "tools/list", {}, 1);
+
+      expect(listToolsResponse.statusCode).toBe(200);
+      expect(listToolsResponse.body).toContain('"name":"create_task"');
+      expect(listToolsResponse.body).toContain('"name":"trigger_task"');
+
+      const createTaskResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        {
+          name: "create_task",
+          arguments: {
+            title: "Draft weekly report",
+            description: "Summarize project activity.",
+            context: "Use recent notes.",
+            todos: [{ content: "Read notes" }],
+          },
+        },
+        2,
+      );
+
+      expect(createTaskResponse.statusCode).toBe(200);
+      const createTaskJson = parseSseJson(createTaskResponse.body) as {
+        result?: { structuredContent?: { id?: string; title?: string; triggerMode?: string } };
+      };
+
+      expect(createTaskJson.result?.structuredContent).toMatchObject({
+        title: "Draft weekly report",
+        triggerMode: "manual",
+      });
+
+      const listed = await taskService.list({ agentId: agent.id });
+
+      expect(listed).toHaveLength(1);
+      expect(listed[0]?.title).toBe("Draft weekly report");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("triggers tasks through task management tools", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Run smoke checks",
+        description: "Check critical path.",
+        context: "Use current build.",
+        todos: [],
+        triggerMode: "manual",
+      });
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_tasks_management");
+      const triggerResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "trigger_task", arguments: { taskId: task.id } },
+        3,
+      );
+
+      expect(triggerResponse.statusCode).toBe(200);
+      const triggerJson = parseSseJson(triggerResponse.body) as {
+        result?: { structuredContent?: { taskId?: string; status?: string } };
+      };
+
+      expect(triggerJson.result?.structuredContent).toMatchObject({
+        taskId: task.id,
+        status: "completed",
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("reports structured validation errors for task management tools", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService: createTaskExecutionService({ taskService }),
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_tasks_management");
+      const response = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "create_task", arguments: { description: "Missing title." } },
+        4,
+      );
+
+      expect(response.statusCode).toBe(200);
+      const body = parseSseJson(response.body) as {
+        result?: { isError?: boolean; structuredContent?: { error?: { message?: string } } };
+      };
+
+      expect(body.result?.isError).toBe(true);
+      expect(response.body).toContain("Invalid");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps task management MCP disabled unless the agent enables it", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService: createTaskExecutionService({ taskService }),
+    });
+
+    try {
+      const [agent] = await testDb.client.db
+        .insert(agents)
+        .values({
+          id: "agent-disabled",
+          slug: "disabled-task-tools",
+          name: "Disabled Task Tools",
+          role: "test",
+          instructions: "test",
+          default_model: "openai/gpt-4.1",
+          icon_path: null,
+          status: "active",
+          capabilities_json: JSON.stringify({ appMcpServers: [], appToolPermissions: [] }),
+          created_at: new Date(),
+          updated_at: new Date(),
+          archived_at: null,
+        })
+        .returning();
+
+      if (!agent) {
+        throw new Error("Failed to create disabled agent.");
+      }
+
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_tasks_management");
+      const response = await callMcpToolRouteForAgent(
+        server,
+        agent.slug,
+        authHeader,
+        "tools/list",
+        {},
+        5,
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(response.body).toContain("disabled");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 function parseSseJson(body: string): unknown {
@@ -282,6 +500,81 @@ function parseSseJson(body: string): unknown {
   }
 
   return JSON.parse(dataLine.slice("data: ".length));
+}
+
+async function callMcpToolRoute(
+  server: InjectServer,
+  authHeader: string,
+  method: string,
+  params: Record<string, unknown>,
+  id: number,
+) {
+  return callMcpToolRouteForAgent(server, "task-agent", authHeader, method, params, id);
+}
+
+async function callMcpToolRouteForAgent(
+  server: InjectServer,
+  agentSlug: string,
+  authHeader: string,
+  method: string,
+  params: Record<string, unknown>,
+  id: number,
+) {
+  return server.inject({
+    method: "POST",
+    url: `/api/mcp/cc/cc-tasks-management/agents/${agentSlug}`,
+    headers: {
+      Authorization: authHeader,
+      Accept: "application/json, text/event-stream",
+      "content-type": "application/json",
+    },
+    payload: {
+      jsonrpc: "2.0",
+      id,
+      method,
+      params,
+    },
+  });
+}
+
+async function issueAuthHeader(
+  config: TestConfig,
+  agentSlug: string,
+  serverName: string,
+): Promise<string> {
+  const tokenService = createCcManagedMcpAuthTokenService({
+    authStateStore: createCcManagedMcpAuthStateStore(config),
+  });
+  return `Bearer ${await tokenService.issueToken(agentSlug, serverName)}`;
+}
+
+async function insertAgentWithTasksManagement(db: AppDb) {
+  const [agent] = await db
+    .insert(agents)
+    .values({
+      id: "agent-task-management",
+      slug: "task-agent",
+      name: "Task Agent",
+      role: "manage tasks",
+      instructions: "Manage task lifecycle.",
+      default_model: "openai/gpt-4.1",
+      icon_path: null,
+      status: "active",
+      capabilities_json: JSON.stringify({
+        appMcpServers: [{ name: "cc_tasks_management", enabled: true, action: "allow" }],
+        appToolPermissions: [],
+      }),
+      created_at: new Date(),
+      updated_at: new Date(),
+      archived_at: null,
+    })
+    .returning();
+
+  if (!agent) {
+    throw new Error("Failed to insert task management agent.");
+  }
+
+  return agent;
 }
 
 function createOrchestrator(): OpenCodeOrchestrator {
