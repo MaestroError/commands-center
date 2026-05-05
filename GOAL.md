@@ -577,7 +577,7 @@ All runtime configuration is managed through environment variables. Validated at
 
 | Dependency  | Version  | Notes                                                            |
 | ----------- | -------- | ---------------------------------------------------------------- |
-| Node.js     | ≥ 20 LTS | Required runtime. Enforced via `engines` field in `package.json` |
+| Node.js     | ≥ 24 LTS | Required runtime. Enforced via `engines` field in `package.json` |
 | npm or pnpm | Latest   | Package manager                                                  |
 | Git         | Any      | Required for bare-metal updates and agent workflows              |
 
@@ -638,8 +638,8 @@ For self-hosting on a Linux server with full system access. The app runs directl
 ### Server Preparation
 
 ```bash
-# Install Node.js 20+ (via nvm or NodeSource)
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+# Install Node.js 24+ (via nvm or NodeSource)
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt-get install -y nodejs git build-essential
 
 # (Optional) Install PostgreSQL for cloud-grade persistence
@@ -826,7 +826,7 @@ services:
 ### Dockerfile (Reference)
 
 ```dockerfile
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 RUN apk add --no-cache git python3 make g++
 
 FROM base AS builder

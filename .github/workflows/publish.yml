@@ -8,6 +8,9 @@ permissions:
   contents: write
   id-token: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   publish:
     name: Publish commandscenter to npm
@@ -35,8 +38,8 @@ jobs:
           import { execFileSync } from 'node:child_process';
 
           const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
-          if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 14)) {
-            throw new Error(`npm trusted publishing requires Node.js 22.14.0 or newer, found ${process.version}`);
+          if (nodeMajor < 24) {
+            throw new Error(`CommandsCenter releases require Node.js 24.0.0 or newer, found ${process.version}`);
           }
 
           const npmVersion = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim();
