@@ -3,6 +3,14 @@
   "version": "0.2.1",
   "type": "module",
   "description": "Single-user AI agent management — install, run, done.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MaestroError/commands-center.git"
+  },
+  "homepage": "https://github.com/MaestroError/commands-center",
+  "bugs": {
+    "url": "https://github.com/MaestroError/commands-center/issues"
+  },
   "bin": {
     "ccenter": "./dist/bin.mjs"
   },

@@ -54,6 +54,20 @@ jobs:
             exit 1
           fi
 
+      - name: Validate package repository URL matches GitHub origin
+        run: |
+          set -euo pipefail
+          PKG_REPOSITORY_URL="$(node -p "require('./packages/cli/package.json').repository?.url || ''")"
+          ORIGIN_URL="$(git remote get-url origin)"
+          if [[ -z "$PKG_REPOSITORY_URL" ]]; then
+            echo "::error::packages/cli/package.json must define repository.url for npm trusted publishing"
+            exit 1
+          fi
+          if [[ "$PKG_REPOSITORY_URL" != "$ORIGIN_URL" ]]; then
+            echo "::error::packages/cli/package.json repository.url '$PKG_REPOSITORY_URL' does not match git origin '$ORIGIN_URL'"
+            exit 1
+          fi
+
       - name: Fail if version already published
         env:
           PKG_VERSION: ${{ steps.pkg.outputs.pkg_version }}

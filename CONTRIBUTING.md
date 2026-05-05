@@ -165,6 +165,7 @@ Only the `commandscenter` CLI package (`packages/cli`) is published to npm. Its 
 - npm package `commandscenter` must have a trusted publisher configured for this repository and workflow filename (`publish.yml`).
 - The workflow already requests `id-token: write`, which npm trusted publishing requires.
 - No npm publish token is required for the `npm publish` step.
+- `packages/cli/package.json` must define `repository.url`, and it must match the GitHub repository URL exactly for trusted publishing to succeed.
 
 ### Local dry run
 
