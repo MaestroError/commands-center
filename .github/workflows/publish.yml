@@ -24,6 +24,33 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Use npm version supporting trusted publishing
+        run: npm install --global npm@11
+
+      - name: Validate trusted publishing toolchain
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          node --input-type=module <<'EOF'
+          import { execFileSync } from 'node:child_process';
+
+          const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
+          if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 14)) {
+            throw new Error(`npm trusted publishing requires Node.js 22.14.0 or newer, found ${process.version}`);
+          }
+
+          const npmVersion = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim();
+          const [npmMajor, npmMinor, npmPatch] = npmVersion.split('.').map(Number);
+          if (
+            npmMajor < 11 ||
+            (npmMajor === 11 && (npmMinor < 5 || (npmMinor === 5 && npmPatch < 1)))
+          ) {
+            throw new Error(`npm trusted publishing requires npm 11.5.1 or newer, found ${npmVersion}`);
+          }
+          EOF
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
