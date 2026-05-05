@@ -27,6 +27,7 @@ const copyToAgentsMutateAsync = vi.fn();
 const copyAgentToGlobalMutateAsync = vi.fn();
 const moveAgentToGlobalMutateAsync = vi.fn();
 const deleteAgentToolMutateAsync = vi.fn();
+const confirmSpy = vi.fn<(message?: string) => boolean>();
 
 beforeEach(() => {
   createMutateAsync.mockReset();
@@ -35,6 +36,10 @@ beforeEach(() => {
   copyAgentToGlobalMutateAsync.mockReset();
   moveAgentToGlobalMutateAsync.mockReset();
   deleteAgentToolMutateAsync.mockReset();
+  confirmSpy.mockReset();
+
+  vi.spyOn(window, "confirm").mockImplementation(confirmSpy);
+  confirmSpy.mockReturnValue(true);
 
   vi.mocked(useAgentsQuery).mockReturnValue({
     data: [
@@ -123,6 +128,105 @@ describe("CustomToolsPage", () => {
     expect(screen.getByRole("button", { name: ">>" })).toBeEnabled();
   });
 
+  it("creates a tool and clears the form", async () => {
+    createMutateAsync.mockResolvedValue({
+      tool: {
+        id: "tool-2",
+        slug: "release-helper-v2",
+        name: "Release Helper V2",
+        description: "Draft better release notes.",
+        entryFile: "tool.ts",
+        entryPath: "/tmp/tool.ts",
+        directoryPath: "/tmp/release-helper-v2",
+        fingerprint: "fp-2",
+        enabled: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        warnings: [],
+        usage: [],
+      },
+    });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    renderPage();
+
+    try {
+      fireEvent.change(screen.getByPlaceholderText("Tool name"), {
+        target: { value: "Release Helper V2" },
+      });
+      fireEvent.change(screen.getByPlaceholderText("Description"), {
+        target: { value: "Draft better release notes." },
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+      await waitFor(() => {
+        expect(createMutateAsync).toHaveBeenCalledWith({
+          name: "Release Helper V2",
+          description: "Draft better release notes.",
+        });
+      });
+
+      expect(screen.getByPlaceholderText("Tool name")).toHaveValue("");
+      expect(screen.getByPlaceholderText("Description")).toHaveValue("");
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it("filters global tools by search text", () => {
+    renderPage();
+
+    fireEvent.change(screen.getByPlaceholderText("Search tools"), {
+      target: { value: "missing" },
+    });
+
+    expect(screen.getByText("No matching tools")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("Search tools"), {
+      target: { value: "release" },
+    });
+
+    expect(screen.getByText("Release Helper")).toBeInTheDocument();
+  });
+
+  it("confirms and deletes a global tool", async () => {
+    deleteMutateAsync.mockResolvedValue(undefined);
+
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalledWith(
+        "Delete global tool 'Release Helper'? Existing agent copies will remain untouched.",
+      );
+      expect(deleteMutateAsync).toHaveBeenCalledWith("release-helper");
+    });
+  });
+
+  it("copies a tool to selected agents from the modal", async () => {
+    copyToAgentsMutateAsync.mockResolvedValue({
+      copied: [{ agentId: "agent-1", agentSlug: "writer", overwritten: false }],
+      warnings: [],
+    });
+
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Copy to agents" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Copy selected agents" }));
+
+    await waitFor(() => {
+      expect(copyToAgentsMutateAsync).toHaveBeenCalledWith({
+        slug: "release-helper",
+        input: {
+          agentIds: ["agent-1"],
+          destinationName: undefined,
+          overwrite: false,
+        },
+      });
+    });
+  });
+
   it("opens the conflict modal for direct copy and supports rename", async () => {
     copyToAgentsMutateAsync
       .mockRejectedValueOnce(
@@ -177,6 +281,53 @@ describe("CustomToolsPage", () => {
       expect(deleteAgentToolMutateAsync).toHaveBeenCalledWith({
         agentId: "agent-1",
         slug: "release-helper-copy",
+      });
+    });
+  });
+
+  it("opens the global conflict modal for an agent tool and supports rename", async () => {
+    copyAgentToGlobalMutateAsync
+      .mockRejectedValueOnce(
+        new Error("Custom tool 'release-helper-copy' already exists globally."),
+      )
+      .mockResolvedValueOnce({
+        tool: {
+          id: "tool-3",
+          slug: "release-helper-copy-variant",
+          name: "Release Helper Copy Variant",
+          description: "Draft release notes.",
+          entryFile: "tool.ts",
+          entryPath: "/tmp/tool.ts",
+          directoryPath: "/tmp/release-helper-copy-variant",
+          fingerprint: "fp-3",
+          enabled: true,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          warnings: [],
+          usage: [],
+        },
+        overwritten: false,
+        warnings: [],
+      });
+
+    renderPage();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "agent-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Copy to global" }));
+
+    await screen.findByText("Tool name conflict");
+    fireEvent.change(screen.getByDisplayValue("Release Helper Copy"), {
+      target: { value: "Release Helper Global" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Copy with new name" }));
+
+    await waitFor(() => {
+      expect(copyAgentToGlobalMutateAsync).toHaveBeenLastCalledWith({
+        agentId: "agent-1",
+        slug: "release-helper-copy",
+        input: {
+          destinationName: "Release Helper Global",
+          overwrite: false,
+        },
       });
     });
   });
