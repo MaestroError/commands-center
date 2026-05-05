@@ -157,13 +157,14 @@ Only the `commandscenter` CLI package (`packages/cli`) is published to npm. Its 
    - validates the tag version equals `packages/cli/package.json` version
    - fails if `commandscenter@X.Y.Z` is already on npm
    - runs `pnpm release:check` (typecheck, lint, CLI tests, CLI build)
-   - runs `npm publish --access public --provenance` from `packages/cli`
+   - runs `npm publish --access public` from `packages/cli` using npm trusted publishing via GitHub OIDC
    - uploads the generated `commandscenter-X.Y.Z.tgz` as a release asset
 
 ### Required configuration
 
-- Repository secret `NPM_TOKEN` with publish rights to `commandscenter` (Automation token recommended).
-- The workflow already requests `id-token: write`, which npm provenance requires.
+- npm package `commandscenter` must have a trusted publisher configured for this repository and workflow filename (`publish.yml`).
+- The workflow already requests `id-token: write`, which npm trusted publishing requires.
+- No npm publish token is required for the `npm publish` step.
 
 ### Local dry run
 

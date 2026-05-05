@@ -23,7 +23,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
@@ -68,11 +67,9 @@ jobs:
       - name: Run publish gate
         run: pnpm release:check
 
-      - name: Publish to npm
+      - name: Publish to npm with trusted publishing
         working-directory: packages/cli
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+        run: npm publish --access public
 
       - name: Pack tarball for release asset
         id: pack
