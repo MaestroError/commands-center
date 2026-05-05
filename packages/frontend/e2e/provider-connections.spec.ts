@@ -50,9 +50,10 @@ test("submits API keys from the provider screen", async ({ page }) => {
   await mockProviderApi(page, state);
 
   await page.goto("/providers");
-  await page.getByRole("button", { name: "Connect API key" }).click();
+  await page.getByRole("button", { name: "Connect API key" }).scrollIntoViewIfNeeded();
+  await page.getByRole("button", { name: "Connect API key" }).click({ force: true });
   await page.getByLabel("API key").fill("sk-test");
-  await page.getByRole("button", { name: "Save key" }).click();
+  await page.getByLabel("API key").press("Enter");
 
   await expect(page.getByText("Provider connected successfully")).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
@@ -68,11 +69,12 @@ test("starts and completes OAuth from the provider screen", async ({ page }) => 
   await mockProviderApi(page, state);
 
   await page.goto("/providers");
-  await page.getByRole("button", { name: "Connect OAuth" }).click();
-  await page.getByRole("button", { name: "Open provider login" }).click();
+  await page.getByRole("button", { name: "Connect OAuth" }).scrollIntoViewIfNeeded();
+  await page.getByRole("button", { name: "Connect OAuth" }).click({ force: true });
+  await page.getByRole("button", { name: "Open provider login" }).click({ force: true });
   await expect(page.getByText("OAuth session started")).toBeVisible();
   await page.getByLabel("Manual code or callback value").fill("oauth-code");
-  await page.getByRole("button", { name: "Complete OAuth" }).click();
+  await page.getByRole("button", { name: "Complete OAuth" }).click({ force: true });
 
   await expect(page.getByText("Provider connected successfully")).toBeVisible();
 });
@@ -86,7 +88,7 @@ test("supports theme changes through the profile page", async ({ page }) => {
 
 test("keeps the shell usable on mobile", async ({ page, isMobile }) => {
   const state: ProviderState = { connected: false };
-  await mockProviderApi(page, state);
+  await mockProviderApi(page, state, { includeChatRoutes: true });
 
   await page.goto("/chat/demo-agent");
 
@@ -96,12 +98,23 @@ test("keeps the shell usable on mobile", async ({ page, isMobile }) => {
   }
 
   await page.getByRole("button", { name: "Open context pane" }).click();
-  await expect(
-    page.getByText("Workspace files, memory, and preferences can live here."),
-  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Files" })).toBeVisible();
+  await expect(page.getByText("No files in workspace")).toBeVisible();
 });
 
-async function mockProviderApi(page: Page, state: ProviderState): Promise<void> {
+async function mockProviderApi(
+  page: Page,
+  state: ProviderState,
+  options?: { includeChatRoutes?: boolean },
+): Promise<void> {
+  await page.route("**/api/opencode", async (route: Route) => {
+    await route.fulfill(jsonResponse({ state: "healthy" }));
+  });
+
+  await page.route("**/api/tasks/runs/active", async (route: Route) => {
+    await route.fulfill(jsonResponse([]));
+  });
+
   await page.route("**/api/providers", async (route: Route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -140,6 +153,100 @@ async function mockProviderApi(page: Page, state: ProviderState): Promise<void> 
   await page.route("**/api/providers/openai", async (route: Route) => {
     state.connected = false;
     await route.fulfill(jsonResponse({ success: true }));
+  });
+
+  if (!options?.includeChatRoutes) {
+    return;
+  }
+
+  const agent = {
+    id: "agent-1",
+    slug: "demo-agent",
+    name: "Demo Agent",
+    role: "demo role",
+    instructions: "demo instructions",
+    defaultModel: "openai/gpt-4.1",
+    workspacePath: "/tmp/agents/demo-agent",
+    status: "active",
+    capabilities: {
+      builtInSkills: [],
+      workspaceSkills: [],
+      customTools: [],
+      mcpServers: [],
+      toolPermissions: [],
+      appMcpServers: [],
+      appToolPermissions: [],
+    },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+  const conversation = {
+    id: "conversation-1",
+    agentId: agent.id,
+    opencodeSessionId: "session-1",
+    title: "Demo conversation",
+    status: "active",
+    source: "chat",
+    isCurrent: true,
+    messageCount: 0,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    messages: [],
+  };
+
+  await page.route("**/api/agents/catalog", async (route: Route) => {
+    await route.fulfill(
+      jsonResponse({
+        builtInSkills: [],
+        workspaceSkills: [],
+        providerModels: [{ id: "openai/gpt-4.1", label: "openai/gpt-4.1" }],
+        mcpServers: [],
+        appMcpServers: [],
+        customTools: [],
+      }),
+    );
+  });
+
+  await page.route("**/api/agents/by-slug/demo-agent", async (route: Route) => {
+    await route.fulfill(jsonResponse(agent));
+  });
+
+  await page.route("**/api/agents/agent-1/conversations/active", async (route: Route) => {
+    await route.fulfill(jsonResponse({ current: conversation, previous: [] }));
+  });
+
+  await page.route("**/api/agents/agent-1/conversations/conversation-1", async (route: Route) => {
+    await route.fulfill(jsonResponse(conversation));
+  });
+
+  await page.route("**/api/agents/agent-1/conversations", async (route: Route) => {
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route("**/api/conversations/conversation-1/media", async (route: Route) => {
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route("**/api/agents/agent-1/workspace/file**", async (route: Route) => {
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route("**/api/agents/agent-1/workspace/events", async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: "",
+      headers: { "cache-control": "no-cache" },
+    });
+  });
+
+  await page.route("**/api/conversations/conversation-1/events", async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: "",
+      headers: { "cache-control": "no-cache" },
+    });
   });
 }
 

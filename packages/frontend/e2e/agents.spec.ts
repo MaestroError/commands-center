@@ -39,21 +39,25 @@ test("creates and edits an agent", async ({ page }) => {
   await mockAgentApi(page, state);
 
   await page.goto("/agents/new");
-  await page.getByLabel(/Name/).fill("Planner");
-  await page.getByLabel(/Role/).fill("plan work");
-  await page.getByLabel(/Instructions/).fill("Plan before editing.");
-  await page.getByLabel(/Model/).selectOption("openai/gpt-4.1");
-  await page.getByRole("button", { name: "Emoji" }).click();
-  await page.getByLabel(/Emoji/).fill("🤖");
-  await page.getByText("screen-requirements-writing").click();
+  await page.getByLabel(/^Name/).fill("Planner");
+  await page.getByLabel(/^Role/).fill("plan work");
+  await page.getByLabel(/^Instructions/).fill("Plan before editing.");
+  await page.getByLabel(/^Model/).selectOption("openai/gpt-4.1");
+  await page.getByRole("button", { name: /^Emoji$/ }).click();
+  await page.getByRole("textbox", { name: /^Emoji$/ }).fill("🤖");
+  await page.getByLabel(/Search skills/i).fill("screen-requirements-writing");
+  await page.getByRole("button", { name: /screen-requirements-writing/i }).click();
   await page.getByRole("button", { name: "Create agent" }).click();
 
   await expect(page).toHaveURL(/\/agents\/planner\/edit$/);
-  await expect(page.getByLabel(/Name/)).toHaveValue("Planner");
-  await expect(page.getByText("🤖")).toBeVisible();
-  await page.getByLabel(/Role/).fill("plan features");
+  await expect(page.getByLabel(/^Name/)).toHaveValue("Planner");
+  await expect(page.getByRole("button", { name: /^Use 🤖 avatar$/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByLabel(/^Role/).fill("plan features");
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByLabel(/Role/)).toHaveValue("plan features");
+  await expect(page.getByLabel(/^Role/)).toHaveValue("plan features");
 });
 
 test("browses built-in skills and detail metadata", async ({ page }) => {
@@ -61,21 +65,41 @@ test("browses built-in skills and detail metadata", async ({ page }) => {
   await mockAgentApi(page, state);
 
   await page.goto("/skills");
-  await expect(
-    page.getByRole("button").filter({ hasText: "screen-requirements-writing" }).first(),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /screen-requirements-writing/i })).toBeVisible();
   await page.getByPlaceholder("Search skills").fill("screen");
-  await expect(page.getByRole("button").filter({ hasText: "design-docs" }).first()).toBeVisible();
+  await expect(page.getByText("design-docs").first()).toBeVisible();
   if (page.viewportSize()?.width && page.viewportSize()!.width < 1024) {
     await page.getByRole("button", { name: "Open context pane" }).click();
   }
-  await expect(page.getByText("SKILL.md")).toBeVisible();
+  await page.getByRole("tab", { name: "Details" }).click();
+  await expect(
+    page
+      .locator("li")
+      .filter({ hasText: /^SKILL\.md$/ })
+      .first(),
+  ).toBeVisible();
 });
 
 async function mockAgentApi(
   page: Page,
   state: { agents: AgentRecord[]; catalog: unknown },
 ): Promise<void> {
+  await page.route("**/api/opencode", async (route: Route) => {
+    await route.fulfill(jsonResponse({ state: "healthy" }));
+  });
+
+  await page.route("**/api/tasks/runs/active", async (route: Route) => {
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route("**/api/mcp-servers", async (route: Route) => {
+    await route.fulfill(jsonResponse([]));
+  });
+
+  await page.route("**/api/custom-tools", async (route: Route) => {
+    await route.fulfill(jsonResponse([]));
+  });
+
   await page.route("**/api/agents**", async (route: Route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -216,8 +240,17 @@ function createAgentState() {
           files: ["SKILL.md"],
         },
       ],
+      workspaceSkills: [],
       mcpServers: [{ name: "github", enabled: true }],
-      customTools: [{ name: "custom_write", enabled: true }],
+      appMcpServers: [],
+      customTools: [
+        {
+          slug: "custom-write",
+          name: "custom_write",
+          description: "Draft helper.",
+          enabled: true,
+        },
+      ],
       providerModels: [{ id: "openai/gpt-4.1", label: "openai/gpt-4.1" }],
     },
   };

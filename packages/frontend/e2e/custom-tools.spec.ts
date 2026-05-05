@@ -48,22 +48,34 @@ test("creates a tool, resolves copy conflict with rename, and removes agent-loca
   await page.getByPlaceholder("Description").fill("Draft release notes.");
   await page.getByRole("button", { name: "Create" }).click();
 
-  await expect(page.getByText("Release Helper")).toBeVisible();
+  await expect(page).toHaveURL(/\/files\?/);
+  await page.goto("/tools");
+  await expect(page.getByRole("heading", { name: "Release Helper" })).toBeVisible();
   await page.getByRole("combobox").selectOption("agent-1");
   await page.getByRole("button", { name: ">>" }).click();
 
   await expect(page.getByText("Tool name conflict")).toBeVisible();
-  await page.getByRole("textbox", { name: "Name" }).fill("Release Helper Variant");
+  await page
+    .locator("section")
+    .filter({ hasText: "Tool name conflict" })
+    .locator("input")
+    .fill("Release Helper Variant");
   await page.getByRole("button", { name: "Copy with new name" }).click();
 
   await expect(page.getByText("Tool name conflict")).toHaveCount(0);
-  await expect(page.getByText("Release Helper Variant")).toBeVisible();
-  await page.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByRole("heading", { name: "Release Helper Variant" })).toBeVisible();
+  await page
+    .locator("article")
+    .filter({ hasText: "Release Helper Variant" })
+    .getByRole("button", { name: /^Remove$/ })
+    .click();
   await page
     .getByRole("button", { name: /^Remove$/ })
     .last()
     .click();
-  await expect(page.getByText("Release Helper Variant")).toHaveCount(0);
+  await expect(page.locator("article").filter({ hasText: "Release Helper Variant" })).toHaveCount(
+    0,
+  );
 });
 
 async function mockCustomToolsApi(
@@ -78,9 +90,20 @@ async function mockCustomToolsApi(
     await route.fulfill(jsonResponse({ state: "healthy" }));
   });
 
+  await page.route("**/api/tasks/runs/active", async (route: Route) => {
+    await route.fulfill(jsonResponse([]));
+  });
+
   await page.route("**/api/agents/catalog", async (route: Route) => {
     await route.fulfill(
-      jsonResponse({ builtInSkills: [], mcpServers: [], customTools: [], providerModels: [] }),
+      jsonResponse({
+        builtInSkills: [],
+        workspaceSkills: [],
+        providerModels: [],
+        mcpServers: [],
+        appMcpServers: [],
+        customTools: [],
+      }),
     );
   });
 
@@ -190,7 +213,7 @@ async function mockCustomToolsApi(
     );
   });
 
-  await page.route("**/api/agents/*/custom-tools", async (route: Route) => {
+  await page.route("**/api/agents/*/custom-tools**", async (route: Route) => {
     const parts = new URL(route.request().url()).pathname.split("/");
     const agentId = parts[3] ?? "";
 
