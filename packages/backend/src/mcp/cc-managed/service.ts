@@ -29,6 +29,11 @@ type RouteContext = {
   body?: unknown;
 };
 
+type DrainCompatibleSocket = IncomingMessage["socket"] & {
+  destroySoon?: () => void;
+  destroy?: () => void;
+};
+
 export function createCcManagedMcpService(options: {
   db: AppDb;
   config: RuntimeConfig;
@@ -92,6 +97,7 @@ export function createCcManagedMcpService(options: {
     }
 
     try {
+      ensureDrainCompatibleSocket(context.rawRequest);
       const session = await createSession(definition, context.routeAgentSlug);
 
       await session.transport.handleRequest(
@@ -125,6 +131,18 @@ export function createCcManagedMcpService(options: {
         writeText(context.rawReply, 500, "Internal MCP server error.");
       }
     }
+  }
+
+  function ensureDrainCompatibleSocket(request: IncomingMessage): void {
+    const socket = request.socket as DrainCompatibleSocket | undefined;
+
+    if (!socket || typeof socket.destroySoon === "function") {
+      return;
+    }
+
+    socket.destroySoon = () => {
+      socket.destroy?.();
+    };
   }
 
   async function createSession(
