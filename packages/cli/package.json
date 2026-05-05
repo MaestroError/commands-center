@@ -1,11 +1,12 @@
 {
   "name": "commandscenter",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "Single-user AI agent management — install, run, done.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MaestroError/commands-center.git"
+    "url": "git+https://github.com/MaestroError/commands-center.git",
+    "directory": "packages/cli"
   },
   "homepage": "https://github.com/MaestroError/commands-center",
   "bugs": {

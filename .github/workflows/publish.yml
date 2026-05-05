@@ -55,16 +55,24 @@ jobs:
           fi
 
       - name: Validate package repository URL matches GitHub origin
+        env:
+          GITHUB_REPOSITORY_NAME: ${{ github.repository }}
         run: |
           set -euo pipefail
           PKG_REPOSITORY_URL="$(node -p "require('./packages/cli/package.json').repository?.url || ''")"
-          ORIGIN_URL="$(git remote get-url origin)"
+          normalize_repo_url() {
+            local value="$1"
+            value="${value#git+}"
+            value="${value%.git}"
+            printf '%s\n' "$value"
+          }
+          EXPECTED_REPOSITORY_URL="https://github.com/${GITHUB_REPOSITORY_NAME}"
           if [[ -z "$PKG_REPOSITORY_URL" ]]; then
             echo "::error::packages/cli/package.json must define repository.url for npm trusted publishing"
             exit 1
           fi
-          if [[ "$PKG_REPOSITORY_URL" != "$ORIGIN_URL" ]]; then
-            echo "::error::packages/cli/package.json repository.url '$PKG_REPOSITORY_URL' does not match git origin '$ORIGIN_URL'"
+          if [[ "$(normalize_repo_url "$PKG_REPOSITORY_URL")" != "$EXPECTED_REPOSITORY_URL" ]]; then
+            echo "::error::packages/cli/package.json repository.url '$PKG_REPOSITORY_URL' does not match GitHub repository '$EXPECTED_REPOSITORY_URL'"
             exit 1
           fi
 
