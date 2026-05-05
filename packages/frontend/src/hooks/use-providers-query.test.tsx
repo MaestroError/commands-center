@@ -18,8 +18,26 @@ import {
   submitProviderApiKey,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+import type { ProviderOauthAuthorization, ProviderStatus } from "@cc/shared/schemas";
 
 import { useProviderMutations, useProvidersQuery } from "./use-providers-query";
+
+function buildProviderStatus(overrides: Partial<ProviderStatus> = {}): ProviderStatus {
+  return {
+    provider: {
+      id: "openai",
+      name: "OpenAI",
+      source: "api",
+      env: [],
+      models: {},
+    },
+    connected: true,
+    defaultModel: "gpt-4o",
+    authMethods: [{ type: "api", label: "API key" }],
+    models: [{ id: "gpt-4o", name: "GPT-4o", providerId: "openai" }],
+    ...overrides,
+  };
+}
 
 function createWrapper(queryClient: QueryClient) {
   return ({ children }: { children: React.ReactNode }) => (
@@ -33,7 +51,7 @@ describe("useProvidersQuery", () => {
   });
 
   it("loads providers through the providers query", async () => {
-    vi.mocked(listProviders).mockResolvedValue([{ provider: { id: "openai", name: "OpenAI" } }]);
+    vi.mocked(listProviders).mockResolvedValue([buildProviderStatus()]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     const { result } = renderHook(() => useProvidersQuery(), {
@@ -41,7 +59,7 @@ describe("useProvidersQuery", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.data).toEqual([{ provider: { id: "openai", name: "OpenAI" } }]);
+      expect(result.current.data).toEqual([buildProviderStatus()]);
     });
   });
 
@@ -51,10 +69,14 @@ describe("useProvidersQuery", () => {
     });
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
-    vi.mocked(submitProviderApiKey).mockResolvedValue(undefined);
-    vi.mocked(startProviderOauth).mockResolvedValue({ url: "https://example.com/oauth" });
+    vi.mocked(submitProviderApiKey).mockResolvedValue(true);
+    vi.mocked(startProviderOauth).mockResolvedValue({
+      url: "https://example.com/oauth",
+      method: "code",
+      instructions: "Open the provider and copy the code.",
+    } satisfies ProviderOauthAuthorization);
     vi.mocked(completeProviderOauth).mockResolvedValue({ connected: true });
-    vi.mocked(disconnectProvider).mockResolvedValue(undefined);
+    vi.mocked(disconnectProvider).mockResolvedValue(true);
 
     const { result } = renderHook(() => useProviderMutations(), {
       wrapper: createWrapper(queryClient),

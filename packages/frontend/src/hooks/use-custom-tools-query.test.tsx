@@ -95,7 +95,7 @@ describe("useCustomToolsQuery", () => {
     const { result, rerender } = renderHook(
       ({ agentId }: { agentId?: string }) => useAgentCustomToolsQuery(agentId),
       {
-        initialProps: { agentId: undefined },
+        initialProps: { agentId: undefined as string | undefined },
         wrapper: createWrapper(queryClient),
       },
     );
@@ -141,7 +141,6 @@ describe("useCustomToolsQuery", () => {
     vi.mocked(deleteCustomTool).mockResolvedValue(undefined);
     vi.mocked(copyCustomToolToAgents).mockResolvedValue({
       copied: [{ agentId: "agent-1", agentSlug: "writer", overwritten: false }],
-      warnings: [],
     });
     vi.mocked(copyAgentCustomToolToGlobal).mockResolvedValue({
       tool: {

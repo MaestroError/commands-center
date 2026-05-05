@@ -28,10 +28,19 @@ describe("useMediaQuery", () => {
 
   it("tracks media query changes and removes the listener on unmount", () => {
     let listener: MatchMediaListener | undefined;
-    const addEventListener = vi.fn((_: string, nextListener: MatchMediaListener) => {
+    const addEventListener: MediaQueryList["addEventListener"] = vi.fn(
+      (_type: string, nextListener: EventListenerOrEventListenerObject) => {
+        listener =
+          typeof nextListener === "function"
+            ? (nextListener as MatchMediaListener)
+            : (event: MediaQueryListEvent) => nextListener.handleEvent(event);
+      },
+    );
+    const removeEventListener: MediaQueryList["removeEventListener"] = vi.fn();
+    const addListener: MediaQueryList["addListener"] = vi.fn((nextListener: MatchMediaListener) => {
       listener = nextListener;
     });
-    const removeEventListener = vi.fn();
+    const removeListener: MediaQueryList["removeListener"] = vi.fn();
 
     vi.stubGlobal(
       "matchMedia",
@@ -39,6 +48,8 @@ describe("useMediaQuery", () => {
         matches: false,
         media: "(min-width: 768px)",
         onchange: null,
+        addListener,
+        removeListener,
         addEventListener,
         removeEventListener,
         dispatchEvent: vi.fn(),

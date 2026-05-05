@@ -7,7 +7,7 @@ import type { TerminalSession } from "@cc/shared/schemas";
 
 const sessions: TerminalSession[] = [
   { id: "term-1", backend: "opencode", cwd: "/workspace/project", createdAt: 1 },
-  { id: "term-2", backend: "root", cwd: "/", createdAt: 2 },
+  { id: "term-2", backend: "opencode", cwd: "/", createdAt: 2 },
 ];
 
 describe("TerminalTabBar", () => {
@@ -50,7 +50,6 @@ describe("TerminalTabBar", () => {
 
     expect(screen.getByText("project")).toBeInTheDocument();
     expect(screen.getByText("/")).toBeInTheDocument();
-    expect(screen.getByText("OC")).toBeInTheDocument();
-    expect(screen.getByText("Root")).toBeInTheDocument();
+    expect(screen.getAllByText("OC")).toHaveLength(2);
   });
 });

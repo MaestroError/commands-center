@@ -18,8 +18,22 @@ import {
   uploadWorkspaceSkill,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+import type { WorkspaceSkill } from "@cc/shared/schemas";
 
 import { useWorkspaceSkillMutations, useWorkspaceSkillsQuery } from "./use-workspace-skills-query";
+
+function buildWorkspaceSkill(overrides: Partial<WorkspaceSkill> = {}): WorkspaceSkill {
+  return {
+    name: "Custom skill",
+    slug: "custom-skill",
+    description: "Do the thing",
+    category: "general",
+    metadata: {},
+    detailsMarkdown: "# Custom skill",
+    files: ["SKILL.md"],
+    ...overrides,
+  };
+}
 
 function createWrapper(queryClient: QueryClient) {
   return ({ children }: { children: React.ReactNode }) => (
@@ -33,9 +47,7 @@ describe("useWorkspaceSkillsQuery", () => {
   });
 
   it("loads workspace skills through the workspace skills query", async () => {
-    vi.mocked(listWorkspaceSkills).mockResolvedValue([
-      { slug: "custom-skill", title: "Custom skill" },
-    ]);
+    vi.mocked(listWorkspaceSkills).mockResolvedValue([buildWorkspaceSkill()]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     const { result } = renderHook(() => useWorkspaceSkillsQuery(), {
@@ -43,7 +55,7 @@ describe("useWorkspaceSkillsQuery", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.data).toEqual([{ slug: "custom-skill", title: "Custom skill" }]);
+      expect(result.current.data).toEqual([buildWorkspaceSkill()]);
     });
   });
 
@@ -53,10 +65,19 @@ describe("useWorkspaceSkillsQuery", () => {
     });
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
-    vi.mocked(createWorkspaceSkill).mockResolvedValue({ slug: "custom-skill" });
-    vi.mocked(uploadWorkspaceSkill).mockResolvedValue({ slug: "custom-skill" });
+    vi.mocked(createWorkspaceSkill).mockResolvedValue({
+      skill: buildWorkspaceSkill(),
+      overwritten: false,
+    });
+    vi.mocked(uploadWorkspaceSkill).mockResolvedValue({
+      skill: buildWorkspaceSkill(),
+      overwritten: false,
+    });
     vi.mocked(deleteWorkspaceSkill).mockResolvedValue(undefined);
-    vi.mocked(updateWorkspaceSkillCategory).mockResolvedValue({ slug: "custom-skill" });
+    vi.mocked(updateWorkspaceSkillCategory).mockResolvedValue({
+      skill: buildWorkspaceSkill({ category: "ops" }),
+      overwritten: false,
+    });
 
     const { result } = renderHook(() => useWorkspaceSkillMutations(), {
       wrapper: createWrapper(queryClient),
@@ -64,14 +85,20 @@ describe("useWorkspaceSkillsQuery", () => {
 
     await act(async () => {
       await result.current.create.mutateAsync({
-        title: "Custom skill",
-        slug: "custom-skill",
-        prompt: "Do the thing",
+        name: "Custom skill",
+        description: "Do the thing",
         category: "general",
       });
       await result.current.upload.mutateAsync({
-        file: new File(["prompt"], "custom-skill.md", { type: "text/markdown" }),
-        category: "general",
+        entries: [
+          {
+            name: "SKILL.md",
+            relativePath: "custom-skill/SKILL.md",
+            contentBase64: "cHJvbXB0",
+            sizeBytes: 6,
+          },
+        ],
+        overwrite: false,
       });
       await result.current.delete.mutateAsync("custom-skill");
       await result.current.updateCategory.mutateAsync({

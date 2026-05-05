@@ -28,6 +28,7 @@ import {
   updateMcpServer,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+import type { CreateMcpServerInput, McpServer, UpdateMcpServerInput } from "@cc/shared/schemas";
 
 import { useMcpServerMutations, useMcpServersQuery } from "./use-mcp-servers-query";
 
@@ -37,13 +38,32 @@ function createWrapper(queryClient: QueryClient) {
   );
 }
 
+function buildMcpServer(overrides: Partial<McpServer> = {}): McpServer {
+  return {
+    id: "server-1",
+    name: "Filesystem",
+    enabled: true,
+    config: {
+      transport: "stdio",
+      command: ["npx", "mcp-server"],
+      environment: {},
+    },
+    missingSecrets: [],
+    runtimeStatus: { status: "connected" },
+    tools: [],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 describe("useMcpServersQuery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("loads mcp servers through the servers query", async () => {
-    vi.mocked(listMcpServers).mockResolvedValue([{ id: "server-1", name: "Filesystem" }]);
+    vi.mocked(listMcpServers).mockResolvedValue([buildMcpServer()]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     const { result } = renderHook(() => useMcpServersQuery(), {
@@ -51,7 +71,7 @@ describe("useMcpServersQuery", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.data).toEqual([{ id: "server-1", name: "Filesystem" }]);
+      expect(result.current.data).toEqual([buildMcpServer()]);
     });
   });
 
@@ -61,17 +81,35 @@ describe("useMcpServersQuery", () => {
     });
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
     const setQueryData = vi.spyOn(queryClient, "setQueryData");
-    const refreshedServers = [{ id: "server-1", name: "Filesystem" }];
+    const refreshedServers = [buildMcpServer()];
 
-    vi.mocked(createMcpServer).mockResolvedValue({ id: "server-1" });
+    vi.mocked(createMcpServer).mockResolvedValue(buildMcpServer());
     vi.mocked(refreshMcpServers).mockResolvedValue(refreshedServers);
-    vi.mocked(updateMcpServer).mockResolvedValue({ id: "server-1" });
-    vi.mocked(setMcpServerEnabled).mockResolvedValue({ id: "server-1" });
+    vi.mocked(updateMcpServer).mockResolvedValue(buildMcpServer({ name: "Updated" }));
+    vi.mocked(setMcpServerEnabled).mockResolvedValue(buildMcpServer());
     vi.mocked(deleteMcpServer).mockResolvedValue(undefined);
-    vi.mocked(startMcpAuth).mockResolvedValue({ authUrl: "https://example.com" });
-    vi.mocked(authenticateMcp).mockResolvedValue({ id: "server-1" });
-    vi.mocked(completeMcpAuth).mockResolvedValue({ id: "server-1" });
-    vi.mocked(removeMcpAuth).mockResolvedValue(undefined);
+    vi.mocked(startMcpAuth).mockResolvedValue({ authorizationUrl: "https://example.com" });
+    vi.mocked(authenticateMcp).mockResolvedValue(buildMcpServer());
+    vi.mocked(completeMcpAuth).mockResolvedValue(buildMcpServer());
+    vi.mocked(removeMcpAuth).mockResolvedValue({ success: true });
+
+    const createInput: CreateMcpServerInput = {
+      name: "Filesystem",
+      enabled: true,
+      config: {
+        transport: "stdio",
+        command: ["npx", "mcp-server"],
+        environment: {},
+      },
+    };
+    const updateInput: UpdateMcpServerInput = {
+      name: "Updated",
+      config: {
+        transport: "stdio",
+        command: ["npx", "mcp-server"],
+        environment: {},
+      },
+    };
 
     const { result } = renderHook(() => useMcpServerMutations(), {
       wrapper: createWrapper(queryClient),
@@ -79,13 +117,10 @@ describe("useMcpServersQuery", () => {
 
     await act(async () => {
       await result.current.create.mutateAsync({
-        name: "Filesystem",
-        transport: { type: "stdio", command: "npx", args: ["mcp-server"] },
-        environment: [],
-        headers: [],
+        ...createInput,
       });
       await result.current.refresh.mutateAsync();
-      await result.current.update.mutateAsync({ id: "server-1", input: { name: "Updated" } });
+      await result.current.update.mutateAsync({ id: "server-1", input: updateInput });
       await result.current.setEnabled.mutateAsync({ id: "server-1", enabled: true });
       await result.current.remove.mutateAsync({ id: "server-1" });
       await result.current.startAuth.mutateAsync({ id: "server-1" });
@@ -96,7 +131,7 @@ describe("useMcpServersQuery", () => {
 
     expect(createMcpServer).toHaveBeenCalled();
     expect(refreshMcpServers).toHaveBeenCalled();
-    expect(updateMcpServer).toHaveBeenCalledWith("server-1", { name: "Updated" });
+    expect(updateMcpServer).toHaveBeenCalledWith("server-1", updateInput);
     expect(setMcpServerEnabled).toHaveBeenCalledWith("server-1", true);
     expect(deleteMcpServer).toHaveBeenCalledWith("server-1");
     expect(startMcpAuth).toHaveBeenCalledWith("server-1");

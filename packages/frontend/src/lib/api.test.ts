@@ -385,6 +385,7 @@ describe("additional request wrapper coverage", () => {
             sizeBytes: 5,
           },
         ],
+        overwrite: false,
       }),
     ).rejects.toMatchObject({
       name: "WorkspaceSkillUploadRenameError",

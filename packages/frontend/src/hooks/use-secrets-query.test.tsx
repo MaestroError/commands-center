@@ -26,7 +26,7 @@ describe("useSecretsQuery", () => {
 
   it("loads secrets through the secrets query", async () => {
     vi.mocked(listSecrets).mockResolvedValue([
-      { key: "OPENAI_API_KEY", updatedAt: "2026-05-05T10:00:00.000Z" },
+      { key: "OPENAI_API_KEY", isSet: true, updatedAt: "2026-05-05T10:00:00.000Z" },
     ]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -36,7 +36,7 @@ describe("useSecretsQuery", () => {
 
     await waitFor(() => {
       expect(result.current.data).toEqual([
-        { key: "OPENAI_API_KEY", updatedAt: "2026-05-05T10:00:00.000Z" },
+        { key: "OPENAI_API_KEY", isSet: true, updatedAt: "2026-05-05T10:00:00.000Z" },
       ]);
     });
   });

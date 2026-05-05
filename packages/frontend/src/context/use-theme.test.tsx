@@ -1,6 +1,8 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { themeNames } from "@/stores/ui-store";
+
 import { ThemeContext } from "./theme-context";
 import { useTheme } from "./use-theme";
 
@@ -15,9 +17,9 @@ describe("useTheme", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <ThemeContext.Provider
         value={{
-          theme: "midnight",
+          theme: "modern",
           setTheme: () => undefined,
-          resolvedTheme: { id: "midnight", name: "Midnight" },
+          themes: themeNames,
         }}
       >
         {children}
@@ -26,7 +28,7 @@ describe("useTheme", () => {
 
     const { result } = renderHook(() => useTheme(), { wrapper });
 
-    expect(result.current.theme).toBe("midnight");
-    expect(result.current.resolvedTheme).toEqual({ id: "midnight", name: "Midnight" });
+    expect(result.current.theme).toBe("modern");
+    expect(result.current.themes).toEqual(themeNames);
   });
 });
