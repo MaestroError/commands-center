@@ -266,6 +266,48 @@ describe("createAgentService", () => {
             },
           ],
         },
+        {
+          name: "cc_tasks_management",
+          enabledByDefault: false,
+          description: "CommandsCenter task creation, scheduling, triggering, and run inspection.",
+          tools: [
+            {
+              name: "create_task",
+              description:
+                "Create a CommandsCenter task for the calling agent after operator confirmation.",
+            },
+            {
+              name: "list_tasks",
+              description: "List CommandsCenter tasks visible in this workspace.",
+            },
+            {
+              name: "get_task",
+              description: "Read a CommandsCenter task by id.",
+            },
+            {
+              name: "trigger_task",
+              description:
+                "Manually trigger an existing CommandsCenter task after operator confirmation.",
+            },
+            {
+              name: "schedule_one_time_task",
+              description:
+                "Create a one-time scheduled CommandsCenter task after operator confirmation.",
+            },
+            {
+              name: "list_task_runs",
+              description: "List recent runs for a CommandsCenter task.",
+            },
+            {
+              name: "get_task_run",
+              description: "Read a CommandsCenter task run by task id and run id.",
+            },
+            {
+              name: "list_recurring_task_history",
+              description: "Inspect recent run history for a recurring CommandsCenter task.",
+            },
+          ],
+        },
       ]);
     } finally {
       await testDb.cleanup();
