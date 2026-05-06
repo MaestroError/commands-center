@@ -515,6 +515,7 @@ function createMockOpenCodeService(): OpenCodeService {
 
       session.title = session.title ?? text.slice(0, 40);
       session.time.updated = nextTime();
+      return Promise.resolve();
     },
     replyPermission: async () => {},
     replyQuestion: async () => {},
