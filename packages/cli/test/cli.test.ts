@@ -23,7 +23,7 @@ describe("parseCliArgs", () => {
         "127.0.0.1",
         "--port",
         "4001",
-        "--env-file",
+        "--cc-env-file",
         "/opt/cc/.env",
       ]),
     ).toEqual({
@@ -82,11 +82,23 @@ describe("parseCliArgs", () => {
       rollback: false,
     });
 
-    expect(parseCliArgs(["serve", "--env-file"])).toEqual({
+    expect(parseCliArgs(["serve", "--cc-env-file"])).toEqual({
       command: "serve",
       host: undefined,
       port: undefined,
       envFile: undefined,
+      help: false,
+      version: false,
+      rollback: false,
+    });
+  });
+
+  it("accepts the legacy env-file flag for compatibility", () => {
+    expect(parseCliArgs(["serve", "--env-file", "/opt/cc/.env"])).toEqual({
+      command: "serve",
+      host: undefined,
+      port: undefined,
+      envFile: "/opt/cc/.env",
       help: false,
       version: false,
       rollback: false,

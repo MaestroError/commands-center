@@ -50,8 +50,8 @@ CommandsCenter production use is centered on the globally installed `ccenter` bi
 `ccenter` loads environment variables in this order:
 
 1. Existing process environment variables win.
-2. `--env-file <path>` loads values from an explicit file. `ccenter start` and `ccenter serve` create the file from `.env.prod.example` first when it is missing.
-3. If no `--env-file` is passed, `~/.cc/.env` is loaded. `ccenter start` and `ccenter serve` create it from `.env.prod.example` on first run when missing.
+2. `--cc-env-file <path>` loads values from an explicit file. `ccenter start` and `ccenter serve` create the file from `.env.prod.example` first when it is missing.
+3. If no `--cc-env-file` is passed, `~/.cc/.env` is loaded. `ccenter start` and `ccenter serve` create it from `.env.prod.example` on first run when missing.
 4. Built-in defaults are used for optional settings.
 
 Default global layout:
@@ -88,8 +88,8 @@ Useful commands:
 ```bash
 ccenter --version
 ccenter start --host 127.0.0.1 --port 3000
-ccenter start --env-file /opt/commandscenter/.env
-ccenter serve --env-file /opt/commandscenter/.env
+ccenter start --cc-env-file /opt/commandscenter/.env
+ccenter serve --cc-env-file /opt/commandscenter/.env
 ccenter upgrade
 ccenter upgrade --rollback
 ```
@@ -165,7 +165,7 @@ WorkingDirectory=/opt/commandscenter
 Environment=CC_HOST=127.0.0.1
 Environment=CC_PORT=3000
 Environment=CC_WORKSPACE_DIR=/opt/commandscenter/workspace
-ExecStart=/usr/bin/env ccenter start --host 127.0.0.1 --port 3000 --env-file /opt/commandscenter/.env
+ExecStart=/usr/bin/env ccenter start --host 127.0.0.1 --port 3000 --cc-env-file /opt/commandscenter/.env
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
@@ -190,7 +190,7 @@ Upgrade on VPS:
 
 ```bash
 cd /opt/commandscenter
-ccenter upgrade --env-file /opt/commandscenter/.env
+ccenter upgrade --cc-env-file /opt/commandscenter/.env
 sudo systemctl restart commandscenter
 ```
 

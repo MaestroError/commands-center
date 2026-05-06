@@ -96,7 +96,7 @@ describe("runCli", () => {
   it("prints version without loading env or starting the server", async () => {
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await runCli(["start", "--env-file", "/tmp/.env", "--version"]);
+    await runCli(["start", "--cc-env-file", "/tmp/.env", "--version"]);
 
     expect(loadEnvFileMock).not.toHaveBeenCalled();
     expect(consoleLog).toHaveBeenCalledWith("0.1.0");
@@ -175,7 +175,7 @@ describe("runCli", () => {
       "127.0.0.1",
       "--port",
       "4010",
-      "--env-file",
+      "--cc-env-file",
       "/opt/commandscenter/.env",
     ]);
 
