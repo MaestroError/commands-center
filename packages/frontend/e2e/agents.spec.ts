@@ -163,6 +163,7 @@ async function mockAgentApi(
       const payload = route.request().postDataJSON() as Partial<AgentRecord> & {
         capabilities?: AgentRecord["capabilities"];
       };
+      const nextUpdatedAt = new Date(Date.parse(agent.updatedAt) + 1_000).toISOString();
       Object.assign(agent, payload, {
         slug: payload.name
           ? payload.name
@@ -176,6 +177,7 @@ async function mockAgentApi(
               .replace(/[^a-z0-9]+/g, "-")
               .replace(/^-+|-+$/g, "")}`
           : agent.workspacePath,
+        updatedAt: nextUpdatedAt,
       });
       await route.fulfill(jsonResponse(agent));
       return;
