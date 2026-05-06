@@ -45,7 +45,7 @@ export function printHelp(): void {
   Options:
     --port, -p <number>        Port to listen on (default: ${String(DEFAULT_PORT)})
     --host, -h <string>        Host to bind to (default: ${DEFAULT_HOST})
-    --env-file <path>          Load environment variables from a file
+    --cc-env-file <path>       Load environment variables from a file
     --rollback                 Reinstall the previous recorded version
 `);
 }
@@ -66,7 +66,7 @@ export function parseCliArgs(args: string[]): CliArgs {
       continue;
     }
 
-    if (arg === "--env-file" && next) {
+    if ((arg === "--cc-env-file" || arg === "--env-file") && next) {
       envFile = next;
       i++;
       continue;

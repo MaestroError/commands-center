@@ -8,7 +8,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
 
 ## Domains
 
-- `engine-infrastructure`: runtime bootstrap, OpenCode engine lifecycle, API backbone, self-updating
+- `engine-infrastructure`: runtime bootstrap, OpenCode engine lifecycle, API backbone, self-updating, installer hardening
 - `core-data-state`: database, portable workspace state, agent lifecycle, direct chat persistence
 - `product-ux-surfaces`: app shell, dashboard, agent UX, chat UX, file manager, terminals, profile, settings, theming
 - `integrations-automation`: provider auth, MCP/integrations, custom tools, tasks
@@ -30,6 +30,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |     \- ✅ I6 App-Provided MCP Server
  |- ✅ E3 API and Realtime Foundation
  |  |- ✅ E4 Self-Updating and Version Management
+ |  |  \- E6 Ubuntu and macOS Service Installer Hardening
  |  |- ✅ U0 Frontend Foundation
  |  |  |- U1 App Shell and Dashboard
  |  |  |- ✅ U2 Agents and Agent Editor
@@ -103,6 +104,14 @@ Run after agents and direct chat execution are stable.
 
 Result: manual and scheduled tasks with isolated OpenCode sessions, task-scoped permissions, active run visibility, and run history.
 
+### Path D: Harden packaging and supported-service installation
+
+Run after the MVP feature surface and CLI packaging flow are stable.
+
+1. `engine-infrastructure/06-ubuntu-and-macos-service-installers.md`
+
+Result: a deliberately small support matrix, dedicated Ubuntu and macOS installer scripts, clearer failure modes on unsupported systems, and CI smoke coverage for supported operating systems.
+
 ## Cross-Cutting Architectural Principles
 
 ### Service-First Architecture
@@ -175,6 +184,10 @@ Each epic PR should:
 
 - I4 Tasks
 - ✅ I6 App-Provided MCP Server
+
+### Milestone 5: Distribution Hardening
+
+- E6 Ubuntu and macOS Service Installer Hardening
 
 ## Long-Term Plan
 

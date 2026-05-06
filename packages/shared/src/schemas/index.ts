@@ -331,11 +331,15 @@ export {
 } from "./health.js";
 export {
   installModeSchema,
+  requestSystemShutdownHeadersSchema,
+  systemShutdownAcceptedSchema,
   systemUpdatePreferencesSchema,
   systemUpdateResultSchema,
   systemVersionSchema,
   updateSystemUpdatePreferencesInputSchema,
   type InstallMode,
+  type RequestSystemShutdownHeaders,
+  type SystemShutdownAccepted,
   type SystemUpdatePreferences,
   type SystemUpdateResult,
   type SystemVersion,

@@ -22,4 +22,4 @@ USER node
 EXPOSE 3000
 VOLUME ["/workspace"]
 
-CMD ["ccenter", "start", "--env-file", "/workspace/.cc/.env"]
+CMD ["ccenter", "start", "--cc-env-file", "/workspace/.cc/.env"]

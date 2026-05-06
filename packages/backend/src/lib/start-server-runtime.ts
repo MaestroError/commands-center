@@ -76,6 +76,7 @@ export type RuntimeContext = {
   taskExecutionService?: TaskExecutionService;
   taskSchedulerService?: TaskSchedulerService;
   systemVersionService?: SystemVersionService;
+  shutdownRuntime?: () => Promise<void>;
 };
 
 export type StartedServerRuntime = RuntimeContext & {
@@ -199,6 +200,7 @@ export async function startServerRuntime(
     },
   });
   drainRuntime.drain = drainController.drain;
+  context.shutdownRuntime = () => drainController.drain("manual");
   systemVersionService.start();
   taskSchedulerService.start();
 

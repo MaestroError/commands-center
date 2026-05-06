@@ -29,6 +29,14 @@ export const updateSystemUpdatePreferencesInputSchema = z.object({
   autoUpdateEnabled: z.boolean(),
 });
 
+export const requestSystemShutdownHeadersSchema = z.object({
+  "x-cc-shutdown-key": z.string().trim().min(1),
+});
+
+export const systemShutdownAcceptedSchema = z.object({
+  accepted: z.literal(true),
+});
+
 export const systemUpdateResultSchema = z.object({
   applied: z.boolean(),
   installMode: installModeSchema,
@@ -40,6 +48,8 @@ export const systemUpdateResultSchema = z.object({
 });
 
 export type InstallMode = z.infer<typeof installModeSchema>;
+export type RequestSystemShutdownHeaders = z.infer<typeof requestSystemShutdownHeadersSchema>;
+export type SystemShutdownAccepted = z.infer<typeof systemShutdownAcceptedSchema>;
 export type SystemVersion = z.infer<typeof systemVersionSchema>;
 export type SystemUpdateResult = z.infer<typeof systemUpdateResultSchema>;
 export type SystemUpdatePreferences = z.infer<typeof systemUpdatePreferencesSchema>;

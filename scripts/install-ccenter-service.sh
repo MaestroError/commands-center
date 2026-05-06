@@ -131,7 +131,7 @@ WorkingDirectory=$INSTALL_DIR
 Environment=CC_HOST=$HOST
 Environment=CC_PORT=$PORT
 Environment=CC_WORKSPACE_DIR=$WORKSPACE_DIR
-ExecStart=$(command -v ccenter) start --host $HOST --port $PORT --env-file $ENV_FILE
+ExecStart=$(command -v ccenter) start --host $HOST --port $PORT --cc-env-file $ENV_FILE
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
@@ -146,10 +146,14 @@ EOF
 }
 
 install_launchd_service() {
-  local plist_dir plist_file ccenter_path
+  local plist_dir plist_file ccenter_path ccenter_dir node_path node_dir launchd_path
   plist_dir="$HOME/Library/LaunchAgents"
   plist_file="$plist_dir/com.commandscenter.app.plist"
   ccenter_path="$(command -v ccenter)"
+  ccenter_dir="$(dirname "$ccenter_path")"
+  node_path="$(command -v node)"
+  node_dir="$(dirname "$node_path")"
+  launchd_path="$node_dir:$ccenter_dir:/usr/bin:/bin:/usr/sbin:/sbin"
 
   mkdir -p "$plist_dir"
 
@@ -164,6 +168,8 @@ install_launchd_service() {
   <string>$INSTALL_DIR</string>
   <key>EnvironmentVariables</key>
   <dict>
+    <key>PATH</key>
+    <string>$launchd_path</string>
     <key>CC_HOST</key>
     <string>$HOST</string>
     <key>CC_PORT</key>
@@ -179,7 +185,7 @@ install_launchd_service() {
     <string>$HOST</string>
     <string>--port</string>
     <string>$PORT</string>
-    <string>--env-file</string>
+    <string>--cc-env-file</string>
     <string>$ENV_FILE</string>
   </array>
   <key>RunAtLoad</key>
