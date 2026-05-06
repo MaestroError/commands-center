@@ -168,7 +168,12 @@ function loadCliEnv(parsedArgs: CliArgs): void {
   if (parsedArgs.envFile) {
     if (["start", "serve"].includes(parsedArgs.command) && !existsSync(parsedArgs.envFile)) {
       warnBeforeCreatingEnvFile(parsedArgs.envFile);
-      createDefaultEnvFile(parsedArgs.envFile, resolve(dirname(parsedArgs.envFile), "workspace"));
+      createDefaultEnvFile(parsedArgs.envFile, {
+        host: parsedArgs.host ?? process.env["CC_HOST"],
+        port: parsedArgs.port?.toString() ?? process.env["CC_PORT"],
+        workspaceDir:
+          process.env["CC_WORKSPACE_DIR"] ?? resolve(dirname(parsedArgs.envFile), "workspace"),
+      });
       process.env["CC_FIRST_RUN_ENV_FILE_CREATED"] = "true";
       process.env["CC_FIRST_RUN_ENV_FILE_PATH"] = parsedArgs.envFile;
     }
@@ -180,7 +185,11 @@ function loadCliEnv(parsedArgs: CliArgs): void {
   const defaultEnvFile = resolve(homedir(), ".cc", ".env");
 
   if (["start", "serve"].includes(parsedArgs.command) && !existsSync(defaultEnvFile)) {
-    createDefaultEnvFile(defaultEnvFile, resolve(homedir(), ".cc", "workspace"));
+    createDefaultEnvFile(defaultEnvFile, {
+      host: parsedArgs.host ?? process.env["CC_HOST"],
+      port: parsedArgs.port?.toString() ?? process.env["CC_PORT"],
+      workspaceDir: process.env["CC_WORKSPACE_DIR"] ?? resolve(homedir(), ".cc", "workspace"),
+    });
     process.env["CC_FIRST_RUN_ENV_FILE_CREATED"] = "true";
     process.env["CC_FIRST_RUN_ENV_FILE_PATH"] = defaultEnvFile;
     loadEnvFile(defaultEnvFile);
@@ -192,11 +201,22 @@ function loadCliEnv(parsedArgs: CliArgs): void {
   }
 }
 
-function createDefaultEnvFile(path: string, workspaceDir: string): void {
+function createDefaultEnvFile(
+  path: string,
+  options: { host?: string; port?: string; workspaceDir: string },
+): void {
   mkdirSync(dirname(path), { recursive: true });
-  const content = readDefaultProdEnvExample()
-    .replace(/^CC_WORKSPACE_DIR=.*$/m, `CC_WORKSPACE_DIR=${workspaceDir}`)
+  let content = readDefaultProdEnvExample()
+    .replace(/^CC_WORKSPACE_DIR=.*$/m, `CC_WORKSPACE_DIR=${options.workspaceDir}`)
     .replace(/^CC_SECRET_KEY=.*$/m, `CC_SECRET_KEY=${randomBytes(32).toString("hex")}`);
+
+  if (options.host) {
+    content = content.replace(/^CC_HOST=.*$/m, `CC_HOST=${options.host}`);
+  }
+
+  if (options.port) {
+    content = content.replace(/^CC_PORT=.*$/m, `CC_PORT=${options.port}`);
+  }
 
   writeFileSync(path, content, { encoding: "utf8", mode: 0o600 });
   chmodSync(path, 0o600);

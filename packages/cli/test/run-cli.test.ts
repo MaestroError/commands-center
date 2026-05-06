@@ -75,7 +75,9 @@ describe("runCli", () => {
     process.env = { ...originalEnv };
     process.exitCode = undefined;
     existsSyncMock.mockReturnValue(false);
-    readFileSyncMock.mockReturnValue("CC_WORKSPACE_DIR=.cc/workspace\nCC_SECRET_KEY=\n");
+    readFileSyncMock.mockReturnValue(
+      "CC_HOST=0.0.0.0\nCC_PORT=3000\nCC_WORKSPACE_DIR=.cc/workspace\nCC_SECRET_KEY=\n",
+    );
     readPackageInfoMock.mockReturnValue({
       version: "0.1.0",
       packageRoot: "/tmp/commandscenter",
@@ -140,8 +142,17 @@ describe("runCli", () => {
   it("creates an explicit missing env file before start and prints a warning", async () => {
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     existsSyncMock.mockImplementation((path: string) => path.endsWith(".env.prod.example"));
+    process.env["CC_WORKSPACE_DIR"] = "/srv/cc/workspace";
 
-    await runCli(["start", "--env-file", "/opt/commandscenter/.env"]);
+    await runCli([
+      "start",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "4010",
+      "--env-file",
+      "/opt/commandscenter/.env",
+    ]);
 
     expect(consoleWarn).toHaveBeenCalledWith(
       "\u001b[33mWarning: /opt/commandscenter/.env does not exist. Creating it from .env.prod.example before starting CommandsCenter.\u001b[0m",
@@ -149,7 +160,17 @@ describe("runCli", () => {
     expect(mkdirSyncMock).toHaveBeenCalledWith("/opt/commandscenter", { recursive: true });
     expect(writeFileSyncMock).toHaveBeenCalledWith(
       "/opt/commandscenter/.env",
-      expect.stringContaining("CC_WORKSPACE_DIR=/opt/commandscenter/workspace"),
+      expect.stringContaining("CC_WORKSPACE_DIR=/srv/cc/workspace"),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    expect(writeFileSyncMock).toHaveBeenCalledWith(
+      "/opt/commandscenter/.env",
+      expect.stringContaining("CC_HOST=127.0.0.1"),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    expect(writeFileSyncMock).toHaveBeenCalledWith(
+      "/opt/commandscenter/.env",
+      expect.stringContaining("CC_PORT=4010"),
       { encoding: "utf8", mode: 0o600 },
     );
     expect(writeFileSyncMock).toHaveBeenCalledWith(

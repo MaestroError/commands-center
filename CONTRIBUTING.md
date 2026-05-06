@@ -97,6 +97,31 @@ The shared backend and CLI bootstrap path validates these environment variables 
 | `node packages/cli/dist/bin.mjs start -p 4000` | Run on a custom port           |
 | `node packages/cli/dist/bin.mjs --help`        | Show CLI help                  |
 
+## CLI Build Smoke Test
+
+These commands are contributor-only checks for the source-built CLI before publishing. User-facing installs should use `npm install -g commandscenter`.
+
+Build and run the CLI package without publishing:
+
+```bash
+pnpm build:cli
+mkdir -p /tmp/ccenter-prod-test
+cd /tmp/ccenter-prod-test
+node /path/to/cc/packages/cli/dist/bin.mjs start --port 3000
+```
+
+From this repository root, replace `/path/to/cc` with the absolute repo path.
+
+Test the service installer with a local tarball before npm publish:
+
+```bash
+pnpm --filter commandscenter build
+cd packages/cli
+npm pack
+cd ../..
+CCENTER_PACKAGE_SPEC="$(ls "$PWD"/packages/cli/commandscenter-*.tgz | tail -n 1)" bash scripts/install-ccenter-service.sh
+```
+
 ## Git Workflow
 
 ### Pre-commit hooks

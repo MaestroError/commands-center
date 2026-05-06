@@ -43,7 +43,7 @@ In CommandsCenter this command is started and monitored by the backend orchestra
 
 ## Production Usage
 
-CommandsCenter production use is centered on the `ccenter` binary. Runtime state is portable and lives in the workspace directory, not in the npm package install directory.
+CommandsCenter production use is centered on the globally installed `ccenter` binary from the `commandscenter` npm package. Runtime state is portable and lives in the workspace directory, not in the npm package install directory.
 
 ### Environment Files
 
@@ -116,23 +116,15 @@ curl http://127.0.0.1:3000/api/system/version
 
 ### Automatic Service Installer
 
-The repository includes a cross-platform installer for Ubuntu/Linux with systemd and macOS with launchd. It checks for Node.js, installs missing requirements when possible, installs CommandsCenter globally, creates an `.env` file, starts the app as a background service, and prints the app URLs plus filesystem locations.
+The repository includes a cross-platform installer for Ubuntu/Linux with systemd and macOS with launchd. It checks for Node.js, installs missing requirements when possible, installs CommandsCenter globally, lets `ccenter` generate the production `.env` file on first service start, starts the app as a background service, and prints the app URLs plus filesystem locations.
 
-After npm publish:
+Install and start the background service:
 
 ```bash
 bash scripts/install-ccenter-service.sh
 ```
 
-Before npm publish, point it at a local tarball:
-
-```bash
-pnpm --filter commandscenter build
-cd packages/cli
-npm pack
-cd ../..
-CCENTER_PACKAGE_SPEC="$PWD/packages/cli/commandscenter-0.1.0.tgz" bash scripts/install-ccenter-service.sh
-```
+Contributor-only local tarball testing is documented in [CONTRIBUTING.md](CONTRIBUTING.md#cli-build-smoke-test).
 
 Useful overrides:
 
@@ -158,15 +150,7 @@ cd /opt/commandscenter
 npm install -g commandscenter
 ```
 
-Create `/opt/commandscenter/.env`:
-
-```bash
-NODE_ENV=production
-CC_HOST=127.0.0.1
-CC_PORT=3000
-CC_WORKSPACE_DIR=/opt/commandscenter/workspace
-CC_SECRET_KEY=replace-with-a-long-random-secret
-```
+The first service start creates `/opt/commandscenter/.env` from `.env.prod.example`, generates `CC_SECRET_KEY`, and stores workspace state in `/opt/commandscenter/workspace`.
 
 Create `/etc/systemd/system/commandscenter.service`:
 
@@ -178,8 +162,10 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/commandscenter
-EnvironmentFile=/opt/commandscenter/.env
-ExecStart=/usr/bin/env ccenter start --env-file /opt/commandscenter/.env
+Environment=CC_HOST=127.0.0.1
+Environment=CC_PORT=3000
+Environment=CC_WORKSPACE_DIR=/opt/commandscenter/workspace
+ExecStart=/usr/bin/env ccenter start --host 127.0.0.1 --port 3000 --env-file /opt/commandscenter/.env
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
@@ -212,12 +198,18 @@ sudo systemctl restart commandscenter
 
 ### Docker Compose
 
-Docker installations do not self-update from inside the container. The app reports update guidance from `/api/system/version` and `/api/system/update`; the operator pulls a new image and restarts the container.
+Docker images install the same global `commandscenter` npm package inside the container and run `ccenter start`. Docker installations do not self-update from inside the container. The app reports update guidance from `/api/system/version` and `/api/system/update`; the operator pulls a new image and restarts the container.
 
-Build the image locally:
+Build the image from the published npm package:
 
 ```bash
 docker build -t commandscenter:local .
+```
+
+Pin a specific published version when needed:
+
+```bash
+docker build --build-arg CCENTER_PACKAGE_SPEC=commandscenter@0.2.6 -t commandscenter:0.2.6 .
 ```
 
 ```yaml
@@ -234,9 +226,10 @@ services:
       CC_HOST: 0.0.0.0
       CC_PORT: "3000"
       CC_WORKSPACE_DIR: /workspace/.cc/workspace
-      CC_SECRET_KEY: ${CC_SECRET_KEY}
     restart: unless-stopped
 ```
+
+On first container start, `ccenter` creates `/workspace/.cc/.env` on the mounted volume and generates `CC_SECRET_KEY` there.
 
 Run and verify:
 
@@ -254,18 +247,7 @@ docker compose pull
 docker compose up -d
 ```
 
-### Local Production Build Test
-
-Build and run the CLI package without publishing:
-
-```bash
-pnpm build:cli
-mkdir -p /tmp/ccenter-prod-test
-cd /tmp/ccenter-prod-test
-node /path/to/cc/packages/cli/dist/bin.mjs start --port 3000
-```
-
-From this repository root, replace `/path/to/cc` with the absolute repo path.
+Contributor-only source-build smoke tests are documented in [CONTRIBUTING.md](CONTRIBUTING.md#cli-build-smoke-test).
 
 ## Project Structure
 
