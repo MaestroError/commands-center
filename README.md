@@ -124,6 +124,18 @@ Install and start the background service:
 bash scripts/install-ccenter-service.sh
 ```
 
+Gracefully stop the local runtime described by `~/.cc/.env`:
+
+```bash
+bash scripts/stop-ccenter-service.sh
+```
+
+Use a different env file when needed:
+
+```bash
+bash scripts/stop-ccenter-service.sh --env-file /opt/commandscenter/.env
+```
+
 Contributor-only local tarball testing is documented in [CONTRIBUTING.md](CONTRIBUTING.md#cli-build-smoke-test).
 
 Useful overrides:

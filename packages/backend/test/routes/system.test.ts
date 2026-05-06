@@ -103,6 +103,92 @@ describe("system routes", () => {
     }
   });
 
+  it("accepts a shutdown request with the runtime shutdown key", async () => {
+    const testDb = await createTestDatabase();
+    const shutdownRuntime = vi.fn(() => Promise.resolve());
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      shutdownRuntime,
+      systemVersionService: {
+        start: vi.fn(),
+        stop: vi.fn(),
+        getVersion: vi.fn(),
+        checkNow: vi.fn(),
+        getUpdatePreferences: vi.fn(),
+        setUpdatePreferences: vi.fn(),
+        update: vi.fn(),
+        rollback: vi.fn(),
+      },
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/system/shutdown",
+        headers: {
+          "x-cc-shutdown-key": testDb.config.secretKey,
+        },
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(response.json()).toEqual({ accepted: true });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(shutdownRuntime).toHaveBeenCalledOnce();
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects a shutdown request with an invalid runtime shutdown key", async () => {
+    const testDb = await createTestDatabase();
+    const shutdownRuntime = vi.fn(() => Promise.resolve());
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      shutdownRuntime,
+      systemVersionService: {
+        start: vi.fn(),
+        stop: vi.fn(),
+        getVersion: vi.fn(),
+        checkNow: vi.fn(),
+        getUpdatePreferences: vi.fn(),
+        setUpdatePreferences: vi.fn(),
+        update: vi.fn(),
+        rollback: vi.fn(),
+      },
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/system/shutdown",
+        headers: {
+          "x-cc-shutdown-key": "wrong-key",
+        },
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(shutdownRuntime).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("updates auto-update preferences", async () => {
     const testDb = await createTestDatabase();
     const setUpdatePreferences = vi.fn(() =>
