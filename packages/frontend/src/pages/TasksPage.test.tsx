@@ -81,7 +81,7 @@ const conversation: ConversationDetail = {
   isCurrent: false,
   taskId: "task-1",
   taskRunId: "run-1",
-  messageCount: 2,
+  messageCount: 3,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
   messages: [
@@ -410,7 +410,9 @@ function mockFetch(options: MockFetchOptions = {}) {
       ? options.sessionPayload.conversation
       : conversation;
   const sessionDiagnostics = options.sessionPayload?.diagnostics ?? [];
-  const canOpenInChat = options.sessionPayload?.canOpenInChat ?? true;
+  const canOpenInChat =
+    options.sessionPayload?.canOpenInChat ??
+    (sessionDiagnostics.length === 0 && sessionConversation !== undefined);
   const taskPayload = options.taskPayload ?? task;
   const agentsPayload = options.agentsPayload ?? [agent];
 
