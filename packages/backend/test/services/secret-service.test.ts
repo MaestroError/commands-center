@@ -15,6 +15,7 @@ describe("secret-service", () => {
         {
           key: "CC_TEST_TOKEN",
           isSet: false,
+          stale: false,
         },
       ]);
       await expect(service.listMissing(["CC_TEST_TOKEN"])).resolves.toEqual(["CC_TEST_TOKEN"]);
@@ -34,12 +35,38 @@ describe("secret-service", () => {
         {
           key: "CC_TEST_TOKEN",
           isSet: true,
+          stale: false,
         },
       ]);
       await expect(service.buildEnvMap()).resolves.toEqual({
         CC_TEST_TOKEN: "super-secret-value",
       });
       await expect(service.listMissing(["CC_TEST_TOKEN"])).resolves.toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("treats secrets encrypted with a different key as missing", async () => {
+    const testDb = await createTestDatabase();
+    const writer = createSecretService({ db: testDb.client.db, config: testDb.config });
+    const reader = createSecretService({
+      db: testDb.client.db,
+      config: { ...testDb.config, secretKey: "different-secret-key" },
+    });
+
+    try {
+      await writer.set("CC_TEST_TOKEN", "super-secret-value");
+
+      await expect(reader.list()).resolves.toMatchObject([
+        {
+          key: "CC_TEST_TOKEN",
+          isSet: false,
+          stale: true,
+        },
+      ]);
+      await expect(reader.buildEnvMap()).resolves.toEqual({});
+      await expect(reader.listMissing(["CC_TEST_TOKEN"])).resolves.toEqual(["CC_TEST_TOKEN"]);
     } finally {
       await testDb.cleanup();
     }

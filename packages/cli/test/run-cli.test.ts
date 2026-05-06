@@ -146,7 +146,22 @@ describe("runCli", () => {
     expect(chmodSyncMock).toHaveBeenCalledWith("/home/test/.cc/.env", 0o600);
     expect(process.env["CC_FIRST_RUN_ENV_FILE_CREATED"]).toBe("true");
     expect(process.env["CC_FIRST_RUN_ENV_FILE_PATH"]).toBe("/home/test/.cc/.env");
+    expect(process.env["CC_SECRET_KEY"]).toMatch(/^[a-f0-9]{64}$/);
     expect(loadEnvFileMock).toHaveBeenCalledWith("/home/test/.cc/.env");
+  });
+
+  it("makes the generated first-run secret key available before runtime startup", async () => {
+    existsSyncMock.mockImplementation((path: string) => path.endsWith(".env.prod.example"));
+
+    await runCli(["serve"]);
+
+    expect(startServerRuntimeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: expect.objectContaining({
+          CC_SECRET_KEY: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
+      }),
+    );
   });
 
   it("creates an explicit missing env file before start and prints a warning", async () => {

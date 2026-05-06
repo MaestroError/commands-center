@@ -27,8 +27,8 @@ describe("secret routes", () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject([
-        { key: "CC_EMPTY_TOKEN", isSet: false },
-        { key: "CC_FILLED_TOKEN", isSet: true },
+        { key: "CC_EMPTY_TOKEN", isSet: false, stale: false },
+        { key: "CC_FILLED_TOKEN", isSet: true, stale: false },
       ]);
       expect(orchestrator.restart).not.toHaveBeenCalled();
     } finally {
@@ -74,7 +74,7 @@ describe("secret routes", () => {
 
       expect(response.statusCode).toBe(204);
       await expect(secretService.list()).resolves.toMatchObject([
-        { key: "CC_EMPTY_TOKEN", isSet: true },
+        { key: "CC_EMPTY_TOKEN", isSet: true, stale: false },
       ]);
       expect(orchestrator.restart).not.toHaveBeenCalled();
     } finally {

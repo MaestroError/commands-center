@@ -22,7 +22,8 @@ export function createSecretService(options: { db: AppDb; config: RuntimeConfig 
 
       return rows.map((row) => ({
         key: row.key,
-        isSet: row.encrypted_value !== null,
+        isSet: readSecretState(options.config.secretKey, row.encrypted_value) === "set",
+        stale: readSecretState(options.config.secretKey, row.encrypted_value) === "stale",
         updatedAt: row.updated_at.toISOString(),
       }));
     },
@@ -87,9 +88,11 @@ export function createSecretService(options: { db: AppDb; config: RuntimeConfig 
       const rows = await options.db.select().from(secrets);
 
       return Object.fromEntries(
-        rows
-          .filter((row) => row.encrypted_value !== null)
-          .map((row) => [row.key, decrypt(options.config.secretKey, row.encrypted_value!)]),
+        rows.flatMap((row) => {
+          const plainValue = decryptOrUndefined(options.config.secretKey, row.encrypted_value);
+
+          return plainValue === undefined ? [] : [[row.key, plainValue]];
+        }),
       );
     },
 
@@ -103,11 +106,16 @@ export function createSecretService(options: { db: AppDb; config: RuntimeConfig 
         .select({ key: secrets.key, encrypted_value: secrets.encrypted_value })
         .from(secrets)
         .where(inArray(secrets.key, uniqueKeys));
-      const byKey = new Map(rows.map((row) => [row.key, row.encrypted_value]));
+      const byKey = new Map(
+        rows.map((row) => [
+          row.key,
+          decryptOrUndefined(options.config.secretKey, row.encrypted_value),
+        ]),
+      );
 
       return uniqueKeys.filter((key) => {
-        const encryptedValue = byKey.get(key);
-        return encryptedValue === undefined || encryptedValue === null;
+        const plainValue = byKey.get(key);
+        return plainValue === undefined;
       });
     },
   };
@@ -130,9 +138,15 @@ function encrypt(secretKey: string, plainValue: string): string {
 }
 
 function decrypt(secretKey: string, encryptedValue: string): string {
-  const [ivPart, authTagPart, valuePart] = encryptedValue.split(":");
+  const parts = encryptedValue.split(":");
 
-  if (!ivPart || !authTagPart || !valuePart) {
+  if (parts.length !== 3) {
+    throw new Error("Stored secret payload is invalid.");
+  }
+
+  const [ivPart, authTagPart, valuePart = ""] = parts;
+
+  if (!ivPart || !authTagPart) {
     throw new Error("Stored secret payload is invalid.");
   }
 
@@ -147,6 +161,29 @@ function decrypt(secretKey: string, encryptedValue: string): string {
     decipher.update(Buffer.from(valuePart, "base64")),
     decipher.final(),
   ]).toString("utf8");
+}
+
+function decryptOrUndefined(secretKey: string, encryptedValue: string | null): string | undefined {
+  if (encryptedValue === null) {
+    return undefined;
+  }
+
+  try {
+    return decrypt(secretKey, encryptedValue);
+  } catch {
+    return undefined;
+  }
+}
+
+function readSecretState(
+  secretKey: string,
+  encryptedValue: string | null,
+): "missing" | "set" | "stale" {
+  if (encryptedValue === null) {
+    return "missing";
+  }
+
+  return decryptOrUndefined(secretKey, encryptedValue) === undefined ? "stale" : "set";
 }
 
 function deriveKey(secretKey: string): Buffer {

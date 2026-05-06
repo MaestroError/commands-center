@@ -62,8 +62,18 @@ beforeEach(() => {
   vi.mocked(updateFileManagerPreferences).mockReset();
   vi.mocked(useSecretsQuery).mockReturnValue({
     data: [
-      { key: "CC_MCP_GITHUB_TOKEN", isSet: false, updatedAt: "2026-04-24T10:00:00.000Z" },
-      { key: "CC_MCP_LINEAR_TOKEN", isSet: true, updatedAt: "2026-04-24T10:00:00.000Z" },
+      {
+        key: "CC_MCP_GITHUB_TOKEN",
+        isSet: false,
+        stale: false,
+        updatedAt: "2026-04-24T10:00:00.000Z",
+      },
+      {
+        key: "CC_MCP_LINEAR_TOKEN",
+        isSet: true,
+        stale: false,
+        updatedAt: "2026-04-24T10:00:00.000Z",
+      },
     ],
     isLoading: false,
     error: null,
@@ -154,6 +164,34 @@ describe("SettingsPage", () => {
 
     expect(screen.queryByDisplayValue("CC_MCP_GITHUB_TOKEN")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("CC_MCP_LINEAR_TOKEN")).toBeInTheDocument();
+  });
+
+  it("shows stale secret guidance while keeping the secret unavailable", () => {
+    vi.mocked(useSecretsQuery).mockReturnValue({
+      data: [
+        {
+          key: "CC_MCP_STALE_TOKEN",
+          isSet: false,
+          stale: true,
+          updatedAt: "2026-04-24T10:00:00.000Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+
+    expect(
+      screen.getByText(
+        "This secret was encrypted with an older key and is unavailable until you save a new value.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("Enter a new value to replace the stale secret"),
+    ).toBeInTheDocument();
   });
 
   it("updates and deletes secrets", async () => {

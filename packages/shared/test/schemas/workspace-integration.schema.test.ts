@@ -196,11 +196,13 @@ describe("workspace integration schemas", () => {
       secretMetaSchema.parse({
         key: "GITHUB_TOKEN",
         isSet: true,
+        stale: false,
         updatedAt: "2026-05-03T12:00:00.000Z",
       }),
     ).toEqual({
       key: "GITHUB_TOKEN",
       isSet: true,
+      stale: false,
       updatedAt: "2026-05-03T12:00:00.000Z",
     });
 
