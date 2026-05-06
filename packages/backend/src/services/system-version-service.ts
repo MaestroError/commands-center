@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -56,12 +56,17 @@ export function detectInstallMode(options: {
   packageRoot: string;
   dockerEnvPath?: string;
   globalRoot?: string;
+  resolveGlobalRoot?: () => string | undefined;
 }): InstallMode {
   if (isTruthy(options.env["CC_DOCKER"]) || existsSync(options.dockerEnvPath ?? "/.dockerenv")) {
     return "docker";
   }
 
-  const globalRoot = options.globalRoot ?? options.env["CC_NPM_GLOBAL_ROOT"];
+  const globalRoot =
+    options.globalRoot ??
+    options.env["CC_NPM_GLOBAL_ROOT"] ??
+    options.resolveGlobalRoot?.() ??
+    resolveNpmGlobalRoot();
 
   if (globalRoot && isPathAncestor(globalRoot, options.packageRoot)) {
     return "npm-global";
@@ -321,6 +326,20 @@ function spawnCommand(command: string, args: string[]): Promise<void> {
       reject(new Error(`${command} exited with code ${String(code)}`));
     });
   });
+}
+
+function resolveNpmGlobalRoot(): string | undefined {
+  const result = spawnSync("npm", ["root", "-g"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+
+  if (result.status !== 0 || result.error) {
+    return undefined;
+  }
+
+  const output = result.stdout.trim();
+  return output.length > 0 ? output : undefined;
 }
 
 function dockerGuidance(): SystemUpdateResult {

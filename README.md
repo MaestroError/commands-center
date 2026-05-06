@@ -96,6 +96,20 @@ ccenter upgrade
 ccenter upgrade --rollback
 ```
 
+Remove the global install:
+
+```bash
+npm uninstall -g commandscenter
+```
+
+Remove the workspace data too:
+
+```bash
+rm -rf ~/commandscenter
+```
+
+The npm uninstall removes the `ccenter` binary, but it does not delete your workspace state unless you remove the workspace directory yourself.
+
 Version status is also exposed over HTTP:
 
 ```bash

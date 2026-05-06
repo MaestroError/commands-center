@@ -35,12 +35,24 @@ describe("detectInstallMode", () => {
     ).toBe("npm-global");
   });
 
+  it("detects npm global from the resolved npm global root", () => {
+    expect(
+      detectInstallMode({
+        env: {},
+        packageRoot: "/opt/homebrew/lib/node_modules/commandscenter",
+        dockerEnvPath: "/definitely/missing",
+        resolveGlobalRoot: () => "/opt/homebrew/lib/node_modules",
+      }),
+    ).toBe("npm-global");
+  });
+
   it("falls back to npm local", () => {
     expect(
       detectInstallMode({
         env: {},
         packageRoot: "/workspace/node_modules/commandscenter",
         dockerEnvPath: "/definitely/missing",
+        resolveGlobalRoot: () => undefined,
       }),
     ).toBe("npm-local");
   });
