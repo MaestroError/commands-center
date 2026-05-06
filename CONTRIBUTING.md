@@ -22,29 +22,41 @@ pnpm dev
 
 The backend runs on `http://localhost:3000`, the frontend on `http://localhost:5173`.
 
-On first backend or CLI startup, the app bootstraps `.cc/` in the current working directory and creates `.cc/workspace/` plus its portable state subdirectories.
+On first global CLI startup, the app bootstraps `~/.cc/.env` and `~/.cc/workspace/`. Development commands still use the current working directory unless `CC_WORKSPACE_DIR` is set.
 
 ## Runtime Environment
 
 The shared backend and CLI bootstrap path validates these environment variables at startup:
 
-| Variable                        | Description                                   | Default         |
-| ------------------------------- | --------------------------------------------- | --------------- |
-| `CC_PORT`                       | HTTP listen port                              | `3000`          |
-| `CC_HOST`                       | HTTP bind host                                | `0.0.0.0`       |
-| `CC_WORKSPACE_DIR`              | Portable workspace state directory            | `.cc/workspace` |
-| `CC_ENGINE_TIMEOUT_MS`          | OpenCode engine request timeout               | `30000`         |
-| `CC_ENGINE_STARTUP_TIMEOUT_MS`  | Max time to wait for engine health on boot    | `30000`         |
-| `CC_ENGINE_SHUTDOWN_TIMEOUT_MS` | Grace period before force-killing the engine  | `15000`         |
-| `CC_ENGINE_HEALTH_POLL_MS`      | Engine health polling interval                | `2000`          |
-| `CC_ENGINE_HOST`                | OpenCode engine bind host                     | `127.0.0.1`     |
-| `CC_ENGINE_PORT`                | OpenCode engine listen port                   | `4096`          |
-| `CC_ENGINE_MAX_RESTARTS`        | Max automatic restarts within restart window  | `3`             |
-| `CC_ENGINE_RESTART_WINDOW_MS`   | Time window used for restart limiting         | `60000`         |
-| `CC_MCP_AUTH_TIMEOUT_MS`        | MCP auth timeout                              | `90000`         |
-| `CC_DRAIN_TIMEOUT_MS`           | Graceful shutdown timeout                     | `15000`         |
-| `CC_LOG_LEVEL`                  | Pino log level                                | `info`          |
-| `CC_OPENCODE_PATH`              | Optional custom OpenCode binary path override | unset           |
+| Variable                          | Description                                   | Default         |
+| --------------------------------- | --------------------------------------------- | --------------- |
+| `NODE_ENV`                        | Runtime mode                                  | `production`    |
+| `CC_HOST`                         | HTTP bind host                                | `0.0.0.0`       |
+| `CC_PORT`                         | HTTP listen port                              | `3000`          |
+| `CC_WORKSPACE_DIR`                | Portable workspace state directory            | `.cc/workspace` |
+| `CC_LOG_LEVEL`                    | Pino log level                                | `info`          |
+| `CC_SECRET_KEY`                   | Secret encryption key                         | generated       |
+| `DATABASE_URL`                    | Primary database URL                          | unset           |
+| `CC_OPENCODE_HOST`                | OpenCode engine host                          | `127.0.0.1`     |
+| `CC_OPENCODE_PORT`                | OpenCode engine port                          | `4100`          |
+| `CC_OPENCODE_TIMEOUT_MS`          | OpenCode request timeout                      | `30000`         |
+| `CC_OPENCODE_STARTUP_TIMEOUT_MS`  | Max time to wait for engine health on boot    | `30000`         |
+| `CC_OPENCODE_SHUTDOWN_TIMEOUT_MS` | Grace period before engine shutdown cleanup   | `15000`         |
+| `CC_OPENCODE_HEALTH_POLL_MS`      | Engine health polling interval                | `2000`          |
+| `CC_OPENCODE_MAX_RESTARTS`        | Max automatic restarts within restart window  | `3`             |
+| `CC_OPENCODE_RESTART_WINDOW_MS`   | Time window used for restart limiting         | `60000`         |
+| `CC_OPENCODE_PATH`                | Optional custom OpenCode binary path override | unset           |
+| `CC_MCP_AUTH_TIMEOUT_MS`          | MCP auth timeout                              | `90000`         |
+| `CC_DRAIN_TIMEOUT_MS`             | Graceful shutdown timeout                     | `15000`         |
+| `CC_UPDATE_CHECK`                 | Enable periodic update checks                 | `true`          |
+| `CC_UPDATE_INTERVAL_MS`           | Update check interval                         | `21600000`      |
+| `CC_AUTO_UPDATE`                  | Apply npm updates automatically               | `false`         |
+| `CC_UPDATE_REGISTRY_URL`          | npm registry latest-version endpoint          | npm latest URL  |
+| `CC_DOCKER`                       | Force Docker install mode                     | `false`         |
+| `CC_MAX_TASKS`                    | Maximum configured tasks, 0/unset unlimited   | unset           |
+| `CC_BUILTIN_SKILLS_DIR`           | Built-in skills directory override            | unset           |
+| `CC_NPM_GLOBAL_ROOT`              | npm global root override for update detection | unset           |
+| `CC_DOCKER_ENV_PATH`              | Docker marker path override for tests         | unset           |
 
 ## Available Commands
 
@@ -84,6 +96,31 @@ The shared backend and CLI bootstrap path validates these environment variables 
 | `node packages/cli/dist/bin.mjs start`         | Run production server          |
 | `node packages/cli/dist/bin.mjs start -p 4000` | Run on a custom port           |
 | `node packages/cli/dist/bin.mjs --help`        | Show CLI help                  |
+
+## CLI Build Smoke Test
+
+These commands are contributor-only checks for the source-built CLI before publishing. User-facing installs should use `npm install -g commandscenter`.
+
+Build and run the CLI package without publishing:
+
+```bash
+pnpm build:cli
+mkdir -p /tmp/ccenter-prod-test
+cd /tmp/ccenter-prod-test
+node /path/to/cc/packages/cli/dist/bin.mjs start --port 3000
+```
+
+From this repository root, replace `/path/to/cc` with the absolute repo path.
+
+Test the service installer with a local tarball before npm publish:
+
+```bash
+pnpm --filter commandscenter build
+cd packages/cli
+npm pack
+cd ../..
+CCENTER_PACKAGE_SPEC="$(ls "$PWD"/packages/cli/commandscenter-*.tgz | tail -n 1)" bash scripts/install-ccenter-service.sh
+```
 
 ## Git Workflow
 

@@ -8,7 +8,6 @@ describe("parseCliArgs", () => {
       command: "start",
       host: undefined,
       port: undefined,
-      here: false,
       envFile: undefined,
       help: false,
       version: false,
@@ -31,21 +30,7 @@ describe("parseCliArgs", () => {
       command: "serve",
       host: "127.0.0.1",
       port: 4001,
-      here: false,
       envFile: "/opt/cc/.env",
-      help: false,
-      version: false,
-      rollback: false,
-    });
-  });
-
-  it("parses the --here workspace flag", () => {
-    expect(parseCliArgs(["start", "--here"])).toEqual({
-      command: "start",
-      host: undefined,
-      port: undefined,
-      here: true,
-      envFile: undefined,
       help: false,
       version: false,
       rollback: false,
@@ -57,7 +42,6 @@ describe("parseCliArgs", () => {
       command: "upgrade",
       host: undefined,
       port: undefined,
-      here: false,
       envFile: undefined,
       help: false,
       version: false,
@@ -70,10 +54,41 @@ describe("parseCliArgs", () => {
       command: "start",
       host: undefined,
       port: undefined,
-      here: false,
       envFile: undefined,
       help: true,
       version: true,
+      rollback: false,
+    });
+  });
+
+  it("ignores option flags that are missing trailing values", () => {
+    expect(parseCliArgs(["serve", "--host"])).toEqual({
+      command: "serve",
+      host: undefined,
+      port: undefined,
+      envFile: undefined,
+      help: false,
+      version: false,
+      rollback: false,
+    });
+
+    expect(parseCliArgs(["serve", "--port"])).toEqual({
+      command: "serve",
+      host: undefined,
+      port: undefined,
+      envFile: undefined,
+      help: false,
+      version: false,
+      rollback: false,
+    });
+
+    expect(parseCliArgs(["serve", "--env-file"])).toEqual({
+      command: "serve",
+      host: undefined,
+      port: undefined,
+      envFile: undefined,
+      help: false,
+      version: false,
       rollback: false,
     });
   });

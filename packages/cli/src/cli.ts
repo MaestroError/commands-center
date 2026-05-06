@@ -1,4 +1,6 @@
-import { existsSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,7 +25,6 @@ export type CliArgs = {
   command: string;
   host?: string;
   port?: number;
-  here: boolean;
   envFile?: string;
   help: boolean;
   version: boolean;
@@ -44,7 +45,6 @@ export function printHelp(): void {
   Options:
     --port, -p <number>        Port to listen on (default: ${String(DEFAULT_PORT)})
     --host, -h <string>        Host to bind to (default: ${DEFAULT_HOST})
-    --here                     Store CC workspace in <cwd>/.cc/workspace
     --env-file <path>          Load environment variables from a file
     --rollback                 Reinstall the previous recorded version
 `);
@@ -82,7 +82,6 @@ export function parseCliArgs(args: string[]): CliArgs {
     command,
     host,
     port,
-    here: args.includes("--here"),
     envFile,
     help: args.includes("--help"),
     version: args.includes("--version"),
@@ -92,18 +91,6 @@ export function parseCliArgs(args: string[]): CliArgs {
 
 export async function runCli(args: string[]): Promise<void> {
   const parsedArgs = parseCliArgs(args);
-
-  if (parsedArgs.envFile) {
-    loadEnvFile(parsedArgs.envFile);
-  } else {
-    const defaultEnvFile = resolve(process.env["INIT_CWD"] ?? process.cwd(), ".env");
-
-    if (existsSync(defaultEnvFile)) {
-      loadEnvFile(defaultEnvFile);
-    }
-  }
-
-  process.env["NODE_ENV"] ??= "production";
 
   if (parsedArgs.help) {
     printHelp();
@@ -122,10 +109,8 @@ export async function runCli(args: string[]): Promise<void> {
     return;
   }
 
-  if (parsedArgs.here) {
-    const root = process.env["INIT_CWD"] ?? process.cwd();
-    process.env["CC_WORKSPACE_DIR"] = resolve(root, ".cc", "workspace");
-  }
+  loadCliEnv(parsedArgs);
+  process.env["NODE_ENV"] ??= "production";
 
   if (parsedArgs.command === "upgrade") {
     await runUpgrade(parsedArgs.rollback);
@@ -177,6 +162,87 @@ async function runUpgrade(rollback: boolean): Promise<void> {
   for (const instruction of result.instructions ?? []) {
     console.log(instruction);
   }
+}
+
+function loadCliEnv(parsedArgs: CliArgs): void {
+  if (parsedArgs.envFile) {
+    if (["start", "serve"].includes(parsedArgs.command) && !existsSync(parsedArgs.envFile)) {
+      warnBeforeCreatingEnvFile(parsedArgs.envFile);
+      createDefaultEnvFile(parsedArgs.envFile, {
+        host: parsedArgs.host ?? process.env["CC_HOST"],
+        port: parsedArgs.port?.toString() ?? process.env["CC_PORT"],
+        workspaceDir:
+          process.env["CC_WORKSPACE_DIR"] ?? resolve(dirname(parsedArgs.envFile), "workspace"),
+      });
+      process.env["CC_FIRST_RUN_ENV_FILE_CREATED"] = "true";
+      process.env["CC_FIRST_RUN_ENV_FILE_PATH"] = parsedArgs.envFile;
+    }
+
+    loadEnvFile(parsedArgs.envFile);
+    return;
+  }
+
+  const defaultEnvFile = resolve(homedir(), ".cc", ".env");
+
+  if (["start", "serve"].includes(parsedArgs.command) && !existsSync(defaultEnvFile)) {
+    createDefaultEnvFile(defaultEnvFile, {
+      host: parsedArgs.host ?? process.env["CC_HOST"],
+      port: parsedArgs.port?.toString() ?? process.env["CC_PORT"],
+      workspaceDir: process.env["CC_WORKSPACE_DIR"] ?? resolve(homedir(), ".cc", "workspace"),
+    });
+    process.env["CC_FIRST_RUN_ENV_FILE_CREATED"] = "true";
+    process.env["CC_FIRST_RUN_ENV_FILE_PATH"] = defaultEnvFile;
+    loadEnvFile(defaultEnvFile);
+    return;
+  }
+
+  if (existsSync(defaultEnvFile)) {
+    loadEnvFile(defaultEnvFile);
+  }
+}
+
+function createDefaultEnvFile(
+  path: string,
+  options: { host?: string; port?: string; workspaceDir: string },
+): void {
+  mkdirSync(dirname(path), { recursive: true });
+  let content = readDefaultProdEnvExample()
+    .replace(/^CC_WORKSPACE_DIR=.*$/m, `CC_WORKSPACE_DIR=${options.workspaceDir}`)
+    .replace(/^CC_SECRET_KEY=.*$/m, `CC_SECRET_KEY=${randomBytes(32).toString("hex")}`);
+
+  if (options.host) {
+    content = content.replace(/^CC_HOST=.*$/m, `CC_HOST=${options.host}`);
+  }
+
+  if (options.port) {
+    content = content.replace(/^CC_PORT=.*$/m, `CC_PORT=${options.port}`);
+  }
+
+  writeFileSync(path, content, { encoding: "utf8", mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
+function readDefaultProdEnvExample(): string {
+  const currentDir = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    resolve(currentDir, ".env.prod.example"),
+    resolve(currentDir, "..", ".env.prod.example"),
+    resolve(currentDir, "..", "..", "..", ".env.prod.example"),
+  ];
+
+  const match = candidates.find((candidate) => existsSync(candidate));
+
+  if (!match) {
+    throw new Error("Unable to find .env.prod.example for first-run configuration generation.");
+  }
+
+  return readFileSync(match, "utf8");
+}
+
+function warnBeforeCreatingEnvFile(path: string): void {
+  console.warn(
+    `\x1b[33mWarning: ${path} does not exist. Creating it from .env.prod.example before starting CommandsCenter.\x1b[0m`,
+  );
 }
 
 export function resolveStaticAssetsDir(): string | undefined {

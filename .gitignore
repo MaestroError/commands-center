@@ -12,6 +12,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.prod.example
 
 # Secret files
 .secrets/*

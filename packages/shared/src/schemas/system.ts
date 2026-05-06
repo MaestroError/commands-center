@@ -11,6 +11,12 @@ export const systemVersionSchema = z.object({
   autoUpdateSource: z.enum(["environment", "settings"]),
   checkedAt: z.string().datetime().optional(),
   error: z.string().min(1).optional(),
+  firstRun: z
+    .object({
+      envFileCreated: z.boolean(),
+      envFilePath: z.string().min(1).optional(),
+    })
+    .optional(),
 });
 
 export const systemUpdatePreferencesSchema = z.object({

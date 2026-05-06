@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -56,12 +56,17 @@ export function detectInstallMode(options: {
   packageRoot: string;
   dockerEnvPath?: string;
   globalRoot?: string;
+  resolveGlobalRoot?: () => string | undefined;
 }): InstallMode {
   if (isTruthy(options.env["CC_DOCKER"]) || existsSync(options.dockerEnvPath ?? "/.dockerenv")) {
     return "docker";
   }
 
-  const globalRoot = options.globalRoot ?? options.env["CC_NPM_GLOBAL_ROOT"];
+  const globalRoot =
+    options.globalRoot ??
+    nonEmpty(options.env["CC_NPM_GLOBAL_ROOT"]) ??
+    options.resolveGlobalRoot?.() ??
+    resolveNpmGlobalRoot();
 
   if (globalRoot && isPathAncestor(globalRoot, options.packageRoot)) {
     return "npm-global";
@@ -104,7 +109,7 @@ export function createSystemVersionService(options: {
     : detectInstallMode({
         env,
         packageRoot: options.packageRoot,
-        dockerEnvPath: env["CC_DOCKER_ENV_PATH"],
+        dockerEnvPath: nonEmpty(env["CC_DOCKER_ENV_PATH"]),
       });
   const runCommand = options.runCommand ?? spawnCommand;
   const exitProcess = options.exitProcess ?? ((code: number) => process.exit(code));
@@ -114,6 +119,7 @@ export function createSystemVersionService(options: {
     options.packageInfo.version,
     installMode,
     options.config.updates.autoUpdate,
+    options.config.firstRun,
   );
   let interval: NodeJS.Timeout | undefined;
   let checking: Promise<SystemVersion> | undefined;
@@ -242,6 +248,7 @@ export function createSystemVersionService(options: {
           latest,
           updateAvailable: compareVersions(latest, options.packageInfo.version) > 0,
           installMode,
+          firstRun: options.config.firstRun.envFileCreated ? options.config.firstRun : undefined,
           ...(await readUpdatePreferences()),
           checkedAt: new Date().toISOString(),
         };
@@ -323,6 +330,20 @@ function spawnCommand(command: string, args: string[]): Promise<void> {
   });
 }
 
+function resolveNpmGlobalRoot(): string | undefined {
+  const result = spawnSync("npm", ["root", "-g"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+
+  if (result.status !== 0 || result.error) {
+    return undefined;
+  }
+
+  const output = result.stdout.trim();
+  return output.length > 0 ? output : undefined;
+}
+
 function dockerGuidance(): SystemUpdateResult {
   return {
     applied: false,
@@ -383,11 +404,13 @@ function createInitialVersion(
   current: string,
   installMode: InstallMode,
   autoUpdateEnabled: boolean,
+  firstRun: SystemVersion["firstRun"],
 ): SystemVersion {
   return {
     current,
     updateAvailable: false,
     installMode,
+    firstRun: firstRun?.envFileCreated ? firstRun : undefined,
     autoUpdateEnabled,
     autoUpdateSource: "environment",
   };
@@ -420,6 +443,11 @@ function isPathAncestor(parent: string, child: string): boolean {
 
 function isTruthy(value: string | undefined): boolean {
   return value !== undefined && ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 function isMissingFileError(error: unknown): boolean {

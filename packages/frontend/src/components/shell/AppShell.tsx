@@ -6,6 +6,7 @@ import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useEngineStatusQuery } from "@/hooks/use-engine-status-query";
+import { useSystemVersionQuery } from "@/hooks/use-system-version-query";
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import { useTheme } from "@/context/use-theme";
 import {
@@ -18,6 +19,7 @@ import {
 import { readRecentAgents } from "@/lib/recent-agents";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "cc-sidebar-collapsed";
+const FIRST_RUN_ENV_NOTICE_STORAGE_KEY = "cc-first-run-env-notice-dismissed";
 
 export function AppShell() {
   const location = useLocation();
@@ -30,9 +32,15 @@ export function AppShell() {
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
   const recentAgents = readRecentAgents();
   const engineQuery = useEngineStatusQuery();
+  const systemVersionQuery = useSystemVersionQuery();
   const activeRunsQuery = useActiveTaskRunsQuery();
   const engineState = engineQuery.data?.state;
+  const firstRun = systemVersionQuery.data?.firstRun;
   const activeRuns = activeRunsQuery.data ?? [];
+  const [firstRunNoticeDismissed, setFirstRunNoticeDismissed] = useState(
+    () => window.localStorage.getItem(FIRST_RUN_ENV_NOTICE_STORAGE_KEY) === "true",
+  );
+  const showFirstRunNotice = firstRun?.envFileCreated === true && !firstRunNoticeDismissed;
 
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, sidebarCollapsed ? "true" : "false");
@@ -191,6 +199,47 @@ export function AppShell() {
         </div>
       </div>
       <GlobalSearchPalette onClose={() => setSearchPaletteOpen(false)} open={searchPaletteOpen} />
+      {showFirstRunNotice ? (
+        <FirstRunEnvNotice
+          envFilePath={firstRun.envFilePath ?? "~/.cc/.env"}
+          onClose={() => {
+            window.localStorage.setItem(FIRST_RUN_ENV_NOTICE_STORAGE_KEY, "true");
+            setFirstRunNoticeDismissed(true);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function FirstRunEnvNotice(props: { envFilePath: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-app-bg/75 px-4 backdrop-blur-sm">
+      <section
+        aria-labelledby="first-run-env-title"
+        className="w-full max-w-lg rounded-lg border border-border bg-surface p-6 shadow-2xl"
+        role="dialog"
+      >
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <h2 className="text-lg font-semibold text-text-primary" id="first-run-env-title">
+              Configuration key generated
+            </h2>
+            <p className="text-sm leading-6 text-text-secondary">
+              CommandsCenter created a secure CC_SECRET_KEY in {props.envFilePath}. Copy that key
+              and store it somewhere private. This notice will not be shown again.
+            </p>
+          </div>
+          <div className="rounded-md border border-border bg-app-bg px-3 py-2 font-mono text-xs text-text-secondary">
+            {props.envFilePath}
+          </div>
+          <div className="flex justify-end">
+            <button className="cc-button cc-button-primary" onClick={props.onClose} type="button">
+              I saved it
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

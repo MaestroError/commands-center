@@ -35,12 +35,24 @@ describe("detectInstallMode", () => {
     ).toBe("npm-global");
   });
 
+  it("detects npm global from the resolved npm global root", () => {
+    expect(
+      detectInstallMode({
+        env: {},
+        packageRoot: "/opt/homebrew/lib/node_modules/commandscenter",
+        dockerEnvPath: "/definitely/missing",
+        resolveGlobalRoot: () => "/opt/homebrew/lib/node_modules",
+      }),
+    ).toBe("npm-global");
+  });
+
   it("falls back to npm local", () => {
     expect(
       detectInstallMode({
         env: {},
         packageRoot: "/workspace/node_modules/commandscenter",
         dockerEnvPath: "/definitely/missing",
+        resolveGlobalRoot: () => undefined,
       }),
     ).toBe("npm-local");
   });
@@ -75,6 +87,36 @@ describe("createSystemVersionService", () => {
         installMode: "npm-global",
         autoUpdateEnabled: false,
         autoUpdateSource: "environment",
+      });
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("reports first-run env file creation in version information", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "cc-version-"));
+    const config = loadRuntimeConfig({
+      cwd,
+      env: {
+        NODE_ENV: "test",
+        CC_FIRST_RUN_ENV_FILE_CREATED: "true",
+        CC_FIRST_RUN_ENV_FILE_PATH: "/tmp/user/.cc/.env",
+      },
+    });
+    const service = createSystemVersionService({
+      config,
+      logger: createLogger(config),
+      packageInfo: { name: "commandscenter", version: "1.0.0", packageRoot: cwd },
+      packageRoot: cwd,
+      detectMode: () => "npm-global",
+    });
+
+    try {
+      await expect(service.getVersion()).resolves.toMatchObject({
+        firstRun: {
+          envFileCreated: true,
+          envFilePath: "/tmp/user/.cc/.env",
+        },
       });
     } finally {
       await rm(cwd, { recursive: true, force: true });

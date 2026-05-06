@@ -208,7 +208,15 @@ describe("agent and provider schemas", () => {
         installMode: "npm-global",
         autoUpdateEnabled: false,
         autoUpdateSource: "settings",
+        firstRun: {
+          envFileCreated: true,
+          envFilePath: "/home/test/.cc/.env",
+        },
       }),
-    ).toMatchObject({ installMode: "npm-global", updateAvailable: true });
+    ).toMatchObject({
+      installMode: "npm-global",
+      updateAvailable: true,
+      firstRun: { envFileCreated: true },
+    });
   });
 });
