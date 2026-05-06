@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Agent, ConversationDetail, Task, TaskRun } from "@cc/shared/schemas";
 
+import { formatDate } from "@/components/tasks/task-format";
 import { TaskDetailPage } from "@/pages/TaskDetailPage";
 import { TasksPage } from "@/pages/TasksPage";
 
@@ -138,6 +139,7 @@ type MockFetchOptions = {
   };
   taskPayload?: typeof task;
   agentsPayload?: (typeof agent)[];
+  runsPayload?: TaskRun[];
 };
 
 afterEach(() => {
@@ -185,6 +187,39 @@ describe("TasksPage", () => {
 });
 
 describe("TaskDetailPage", () => {
+  it("renders a scheduled-once task in overview mode", async () => {
+    const runAt = "2026-02-14T12:30:00.000Z";
+    mockFetch({
+      taskPayload: {
+        ...task,
+        schedule: { mode: "scheduled_once", runAt },
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    await screen.findByText(formatDate(runAt));
+    expect(screen.getByText("Ready to publish.")).toBeInTheDocument();
+  });
+
+  it("renders a recurring task with an empty run history in overview mode", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        schedule: { mode: "recurring", cronExpression: "0 9 * * 1" },
+      },
+      runsPayload: [],
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    await screen.findByText("0 9 * * 1");
+    await waitFor(() => {
+      expect(screen.queryByTestId("task-runs-loading")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("No runs yet")).toBeInTheDocument();
+  });
+
   it("shows task run inspection details", async () => {
     mockFetch();
 
@@ -255,6 +290,79 @@ describe("TaskDetailPage", () => {
     expect(screen.getByText(/"command": "ls -la"/)).toBeInTheDocument();
     expect(screen.getByText("tools-2.md")).toBeInTheDocument();
     expect(screen.queryAllByText("(no text content)")).toHaveLength(0);
+  });
+
+  it("renders an empty text placeholder for messages without text or tool parts", async () => {
+    mockFetch({
+      sessionPayload: {
+        conversation: {
+          ...conversation,
+          messages: [
+            {
+              id: "msg-empty",
+              conversationId: "conv-1",
+              role: "assistant",
+              content: "",
+              parts: [],
+              attachments: [],
+              createdAt: "2026-01-01T00:03:00.000Z",
+              updatedAt: "2026-01-01T00:03:00.000Z",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Session log/i }));
+
+    expect(screen.getByText("(no text content)")).toBeInTheDocument();
+  });
+
+  it("renders tool call fallbacks when recorded tool metadata is incomplete", async () => {
+    mockFetch({
+      sessionPayload: {
+        conversation: {
+          ...conversation,
+          messages: [
+            {
+              id: "msg-tool-call",
+              conversationId: "conv-1",
+              role: "assistant",
+              content: "",
+              parts: [
+                {
+                  id: "tool-call-name",
+                  type: "tool_call",
+                  name: "grep",
+                  state: [],
+                },
+                {
+                  id: "tool-call-default",
+                  type: "tool_call",
+                  name: "",
+                  state: { status: "   " },
+                },
+              ],
+              attachments: [],
+              createdAt: "2026-01-01T00:03:00.000Z",
+              updatedAt: "2026-01-01T00:03:00.000Z",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Session log/i }));
+
+    expect(screen.getByText("grep")).toBeInTheDocument();
+    expect(screen.getByText("Tool")).toBeInTheDocument();
+    expect(screen.getAllByText("No tool details recorded.")).toHaveLength(2);
   });
 
   it("renders attachments and tool errors inside the session log", async () => {
@@ -390,6 +498,7 @@ function renderWithRouter(element: React.ReactElement, initialPath: string) {
         <Routes>
           <Route element={element} path="/tasks" />
           <Route element={element} path="/tasks/new" />
+          <Route element={element} path="/tasks/:id" />
           <Route element={element} path="/tasks/:id/runs/:runId" />
           <Route element={<ChatRouteProbe />} path="/chat/:agentId/:conversationId" />
         </Routes>
@@ -413,6 +522,7 @@ function mockFetch(options: MockFetchOptions = {}) {
   const canOpenInChat = options.sessionPayload?.canOpenInChat ?? true;
   const taskPayload = options.taskPayload ?? task;
   const agentsPayload = options.agentsPayload ?? [agent];
+  const runsPayload = options.runsPayload ?? [sessionRun];
 
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : input.toString();
@@ -428,7 +538,7 @@ function mockFetch(options: MockFetchOptions = {}) {
     }
     if (url.startsWith("/api/tasks?")) return Promise.resolve(jsonResponse(200, [taskPayload]));
     if (url === "/api/tasks/task-1") return Promise.resolve(jsonResponse(200, taskPayload));
-    if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, [sessionRun]));
+    if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, runsPayload));
     if (url === "/api/tasks/task-1/runs/run-1")
       return Promise.resolve(jsonResponse(200, sessionRun));
     if (url === "/api/tasks/task-1/runs/run-1/session") {
