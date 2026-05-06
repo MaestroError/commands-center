@@ -50,17 +50,16 @@ CommandsCenter production use is centered on the `ccenter` binary. Runtime state
 `ccenter` loads environment variables in this order:
 
 1. Existing process environment variables win.
-2. `--env-file <path>` loads values from an explicit file.
-3. If no `--env-file` is passed, `.env` in the current working directory is loaded when present.
+2. `--env-file <path>` loads values from an explicit file. `ccenter start` and `ccenter serve` create the file from `.env.prod.example` first when it is missing.
+3. If no `--env-file` is passed, `~/.cc/.env` is loaded. `ccenter start` and `ccenter serve` create it from `.env.prod.example` on first run when missing.
 4. Built-in defaults are used for optional settings.
 
-Recommended workspace layout:
+Default global layout:
 
 ```bash
-/opt/commandscenter/
+~/.cc/
 ├── .env
-└── .cc/
-    └── workspace/
+└── workspace/
 ```
 
 Minimal production `.env`:
@@ -69,9 +68,8 @@ Minimal production `.env`:
 NODE_ENV=production
 CC_HOST=0.0.0.0
 CC_PORT=3000
-CC_WORKSPACE_DIR=/opt/commandscenter/.cc/workspace
+CC_WORKSPACE_DIR=/home/commandscenter/.cc/workspace
 CC_SECRET_KEY=replace-with-a-long-random-secret
-CC_CORS_ORIGINS=https://your-domain.example
 ```
 
 SQLite is used by default at `$CC_WORKSPACE_DIR/database/local.db`. Set `DATABASE_URL` only when you want PostgreSQL as the primary database.
@@ -80,10 +78,10 @@ SQLite is used by default at `$CC_WORKSPACE_DIR/database/local.db`. Set `DATABAS
 
 ```bash
 npm install -g commandscenter
-mkdir -p ~/commandscenter
-cd ~/commandscenter
 ccenter start
 ```
+
+On first start, `ccenter` creates `~/.cc/.env` from `.env.prod.example`, generates a secure `CC_SECRET_KEY`, and stores runtime state in `~/.cc/workspace`. The web UI shows a one-time notice reminding you to save that key.
 
 Useful commands:
 
@@ -105,7 +103,7 @@ npm uninstall -g commandscenter
 Remove the workspace data too:
 
 ```bash
-rm -rf ~/commandscenter
+rm -rf ~/.cc
 ```
 
 The npm uninstall removes the `ccenter` binary, but it does not delete your workspace state unless you remove the workspace directory yourself.
@@ -140,7 +138,7 @@ Useful overrides:
 
 ```bash
 CCENTER_INSTALL_DIR=/opt/commandscenter \
-CCENTER_WORKSPACE_DIR=/opt/commandscenter/.cc/workspace \
+CCENTER_WORKSPACE_DIR=/opt/commandscenter/workspace \
 CCENTER_ENV_FILE=/opt/commandscenter/.env \
 CCENTER_HOST=127.0.0.1 \
 CCENTER_PORT=3000 \
@@ -166,9 +164,8 @@ Create `/opt/commandscenter/.env`:
 NODE_ENV=production
 CC_HOST=127.0.0.1
 CC_PORT=3000
-CC_WORKSPACE_DIR=/opt/commandscenter/.cc/workspace
+CC_WORKSPACE_DIR=/opt/commandscenter/workspace
 CC_SECRET_KEY=replace-with-a-long-random-secret
-CC_CORS_ORIGINS=https://your-domain.example
 ```
 
 Create `/etc/systemd/system/commandscenter.service`:
@@ -238,7 +235,6 @@ services:
       CC_PORT: "3000"
       CC_WORKSPACE_DIR: /workspace/.cc/workspace
       CC_SECRET_KEY: ${CC_SECRET_KEY}
-      CC_CORS_ORIGINS: https://your-domain.example
     restart: unless-stopped
 ```
 

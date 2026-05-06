@@ -196,6 +196,10 @@ export type RuntimeConfig = {
   tasks: {
     maxTasks?: number;
   };
+  firstRun: {
+    envFileCreated: boolean;
+    envFilePath?: string;
+  };
 };
 
 export type RuntimeConfigOverrides = {
@@ -282,6 +286,10 @@ export function loadRuntimeConfig(options?: {
     tasks: {
       maxTasks: parsedEnv.data.CC_MAX_TASKS,
     },
+    firstRun: {
+      envFileCreated: isTruthy(env["CC_FIRST_RUN_ENV_FILE_CREATED"]),
+      envFilePath: env["CC_FIRST_RUN_ENV_FILE_PATH"]?.trim() || undefined,
+    },
   };
 }
 
@@ -310,5 +318,13 @@ export function getStartupLogContext(config: RuntimeConfig): Record<string, unkn
     opencodePathConfigured: config.opencodePath !== undefined,
     secretKeyConfigured: config.secretKey.trim().length > 0,
     tasks: config.tasks,
+    firstRun: {
+      envFileCreated: config.firstRun.envFileCreated,
+      envFilePath: config.firstRun.envFilePath,
+    },
   };
+}
+
+function isTruthy(value: string | undefined): boolean {
+  return value !== undefined && ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }

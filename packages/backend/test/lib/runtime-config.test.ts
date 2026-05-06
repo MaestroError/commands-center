@@ -86,6 +86,26 @@ describe("loadRuntimeConfig", () => {
       tasks: {
         maxTasks: undefined,
       },
+      firstRun: {
+        envFileCreated: false,
+        envFilePath: undefined,
+      },
+    });
+  });
+
+  it("records first-run env file creation metadata", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: {
+        NODE_ENV: "test",
+        CC_FIRST_RUN_ENV_FILE_CREATED: "true",
+        CC_FIRST_RUN_ENV_FILE_PATH: "/tmp/user/.cc/.env",
+      },
+    });
+
+    expect(config.firstRun).toEqual({
+      envFileCreated: true,
+      envFilePath: "/tmp/user/.cc/.env",
     });
   });
 

@@ -51,4 +51,7 @@ const migrationsDir = resolve(cliDir, "dist/migrations");
 mkdirSync(migrationsDir, { recursive: true });
 cpSync(resolve(backendDir, "src/db/migrations"), migrationsDir, { recursive: true });
 
+console.log("Copying production env template...");
+cpSync(resolve(root, ".env.prod.example"), resolve(distDir, ".env.prod.example"));
+
 console.log("CLI build complete → packages/cli/dist/");

@@ -4,27 +4,43 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 const {
   createLoggerMock,
   createSystemVersionServiceMock,
+  chmodSyncMock,
   existsSyncMock,
   loadEnvFileMock,
   loadRuntimeConfigMock,
+  mkdirSyncMock,
+  readFileSyncMock,
   readPackageInfoMock,
   rollbackMock,
   startServerRuntimeMock,
   updateMock,
+  writeFileSyncMock,
 } = vi.hoisted(() => ({
+  chmodSyncMock: vi.fn(),
   existsSyncMock: vi.fn(),
   loadEnvFileMock: vi.fn(),
   startServerRuntimeMock: vi.fn(),
+  mkdirSyncMock: vi.fn(),
+  readFileSyncMock: vi.fn(),
   readPackageInfoMock: vi.fn(),
   loadRuntimeConfigMock: vi.fn(),
   createLoggerMock: vi.fn(),
   createSystemVersionServiceMock: vi.fn(),
   updateMock: vi.fn(),
   rollbackMock: vi.fn(),
+  writeFileSyncMock: vi.fn(),
 }));
 
 vi.mock("node:fs", () => ({
+  chmodSync: chmodSyncMock,
   existsSync: existsSyncMock,
+  mkdirSync: mkdirSyncMock,
+  readFileSync: readFileSyncMock,
+  writeFileSync: writeFileSyncMock,
+}));
+
+vi.mock("node:os", () => ({
+  homedir: () => "/home/test",
 }));
 
 vi.mock("../src/env-file.js", () => ({
@@ -40,7 +56,6 @@ vi.mock("@cc/backend", () => ({
 }));
 
 import fastifyStatic from "@fastify/static";
-import { resolve } from "node:path";
 import { resolveStaticAssetsDir, runCli } from "../src/cli.js";
 
 type StaticRegisterServer = {
@@ -60,6 +75,7 @@ describe("runCli", () => {
     process.env = { ...originalEnv };
     process.exitCode = undefined;
     existsSyncMock.mockReturnValue(false);
+    readFileSyncMock.mockReturnValue("CC_WORKSPACE_DIR=.cc/workspace\nCC_SECRET_KEY=\n");
     readPackageInfoMock.mockReturnValue({
       version: "0.1.0",
       packageRoot: "/tmp/commandscenter",
@@ -75,23 +91,22 @@ describe("runCli", () => {
     startServerRuntimeMock.mockResolvedValue(undefined);
   });
 
-  it("loads the explicit env file and prints version without starting the server", async () => {
+  it("prints version without loading env or starting the server", async () => {
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
     await runCli(["start", "--env-file", "/tmp/.env", "--version"]);
 
-    expect(loadEnvFileMock).toHaveBeenCalledWith("/tmp/.env");
+    expect(loadEnvFileMock).not.toHaveBeenCalled();
     expect(consoleLog).toHaveBeenCalledWith("0.1.0");
     expect(startServerRuntimeMock).not.toHaveBeenCalled();
   });
 
-  it("loads the default env file when one exists in INIT_CWD", async () => {
-    process.env["INIT_CWD"] = "/workspace";
-    existsSyncMock.mockImplementation((path: string) => path === "/workspace/.env");
+  it("loads the default user env file when one exists", async () => {
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
 
     await runCli(["serve"]);
 
-    expect(loadEnvFileMock).toHaveBeenCalledWith("/workspace/.env");
+    expect(loadEnvFileMock).toHaveBeenCalledWith("/home/test/.cc/.env");
     expect(startServerRuntimeMock).toHaveBeenCalledWith(
       expect.objectContaining({
         overrides: { host: undefined, port: undefined },
@@ -100,12 +115,60 @@ describe("runCli", () => {
     );
   });
 
+  it("creates the default user env file on first start", async () => {
+    existsSyncMock.mockImplementation((path: string) => path.endsWith(".env.prod.example"));
+
+    await runCli(["start"]);
+
+    expect(mkdirSyncMock).toHaveBeenCalledWith("/home/test/.cc", { recursive: true });
+    expect(writeFileSyncMock).toHaveBeenCalledWith(
+      "/home/test/.cc/.env",
+      expect.stringContaining("CC_WORKSPACE_DIR=/home/test/.cc/workspace"),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    expect(writeFileSyncMock).toHaveBeenCalledWith(
+      "/home/test/.cc/.env",
+      expect.stringMatching(/CC_SECRET_KEY=[a-f0-9]{64}/),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    expect(chmodSyncMock).toHaveBeenCalledWith("/home/test/.cc/.env", 0o600);
+    expect(process.env["CC_FIRST_RUN_ENV_FILE_CREATED"]).toBe("true");
+    expect(process.env["CC_FIRST_RUN_ENV_FILE_PATH"]).toBe("/home/test/.cc/.env");
+    expect(loadEnvFileMock).toHaveBeenCalledWith("/home/test/.cc/.env");
+  });
+
+  it("creates an explicit missing env file before start and prints a warning", async () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    existsSyncMock.mockImplementation((path: string) => path.endsWith(".env.prod.example"));
+
+    await runCli(["start", "--env-file", "/opt/commandscenter/.env"]);
+
+    expect(consoleWarn).toHaveBeenCalledWith(
+      "\u001b[33mWarning: /opt/commandscenter/.env does not exist. Creating it from .env.prod.example before starting CommandsCenter.\u001b[0m",
+    );
+    expect(mkdirSyncMock).toHaveBeenCalledWith("/opt/commandscenter", { recursive: true });
+    expect(writeFileSyncMock).toHaveBeenCalledWith(
+      "/opt/commandscenter/.env",
+      expect.stringContaining("CC_WORKSPACE_DIR=/opt/commandscenter/workspace"),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    expect(writeFileSyncMock).toHaveBeenCalledWith(
+      "/opt/commandscenter/.env",
+      expect.stringMatching(/CC_SECRET_KEY=[a-f0-9]{64}/),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    expect(chmodSyncMock).toHaveBeenCalledWith("/opt/commandscenter/.env", 0o600);
+    expect(process.env["CC_FIRST_RUN_ENV_FILE_CREATED"]).toBe("true");
+    expect(process.env["CC_FIRST_RUN_ENV_FILE_PATH"]).toBe("/opt/commandscenter/.env");
+    expect(loadEnvFileMock).toHaveBeenCalledWith("/opt/commandscenter/.env");
+  });
+
   it("reports unknown commands without mutating workspace settings", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.env["INIT_CWD"] = "/workspace";
 
-    await runCli(["unknown", "--here"]);
+    await runCli(["unknown"]);
 
     expect(process.env["CC_WORKSPACE_DIR"]).toBeUndefined();
     expect(process.exitCode).toBe(1);
@@ -118,7 +181,9 @@ describe("runCli", () => {
     delete process.env["NODE_ENV"];
     process.env["INIT_CWD"] = "/workspace";
 
-    await runCli(["serve", "--host", "127.0.0.1", "--port", "4010", "--here"]);
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
+
+    await runCli(["serve", "--host", "127.0.0.1", "--port", "4010"]);
 
     expect(startServerRuntimeMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -127,12 +192,13 @@ describe("runCli", () => {
         register: undefined,
       }),
     );
-    expect(process.env["CC_WORKSPACE_DIR"]).toBe(resolve("/workspace", ".cc", "workspace"));
     expect(process.env["NODE_ENV"]).toBe("production");
   });
 
   it("registers static assets and the SPA fallback in start mode", async () => {
-    existsSyncMock.mockImplementation((path: string) => path.endsWith("/public"));
+    existsSyncMock.mockImplementation(
+      (path: string) => path === "/home/test/.cc/.env" || path.endsWith("/public"),
+    );
 
     await runCli(["start"]);
 
@@ -164,7 +230,7 @@ describe("runCli", () => {
   });
 
   it("skips static registration when the public directory is absent", async () => {
-    existsSyncMock.mockReturnValue(false);
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
 
     await runCli(["start"]);
 

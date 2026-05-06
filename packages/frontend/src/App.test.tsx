@@ -82,6 +82,10 @@ describe("App", () => {
         );
       }
 
+      if (input === "/api/system/version") {
+        return Promise.resolve(jsonResponse(200, systemVersionPayload()));
+      }
+
       return Promise.reject(new Error("Unexpected fetch URL."));
     });
 
@@ -128,6 +132,10 @@ describe("App", () => {
 
       if (input === "/api/tasks/runs/active") {
         return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/system/version") {
+        return Promise.resolve(jsonResponse(200, systemVersionPayload()));
       }
 
       if (input === "/api/agents") {
@@ -218,6 +226,80 @@ describe("App", () => {
     );
     expect(screen.queryByRole("link", { name: "Extra Extra" })).not.toBeInTheDocument();
     expect(screen.getByText("🤖")).toBeInTheDocument();
+  });
+
+  it("shows and dismisses the first-run env notice", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/opencode") {
+        return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/tasks/runs/active") {
+        return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/system/version") {
+        return Promise.resolve(
+          jsonResponse(200, {
+            ...systemVersionPayload(),
+            firstRun: {
+              envFileCreated: true,
+              envFilePath: "/home/test/.cc/.env",
+            },
+          }),
+        );
+      }
+
+      return Promise.reject(new Error("Unexpected fetch input."));
+    });
+
+    render(<App />);
+
+    const user = userEvent.setup();
+    expect(
+      await screen.findByRole("dialog", { name: "Configuration key generated" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("/home/test/.cc/.env")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "I saved it" }));
+
+    expect(
+      screen.queryByRole("dialog", { name: "Configuration key generated" }),
+    ).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("cc-first-run-env-notice-dismissed")).toBe("true");
+  });
+
+  it("does not repeat the first-run env notice after dismissal", async () => {
+    window.localStorage.setItem("cc-first-run-env-notice-dismissed", "true");
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/opencode") {
+        return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/tasks/runs/active") {
+        return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/system/version") {
+        return Promise.resolve(
+          jsonResponse(200, {
+            ...systemVersionPayload(),
+            firstRun: { envFileCreated: true, envFilePath: "/home/test/.cc/.env" },
+          }),
+        );
+      }
+
+      return Promise.reject(new Error("Unexpected fetch input."));
+    });
+
+    render(<App />);
+
+    expect((await screen.findAllByRole("heading", { name: "Dashboard" })).length).toBeGreaterThan(
+      0,
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Configuration key generated" }),
+    ).not.toBeInTheDocument();
   });
 
   it("updates active navigation and header title when navigating", async () => {
@@ -331,6 +413,10 @@ function mockFetch(responses: Response[]) {
       return Promise.resolve(jsonResponse(200, []));
     }
 
+    if (typeof input === "string" && input === "/api/system/version") {
+      return Promise.resolve(jsonResponse(200, systemVersionPayload()));
+    }
+
     if (typeof input === "string" && !input.startsWith("/api/providers")) {
       return Promise.reject(new Error(`Unexpected fetch URL: ${input}`));
     }
@@ -343,6 +429,16 @@ function mockFetch(responses: Response[]) {
 
     return Promise.resolve(next);
   });
+}
+
+function systemVersionPayload() {
+  return {
+    current: "1.0.0",
+    updateAvailable: false,
+    installMode: "npm-global",
+    autoUpdateEnabled: false,
+    autoUpdateSource: "environment",
+  };
 }
 
 function resetStorage() {

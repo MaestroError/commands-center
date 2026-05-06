@@ -64,7 +64,7 @@ export function detectInstallMode(options: {
 
   const globalRoot =
     options.globalRoot ??
-    options.env["CC_NPM_GLOBAL_ROOT"] ??
+    nonEmpty(options.env["CC_NPM_GLOBAL_ROOT"]) ??
     options.resolveGlobalRoot?.() ??
     resolveNpmGlobalRoot();
 
@@ -109,7 +109,7 @@ export function createSystemVersionService(options: {
     : detectInstallMode({
         env,
         packageRoot: options.packageRoot,
-        dockerEnvPath: env["CC_DOCKER_ENV_PATH"],
+        dockerEnvPath: nonEmpty(env["CC_DOCKER_ENV_PATH"]),
       });
   const runCommand = options.runCommand ?? spawnCommand;
   const exitProcess = options.exitProcess ?? ((code: number) => process.exit(code));
@@ -119,6 +119,7 @@ export function createSystemVersionService(options: {
     options.packageInfo.version,
     installMode,
     options.config.updates.autoUpdate,
+    options.config.firstRun,
   );
   let interval: NodeJS.Timeout | undefined;
   let checking: Promise<SystemVersion> | undefined;
@@ -247,6 +248,7 @@ export function createSystemVersionService(options: {
           latest,
           updateAvailable: compareVersions(latest, options.packageInfo.version) > 0,
           installMode,
+          firstRun: options.config.firstRun.envFileCreated ? options.config.firstRun : undefined,
           ...(await readUpdatePreferences()),
           checkedAt: new Date().toISOString(),
         };
@@ -402,11 +404,13 @@ function createInitialVersion(
   current: string,
   installMode: InstallMode,
   autoUpdateEnabled: boolean,
+  firstRun: SystemVersion["firstRun"],
 ): SystemVersion {
   return {
     current,
     updateAvailable: false,
     installMode,
+    firstRun: firstRun?.envFileCreated ? firstRun : undefined,
     autoUpdateEnabled,
     autoUpdateSource: "environment",
   };
@@ -439,6 +443,11 @@ function isPathAncestor(parent: string, child: string): boolean {
 
 function isTruthy(value: string | undefined): boolean {
   return value !== undefined && ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 function isMissingFileError(error: unknown): boolean {
