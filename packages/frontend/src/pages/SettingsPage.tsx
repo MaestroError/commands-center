@@ -411,6 +411,7 @@ function SecretsTab() {
               isSet={secret.isSet}
               key={secret.key}
               name={secret.key}
+              stale={secret.stale}
               onDelete={async () => {
                 await mutations.remove.mutateAsync({ key: secret.key });
                 markEngineRestarting();
@@ -432,6 +433,7 @@ function SecretsTab() {
 function SecretCard(props: {
   name: string;
   isSet: boolean;
+  stale: boolean;
   busy: boolean;
   onSave: (value: string) => Promise<void>;
   onDelete: () => Promise<void>;
@@ -457,7 +459,11 @@ function SecretCard(props: {
               className="cc-input pr-12"
               onChange={(event) => setValue(event.target.value)}
               placeholder={
-                props.isSet ? "Enter a new value to replace the current secret" : "Enter a value"
+                props.stale
+                  ? "Enter a new value to replace the stale secret"
+                  : props.isSet
+                    ? "Enter a new value to replace the current secret"
+                    : "Enter a value"
               }
               type={revealed ? "text" : "password"}
               value={value}
@@ -474,7 +480,12 @@ function SecretCard(props: {
         </label>
       </div>
 
-      {!props.isSet ? (
+      {props.stale ? (
+        <p className="mt-3 text-sm text-amber-500">
+          This secret was encrypted with an older key and is unavailable until you save a new value.
+        </p>
+      ) : null}
+      {!props.stale && !props.isSet ? (
         <p className="mt-3 text-sm text-amber-500">
           This secret is referenced but does not have a value yet.
         </p>

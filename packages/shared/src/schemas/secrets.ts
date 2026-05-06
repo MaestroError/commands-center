@@ -5,6 +5,7 @@ export const secretKeySchema = z.string().trim().min(1);
 export const secretMetaSchema = z.object({
   key: secretKeySchema,
   isSet: z.boolean(),
+  stale: z.boolean().default(false),
   updatedAt: z.string().datetime(),
 });
 
