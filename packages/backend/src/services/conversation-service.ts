@@ -148,14 +148,7 @@ export function createConversationService(options: {
       taskId: string,
       taskRunId: string,
     ): Promise<TaskRunConversationInspection> {
-      const conversation = await options.db.query.conversations.findFirst({
-        where: (table, operators) =>
-          operators.and(
-            operators.eq(table.task_id, taskId),
-            operators.eq(table.task_run_id, taskRunId),
-            operators.eq(table.source, "task_run"),
-          ),
-      });
+      const conversation = await getTaskRunConversationRow(taskId, taskRunId);
 
       if (!conversation) {
         return {
@@ -193,14 +186,7 @@ export function createConversationService(options: {
       taskId: string,
       taskRunId: string,
     ): Promise<ConversationSnapshot> {
-      const conversation = await options.db.query.conversations.findFirst({
-        where: (table, operators) =>
-          operators.and(
-            operators.eq(table.task_id, taskId),
-            operators.eq(table.task_run_id, taskRunId),
-            operators.eq(table.source, "task_run"),
-          ),
-      });
+      const conversation = await getTaskRunConversationRow(taskId, taskRunId);
 
       if (!conversation) {
         throw new NotFoundError("Task run session not found.");
@@ -213,7 +199,7 @@ export function createConversationService(options: {
         .update(conversations)
         .set({
           source: "chat",
-          converted_at: new Date(),
+          converted_at: conversation.converted_at ?? new Date(),
           updated_at: new Date(),
         })
         .where(eq(conversations.id, conversation.id));
@@ -440,6 +426,20 @@ export function createConversationService(options: {
 
     const agent = await getAgent(conversation.agent_id);
     return { agent, conversation };
+  }
+
+  async function getTaskRunConversationRow(
+    taskId: string,
+    taskRunId: string,
+  ): Promise<ConversationRow | undefined> {
+    return options.db.query.conversations.findFirst({
+      where: (table, operators) =>
+        operators.and(
+          operators.eq(table.task_id, taskId),
+          operators.eq(table.task_run_id, taskRunId),
+          operators.eq(table.status, "active"),
+        ),
+    });
   }
 
   function withResolvedWorkspacePath(agent: AgentRow): AgentRuntimeRow {

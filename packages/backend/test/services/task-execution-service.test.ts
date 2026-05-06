@@ -78,6 +78,41 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("keeps task run inspection working after the session is opened in chat", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Reopenable session task",
+        triggerMode: "manual",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+      const opened = await conversationService.openTaskRunConversationInChat(task.id, run.id);
+      const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
+      const conversations = await conversationService.list(agent.id);
+
+      expect(opened.current.id).toBe(inspection.conversation?.id);
+      expect(inspection.canOpenInChat).toBe(true);
+      expect(inspection.conversation?.source).toBe("chat");
+      expect(inspection.conversation?.messages).toHaveLength(2);
+      expect(conversations).toHaveLength(1);
+      expect(conversations[0]?.taskRunId).toBe(run.id);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("persists effective permissions and passes them to task-owned sessions", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

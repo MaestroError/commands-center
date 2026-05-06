@@ -1,13 +1,16 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { Agent, ConversationDetail, Task, TaskRun } from "@cc/shared/schemas";
+
+import { formatDate } from "@/components/tasks/task-format";
 import { TaskDetailPage } from "@/pages/TaskDetailPage";
 import { TasksPage } from "@/pages/TasksPage";
 
-const agent = {
+const agent: Agent = {
   id: "agent-1",
   slug: "planner",
   name: "Planner",
@@ -16,12 +19,20 @@ const agent = {
   defaultModel: "openai/gpt-4.1",
   workspacePath: "/tmp/planner",
   status: "active",
-  capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
+  capabilities: {
+    builtInSkills: [],
+    workspaceSkills: [],
+    customTools: [],
+    mcpServers: [],
+    toolPermissions: [],
+    appMcpServers: [],
+    appToolPermissions: [],
+  },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
-const task = {
+const task: Task = {
   id: "task-1",
   agentId: "agent-1",
   title: "Ship release",
@@ -45,7 +56,7 @@ const task = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
-const run = {
+const run: TaskRun = {
   id: "run-1",
   taskId: "task-1",
   agentId: "agent-1",
@@ -59,6 +70,76 @@ const run = {
   result: { messageCount: 2 },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const conversation: ConversationDetail = {
+  id: "conv-1",
+  agentId: "agent-1",
+  opencodeSessionId: "session-1",
+  title: "Ship release",
+  status: "active",
+  source: "task_run",
+  isCurrent: false,
+  taskId: "task-1",
+  taskRunId: "run-1",
+  messageCount: 3,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  messages: [
+    {
+      id: "msg-1",
+      conversationId: "conv-1",
+      role: "user",
+      content: "Task: Ship release",
+      parts: [],
+      attachments: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      id: "msg-2",
+      conversationId: "conv-1",
+      role: "assistant",
+      content: "",
+      parts: [
+        {
+          id: "tool-1",
+          type: "tool",
+          tool: "bash",
+          state: {
+            status: "completed",
+            input: { command: "ls -la" },
+            output: "tools-2.md",
+          },
+        },
+      ],
+      attachments: [],
+      createdAt: "2026-01-01T00:01:00.000Z",
+      updatedAt: "2026-01-01T00:01:00.000Z",
+    },
+    {
+      id: "msg-3",
+      conversationId: "conv-1",
+      role: "assistant",
+      content: "Release notes drafted.",
+      parts: [],
+      attachments: [],
+      createdAt: "2026-01-01T00:02:00.000Z",
+      updatedAt: "2026-01-01T00:02:00.000Z",
+    },
+  ],
+};
+
+type MockFetchOptions = {
+  sessionPayload?: {
+    run?: typeof run;
+    conversation?: typeof conversation | undefined;
+    diagnostics?: Array<{ code: string; message: string }>;
+    canOpenInChat?: boolean;
+  };
+  taskPayload?: typeof task;
+  agentsPayload?: (typeof agent)[];
+  runsPayload?: TaskRun[];
 };
 
 afterEach(() => {
@@ -106,14 +187,305 @@ describe("TasksPage", () => {
 });
 
 describe("TaskDetailPage", () => {
+  it("renders a scheduled-once task in overview mode", async () => {
+    const runAt = "2026-02-14T12:30:00.000Z";
+    mockFetch({
+      taskPayload: {
+        ...task,
+        schedule: { mode: "scheduled_once", runAt },
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    await screen.findByText(formatDate(runAt));
+    expect(screen.getByText("Ready to publish.")).toBeInTheDocument();
+  });
+
+  it("renders a recurring task with an empty run history in overview mode", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        schedule: { mode: "recurring", cronExpression: "0 9 * * 1" },
+      },
+      runsPayload: [],
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    await screen.findByText("0 9 * * 1");
+    await waitFor(() => {
+      expect(screen.queryByTestId("task-runs-loading")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("No runs yet")).toBeInTheDocument();
+  });
+
   it("shows task run inspection details", async () => {
     mockFetch();
 
     renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
 
-    await screen.findByText("Task: Ship release");
-    expect(screen.getByText(/bash_/)).toBeInTheDocument();
+    await screen.findByRole("tab", { name: "Session" });
     expect(screen.getByText("session-1")).toBeInTheDocument();
+    expect(screen.queryByText("Rendered prompt")).not.toBeInTheDocument();
+  });
+
+  it("shows run internals in the details tab", async () => {
+    mockFetch();
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Details" }));
+
+    expect(screen.getByText("Rendered prompt")).toBeInTheDocument();
+    expect(screen.getByText("session-1")).toBeInTheDocument();
+    expect(screen.getByText(/bash_/)).toBeInTheDocument();
+  });
+
+  it("hides open in chat when the session cannot be opened in chat", async () => {
+    mockFetch({
+      sessionPayload: {
+        canOpenInChat: false,
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    await screen.findByRole("tab", { name: "Session" });
+    expect(screen.queryByRole("button", { name: "Open in chat" })).not.toBeInTheDocument();
+  });
+
+  it("hides open in chat when the agent slug cannot be resolved", async () => {
+    mockFetch({ agentsPayload: [] });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    await screen.findByRole("tab", { name: "Session" });
+    expect(screen.queryByRole("button", { name: "Open in chat" })).not.toBeInTheDocument();
+  });
+
+  it("renders the session log without converting the run to chat", async () => {
+    mockFetch();
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Session log/i }));
+
+    expect(screen.getByText("Release notes drafted.")).toBeInTheDocument();
+  });
+
+  it("renders tool-only assistant messages as tool logs", async () => {
+    mockFetch();
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Session log/i }));
+
+    expect(screen.getByText("Tool call")).toBeInTheDocument();
+    expect(screen.getByText("bash")).toBeInTheDocument();
+    expect(screen.getByText("completed")).toBeInTheDocument();
+    expect(screen.getByText(/"command": "ls -la"/)).toBeInTheDocument();
+    expect(screen.getByText("tools-2.md")).toBeInTheDocument();
+    expect(screen.queryAllByText("(no text content)")).toHaveLength(0);
+  });
+
+  it("renders an empty text placeholder for messages without text or tool parts", async () => {
+    mockFetch({
+      sessionPayload: {
+        conversation: {
+          ...conversation,
+          messages: [
+            {
+              id: "msg-empty",
+              conversationId: "conv-1",
+              role: "assistant",
+              content: "",
+              parts: [],
+              attachments: [],
+              createdAt: "2026-01-01T00:03:00.000Z",
+              updatedAt: "2026-01-01T00:03:00.000Z",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Session log/i }));
+
+    expect(screen.getByText("(no text content)")).toBeInTheDocument();
+  });
+
+  it("renders tool call fallbacks when recorded tool metadata is incomplete", async () => {
+    mockFetch({
+      sessionPayload: {
+        conversation: {
+          ...conversation,
+          messages: [
+            {
+              id: "msg-tool-call",
+              conversationId: "conv-1",
+              role: "assistant",
+              content: "",
+              parts: [
+                {
+                  id: "tool-call-name",
+                  type: "tool_call",
+                  name: "grep",
+                  state: [],
+                },
+                {
+                  id: "tool-call-default",
+                  type: "tool_call",
+                  name: "",
+                  state: { status: "   " },
+                },
+              ],
+              attachments: [],
+              createdAt: "2026-01-01T00:03:00.000Z",
+              updatedAt: "2026-01-01T00:03:00.000Z",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Session log/i }));
+
+    expect(screen.getByText("grep")).toBeInTheDocument();
+    expect(screen.getByText("Tool")).toBeInTheDocument();
+    expect(screen.getAllByText("No tool details recorded.")).toHaveLength(2);
+  });
+
+  it("renders attachments and tool errors inside the session log", async () => {
+    mockFetch({
+      sessionPayload: {
+        conversation: {
+          ...conversation,
+          messages: [
+            {
+              id: "msg-attachment",
+              conversationId: "conv-1",
+              role: "assistant",
+              content: "",
+              parts: [
+                {
+                  id: "tool-error",
+                  type: "tool",
+                  tool: "grep",
+                  state: {
+                    status: "error",
+                    input: { pattern: "TODO" },
+                    error: { message: "permission denied" },
+                  },
+                },
+              ],
+              attachments: [{ type: "file", mimeType: "text/plain", filename: "tools.md" }],
+              error: { name: "ToolError", message: "grep failed" },
+              createdAt: "2026-01-01T00:03:00.000Z",
+              updatedAt: "2026-01-01T00:03:00.000Z",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Session log/i }));
+
+    expect(screen.getByText("Attachments: tools.md")).toBeInTheDocument();
+    expect(screen.getByText("ToolError: grep failed")).toBeInTheDocument();
+    expect(screen.getByText(/"message": "permission denied"/)).toBeInTheDocument();
+  });
+
+  it("shows an empty-state when the session has no messages", async () => {
+    mockFetch({
+      sessionPayload: {
+        conversation: {
+          ...conversation,
+          messages: [],
+        },
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Session log/i }));
+
+    expect(screen.getByText("No session messages")).toBeInTheDocument();
+  });
+
+  it("shows session unavailable when diagnostics exist without a conversation", async () => {
+    mockFetch({
+      sessionPayload: {
+        conversation: undefined,
+        diagnostics: [{ code: "session_sync_failed", message: "Session could not be synced." }],
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Session log/i }));
+
+    expect(screen.getByText("Session unavailable")).toBeInTheDocument();
+    expect(screen.getAllByText("Session diagnostics").length).toBeGreaterThan(0);
+  });
+
+  it("renders error details in the sidebar", async () => {
+    mockFetch({
+      sessionPayload: {
+        run: {
+          ...run,
+          errorMessage: "Command failed",
+          errorDetails: { exitCode: 1 },
+        },
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    await screen.findByRole("tab", { name: "Session" });
+    expect(screen.getByText("Command failed")).toBeInTheDocument();
+    expect(screen.getByText(/"exitCode": 1/)).toBeInTheDocument();
+  });
+
+  it("renders session diagnostics in the details tab", async () => {
+    mockFetch({
+      sessionPayload: {
+        diagnostics: [{ code: "session_sync_failed", message: "Session could not be synced." }],
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Details" }));
+
+    expect(screen.getByText("Session diagnostics")).toBeInTheDocument();
+    expect(screen.getByText(/session_sync_failed/)).toBeInTheDocument();
+  });
+
+  it("opens chat with the agent slug in the URL", async () => {
+    mockFetch();
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Open in chat" }));
+
+    await screen.findByText("planner/conv-1");
   });
 });
 
@@ -126,32 +498,68 @@ function renderWithRouter(element: React.ReactElement, initialPath: string) {
         <Routes>
           <Route element={element} path="/tasks" />
           <Route element={element} path="/tasks/new" />
+          <Route element={element} path="/tasks/:id" />
           <Route element={element} path="/tasks/:id/runs/:runId" />
+          <Route element={<ChatRouteProbe />} path="/chat/:agentId/:conversationId" />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-function mockFetch() {
+function ChatRouteProbe() {
+  const params = useParams();
+  return <div>{`${params["agentId"]}/${params["conversationId"]}`}</div>;
+}
+
+function mockFetch(options: MockFetchOptions = {}) {
+  const sessionRun = options.sessionPayload?.run ?? run;
+  const sessionConversation =
+    options.sessionPayload && "conversation" in options.sessionPayload
+      ? options.sessionPayload.conversation
+      : conversation;
+  const sessionDiagnostics = options.sessionPayload?.diagnostics ?? [];
+  const canOpenInChat =
+    options.sessionPayload?.canOpenInChat ??
+    (sessionDiagnostics.length === 0 && sessionConversation !== undefined);
+  const taskPayload = options.taskPayload ?? task;
+  const agentsPayload = options.agentsPayload ?? [agent];
+  const runsPayload = options.runsPayload ?? [sessionRun];
+
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : input.toString();
 
-    if (url === "/api/agents") return Promise.resolve(jsonResponse(200, [agent]));
+    if (url === "/api/agents") return Promise.resolve(jsonResponse(200, agentsPayload));
     if (url === "/api/tasks") {
       const method = input instanceof Request ? input.method : init?.method;
       return Promise.resolve(
         method === "POST"
           ? jsonResponse(201, { ...task, id: "task-2", title: "Nightly review" })
-          : jsonResponse(200, [task]),
+          : jsonResponse(200, [taskPayload]),
       );
     }
-    if (url.startsWith("/api/tasks?")) return Promise.resolve(jsonResponse(200, [task]));
-    if (url === "/api/tasks/task-1") return Promise.resolve(jsonResponse(200, task));
-    if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, [run]));
-    if (url === "/api/tasks/task-1/runs/run-1") return Promise.resolve(jsonResponse(200, run));
+    if (url.startsWith("/api/tasks?")) return Promise.resolve(jsonResponse(200, [taskPayload]));
+    if (url === "/api/tasks/task-1") return Promise.resolve(jsonResponse(200, taskPayload));
+    if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, runsPayload));
+    if (url === "/api/tasks/task-1/runs/run-1")
+      return Promise.resolve(jsonResponse(200, sessionRun));
     if (url === "/api/tasks/task-1/runs/run-1/session") {
-      return Promise.resolve(jsonResponse(200, { run, diagnostics: [], canOpenInChat: true }));
+      return Promise.resolve(
+        jsonResponse(200, {
+          run: sessionRun,
+          conversation: sessionConversation,
+          diagnostics: sessionDiagnostics,
+          canOpenInChat,
+        }),
+      );
+    }
+    if (url === "/api/tasks/task-1/runs/run-1/open-in-chat") {
+      return Promise.resolve(
+        jsonResponse(200, {
+          current: sessionConversation,
+          previous: [],
+        }),
+      );
     }
     if (url === "/api/tasks/task-1/trigger") return Promise.resolve(jsonResponse(200, run));
     return Promise.reject(new Error(`Unexpected fetch URL: ${url}`));
