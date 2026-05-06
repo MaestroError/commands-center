@@ -57,6 +57,11 @@ type FormErrors = Partial<
 
 type PermissionAction = "allow" | "ask" | "deny";
 
+type AppliedAgentSnapshot = {
+  key: string;
+  updatedAtMs: number;
+};
+
 type SkillOption =
   | { kind: "built-in"; skill: BuiltInSkill }
   | { kind: "workspace"; skill: WorkspaceSkill };
@@ -75,7 +80,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
   const [successMessage, setSuccessMessage] = useState<string>();
   const [skillSearch, setSkillSearch] = useState("");
   const [customToolSearch, setCustomToolSearch] = useState("");
-  const initializedKeyRef = useRef<string | undefined>(undefined);
+  const appliedSnapshotRef = useRef<AppliedAgentSnapshot | undefined>(undefined);
   const catalog = catalogQuery.data;
   const agents = agentsQuery.data ?? [];
   const agent = agentQuery.data;
@@ -109,11 +114,32 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
 
     const nextKey = props.mode === "create" ? "create" : `${agent?.slug}:${agent?.updatedAt}`;
 
-    if (initializedKeyRef.current === nextKey || !nextKey) {
+    if (!nextKey) {
       return;
     }
 
-    initializedKeyRef.current = nextKey;
+    if (props.mode === "edit" && agent?.updatedAt) {
+      const nextUpdatedAtMs = Date.parse(agent.updatedAt);
+      const currentSnapshot = appliedSnapshotRef.current;
+
+      if (
+        currentSnapshot &&
+        Number.isFinite(nextUpdatedAtMs) &&
+        nextUpdatedAtMs < currentSnapshot.updatedAtMs
+      ) {
+        return;
+      }
+    }
+
+    if (appliedSnapshotRef.current?.key === nextKey) {
+      return;
+    }
+
+    appliedSnapshotRef.current = {
+      key: nextKey,
+      updatedAtMs:
+        props.mode === "edit" && agent?.updatedAt ? Date.parse(agent.updatedAt) : Number.NaN,
+    };
     setForm(createInitialForm(catalog, agent));
     setErrors({});
     setSaveError(undefined);
