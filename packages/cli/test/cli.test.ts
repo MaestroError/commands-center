@@ -60,4 +60,36 @@ describe("parseCliArgs", () => {
       rollback: false,
     });
   });
+
+  it("ignores option flags that are missing trailing values", () => {
+    expect(parseCliArgs(["serve", "--host"])).toEqual({
+      command: "serve",
+      host: undefined,
+      port: undefined,
+      envFile: undefined,
+      help: false,
+      version: false,
+      rollback: false,
+    });
+
+    expect(parseCliArgs(["serve", "--port"])).toEqual({
+      command: "serve",
+      host: undefined,
+      port: undefined,
+      envFile: undefined,
+      help: false,
+      version: false,
+      rollback: false,
+    });
+
+    expect(parseCliArgs(["serve", "--env-file"])).toEqual({
+      command: "serve",
+      host: undefined,
+      port: undefined,
+      envFile: undefined,
+      help: false,
+      version: false,
+      rollback: false,
+    });
+  });
 });

@@ -103,6 +103,16 @@ describe("runCli", () => {
     expect(startServerRuntimeMock).not.toHaveBeenCalled();
   });
 
+  it("prints help without loading env or starting the server", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await runCli(["start", "--help"]);
+
+    expect(loadEnvFileMock).not.toHaveBeenCalled();
+    expect(consoleLog).toHaveBeenCalled();
+    expect(startServerRuntimeMock).not.toHaveBeenCalled();
+  });
+
   it("loads the default user env file when one exists", async () => {
     existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
 
@@ -286,6 +296,29 @@ describe("runCli", () => {
     expect(updateMock).not.toHaveBeenCalled();
     expect(consoleLog).toHaveBeenNthCalledWith(1, "Rolled back");
     expect(consoleLog).toHaveBeenNthCalledWith(2, "Retry publish");
+  });
+
+  it("runs upgrade without rollback and prints update instructions", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await runCli(["upgrade"]);
+
+    expect(updateMock).toHaveBeenCalled();
+    expect(rollbackMock).not.toHaveBeenCalled();
+    expect(consoleLog).toHaveBeenNthCalledWith(1, "Updated");
+    expect(consoleLog).toHaveBeenNthCalledWith(2, "Restart shell");
+  });
+
+  it("fails when the production env template cannot be found", async () => {
+    existsSyncMock.mockReturnValue(false);
+
+    await expect(runCli(["start"])).rejects.toThrow(
+      "Unable to find .env.prod.example for first-run configuration generation.",
+    );
+
+    expect(writeFileSyncMock).not.toHaveBeenCalled();
+    expect(loadEnvFileMock).not.toHaveBeenCalled();
+    expect(startServerRuntimeMock).not.toHaveBeenCalled();
   });
 });
 
