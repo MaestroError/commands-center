@@ -38,7 +38,7 @@ export function TaskDetailPage(props: TaskDetailPageProps) {
   const agent = agentsQuery.data?.find((entry) => entry.id === task?.agentId);
 
   if (props.mode === "run") {
-    return <TaskRunDetail task={task} taskId={taskId} runId={runId} />;
+    return <TaskRunDetail agents={agentsQuery.data} task={task} taskId={taskId} runId={runId} />;
   }
 
   return (
@@ -219,15 +219,14 @@ function RunHistory(props: {
   );
 }
 
-function TaskRunDetail(props: { task?: Task; taskId?: string; runId?: string }) {
+function TaskRunDetail(props: { task?: Task; taskId?: string; runId?: string; agents?: Agent[] }) {
   const navigate = useNavigate();
   const runQuery = useTaskRunQuery(props.taskId, props.runId);
   const sessionQuery = useTaskRunSessionQuery(props.taskId, props.runId);
-  const agentsQuery = useAgentsQuery();
   const mutations = useTaskMutations();
   const [activeTabId, setActiveTabId] = useState<"session" | "details">("session");
   const run = runQuery.data;
-  const agentSlug = agentsQuery.data?.find(
+  const agentSlug = props.agents?.find(
     (entry) => entry.id === (run?.agentId ?? props.task?.agentId),
   )?.slug;
 
