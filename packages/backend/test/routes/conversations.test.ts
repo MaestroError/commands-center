@@ -338,6 +338,7 @@ function createMockOpenCodeService(): OpenCodeService {
 
       session.title = session.title ?? "Route Agent";
       session.time.updated = nextTime();
+      return Promise.resolve();
     },
     commandSession: () => Promise.resolve(),
     summarizeSession: () => Promise.resolve(),

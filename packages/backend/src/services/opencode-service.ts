@@ -429,18 +429,15 @@ export function createOpenCodeService(options: {
       });
     },
 
-    promptSessionAsync(input: {
+    async promptSessionAsync(input: {
       directory: string;
       sessionID: string;
       agent: string;
       model: SessionModel;
       text: string;
       attachments?: SendConversationAttachmentInput[];
-    }): void {
-      // Fire-and-forget: opencode's /prompt_async returns 204 immediately and
-      // delivers the assistant response via SSE events. Errors must be caught
-      // here — an unhandled rejection would crash the backend process.
-      requestSessionJson({
+    }): Promise<void> {
+      await requestSessionJson({
         config: options.config,
         directory: input.directory,
         method: "POST",
@@ -450,11 +447,6 @@ export function createOpenCodeService(options: {
           model: input.model,
           parts: buildPromptParts(input.text, input.attachments ?? []),
         },
-      }).catch((error: unknown) => {
-        options.logger.error(
-          { err: error, directory: input.directory, sessionID: input.sessionID },
-          "promptSessionAsync failed",
-        );
       });
     },
 

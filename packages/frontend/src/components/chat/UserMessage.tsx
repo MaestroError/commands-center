@@ -1,5 +1,6 @@
 import type { ConversationMessage, ConversationPart } from "@cc/shared/schemas";
 
+import { getMessageAttachments } from "./attachment-utils";
 import { parseUserMessage } from "./user-message-utils";
 
 type UserMessageProps = {
@@ -13,7 +14,7 @@ export function UserMessage({ message, parts, onAttachmentClick }: UserMessagePr
   const raw = (textPart?.["text"] as string) || message.content || "";
   const { skill, files, text } = parseUserMessage(raw);
 
-  const attachments = message.attachments ?? [];
+  const attachments = getMessageAttachments(message.attachments ?? [], parts);
   const hasPills = skill || files.length > 0 || attachments.length > 0;
 
   return (

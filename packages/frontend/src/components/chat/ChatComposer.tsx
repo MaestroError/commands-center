@@ -4,6 +4,7 @@ import { usePromptHistory } from "../../hooks/use-prompt-history";
 
 import { AutoApproveToggle } from "./AutoApproveToggle";
 import { AttachmentBar } from "./AttachmentBar";
+import { resolveAttachmentMimeType } from "./attachment-utils";
 import { FileMentionPopover } from "./FileMentionPopover";
 import { SlashCommandPopover, type SlashCommand } from "./SlashCommandPopover";
 
@@ -348,11 +349,12 @@ export function ChatComposer({
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
+        const mimeType = resolveAttachmentMimeType(file);
         const attachment: SendConversationAttachmentInput = {
           id: `${Date.now()}-${file.name}`,
-          type: file.type.startsWith("image/") ? "image" : "file",
+          type: mimeType.startsWith("image/") ? "image" : "file",
           filename: file.name,
-          mimeType: file.type || "application/octet-stream",
+          mimeType,
           dataUrl,
           sizeBytes: file.size,
         };

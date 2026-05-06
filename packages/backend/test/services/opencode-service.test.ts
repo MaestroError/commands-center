@@ -53,7 +53,7 @@ describe("opencode-service", () => {
         logger: createLogger(),
       });
 
-      service.promptSessionAsync({
+      await service.promptSessionAsync({
         directory: "/work/agent-a",
         sessionID: "sess-1",
         agent: "build",
@@ -61,9 +61,7 @@ describe("opencode-service", () => {
         text: "hello",
       });
 
-      await vi.waitFor(() => {
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
 
       const url = fetchMock.mock.calls[0]?.[0] as URL;
       const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
@@ -73,48 +71,44 @@ describe("opencode-service", () => {
       expect(init.method).toBe("POST");
     });
 
-    it("does not throw when the underlying request rejects", async () => {
+    it("rejects when the underlying request fails", async () => {
       fetchMock.mockRejectedValue(new Error("boom"));
-      const logger = createLogger();
       const service = createOpenCodeService({
         client: FAKE_CLIENT,
         config: createConfig(),
-        logger,
+        logger: createLogger(),
       });
 
-      service.promptSessionAsync({
-        directory: "/work/agent-a",
-        sessionID: "sess-1",
-        agent: "build",
-        model: { providerID: "anthropic", modelID: "claude" },
-        text: "hello",
-      });
-
-      await vi.waitFor(() => {
-        expect((logger as unknown as { error: ReturnType<typeof vi.fn> }).error).toHaveBeenCalled();
-      });
+      await expect(
+        service.promptSessionAsync({
+          directory: "/work/agent-a",
+          sessionID: "sess-1",
+          agent: "build",
+          model: { providerID: "anthropic", modelID: "claude" },
+          text: "hello",
+        }),
+      ).rejects.toThrow("boom");
     });
 
-    it("logs upstream non-2xx responses without throwing", async () => {
+    it("rejects on upstream non-2xx responses", async () => {
       fetchMock.mockResolvedValue(new Response("server is sad", { status: 500 }));
-      const logger = createLogger();
       const service = createOpenCodeService({
         client: FAKE_CLIENT,
         config: createConfig(),
-        logger,
+        logger: createLogger(),
       });
 
-      service.promptSessionAsync({
-        directory: "/work/agent-a",
-        sessionID: "sess-1",
-        agent: "build",
-        model: { providerID: "anthropic", modelID: "claude" },
-        text: "hello",
-      });
-
-      await vi.waitFor(() => {
-        expect((logger as unknown as { error: ReturnType<typeof vi.fn> }).error).toHaveBeenCalled();
-      });
+      await expect(
+        service.promptSessionAsync({
+          directory: "/work/agent-a",
+          sessionID: "sess-1",
+          agent: "build",
+          model: { providerID: "anthropic", modelID: "claude" },
+          text: "hello",
+        }),
+      ).rejects.toThrow(
+        "OpenCode request failed: POST /session/sess-1/prompt_async → 500: server is sad",
+      );
     });
   });
 

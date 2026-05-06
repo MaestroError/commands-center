@@ -290,7 +290,7 @@ export function createConversationService(options: {
       const loaded = await getConversationAgent(conversationId);
 
       await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
-      options.opencodeService.promptSessionAsync({
+      await options.opencodeService.promptSessionAsync({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
         agent: resolveOpenCodeAgent(loaded.agent.slug),

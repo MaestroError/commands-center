@@ -1,6 +1,6 @@
 {
   "name": "commandscenter",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "type": "module",
   "description": "Single-user AI agent management — install, run, done.",
   "repository": {
