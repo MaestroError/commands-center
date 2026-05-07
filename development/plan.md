@@ -8,7 +8,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
 
 ## Domains
 
-- `engine-infrastructure`: runtime bootstrap, OpenCode engine lifecycle, API backbone, self-updating, installer hardening
+- `engine-infrastructure`: runtime bootstrap, OpenCode engine lifecycle, API backbone, owner access control, self-updating, installer hardening
 - `core-data-state`: database, portable workspace state, agent lifecycle, direct chat persistence
 - `product-ux-surfaces`: app shell, dashboard, agent UX, chat UX, file manager, terminals, profile, settings, theming
 - `integrations-automation`: provider auth, MCP/integrations, custom tools, tasks
@@ -29,8 +29,9 @@ This plan is organized so each epic is a complete feature slice that can ship as
  |     |- ✅ I5 Composio Integration
  |     \- ✅ I6 App-Provided MCP Server
  |- ✅ E3 API and Realtime Foundation
- |  |- ✅ E4 Self-Updating and Version Management
+ |  |- E7 Owner Claim and Access Control
  |  |  \- E6 Ubuntu and macOS Service Installer Hardening
+ |  |- ✅ E4 Self-Updating and Version Management
  |  |- ✅ U0 Frontend Foundation
  |  |  |- U1 App Shell and Dashboard
  |  |  |- ✅ U2 Agents and Agent Editor
@@ -42,7 +43,7 @@ This plan is organized so each epic is a complete feature slice that can ship as
     |- ✅ C2 Agent Workspace Lifecycle
     |  |- ✅ E5 OpenCode Workspace Contract
     |  |- U2 Agents and Agent Editor
-     |  |- ✅ U3 Direct Chat Screen
+    |  |- ✅ U3 Direct Chat Screen
     |  |- ✅ I2 Integrations and MCP Management
     |  |- ✅ I3 Custom Tools Platform
     |  \- ✅ I5 Composio Integration
@@ -108,9 +109,10 @@ Result: manual and scheduled tasks with isolated OpenCode sessions, task-scoped 
 
 Run after the MVP feature surface and CLI packaging flow are stable.
 
-1. `engine-infrastructure/06-ubuntu-and-macos-service-installers.md`
+1. `engine-infrastructure/07-owner-claim-and-access-control.md`
+2. `engine-infrastructure/06-ubuntu-and-macos-service-installers.md`
 
-Result: a deliberately small support matrix, dedicated Ubuntu and macOS installer scripts, clearer failure modes on unsupported systems, and CI smoke coverage for supported operating systems.
+Result: a secure single-owner access boundary for public deployments, claim/reclaim flows for npm-global, Bash installer, Docker, and VPS usage paths, a deliberately small support matrix, dedicated Ubuntu and macOS installer scripts, clearer failure modes on unsupported systems, and CI smoke coverage for supported operating systems.
 
 ## Cross-Cutting Architectural Principles
 
@@ -137,6 +139,10 @@ Every screen and panel MUST be usable on mobile viewports. This is not optional 
 ### Portable Workspace (.cc/workspace)
 
 The `.cc` directory is the application root (created on first run, like OpenCode's `.opencode`). Within it, `.cc/workspace/` is the single portable state directory containing all user data: agents, database, preferences, auth credentials, MCP configs, task history, and everything else. Copying `.cc/workspace/` to another machine and running `ccenter start` MUST produce the exact same application state — zero external dependencies on the originating host.
+
+### Single Owner Access Control
+
+CommandsCenter remains a single-operator product, not a multi-user system. Public, Docker, and VPS deployments still MUST require owner access control: an unclaimed workspace routes browser users to `/claim`, a claimed workspace routes unauthenticated browser users to `/login`, and all API, SSE, and WebSocket surfaces enforce the same protection server-side. Owner auth state, claim state, and sessions must live under `.cc/workspace/auth/` or the workspace-local database so access control remains portable with the workspace.
 
 ## PR Rules
 
@@ -187,6 +193,7 @@ Each epic PR should:
 
 ### Milestone 5: Distribution Hardening
 
+- E7 Owner Claim and Access Control
 - E6 Ubuntu and macOS Service Installer Hardening
 
 ## Long-Term Plan
