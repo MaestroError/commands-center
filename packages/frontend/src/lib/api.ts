@@ -163,6 +163,12 @@ export async function getSystemVersion(): Promise<SystemVersion> {
   return requestJson<SystemVersion>("/api/system/version", systemVersionSchema);
 }
 
+export async function checkSystemVersion(): Promise<SystemVersion> {
+  return requestJson<SystemVersion>("/api/system/version/check", systemVersionSchema, {
+    method: "POST",
+  });
+}
+
 export async function updateSystem(): Promise<SystemUpdateResult> {
   return requestJson<SystemUpdateResult>("/api/system/update", systemUpdateResultSchema, {
     method: "POST",

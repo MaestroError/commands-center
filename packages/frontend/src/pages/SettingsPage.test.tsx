@@ -8,6 +8,7 @@ import { SettingsPage } from "./SettingsPage";
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
 import { useMarkEngineRestarting } from "@/hooks/use-engine-status-query";
 import {
+  useSystemVersionCheckMutation,
   useSystemUpdateMutation,
   useSystemUpdatePreferencesMutation,
   useSystemUpdatePreferencesQuery,
@@ -24,6 +25,7 @@ vi.mock("@/hooks/use-secrets-query", () => ({
 
 vi.mock("@/hooks/use-system-version-query", () => ({
   useSystemVersionQuery: vi.fn(),
+  useSystemVersionCheckMutation: vi.fn(),
   useSystemUpdateMutation: vi.fn(),
   useSystemUpdatePreferencesQuery: vi.fn(),
   useSystemUpdatePreferencesMutation: vi.fn(),
@@ -48,6 +50,7 @@ vi.mock("@/lib/api", async () => {
 
 const setMutateAsync = vi.fn();
 const removeMutateAsync = vi.fn();
+const checkVersionMutate = vi.fn();
 const updateSystemMutate = vi.fn();
 const updatePreferencesMutate = vi.fn();
 const markEngineRestarting = vi.fn();
@@ -55,6 +58,7 @@ const markEngineRestarting = vi.fn();
 beforeEach(() => {
   setMutateAsync.mockReset();
   removeMutateAsync.mockReset();
+  checkVersionMutate.mockReset();
   updateSystemMutate.mockReset();
   updatePreferencesMutate.mockReset();
   markEngineRestarting.mockReset();
@@ -96,6 +100,11 @@ beforeEach(() => {
     isLoading: false,
     error: null,
   } as never);
+  vi.mocked(useSystemVersionCheckMutation).mockReturnValue({
+    mutate: checkVersionMutate,
+    isPending: false,
+    error: null,
+  } as never);
   vi.mocked(useSystemUpdatePreferencesQuery).mockReturnValue({
     data: {
       autoUpdateEnabled: false,
@@ -132,16 +141,31 @@ beforeEach(() => {
 });
 
 describe("SettingsPage", () => {
-  it("renders system version status and triggers updates", () => {
+  it("renders system version status and triggers update actions", () => {
     renderWithQueryClient(<SettingsPage />);
 
     expect(screen.getByRole("tab", { name: "System" })).toBeInTheDocument();
     expect(screen.getByText("1.0.0")).toBeInTheDocument();
     expect(screen.getByText("1.1.0")).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    expect(checkVersionMutate).toHaveBeenCalledOnce();
+
     fireEvent.click(screen.getByRole("button", { name: "Apply update" }));
 
     expect(updateSystemMutate).toHaveBeenCalledOnce();
+  });
+
+  it("shows the pending manual version check state", () => {
+    vi.mocked(useSystemVersionCheckMutation).mockReturnValue({
+      mutate: checkVersionMutate,
+      isPending: true,
+      error: null,
+    } as never);
+
+    renderWithQueryClient(<SettingsPage />);
+
+    expect(screen.getByRole("button", { name: "Checking..." })).toBeDisabled();
   });
 
   it("allows overriding automatic updates from settings", () => {
@@ -338,7 +362,21 @@ describe("SettingsPage", () => {
     renderWithQueryClient(<SettingsPage />);
 
     expect(screen.getByText(/2 active task runs are in progress/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check for updates" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Apply update" })).toBeDisabled();
+  });
+
+  it("shows manual update check errors", () => {
+    vi.mocked(useSystemVersionCheckMutation).mockReturnValue({
+      mutate: checkVersionMutate,
+      isPending: false,
+      error: new Error("registry unavailable"),
+    } as never);
+
+    renderWithQueryClient(<SettingsPage />);
+
+    expect(screen.getByText("Update check failed.")).toBeInTheDocument();
+    expect(screen.getByText("registry unavailable")).toBeInTheDocument();
   });
 
   it("shows an empty state when no secrets exist", () => {

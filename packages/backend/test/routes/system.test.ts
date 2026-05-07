@@ -103,6 +103,57 @@ describe("system routes", () => {
     }
   });
 
+  it("runs a manual version check through the version service", async () => {
+    const testDb = await createTestDatabase();
+    const checkNow = vi.fn(() =>
+      Promise.resolve({
+        current: "1.0.0",
+        latest: "1.2.0",
+        updateAvailable: true,
+        installMode: "npm-global" as const,
+        autoUpdateEnabled: false,
+        autoUpdateSource: "environment" as const,
+        checkedAt: "2026-05-07T12:00:00.000Z",
+      }),
+    );
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      systemVersionService: {
+        start: vi.fn(),
+        stop: vi.fn(),
+        getVersion: vi.fn(),
+        checkNow,
+        getUpdatePreferences: vi.fn(),
+        setUpdatePreferences: vi.fn(),
+        update: vi.fn(),
+        rollback: vi.fn(),
+      },
+    });
+
+    try {
+      const response = await server.inject({ method: "POST", url: "/api/system/version/check" });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        current: "1.0.0",
+        latest: "1.2.0",
+        updateAvailable: true,
+        checkedAt: "2026-05-07T12:00:00.000Z",
+      });
+      expect(checkNow).toHaveBeenCalledOnce();
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("accepts a shutdown request with the runtime shutdown key", async () => {
     const testDb = await createTestDatabase();
     const shutdownRuntime = vi.fn(() => Promise.resolve());

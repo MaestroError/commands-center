@@ -33,6 +33,18 @@ export function registerSystemRoutes(server: AppServer, context: RuntimeContext)
   );
 
   app.post(
+    "/api/system/version/check",
+    {
+      schema: {
+        response: {
+          200: systemVersionSchema,
+        },
+      },
+    },
+    () => service.checkNow(),
+  );
+
+  app.post(
     "/api/system/shutdown",
     {
       schema: {

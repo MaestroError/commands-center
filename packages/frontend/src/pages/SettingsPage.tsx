@@ -6,6 +6,7 @@ import { TabBar } from "@/components/common/TabBar";
 import { useMarkEngineRestarting } from "@/hooks/use-engine-status-query";
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
 import {
+  useSystemVersionCheckMutation,
   useSystemUpdateMutation,
   useSystemUpdatePreferencesMutation,
   useSystemUpdatePreferencesQuery,
@@ -53,6 +54,7 @@ export function SettingsPage() {
 
 function SystemTab() {
   const versionQuery = useSystemVersionQuery();
+  const versionCheckMutation = useSystemVersionCheckMutation();
   const preferencesQuery = useSystemUpdatePreferencesQuery();
   const preferencesMutation = useSystemUpdatePreferencesMutation();
   const updateMutation = useSystemUpdateMutation();
@@ -70,6 +72,8 @@ function SystemTab() {
     preferencesMutation.error instanceof Error ? preferencesMutation.error.message : undefined;
   const updateError =
     updateMutation.error instanceof Error ? updateMutation.error.message : undefined;
+  const versionCheckError =
+    versionCheckMutation.error instanceof Error ? versionCheckMutation.error.message : undefined;
   const updateResult = updateMutation.data;
 
   return (
@@ -144,6 +148,19 @@ function SystemTab() {
               Last checked {new Date(version.checkedAt).toLocaleString()}.
             </p>
           ) : null}
+          {versionCheckError ? (
+            <ErrorState description={versionCheckError} title="Update check failed." />
+          ) : null}
+          <div className="flex justify-end">
+            <button
+              className="cc-button cc-button-secondary shrink-0 whitespace-nowrap sm:w-auto"
+              disabled={versionCheckMutation.isPending}
+              onClick={() => versionCheckMutation.mutate()}
+              type="button"
+            >
+              {versionCheckMutation.isPending ? "Checking..." : "Check for updates"}
+            </button>
+          </div>
 
           {version.installMode === "docker" ? (
             <div className="rounded-lg border border-border bg-app-bg p-4">
@@ -177,7 +194,7 @@ function SystemTab() {
                 ) : null}
               </div>
               <button
-                className="cc-button sm:w-auto"
+                className="cc-button shrink-0 whitespace-nowrap sm:w-auto"
                 disabled={updateMutation.isPending || activeRunCount > 0}
                 onClick={() => updateMutation.mutate()}
                 type="button"
