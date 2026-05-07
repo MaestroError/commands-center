@@ -158,6 +158,7 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
 
     expect(screen.getByRole("tab", { name: "Secrets" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add secret" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("CC_MCP_GITHUB_TOKEN")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Search secrets"), { target: { value: "linear" } });
@@ -221,6 +222,68 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(removeMutateAsync).toHaveBeenCalledWith({ key: "CC_MCP_GITHUB_TOKEN" });
     });
+  });
+
+  it("creates a new secret manually", async () => {
+    setMutateAsync.mockResolvedValue(undefined);
+
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add secret" }));
+    fireEvent.change(screen.getByLabelText("Secret key"), {
+      target: { value: "CC_MANUAL_TOKEN" },
+    });
+    fireEvent.change(screen.getByLabelText("Secret value"), {
+      target: { value: "manual-secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save secret" }));
+
+    await waitFor(() => {
+      expect(setMutateAsync).toHaveBeenCalledWith({
+        key: "CC_MANUAL_TOKEN",
+        value: "manual-secret",
+      });
+    });
+
+    expect(markEngineRestarting).toHaveBeenCalledOnce();
+    expect(screen.queryByLabelText("Secret key")).not.toBeInTheDocument();
+  });
+
+  it("prevents creating a duplicate secret key", () => {
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add secret" }));
+    fireEvent.change(screen.getByLabelText("Secret key"), {
+      target: { value: "CC_MCP_GITHUB_TOKEN" },
+    });
+    fireEvent.change(screen.getByLabelText("Secret value"), {
+      target: { value: "manual-secret" },
+    });
+
+    expect(screen.getByText("Secret already exists. Update it below.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save secret" })).toBeDisabled();
+    expect(setMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("shows a fallback error when creating a secret fails", async () => {
+    setMutateAsync.mockRejectedValue("failed");
+
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add secret" }));
+    fireEvent.change(screen.getByLabelText("Secret key"), {
+      target: { value: "CC_MANUAL_TOKEN" },
+    });
+    fireEvent.change(screen.getByLabelText("Secret value"), {
+      target: { value: "manual-secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save secret" }));
+
+    expect(await screen.findByText("Request failed.")).toBeInTheDocument();
+    expect(markEngineRestarting).not.toHaveBeenCalled();
   });
 
   it("loads and updates file manager upload preferences", async () => {
@@ -289,6 +352,11 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
 
     expect(screen.getByText("No secrets yet")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No secrets exist yet. Add one manually or create an MCP variable reference.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows a filtered empty state when secret search has no matches", () => {
