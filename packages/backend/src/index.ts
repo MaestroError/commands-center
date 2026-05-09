@@ -50,6 +50,11 @@ export {
   type SystemVersionService,
 } from "./services/system-version-service.js";
 export { createOpenCodeService, type OpenCodeService } from "./services/opencode-service.js";
+export {
+  createOwnerAccessService,
+  OwnerAccessError,
+  type OwnerAccessService,
+} from "./services/owner-access-service.js";
 export { createProviderService, type ProviderService } from "./services/provider-service.js";
 export { createSchedulerService, type SchedulerService } from "./services/scheduler-service.js";
 export {

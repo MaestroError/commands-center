@@ -20,6 +20,10 @@ import {
 } from "../services/workspace-watch-service.js";
 import { createSecretService, type SecretService } from "../services/secret-service.js";
 import {
+  createOwnerAccessService,
+  type OwnerAccessService,
+} from "../services/owner-access-service.js";
+import {
   createLiveRequestService,
   type LiveRequestService,
 } from "../services/live-request-service.js";
@@ -70,6 +74,7 @@ export type RuntimeContext = {
   openCodeEventService: OpenCodeEventService;
   workspaceWatchService?: WorkspaceWatchService;
   secretService: SecretService;
+  ownerAccessService?: OwnerAccessService;
   liveRequestService?: LiveRequestService;
   scheduler: SchedulerService;
   taskService?: TaskService;
@@ -100,6 +105,8 @@ export async function startServerRuntime(
   const database = createDatabaseClient(config);
   migrateDatabase(database.db);
   const secretService = createSecretService({ db: database.db, config });
+  const ownerAccessService = createOwnerAccessService({ config, logger });
+  await ownerAccessService.initialize();
 
   const orchestrator = createOpenCodeOrchestrator({
     config,
@@ -159,6 +166,7 @@ export async function startServerRuntime(
     openCodeEventService,
     workspaceWatchService,
     secretService,
+    ownerAccessService,
     liveRequestService,
     scheduler,
     taskService,
