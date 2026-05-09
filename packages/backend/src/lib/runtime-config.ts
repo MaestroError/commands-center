@@ -133,6 +133,8 @@ const envSchema = z.object({
   CC_UPDATE_REGISTRY_URL: z.string().url().optional().default(DEFAULT_UPDATE_REGISTRY_URL),
   CC_DOCKER: booleanString(false),
   CC_LOG_LEVEL: logLevelSchema.optional().default(DEFAULT_LOG_LEVEL),
+  CC_PUBLIC_ORIGIN: z.string().url().optional(),
+  CC_ALLOWED_ORIGINS: z.string().trim().optional(),
   CC_OPENCODE_PATH: z.string().trim().optional(),
   CC_SECRET_KEY: z.string().trim().optional().default(DEFAULT_SECRET_KEY),
   CC_MAX_TASKS: optionalLimit("CC_MAX_TASKS"),
@@ -191,6 +193,10 @@ export type RuntimeConfig = {
     historyFile: string;
   };
   logLevel: z.infer<typeof logLevelSchema>;
+  security: {
+    publicOrigin?: string;
+    allowedOrigins: string[];
+  };
   opencodePath?: string;
   secretKey: string;
   tasks: {
@@ -281,6 +287,10 @@ export function loadRuntimeConfig(options?: {
       historyFile: resolve(workspaceDir, "update-history.json"),
     },
     logLevel: parsedEnv.data.CC_LOG_LEVEL,
+    security: {
+      publicOrigin: parsedEnv.data.CC_PUBLIC_ORIGIN,
+      allowedOrigins: parseAllowedOrigins(parsedEnv.data.CC_ALLOWED_ORIGINS),
+    },
     opencodePath: parsedEnv.data.CC_OPENCODE_PATH || undefined,
     secretKey: parsedEnv.data.CC_SECRET_KEY,
     tasks: {
@@ -291,6 +301,17 @@ export function loadRuntimeConfig(options?: {
       envFilePath: env["CC_FIRST_RUN_ENV_FILE_PATH"]?.trim() || undefined,
     },
   };
+}
+
+function parseAllowedOrigins(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 }
 
 export function getStartupLogContext(config: RuntimeConfig): Record<string, unknown> {

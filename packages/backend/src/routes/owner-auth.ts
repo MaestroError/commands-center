@@ -1,3 +1,4 @@
+import type { FastifyReply } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import {
   ownerAuthStatusResultSchema,
@@ -17,6 +18,7 @@ import {
   UnauthorizedError,
 } from "../lib/api-error.js";
 import type { ApiError } from "../lib/api-error.js";
+import { createClearCsrfCookie, createCsrfCookie, createCsrfToken } from "../lib/csrf.js";
 import type { AppServer } from "../lib/fastify-zod.js";
 import {
   createClearOwnerSessionCookie,
@@ -71,14 +73,7 @@ export function registerOwnerAuthRoutes(server: AppServer, context: RuntimeConte
           userAgent: request.headers["user-agent"],
           ip: request.ip,
         });
-        reply.header(
-          "set-cookie",
-          createOwnerSessionCookie({
-            config: context.config,
-            sessionId: session.sessionId,
-            rememberBrowser: request.body.rememberBrowser,
-          }),
-        );
+        setAuthenticatedCookies(reply, context, session.sessionId, request.body.rememberBrowser);
 
         return { status: "claimed-authenticated" as const };
       } catch (error) {
@@ -105,14 +100,7 @@ export function registerOwnerAuthRoutes(server: AppServer, context: RuntimeConte
           userAgent: request.headers["user-agent"],
           ip: request.ip,
         });
-        reply.header(
-          "set-cookie",
-          createOwnerSessionCookie({
-            config: context.config,
-            sessionId: session.sessionId,
-            rememberBrowser: request.body.rememberBrowser,
-          }),
-        );
+        setAuthenticatedCookies(reply, context, session.sessionId, request.body.rememberBrowser);
 
         return { status: "claimed-authenticated" as const };
       } catch (error) {
@@ -137,7 +125,10 @@ export function registerOwnerAuthRoutes(server: AppServer, context: RuntimeConte
         await service.revokeSession(sessionId);
       }
 
-      reply.header("set-cookie", createClearOwnerSessionCookie(context.config));
+      reply.header("set-cookie", [
+        createClearOwnerSessionCookie(context.config),
+        createClearCsrfCookie(context.config),
+      ]);
       return { status: "claimed-unauthenticated" as const };
     },
   );
@@ -165,14 +156,7 @@ export function registerOwnerAuthRoutes(server: AppServer, context: RuntimeConte
           userAgent: request.headers["user-agent"],
           ip: request.ip,
         });
-        reply.header(
-          "set-cookie",
-          createOwnerSessionCookie({
-            config: context.config,
-            sessionId: session.sessionId,
-            rememberBrowser: request.body.rememberBrowser,
-          }),
-        );
+        setAuthenticatedCookies(reply, context, session.sessionId, request.body.rememberBrowser);
 
         return { status: "claimed-authenticated" as const };
       } catch (error) {
@@ -180,6 +164,22 @@ export function registerOwnerAuthRoutes(server: AppServer, context: RuntimeConte
       }
     },
   );
+}
+
+function setAuthenticatedCookies(
+  reply: FastifyReply,
+  context: RuntimeContext,
+  sessionId: string,
+  rememberBrowser?: boolean,
+): void {
+  reply.header("set-cookie", [
+    createOwnerSessionCookie({
+      config: context.config,
+      sessionId,
+      rememberBrowser,
+    }),
+    createCsrfCookie({ config: context.config, token: createCsrfToken() }),
+  ]);
 }
 
 function getOwnerAccessService(context: RuntimeContext): OwnerAccessService {

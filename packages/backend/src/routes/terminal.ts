@@ -4,6 +4,8 @@ import { z } from "zod";
 import { WebSocketServer } from "ws";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import type { AppServer } from "../lib/fastify-zod.js";
+import { isOriginAllowed, readRequestOrigin } from "../lib/origin-check.js";
+import { readOwnerSessionCookie } from "../lib/owner-session-cookie.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import {
   terminalCreateInputSchema,
@@ -24,7 +26,7 @@ export function registerTerminalRoutes(server: AppServer, context: RuntimeContex
   const wsServer = new WebSocketServer({ noServer: true });
 
   server.server.on("upgrade", (request, socket, head) => {
-    void handleTerminalUpgrade({ factory, request, socket, head, wsServer });
+    void handleTerminalUpgrade({ context, factory, request, socket, head, wsServer });
   });
 
   server.addHook("onClose", () => {
@@ -129,6 +131,7 @@ async function findSession(factory: ReturnType<typeof createTerminalBackendFacto
 }
 
 async function handleTerminalUpgrade(options: {
+  context: RuntimeContext;
   factory: ReturnType<typeof createTerminalBackendFactory>;
   request: IncomingMessage;
   socket: Duplex;
@@ -140,6 +143,12 @@ async function handleTerminalUpgrade(options: {
   const match = requestUrl.pathname.match(/^\/api\/terminal\/([^/]+)\/connect$/);
 
   if (!match) {
+    return;
+  }
+
+  if (!(await isTerminalUpgradeAuthorized(options.context, options.request))) {
+    options.socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+    options.socket.destroy();
     return;
   }
 
@@ -208,4 +217,21 @@ async function handleTerminalUpgrade(options: {
       handle.close();
     });
   });
+}
+
+async function isTerminalUpgradeAuthorized(
+  context: RuntimeContext,
+  request: IncomingMessage,
+): Promise<boolean> {
+  if (!context.ownerAccessService) {
+    return true;
+  }
+
+  if (!isOriginAllowed({ config: context.config, origin: readRequestOrigin(request) })) {
+    return false;
+  }
+
+  const sessionId = readOwnerSessionCookie(request.headers.cookie);
+
+  return sessionId ? context.ownerAccessService.validateSession(sessionId) : false;
 }
