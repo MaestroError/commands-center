@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 
 import type { Logger } from "pino";
@@ -8,6 +9,7 @@ import {
   type AuthStateStore,
   type ClaimCodeState,
   type OwnerAccessState,
+  type OwnerSessionState,
 } from "../lib/auth-state-store.js";
 import { generateOwnerClaimCode } from "../lib/owner-claim-code.js";
 import {
@@ -19,6 +21,10 @@ import {
 const OWNER_ACCESS_FILE = "owner-access.json";
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const RATE_LIMIT_MAX_ATTEMPTS = 10;
+const CLAIM_CODE_DURATION_MS = 30 * 60 * 1000;
+const SESSION_ID_BYTES = 32;
+const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+const REMEMBER_SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type OwnerAccessStatus = "unclaimed" | "claimed";
 
@@ -28,11 +34,22 @@ export type RotateClaimCodeResult = {
   warning: string;
 };
 
+export type OwnerBrowserAuthStatus =
+  | "unclaimed"
+  | "claimed-authenticated"
+  | "claimed-unauthenticated";
+
+export type OwnerSessionResult = {
+  sessionId: string;
+  expiresAt: string;
+};
+
 export type OwnerAccessService = {
   stateFile: string;
   initialize(): Promise<OwnerAccessState>;
   getState(): Promise<OwnerAccessState>;
   getStatus(): Promise<OwnerAccessStatus>;
+  getBrowserAuthStatus(sessionId?: string): Promise<OwnerBrowserAuthStatus>;
   rotateClaimCode(): Promise<RotateClaimCodeResult>;
   claim(input: {
     claimCode: string;
@@ -40,6 +57,21 @@ export type OwnerAccessService = {
     confirmPassword: string;
     ip?: string;
   }): Promise<OwnerAccessState>;
+  login(input: {
+    password: string;
+    rememberBrowser?: boolean;
+    userAgent?: string;
+    ip?: string;
+  }): Promise<OwnerSessionResult>;
+  createSession(input?: {
+    rememberBrowser?: boolean;
+    userAgent?: string;
+    ip?: string;
+  }): Promise<OwnerSessionResult>;
+  validateSession(sessionId: string): Promise<boolean>;
+  revokeSession(sessionId: string): Promise<void>;
+  revokeAllSessions(): Promise<void>;
+  revokeAllSessionsExcept(sessionId: string): Promise<void>;
   completeReclaim(input: {
     claimCode: string;
     password: string;
@@ -53,6 +85,8 @@ export class OwnerAccessError extends Error {
     readonly code:
       | "invalid_claim_code"
       | "password_validation_failed"
+      | "invalid_credentials"
+      | "invalid_session"
       | "workspace_already_claimed"
       | "workspace_unclaimed"
       | "rate_limited",
@@ -89,7 +123,9 @@ export function createOwnerAccessService(options: {
       rateLimits: {
         claimAttempts: [],
         reclaimAttempts: [],
+        loginAttempts: [],
       },
+      sessions: [],
     };
 
     await store.write(state);
@@ -108,7 +144,7 @@ export function createOwnerAccessService(options: {
 
   function enforceRateLimit(
     state: OwnerAccessState,
-    bucket: "claimAttempts" | "reclaimAttempts",
+    bucket: "claimAttempts" | "reclaimAttempts" | "loginAttempts",
     ip = "unknown",
   ): void {
     const currentTime = now();
@@ -137,14 +173,15 @@ export function createOwnerAccessService(options: {
     state: ClaimCodeState;
   }> {
     const code = generateOwnerClaimCode();
-    const timestamp = now().toISOString();
+    const timestamp = now();
 
     return {
       code,
       state: {
         hash: await hashOwnerSecret(code),
-        createdAt: timestamp,
-        rotatedAt: previous ? timestamp : undefined,
+        createdAt: timestamp.toISOString(),
+        expiresAt: new Date(timestamp.getTime() + CLAIM_CODE_DURATION_MS).toISOString(),
+        rotatedAt: previous ? timestamp.toISOString() : undefined,
         attemptCount: 0,
       },
     };
@@ -155,6 +192,13 @@ export function createOwnerAccessService(options: {
     claimCodeState: ClaimCodeState | undefined,
   ): Promise<void> {
     if (!claimCodeState || claimCodeState.invalidatedAt) {
+      throw new OwnerAccessError("invalid_claim_code", "Claim code is invalid.");
+    }
+
+    if (
+      claimCodeState.expiresAt &&
+      new Date(claimCodeState.expiresAt).getTime() <= now().getTime()
+    ) {
       throw new OwnerAccessError("invalid_claim_code", "Claim code is invalid.");
     }
 
@@ -198,6 +242,73 @@ export function createOwnerAccessService(options: {
     return hashOwnerSecret(options.password);
   }
 
+  function hashSessionId(sessionId: string): string {
+    return createHash("sha256").update(sessionId).digest("base64url");
+  }
+
+  function createSessionState(input?: {
+    rememberBrowser?: boolean;
+    userAgent?: string;
+    ip?: string;
+  }): OwnerSessionResult & { session: OwnerSessionState } {
+    const sessionId = randomBytes(SESSION_ID_BYTES).toString("base64url");
+    const timestamp = now();
+    const expiresAt = new Date(
+      timestamp.getTime() +
+        (input?.rememberBrowser ? REMEMBER_SESSION_DURATION_MS : SESSION_DURATION_MS),
+    ).toISOString();
+
+    return {
+      sessionId,
+      expiresAt,
+      session: {
+        idHash: hashSessionId(sessionId),
+        createdAt: timestamp.toISOString(),
+        lastUsedAt: timestamp.toISOString(),
+        expiresAt,
+        userAgent: input?.userAgent,
+        ip: input?.ip,
+      },
+    };
+  }
+
+  function findActiveSession(
+    state: OwnerAccessState,
+    sessionId: string,
+  ): OwnerSessionState | undefined {
+    const sessionHash = hashSessionId(sessionId);
+    const timestamp = now().getTime();
+
+    return state.sessions.find(
+      (session) =>
+        session.idHash === sessionHash &&
+        !session.revokedAt &&
+        new Date(session.expiresAt).getTime() > timestamp,
+    );
+  }
+
+  function assertClaimed(state: OwnerAccessState): void {
+    if (!state.claimedAt || !state.ownerPassword) {
+      throw new OwnerAccessError("workspace_unclaimed", "Workspace is not claimed.");
+    }
+  }
+
+  function revokeSessions(
+    state: OwnerAccessState,
+    shouldRevoke: (session: OwnerSessionState) => boolean,
+  ): OwnerAccessState {
+    const timestamp = now().toISOString();
+
+    return {
+      ...state,
+      sessions: state.sessions.map((session) =>
+        shouldRevoke(session) && !session.revokedAt
+          ? { ...session, revokedAt: timestamp }
+          : session,
+      ),
+    };
+  }
+
   return {
     stateFile: store.path,
     initialize: readOrCreateState,
@@ -205,6 +316,19 @@ export function createOwnerAccessService(options: {
     async getStatus() {
       const state = await readOrCreateState();
       return state.claimedAt && state.ownerPassword ? "claimed" : "unclaimed";
+    },
+    async getBrowserAuthStatus(sessionId) {
+      const state = await readOrCreateState();
+
+      if (!state.claimedAt || !state.ownerPassword) {
+        return "unclaimed";
+      }
+
+      if (sessionId && findActiveSession(state, sessionId)) {
+        return "claimed-authenticated";
+      }
+
+      return "claimed-unauthenticated";
     },
     async rotateClaimCode() {
       const state = await readOrCreateState();
@@ -264,6 +388,68 @@ export function createOwnerAccessService(options: {
       options.logger?.info({ authStateFile: store.path }, "workspace owner claim completed");
       return nextState;
     },
+    async login(input) {
+      const state = await readOrCreateState();
+      assertClaimed(state);
+      enforceRateLimit(state, "loginAttempts", input.ip);
+
+      const passwordMatches = await verifyOwnerSecret(input.password, state.ownerPassword!);
+
+      if (!passwordMatches) {
+        await persist(state);
+        options.logger?.warn({ authStateFile: store.path }, "owner login failed");
+        throw new OwnerAccessError("invalid_credentials", "Invalid credentials.");
+      }
+
+      const result = createSessionState(input);
+      await persist({
+        ...state,
+        sessions: [...state.sessions, result.session],
+      });
+      options.logger?.info({ authStateFile: store.path }, "owner login completed");
+
+      return { sessionId: result.sessionId, expiresAt: result.expiresAt };
+    },
+    async createSession(input) {
+      const state = await readOrCreateState();
+      assertClaimed(state);
+      const result = createSessionState(input);
+      await persist({
+        ...state,
+        sessions: [...state.sessions, result.session],
+      });
+
+      return { sessionId: result.sessionId, expiresAt: result.expiresAt };
+    },
+    async validateSession(sessionId) {
+      const state = await readOrCreateState();
+      const session = findActiveSession(state, sessionId);
+
+      if (!session) {
+        return false;
+      }
+
+      session.lastUsedAt = now().toISOString();
+      await persist(state);
+      return true;
+    },
+    async revokeSession(sessionId) {
+      const state = await readOrCreateState();
+      const sessionHash = hashSessionId(sessionId);
+      await persist(revokeSessions(state, (session) => session.idHash === sessionHash));
+      options.logger?.info({ authStateFile: store.path }, "owner session revoked");
+    },
+    async revokeAllSessions() {
+      const state = await readOrCreateState();
+      await persist(revokeSessions(state, () => true));
+      options.logger?.info({ authStateFile: store.path }, "all owner sessions revoked");
+    },
+    async revokeAllSessionsExcept(sessionId) {
+      const state = await readOrCreateState();
+      const sessionHash = hashSessionId(sessionId);
+      await persist(revokeSessions(state, (session) => session.idHash !== sessionHash));
+      options.logger?.info({ authStateFile: store.path }, "other owner sessions revoked");
+    },
     async completeReclaim(input) {
       const state = await readOrCreateState();
 
@@ -294,6 +480,7 @@ export function createOwnerAccessService(options: {
         reclaimCode: state.reclaimCode
           ? { ...state.reclaimCode, invalidatedAt: timestamp }
           : undefined,
+        sessions: revokeSessions(state, () => true).sessions,
       });
 
       options.logger?.info({ authStateFile: store.path }, "workspace owner reclaim completed");

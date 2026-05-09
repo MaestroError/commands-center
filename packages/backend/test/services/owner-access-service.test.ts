@@ -75,6 +75,50 @@ describe("owner-access-service", () => {
     }
   });
 
+  it("rejects expired claim codes", async () => {
+    const testDb = await createTestDatabase();
+    const currentTime = new Date("2026-01-01T00:00:00.000Z");
+    const service = createOwnerAccessService({
+      config: testDb.config,
+      now: () => currentTime,
+    });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      currentTime.setUTCMinutes(currentTime.getUTCMinutes() + 31);
+
+      await expect(
+        service.claim({
+          claimCode: claim.code,
+          password: STRONG_PASSWORD,
+          confirmPassword: STRONG_PASSWORD,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_claim_code" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects rotated claim codes", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const rotated = await service.rotateClaimCode();
+      await service.rotateClaimCode();
+
+      await expect(
+        service.claim({
+          claimCode: rotated.code,
+          password: STRONG_PASSWORD,
+          confirmPassword: STRONG_PASSWORD,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_claim_code" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("rejects weak passwords without claiming the workspace", async () => {
     const testDb = await createTestDatabase();
     const service = createOwnerAccessService({ config: testDb.config });
@@ -170,6 +214,157 @@ describe("owner-access-service", () => {
       await expect(verifyOwnerSecret(STRONG_PASSWORD, reclaimed.ownerPassword!)).resolves.toBe(
         false,
       );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("logs in with the owner password and stores only a hashed session id", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      const session = await service.login({ password: STRONG_PASSWORD, ip: "203.0.113.11" });
+      const state = await service.getState();
+      const content = await readFile(service.stateFile, "utf8");
+
+      expect(session.sessionId).toHaveLength(43);
+      expect(state.sessions).toHaveLength(1);
+      expect(state.sessions[0]?.idHash).toBeDefined();
+      expect(content).not.toContain(session.sessionId);
+      await expect(service.validateSession(session.sessionId)).resolves.toBe(true);
+      await expect(service.getBrowserAuthStatus(session.sessionId)).resolves.toBe(
+        "claimed-authenticated",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects invalid login with generic credentials error", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+
+      await expect(service.login({ password: "wrong-password" })).rejects.toMatchObject({
+        code: "invalid_credentials",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rate-limits repeated invalid login attempts", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await expect(
+          service.login({ password: `wrong-password-${attempt.toString()}`, ip: "203.0.113.20" }),
+        ).rejects.toMatchObject({ code: "invalid_credentials" });
+      }
+
+      await expect(
+        service.login({ password: "wrong-password-final", ip: "203.0.113.20" }),
+      ).rejects.toMatchObject({ code: "rate_limited" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("expires finite browser sessions", async () => {
+    const testDb = await createTestDatabase();
+    const currentTime = new Date("2026-01-01T00:00:00.000Z");
+    const service = createOwnerAccessService({
+      config: testDb.config,
+      now: () => currentTime,
+    });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      const session = await service.login({ password: STRONG_PASSWORD });
+      currentTime.setUTCDate(currentTime.getUTCDate() + 8);
+
+      await expect(service.validateSession(session.sessionId)).resolves.toBe(false);
+      await expect(service.getBrowserAuthStatus(session.sessionId)).resolves.toBe(
+        "claimed-unauthenticated",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("revokes individual sessions and all sessions except the current one", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      const first = await service.login({ password: STRONG_PASSWORD });
+      const second = await service.login({ password: STRONG_PASSWORD });
+      const third = await service.login({ password: STRONG_PASSWORD });
+
+      await service.revokeSession(first.sessionId);
+      await expect(service.validateSession(first.sessionId)).resolves.toBe(false);
+      await service.revokeAllSessionsExcept(second.sessionId);
+      await expect(service.validateSession(second.sessionId)).resolves.toBe(true);
+      await expect(service.validateSession(third.sessionId)).resolves.toBe(false);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("reclaim revokes existing sessions", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      const session = await service.login({ password: STRONG_PASSWORD });
+      const reclaim = await service.rotateClaimCode();
+      await service.completeReclaim({
+        claimCode: reclaim.code,
+        password: NEXT_STRONG_PASSWORD,
+        confirmPassword: NEXT_STRONG_PASSWORD,
+      });
+
+      await expect(service.validateSession(session.sessionId)).resolves.toBe(false);
     } finally {
       await testDb.cleanup();
     }

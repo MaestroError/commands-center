@@ -47,6 +47,18 @@ export class ForbiddenError extends ApiError {
   }
 }
 
+export class UnauthorizedError extends ApiError {
+  constructor(message: string, details?: unknown) {
+    super({ code: "unauthorized", message, statusCode: 401, details });
+  }
+}
+
+export class RateLimitedError extends ApiError {
+  constructor(message: string, details?: unknown) {
+    super({ code: "rate_limited", message, statusCode: 429, details });
+  }
+}
+
 export class BadRequestError extends ApiError {
   constructor(message: string, details?: unknown) {
     super({ code: "bad_request", message, statusCode: 400, details });

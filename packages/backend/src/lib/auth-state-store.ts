@@ -18,6 +18,7 @@ const scryptHashMetadataSchema = z.object({
 const claimCodeStateSchema = z.object({
   hash: scryptHashMetadataSchema,
   createdAt: z.string().datetime(),
+  expiresAt: z.string().datetime().optional(),
   rotatedAt: z.string().datetime().optional(),
   invalidatedAt: z.string().datetime().optional(),
   attemptCount: z.number().int().nonnegative().default(0),
@@ -29,6 +30,16 @@ const rateLimitAttemptSchema = z.object({
   attempts: z.array(z.string().datetime()),
 });
 
+const ownerSessionSchema = z.object({
+  idHash: z.string().min(1),
+  createdAt: z.string().datetime(),
+  lastUsedAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+  revokedAt: z.string().datetime().optional(),
+  userAgent: z.string().optional(),
+  ip: z.string().optional(),
+});
+
 export const ownerAccessStateSchema = z.object({
   version: z.literal(1),
   createdAt: z.string().datetime(),
@@ -37,16 +48,19 @@ export const ownerAccessStateSchema = z.object({
   ownerPassword: scryptHashMetadataSchema.optional(),
   claimCode: claimCodeStateSchema.optional(),
   reclaimCode: claimCodeStateSchema.optional(),
+  sessions: z.array(ownerSessionSchema).default([]),
   rateLimits: z
     .object({
       claimAttempts: z.array(rateLimitAttemptSchema),
       reclaimAttempts: z.array(rateLimitAttemptSchema),
+      loginAttempts: z.array(rateLimitAttemptSchema).default([]),
     })
-    .default({ claimAttempts: [], reclaimAttempts: [] }),
+    .default({ claimAttempts: [], reclaimAttempts: [], loginAttempts: [] }),
 });
 
 export type OwnerAccessState = z.infer<typeof ownerAccessStateSchema>;
 export type ClaimCodeState = z.infer<typeof claimCodeStateSchema>;
+export type OwnerSessionState = z.infer<typeof ownerSessionSchema>;
 
 export type AuthStateStore = {
   path: string;

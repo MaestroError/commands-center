@@ -384,13 +384,25 @@ export {
   type SetSecretRequest,
 } from "./secrets.js";
 export {
+  ownerAuthStatusResultSchema,
   ownerAuthStatusSchema,
   ownerClaimInputSchema,
   ownerClaimResultSchema,
+  ownerLoginInputSchema,
+  ownerLoginResultSchema,
+  ownerLogoutResultSchema,
   ownerPasswordInputSchema,
+  ownerReclaimInputSchema,
+  ownerReclaimResultSchema,
+  type OwnerAuthStatusResult,
   type OwnerAuthStatus,
   type OwnerClaimInput,
   type OwnerClaimResult,
+  type OwnerLoginInput,
+  type OwnerLoginResult,
+  type OwnerLogoutResult,
+  type OwnerReclaimInput,
+  type OwnerReclaimResult,
 } from "./owner-auth.js";
 export {
   terminalBackendTypeSchema,

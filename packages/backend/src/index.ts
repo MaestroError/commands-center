@@ -32,6 +32,8 @@ export {
   BadRequestError,
   ConflictError,
   NotFoundError,
+  RateLimitedError,
+  UnauthorizedError,
   registerApiErrorHandler,
 } from "./lib/api-error.js";
 export { configureFastifyZod, type AppServer, type AppTypeProvider } from "./lib/fastify-zod.js";
