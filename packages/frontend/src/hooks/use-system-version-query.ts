@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  checkSystemVersion,
   getSystemUpdatePreferences,
   getSystemVersion,
   updateSystem,
@@ -23,6 +24,17 @@ export function useSystemUpdateMutation() {
     mutationFn: updateSystem,
     onSuccess() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.systemVersion });
+    },
+  });
+}
+
+export function useSystemVersionCheckMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: checkSystemVersion,
+    onSuccess(version) {
+      queryClient.setQueryData(queryKeys.systemVersion, version);
     },
   });
 }

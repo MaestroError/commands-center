@@ -6,6 +6,7 @@ import { TabBar } from "@/components/common/TabBar";
 import { useMarkEngineRestarting } from "@/hooks/use-engine-status-query";
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
 import {
+  useSystemVersionCheckMutation,
   useSystemUpdateMutation,
   useSystemUpdatePreferencesMutation,
   useSystemUpdatePreferencesQuery,
@@ -53,6 +54,7 @@ export function SettingsPage() {
 
 function SystemTab() {
   const versionQuery = useSystemVersionQuery();
+  const versionCheckMutation = useSystemVersionCheckMutation();
   const preferencesQuery = useSystemUpdatePreferencesQuery();
   const preferencesMutation = useSystemUpdatePreferencesMutation();
   const updateMutation = useSystemUpdateMutation();
@@ -70,6 +72,8 @@ function SystemTab() {
     preferencesMutation.error instanceof Error ? preferencesMutation.error.message : undefined;
   const updateError =
     updateMutation.error instanceof Error ? updateMutation.error.message : undefined;
+  const versionCheckError =
+    versionCheckMutation.error instanceof Error ? versionCheckMutation.error.message : undefined;
   const updateResult = updateMutation.data;
 
   return (
@@ -144,6 +148,19 @@ function SystemTab() {
               Last checked {new Date(version.checkedAt).toLocaleString()}.
             </p>
           ) : null}
+          {versionCheckError ? (
+            <ErrorState description={versionCheckError} title="Update check failed." />
+          ) : null}
+          <div className="flex justify-end">
+            <button
+              className="cc-button cc-button-secondary shrink-0 whitespace-nowrap sm:w-auto"
+              disabled={versionCheckMutation.isPending}
+              onClick={() => versionCheckMutation.mutate()}
+              type="button"
+            >
+              {versionCheckMutation.isPending ? "Checking..." : "Check for updates"}
+            </button>
+          </div>
 
           {version.installMode === "docker" ? (
             <div className="rounded-lg border border-border bg-app-bg p-4">
@@ -177,7 +194,7 @@ function SystemTab() {
                 ) : null}
               </div>
               <button
-                className="cc-button sm:w-auto"
+                className="cc-button shrink-0 whitespace-nowrap sm:w-auto"
                 disabled={updateMutation.isPending || activeRunCount > 0}
                 onClick={() => updateMutation.mutate()}
                 type="button"
@@ -365,6 +382,7 @@ function SecretsTab() {
   const mutations = useSecretMutations();
   const markEngineRestarting = useMarkEngineRestarting();
   const [search, setSearch] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const filteredSecrets = (secretsQuery.data ?? []).filter((secret) =>
     secret.key.toLowerCase().includes(search.trim().toLowerCase()),
@@ -377,17 +395,41 @@ function SecretsTab() {
         <div>
           <h2 className="text-xl font-semibold text-text-primary">Secrets</h2>
           <p className="mt-1 text-sm text-text-secondary">
-            MCP references created with <code>{"{env:VAR_NAME}"}</code> appear here automatically.
+            Add secrets manually here, or let MCP references created with{" "}
+            <code>{"{env:VAR_NAME}"}</code>
+            appear automatically.
           </p>
         </div>
-        <input
-          aria-label="Search secrets"
-          className="cc-input w-full md:max-w-sm"
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search secrets"
-          value={search}
-        />
+        <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+          <button
+            className="cc-button cc-button-secondary shrink-0 whitespace-nowrap"
+            onClick={() => setCreating((current) => !current)}
+            type="button"
+          >
+            {creating ? "Cancel" : "Add secret"}
+          </button>
+          <input
+            aria-label="Search secrets"
+            className="cc-input w-full md:min-w-80"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search secrets"
+            value={search}
+          />
+        </div>
       </div>
+
+      {creating ? (
+        <SecretCreateForm
+          busy={mutations.set.isPending || mutations.remove.isPending}
+          existingKeys={(secretsQuery.data ?? []).map((secret) => secret.key)}
+          onCancel={() => setCreating(false)}
+          onSave={async (key, value) => {
+            await mutations.set.mutateAsync({ key, value });
+            markEngineRestarting();
+            setCreating(false);
+          }}
+        />
+      ) : null}
 
       {error ? <ErrorState description={error} title="Secrets could not be loaded." /> : null}
       {secretsQuery.isLoading ? <LoadingState testId="secrets-loading" /> : null}
@@ -397,7 +439,7 @@ function SecretsTab() {
           description={
             search.trim()
               ? "No secrets match the current search."
-              : "No secrets exist yet. Add an MCP variable reference to create one automatically."
+              : "No secrets exist yet. Add one manually or create an MCP variable reference."
           }
           title={search.trim() ? "No matching secrets" : "No secrets yet"}
         />
@@ -428,6 +470,93 @@ function SecretsTab() {
       ) : null}
     </div>
   );
+}
+
+function SecretCreateForm(props: {
+  busy: boolean;
+  existingKeys: string[];
+  onSave: (key: string, value: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [key, setKey] = useState("");
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string>();
+
+  const normalizedKey = key.trim();
+  const normalizedValue = value.trim();
+  const duplicateKey = props.existingKeys.includes(normalizedKey);
+
+  return (
+    <article className="rounded-xl border border-border bg-surface p-5">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <label className="grid gap-2 text-sm text-text-primary">
+          <span>Secret key</span>
+          <input
+            aria-label="Secret key"
+            className="cc-input font-mono"
+            onChange={(event) => setKey(event.target.value)}
+            placeholder="GITHUB_TOKEN"
+            value={key}
+          />
+          <span className="text-xs text-text-secondary">
+            Environment variable name exposed to agents.
+          </span>
+        </label>
+        <label className="grid gap-2 text-sm text-text-primary">
+          <span>Secret value</span>
+          <input
+            aria-label="Secret value"
+            className="cc-input"
+            onChange={(event) => setValue(event.target.value)}
+            placeholder="Enter a value"
+            type="password"
+            value={value}
+          />
+          <span className="text-xs text-text-secondary">
+            Stored encrypted in this workspace and never shown back to agents.
+          </span>
+        </label>
+      </div>
+
+      {duplicateKey ? (
+        <p className="mt-3 text-sm text-amber-500">Secret already exists. Update it below.</p>
+      ) : null}
+      {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+          Cancel
+        </button>
+        <button
+          className="cc-button"
+          disabled={
+            props.busy || normalizedKey.length === 0 || normalizedValue.length === 0 || duplicateKey
+          }
+          onClick={() => {
+            void handleSave();
+          }}
+          type="button"
+        >
+          {props.busy ? "Saving..." : "Save secret"}
+        </button>
+      </div>
+    </article>
+  );
+
+  async function handleSave() {
+    setError(undefined);
+
+    if (duplicateKey) {
+      setError("Secret already exists. Update it below.");
+      return;
+    }
+
+    try {
+      await props.onSave(normalizedKey, value);
+    } catch (nextError) {
+      setError(readError(nextError));
+    }
+  }
 }
 
 function SecretCard(props: {

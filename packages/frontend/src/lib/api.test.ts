@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   abortConversation,
   cancelLiveRequest,
+  checkSystemVersion,
   closeTerminalSession,
   completeMcpAuth,
   connectTerminalWebSocket,
@@ -280,6 +281,12 @@ describe("additional request wrapper coverage", () => {
     expectedUrl: string;
     expectedInit: RequestInit;
   }>([
+    {
+      name: "checkSystemVersion posts a manual version check request",
+      run: () => checkSystemVersion(),
+      expectedUrl: "/api/system/version/check",
+      expectedInit: { method: "POST" },
+    },
     {
       name: "setSecret serializes the secret value",
       run: () => setSecret("OPENAI KEY", "secret-value"),
