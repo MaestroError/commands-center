@@ -79,11 +79,15 @@ Start production:
 ccenter start --cc-env-file /etc/commandscenter.env
 ```
 
+On first start for an unclaimed workspace, startup logs print a one-time claim code and the `/claim` URL. After the workspace is claimed, startup logs do not print old claim codes.
+
 Generate the initial claim or later reclaim code on the production host using the same env file and workspace path:
 
 ```bash
 ccenter claim --cc-env-file /etc/commandscenter.env
 ```
+
+`ccenter claim-code` is an alias for the same command.
 
 If an active claim/reclaim code already exists, `ccenter claim` asks for confirmation before generating a new one. Confirming removes the old code and prints a new code; only the newest code works. For non-interactive automation, use `--yes`:
 
@@ -117,6 +121,8 @@ With the README Compose example, generate the code inside the running service co
 docker compose exec commandscenter ccenter claim --cc-env-file /workspace/.cc/.env
 ```
 
+On first container start for an unclaimed mounted workspace, Docker logs also include claim instructions and a runtime-generated one-time claim code. The code is based on the mounted workspace state and is not baked into the image.
+
 For non-interactive rotation, add `--yes`:
 
 ```bash
@@ -139,6 +145,23 @@ Do not generate the claim code on the host unless the host command uses the exac
 The service installer starts the service, generates the first owner claim code using the same env file and runtime user, and prints the code in the install summary. Keep that code and enter it on the claim screen to unlock the instance.
 
 On Linux, the installer writes the systemd service with `User=` and `Group=` set to the installing user by default. Override with `CCENTER_SERVICE_USER` and `CCENTER_SERVICE_GROUP` only when you intentionally run under another account; the installer will run the claim command as that service user.
+
+## Public Domain Claiming
+
+When exposing CommandsCenter through HTTPS, set the exact browser origin:
+
+```bash
+CC_PUBLIC_ORIGIN=https://commands.example.com
+```
+
+Recommended sequence:
+
+1. Start CommandsCenter privately or behind the reverse proxy.
+2. Read the startup claim code from logs, or run `ccenter claim --cc-env-file <path>` in the same workspace context.
+3. Open `https://commands.example.com/claim`.
+4. Claim the workspace, then use normal login afterward.
+
+The reverse proxy must forward `Host`, `X-Forwarded-Proto`, and WebSocket upgrade headers. CommandsCenter still enforces owner sessions, CSRF, and origin checks even if the proxy also has access control. Use `CC_ALLOWED_ORIGINS` only for additional trusted public aliases.
 
 ## Production Reset Warning
 

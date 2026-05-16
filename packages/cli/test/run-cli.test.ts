@@ -364,8 +364,46 @@ describe("runCli", () => {
     expect(consoleLog).toHaveBeenNthCalledWith(2, "temporary owner recovery power");
   });
 
+  it("supports claim-code as an alias", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
+
+    await runCli(["claim-code"]);
+
+    expect(loadEnvFileMock).toHaveBeenCalledWith("/home/test/.cc/.env");
+    expect(rotateClaimCodeMock).toHaveBeenCalled();
+    expect(startServerRuntimeMock).not.toHaveBeenCalled();
+    expect(consoleLog).toHaveBeenNthCalledWith(1, "CLAIM code: claim-code");
+  });
+
+  it("explains reclaim codes do not invalidate the current password immediately", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
+    getOwnerStateMock.mockResolvedValue({
+      claimedAt: "2026-01-01T00:00:00.000Z",
+      ownerPassword: { algorithm: "scrypt" },
+      sessions: [],
+      rateLimits: {},
+    });
+    rotateClaimCodeMock.mockResolvedValue({
+      purpose: "reclaim",
+      code: "reclaim-code",
+      warning: "temporary owner recovery power",
+    });
+
+    await runCli(["claim", "--yes"]);
+
+    expect(consoleLog).toHaveBeenNthCalledWith(1, "RECLAIM code: reclaim-code");
+    expect(consoleLog).toHaveBeenNthCalledWith(2, "temporary owner recovery power");
+    expect(consoleLog).toHaveBeenNthCalledWith(
+      3,
+      "The current owner password remains valid until reclaim completes.",
+    );
+  });
+
   it("cancels claim code rotation when an active code exists and confirmation is declined", async () => {
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
     getOwnerStateMock.mockResolvedValue({
       sessions: [],
       rateLimits: {},
@@ -384,6 +422,7 @@ describe("runCli", () => {
   });
 
   it("rotates an existing claim code after confirmation", async () => {
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
     getOwnerStateMock.mockResolvedValue({
       sessions: [],
       rateLimits: {},
@@ -397,6 +436,7 @@ describe("runCli", () => {
   });
 
   it("skips claim code confirmation with --yes", async () => {
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
     getOwnerStateMock.mockResolvedValue({
       sessions: [],
       rateLimits: {},

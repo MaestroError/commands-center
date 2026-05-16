@@ -65,6 +65,19 @@ describe("parseCliArgs", () => {
     });
   });
 
+  it("parses claim-code confirmation", () => {
+    expect(parseCliArgs(["claim-code", "-y"])).toEqual({
+      command: "claim-code",
+      host: undefined,
+      port: undefined,
+      envFile: undefined,
+      help: false,
+      version: false,
+      rollback: false,
+      yes: true,
+    });
+  });
+
   it("detects help and version flags", () => {
     expect(parseCliArgs(["start", "--help", "--version"])).toEqual({
       command: "start",

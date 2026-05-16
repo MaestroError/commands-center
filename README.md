@@ -90,9 +90,13 @@ ccenter --version
 ccenter start --host 127.0.0.1 --port 3000
 ccenter start --cc-env-file /opt/commandscenter/.env
 ccenter serve --cc-env-file /opt/commandscenter/.env
+ccenter claim --cc-env-file /opt/commandscenter/.env
+ccenter claim-code --cc-env-file /opt/commandscenter/.env
 ccenter upgrade
 ccenter upgrade --rollback
 ```
+
+On first start for an unclaimed workspace, startup logs print a one-time claim code and the `/claim` URL. After the workspace is claimed, startup logs do not print old claim codes. If you miss or rotate the code, run `ccenter claim` or `ccenter claim-code` with the same env file/workspace context.
 
 Remove the global install:
 
@@ -269,6 +273,8 @@ Generate the owner claim code from inside the running container so it writes to 
 docker compose exec commandscenter ccenter claim --cc-env-file /workspace/.cc/.env
 ```
 
+On first startup for an unclaimed mounted workspace, the container logs also print claim instructions and a one-time claim code. The code is generated at runtime from the mounted volume state; it is never baked into the Docker image.
+
 If rotating an existing claim/reclaim code from automation, add `--yes`:
 
 ```bash
@@ -283,6 +289,52 @@ docker compose up -d
 ```
 
 Contributor-only source-build smoke tests are documented in [CONTRIBUTING.md](CONTRIBUTING.md#cli-build-smoke-test).
+
+### Public Domain And Reverse Proxy
+
+When exposing CommandsCenter publicly, put it behind HTTPS and set the exact public browser origin:
+
+```bash
+CC_PUBLIC_ORIGIN=https://commands.example.com
+CC_HOST=127.0.0.1
+CC_PORT=3000
+```
+
+Recommended setup sequence:
+
+1. Start CommandsCenter on a private bind address.
+2. Read the startup claim code from logs, or run `ccenter claim --cc-env-file <path>` in the same workspace context.
+3. Open `https://commands.example.com/claim` and claim the workspace.
+4. Use normal login afterward.
+
+Caddy example:
+
+```caddyfile
+commands.example.com {
+  reverse_proxy 127.0.0.1:3000
+}
+```
+
+nginx example:
+
+```nginx
+server {
+  listen 443 ssl http2;
+  server_name commands.example.com;
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+}
+```
+
+CommandsCenter still enforces owner sessions, CSRF, and origin checks even if the proxy has its own access control. In production, browser cookies are marked `Secure`; serve the public origin over HTTPS. Use `CC_ALLOWED_ORIGINS` only for additional trusted aliases, for example `https://commands-alt.example.com`.
 
 ## Project Structure
 

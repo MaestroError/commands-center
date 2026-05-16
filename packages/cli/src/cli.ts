@@ -20,8 +20,9 @@ import {
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "0.0.0.0";
+const ENV_FILE_CREATING_COMMANDS = new Set(["start", "serve", "claim", "claim-code"]);
 
-export type CliCommand = "start" | "serve" | "upgrade" | "claim";
+export type CliCommand = "start" | "serve" | "upgrade" | "claim" | "claim-code";
 
 export type CliArgs = {
   command: string;
@@ -43,6 +44,8 @@ export function printHelp(): void {
     ccenter serve [options]    Start the API server only (no frontend)
     ccenter upgrade [options]  Upgrade the global/local package
     ccenter claim [options]    Generate a workspace claim/reclaim code
+    ccenter claim-code [options]
+                               Alias for claim
     ccenter --help             Show this help
     ccenter --version          Show version
 
@@ -108,7 +111,7 @@ export async function runCli(args: string[]): Promise<void> {
     return;
   }
 
-  if (!["start", "serve", "upgrade", "claim"].includes(parsedArgs.command)) {
+  if (!["start", "serve", "upgrade", "claim", "claim-code"].includes(parsedArgs.command)) {
     console.error(`Unknown command: ${parsedArgs.command}`);
     printHelp();
     process.exitCode = 1;
@@ -123,7 +126,7 @@ export async function runCli(args: string[]): Promise<void> {
     return;
   }
 
-  if (parsedArgs.command === "claim") {
+  if (parsedArgs.command === "claim" || parsedArgs.command === "claim-code") {
     await runClaim(parsedArgs.yes);
     return;
   }
@@ -176,6 +179,10 @@ async function runClaim(yes: boolean): Promise<void> {
   const result = await service.rotateClaimCode();
   console.log(`${result.purpose.toUpperCase()} code: ${result.code}`);
   console.log(result.warning);
+
+  if (claimed) {
+    console.log("The current owner password remains valid until reclaim completes.");
+  }
 }
 
 function isActiveClaimCode(
@@ -226,7 +233,7 @@ async function runUpgrade(rollback: boolean): Promise<void> {
 
 function loadCliEnv(parsedArgs: CliArgs): void {
   if (parsedArgs.envFile) {
-    if (["start", "serve"].includes(parsedArgs.command) && !existsSync(parsedArgs.envFile)) {
+    if (ENV_FILE_CREATING_COMMANDS.has(parsedArgs.command) && !existsSync(parsedArgs.envFile)) {
       warnBeforeCreatingEnvFile(parsedArgs.envFile);
       process.env["CC_SECRET_KEY"] ??= createDefaultEnvFile(parsedArgs.envFile, {
         host: parsedArgs.host ?? process.env["CC_HOST"],
@@ -244,7 +251,7 @@ function loadCliEnv(parsedArgs: CliArgs): void {
 
   const defaultEnvFile = resolve(homedir(), ".cc", ".env");
 
-  if (["start", "serve"].includes(parsedArgs.command) && !existsSync(defaultEnvFile)) {
+  if (ENV_FILE_CREATING_COMMANDS.has(parsedArgs.command) && !existsSync(defaultEnvFile)) {
     process.env["CC_SECRET_KEY"] ??= createDefaultEnvFile(defaultEnvFile, {
       host: parsedArgs.host ?? process.env["CC_HOST"],
       port: parsedArgs.port?.toString() ?? process.env["CC_PORT"],

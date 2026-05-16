@@ -107,6 +107,12 @@ export async function startServerRuntime(
   const secretService = createSecretService({ db: database.db, config });
   const ownerAccessService = createOwnerAccessService({ config, logger });
   await ownerAccessService.initialize();
+  await logOwnerClaimStartupInstructions({
+    config,
+    logger,
+    ownerAccessService,
+  });
+  logPublicBindingGuidance(config, logger);
 
   const orchestrator = createOpenCodeOrchestrator({
     config,
@@ -244,6 +250,93 @@ export async function startServerRuntime(
     server,
     drain: drainController.drain,
   };
+}
+
+export async function logOwnerClaimStartupInstructions(options: {
+  config: RuntimeConfig;
+  logger: Logger;
+  ownerAccessService: Pick<OwnerAccessService, "getState" | "rotateClaimCode">;
+}): Promise<void> {
+  const state = await options.ownerAccessService.getState();
+  const claimed = state.claimedAt !== undefined && state.ownerPassword !== undefined;
+
+  if (claimed) {
+    options.logger.info({ authState: "claimed" }, "workspace owner access is claimed");
+    return;
+  }
+
+  const claimUrl = `${getOperatorBaseUrl(options.config)}/claim`;
+
+  if (isActiveClaimCode(state.claimCode)) {
+    options.logger.warn(
+      {
+        authState: "unclaimed",
+        claimUrl,
+        workspaceDir: options.config.paths.workspaceDir,
+      },
+      "workspace is unclaimed and an active claim code already exists; run ccenter claim --yes in the same workspace context if the code was missed",
+    );
+    return;
+  }
+
+  const result = await options.ownerAccessService.rotateClaimCode();
+  options.logger.warn(
+    {
+      authState: "unclaimed",
+      claimCode: result.code,
+      claimUrl,
+      workspaceDir: options.config.paths.workspaceDir,
+    },
+    "workspace is unclaimed; open the claim URL and use this one-time claim code",
+  );
+}
+
+export function logPublicBindingGuidance(config: RuntimeConfig, logger: Logger): void {
+  const externalBinding = isExternalBinding(config.server.host);
+
+  logger.info(
+    {
+      localUrl: `http://127.0.0.1:${config.server.port.toString()}`,
+      publicOrigin: config.security.publicOrigin,
+      allowedOrigins: config.security.allowedOrigins,
+    },
+    "operator access URLs configured",
+  );
+
+  if (!externalBinding) {
+    return;
+  }
+
+  logger.warn(
+    {
+      host: config.server.host,
+      port: config.server.port,
+      publicOrigin: config.security.publicOrigin,
+    },
+    "server is bound to an externally reachable address; use HTTPS and set CC_PUBLIC_ORIGIN when exposing CommandsCenter publicly",
+  );
+}
+
+function getOperatorBaseUrl(config: RuntimeConfig): string {
+  return config.security.publicOrigin ?? `http://127.0.0.1:${config.server.port.toString()}`;
+}
+
+function isExternalBinding(host: string): boolean {
+  return !["127.0.0.1", "localhost", "::1"].includes(host);
+}
+
+function isActiveClaimCode(
+  code: { invalidatedAt?: string; expiresAt?: string } | undefined,
+): boolean {
+  if (!code || code.invalidatedAt) {
+    return false;
+  }
+
+  if (code.expiresAt && new Date(code.expiresAt).getTime() <= Date.now()) {
+    return false;
+  }
+
+  return true;
 }
 
 function installSignalHandlers(
