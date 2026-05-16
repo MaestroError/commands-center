@@ -98,9 +98,47 @@ Production notes:
 - Set `CC_PUBLIC_ORIGIN` to the exact external origin users open in the browser.
 - Add `CC_ALLOWED_ORIGINS` only for additional trusted proxy aliases.
 - Run `ccenter claim` on the host that has access to the same `CC_WORKSPACE_DIR` as the running server.
+- Run `ccenter claim` as the same OS user as the service, or from inside the same container, so the `0600` auth file remains readable and writable by the runtime.
 - Treat claim/reclaim codes like temporary root credentials.
 - Prefer password change from `Profile` for normal credential rotation.
 - Use reclaim only when the owner password is lost.
+
+## Docker Claiming
+
+Docker claim codes work only when the claim command sees the same mounted workspace as the running container. The default image uses:
+
+```bash
+CC_WORKSPACE_DIR=/workspace/.cc/workspace
+```
+
+With the README Compose example, generate the code inside the running service container:
+
+```bash
+docker compose exec commandscenter ccenter claim --cc-env-file /workspace/.cc/.env
+```
+
+For non-interactive rotation, add `--yes`:
+
+```bash
+docker compose exec commandscenter ccenter claim --cc-env-file /workspace/.cc/.env --yes
+```
+
+You can also run a one-off container against the same volume:
+
+```bash
+docker run --rm -it \
+  -v "$PWD/workspace:/workspace" \
+  commandscenter:local \
+  ccenter claim --cc-env-file /workspace/.cc/.env
+```
+
+Do not generate the claim code on the host unless the host command uses the exact same mounted workspace path and compatible file ownership. Otherwise the code is written to a different `auth/owner-access.json` and will not work in the container.
+
+## Service Claiming
+
+The service installer starts the service, generates the first owner claim code using the same env file and runtime user, and prints the code in the install summary. Keep that code and enter it on the claim screen to unlock the instance.
+
+On Linux, the installer writes the systemd service with `User=` and `Group=` set to the installing user by default. Override with `CCENTER_SERVICE_USER` and `CCENTER_SERVICE_GROUP` only when you intentionally run under another account; the installer will run the claim command as that service user.
 
 ## Production Reset Warning
 

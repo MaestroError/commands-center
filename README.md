@@ -116,7 +116,7 @@ curl http://127.0.0.1:3000/api/system/version
 
 ### Automatic Service Installer
 
-The repository includes a cross-platform installer for Ubuntu/Linux with systemd and macOS with launchd. It checks for Node.js, installs missing requirements when possible, installs CommandsCenter globally, lets `ccenter` generate the production `.env` file on first service start, starts the app as a background service, and prints the app URLs plus filesystem locations.
+The repository includes a cross-platform installer for Ubuntu/Linux with systemd and macOS with launchd. It checks for Node.js, installs missing requirements when possible, installs CommandsCenter globally, lets `ccenter` generate the production `.env` file on first service start, starts the app as a background service, generates the first owner claim code, and prints the app URLs plus filesystem locations.
 
 Install and start the background service:
 
@@ -151,13 +151,16 @@ bash scripts/install-ccenter-service.sh
 
 On Ubuntu, the script writes `/etc/systemd/system/commandscenter.service`. On macOS, it writes `~/Library/LaunchAgents/com.commandscenter.app.plist`.
 
+After the service starts, the installer prints the owner claim code. Keep that code and enter it on the claim screen to unlock the instance. On Linux, the installer runs the systemd unit as the installing user by default; if you override `CCENTER_SERVICE_USER`, the installer runs the claim command as that user too.
+
 ### VPS With Systemd
 
 Use a global npm install plus a systemd service. Keep runtime files and `.env` in `/opt/commandscenter`.
 
 ```bash
+sudo useradd --system --create-home --home-dir /opt/commandscenter --shell /usr/sbin/nologin commandscenter
 sudo mkdir -p /opt/commandscenter
-sudo chown -R "$USER":"$USER" /opt/commandscenter
+sudo chown -R commandscenter:commandscenter /opt/commandscenter
 cd /opt/commandscenter
 npm install -g commandscenter
 ```
@@ -173,6 +176,8 @@ After=network.target
 
 [Service]
 Type=simple
+User=commandscenter
+Group=commandscenter
 WorkingDirectory=/opt/commandscenter
 Environment=CC_HOST=127.0.0.1
 Environment=CC_PORT=3000
@@ -196,6 +201,12 @@ sudo systemctl start commandscenter
 sudo systemctl status commandscenter
 journalctl -u commandscenter -f
 curl http://127.0.0.1:3000/api/health
+```
+
+Generate the owner claim code as the service user so the `0600` auth file remains writable by the service:
+
+```bash
+sudo -u commandscenter ccenter claim --cc-env-file /opt/commandscenter/.env
 ```
 
 Upgrade on VPS:
@@ -250,6 +261,18 @@ docker compose up -d
 docker compose logs -f commandscenter
 curl http://127.0.0.1:3000/api/health
 curl http://127.0.0.1:3000/api/system/version
+```
+
+Generate the owner claim code from inside the running container so it writes to the same mounted `/workspace/.cc/workspace/auth/owner-access.json` file as the server:
+
+```bash
+docker compose exec commandscenter ccenter claim --cc-env-file /workspace/.cc/.env
+```
+
+If rotating an existing claim/reclaim code from automation, add `--yes`:
+
+```bash
+docker compose exec commandscenter ccenter claim --cc-env-file /workspace/.cc/.env --yes
 ```
 
 Update Docker deployment:

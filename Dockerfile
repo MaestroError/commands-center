@@ -3,7 +3,8 @@ FROM node:24-bookworm-slim
 ARG CCENTER_PACKAGE_SPEC=commandscenter
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates git python3 make g++ \
+  && apt-get install -y --no-install-recommends ca-certificates curl g++ gh git make openssh-client python-is-python3 python3 \
+  && curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh \
   && rm -rf /var/lib/apt/lists/* \
   && npm install -g "$CCENTER_PACKAGE_SPEC" \
   && mkdir -p /workspace \

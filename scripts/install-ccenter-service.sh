@@ -12,6 +12,8 @@ HOST="${CCENTER_HOST:-127.0.0.1}"
 PORT="${CCENTER_PORT:-3000}"
 PUBLIC_HOST="${CCENTER_PUBLIC_HOST:-127.0.0.1}"
 NODE_MAJOR="${CCENTER_NODE_MAJOR:-22}"
+SERVICE_USER="${CCENTER_SERVICE_USER:-$(id -un)}"
+SERVICE_GROUP="${CCENTER_SERVICE_GROUP:-$(id -gn)}"
 
 OS="$(uname -s)"
 
@@ -23,6 +25,7 @@ main() {
   prepare_env_file
   install_service
   start_service
+  generate_claim_code
   print_summary
 }
 
@@ -127,6 +130,8 @@ After=network.target
 
 [Service]
 Type=simple
+User=$SERVICE_USER
+Group=$SERVICE_GROUP
 WorkingDirectory=$INSTALL_DIR
 Environment=CC_HOST=$HOST
 Environment=CC_PORT=$PORT
@@ -217,6 +222,22 @@ start_service() {
   launchctl start com.commandscenter.app >/dev/null 2>&1 || true
 }
 
+generate_claim_code() {
+  CLAIM_OUTPUT="$(run_claim_command)"
+}
+
+run_claim_command() {
+  local ccenter_path
+  ccenter_path="$(command -v ccenter)"
+
+  if [[ "$OS" == "Linux" && "$SERVICE_USER" != "$(id -un)" ]]; then
+    sudo -u "$SERVICE_USER" "$ccenter_path" claim --cc-env-file "$ENV_FILE" --yes
+    return
+  fi
+
+  "$ccenter_path" claim --cc-env-file "$ENV_FILE" --yes
+}
+
 print_summary() {
   local base_url
   base_url="http://$PUBLIC_HOST:$PORT"
@@ -230,9 +251,13 @@ print_summary() {
   printf '  Install dir:   %s\n' "$INSTALL_DIR"
   printf '  Env file:      %s\n' "$ENV_FILE"
   printf '  Workspace dir: %s\n' "$WORKSPACE_DIR"
+  printf '\nOwner claim:\n'
+  printf '%s\n' "$CLAIM_OUTPUT"
+  printf '  Keep this code and enter it on the claim screen to unlock this instance.\n'
   printf '\nService:\n'
 
   if [[ "$OS" == "Linux" ]]; then
+    printf '  User:   %s:%s\n' "$SERVICE_USER" "$SERVICE_GROUP"
     printf '  Status: sudo systemctl status %s\n' "$SERVICE_NAME"
     printf '  Logs:   journalctl -u %s -f\n' "$SERVICE_NAME"
     return
