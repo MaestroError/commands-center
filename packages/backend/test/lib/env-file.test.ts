@@ -1,17 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { readFileSyncMock } = vi.hoisted(() => ({
+const { existsSyncMock, readFileSyncMock } = vi.hoisted(() => ({
+  existsSyncMock: vi.fn(),
   readFileSyncMock: vi.fn(),
 }));
 
 vi.mock("node:fs", () => ({
+  existsSync: existsSyncMock,
   readFileSync: readFileSyncMock,
 }));
 
-import { loadEnvFile } from "../src/env-file.js";
+import { loadDefaultEnvFile, loadEnvFile } from "../../src/lib/env-file";
 
 describe("loadEnvFile", () => {
   beforeEach(() => {
+    existsSyncMock.mockReset();
     readFileSyncMock.mockReset();
   });
 
@@ -56,5 +59,31 @@ EXISTING=from-file
       DOUBLE: "world",
       PLAIN: "value",
     });
+  });
+});
+
+describe("loadDefaultEnvFile", () => {
+  beforeEach(() => {
+    existsSyncMock.mockReset();
+    readFileSyncMock.mockReset();
+  });
+
+  it("loads the .env file from INIT_CWD", () => {
+    existsSyncMock.mockReturnValue(true);
+    readFileSyncMock.mockReturnValue("CC_WORKSPACE_DIR=/tmp/workspace\n");
+    const env = { INIT_CWD: "/workspace" } as NodeJS.ProcessEnv;
+
+    const loaded = loadDefaultEnvFile({ env });
+
+    expect(loaded).toBe("/workspace/.env");
+    expect(env["CC_WORKSPACE_DIR"]).toBe("/tmp/workspace");
+  });
+
+  it("returns undefined when the default .env file does not exist", () => {
+    existsSyncMock.mockReturnValue(false);
+    const env = { INIT_CWD: "/workspace" } as NodeJS.ProcessEnv;
+
+    expect(loadDefaultEnvFile({ env })).toBeUndefined();
+    expect(readFileSyncMock).not.toHaveBeenCalled();
   });
 });

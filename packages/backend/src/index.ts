@@ -37,6 +37,7 @@ export {
   registerApiErrorHandler,
 } from "./lib/api-error.js";
 export { configureFastifyZod, type AppServer, type AppTypeProvider } from "./lib/fastify-zod.js";
+export { loadDefaultEnvFile, loadEnvFile } from "./lib/env-file.js";
 export { commonErrorResponses } from "./lib/route.js";
 export {
   createOpenCodeClient,

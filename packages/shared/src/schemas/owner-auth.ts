@@ -32,6 +32,17 @@ export const ownerLoginResultSchema = z.object({
   status: z.literal("claimed-authenticated"),
 });
 
+export const ownerPasswordChangeInputSchema = z.object({
+  currentPassword: ownerPasswordInputSchema,
+  newPassword: ownerPasswordInputSchema,
+  confirmNewPassword: ownerPasswordInputSchema,
+});
+
+export const ownerPasswordChangeResultSchema = z.object({
+  status: z.literal("changed"),
+  otherSessionsRevoked: z.literal(true),
+});
+
 export const ownerLogoutResultSchema = z.object({
   status: z.literal("claimed-unauthenticated"),
 });
@@ -48,6 +59,8 @@ export type OwnerClaimInput = z.infer<typeof ownerClaimInputSchema>;
 export type OwnerClaimResult = z.infer<typeof ownerClaimResultSchema>;
 export type OwnerLoginInput = z.infer<typeof ownerLoginInputSchema>;
 export type OwnerLoginResult = z.infer<typeof ownerLoginResultSchema>;
+export type OwnerPasswordChangeInput = z.infer<typeof ownerPasswordChangeInputSchema>;
+export type OwnerPasswordChangeResult = z.infer<typeof ownerPasswordChangeResultSchema>;
 export type OwnerLogoutResult = z.infer<typeof ownerLogoutResultSchema>;
 export type OwnerReclaimInput = z.infer<typeof ownerReclaimInputSchema>;
 export type OwnerReclaimResult = z.infer<typeof ownerReclaimResultSchema>;

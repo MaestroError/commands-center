@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "createdAt": "2026-05-16T00:00:51.060Z",
+  "updatedAt": "2026-05-16T00:03:02.846Z",
+  "claimCode": {
+    "hash": {
+      "algorithm": "scrypt",
+      "version": 1,
+      "salt": "oqpP3Z3vk2OT4WqQVqa4qg",
+      "hash": "SjzHsejJAts2PJCoTbF-eV8kqck-buj-M0v8g9qmI4XJHoyWkpj_rhKmXtdvIkKb00jJiLdQ75EkP3ckeagqZQ",
+      "keyLength": 64,
+      "cost": 16384,
+      "blockSize": 8,
+      "parallelization": 1
+    },
+    "createdAt": "2026-05-16T00:03:02.811Z",
+    "expiresAt": "2026-05-16T00:33:02.811Z",
+    "rotatedAt": "2026-05-16T00:03:02.811Z",
+    "attemptCount": 0
+  },
+  "sessions": [],
+  "rateLimits": {
+    "claimAttempts": [],
+    "reclaimAttempts": [],
+    "loginAttempts": []
+  }
+}

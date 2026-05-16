@@ -7,6 +7,8 @@ import {
   ownerLoginInputSchema,
   ownerLoginResultSchema,
   ownerLogoutResultSchema,
+  ownerPasswordChangeInputSchema,
+  ownerPasswordChangeResultSchema,
   ownerReclaimInputSchema,
   ownerReclaimResultSchema,
 } from "@cc/shared/schemas";
@@ -130,6 +132,43 @@ export function registerOwnerAuthRoutes(server: AppServer, context: RuntimeConte
         createClearCsrfCookie(context.config),
       ]);
       return { status: "claimed-unauthenticated" as const };
+    },
+  );
+
+  app.post(
+    "/api/auth/password",
+    {
+      schema: {
+        body: ownerPasswordChangeInputSchema,
+        response: {
+          200: ownerPasswordChangeResultSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const sessionId = readSessionCookie(request.headers.cookie);
+
+      if (!sessionId) {
+        throw new UnauthorizedError("Owner session is invalid.");
+      }
+
+      try {
+        await service.changePassword({
+          sessionId,
+          currentPassword: request.body.currentPassword,
+          newPassword: request.body.newPassword,
+          confirmNewPassword: request.body.confirmNewPassword,
+          ip: request.ip,
+        });
+        reply.header(
+          "set-cookie",
+          createCsrfCookie({ config: context.config, token: createCsrfToken() }),
+        );
+
+        return { status: "changed" as const, otherSessionsRevoked: true as const };
+      } catch (error) {
+        throw mapOwnerAccessError(error);
+      }
     },
   );
 

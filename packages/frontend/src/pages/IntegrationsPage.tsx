@@ -10,6 +10,7 @@ import type {
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PasswordInput } from "@/components/common/PasswordInput";
 import { useAgentMutations, useAgentsQuery } from "@/hooks/use-agents-query";
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import { getMcpServerSelection, setMcpServerEnabled } from "@/lib/agent-capabilities";
@@ -1037,14 +1038,12 @@ function ComposioDialog(props: {
 
           {authMode === "api-key" ? (
             <Field label="Consumer API key" required>
-              <input
+              <PasswordInput
                 aria-label="Consumer API key"
-                className="cc-input"
                 onChange={(event) => {
                   setApiKey(event.target.value);
                   setSubmitError(undefined);
                 }}
-                type="password"
                 value={apiKey}
               />
             </Field>

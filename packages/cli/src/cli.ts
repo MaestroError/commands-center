@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 import fastifyStatic from "@fastify/static";
@@ -9,17 +10,18 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 
 import {
   createLogger,
+  createOwnerAccessService,
   createSystemVersionService,
+  loadEnvFile,
   loadRuntimeConfig,
   readPackageInfo,
   startServerRuntime,
 } from "@cc/backend";
-import { loadEnvFile } from "./env-file.js";
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "0.0.0.0";
 
-export type CliCommand = "start" | "serve" | "upgrade";
+export type CliCommand = "start" | "serve" | "upgrade" | "claim";
 
 export type CliArgs = {
   command: string;
@@ -29,6 +31,7 @@ export type CliArgs = {
   help: boolean;
   version: boolean;
   rollback: boolean;
+  yes: boolean;
 };
 
 export function printHelp(): void {
@@ -39,6 +42,7 @@ export function printHelp(): void {
     ccenter start [options]    Start the server with web UI
     ccenter serve [options]    Start the API server only (no frontend)
     ccenter upgrade [options]  Upgrade the global/local package
+    ccenter claim [options]    Generate a workspace claim/reclaim code
     ccenter --help             Show this help
     ccenter --version          Show version
 
@@ -47,6 +51,7 @@ export function printHelp(): void {
     --host, -h <string>        Host to bind to (default: ${DEFAULT_HOST})
     --cc-env-file <path>       Load environment variables from a file
     --rollback                 Reinstall the previous recorded version
+    --yes, -y                  Confirm claim-code rotation prompts
 `);
 }
 
@@ -86,6 +91,7 @@ export function parseCliArgs(args: string[]): CliArgs {
     help: args.includes("--help"),
     version: args.includes("--version"),
     rollback: args.includes("--rollback"),
+    yes: args.includes("--yes") || args.includes("-y"),
   };
 }
 
@@ -102,7 +108,7 @@ export async function runCli(args: string[]): Promise<void> {
     return;
   }
 
-  if (!["start", "serve", "upgrade"].includes(parsedArgs.command)) {
+  if (!["start", "serve", "upgrade", "claim"].includes(parsedArgs.command)) {
     console.error(`Unknown command: ${parsedArgs.command}`);
     printHelp();
     process.exitCode = 1;
@@ -114,6 +120,11 @@ export async function runCli(args: string[]): Promise<void> {
 
   if (parsedArgs.command === "upgrade") {
     await runUpgrade(parsedArgs.rollback);
+    return;
+  }
+
+  if (parsedArgs.command === "claim") {
+    await runClaim(parsedArgs.yes);
     return;
   }
 
@@ -143,6 +154,55 @@ export async function runCli(args: string[]): Promise<void> {
           }
         : undefined,
   });
+}
+
+async function runClaim(yes: boolean): Promise<void> {
+  const config = loadRuntimeConfig();
+  const service = createOwnerAccessService({ config, logger: createLogger(config) });
+  const state = await service.getState();
+  const claimed = state.claimedAt !== undefined && state.ownerPassword !== undefined;
+  const existingCode = claimed ? state.reclaimCode : state.claimCode;
+
+  if (isActiveClaimCode(existingCode)) {
+    const purpose = claimed ? "reclaim" : "claim";
+    const confirmed = yes || (await confirmClaimCodeRotation(purpose));
+
+    if (!confirmed) {
+      console.log("Claim-code generation cancelled.");
+      return;
+    }
+  }
+
+  const result = await service.rotateClaimCode();
+  console.log(`${result.purpose.toUpperCase()} code: ${result.code}`);
+  console.log(result.warning);
+}
+
+function isActiveClaimCode(
+  code: { invalidatedAt?: string; expiresAt?: string } | undefined,
+): boolean {
+  if (!code || code.invalidatedAt) {
+    return false;
+  }
+
+  if (code.expiresAt && new Date(code.expiresAt).getTime() <= Date.now()) {
+    return false;
+  }
+
+  return true;
+}
+
+async function confirmClaimCodeRotation(purpose: "claim" | "reclaim"): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+  try {
+    const answer = await rl.question(
+      `An active ${purpose} code already exists. Generating a new code removes the old code, and you will have to use the new code to claim this workspace. Continue? [y/N] `,
+    );
+    return ["y", "yes"].includes(answer.trim().toLowerCase());
+  } finally {
+    rl.close();
+  }
 }
 
 async function runUpgrade(rollback: boolean): Promise<void> {

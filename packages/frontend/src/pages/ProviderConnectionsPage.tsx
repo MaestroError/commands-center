@@ -8,6 +8,7 @@ import type {
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PasswordInput } from "@/components/common/PasswordInput";
 import { useProviderMutations, useProvidersQuery } from "@/hooks/use-providers-query";
 
 type DialogState = {
@@ -528,12 +529,10 @@ function ProviderDialog(props: ProviderDialogProps) {
             <label className="block text-sm font-medium text-text-primary" htmlFor="api-key-input">
               API key
             </label>
-            <input
-              className="cc-input"
+            <PasswordInput
               id="api-key-input"
               onChange={(event) => setApiKey(event.target.value)}
               placeholder="sk-..."
-              type="password"
               value={apiKey}
             />
             <p className="text-sm text-text-secondary">

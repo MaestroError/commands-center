@@ -49,6 +49,14 @@ import {
   mcpServerSchema,
   opencodeFileListResultSchema,
   opencodeFileSearchResultSchema,
+  ownerAuthStatusResultSchema,
+  ownerClaimInputSchema,
+  ownerClaimResultSchema,
+  ownerLoginInputSchema,
+  ownerLoginResultSchema,
+  ownerLogoutResultSchema,
+  ownerPasswordChangeInputSchema,
+  ownerPasswordChangeResultSchema,
   providerConnectResultSchema,
   providerOauthAuthorizationSchema,
   providerOauthCompleteResultSchema,
@@ -117,6 +125,14 @@ import {
   type McpAuthRemoveResult,
   type McpAuthStartResult,
   type McpServer,
+  type OwnerAuthStatusResult,
+  type OwnerClaimInput,
+  type OwnerClaimResult,
+  type OwnerLoginInput,
+  type OwnerLoginResult,
+  type OwnerLogoutResult,
+  type OwnerPasswordChangeInput,
+  type OwnerPasswordChangeResult,
   type ProviderOauthAuthorization,
   type ProviderOauthCompleteResult,
   type ProviderStatus,
@@ -154,6 +170,53 @@ type RequestOptions = {
   method?: string;
   body?: unknown;
 };
+
+const CSRF_COOKIE_NAME = "cc_csrf_token";
+const CSRF_HEADER_NAME = "x-csrf-token";
+
+type ApiFetchOptions = {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: BodyInit;
+  signal?: AbortSignal;
+};
+
+export async function getAuthStatus(): Promise<OwnerAuthStatusResult> {
+  return requestJson<OwnerAuthStatusResult>("/api/auth/status", ownerAuthStatusResultSchema);
+}
+
+export async function claimWorkspace(input: OwnerClaimInput): Promise<OwnerClaimResult> {
+  return requestJson<OwnerClaimResult>("/api/auth/claim", ownerClaimResultSchema, {
+    method: "POST",
+    body: ownerClaimInputSchema.parse(input),
+  });
+}
+
+export async function loginOwner(input: OwnerLoginInput): Promise<OwnerLoginResult> {
+  return requestJson<OwnerLoginResult>("/api/auth/login", ownerLoginResultSchema, {
+    method: "POST",
+    body: ownerLoginInputSchema.parse(input),
+  });
+}
+
+export async function logoutOwner(): Promise<OwnerLogoutResult> {
+  return requestJson<OwnerLogoutResult>("/api/auth/logout", ownerLogoutResultSchema, {
+    method: "POST",
+  });
+}
+
+export async function changeOwnerPassword(
+  input: OwnerPasswordChangeInput,
+): Promise<OwnerPasswordChangeResult> {
+  return requestJson<OwnerPasswordChangeResult>(
+    "/api/auth/password",
+    ownerPasswordChangeResultSchema,
+    {
+      method: "POST",
+      body: ownerPasswordChangeInputSchema.parse(input),
+    },
+  );
+}
 
 export async function getEngineStatus(): Promise<EngineStatus> {
   return requestJson<EngineStatus>("/api/opencode", engineStatusSchema);
@@ -235,7 +298,9 @@ export async function setMcpServerEnabled(id: string, enabled: boolean): Promise
 }
 
 export async function deleteMcpServer(id: string): Promise<void> {
-  const response = await fetch(`/api/mcp-servers/${encodeURIComponent(id)}`, { method: "DELETE" });
+  const response = await apiFetch(`/api/mcp-servers/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 
   if (!response.ok && response.status !== 204) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
@@ -289,7 +354,7 @@ export async function listSecrets(): Promise<SecretMeta[]> {
 }
 
 export async function setSecret(key: string, value: string): Promise<void> {
-  const response = await fetch(`/api/secrets/${encodeURIComponent(key)}`, {
+  const response = await apiFetch(`/api/secrets/${encodeURIComponent(key)}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(setSecretRequestSchema.parse({ value })),
@@ -302,7 +367,7 @@ export async function setSecret(key: string, value: string): Promise<void> {
 }
 
 export async function deleteSecret(key: string): Promise<void> {
-  const response = await fetch(`/api/secrets/${encodeURIComponent(key)}`, { method: "DELETE" });
+  const response = await apiFetch(`/api/secrets/${encodeURIComponent(key)}`, { method: "DELETE" });
 
   if (!response.ok && response.status !== 204) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
@@ -387,7 +452,7 @@ export async function createCustomTool(
 }
 
 export async function deleteCustomTool(slug: string): Promise<void> {
-  const response = await fetch(`/api/custom-tools/${encodeURIComponent(slug)}`, {
+  const response = await apiFetch(`/api/custom-tools/${encodeURIComponent(slug)}`, {
     method: "DELETE",
   });
 
@@ -414,7 +479,7 @@ export async function uploadWorkspaceSkill(
   input: WorkspaceSkillUploadInput,
 ): Promise<WorkspaceSkillMutationResult> {
   const body = workspaceSkillUploadInputSchema.parse(input);
-  const response = await fetch("/api/workspace-skills/upload", {
+  const response = await apiFetch("/api/workspace-skills/upload", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -454,7 +519,7 @@ export async function uploadWorkspaceSkill(
 }
 
 export async function deleteWorkspaceSkill(slug: string): Promise<void> {
-  const response = await fetch(`/api/workspace-skills/${encodeURIComponent(slug)}`, {
+  const response = await apiFetch(`/api/workspace-skills/${encodeURIComponent(slug)}`, {
     method: "DELETE",
   });
 
@@ -468,7 +533,7 @@ export async function updateWorkspaceSkillCategory(
   slug: string,
   input: UpdateWorkspaceSkillCategoryInput,
 ): Promise<WorkspaceSkillMutationResult> {
-  const response = await fetch(`/api/workspace-skills/${encodeURIComponent(slug)}/category`, {
+  const response = await apiFetch(`/api/workspace-skills/${encodeURIComponent(slug)}/category`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
@@ -534,7 +599,7 @@ export async function moveAgentCustomToolToGlobal(
 }
 
 export async function deleteAgentCustomTool(agentId: string, slug: string): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/agents/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}`,
     {
       method: "DELETE",
@@ -623,7 +688,7 @@ export async function disableTask(id: string): Promise<Task> {
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
+  const response = await apiFetch(`/api/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
 
   if (!response.ok && response.status !== 204) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
@@ -730,7 +795,7 @@ export async function deleteFileManagerEntry(query: FileManagerDeleteEntryQuery)
   const params = new URLSearchParams();
   params.set("root", parsed.root);
   params.set("path", parsed.path);
-  const response = await fetch(`/api/file-manager/entries?${params.toString()}`, {
+  const response = await apiFetch(`/api/file-manager/entries?${params.toString()}`, {
     method: "DELETE",
   });
 
@@ -791,7 +856,7 @@ export async function saveFileManagerFileContent(
   input: FileManagerSaveFileInput,
 ): Promise<FileManagerSaveFileResponse> {
   const body = fileManagerSaveFileInputSchema.parse(input);
-  const response = await fetch("/api/file-manager/files/content", {
+  const response = await apiFetch("/api/file-manager/files/content", {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -895,7 +960,7 @@ async function requestJson<T>(
   schema: { parse(input: unknown): T },
   options?: RequestOptions,
 ): Promise<T> {
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: options?.method ?? "GET",
     headers: options?.body ? { "content-type": "application/json" } : undefined,
     body: options?.body ? JSON.stringify(options.body) : undefined,
@@ -910,21 +975,78 @@ async function requestJson<T>(
   return schema.parse(payload);
 }
 
+async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Response> {
+  const method = options.method ?? "GET";
+  const headers = options.headers ? { ...options.headers } : undefined;
+  const csrfToken = shouldAttachCsrfToken(method) ? readCookie(CSRF_COOKIE_NAME) : undefined;
+  const init: RequestInit = { method };
+
+  if (csrfToken) {
+    const existingHeaderName = Object.keys(headers ?? {}).find(
+      (header) => header.toLowerCase() === CSRF_HEADER_NAME,
+    );
+    const nextHeaders = headers ?? {};
+    nextHeaders[existingHeaderName ?? CSRF_HEADER_NAME] = csrfToken;
+    init.headers = nextHeaders;
+  } else if (headers) {
+    init.headers = headers;
+  }
+
+  if (options.body !== undefined) {
+    init.body = options.body;
+  }
+
+  if (options.signal) {
+    init.signal = options.signal;
+  }
+
+  return fetch(url, init);
+}
+
+function shouldAttachCsrfToken(method: string): boolean {
+  return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
+}
+
+function readCookie(name: string): string | undefined {
+  const prefix = `${name}=`;
+  return document.cookie
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .find((cookie) => cookie.startsWith(prefix))
+    ?.slice(prefix.length);
+}
+
 export function readApiError(payload: unknown, status: number, statusText?: string): string {
   if (payload && typeof payload === "object" && "error" in payload) {
     const error = payload.error;
 
-    if (
-      error &&
-      typeof error === "object" &&
-      "message" in error &&
-      typeof error.message === "string"
-    ) {
-      return error.message;
+    if (error && typeof error === "object") {
+      const issues = readApiErrorIssues(error);
+
+      if (issues.length > 0) {
+        return issues.join(" ");
+      }
+
+      if ("message" in error && typeof error.message === "string") {
+        return error.message;
+      }
     }
   }
 
   return statusText || `Request failed with status ${String(status)}.`;
+}
+
+function readApiErrorIssues(error: object): string[] {
+  if (!("details" in error) || !error.details || typeof error.details !== "object") {
+    return [];
+  }
+
+  const details = error.details;
+  if (!("issues" in details) || !Array.isArray(details.issues)) {
+    return [];
+  }
+
+  return details.issues.filter((issue): issue is string => typeof issue === "string");
 }
 
 // --- Conversation API ---
@@ -944,7 +1066,7 @@ export async function listConversations(agentId: string): Promise<ConversationSu
 }
 
 export async function deleteConversation(agentId: string, conversationId: string): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/agents/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`,
     { method: "DELETE" },
   );
@@ -985,7 +1107,7 @@ export async function sendPrompt(
   input: SendConversationPromptInput,
 ): Promise<void> {
   const parsed = sendConversationPromptInputSchema.parse(input);
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/conversations/${encodeURIComponent(conversationId)}/prompt?stream=true`,
     {
       method: "POST",
@@ -1001,9 +1123,12 @@ export async function sendPrompt(
 }
 
 export async function abortConversation(conversationId: string): Promise<void> {
-  const response = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/abort`, {
-    method: "POST",
-  });
+  const response = await apiFetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/abort`,
+    {
+      method: "POST",
+    },
+  );
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
@@ -1016,7 +1141,7 @@ export async function replyPermission(
   requestId: string,
   reply: "once" | "always" | "reject",
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/conversations/${encodeURIComponent(conversationId)}/permissions/${encodeURIComponent(requestId)}/reply`,
     {
       method: "POST",
@@ -1036,7 +1161,7 @@ export async function replyQuestion(
   requestId: string,
   answers: string[][],
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/conversations/${encodeURIComponent(conversationId)}/questions/${encodeURIComponent(requestId)}/reply`,
     {
       method: "POST",
@@ -1052,7 +1177,7 @@ export async function replyQuestion(
 }
 
 export async function rejectQuestion(conversationId: string, requestId: string): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/conversations/${encodeURIComponent(conversationId)}/questions/${encodeURIComponent(requestId)}/reject`,
     { method: "POST" },
   );
@@ -1064,11 +1189,14 @@ export async function rejectQuestion(conversationId: string, requestId: string):
 }
 
 export async function sendShell(conversationId: string, command: string): Promise<void> {
-  const response = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/shell`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ command }),
-  });
+  const response = await apiFetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/shell`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ command }),
+    },
+  );
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
@@ -1081,11 +1209,14 @@ export async function sendCommand(
   command: string,
   args?: string,
 ): Promise<void> {
-  const response = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/command`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ command, arguments: args ?? "" }),
-  });
+  const response = await apiFetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/command`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ command, arguments: args ?? "" }),
+    },
+  );
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
@@ -1094,7 +1225,7 @@ export async function sendCommand(
 }
 
 export async function summarizeConversation(conversationId: string): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/conversations/${encodeURIComponent(conversationId)}/summarize`,
     {
       method: "POST",
@@ -1181,7 +1312,7 @@ export async function* connectWorkspaceEvents(
   agentId: string,
   signal: AbortSignal,
 ): AsyncGenerator<WorkspaceWatchEvent> {
-  const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/workspace/events`, {
+  const response = await apiFetch(`/api/agents/${encodeURIComponent(agentId)}/workspace/events`, {
     method: "GET",
     headers: { Accept: "text/event-stream" },
     signal,
@@ -1200,11 +1331,14 @@ export async function* connectConversationEvents(
   conversationId: string,
   signal: AbortSignal,
 ): AsyncGenerator<ChatEvent> {
-  const response = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/events`, {
-    method: "GET",
-    headers: { Accept: "text/event-stream" },
-    signal,
-  });
+  const response = await apiFetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/events`,
+    {
+      method: "GET",
+      headers: { Accept: "text/event-stream" },
+      signal,
+    },
+  );
 
   if (!response.ok) {
     throw new Error(`SSE connection failed with status ${String(response.status)}`);
@@ -1282,7 +1416,7 @@ export async function getTerminalSession(id: string): Promise<TerminalSession> {
 }
 
 export async function resizeTerminalSession(id: string, input: TerminalResizeInput): Promise<void> {
-  const response = await fetch(`/api/terminal/${id}/resize`, {
+  const response = await apiFetch(`/api/terminal/${id}/resize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(terminalResizeInputSchema.parse(input)),
@@ -1295,7 +1429,7 @@ export async function resizeTerminalSession(id: string, input: TerminalResizeInp
 }
 
 export async function closeTerminalSession(id: string): Promise<void> {
-  const response = await fetch(`/api/terminal/${id}`, { method: "DELETE" });
+  const response = await apiFetch(`/api/terminal/${id}`, { method: "DELETE" });
 
   if (!response.ok && response.status !== 204) {
     const payload = (await response.json().catch(() => undefined)) as unknown;

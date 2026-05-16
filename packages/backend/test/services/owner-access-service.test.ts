@@ -247,6 +247,28 @@ describe("owner-access-service", () => {
     }
   });
 
+  it("validates sessions without rewriting auth state", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      const session = await service.login({ password: STRONG_PASSWORD });
+      const before = await readFile(service.stateFile, "utf8");
+
+      await expect(service.validateSession(session.sessionId)).resolves.toBe(true);
+
+      await expect(readFile(service.stateFile, "utf8")).resolves.toBe(before);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("rejects invalid login with generic credentials error", async () => {
     const testDb = await createTestDatabase();
     const service = createOwnerAccessService({ config: testDb.config });
@@ -340,6 +362,145 @@ describe("owner-access-service", () => {
       await service.revokeAllSessionsExcept(second.sessionId);
       await expect(service.validateSession(second.sessionId)).resolves.toBe(true);
       await expect(service.validateSession(third.sessionId)).resolves.toBe(false);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("changes the owner password and revokes other sessions", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      const current = await service.login({ password: STRONG_PASSWORD });
+      const other = await service.login({ password: STRONG_PASSWORD });
+      const changed = await service.changePassword({
+        sessionId: current.sessionId,
+        currentPassword: STRONG_PASSWORD,
+        newPassword: NEXT_STRONG_PASSWORD,
+        confirmNewPassword: NEXT_STRONG_PASSWORD,
+      });
+
+      await expect(verifyOwnerSecret(NEXT_STRONG_PASSWORD, changed.ownerPassword!)).resolves.toBe(
+        true,
+      );
+      await expect(verifyOwnerSecret(STRONG_PASSWORD, changed.ownerPassword!)).resolves.toBe(false);
+      await expect(service.validateSession(current.sessionId)).resolves.toBe(true);
+      await expect(service.validateSession(other.sessionId)).resolves.toBe(false);
+      await expect(service.login({ password: NEXT_STRONG_PASSWORD })).resolves.toBeDefined();
+      await expect(service.login({ password: STRONG_PASSWORD })).rejects.toMatchObject({
+        code: "invalid_credentials",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects password changes with invalid current password", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      const session = await service.login({ password: STRONG_PASSWORD });
+
+      await expect(
+        service.changePassword({
+          sessionId: session.sessionId,
+          currentPassword: "wrong-password",
+          newPassword: NEXT_STRONG_PASSWORD,
+          confirmNewPassword: NEXT_STRONG_PASSWORD,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_credentials" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects weak password changes", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      const session = await service.login({ password: STRONG_PASSWORD });
+
+      await expect(
+        service.changePassword({
+          sessionId: session.sessionId,
+          currentPassword: STRONG_PASSWORD,
+          newPassword: "password1234",
+          confirmNewPassword: "password1234",
+        }),
+      ).rejects.toMatchObject({ code: "password_validation_failed" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects mismatched password change confirmation", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      const session = await service.login({ password: STRONG_PASSWORD });
+
+      await expect(
+        service.changePassword({
+          sessionId: session.sessionId,
+          currentPassword: STRONG_PASSWORD,
+          newPassword: NEXT_STRONG_PASSWORD,
+          confirmNewPassword: "DifferentPassword42",
+        }),
+      ).rejects.toMatchObject({ code: "password_validation_failed" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects reused password changes", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      const session = await service.login({ password: STRONG_PASSWORD });
+
+      await expect(
+        service.changePassword({
+          sessionId: session.sessionId,
+          currentPassword: STRONG_PASSWORD,
+          newPassword: STRONG_PASSWORD,
+          confirmNewPassword: STRONG_PASSWORD,
+        }),
+      ).rejects.toMatchObject({ code: "password_validation_failed" });
     } finally {
       await testDb.cleanup();
     }

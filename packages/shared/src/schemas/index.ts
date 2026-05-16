@@ -391,6 +391,8 @@ export {
   ownerLoginInputSchema,
   ownerLoginResultSchema,
   ownerLogoutResultSchema,
+  ownerPasswordChangeInputSchema,
+  ownerPasswordChangeResultSchema,
   ownerPasswordInputSchema,
   ownerReclaimInputSchema,
   ownerReclaimResultSchema,
@@ -401,6 +403,8 @@ export {
   type OwnerLoginInput,
   type OwnerLoginResult,
   type OwnerLogoutResult,
+  type OwnerPasswordChangeInput,
+  type OwnerPasswordChangeResult,
   type OwnerReclaimInput,
   type OwnerReclaimResult,
 } from "./owner-auth.js";

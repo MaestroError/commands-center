@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { access, chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -83,7 +84,7 @@ export function createAuthStateStore(path: string): AuthStateStore {
     },
     async write(state) {
       await mkdir(dirname(path), { recursive: true });
-      const temporaryPath = `${path}.${process.pid.toString()}.${Date.now().toString()}.tmp`;
+      const temporaryPath = `${path}.${process.pid.toString()}.${randomUUID()}.tmp`;
       const content = `${JSON.stringify(ownerAccessStateSchema.parse(state), null, 2)}\n`;
 
       await writeFile(temporaryPath, content, { encoding: "utf8", mode: 0o600 });

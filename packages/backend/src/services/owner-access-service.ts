@@ -68,6 +68,13 @@ export type OwnerAccessService = {
     userAgent?: string;
     ip?: string;
   }): Promise<OwnerSessionResult>;
+  changePassword(input: {
+    sessionId: string;
+    currentPassword: string;
+    newPassword: string;
+    confirmNewPassword: string;
+    ip?: string;
+  }): Promise<OwnerAccessState>;
   validateSession(sessionId: string): Promise<boolean>;
   revokeSession(sessionId: string): Promise<void>;
   revokeAllSessions(): Promise<void>;
@@ -421,17 +428,54 @@ export function createOwnerAccessService(options: {
 
       return { sessionId: result.sessionId, expiresAt: result.expiresAt };
     },
+    async changePassword(input) {
+      const state = await readOrCreateState();
+      assertClaimed(state);
+
+      const session = findActiveSession(state, input.sessionId);
+      if (!session) {
+        throw new OwnerAccessError("invalid_session", "Owner session is invalid.");
+      }
+
+      const currentPasswordMatches = await verifyOwnerSecret(
+        input.currentPassword,
+        state.ownerPassword!,
+      );
+
+      if (!currentPasswordMatches) {
+        options.logger?.warn({ authStateFile: store.path }, "owner password change failed");
+        throw new OwnerAccessError("invalid_credentials", "Invalid credentials.");
+      }
+
+      const validation = validateOwnerPassword({
+        password: input.newPassword,
+        confirmPassword: input.confirmNewPassword,
+        currentPassword: input.currentPassword,
+      });
+
+      if (!validation.valid) {
+        options.logger?.warn({ authStateFile: store.path }, "owner password change failed");
+        throw new OwnerAccessError(
+          "password_validation_failed",
+          "Owner password does not meet requirements.",
+          validation.issues,
+        );
+      }
+
+      const sessionHash = hashSessionId(input.sessionId);
+      const nextState = await persist({
+        ...state,
+        ownerPassword: await hashOwnerSecret(input.newPassword),
+        sessions: revokeSessions(state, (candidate) => candidate.idHash !== sessionHash).sessions,
+      });
+      options.logger?.info({ authStateFile: store.path }, "owner password changed");
+
+      return nextState;
+    },
     async validateSession(sessionId) {
       const state = await readOrCreateState();
       const session = findActiveSession(state, sessionId);
-
-      if (!session) {
-        return false;
-      }
-
-      session.lastUsedAt = now().toISOString();
-      await persist(state);
-      return true;
+      return Boolean(session);
     },
     async revokeSession(sessionId) {
       const state = await readOrCreateState();

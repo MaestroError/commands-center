@@ -116,6 +116,11 @@ function mockApi(routes: Record<string, Response[]>) {
     const method = init?.method ?? "GET";
     const key = `${method} ${url.pathname}${url.search}`;
     const fallbackKey = `${method} ${url.pathname}`;
+
+    if (fallbackKey === "GET /api/auth/status") {
+      return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+    }
+
     const responses = routes[key] ?? routes[fallbackKey];
     requests.push({
       key: fallbackKey,

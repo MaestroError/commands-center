@@ -229,6 +229,130 @@ describe("owner auth routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("changes the owner password and keeps the current session", async () => {
+    const testDb = await createTestDatabase();
+    const ownerAccessService = createOwnerAccessService({ config: testDb.config });
+    const server = await createAuthServer(testDb, ownerAccessService);
+
+    try {
+      await claimWorkspace(ownerAccessService);
+      const currentLogin = await server.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { password: STRONG_PASSWORD },
+      });
+      const otherLogin = await server.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { password: STRONG_PASSWORD },
+      });
+      const currentCookie = readCookieHeader(currentLogin);
+      const otherCookie = readCookieHeader(otherLogin);
+      const csrf = readCsrfToken(currentCookie);
+      const changed = await server.inject({
+        method: "POST",
+        url: "/api/auth/password",
+        headers: { cookie: currentCookie, "x-csrf-token": csrf },
+        payload: {
+          currentPassword: STRONG_PASSWORD,
+          newPassword: NEXT_STRONG_PASSWORD,
+          confirmNewPassword: NEXT_STRONG_PASSWORD,
+        },
+      });
+      const currentStatus = await server.inject({
+        method: "GET",
+        url: "/api/auth/status",
+        headers: { cookie: currentCookie },
+      });
+      const otherStatus = await server.inject({
+        method: "GET",
+        url: "/api/auth/status",
+        headers: { cookie: otherCookie },
+      });
+      const newLogin = await server.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { password: NEXT_STRONG_PASSWORD },
+      });
+
+      expect(changed.statusCode).toBe(200);
+      expect(changed.json()).toEqual({ status: "changed", otherSessionsRevoked: true });
+      expect(readSetCookie(changed)).toContain("cc_csrf_token=");
+      expect(currentStatus.json()).toEqual({ status: "claimed-authenticated" });
+      expect(otherStatus.json()).toEqual({ status: "claimed-unauthenticated" });
+      expect(newLogin.statusCode).toBe(200);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects password changes with the wrong current password", async () => {
+    const testDb = await createTestDatabase();
+    const ownerAccessService = createOwnerAccessService({ config: testDb.config });
+    const server = await createAuthServer(testDb, ownerAccessService);
+
+    try {
+      await claimWorkspace(ownerAccessService);
+      const login = await server.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { password: STRONG_PASSWORD },
+      });
+      const cookie = readCookieHeader(login);
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/auth/password",
+        headers: { cookie, "x-csrf-token": readCsrfToken(cookie) },
+        payload: {
+          currentPassword: "wrong-password",
+          newPassword: NEXT_STRONG_PASSWORD,
+          confirmNewPassword: NEXT_STRONG_PASSWORD,
+        },
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({
+        error: { code: "unauthorized", message: "Invalid credentials." },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects weak password changes with validation details", async () => {
+    const testDb = await createTestDatabase();
+    const ownerAccessService = createOwnerAccessService({ config: testDb.config });
+    const server = await createAuthServer(testDb, ownerAccessService);
+
+    try {
+      await claimWorkspace(ownerAccessService);
+      const login = await server.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { password: STRONG_PASSWORD },
+      });
+      const cookie = readCookieHeader(login);
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/auth/password",
+        headers: { cookie, "x-csrf-token": readCsrfToken(cookie) },
+        payload: {
+          currentPassword: STRONG_PASSWORD,
+          newPassword: "password1234",
+          confirmNewPassword: "password1234",
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.details.issues).toContain("Password is too common.");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 async function createAuthServer(
@@ -267,6 +391,22 @@ function readSetCookie(response: { headers: { [key: string]: unknown } }): strin
   }
 
   return typeof header === "string" ? header : "";
+}
+
+function readCookieHeader(response: { headers: { [key: string]: unknown } }): string {
+  const header = response.headers["set-cookie"];
+  const cookies = Array.isArray(header)
+    ? header.filter((value): value is string => typeof value === "string")
+    : typeof header === "string"
+      ? [header]
+      : [];
+
+  return cookies.map((cookie) => cookie.split(";")[0]).join("; ");
+}
+
+function readCsrfToken(cookieHeader: string): string {
+  const match = /(?:^|; )cc_csrf_token=([^;]+)/.exec(cookieHeader);
+  return match ? decodeURIComponent(match[1]!) : "";
 }
 
 function createOrchestrator(): OpenCodeOrchestrator {

@@ -12,6 +12,7 @@ describe("parseCliArgs", () => {
       help: false,
       version: false,
       rollback: false,
+      yes: false,
     });
   });
 
@@ -34,6 +35,7 @@ describe("parseCliArgs", () => {
       help: false,
       version: false,
       rollback: false,
+      yes: false,
     });
   });
 
@@ -46,6 +48,20 @@ describe("parseCliArgs", () => {
       help: false,
       version: false,
       rollback: true,
+      yes: false,
+    });
+  });
+
+  it("parses claim confirmation", () => {
+    expect(parseCliArgs(["claim", "--yes"])).toEqual({
+      command: "claim",
+      host: undefined,
+      port: undefined,
+      envFile: undefined,
+      help: false,
+      version: false,
+      rollback: false,
+      yes: true,
     });
   });
 
@@ -58,6 +74,7 @@ describe("parseCliArgs", () => {
       help: true,
       version: true,
       rollback: false,
+      yes: false,
     });
   });
 
@@ -70,6 +87,7 @@ describe("parseCliArgs", () => {
       help: false,
       version: false,
       rollback: false,
+      yes: false,
     });
 
     expect(parseCliArgs(["serve", "--port"])).toEqual({
@@ -80,6 +98,7 @@ describe("parseCliArgs", () => {
       help: false,
       version: false,
       rollback: false,
+      yes: false,
     });
 
     expect(parseCliArgs(["serve", "--cc-env-file"])).toEqual({
@@ -90,6 +109,7 @@ describe("parseCliArgs", () => {
       help: false,
       version: false,
       rollback: false,
+      yes: false,
     });
   });
 
@@ -102,6 +122,7 @@ describe("parseCliArgs", () => {
       help: false,
       version: false,
       rollback: false,
+      yes: false,
     });
   });
 });

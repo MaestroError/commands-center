@@ -3,6 +3,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 
 const {
   createLoggerMock,
+  createOwnerAccessServiceMock,
   createSystemVersionServiceMock,
   chmodSyncMock,
   existsSyncMock,
@@ -12,6 +13,10 @@ const {
   readFileSyncMock,
   readPackageInfoMock,
   rollbackMock,
+  rotateClaimCodeMock,
+  getOwnerStateMock,
+  questionMock,
+  readlineCloseMock,
   startServerRuntimeMock,
   updateMock,
   writeFileSyncMock,
@@ -25,9 +30,14 @@ const {
   readPackageInfoMock: vi.fn(),
   loadRuntimeConfigMock: vi.fn(),
   createLoggerMock: vi.fn(),
+  createOwnerAccessServiceMock: vi.fn(),
   createSystemVersionServiceMock: vi.fn(),
   updateMock: vi.fn(),
   rollbackMock: vi.fn(),
+  rotateClaimCodeMock: vi.fn(),
+  getOwnerStateMock: vi.fn(),
+  questionMock: vi.fn(),
+  readlineCloseMock: vi.fn(),
   writeFileSyncMock: vi.fn(),
 }));
 
@@ -43,13 +53,18 @@ vi.mock("node:os", () => ({
   homedir: () => "/home/test",
 }));
 
-vi.mock("../src/env-file.js", () => ({
-  loadEnvFile: loadEnvFileMock,
+vi.mock("node:readline/promises", () => ({
+  createInterface: () => ({
+    question: questionMock,
+    close: readlineCloseMock,
+  }),
 }));
 
 vi.mock("@cc/backend", () => ({
   createLogger: createLoggerMock,
+  createOwnerAccessService: createOwnerAccessServiceMock,
   createSystemVersionService: createSystemVersionServiceMock,
+  loadEnvFile: loadEnvFileMock,
   loadRuntimeConfig: loadRuntimeConfigMock,
   readPackageInfo: readPackageInfoMock,
   startServerRuntime: startServerRuntimeMock,
@@ -84,6 +99,17 @@ describe("runCli", () => {
     });
     loadRuntimeConfigMock.mockReturnValue({ workspaceRoot: "/tmp/workspace" });
     createLoggerMock.mockReturnValue({ info: vi.fn() });
+    getOwnerStateMock.mockResolvedValue({ sessions: [], rateLimits: {} });
+    rotateClaimCodeMock.mockResolvedValue({
+      purpose: "claim",
+      code: "claim-code",
+      warning: "temporary owner recovery power",
+    });
+    questionMock.mockResolvedValue("n");
+    createOwnerAccessServiceMock.mockReturnValue({
+      getState: getOwnerStateMock,
+      rotateClaimCode: rotateClaimCodeMock,
+    });
     updateMock.mockResolvedValue({ message: "Updated", instructions: ["Restart shell"] });
     rollbackMock.mockResolvedValue({ message: "Rolled back", instructions: ["Retry publish"] });
     createSystemVersionServiceMock.mockReturnValue({
@@ -322,6 +348,65 @@ describe("runCli", () => {
     expect(rollbackMock).not.toHaveBeenCalled();
     expect(consoleLog).toHaveBeenNthCalledWith(1, "Updated");
     expect(consoleLog).toHaveBeenNthCalledWith(2, "Restart shell");
+  });
+
+  it("generates a claim code without starting the server", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
+
+    await runCli(["claim"]);
+
+    expect(loadEnvFileMock).toHaveBeenCalledWith("/home/test/.cc/.env");
+    expect(createOwnerAccessServiceMock).toHaveBeenCalled();
+    expect(rotateClaimCodeMock).toHaveBeenCalled();
+    expect(startServerRuntimeMock).not.toHaveBeenCalled();
+    expect(consoleLog).toHaveBeenNthCalledWith(1, "CLAIM code: claim-code");
+    expect(consoleLog).toHaveBeenNthCalledWith(2, "temporary owner recovery power");
+  });
+
+  it("cancels claim code rotation when an active code exists and confirmation is declined", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    getOwnerStateMock.mockResolvedValue({
+      sessions: [],
+      rateLimits: {},
+      claimCode: { expiresAt: "2999-01-01T00:00:00.000Z" },
+    });
+    questionMock.mockResolvedValue("no");
+
+    await runCli(["claim"]);
+
+    expect(questionMock).toHaveBeenCalledWith(
+      "An active claim code already exists. Generating a new code removes the old code, and you will have to use the new code to claim this workspace. Continue? [y/N] ",
+    );
+    expect(rotateClaimCodeMock).not.toHaveBeenCalled();
+    expect(consoleLog).toHaveBeenCalledWith("Claim-code generation cancelled.");
+    expect(readlineCloseMock).toHaveBeenCalled();
+  });
+
+  it("rotates an existing claim code after confirmation", async () => {
+    getOwnerStateMock.mockResolvedValue({
+      sessions: [],
+      rateLimits: {},
+      claimCode: { expiresAt: "2999-01-01T00:00:00.000Z" },
+    });
+    questionMock.mockResolvedValue("yes");
+
+    await runCli(["claim"]);
+
+    expect(rotateClaimCodeMock).toHaveBeenCalled();
+  });
+
+  it("skips claim code confirmation with --yes", async () => {
+    getOwnerStateMock.mockResolvedValue({
+      sessions: [],
+      rateLimits: {},
+      claimCode: { expiresAt: "2999-01-01T00:00:00.000Z" },
+    });
+
+    await runCli(["claim", "--yes"]);
+
+    expect(questionMock).not.toHaveBeenCalled();
+    expect(rotateClaimCodeMock).toHaveBeenCalled();
   });
 
   it("fails when the production env template cannot be found", async () => {
