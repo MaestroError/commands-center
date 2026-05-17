@@ -532,6 +532,46 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/login");
   });
 
+  it("shows logout failures on the profile page", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+      }
+
+      if (input === "/api/auth/logout") {
+        return Promise.resolve(
+          jsonResponse(503, {
+            error: { code: "service_unavailable", message: "Unable to sign out right now." },
+          }),
+        );
+      }
+
+      if (input === "/api/opencode") {
+        return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/tasks/runs/active") {
+        return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/system/version") {
+        return Promise.resolve(jsonResponse(200, systemVersionPayload()));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Profile" }));
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(await screen.findByText("Unable to sign out right now.")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-navigation")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/profile");
+  });
+
   it("validates password change confirmation on the profile page", async () => {
     render(<App />);
 

@@ -25,11 +25,22 @@ export function ProfilePage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [logoutSubmitting, setLogoutSubmitting] = useState(false);
 
   async function onLogout(): Promise<void> {
-    await auth.logout();
-    queryClient.clear();
-    void navigate("/login", { replace: true, state: { from: location } });
+    setLogoutError(null);
+    setLogoutSubmitting(true);
+
+    try {
+      await auth.logout();
+      queryClient.clear();
+      void navigate("/login", { replace: true, state: { from: location } });
+    } catch (err) {
+      setLogoutError(err instanceof Error ? err.message : "Unable to sign out.");
+    } finally {
+      setLogoutSubmitting(false);
+    }
   }
 
   async function onChangePassword(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -149,11 +160,13 @@ export function ProfilePage() {
         </p>
         <button
           className="cc-button cc-button-secondary mt-5"
+          disabled={logoutSubmitting}
           onClick={() => void onLogout()}
           type="button"
         >
-          Sign out
+          {logoutSubmitting ? "Signing out..." : "Sign out"}
         </button>
+        {logoutError ? <p className="mt-3 text-sm text-danger">{logoutError}</p> : null}
       </section>
     </div>
   );

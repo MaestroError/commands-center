@@ -27,6 +27,11 @@ Open `http://localhost:3000`. If the workspace is unclaimed, the app redirects t
 If the workspace is already claimed, the same command generates a `RECLAIM` code instead of a first-time `CLAIM` code. Reclaim is for local operator recovery and rotates the owner password while revoking existing sessions.
 
 Running the command again rotates the existing claim/reclaim code. Any previous code stops working, so use the newest printed code.
+If an active code already exists, the command asks for confirmation before rotating it. For non-interactive local automation, pass `--yes` after pnpm's argument separator:
+
+```bash
+pnpm run create-claim-code -- --yes
+```
 
 ## Testing From A Fresh Local Claim
 

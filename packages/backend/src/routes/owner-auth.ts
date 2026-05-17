@@ -255,4 +255,7 @@ function mapOwnerAccessError(error: unknown): ApiError {
     case "invalid_session":
       return new UnauthorizedError("Owner session is invalid.");
   }
+
+  const unhandledCode: never = error.code;
+  throw new Error(`Unhandled owner access error code: ${String(unhandledCode)}`, { cause: error });
 }
