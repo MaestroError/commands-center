@@ -6,12 +6,16 @@ export const ownerAuthStatusSchema = z.enum([
   "claimed-unauthenticated",
 ]);
 
-export const ownerPasswordInputSchema = z.string().min(1);
+// Password policy is enforced by the backend. This schema only rejects missing fields
+// and intentionally preserves whitespace because spaces can be part of the secret.
+export const ownerPasswordNonEmptySchema = z.string().min(1);
+
+const ownerClaimCodeInputSchema = z.string().trim().min(1);
 
 export const ownerClaimInputSchema = z.object({
-  claimCode: z.string().trim().min(1),
-  password: ownerPasswordInputSchema,
-  confirmPassword: ownerPasswordInputSchema,
+  claimCode: ownerClaimCodeInputSchema,
+  password: ownerPasswordNonEmptySchema,
+  confirmPassword: ownerPasswordNonEmptySchema,
   rememberBrowser: z.boolean().optional().default(false),
 });
 
@@ -24,7 +28,7 @@ export const ownerAuthStatusResultSchema = z.object({
 });
 
 export const ownerLoginInputSchema = z.object({
-  password: ownerPasswordInputSchema,
+  password: ownerPasswordNonEmptySchema,
   rememberBrowser: z.boolean().optional().default(false),
 });
 
@@ -33,9 +37,9 @@ export const ownerLoginResultSchema = z.object({
 });
 
 export const ownerPasswordChangeInputSchema = z.object({
-  currentPassword: ownerPasswordInputSchema,
-  newPassword: ownerPasswordInputSchema,
-  confirmNewPassword: ownerPasswordInputSchema,
+  currentPassword: ownerPasswordNonEmptySchema,
+  newPassword: ownerPasswordNonEmptySchema,
+  confirmNewPassword: ownerPasswordNonEmptySchema,
 });
 
 export const ownerPasswordChangeResultSchema = z.object({
@@ -47,7 +51,12 @@ export const ownerLogoutResultSchema = z.object({
   status: z.literal("claimed-unauthenticated"),
 });
 
-export const ownerReclaimInputSchema = ownerClaimInputSchema;
+export const ownerReclaimInputSchema = z.object({
+  claimCode: ownerClaimCodeInputSchema,
+  password: ownerPasswordNonEmptySchema,
+  confirmPassword: ownerPasswordNonEmptySchema,
+  rememberBrowser: z.boolean().optional().default(false),
+});
 
 export const ownerReclaimResultSchema = z.object({
   status: z.literal("claimed-authenticated"),

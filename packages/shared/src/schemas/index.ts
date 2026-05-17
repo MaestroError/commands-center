@@ -393,7 +393,7 @@ export {
   ownerLogoutResultSchema,
   ownerPasswordChangeInputSchema,
   ownerPasswordChangeResultSchema,
-  ownerPasswordInputSchema,
+  ownerPasswordNonEmptySchema,
   ownerReclaimInputSchema,
   ownerReclaimResultSchema,
   type OwnerAuthStatusResult,
