@@ -421,6 +421,20 @@ describe("additional request wrapper coverage", () => {
     });
   });
 
+  it("decodes the CSRF token cookie before sending it as a header", async () => {
+    document.cookie = "cc_csrf_token=csrf-token%2Fwith%2Bsymbols; path=/";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse({ status: "claimed-unauthenticated" }));
+
+    await logoutOwner();
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/auth/logout", {
+      method: "POST",
+      headers: { "x-csrf-token": "csrf-token/with+symbols" },
+    });
+  });
+
   it("posts owner password changes with a CSRF token", async () => {
     document.cookie = "cc_csrf_token=csrf-token; path=/";
     const fetchSpy = vi

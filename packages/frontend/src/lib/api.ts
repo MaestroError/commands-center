@@ -1009,11 +1009,13 @@ function shouldAttachCsrfToken(method: string): boolean {
 
 function readCookie(name: string): string | undefined {
   const prefix = `${name}=`;
-  return document.cookie
+  const value = document.cookie
     .split(";")
     .map((cookie) => cookie.trim())
     .find((cookie) => cookie.startsWith(prefix))
     ?.slice(prefix.length);
+
+  return value === undefined ? undefined : decodeURIComponent(value);
 }
 
 export function readApiError(payload: unknown, status: number, statusText?: string): string {

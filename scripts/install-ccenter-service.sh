@@ -223,7 +223,16 @@ start_service() {
 }
 
 generate_claim_code() {
-  CLAIM_OUTPUT="$(run_claim_command)"
+  if ! CLAIM_OUTPUT="$(run_claim_command)"; then
+    fail "Unable to generate owner claim code. Check ccenter availability, env file permissions, and workspace ownership, then rerun the installer."
+  fi
+
+  case "$CLAIM_OUTPUT" in
+    *"CLAIM code:"*|*"RECLAIM code:"*) ;;
+    *)
+      fail "ccenter claim completed without printing a claim or reclaim code. Check the service logs and run ccenter claim --cc-env-file \"$ENV_FILE\" --yes manually."
+      ;;
+  esac
 }
 
 run_claim_command() {
