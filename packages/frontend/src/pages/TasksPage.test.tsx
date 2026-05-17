@@ -191,6 +191,36 @@ describe("TasksPage", () => {
       );
     });
   });
+
+  it("creates a custom hourly recurring task from the form", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage mode="create" />, "/tasks/new");
+
+    const user = userEvent.setup();
+    await screen.findByRole("combobox", { name: /Assigned agent/i });
+    await user.type(screen.getByLabelText(/Title/i), "Hourly review");
+    await user.selectOptions(screen.getByLabelText(/Assigned agent/i), "agent-1");
+    await user.selectOptions(screen.getByLabelText(/Trigger mode/i), "recurring");
+    await user.selectOptions(screen.getByLabelText(/Repeat/i), "custom");
+    await user.clear(screen.getByLabelText(/Every/i));
+    await user.type(screen.getByLabelText(/Every/i), "4");
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"frequency":"hour"'),
+        }),
+      );
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tasks",
+      expect.objectContaining({ body: expect.stringContaining('"interval":4') }),
+    );
+  });
 });
 
 describe("TaskDetailPage", () => {

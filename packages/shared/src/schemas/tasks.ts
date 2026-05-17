@@ -59,7 +59,7 @@ export const scheduledOnceTaskScheduleSchema = z.object({
   timezone: z.string().trim().min(1).optional(),
 });
 
-export const taskRepeatFrequencySchema = z.enum(["day", "week", "month", "year"]);
+export const taskRepeatFrequencySchema = z.enum(["hour", "day", "week", "month", "year"]);
 
 export const taskWeekdaySchema = z.number().int().min(0).max(6);
 

@@ -574,6 +574,8 @@ function formatSchedule(task: Task): string {
 }
 
 function formatRepeatSummary(rule: TaskRepeatRule): string {
+  if (rule.frequency === "hour" && rule.interval === 1) return "Every hour";
+
   const unit = rule.interval === 1 ? rule.frequency : `${rule.frequency}s`;
   const weekdays = rule.weekdays?.map(formatWeekday).filter(Boolean);
   return `Every ${String(rule.interval)} ${unit}${weekdays?.length ? ` on ${weekdays.join(", ")}` : ""}`;

@@ -11,6 +11,20 @@ import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("createTaskSchedulerService", () => {
+  it("computes hourly recurring runs", () => {
+    const next = computeNextRecurringRun(
+      {
+        mode: "recurring",
+        anchorAt: "2026-06-01T09:30:00.000Z",
+        timezone: "UTC",
+        repeatRule: { frequency: "hour", interval: 4 },
+      },
+      new Date("2026-06-01T12:07:00.000Z"),
+    );
+
+    expect(next.toISOString()).toBe("2026-06-01T13:30:00.000Z");
+  });
+
   it("computes daily recurring runs", () => {
     const next = computeNextRecurringRun(
       {

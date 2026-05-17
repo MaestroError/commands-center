@@ -316,6 +316,10 @@ function advanceRecurringCandidate(
   current: Date,
   rule: Extract<Task["schedule"], { mode: "recurring" }>["repeatRule"],
 ): Date {
+  if (rule.frequency === "hour") {
+    return addUtcHours(current, rule.interval);
+  }
+
   if (rule.frequency === "day") {
     return addUtcDays(current, rule.interval);
   }
@@ -359,6 +363,10 @@ function nextWeeklyWeekday(
   }
 
   throw new Error("Could not compute next weekly recurring task run within ten years.");
+}
+
+function addUtcHours(value: Date, hours: number): Date {
+  return new Date(value.getTime() + hours * 60 * 60 * 1000);
 }
 
 function addUtcDays(value: Date, days: number): Date {

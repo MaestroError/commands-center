@@ -36,8 +36,16 @@ const TASK_STATUSES = [
 ] as const;
 
 const TRIGGER_MODES = ["manual", "scheduled_once", "recurring"] as const;
-const REPEAT_PRESETS = ["daily", "weekly", "monthly", "yearly", "weekday", "custom"] as const;
-const REPEAT_FREQUENCIES = ["day", "week", "month", "year"] as const;
+const REPEAT_PRESETS = [
+  "hourly",
+  "daily",
+  "weekly",
+  "monthly",
+  "yearly",
+  "weekday",
+  "custom",
+] as const;
+const REPEAT_FREQUENCIES = ["hour", "day", "week", "month", "year"] as const;
 const WEEKDAYS = [
   { value: 0, label: "Sun" },
   { value: 1, label: "Mon" },
@@ -583,9 +591,9 @@ function taskToForm(task?: Task): FormState {
       task?.schedule.mode === "recurring" ? toLocalDateTime(task.schedule.anchorAt) : "",
     timezone: task?.schedule.mode === "recurring" ? task.schedule.timezone : readLocalTimezone(),
     repeatPreset:
-      task?.schedule.mode === "recurring" ? scheduleToRepeatPreset(task.schedule) : "daily",
+      task?.schedule.mode === "recurring" ? scheduleToRepeatPreset(task.schedule) : "hourly",
     repeatFrequency:
-      task?.schedule.mode === "recurring" ? task.schedule.repeatRule.frequency : "day",
+      task?.schedule.mode === "recurring" ? task.schedule.repeatRule.frequency : "hour",
     repeatInterval:
       task?.schedule.mode === "recurring" ? String(task.schedule.repeatRule.interval) : "1",
     repeatWeekdays:
@@ -657,6 +665,7 @@ function WeekdayPicker(props: {
 }
 
 function buildRepeatRule(form: FormState): TaskRepeatRule {
+  if (form.repeatPreset === "hourly") return { frequency: "hour", interval: 1 };
   if (form.repeatPreset === "daily") return { frequency: "day", interval: 1 };
   if (form.repeatPreset === "monthly") return { frequency: "month", interval: 1 };
   if (form.repeatPreset === "yearly") return { frequency: "year", interval: 1 };
@@ -684,6 +693,7 @@ function scheduleToRepeatPreset(
 ): RepeatPreset {
   const rule = schedule.repeatRule;
 
+  if (rule.frequency === "hour" && rule.interval === 1) return "hourly";
   if (rule.frequency === "day" && rule.interval === 1) return "daily";
   if (rule.frequency === "month" && rule.interval === 1) return "monthly";
   if (rule.frequency === "year" && rule.interval === 1) return "yearly";
@@ -696,11 +706,14 @@ function scheduleToRepeatPreset(
 }
 
 function formatRepeatPreset(preset: RepeatPreset): string {
+  if (preset === "hourly") return "Every hour";
   if (preset === "weekday") return "Every weekday";
   return preset === "custom" ? "Custom" : formatToken(preset);
 }
 
 function formatRepeatSummary(rule: TaskRepeatRule): string {
+  if (rule.frequency === "hour" && rule.interval === 1) return "Every hour";
+
   const unit = rule.interval === 1 ? rule.frequency : `${rule.frequency}s`;
   const weekdays = rule.weekdays?.map((value) => WEEKDAYS[value]?.label).filter(Boolean);
   return `Every ${String(rule.interval)} ${unit}${weekdays?.length ? ` on ${weekdays.join(", ")}` : ""}`;
