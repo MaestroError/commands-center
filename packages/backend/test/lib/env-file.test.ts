@@ -79,6 +79,17 @@ describe("loadDefaultEnvFile", () => {
     expect(env["CC_WORKSPACE_DIR"]).toBe("/tmp/workspace");
   });
 
+  it("walks up from package directories to load the workspace .env file", () => {
+    existsSyncMock.mockImplementation((path: string) => path === "/workspace/.env");
+    readFileSyncMock.mockReturnValue("CC_WORKSPACE_DIR=/tmp/workspace\n");
+    const env = {} as NodeJS.ProcessEnv;
+
+    const loaded = loadDefaultEnvFile({ cwd: "/workspace/packages/backend", env });
+
+    expect(loaded).toBe("/workspace/.env");
+    expect(env["CC_WORKSPACE_DIR"]).toBe("/tmp/workspace");
+  });
+
   it("returns undefined when the default .env file does not exist", () => {
     existsSyncMock.mockReturnValue(false);
     const env = { INIT_CWD: "/workspace" } as NodeJS.ProcessEnv;

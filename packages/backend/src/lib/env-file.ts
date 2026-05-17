@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 export function loadEnvFile(path: string, env: NodeJS.ProcessEnv = process.env): void {
   const resolvedPath = resolve(path);
@@ -35,14 +35,34 @@ export function loadDefaultEnvFile(options?: {
 }): string | undefined {
   const env = options?.env ?? process.env;
   const cwd = options?.cwd ?? env["INIT_CWD"] ?? process.cwd();
-  const path = resolve(cwd, ".env");
+  const path = findDefaultEnvFile(cwd);
 
-  if (!existsSync(path)) {
+  if (!path) {
     return undefined;
   }
 
   loadEnvFile(path, env);
   return path;
+}
+
+function findDefaultEnvFile(cwd: string): string | undefined {
+  let current = resolve(cwd);
+
+  while (true) {
+    const path = resolve(current, ".env");
+
+    if (existsSync(path)) {
+      return path;
+    }
+
+    const parent = dirname(current);
+
+    if (parent === current) {
+      return undefined;
+    }
+
+    current = parent;
+  }
 }
 
 function unquoteEnvValue(value: string): string {
