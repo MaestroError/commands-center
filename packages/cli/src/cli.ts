@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 import fastifyStatic from "@fastify/static";
@@ -15,6 +14,7 @@ import {
   loadEnvFile,
   loadRuntimeConfig,
   readPackageInfo,
+  runClaimCodeCommand,
   startServerRuntime,
 } from "@cc/backend";
 
@@ -173,59 +173,14 @@ export async function runCli(args: string[]): Promise<void> {
 async function runClaim(options: { yes: boolean; format: "text" | "json" }): Promise<void> {
   const config = loadRuntimeConfig();
   const service = createOwnerAccessService({ config, logger: createLogger(config) });
-  const state = await service.getState();
-  const claimed = state.claimedAt !== undefined && state.ownerPassword !== undefined;
-  const existingCode = claimed ? state.reclaimCode : state.claimCode;
 
-  if (isActiveClaimCode(existingCode)) {
-    const purpose = claimed ? "reclaim" : "claim";
-    const confirmed = options.yes || (await confirmClaimCodeRotation(purpose));
-
-    if (!confirmed) {
-      console.log("Claim-code generation cancelled.");
-      return;
-    }
-  }
-
-  const result = await service.rotateClaimCode();
-
-  if (options.format === "json") {
-    console.log(JSON.stringify(result));
-    return;
-  }
-
-  console.log(`${result.purpose.toUpperCase()} code: ${result.code}`);
-  console.log(result.warning);
-
-  if (claimed) {
-    console.log("The current owner password remains valid until reclaim completes.");
-  }
-}
-
-function isActiveClaimCode(
-  code: { invalidatedAt?: string; expiresAt?: string } | undefined,
-): boolean {
-  if (!code || code.invalidatedAt) {
-    return false;
-  }
-
-  if (code.expiresAt && new Date(code.expiresAt).getTime() <= Date.now()) {
-    return false;
-  }
-
-  return true;
-}
-
-async function confirmClaimCodeRotation(purpose: "claim" | "reclaim"): Promise<boolean> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-
-  try {
-    const answer = await rl.question(
-      `An active ${purpose} code already exists. Generating a new code removes the old code, and you will have to use the new code to claim this workspace. Continue? [y/N] `,
-    );
-    return ["y", "yes"].includes(answer.trim().toLowerCase());
-  } finally {
-    rl.close();
+  for (const line of await runClaimCodeCommand({
+    config,
+    ownerAccessService: service,
+    yes: options.yes,
+    format: options.format,
+  })) {
+    console.log(line);
   }
 }
 

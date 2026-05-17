@@ -157,7 +157,7 @@ Do not generate the claim code on the host unless the host command uses the exac
 
 The service installer starts the service, generates the first owner claim code using the same env file and runtime user, and prints the code in the install summary. Keep that code and enter it on the claim screen to unlock the instance.
 
-On Linux, the installer writes the systemd service with `User=` and `Group=` set to the installing user by default. Override with `CCENTER_SERVICE_USER` and `CCENTER_SERVICE_GROUP` only when you intentionally run under another account; the installer will run the claim command as that service user and pass the same `CC_WORKSPACE_DIR` used by the service.
+On Linux, the installer writes the systemd service with `User=` and `Group=` set to the installing user by default. Override with `CCENTER_SERVICE_USER` and `CCENTER_SERVICE_GROUP` only when you intentionally run under another account; the installer will run the claim command as that service user and pass the same `CC_WORKSPACE_DIR` used by the service. On macOS, launchd runs under the current user and `CCENTER_SERVICE_USER` is not used.
 
 ## Public Domain Claiming
 

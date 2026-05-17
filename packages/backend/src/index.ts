@@ -38,6 +38,12 @@ export {
 } from "./lib/api-error.js";
 export { configureFastifyZod, type AppServer, type AppTypeProvider } from "./lib/fastify-zod.js";
 export { loadDefaultEnvFile, loadEnvFile } from "./lib/env-file.js";
+export {
+  runClaimCodeCommand,
+  type ClaimCodeCommandOptions,
+  type ClaimCodeOutputFormat,
+} from "./lib/claim-code-command.js";
+export { generateOwnerClaimCode, isActiveClaimCode } from "./lib/owner-claim-code.js";
 export { commonErrorResponses } from "./lib/route.js";
 export {
   createOpenCodeClient,

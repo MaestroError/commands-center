@@ -53,6 +53,7 @@ import {
   type SystemVersionService,
 } from "../services/system-version-service.js";
 import { createServer } from "../server.js";
+import { isActiveClaimCode } from "./owner-claim-code.js";
 
 type AppServer = Awaited<ReturnType<typeof createServer>>;
 
@@ -323,20 +324,6 @@ function getOperatorBaseUrl(config: RuntimeConfig): string {
 
 function isExternalBinding(host: string): boolean {
   return !["127.0.0.1", "localhost", "::1"].includes(host);
-}
-
-function isActiveClaimCode(
-  code: { invalidatedAt?: string; expiresAt?: string } | undefined,
-): boolean {
-  if (!code || code.invalidatedAt) {
-    return false;
-  }
-
-  if (code.expiresAt && new Date(code.expiresAt).getTime() <= Date.now()) {
-    return false;
-  }
-
-  return true;
 }
 
 function installSignalHandlers(

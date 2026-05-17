@@ -13,10 +13,7 @@ const {
   readFileSyncMock,
   readPackageInfoMock,
   rollbackMock,
-  rotateClaimCodeMock,
-  getOwnerStateMock,
-  questionMock,
-  readlineCloseMock,
+  runClaimCodeCommandMock,
   startServerRuntimeMock,
   updateMock,
   writeFileSyncMock,
@@ -34,10 +31,7 @@ const {
   createSystemVersionServiceMock: vi.fn(),
   updateMock: vi.fn(),
   rollbackMock: vi.fn(),
-  rotateClaimCodeMock: vi.fn(),
-  getOwnerStateMock: vi.fn(),
-  questionMock: vi.fn(),
-  readlineCloseMock: vi.fn(),
+  runClaimCodeCommandMock: vi.fn(),
   writeFileSyncMock: vi.fn(),
 }));
 
@@ -53,13 +47,6 @@ vi.mock("node:os", () => ({
   homedir: () => "/home/test",
 }));
 
-vi.mock("node:readline/promises", () => ({
-  createInterface: () => ({
-    question: questionMock,
-    close: readlineCloseMock,
-  }),
-}));
-
 vi.mock("@cc/backend", () => ({
   createLogger: createLoggerMock,
   createOwnerAccessService: createOwnerAccessServiceMock,
@@ -67,6 +54,7 @@ vi.mock("@cc/backend", () => ({
   loadEnvFile: loadEnvFileMock,
   loadRuntimeConfig: loadRuntimeConfigMock,
   readPackageInfo: readPackageInfoMock,
+  runClaimCodeCommand: runClaimCodeCommandMock,
   startServerRuntime: startServerRuntimeMock,
 }));
 
@@ -99,17 +87,11 @@ describe("runCli", () => {
     });
     loadRuntimeConfigMock.mockReturnValue({ workspaceRoot: "/tmp/workspace" });
     createLoggerMock.mockReturnValue({ info: vi.fn() });
-    getOwnerStateMock.mockResolvedValue({ sessions: [], rateLimits: {} });
-    rotateClaimCodeMock.mockResolvedValue({
-      purpose: "claim",
-      code: "claim-code",
-      warning: "temporary owner recovery power",
-    });
-    questionMock.mockResolvedValue("n");
-    createOwnerAccessServiceMock.mockReturnValue({
-      getState: getOwnerStateMock,
-      rotateClaimCode: rotateClaimCodeMock,
-    });
+    createOwnerAccessServiceMock.mockReturnValue({ stateFile: "/tmp/workspace/auth/owner.json" });
+    runClaimCodeCommandMock.mockResolvedValue([
+      "CLAIM code: claim-code",
+      "temporary owner recovery power",
+    ]);
     updateMock.mockResolvedValue({ message: "Updated", instructions: ["Restart shell"] });
     rollbackMock.mockResolvedValue({ message: "Rolled back", instructions: ["Retry publish"] });
     createSystemVersionServiceMock.mockReturnValue({
@@ -358,7 +340,12 @@ describe("runCli", () => {
 
     expect(loadEnvFileMock).toHaveBeenCalledWith("/home/test/.cc/.env");
     expect(createOwnerAccessServiceMock).toHaveBeenCalled();
-    expect(rotateClaimCodeMock).toHaveBeenCalled();
+    expect(runClaimCodeCommandMock).toHaveBeenCalledWith({
+      config: { workspaceRoot: "/tmp/workspace" },
+      ownerAccessService: { stateFile: "/tmp/workspace/auth/owner.json" },
+      yes: false,
+      format: "text",
+    });
     expect(startServerRuntimeMock).not.toHaveBeenCalled();
     expect(consoleLog).toHaveBeenNthCalledWith(1, "CLAIM code: claim-code");
     expect(consoleLog).toHaveBeenNthCalledWith(2, "temporary owner recovery power");
@@ -371,7 +358,7 @@ describe("runCli", () => {
     await runCli(["claim-code"]);
 
     expect(loadEnvFileMock).toHaveBeenCalledWith("/home/test/.cc/.env");
-    expect(rotateClaimCodeMock).toHaveBeenCalled();
+    expect(runClaimCodeCommandMock).toHaveBeenCalled();
     expect(startServerRuntimeMock).not.toHaveBeenCalled();
     expect(consoleLog).toHaveBeenNthCalledWith(1, "CLAIM code: claim-code");
   });
@@ -379,6 +366,13 @@ describe("runCli", () => {
   it("prints claim codes as json when requested", async () => {
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
     existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
+    runClaimCodeCommandMock.mockResolvedValue([
+      JSON.stringify({
+        purpose: "claim",
+        code: "claim-code",
+        warning: "temporary owner recovery power",
+      }),
+    ]);
 
     await runCli(["claim", "--format", "json"]);
 
@@ -398,7 +392,7 @@ describe("runCli", () => {
 
     expect(writeFileSyncMock).not.toHaveBeenCalled();
     expect(loadRuntimeConfigMock).not.toHaveBeenCalled();
-    expect(rotateClaimCodeMock).not.toHaveBeenCalled();
+    expect(runClaimCodeCommandMock).not.toHaveBeenCalled();
   });
 
   it("requires an explicit env file before generating a claim code", async () => {
@@ -408,23 +402,17 @@ describe("runCli", () => {
 
     expect(writeFileSyncMock).not.toHaveBeenCalled();
     expect(loadEnvFileMock).not.toHaveBeenCalled();
-    expect(rotateClaimCodeMock).not.toHaveBeenCalled();
+    expect(runClaimCodeCommandMock).not.toHaveBeenCalled();
   });
 
   it("explains reclaim codes do not invalidate the current password immediately", async () => {
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
     existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
-    getOwnerStateMock.mockResolvedValue({
-      claimedAt: "2026-01-01T00:00:00.000Z",
-      ownerPassword: { algorithm: "scrypt" },
-      sessions: [],
-      rateLimits: {},
-    });
-    rotateClaimCodeMock.mockResolvedValue({
-      purpose: "reclaim",
-      code: "reclaim-code",
-      warning: "temporary owner recovery power",
-    });
+    runClaimCodeCommandMock.mockResolvedValue([
+      "RECLAIM code: reclaim-code",
+      "temporary owner recovery power",
+      "The current owner password remains valid until reclaim completes.",
+    ]);
 
     await runCli(["claim", "--yes"]);
 
@@ -436,52 +424,22 @@ describe("runCli", () => {
     );
   });
 
-  it("cancels claim code rotation when an active code exists and confirmation is declined", async () => {
+  it("prints cancellation returned by claim command flow", async () => {
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
     existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
-    getOwnerStateMock.mockResolvedValue({
-      sessions: [],
-      rateLimits: {},
-      claimCode: { expiresAt: "2999-01-01T00:00:00.000Z" },
-    });
-    questionMock.mockResolvedValue("no");
+    runClaimCodeCommandMock.mockResolvedValue(["Claim-code generation cancelled."]);
 
     await runCli(["claim"]);
 
-    expect(questionMock).toHaveBeenCalledWith(
-      "An active claim code already exists. Generating a new code removes the old code, and you will have to use the new code to claim this workspace. Continue? [y/N] ",
-    );
-    expect(rotateClaimCodeMock).not.toHaveBeenCalled();
     expect(consoleLog).toHaveBeenCalledWith("Claim-code generation cancelled.");
-    expect(readlineCloseMock).toHaveBeenCalled();
   });
 
-  it("rotates an existing claim code after confirmation", async () => {
+  it("passes --yes to the claim command flow", async () => {
     existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
-    getOwnerStateMock.mockResolvedValue({
-      sessions: [],
-      rateLimits: {},
-      claimCode: { expiresAt: "2999-01-01T00:00:00.000Z" },
-    });
-    questionMock.mockResolvedValue("yes");
-
-    await runCli(["claim"]);
-
-    expect(rotateClaimCodeMock).toHaveBeenCalled();
-  });
-
-  it("skips claim code confirmation with --yes", async () => {
-    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
-    getOwnerStateMock.mockResolvedValue({
-      sessions: [],
-      rateLimits: {},
-      claimCode: { expiresAt: "2999-01-01T00:00:00.000Z" },
-    });
 
     await runCli(["claim", "--yes"]);
 
-    expect(questionMock).not.toHaveBeenCalled();
-    expect(rotateClaimCodeMock).toHaveBeenCalled();
+    expect(runClaimCodeCommandMock).toHaveBeenCalledWith(expect.objectContaining({ yes: true }));
   });
 
   it("fails when the production env template cannot be found", async () => {
