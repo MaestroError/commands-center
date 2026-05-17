@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page, type Route } from "../fixtures";
 
 type TerminalSession = {
   id: string;
@@ -104,7 +104,7 @@ async function mockTerminalApi(page: Page): Promise<void> {
     await route.fallback();
   });
 
-  await page.route("**/api/terminal/*", async (route: Route) => {
+  await page.route("**/api/terminal/**", async (route: Route) => {
     const url = new URL(route.request().url());
     const sessionId = url.pathname.split("/")[3];
     const session = state.sessions.find((entry) => entry.id === sessionId);
