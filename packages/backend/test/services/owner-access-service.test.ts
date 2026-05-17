@@ -6,7 +6,8 @@ import {
   createOwnerAccessService,
   OwnerAccessError,
 } from "../../src/services/owner-access-service";
-import { verifyOwnerSecret } from "../../src/lib/owner-password";
+import type { AuthStateStore, OwnerAccessState } from "../../src/lib/auth-state-store";
+import { hashOwnerSecret, verifyOwnerSecret } from "../../src/lib/owner-password";
 import { createTestDatabase } from "../helpers/db";
 
 const STRONG_PASSWORD = "CorrectHorseBatteryStaple42!";
@@ -242,6 +243,31 @@ describe("owner-access-service", () => {
       await expect(service.getBrowserAuthStatus(session.sessionId)).resolves.toBe(
         "claimed-authenticated",
       );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("records successful login attempts for rate limiting", async () => {
+    const testDb = await createTestDatabase();
+    const service = createOwnerAccessService({ config: testDb.config });
+
+    try {
+      const claim = await service.rotateClaimCode();
+      await service.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      await service.login({ password: STRONG_PASSWORD, ip: "203.0.113.21" });
+      const state = await service.getState();
+
+      expect(state.rateLimits.loginAttempts).toEqual([
+        {
+          key: "203.0.113.21",
+          attempts: [expect.any(String)],
+        },
+      ]);
     } finally {
       await testDb.cleanup();
     }
@@ -561,4 +587,68 @@ describe("owner-access-service", () => {
       await testDb.cleanup();
     }
   });
+
+  it("preserves all concurrent session updates across service instances", async () => {
+    const testDb = await createTestDatabase();
+    const timestamp = new Date("2026-01-01T00:00:00.000Z").toISOString();
+    const store = createContendedMemoryStore({
+      version: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      claimedAt: timestamp,
+      ownerPassword: await hashOwnerSecret(STRONG_PASSWORD),
+      sessions: [],
+      rateLimits: {
+        claimAttempts: [],
+        reclaimAttempts: [],
+        loginAttempts: [],
+      },
+    });
+    const primaryService = createOwnerAccessService({ config: testDb.config, store });
+    const secondaryService = createOwnerAccessService({ config: testDb.config, store });
+    const sessionInputs = Array.from({ length: 8 }, (_, index) => ({
+      userAgent: `browser-${index.toString()}`,
+    }));
+
+    try {
+      const sessions = await Promise.all(
+        sessionInputs.map((input, index) =>
+          (index % 2 === 0 ? primaryService : secondaryService).createSession(input),
+        ),
+      );
+      const state = await primaryService.getState();
+
+      expect(state.sessions).toHaveLength(sessionInputs.length);
+      expect(state.sessions.map((session) => session.userAgent).sort()).toEqual(
+        sessionInputs.map((input) => input.userAgent).sort(),
+      );
+      await Promise.all(
+        sessions.map((session) =>
+          expect(primaryService.validateSession(session.sessionId)).resolves.toBe(true),
+        ),
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
 });
+
+function createContendedMemoryStore(initialState: OwnerAccessState): AuthStateStore {
+  let state = cloneState(initialState);
+
+  return {
+    path: "memory-owner-access.json",
+    async read() {
+      await Promise.resolve();
+      return cloneState(state);
+    },
+    async write(nextState) {
+      await Promise.resolve();
+      state = cloneState(nextState);
+    },
+  };
+}
+
+function cloneState(state: OwnerAccessState): OwnerAccessState {
+  return JSON.parse(JSON.stringify(state)) as OwnerAccessState;
+}
