@@ -21,6 +21,7 @@ export function createTaskExecutionService(options: {
   taskService: TaskService;
   conversationService?: ConversationService;
   taskPermissionService?: TaskPermissionService;
+  onRunTerminal?: (run: TaskRun) => void | Promise<void>;
 }) {
   return {
     async trigger(taskId: string, input: Partial<TriggerTaskInput> = {}): Promise<TaskRun> {
@@ -70,6 +71,7 @@ export function createTaskExecutionService(options: {
         throw new NotFoundError("Task run not found.");
       }
 
+      notifyRunTerminal(cancelled);
       return cancelled;
     },
 
@@ -142,6 +144,7 @@ export function createTaskExecutionService(options: {
           throw new NotFoundError("Task run not found.");
         }
 
+        notifyRunTerminal(completed);
         return completed;
       }
 
@@ -154,6 +157,7 @@ export function createTaskExecutionService(options: {
         throw new NotFoundError("Task run not found.");
       }
 
+      notifyRunTerminal(completed);
       return completed;
     } catch (error) {
       const failed = await options.taskService.setRunStatus(running.id, "failed", {
@@ -169,6 +173,7 @@ export function createTaskExecutionService(options: {
         throw new NotFoundError("Task run not found.");
       }
 
+      notifyRunTerminal(failed);
       return failed;
     }
   }
@@ -199,6 +204,8 @@ export function createTaskExecutionService(options: {
           completedAt: new Date().toISOString(),
         });
 
+        notifyRunTerminal(skipped);
+
         throw new BadRequestError("Task is not enabled and was skipped.", { runId: skipped.id });
       }
 
@@ -216,6 +223,10 @@ export function createTaskExecutionService(options: {
     }
 
     throw new NotFoundError("Task run not found.");
+  }
+
+  function notifyRunTerminal(run: TaskRun): void {
+    void options.onRunTerminal?.(run);
   }
 }
 

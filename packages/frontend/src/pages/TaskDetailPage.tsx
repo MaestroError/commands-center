@@ -7,6 +7,7 @@ import type {
   ConversationPart,
   Task,
   TaskPermissionProfile,
+  TaskRepeatRule,
   TaskRun,
 } from "@cc/shared/schemas";
 
@@ -568,8 +569,18 @@ function Metric(props: { label: string; value: string }) {
 
 function formatSchedule(task: Task): string {
   if (task.schedule.mode === "scheduled_once") return formatDate(task.schedule.runAt);
-  if (task.schedule.mode === "recurring") return task.schedule.cronExpression;
+  if (task.schedule.mode === "recurring") return formatRepeatSummary(task.schedule.repeatRule);
   return "Manual only";
+}
+
+function formatRepeatSummary(rule: TaskRepeatRule): string {
+  const unit = rule.interval === 1 ? rule.frequency : `${rule.frequency}s`;
+  const weekdays = rule.weekdays?.map(formatWeekday).filter(Boolean);
+  return `Every ${String(rule.interval)} ${unit}${weekdays?.length ? ` on ${weekdays.join(", ")}` : ""}`;
+}
+
+function formatWeekday(value: number): string | undefined {
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][value];
 }
 
 function readError(error: unknown): string {

@@ -7,6 +7,7 @@ import {
   taskSchedulerStateSchema,
   type SchedulerStatus,
   type Task,
+  type TaskRun,
   type TaskSchedulerState,
 } from "@cc/shared/schemas";
 
@@ -101,7 +102,7 @@ export function createTaskSchedulerService(options: {
         });
 
         for (const dueRow of dueRows) {
-          await runDueTask(dueRow.task_id, at);
+          await runDueTask(dueRow.task_id, dueRow.next_run_at ?? at, at);
         }
 
         state = interval ? "running" : "inactive";
@@ -114,9 +115,29 @@ export function createTaskSchedulerService(options: {
         throw error;
       }
     },
+
+    async handleRunTerminal(run: TaskRun): Promise<void> {
+      if (run.triggerSource !== "scheduled" || !isTerminalRunStatus(run.status)) {
+        return;
+      }
+
+      const task = await options.taskService.get(run.taskId);
+      const scheduledAt = readScheduledAt(run);
+
+      if (!task || !scheduledAt) {
+        return;
+      }
+
+      await upsertState(
+        task,
+        computeNextRunAtAfter(task, scheduledAt, now()),
+        undefined,
+        scheduledAt,
+      );
+    },
   };
 
-  async function runDueTask(taskId: string, at: Date): Promise<void> {
+  async function runDueTask(taskId: string, dueAt: Date, at: Date): Promise<void> {
     const task = await options.taskService.get(taskId);
 
     if (
@@ -131,15 +152,16 @@ export function createTaskSchedulerService(options: {
     }
 
     try {
+      const scheduledAt = readLatestDueOccurrence(task, dueAt, at);
       await options.executionService.trigger(task.id, {
         triggerSource: "scheduled",
-        metadata: { scheduledAt: at.toISOString() },
+        metadata: { scheduledAt: scheduledAt.toISOString() },
       });
-      await upsertState(task, computeNextRunAt(task, at), undefined, at);
+      await upsertState(task, undefined, undefined, scheduledAt);
     } catch (error) {
       await upsertState(
         task,
-        computeNextRunAt(task, at),
+        computeNextRunAtAfter(task, at, at),
         error instanceof Error ? error.message : "Scheduled task run failed.",
         at,
       );
@@ -230,92 +252,169 @@ export function createTaskSchedulerService(options: {
 }
 
 export function computeNextRunAt(task: Task, from: Date): Date | undefined {
+  return computeNextRunAtAfter(task, from, from);
+}
+
+function computeNextRunAtAfter(task: Task, from: Date, after: Date): Date | undefined {
   if (!task.enabled || task.archived || task.status === "disabled" || task.status === "draft") {
     return undefined;
   }
 
   if (task.schedule.mode === "scheduled_once") {
     const runAt = new Date(task.schedule.runAt);
-    return runAt > from ? runAt : undefined;
+    return runAt > from && runAt > after ? runAt : undefined;
   }
 
   if (task.schedule.mode === "recurring") {
-    return computeNextCronRun(task.schedule.cronExpression, from);
+    return computeNextRecurringRun(task.schedule, from, after);
   }
 
   return undefined;
 }
 
-export function computeNextCronRun(expression: string, from: Date): Date {
-  const fields = expression.trim().split(/\s+/);
+export function computeNextRecurringRun(
+  schedule: Extract<Task["schedule"], { mode: "recurring" }>,
+  from: Date,
+  after = from,
+): Date {
+  const anchor = new Date(schedule.anchorAt);
+  let candidate = anchor;
 
-  if (fields.length !== 5) {
-    throw new Error("Recurring task schedule must use five-field cron syntax.");
-  }
-
-  const [minuteField, hourField, dayOfMonthField, monthField, dayOfWeekField] = fields;
-  const start = new Date(from.getTime() + 60_000);
-  start.setUTCSeconds(0, 0);
-
-  for (let offsetMinutes = 0; offsetMinutes < 366 * 24 * 60; offsetMinutes += 1) {
-    const candidate = new Date(start.getTime() + offsetMinutes * 60_000);
-
-    if (
-      matchesCronField(minuteField, candidate.getUTCMinutes(), 0, 59) &&
-      matchesCronField(hourField, candidate.getUTCHours(), 0, 23) &&
-      matchesCronField(dayOfMonthField, candidate.getUTCDate(), 1, 31) &&
-      matchesCronField(monthField, candidate.getUTCMonth() + 1, 1, 12) &&
-      matchesCronField(dayOfWeekField, candidate.getUTCDay(), 0, 7)
-    ) {
+  for (let attempts = 0; attempts < 3660; attempts += 1) {
+    if (candidate > from && candidate > after) {
       return candidate;
     }
+
+    candidate = advanceRecurringCandidate(anchor, candidate, schedule.repeatRule);
   }
 
-  throw new Error("Could not compute next recurring task run within one year.");
+  throw new Error("Could not compute next recurring task run within ten years.");
 }
 
-function matchesCronField(
-  field: string | undefined,
-  value: number,
-  min: number,
-  max: number,
-): boolean {
-  if (!field) {
-    return false;
+function readLatestDueOccurrence(task: Task, firstDueAt: Date, at: Date): Date {
+  if (task.schedule.mode !== "recurring") {
+    return firstDueAt;
   }
 
-  return field.split(",").some((part) => matchesCronPart(part, value, min, max));
+  let latest = firstDueAt;
+
+  for (let attempts = 0; attempts < 3660; attempts += 1) {
+    const next = computeNextRecurringRun(task.schedule, latest);
+
+    if (next > at) {
+      return latest;
+    }
+
+    latest = next;
+  }
+
+  return latest;
 }
 
-function matchesCronPart(part: string, value: number, min: number, max: number): boolean {
-  if (part === "*") {
-    return true;
+function advanceRecurringCandidate(
+  anchor: Date,
+  current: Date,
+  rule: Extract<Task["schedule"], { mode: "recurring" }>["repeatRule"],
+): Date {
+  if (rule.frequency === "day") {
+    return addUtcDays(current, rule.interval);
   }
 
-  if (part.startsWith("*/")) {
-    const step = Number.parseInt(part.slice(2), 10);
-    return Number.isInteger(step) && step > 0 && (value - min) % step === 0;
+  if (rule.frequency === "week" && rule.weekdays?.length) {
+    return nextWeeklyWeekday(anchor, current, rule.interval, rule.weekdays);
   }
 
-  if (part.includes("-")) {
-    const [rawStart, rawEnd] = part.split("-");
-    const start = Number.parseInt(rawStart ?? "", 10);
-    const end = Number.parseInt(rawEnd ?? "", 10);
-    return (
-      isWithinRange(start, min, max) &&
-      isWithinRange(end, min, max) &&
-      value >= start &&
-      value <= end
-    );
+  if (rule.frequency === "week") {
+    return addUtcDays(current, rule.interval * 7);
   }
 
-  const parsed = Number.parseInt(part, 10);
-  const normalized = max === 7 && parsed === 7 ? 0 : parsed;
-  return isWithinRange(parsed, min, max) && value === normalized;
+  if (rule.frequency === "month") {
+    return addUtcMonths(anchor, current, rule.interval);
+  }
+
+  return addUtcYears(anchor, current, rule.interval);
 }
 
-function isWithinRange(value: number, min: number, max: number): boolean {
-  return Number.isInteger(value) && value >= min && value <= max;
+function nextWeeklyWeekday(
+  anchor: Date,
+  current: Date,
+  interval: number,
+  weekdays: number[],
+): Date {
+  const selected = [...new Set(weekdays)].sort((left, right) => left - right);
+  let candidate = addUtcDays(current, 1);
+
+  for (let attempts = 0; attempts < 3660; attempts += 1) {
+    const weeksSinceAnchor = Math.floor(daysBetweenUtc(anchor, candidate) / 7);
+
+    if (
+      weeksSinceAnchor >= 0 &&
+      weeksSinceAnchor % interval === 0 &&
+      selected.includes(candidate.getUTCDay())
+    ) {
+      return withAnchorTime(candidate, anchor);
+    }
+
+    candidate = addUtcDays(candidate, 1);
+  }
+
+  throw new Error("Could not compute next weekly recurring task run within ten years.");
+}
+
+function addUtcDays(value: Date, days: number): Date {
+  const next = new Date(value);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function addUtcMonths(anchor: Date, current: Date, months: number): Date {
+  const next = new Date(current);
+  next.setUTCMonth(next.getUTCMonth() + months, 1);
+  next.setUTCDate(Math.min(anchor.getUTCDate(), daysInUtcMonth(next)));
+  return withAnchorTime(next, anchor);
+}
+
+function addUtcYears(anchor: Date, current: Date, years: number): Date {
+  const next = new Date(current);
+  next.setUTCFullYear(next.getUTCFullYear() + years, anchor.getUTCMonth(), 1);
+  next.setUTCDate(Math.min(anchor.getUTCDate(), daysInUtcMonth(next)));
+  return withAnchorTime(next, anchor);
+}
+
+function withAnchorTime(value: Date, anchor: Date): Date {
+  const next = new Date(value);
+  next.setUTCHours(
+    anchor.getUTCHours(),
+    anchor.getUTCMinutes(),
+    anchor.getUTCSeconds(),
+    anchor.getUTCMilliseconds(),
+  );
+  return next;
+}
+
+function daysInUtcMonth(value: Date): number {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0)).getUTCDate();
+}
+
+function daysBetweenUtc(left: Date, right: Date): number {
+  const leftDay = Date.UTC(left.getUTCFullYear(), left.getUTCMonth(), left.getUTCDate());
+  const rightDay = Date.UTC(right.getUTCFullYear(), right.getUTCMonth(), right.getUTCDate());
+  return Math.floor((rightDay - leftDay) / 86_400_000);
+}
+
+function readScheduledAt(run: TaskRun): Date | undefined {
+  const metadata = run.renderedContext?.["triggerMetadata"];
+
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return undefined;
+  }
+
+  const scheduledAt = (metadata as Record<string, unknown>)["scheduledAt"];
+  return typeof scheduledAt === "string" ? new Date(scheduledAt) : undefined;
+}
+
+function isTerminalRunStatus(status: TaskRun["status"]): boolean {
+  return ["completed", "failed", "cancelled", "skipped"].includes(status);
 }
 
 function mapSchedulerState(row: typeof task_scheduler_state.$inferSelect): TaskSchedulerState {

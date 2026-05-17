@@ -6,6 +6,7 @@ import type {
   CreateTaskInput,
   ListTasksQuery,
   Task,
+  TaskRepeatRule,
   TaskSchedule,
   TaskTriggerMode,
   UpdateTaskInput,
@@ -35,6 +36,17 @@ const TASK_STATUSES = [
 ] as const;
 
 const TRIGGER_MODES = ["manual", "scheduled_once", "recurring"] as const;
+const REPEAT_PRESETS = ["daily", "weekly", "monthly", "yearly", "weekday", "custom"] as const;
+const REPEAT_FREQUENCIES = ["day", "week", "month", "year"] as const;
+const WEEKDAYS = [
+  { value: 0, label: "Sun" },
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+] as const;
 
 export function TasksPage(props: TasksPageProps) {
   if (props.mode === "create") return <TaskFormPage mode="create" />;
@@ -177,7 +189,7 @@ function TaskListPage() {
               Create your first task
             </Link>
           }
-          description="Tasks can run manually, once at a scheduled time, or repeatedly on a cron schedule."
+          description="Tasks can run manually, once at a scheduled time, or on a simple repeat schedule."
           title="No tasks match this view"
         />
       ) : null}
@@ -409,15 +421,74 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
               </label>
             ) : null}
             {form.triggerMode === "recurring" ? (
-              <label className="grid gap-1 text-sm text-text-secondary lg:col-span-2">
-                Cron expression
-                <input
-                  className="cc-input font-mono"
-                  placeholder="0 9 * * *"
-                  value={form.cronExpression}
-                  onChange={(event) => updateForm({ cronExpression: event.target.value })}
-                />
-              </label>
+              <section className="grid gap-3 rounded-xl border border-border bg-surface p-4 lg:col-span-2">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1 text-sm text-text-secondary">
+                    Repeat
+                    <select
+                      className="cc-input"
+                      value={form.repeatPreset}
+                      onChange={(event) =>
+                        updateForm({ repeatPreset: event.target.value as RepeatPreset })
+                      }
+                    >
+                      {REPEAT_PRESETS.map((preset) => (
+                        <option key={preset} value={preset}>
+                          {formatRepeatPreset(preset)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm text-text-secondary">
+                    Starts at
+                    <input
+                      className="cc-input"
+                      type="datetime-local"
+                      value={form.anchorAtLocal}
+                      onChange={(event) => updateForm({ anchorAtLocal: event.target.value })}
+                    />
+                  </label>
+                </div>
+                {form.repeatPreset === "custom" ? (
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                    <label className="grid gap-1 text-sm text-text-secondary">
+                      Every
+                      <input
+                        className="cc-input"
+                        min={1}
+                        type="number"
+                        value={form.repeatInterval}
+                        onChange={(event) => updateForm({ repeatInterval: event.target.value })}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm text-text-secondary">
+                      Unit
+                      <select
+                        className="cc-input"
+                        value={form.repeatFrequency}
+                        onChange={(event) =>
+                          updateForm({ repeatFrequency: event.target.value as RepeatFrequency })
+                        }
+                      >
+                        {REPEAT_FREQUENCIES.map((frequency) => (
+                          <option key={frequency} value={frequency}>
+                            {formatToken(frequency)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {form.repeatFrequency === "week" ? (
+                      <WeekdayPicker form={form} updateForm={updateForm} />
+                    ) : null}
+                  </div>
+                ) : null}
+                {form.repeatPreset === "weekly" ? (
+                  <WeekdayPicker form={form} updateForm={updateForm} />
+                ) : null}
+                <p className="text-sm text-text-secondary">
+                  {formatRepeatSummary(buildRepeatRule(form))}
+                </p>
+              </section>
             ) : null}
           </div>
 
@@ -488,9 +559,17 @@ type FormState = {
   description: string;
   triggerMode: TaskTriggerMode;
   runAtLocal: string;
-  cronExpression: string;
+  anchorAtLocal: string;
+  timezone: string;
+  repeatPreset: RepeatPreset;
+  repeatFrequency: RepeatFrequency;
+  repeatInterval: string;
+  repeatWeekdays: number[];
   todosText: string;
 };
+
+type RepeatPreset = (typeof REPEAT_PRESETS)[number];
+type RepeatFrequency = (typeof REPEAT_FREQUENCIES)[number];
 
 function taskToForm(task?: Task): FormState {
   return {
@@ -500,7 +579,17 @@ function taskToForm(task?: Task): FormState {
     triggerMode: task?.triggerMode ?? "manual",
     runAtLocal:
       task?.schedule.mode === "scheduled_once" ? toLocalDateTime(task.schedule.runAt) : "",
-    cronExpression: task?.schedule.mode === "recurring" ? task.schedule.cronExpression : "",
+    anchorAtLocal:
+      task?.schedule.mode === "recurring" ? toLocalDateTime(task.schedule.anchorAt) : "",
+    timezone: task?.schedule.mode === "recurring" ? task.schedule.timezone : readLocalTimezone(),
+    repeatPreset:
+      task?.schedule.mode === "recurring" ? scheduleToRepeatPreset(task.schedule) : "daily",
+    repeatFrequency:
+      task?.schedule.mode === "recurring" ? task.schedule.repeatRule.frequency : "day",
+    repeatInterval:
+      task?.schedule.mode === "recurring" ? String(task.schedule.repeatRule.interval) : "1",
+    repeatWeekdays:
+      task?.schedule.mode === "recurring" ? (task.schedule.repeatRule.weekdays ?? []) : [],
     todosText: task?.todos.map((todo) => todo.content).join("\n") ?? "",
   };
 }
@@ -526,9 +615,95 @@ function buildSchedule(form: FormState): TaskSchedule {
     return { mode: "scheduled_once", runAt: new Date(form.runAtLocal || Date.now()).toISOString() };
   }
   if (form.triggerMode === "recurring") {
-    return { mode: "recurring", cronExpression: form.cronExpression || "0 9 * * *" };
+    return {
+      mode: "recurring",
+      anchorAt: new Date(form.anchorAtLocal || Date.now()).toISOString(),
+      timezone: form.timezone || readLocalTimezone(),
+      repeatRule: buildRepeatRule(form),
+    };
   }
   return { mode: "manual" };
+}
+
+function WeekdayPicker(props: {
+  form: FormState;
+  updateForm: (patch: Partial<FormState>) => void;
+}) {
+  return (
+    <fieldset className="grid gap-2 sm:col-span-2">
+      <legend className="text-sm text-text-secondary">Weekdays</legend>
+      <div className="flex flex-wrap gap-2">
+        {WEEKDAYS.map((weekday) => (
+          <label
+            className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-secondary"
+            key={weekday.value}
+          >
+            <input
+              checked={props.form.repeatWeekdays.includes(weekday.value)}
+              onChange={(event) => {
+                const selected = event.target.checked
+                  ? [...props.form.repeatWeekdays, weekday.value]
+                  : props.form.repeatWeekdays.filter((value) => value !== weekday.value);
+                props.updateForm({ repeatWeekdays: selected });
+              }}
+              type="checkbox"
+            />
+            {weekday.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function buildRepeatRule(form: FormState): TaskRepeatRule {
+  if (form.repeatPreset === "daily") return { frequency: "day", interval: 1 };
+  if (form.repeatPreset === "monthly") return { frequency: "month", interval: 1 };
+  if (form.repeatPreset === "yearly") return { frequency: "year", interval: 1 };
+  if (form.repeatPreset === "weekday") {
+    return { frequency: "week", interval: 1, weekdays: [1, 2, 3, 4, 5] };
+  }
+
+  if (form.repeatPreset === "weekly") {
+    return { frequency: "week", interval: 1, weekdays: normalizeWeekdays(form.repeatWeekdays) };
+  }
+
+  return {
+    frequency: form.repeatFrequency,
+    interval: Number.parseInt(form.repeatInterval, 10) || 1,
+    weekdays: form.repeatFrequency === "week" ? normalizeWeekdays(form.repeatWeekdays) : undefined,
+  };
+}
+
+function normalizeWeekdays(values: number[]): number[] {
+  return values.length > 0 ? [...new Set(values)].sort((left, right) => left - right) : [1];
+}
+
+function scheduleToRepeatPreset(
+  schedule: Extract<TaskSchedule, { mode: "recurring" }>,
+): RepeatPreset {
+  const rule = schedule.repeatRule;
+
+  if (rule.frequency === "day" && rule.interval === 1) return "daily";
+  if (rule.frequency === "month" && rule.interval === 1) return "monthly";
+  if (rule.frequency === "year" && rule.interval === 1) return "yearly";
+  if (rule.frequency === "week" && rule.interval === 1) {
+    if (rule.weekdays?.join(",") === "1,2,3,4,5") return "weekday";
+    return "weekly";
+  }
+
+  return "custom";
+}
+
+function formatRepeatPreset(preset: RepeatPreset): string {
+  if (preset === "weekday") return "Every weekday";
+  return preset === "custom" ? "Custom" : formatToken(preset);
+}
+
+function formatRepeatSummary(rule: TaskRepeatRule): string {
+  const unit = rule.interval === 1 ? rule.frequency : `${rule.frequency}s`;
+  const weekdays = rule.weekdays?.map((value) => WEEKDAYS[value]?.label).filter(Boolean);
+  return `Every ${String(rule.interval)} ${unit}${weekdays?.length ? ` on ${weekdays.join(", ")}` : ""}`;
 }
 
 function readFilters(params: URLSearchParams): Partial<ListTasksQuery> {
@@ -563,8 +738,12 @@ function Metric(props: { label: string; value: string }) {
 
 function formatNextRun(schedule: TaskSchedule): string {
   if (schedule.mode === "scheduled_once") return formatDate(schedule.runAt);
-  if (schedule.mode === "recurring") return schedule.cronExpression;
+  if (schedule.mode === "recurring") return formatRepeatSummary(schedule.repeatRule);
   return "Manual only";
+}
+
+function readLocalTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
 function toLocalDateTime(value: string): string {

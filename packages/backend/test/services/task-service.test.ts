@@ -29,7 +29,12 @@ describe("createTaskService", () => {
         agentId: agent.id,
         title: "Weekly status",
         triggerMode: "recurring",
-        schedule: { mode: "recurring", cronExpression: "0 9 * * 1", timezone: "UTC" },
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
+        },
         status: "in_progress",
       });
 

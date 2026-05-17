@@ -59,10 +59,21 @@ export const scheduledOnceTaskScheduleSchema = z.object({
   timezone: z.string().trim().min(1).optional(),
 });
 
+export const taskRepeatFrequencySchema = z.enum(["day", "week", "month", "year"]);
+
+export const taskWeekdaySchema = z.number().int().min(0).max(6);
+
+export const taskRepeatRuleSchema = z.object({
+  frequency: taskRepeatFrequencySchema,
+  interval: z.number().int().min(1).default(1),
+  weekdays: z.array(taskWeekdaySchema).optional(),
+});
+
 export const recurringTaskScheduleSchema = z.object({
   mode: z.literal("recurring"),
-  cronExpression: z.string().trim().min(1),
-  timezone: z.string().trim().min(1).optional(),
+  anchorAt: z.string().datetime(),
+  timezone: z.string().trim().min(1),
+  repeatRule: taskRepeatRuleSchema,
 });
 
 export const taskScheduleSchema = z.discriminatedUnion("mode", [
@@ -260,6 +271,7 @@ export type TaskSchedule = z.infer<typeof taskScheduleSchema>;
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 export type TaskTodo = z.infer<typeof taskTodoSchema>;
 export type TaskTriggerMode = z.infer<typeof taskTriggerModeSchema>;
+export type TaskRepeatRule = z.infer<typeof taskRepeatRuleSchema>;
 export type TriggerTaskInput = z.input<typeof triggerTaskInputSchema>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
 export type UpdateTaskRunInput = z.input<typeof updateTaskRunInputSchema>;

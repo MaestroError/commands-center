@@ -213,14 +213,19 @@ describe("TaskDetailPage", () => {
     mockFetch({
       taskPayload: {
         ...task,
-        schedule: { mode: "recurring", cronExpression: "0 9 * * 1" },
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
+        },
       },
       runsPayload: [],
     });
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
-    await screen.findByText("0 9 * * 1");
+    await screen.findByText("Every 1 week on Mon");
     await waitFor(() => {
       expect(screen.queryByTestId("task-runs-loading")).not.toBeInTheDocument();
     });

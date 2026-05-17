@@ -44,9 +44,16 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     config: context.config,
     opencodeService: context.opencodeService,
   });
+  const fallbackTaskSchedulerServiceRef: {
+    current?: ReturnType<typeof createTaskSchedulerService>;
+  } = {};
   const executionService =
     context.taskExecutionService ??
-    createTaskExecutionService({ taskService: service, conversationService });
+    createTaskExecutionService({
+      taskService: service,
+      conversationService,
+      onRunTerminal: (run) => fallbackTaskSchedulerServiceRef.current?.handleRunTerminal(run),
+    });
   const taskSchedulerService =
     context.taskSchedulerService ??
     createTaskSchedulerService({
@@ -55,6 +62,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       executionService,
       logger: context.logger,
     });
+  fallbackTaskSchedulerServiceRef.current = taskSchedulerService;
 
   app.get(
     "/api/tasks/runs/active",

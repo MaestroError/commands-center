@@ -4,28 +4,69 @@ import type { AppDb } from "../../src/db/client";
 import { agents } from "../../src/db/schema/index";
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
 import {
-  computeNextCronRun,
+  computeNextRecurringRun,
   createTaskSchedulerService,
 } from "../../src/services/task-scheduler-service";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("createTaskSchedulerService", () => {
-  it("computes next recurring cron runs", () => {
-    const next = computeNextCronRun("*/15 * * * *", new Date("2026-06-01T12:07:00.000Z"));
+  it("computes daily recurring runs", () => {
+    const next = computeNextRecurringRun(
+      {
+        mode: "recurring",
+        anchorAt: "2026-06-01T09:00:00.000Z",
+        timezone: "UTC",
+        repeatRule: { frequency: "day", interval: 1 },
+      },
+      new Date("2026-06-01T12:07:00.000Z"),
+    );
 
-    expect(next.toISOString()).toBe("2026-06-01T12:15:00.000Z");
+    expect(next.toISOString()).toBe("2026-06-02T09:00:00.000Z");
+  });
+
+  it("computes weekly selected weekday recurring runs", () => {
+    const next = computeNextRecurringRun(
+      {
+        mode: "recurring",
+        anchorAt: "2026-06-01T09:00:00.000Z",
+        timezone: "UTC",
+        repeatRule: { frequency: "week", interval: 1, weekdays: [2, 4] },
+      },
+      new Date("2026-06-02T10:00:00.000Z"),
+    );
+
+    expect(next.toISOString()).toBe("2026-06-04T09:00:00.000Z");
+  });
+
+  it("computes monthly day-of-month recurring runs", () => {
+    const next = computeNextRecurringRun(
+      {
+        mode: "recurring",
+        anchorAt: "2026-01-31T09:00:00.000Z",
+        timezone: "UTC",
+        repeatRule: { frequency: "month", interval: 1 },
+      },
+      new Date("2026-01-31T10:00:00.000Z"),
+    );
+
+    expect(next.toISOString()).toBe("2026-02-28T09:00:00.000Z");
   });
 
   it("runs due one-time scheduled tasks once", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const executionService = createTaskExecutionService({ taskService });
+    const schedulerServiceRef: { current?: ReturnType<typeof createTaskSchedulerService> } = {};
+    const executionService = createTaskExecutionService({
+      taskService,
+      onRunTerminal: (run) => schedulerServiceRef.current?.handleRunTerminal(run),
+    });
     const schedulerService = createTaskSchedulerService({
       db: testDb.client.db,
       taskService,
       executionService,
     });
+    schedulerServiceRef.current = schedulerService;
 
     try {
       const agent = await insertAgent(testDb.client.db);
@@ -56,12 +97,17 @@ describe("createTaskSchedulerService", () => {
   it("runs recurring tasks and advances next run state", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const executionService = createTaskExecutionService({ taskService });
+    const schedulerServiceRef: { current?: ReturnType<typeof createTaskSchedulerService> } = {};
+    const executionService = createTaskExecutionService({
+      taskService,
+      onRunTerminal: (run) => schedulerServiceRef.current?.handleRunTerminal(run),
+    });
     const schedulerService = createTaskSchedulerService({
       db: testDb.client.db,
       taskService,
       executionService,
     });
+    schedulerServiceRef.current = schedulerService;
 
     try {
       const agent = await insertAgent(testDb.client.db);
@@ -69,18 +115,76 @@ describe("createTaskSchedulerService", () => {
         agentId: agent.id,
         title: "Recurring",
         triggerMode: "recurring",
-        schedule: { mode: "recurring", cronExpression: "*/5 * * * *" },
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T12:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "day", interval: 1 },
+        },
       });
 
-      await schedulerService.tick(new Date("2026-06-01T12:05:00.000Z"));
+      await schedulerService.tick(new Date("2026-06-02T12:00:00.000Z"));
 
       const runs = await taskService.listRuns(task.id);
-      const states = await schedulerService.listStates();
+      await expect
+        .poll(
+          async () =>
+            (await schedulerService.listStates()).find((state) => state.taskId === task.id)
+              ?.nextRunAt,
+        )
+        .toBe("2026-06-03T12:00:00.000Z");
 
       expect(runs).toHaveLength(1);
-      expect(states.find((state) => state.taskId === task.id)?.nextRunAt).toBe(
-        "2026-06-01T12:10:00.000Z",
-      );
+    } finally {
+      schedulerService.stop();
+      await testDb.cleanup();
+    }
+  });
+
+  it("runs the latest overdue recurring occurrence once", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const schedulerServiceRef: { current?: ReturnType<typeof createTaskSchedulerService> } = {};
+    const executionService = createTaskExecutionService({
+      taskService,
+      onRunTerminal: (run) => schedulerServiceRef.current?.handleRunTerminal(run),
+    });
+    const schedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService,
+    });
+    schedulerServiceRef.current = schedulerService;
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Weekdays",
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1, weekdays: [1, 2, 3, 4, 5] },
+        },
+      });
+
+      await schedulerService.tick(new Date("2026-06-08T12:00:00.000Z"));
+
+      const runs = await taskService.listRuns(task.id);
+      await expect
+        .poll(
+          async () =>
+            (await schedulerService.listStates()).find((state) => state.taskId === task.id)
+              ?.nextRunAt,
+        )
+        .toBe("2026-06-09T09:00:00.000Z");
+
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.renderedContext?.["triggerMetadata"]).toEqual({
+        scheduledAt: "2026-06-08T09:00:00.000Z",
+      });
     } finally {
       schedulerService.stop();
       await testDb.cleanup();
