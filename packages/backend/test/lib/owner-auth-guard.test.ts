@@ -7,6 +7,7 @@ import { CSRF_HEADER_NAME, createCsrfCookie, createCsrfToken } from "../../src/l
 import { createLogger } from "../../src/lib/logger";
 import { createOwnerSessionCookie } from "../../src/lib/owner-session-cookie";
 import { PUBLIC_ROUTES, isPublicRoute } from "../../src/lib/public-routes";
+import { loadRuntimeConfig, type RuntimeConfig } from "../../src/lib/runtime-config";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
 import { createServer } from "../../src/server";
 import { createOwnerAccessService } from "../../src/services/owner-access-service";
@@ -137,6 +138,87 @@ describe("owner auth guard", () => {
     }
   });
 
+  it("rejects production mutating API requests without origin or referer", async () => {
+    const testDb = await createTestDatabase();
+    const productionConfig = loadRuntimeConfig({
+      cwd: testDb.cwd,
+      env: { NODE_ENV: "production", CC_PUBLIC_ORIGIN: "https://commands.example.com" },
+    });
+    const ownerAccessService = createOwnerAccessService({ config: productionConfig });
+    const server = await createAuthServer(testDb, ownerAccessService, productionConfig);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "pty-123", backend: "opencode", cwd: "/tmp" }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const { cookie, csrfToken } = await createAuthenticatedCookie(
+        productionConfig,
+        ownerAccessService,
+      );
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/terminal",
+        headers: { cookie, [CSRF_HEADER_NAME]: csrfToken },
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({
+        error: { code: "forbidden", message: "Request origin is not allowed." },
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("allows production mutating API requests with an allowed referer", async () => {
+    const testDb = await createTestDatabase();
+    const productionConfig = loadRuntimeConfig({
+      cwd: testDb.cwd,
+      env: { NODE_ENV: "production", CC_PUBLIC_ORIGIN: "https://commands.example.com" },
+    });
+    const ownerAccessService = createOwnerAccessService({ config: productionConfig });
+    const server = await createAuthServer(testDb, ownerAccessService, productionConfig);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "pty-123", backend: "opencode", cwd: "/tmp" }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const { cookie, csrfToken } = await createAuthenticatedCookie(
+        productionConfig,
+        ownerAccessService,
+      );
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/terminal",
+        headers: {
+          cookie,
+          [CSRF_HEADER_NAME]: csrfToken,
+          referer: "https://commands.example.com/profile",
+        },
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(fetchMock).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("redirects browser navigations based on owner auth state", async () => {
     const testDb = await createTestDatabase();
     const ownerAccessService = createOwnerAccessService({ config: testDb.config });
@@ -208,15 +290,16 @@ describe("owner auth guard", () => {
 async function createAuthServer(
   testDb: Awaited<ReturnType<typeof createTestDatabase>>,
   ownerAccessService = createOwnerAccessService({ config: testDb.config }),
+  config: RuntimeConfig = testDb.config,
 ) {
   return createServer({
-    config: testDb.config,
-    logger: createLogger(testDb.config),
+    config,
+    logger: createLogger(config),
     database: testDb.client,
     orchestrator: createOrchestrator(),
     opencodeService: createMockOpenCodeService(),
     openCodeEventService: { subscribe: () => {} },
-    secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    secretService: createSecretService({ db: testDb.client.db, config }),
     ownerAccessService,
     scheduler: createSchedulerService(),
   });

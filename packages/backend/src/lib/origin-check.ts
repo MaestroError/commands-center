@@ -5,12 +5,15 @@ import type { RuntimeConfig } from "./runtime-config.js";
 export function isOriginAllowed(options: {
   config: RuntimeConfig;
   origin: string | undefined;
+  referer?: string | undefined;
 }): boolean {
-  if (!options.origin) {
-    return true;
+  const source = options.origin ?? options.referer;
+
+  if (!source) {
+    return options.config.nodeEnv !== "production";
   }
 
-  const originUrl = parseOrigin(options.origin);
+  const originUrl = parseOrigin(source);
 
   if (!originUrl) {
     return false;

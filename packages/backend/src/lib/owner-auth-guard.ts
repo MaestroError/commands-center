@@ -57,8 +57,9 @@ export function validateOriginForMutation(context: RuntimeContext, request: Fast
   }
 
   const origin = readHeaderString(request.headers.origin);
+  const referer = readHeaderString(request.headers.referer);
 
-  if (!isOriginAllowed({ config: context.config, origin })) {
+  if (!isOriginAllowed({ config: context.config, origin, referer })) {
     throw new ForbiddenError("Request origin is not allowed.");
   }
 }

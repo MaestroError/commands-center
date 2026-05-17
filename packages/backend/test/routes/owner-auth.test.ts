@@ -113,7 +113,11 @@ describe("owner auth routes", () => {
 
   it("sets secure session cookies in production", async () => {
     const testDb = await createTestDatabase();
-    const productionConfig = { ...testDb.config, nodeEnv: "production" as const };
+    const productionConfig = {
+      ...testDb.config,
+      nodeEnv: "production" as const,
+      security: { ...testDb.config.security, publicOrigin: "https://commands.example.com" },
+    };
     const ownerAccessService = createOwnerAccessService({ config: productionConfig });
     const server = await createAuthServer(
       { ...testDb, config: productionConfig },
@@ -125,6 +129,7 @@ describe("owner auth routes", () => {
       const response = await server.inject({
         method: "POST",
         url: "/api/auth/claim",
+        headers: { origin: "https://commands.example.com" },
         payload: {
           claimCode: claimCode.code,
           password: STRONG_PASSWORD,
