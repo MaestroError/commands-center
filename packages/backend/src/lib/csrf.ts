@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 
 import type { RuntimeConfig } from "./runtime-config.js";
 
@@ -63,7 +63,18 @@ export function isCsrfTokenValid(input: {
   const cookieToken = readCookieValue(input.cookieHeader, CSRF_COOKIE_NAME);
   const headerToken = Array.isArray(input.headerValue) ? input.headerValue[0] : input.headerValue;
 
-  return Boolean(cookieToken && headerToken && cookieToken === headerToken);
+  if (!cookieToken || !headerToken) {
+    return false;
+  }
+
+  const cookieTokenBuffer = Buffer.from(cookieToken);
+  const headerTokenBuffer = Buffer.from(headerToken);
+
+  if (cookieTokenBuffer.byteLength !== headerTokenBuffer.byteLength) {
+    return false;
+  }
+
+  return timingSafeEqual(cookieTokenBuffer, headerTokenBuffer);
 }
 
 function shouldUseSecureCookie(config: RuntimeConfig): boolean {
