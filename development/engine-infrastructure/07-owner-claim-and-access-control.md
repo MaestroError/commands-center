@@ -238,6 +238,30 @@ The MVP remains a single-user workspace application. The owner claim flow provid
 - Add CI checks that run auth route tests whenever backend route files change.
 - Include security-sensitive assertions in both unit and e2e suites because redirect-only tests do not prove API protection.
 
+## Recommended Sub-Epics
+
+This epic should be split into sub-epics. It is security-sensitive and crosses backend auth services, global route guards, browser sessions, CSRF, origin checks, SSE/WebSocket protection, frontend routing, profile UX, CLI recovery commands, Docker/service setup, and deployment documentation.
+
+1. **E7.1 Owner Auth State and Claim Code Service** — `development/engine-infrastructure/07-owner-claim-and-access-control-sub-epics/01-owner-auth-state-and-claim-code-service.md`
+   - Create portable `.cc/workspace/auth/` state, claim-code generation/rotation, reclaim primitives, password validation, hashing decision, rate-limit state, and audit-safe logging.
+
+2. **E7.2 Claim, Login, Logout, and Session API** — `development/engine-infrastructure/07-owner-claim-and-access-control-sub-epics/02-claim-login-logout-and-session-api.md`
+   - Add auth status, claim, reclaim completion, login, logout, server-side sessions, secure cookies, session expiration, and revocation behavior.
+
+3. **E7.3 Backend Route Protection, CSRF, Origin, and Realtime Security** — `development/engine-infrastructure/07-owner-claim-and-access-control-sub-epics/03-backend-route-protection-csrf-origin-and-realtime-security.md`
+   - Add protected-by-default backend guard, public route allowlist, typed unauthorized responses, CSRF, origin/host checks, terminal WebSocket protection, SSE protection, and regression guardrails.
+
+4. **E7.4 Frontend Auth Bootstrap, Claim/Login UX, and API Client** — `development/engine-infrastructure/07-owner-claim-and-access-control-sub-epics/04-frontend-auth-bootstrap-claim-login-and-api-client.md`
+   - Add `/claim`, `/login`, auth bootstrap, protected app routing, logout state handling, centralized CSRF API-client behavior, and frontend/e2e coverage.
+
+5. **E7.5 Profile Password Management** — `development/engine-infrastructure/07-owner-claim-and-access-control-sub-epics/05-profile-password-management.md`
+   - Add authenticated password change from the profile page, current-password validation, strong-password reuse rules, session revocation, logging, and tests.
+
+6. **E7.6 CLI, Deployment, and Public-Origin Hardening** — `development/engine-infrastructure/07-owner-claim-and-access-control-sub-epics/06-cli-deployment-and-public-origin-hardening.md`
+   - Add `ccenter claim-code`, first-run setup output, npm-global/service/Docker/VPS docs, reverse proxy requirements, public origin env docs, and smoke coverage.
+
+Recommended order: E7.1 → E7.2 → E7.3 → E7.4 → E7.5 → E7.6. E7.6 may start after E7.1 for CLI shape, but final deployment docs should land after E7.3 defines origin and cookie behavior.
+
 ## Key Files to Create/Modify
 
 - `packages/backend/src/services/owner-access-service.ts`
@@ -267,8 +291,6 @@ The MVP remains a single-user workspace application. The owner claim flow provid
 - Terminal websocket upgrade path: `packages/backend/src/routes/terminal.ts`
 - CLI startup and env-file generation: `packages/cli/src/cli.ts`
 - Portable workspace rule: `.cc/workspace/` auth state must travel with the workspace
-
-s
 
 ### Note on Future External API Access
 

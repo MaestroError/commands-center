@@ -247,6 +247,10 @@ function mockApi(routes: Record<string, Response[]>) {
       return Promise.resolve(jsonResponse(200, { state: "healthy" }));
     }
 
+    if (input === "/api/auth/status") {
+      return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+    }
+
     if (input === "/api/tasks/runs/active") {
       return Promise.resolve(jsonResponse(200, []));
     }

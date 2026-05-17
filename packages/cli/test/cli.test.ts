@@ -9,9 +9,11 @@ describe("parseCliArgs", () => {
       host: undefined,
       port: undefined,
       envFile: undefined,
+      format: "text",
       help: false,
       version: false,
       rollback: false,
+      yes: false,
     });
   });
 
@@ -31,9 +33,11 @@ describe("parseCliArgs", () => {
       host: "127.0.0.1",
       port: 4001,
       envFile: "/opt/cc/.env",
+      format: "text",
       help: false,
       version: false,
       rollback: false,
+      yes: false,
     });
   });
 
@@ -43,9 +47,39 @@ describe("parseCliArgs", () => {
       host: undefined,
       port: undefined,
       envFile: undefined,
+      format: "text",
       help: false,
       version: false,
       rollback: true,
+      yes: false,
+    });
+  });
+
+  it("parses claim confirmation", () => {
+    expect(parseCliArgs(["claim", "--yes"])).toEqual({
+      command: "claim",
+      host: undefined,
+      port: undefined,
+      envFile: undefined,
+      format: "text",
+      help: false,
+      version: false,
+      rollback: false,
+      yes: true,
+    });
+  });
+
+  it("parses claim-code confirmation", () => {
+    expect(parseCliArgs(["claim-code", "-y"])).toEqual({
+      command: "claim-code",
+      host: undefined,
+      port: undefined,
+      envFile: undefined,
+      format: "text",
+      help: false,
+      version: false,
+      rollback: false,
+      yes: true,
     });
   });
 
@@ -55,9 +89,11 @@ describe("parseCliArgs", () => {
       host: undefined,
       port: undefined,
       envFile: undefined,
+      format: "text",
       help: true,
       version: true,
       rollback: false,
+      yes: false,
     });
   });
 
@@ -67,9 +103,11 @@ describe("parseCliArgs", () => {
       host: undefined,
       port: undefined,
       envFile: undefined,
+      format: "text",
       help: false,
       version: false,
       rollback: false,
+      yes: false,
     });
 
     expect(parseCliArgs(["serve", "--port"])).toEqual({
@@ -77,9 +115,11 @@ describe("parseCliArgs", () => {
       host: undefined,
       port: undefined,
       envFile: undefined,
+      format: "text",
       help: false,
       version: false,
       rollback: false,
+      yes: false,
     });
 
     expect(parseCliArgs(["serve", "--cc-env-file"])).toEqual({
@@ -87,9 +127,11 @@ describe("parseCliArgs", () => {
       host: undefined,
       port: undefined,
       envFile: undefined,
+      format: "text",
       help: false,
       version: false,
       rollback: false,
+      yes: false,
     });
   });
 
@@ -99,9 +141,25 @@ describe("parseCliArgs", () => {
       host: undefined,
       port: undefined,
       envFile: "/opt/cc/.env",
+      format: "text",
       help: false,
       version: false,
       rollback: false,
+      yes: false,
+    });
+  });
+
+  it("parses claim output format", () => {
+    expect(parseCliArgs(["claim", "--format", "json"])).toEqual({
+      command: "claim",
+      host: undefined,
+      port: undefined,
+      envFile: undefined,
+      format: "json",
+      help: false,
+      version: false,
+      rollback: false,
+      yes: false,
     });
   });
 });

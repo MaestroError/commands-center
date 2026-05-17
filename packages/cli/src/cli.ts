@@ -9,26 +9,32 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 
 import {
   createLogger,
+  createOwnerAccessService,
   createSystemVersionService,
+  loadEnvFile,
   loadRuntimeConfig,
   readPackageInfo,
+  runClaimCodeCommand,
   startServerRuntime,
 } from "@cc/backend";
-import { loadEnvFile } from "./env-file.js";
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "0.0.0.0";
+const ENV_FILE_CREATING_COMMANDS = new Set(["start", "serve"]);
+const ENV_FILE_REQUIRING_COMMANDS = new Set(["claim", "claim-code"]);
 
-export type CliCommand = "start" | "serve" | "upgrade";
+export type CliCommand = "start" | "serve" | "upgrade" | "claim" | "claim-code";
 
 export type CliArgs = {
   command: string;
   host?: string;
   port?: number;
   envFile?: string;
+  format: "text" | "json";
   help: boolean;
   version: boolean;
   rollback: boolean;
+  yes: boolean;
 };
 
 export function printHelp(): void {
@@ -39,6 +45,9 @@ export function printHelp(): void {
     ccenter start [options]    Start the server with web UI
     ccenter serve [options]    Start the API server only (no frontend)
     ccenter upgrade [options]  Upgrade the global/local package
+    ccenter claim [options]    Generate a workspace claim/reclaim code
+    ccenter claim-code [options]
+                               Alias for claim
     ccenter --help             Show this help
     ccenter --version          Show version
 
@@ -46,7 +55,9 @@ export function printHelp(): void {
     --port, -p <number>        Port to listen on (default: ${String(DEFAULT_PORT)})
     --host, -h <string>        Host to bind to (default: ${DEFAULT_HOST})
     --cc-env-file <path>       Load environment variables from a file
+    --format <text|json>       Output format for claim commands (default: text)
     --rollback                 Reinstall the previous recorded version
+    --yes, -y                  Confirm claim-code rotation prompts
 `);
 }
 
@@ -55,6 +66,7 @@ export function parseCliArgs(args: string[]): CliArgs {
   let port: number | undefined;
   let host: string | undefined;
   let envFile: string | undefined;
+  let format: "text" | "json" = "text";
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
@@ -75,6 +87,12 @@ export function parseCliArgs(args: string[]): CliArgs {
     if ((arg === "--host" || arg === "-h") && next) {
       host = next;
       i++;
+      continue;
+    }
+
+    if (arg === "--format" && (next === "text" || next === "json")) {
+      format = next;
+      i++;
     }
   }
 
@@ -83,9 +101,11 @@ export function parseCliArgs(args: string[]): CliArgs {
     host,
     port,
     envFile,
+    format,
     help: args.includes("--help"),
     version: args.includes("--version"),
     rollback: args.includes("--rollback"),
+    yes: args.includes("--yes") || args.includes("-y"),
   };
 }
 
@@ -102,7 +122,7 @@ export async function runCli(args: string[]): Promise<void> {
     return;
   }
 
-  if (!["start", "serve", "upgrade"].includes(parsedArgs.command)) {
+  if (!["start", "serve", "upgrade", "claim", "claim-code"].includes(parsedArgs.command)) {
     console.error(`Unknown command: ${parsedArgs.command}`);
     printHelp();
     process.exitCode = 1;
@@ -114,6 +134,11 @@ export async function runCli(args: string[]): Promise<void> {
 
   if (parsedArgs.command === "upgrade") {
     await runUpgrade(parsedArgs.rollback);
+    return;
+  }
+
+  if (parsedArgs.command === "claim" || parsedArgs.command === "claim-code") {
+    await runClaim({ yes: parsedArgs.yes, format: parsedArgs.format });
     return;
   }
 
@@ -145,6 +170,20 @@ export async function runCli(args: string[]): Promise<void> {
   });
 }
 
+async function runClaim(options: { yes: boolean; format: "text" | "json" }): Promise<void> {
+  const config = loadRuntimeConfig();
+  const service = createOwnerAccessService({ config, logger: createLogger(config) });
+
+  for (const line of await runClaimCodeCommand({
+    config,
+    ownerAccessService: service,
+    yes: options.yes,
+    format: options.format,
+  })) {
+    console.log(line);
+  }
+}
+
 async function runUpgrade(rollback: boolean): Promise<void> {
   const config = loadRuntimeConfig();
   const logger = createLogger(config);
@@ -166,7 +205,7 @@ async function runUpgrade(rollback: boolean): Promise<void> {
 
 function loadCliEnv(parsedArgs: CliArgs): void {
   if (parsedArgs.envFile) {
-    if (["start", "serve"].includes(parsedArgs.command) && !existsSync(parsedArgs.envFile)) {
+    if (ENV_FILE_CREATING_COMMANDS.has(parsedArgs.command) && !existsSync(parsedArgs.envFile)) {
       warnBeforeCreatingEnvFile(parsedArgs.envFile);
       process.env["CC_SECRET_KEY"] ??= createDefaultEnvFile(parsedArgs.envFile, {
         host: parsedArgs.host ?? process.env["CC_HOST"],
@@ -178,13 +217,19 @@ function loadCliEnv(parsedArgs: CliArgs): void {
       process.env["CC_FIRST_RUN_ENV_FILE_PATH"] = parsedArgs.envFile;
     }
 
+    if (ENV_FILE_REQUIRING_COMMANDS.has(parsedArgs.command) && !existsSync(parsedArgs.envFile)) {
+      throw new Error(
+        `Env file not found: ${parsedArgs.envFile}. Start CommandsCenter first with ccenter start --cc-env-file "${parsedArgs.envFile}", or pass an existing env file.`,
+      );
+    }
+
     loadEnvFile(parsedArgs.envFile);
     return;
   }
 
   const defaultEnvFile = resolve(homedir(), ".cc", ".env");
 
-  if (["start", "serve"].includes(parsedArgs.command) && !existsSync(defaultEnvFile)) {
+  if (ENV_FILE_CREATING_COMMANDS.has(parsedArgs.command) && !existsSync(defaultEnvFile)) {
     process.env["CC_SECRET_KEY"] ??= createDefaultEnvFile(defaultEnvFile, {
       host: parsedArgs.host ?? process.env["CC_HOST"],
       port: parsedArgs.port?.toString() ?? process.env["CC_PORT"],
@@ -198,6 +243,13 @@ function loadCliEnv(parsedArgs: CliArgs): void {
 
   if (existsSync(defaultEnvFile)) {
     loadEnvFile(defaultEnvFile);
+    return;
+  }
+
+  if (ENV_FILE_REQUIRING_COMMANDS.has(parsedArgs.command)) {
+    throw new Error(
+      `No CommandsCenter env file found at ${defaultEnvFile}. Start CommandsCenter first with ccenter start, or pass --cc-env-file to an existing env file.`,
+    );
   }
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PasswordInput } from "@/components/common/PasswordInput";
 import { TabBar } from "@/components/common/TabBar";
 import { useMarkEngineRestarting } from "@/hooks/use-engine-status-query";
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
@@ -504,12 +505,10 @@ function SecretCreateForm(props: {
         </label>
         <label className="grid gap-2 text-sm text-text-primary">
           <span>Secret value</span>
-          <input
+          <PasswordInput
             aria-label="Secret value"
-            className="cc-input"
             onChange={(event) => setValue(event.target.value)}
             placeholder="Enter a value"
-            type="password"
             value={value}
           />
           <span className="text-xs text-text-secondary">

@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   abortConversation,
   cancelLiveRequest,
+  changeOwnerPassword,
+  claimWorkspace,
   checkSystemVersion,
   closeTerminalSession,
   completeMcpAuth,
@@ -18,6 +20,7 @@ import {
   type FileSaveConflictError,
   getWorkspaceTree,
   listTerminalSessions,
+  logoutOwner,
   readApiError,
   removeMcpAuth,
   resizeTerminalSession,
@@ -75,6 +78,7 @@ async function collectWorkspaceEvents(chunks: string[]): Promise<unknown[]> {
 }
 
 afterEach(() => {
+  document.cookie = "cc_csrf_token=; Max-Age=0; path=/";
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -197,8 +201,6 @@ describe("searchWorkspaceFiles", () => {
 
     expect(fetchSpy).toHaveBeenCalledWith("/api/search/files?query=index", {
       method: "GET",
-      headers: undefined,
-      body: undefined,
     });
   });
 });
@@ -220,6 +222,28 @@ describe("summarizeConversation", () => {
 describe("readApiError", () => {
   it("reads message from a JSON error payload", () => {
     expect(readApiError({ error: { message: "nope" } }, 400, "Bad Request")).toBe("nope");
+  });
+
+  it("reads validation issues from a JSON error payload", () => {
+    expect(
+      readApiError(
+        {
+          error: {
+            message: "Owner password does not meet requirements.",
+            details: {
+              issues: [
+                "Password must include at least one uppercase letter.",
+                "Password must include at least one number.",
+              ],
+            },
+          },
+        },
+        400,
+        "Bad Request",
+      ),
+    ).toBe(
+      "Password must include at least one uppercase letter. Password must include at least one number.",
+    );
   });
 
   it("falls back to status text when message is missing", () => {
@@ -248,7 +272,7 @@ describe("additional request wrapper coverage", () => {
       name: "removeMcpAuth deletes the auth session",
       run: () => removeMcpAuth("mcp/1"),
       expectedUrl: "/api/mcp-servers/mcp%2F1/auth",
-      expectedInit: { method: "DELETE", headers: undefined, body: undefined },
+      expectedInit: { method: "DELETE" },
     },
     {
       name: "cancelLiveRequest posts the parsed cancel payload",
@@ -356,6 +380,82 @@ describe("additional request wrapper coverage", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     await expect(setSecret("OPENAI_KEY", "secret-value")).resolves.toBeUndefined();
+  });
+
+  it("sends the CSRF token cookie on mutating JSON requests", async () => {
+    document.cookie = "cc_csrf_token=csrf-token; path=/";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse({ status: "claimed-authenticated" }));
+
+    await claimWorkspace({
+      claimCode: "claim-code",
+      password: "owner-password",
+      confirmPassword: "owner-password",
+      rememberBrowser: true,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/auth/claim", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf-token" },
+      body: JSON.stringify({
+        claimCode: "claim-code",
+        password: "owner-password",
+        confirmPassword: "owner-password",
+        rememberBrowser: true,
+      }),
+    });
+  });
+
+  it("sends the CSRF token cookie on mutating requests without a body", async () => {
+    document.cookie = "cc_csrf_token=csrf-token; path=/";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse({ status: "claimed-unauthenticated" }));
+
+    await logoutOwner();
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/auth/logout", {
+      method: "POST",
+      headers: { "x-csrf-token": "csrf-token" },
+    });
+  });
+
+  it("decodes the CSRF token cookie before sending it as a header", async () => {
+    document.cookie = "cc_csrf_token=csrf-token%2Fwith%2Bsymbols; path=/";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse({ status: "claimed-unauthenticated" }));
+
+    await logoutOwner();
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/auth/logout", {
+      method: "POST",
+      headers: { "x-csrf-token": "csrf-token/with+symbols" },
+    });
+  });
+
+  it("posts owner password changes with a CSRF token", async () => {
+    document.cookie = "cc_csrf_token=csrf-token; path=/";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse({ status: "changed", otherSessionsRevoked: true }));
+
+    await changeOwnerPassword({
+      currentPassword: "current-password",
+      newPassword: "new-owner-password",
+      confirmNewPassword: "new-owner-password",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/auth/password", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf-token" },
+      body: JSON.stringify({
+        currentPassword: "current-password",
+        newPassword: "new-owner-password",
+        confirmNewPassword: "new-owner-password",
+      }),
+    });
   });
 
   it("resizeTerminalSession treats HTTP 204 as success", async () => {

@@ -9,6 +9,7 @@ import { registerFileManagerRoutes } from "./file-manager.js";
 import { registerHealthRoutes } from "./health.js";
 import { registerLiveRequestRoutes } from "./live-requests.js";
 import { registerMcpServerRoutes } from "./mcp-servers.js";
+import { registerOwnerAuthRoutes } from "./owner-auth.js";
 import { registerProviderRoutes } from "./providers.js";
 import { registerSearchRoutes } from "./search.js";
 import { registerSecretRoutes } from "./secrets.js";
@@ -19,6 +20,7 @@ import { registerWorkspaceSkillRoutes } from "./workspace-skills.js";
 
 export function registerApiRoutes(server: AppServer, context: RuntimeContext): void {
   registerHealthRoutes(server, context);
+  registerOwnerAuthRoutes(server, context);
   registerCcManagedMcpRoutes(server, context);
   registerAgentRoutes(server, context);
   registerConversationRoutes(server, context);

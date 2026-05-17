@@ -4,18 +4,6 @@
 
 **CommandsCenter (`cc`)** is a single-user, workspace-centric application for creating, managing, and interacting with isolated AI agents through persistent direct chat. The operator installs it, runs it, and is the sole user — there is no auth, no multi-tenancy. All application state lives inside the active workspace directory so the entire system can be moved to another machine without losing context.
 
-Read these files for full context (in order of priority):
-
-| File               | Purpose                                                            |
-| ------------------ | ------------------------------------------------------------------ |
-| `GOAL.md`          | Product vision, features, phases, workspace portability rule       |
-| `tech-research.md` | Architecture blueprint, technology rationale, integration patterns |
-
-Optionally:
-
-- When working with UI, also check files inside `design/` folder.
-- For high-level, general requirements, review `PRD.md`.
-
 ---
 
 # Important notes
@@ -30,7 +18,7 @@ Optionally:
 
 This is the single most important architectural constraint. Every feature must comply:
 
-> The entire workspace directory is the single source of truth. All application state (agents, configs, chat history, cron jobs, credentials, DB) MUST be stored within the active workspace folder (`.cc/workspace`). Even when PostgreSQL is the primary database, the app MUST silently sync all data in the background to a local in-folder SQLite DB (`.cc/local.db`). If a user copies the directory to another machine and runs installation command, they MUST get the exact same application state — zero external dependencies on the originating host.
+> The entire workspace directory is the single source of truth. All application state (agents, configs, cron jobs, credentials, DB) MUST be stored within the active workspace folder (`.cc/workspace`). Even when PostgreSQL is the primary database, the app MUST silently sync all data in the background to a local in-folder SQLite DB (`.cc/local.db`). If a user copies the directory to another machine and runs installation command, they MUST get the exact same application state — zero external dependencies on the originating host.
 
 Before implementing any feature that persists state, ask yourself: "If I copy this entire folder to a fresh machine, does everything still work?" If no, redesign.
 
@@ -461,3 +449,77 @@ When making changes that affect the developer experience, update the relevant do
 | Check product requirements   | `PRD.md`                                                       |
 | Check architecture decisions | `tech-research.md`                                             |
 | Check dev setup & commands   | `CONTRIBUTING.md`                                              |
+
+# Important rules for writing code
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+## 5. Reuse over code duplication
+
+**Don't create features that already exist.**
+
+Before writing a new feature or creating a new component, check:
+
+- Is there any code that already does the same thing you are trying to achive?
+- Can this code be reused as it is now?
+
+If code can be reused - reuse it. If it needs some type of refactoring before reuse, ask user for confirmation explaining what type of refactoring is needed to make that chunk of code reusable.

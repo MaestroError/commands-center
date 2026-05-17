@@ -31,6 +31,29 @@ beforeEach(() => {
   resetStorage();
   setDesktopMatchMedia(true);
   queryClient.clear();
+  vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+    if (input === "/api/auth/status") {
+      return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+    }
+
+    if (input === "/api/auth/logout") {
+      return Promise.resolve(jsonResponse(200, { status: "claimed-unauthenticated" }));
+    }
+
+    if (input === "/api/opencode") {
+      return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+    }
+
+    if (input === "/api/tasks/runs/active") {
+      return Promise.resolve(jsonResponse(200, []));
+    }
+
+    if (input === "/api/system/version") {
+      return Promise.resolve(jsonResponse(200, systemVersionPayload()));
+    }
+
+    return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+  });
 });
 
 afterEach(() => {
@@ -40,10 +63,12 @@ afterEach(() => {
 });
 
 describe("App", () => {
-  it("renders the global shell on the dashboard route", () => {
+  it("renders the global shell on the dashboard route", async () => {
     render(<App />);
 
-    expect(screen.getAllByRole("heading", { name: "Dashboard" }).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("heading", { name: "Dashboard" })).length).toBeGreaterThan(
+      0,
+    );
     expect(screen.getByRole("link", { name: "CommandsCenter" })).toHaveAttribute("href", "/");
     expect(screen.getAllByRole("link", { name: "Agents" })[0]).toHaveAttribute("href", "/agents");
     expect(screen.getByTestId("sidebar-navigation")).toBeInTheDocument();
@@ -57,6 +82,10 @@ describe("App", () => {
 
   it("warns before browser refresh when task runs are active", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+      }
+
       if (input === "/api/opencode") {
         return Promise.resolve(jsonResponse(200, { state: "healthy" }));
       }
@@ -103,7 +132,7 @@ describe("App", () => {
     render(<App />);
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+    await user.click(await screen.findByRole("button", { name: "Collapse sidebar" }));
 
     expect(screen.queryByText("Provider Connections")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Agents" })).toHaveAttribute("href", "/agents");
@@ -115,7 +144,7 @@ describe("App", () => {
     render(<App />);
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Open navigation" }));
+    await user.click(await screen.findByRole("button", { name: "Open navigation" }));
 
     expect(screen.getByRole("link", { name: "Integrations" })).toBeInTheDocument();
   });
@@ -124,6 +153,10 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       if (typeof input !== "string") {
         return Promise.reject(new Error("Unexpected fetch input."));
+      }
+
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
       }
 
       if (input === "/api/opencode") {
@@ -172,6 +205,7 @@ describe("App", () => {
 
     render(<App />);
 
+    await screen.findByRole("link", { name: "CommandsCenter" });
     fireEvent.keyDown(window, { key: "F", metaKey: true, shiftKey: true });
 
     const input = await screen.findByRole("textbox", { name: "Search resources" });
@@ -192,7 +226,7 @@ describe("App", () => {
     );
   });
 
-  it("shows up to three recent agents in the expanded agents section", () => {
+  it("shows up to three recent agents in the expanded agents section", async () => {
     window.localStorage.setItem(
       RECENT_AGENTS_STORAGE_KEY,
       JSON.stringify([
@@ -212,7 +246,7 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(screen.getByRole("link", { name: "🤖 Planner Plans" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "🤖 Planner Plans" })).toHaveAttribute(
       "href",
       "/chat/planner",
     );
@@ -230,6 +264,10 @@ describe("App", () => {
 
   it("shows and dismisses the first-run env notice", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+      }
+
       if (input === "/api/opencode") {
         return Promise.resolve(jsonResponse(200, { state: "healthy" }));
       }
@@ -272,6 +310,10 @@ describe("App", () => {
   it("does not repeat the first-run env notice after dismissal", async () => {
     window.localStorage.setItem("cc-first-run-env-notice-dismissed", "true");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+      }
+
       if (input === "/api/opencode") {
         return Promise.resolve(jsonResponse(200, { state: "healthy" }));
       }
@@ -308,7 +350,7 @@ describe("App", () => {
     render(<App />);
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("link", { name: "Provider Connections" }));
+    await user.click(await screen.findByRole("link", { name: "Provider Connections" }));
 
     await screen.findByRole("heading", { name: "OpenAI", level: 2 });
     expect(screen.getByRole("heading", { name: "Provider Connections" })).toBeInTheDocument();
@@ -319,11 +361,312 @@ describe("App", () => {
     render(<App />);
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("link", { name: "Profile" }));
+    await user.click(await screen.findByRole("link", { name: "Profile" }));
     await user.click(screen.getByRole("button", { name: "modern" }));
 
     expect(document.documentElement.getAttribute("data-theme")).toBe("modern");
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("modern");
+  });
+
+  it("redirects protected routes to claim when the workspace is unclaimed", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "unclaimed" }));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    window.history.replaceState({}, "", "/agents");
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Claim this workspace" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-navigation")).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/claim");
+  });
+
+  it("signs in and returns to the requested protected route", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-unauthenticated" }));
+      }
+
+      if (input === "/api/auth/login") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+      }
+
+      if (input === "/api/opencode") {
+        return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/tasks/runs/active") {
+        return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/system/version") {
+        return Promise.resolve(jsonResponse(200, systemVersionPayload()));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    window.history.replaceState({}, "", "/agents");
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Password"), "owner-password");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByRole("heading", { name: "Agents" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/agents");
+  });
+
+  it("claims the workspace and returns to the requested protected route", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "unclaimed" }));
+      }
+
+      if (input === "/api/auth/claim") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+      }
+
+      if (input === "/api/opencode") {
+        return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/tasks/runs/active") {
+        return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/system/version") {
+        return Promise.resolve(jsonResponse(200, systemVersionPayload()));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    window.history.replaceState({}, "", "/agents");
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Claim code"), "claim-code");
+    await user.type(screen.getByLabelText("Password"), "owner-password");
+    await user.type(screen.getByLabelText("Confirm password"), "owner-password");
+    await user.click(screen.getByRole("button", { name: "Claim workspace" }));
+
+    expect(await screen.findByRole("heading", { name: "Agents" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/agents");
+  });
+
+  it("shows password requirements on the claim page", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "unclaimed" }));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    render(<App />);
+
+    expect(
+      await screen.findByText(
+        "Use at least 10 characters, including uppercase, lowercase, a number, and a symbol.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows specific claim password validation issues", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "unclaimed" }));
+      }
+
+      if (input === "/api/auth/claim") {
+        return Promise.resolve(
+          jsonResponse(400, {
+            error: {
+              code: "password_validation_failed",
+              message: "Owner password does not meet requirements.",
+              details: {
+                issues: ["Password must include at least one uppercase letter."],
+              },
+            },
+          }),
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Claim code"), "claim-code");
+    await user.type(screen.getByLabelText("Password"), "owner-password");
+    await user.type(screen.getByLabelText("Confirm password"), "owner-password");
+    await user.click(screen.getByRole("button", { name: "Claim workspace" }));
+
+    expect(
+      await screen.findByText("Password must include at least one uppercase letter."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Owner password does not meet requirements."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("signs out from the profile page without showing protected content", async () => {
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Profile" }));
+    await user.click(await screen.findByRole("button", { name: "Sign out" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Sign in to CommandsCenter" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-navigation")).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/login");
+  });
+
+  it("shows logout failures on the profile page", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+      }
+
+      if (input === "/api/auth/logout") {
+        return Promise.resolve(
+          jsonResponse(503, {
+            error: { code: "service_unavailable", message: "Unable to sign out right now." },
+          }),
+        );
+      }
+
+      if (input === "/api/opencode") {
+        return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/tasks/runs/active") {
+        return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/system/version") {
+        return Promise.resolve(jsonResponse(200, systemVersionPayload()));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Profile" }));
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(await screen.findByText("Unable to sign out right now.")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-navigation")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/profile");
+  });
+
+  it("validates password change confirmation on the profile page", async () => {
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Profile" }));
+    await user.type(screen.getByLabelText("Current password"), "current-owner-password");
+    await user.type(screen.getByLabelText("New password"), "NewOwnerPassword1!");
+    await user.type(screen.getByLabelText("Confirm new password"), "DifferentPassword1!");
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+
+    expect(screen.getByText("New password confirmation must match.")).toBeInTheDocument();
+  });
+
+  it("shows password change server errors on the profile page", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+      }
+
+      if (input === "/api/auth/password") {
+        return Promise.resolve(
+          jsonResponse(401, { error: { code: "unauthorized", message: "Invalid credentials." } }),
+        );
+      }
+
+      if (input === "/api/opencode") {
+        return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/tasks/runs/active") {
+        return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/system/version") {
+        return Promise.resolve(jsonResponse(200, systemVersionPayload()));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Profile" }));
+    await user.type(screen.getByLabelText("Current password"), "wrong-owner-password");
+    await user.type(screen.getByLabelText("New password"), "NewOwnerPassword1!");
+    await user.type(screen.getByLabelText("Confirm new password"), "NewOwnerPassword1!");
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+
+    expect(await screen.findByText("Invalid credentials.")).toBeInTheDocument();
+  });
+
+  it("shows password change success on the profile page", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+      }
+
+      if (input === "/api/auth/password") {
+        return Promise.resolve(
+          jsonResponse(200, { status: "changed", otherSessionsRevoked: true }),
+        );
+      }
+
+      if (input === "/api/opencode") {
+        return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/tasks/runs/active") {
+        return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/system/version") {
+        return Promise.resolve(jsonResponse(200, systemVersionPayload()));
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Profile" }));
+    await user.type(screen.getByLabelText("Current password"), "current-owner-password");
+    await user.type(screen.getByLabelText("New password"), "NewOwnerPassword1!");
+    await user.type(screen.getByLabelText("Confirm new password"), "NewOwnerPassword1!");
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+
+    expect(
+      await screen.findByText("Password changed. Other browser sessions were signed out."),
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/password",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("loads providers inside the new shell", async () => {
@@ -405,6 +748,10 @@ describe("App", () => {
 
 function mockFetch(responses: Response[]) {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+    if (typeof input === "string" && input === "/api/auth/status") {
+      return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+    }
+
     if (typeof input === "string" && input === "/api/opencode") {
       return Promise.resolve(jsonResponse(200, { state: "healthy" }));
     }
@@ -477,4 +824,16 @@ function jsonResponse(status: number, body: unknown): Response {
       "content-type": "application/json",
     },
   });
+}
+
+function describeFetchInput(input: RequestInfo | URL): string {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  if (input instanceof URL) {
+    return input.toString();
+  }
+
+  return input.url;
 }

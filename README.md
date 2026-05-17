@@ -54,6 +54,8 @@ CommandsCenter production use is centered on the globally installed `ccenter` bi
 3. If no `--cc-env-file` is passed, `~/.cc/.env` is loaded. `ccenter start` and `ccenter serve` create it from `.env.prod.example` on first run when missing.
 4. Built-in defaults are used for optional settings.
 
+`ccenter claim` and `ccenter claim-code` require an existing env file. Start the instance first, then use the same env file and workspace context to rotate claim/reclaim codes.
+
 Default global layout:
 
 ```bash
@@ -90,9 +92,14 @@ ccenter --version
 ccenter start --host 127.0.0.1 --port 3000
 ccenter start --cc-env-file /opt/commandscenter/.env
 ccenter serve --cc-env-file /opt/commandscenter/.env
+ccenter claim --cc-env-file /opt/commandscenter/.env
+ccenter claim-code --cc-env-file /opt/commandscenter/.env
+ccenter claim --cc-env-file /opt/commandscenter/.env --format json --yes
 ccenter upgrade
 ccenter upgrade --rollback
 ```
+
+On first start for an unclaimed workspace, startup logs print a one-time claim code and the `/claim` URL. After the workspace is claimed, startup logs do not print old claim codes. If you miss or rotate the code, run `ccenter claim` or `ccenter claim-code` with the same env file/workspace context.
 
 Remove the global install:
 
@@ -116,7 +123,7 @@ curl http://127.0.0.1:3000/api/system/version
 
 ### Automatic Service Installer
 
-The repository includes a cross-platform installer for Ubuntu/Linux with systemd and macOS with launchd. It checks for Node.js, installs missing requirements when possible, installs CommandsCenter globally, lets `ccenter` generate the production `.env` file on first service start, starts the app as a background service, and prints the app URLs plus filesystem locations.
+The repository includes a cross-platform installer for Ubuntu/Linux with systemd and macOS with launchd. It checks for Node.js, installs missing requirements when possible, installs CommandsCenter globally, lets `ccenter` generate the production `.env` file on first service start, starts the app as a background service, generates the first owner claim code, and prints the app URLs plus filesystem locations.
 
 Install and start the background service:
 
@@ -151,13 +158,16 @@ bash scripts/install-ccenter-service.sh
 
 On Ubuntu, the script writes `/etc/systemd/system/commandscenter.service`. On macOS, it writes `~/Library/LaunchAgents/com.commandscenter.app.plist`.
 
+After the service starts and creates the env file, the installer prints the owner claim code. Keep that code and enter it on the claim screen to unlock the instance. On Linux, the installer runs the systemd unit as the installing user by default; if you override `CCENTER_SERVICE_USER`, the installer also runs the claim command as that user and passes the same `CC_WORKSPACE_DIR` used by the service. On macOS, launchd runs under the current user and `CCENTER_SERVICE_USER` is not used.
+
 ### VPS With Systemd
 
 Use a global npm install plus a systemd service. Keep runtime files and `.env` in `/opt/commandscenter`.
 
 ```bash
+sudo useradd --system --create-home --home-dir /opt/commandscenter --shell /usr/sbin/nologin commandscenter
 sudo mkdir -p /opt/commandscenter
-sudo chown -R "$USER":"$USER" /opt/commandscenter
+sudo chown -R commandscenter:commandscenter /opt/commandscenter
 cd /opt/commandscenter
 npm install -g commandscenter
 ```
@@ -173,6 +183,8 @@ After=network.target
 
 [Service]
 Type=simple
+User=commandscenter
+Group=commandscenter
 WorkingDirectory=/opt/commandscenter
 Environment=CC_HOST=127.0.0.1
 Environment=CC_PORT=3000
@@ -196,6 +208,12 @@ sudo systemctl start commandscenter
 sudo systemctl status commandscenter
 journalctl -u commandscenter -f
 curl http://127.0.0.1:3000/api/health
+```
+
+Generate the owner claim code as the service user so the `0600` auth file remains writable by the service:
+
+```bash
+sudo -u commandscenter env CC_WORKSPACE_DIR=/opt/commandscenter/workspace ccenter claim --cc-env-file /opt/commandscenter/.env
 ```
 
 Upgrade on VPS:
@@ -252,6 +270,20 @@ curl http://127.0.0.1:3000/api/health
 curl http://127.0.0.1:3000/api/system/version
 ```
 
+Generate the owner claim code from inside the running container so it writes to the same mounted `/workspace/.cc/workspace/auth/owner-access.json` file as the server:
+
+```bash
+docker compose exec commandscenter ccenter claim --cc-env-file /workspace/.cc/.env
+```
+
+On first startup for an unclaimed mounted workspace, the container logs also print claim instructions and a one-time claim code. The code is generated at runtime from the mounted volume state; it is never baked into the Docker image.
+
+If rotating an existing claim/reclaim code from automation, add `--yes`:
+
+```bash
+docker compose exec commandscenter ccenter claim --cc-env-file /workspace/.cc/.env --yes
+```
+
 Update Docker deployment:
 
 ```bash
@@ -260,6 +292,52 @@ docker compose up -d
 ```
 
 Contributor-only source-build smoke tests are documented in [CONTRIBUTING.md](CONTRIBUTING.md#cli-build-smoke-test).
+
+### Public Domain And Reverse Proxy
+
+When exposing CommandsCenter publicly, put it behind HTTPS and set the exact public browser origin:
+
+```bash
+CC_PUBLIC_ORIGIN=https://commands.example.com
+CC_HOST=127.0.0.1
+CC_PORT=3000
+```
+
+Recommended setup sequence:
+
+1. Start CommandsCenter on a private bind address.
+2. Read the startup claim code from logs, or run `ccenter claim --cc-env-file <path>` in the same workspace context.
+3. Open `https://commands.example.com/claim` and claim the workspace.
+4. Use normal login afterward.
+
+Caddy example:
+
+```caddyfile
+commands.example.com {
+  reverse_proxy 127.0.0.1:3000
+}
+```
+
+nginx example:
+
+```nginx
+server {
+  listen 443 ssl http2;
+  server_name commands.example.com;
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+}
+```
+
+CommandsCenter still enforces owner sessions, CSRF, and origin checks even if the proxy has its own access control. In production, browser cookies are marked `Secure`; serve the public origin over HTTPS. Use `CC_ALLOWED_ORIGINS` only for additional trusted aliases, for example `https://commands-alt.example.com`.
 
 ## Project Structure
 

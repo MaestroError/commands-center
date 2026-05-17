@@ -12,17 +12,24 @@ HOST="${CCENTER_HOST:-127.0.0.1}"
 PORT="${CCENTER_PORT:-3000}"
 PUBLIC_HOST="${CCENTER_PUBLIC_HOST:-127.0.0.1}"
 NODE_MAJOR="${CCENTER_NODE_MAJOR:-22}"
+SERVICE_USER="${CCENTER_SERVICE_USER:-$(id -un)}"
+SERVICE_GROUP="${CCENTER_SERVICE_GROUP:-$(id -gn)}"
+CCENTER_PATH=""
 
 OS="$(uname -s)"
 
 main() {
   require_supported_os
+  warn_if_root_service_user
   ensure_install_dir
   ensure_node_and_npm
   install_commandscenter
+  resolve_ccenter_path
   prepare_env_file
   install_service
   start_service
+  wait_for_env_file
+  generate_claim_code
   print_summary
 }
 
@@ -33,6 +40,12 @@ require_supported_os() {
       fail "Unsupported OS: $OS. This installer supports Ubuntu/Linux with systemd and macOS with launchd."
       ;;
   esac
+}
+
+warn_if_root_service_user() {
+  if [[ "$OS" == "Linux" && "$SERVICE_USER" == "root" ]]; then
+    warn "The CommandsCenter systemd service will run as root. Set CCENTER_SERVICE_USER and CCENTER_SERVICE_GROUP to use a dedicated service account."
+  fi
 }
 
 ensure_install_dir() {
@@ -94,6 +107,20 @@ install_commandscenter() {
   npm install -g "$PACKAGE_SPEC"
 }
 
+resolve_ccenter_path() {
+  CCENTER_PATH="$(command -v ccenter || true)"
+
+  if [[ -z "$CCENTER_PATH" || ! -x "$CCENTER_PATH" ]]; then
+    fail "Unable to resolve an executable ccenter binary after installing $PACKAGE_SPEC. Check npm global bin configuration and rerun."
+  fi
+
+  if [[ "$OS" == "Linux" && "$SERVICE_USER" != "$(id -un)" ]]; then
+    if ! sudo -u "$SERVICE_USER" test -x "$CCENTER_PATH"; then
+      fail "The resolved ccenter binary is not executable by service user $SERVICE_USER: $CCENTER_PATH. Install commandscenter into a globally accessible npm prefix, then rerun."
+    fi
+  fi
+}
+
 prepare_env_file() {
   if [[ -f "$ENV_FILE" ]]; then
     info "Using existing env file: $ENV_FILE"
@@ -127,11 +154,13 @@ After=network.target
 
 [Service]
 Type=simple
+User=$SERVICE_USER
+Group=$SERVICE_GROUP
 WorkingDirectory=$INSTALL_DIR
 Environment=CC_HOST=$HOST
 Environment=CC_PORT=$PORT
 Environment=CC_WORKSPACE_DIR=$WORKSPACE_DIR
-ExecStart=$(command -v ccenter) start --host $HOST --port $PORT --cc-env-file $ENV_FILE
+ExecStart=$CCENTER_PATH start --host $HOST --port $PORT --cc-env-file $ENV_FILE
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
@@ -146,11 +175,10 @@ EOF
 }
 
 install_launchd_service() {
-  local plist_dir plist_file ccenter_path ccenter_dir node_path node_dir launchd_path
+  local plist_dir plist_file ccenter_dir node_path node_dir launchd_path
   plist_dir="$HOME/Library/LaunchAgents"
   plist_file="$plist_dir/com.commandscenter.app.plist"
-  ccenter_path="$(command -v ccenter)"
-  ccenter_dir="$(dirname "$ccenter_path")"
+  ccenter_dir="$(dirname "$CCENTER_PATH")"
   node_path="$(command -v node)"
   node_dir="$(dirname "$node_path")"
   launchd_path="$node_dir:$ccenter_dir:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -179,7 +207,7 @@ install_launchd_service() {
   </dict>
   <key>ProgramArguments</key>
   <array>
-    <string>$ccenter_path</string>
+    <string>$CCENTER_PATH</string>
     <string>start</string>
     <string>--host</string>
     <string>$HOST</string>
@@ -217,6 +245,66 @@ start_service() {
   launchctl start com.commandscenter.app >/dev/null 2>&1 || true
 }
 
+wait_for_env_file() {
+  if [[ -f "$ENV_FILE" ]]; then
+    return
+  fi
+
+  info "Waiting for ccenter to create env file: $ENV_FILE"
+
+  for _ in {1..30}; do
+    if [[ -f "$ENV_FILE" ]]; then
+      return
+    fi
+
+    sleep 1
+  done
+
+  fail "Timed out waiting for ccenter to create env file: $ENV_FILE. Check service logs, then rerun the installer."
+}
+
+generate_claim_code() {
+  local claim_json
+
+  if ! claim_json="$(run_claim_command)"; then
+    fail "Unable to generate owner claim code. Check ccenter availability, env file permissions, and workspace ownership, then rerun the installer."
+  fi
+
+  if ! CLAIM_OUTPUT="$(printf '%s' "$claim_json" | node -e '
+const chunks = [];
+process.stdin.on("data", (chunk) => chunks.push(chunk));
+process.stdin.on("end", () => {
+  try {
+    const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+
+    if (
+      (parsed.purpose !== "claim" && parsed.purpose !== "reclaim") ||
+      typeof parsed.code !== "string" ||
+      parsed.code.length === 0 ||
+      typeof parsed.warning !== "string"
+    ) {
+      process.exit(1);
+    }
+
+    process.stdout.write(`${parsed.purpose.toUpperCase()} code: ${parsed.code}\n${parsed.warning}`);
+  } catch {
+    process.exit(1);
+  }
+});
+')"; then
+    fail "ccenter claim completed without returning valid claim JSON. Check the service logs and run ccenter claim --cc-env-file \"$ENV_FILE\" --format json --yes manually."
+  fi
+}
+
+run_claim_command() {
+  if [[ "$OS" == "Linux" && "$SERVICE_USER" != "$(id -un)" ]]; then
+    sudo -u "$SERVICE_USER" env CC_WORKSPACE_DIR="$WORKSPACE_DIR" "$CCENTER_PATH" claim --cc-env-file "$ENV_FILE" --format json --yes
+    return
+  fi
+
+  env CC_WORKSPACE_DIR="$WORKSPACE_DIR" "$CCENTER_PATH" claim --cc-env-file "$ENV_FILE" --format json --yes
+}
+
 print_summary() {
   local base_url
   base_url="http://$PUBLIC_HOST:$PORT"
@@ -230,9 +318,13 @@ print_summary() {
   printf '  Install dir:   %s\n' "$INSTALL_DIR"
   printf '  Env file:      %s\n' "$ENV_FILE"
   printf '  Workspace dir: %s\n' "$WORKSPACE_DIR"
+  printf '\nOwner claim:\n'
+  printf '%s\n' "$CLAIM_OUTPUT"
+  printf '  Keep this code and enter it on the claim screen to unlock this instance.\n'
   printf '\nService:\n'
 
   if [[ "$OS" == "Linux" ]]; then
+    printf '  User:   %s:%s\n' "$SERVICE_USER" "$SERVICE_GROUP"
     printf '  Status: sudo systemctl status %s\n' "$SERVICE_NAME"
     printf '  Logs:   journalctl -u %s -f\n' "$SERVICE_NAME"
     return
@@ -248,6 +340,10 @@ command_exists() {
 
 info() {
   printf '==> %s\n' "$1"
+}
+
+warn() {
+  printf 'Warning: %s\n' "$1" >&2
 }
 
 fail() {
