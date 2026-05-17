@@ -99,7 +99,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           agent_id: parsed.agentId,
           title: parsed.title,
           description: parsed.description,
-          context: parsed.context,
+          context: "",
           todos_json: JSON.stringify(todos),
           status,
           trigger_mode: triggerMode,
@@ -159,7 +159,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           agent_id: parsed.agentId ?? existing.agent_id,
           title: parsed.title ?? existing.title,
           description: parsed.description ?? existing.description,
-          context: parsed.context ?? existing.context,
           todos_json: JSON.stringify(todos),
           status,
           trigger_mode: triggerMode,
@@ -345,6 +344,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           opencode_session_id: parsed.opencodeSessionId ?? null,
           status: parsed.status,
           trigger_source: parsed.triggerSource,
+          context_json: stringifyOptional(parsed.context),
           rendered_prompt: parsed.renderedPrompt,
           rendered_context_json: stringifyOptional(parsed.renderedContext),
           effective_permissions_json: stringifyOptional(parsed.effectivePermissions),
@@ -383,6 +383,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         .set({
           opencode_session_id: parsed.opencodeSessionId ?? existing.opencode_session_id,
           status: parsed.status ?? existing.status,
+          context_json:
+            parsed.context === undefined
+              ? existing.context_json
+              : stringifyOptional(parsed.context),
           rendered_prompt: parsed.renderedPrompt ?? existing.rendered_prompt,
           rendered_context_json:
             parsed.renderedContext === undefined
@@ -584,7 +588,6 @@ function mapTask(row: typeof tasks.$inferSelect): Task {
     agentId: row.agent_id,
     title: row.title,
     description: row.description,
-    context: row.context,
     todos: parseTaskTodos(row.todos_json),
     status: row.status,
     triggerMode: row.trigger_mode,
@@ -608,6 +611,7 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
     status: row.status,
     triggerSource: row.trigger_source,
     renderedPrompt: row.rendered_prompt,
+    context: parseJsonRecord(row.context_json),
     renderedContext: parseJsonRecord(row.rendered_context_json),
     effectivePermissions: parseOptional(
       row.effective_permissions_json,

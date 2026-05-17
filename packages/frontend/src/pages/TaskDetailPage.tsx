@@ -13,6 +13,7 @@ import type {
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
+import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
 import { formatDate, formatToken } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
 import { useAgentsQuery } from "@/hooks/use-agents-query";
@@ -54,6 +55,7 @@ export function TaskDetailPage(props: TaskDetailPageProps) {
 function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; error: unknown }) {
   const mutations = useTaskMutations();
   const runsQuery = useTaskRunsQuery(props.task?.id);
+  const [runContextOpen, setRunContextOpen] = useState(false);
   const task = props.task;
 
   return (
@@ -68,11 +70,7 @@ function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; e
               <Link className="cc-button cc-button-secondary" to={`/tasks/${task.id}/edit`}>
                 Edit
               </Link>
-              <button
-                className="cc-button"
-                onClick={() => void mutations.trigger.mutate(task.id)}
-                type="button"
-              >
+              <button className="cc-button" onClick={() => setRunContextOpen(true)} type="button">
                 Run now
               </button>
             </>
@@ -108,7 +106,6 @@ function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; e
                 label="Description"
                 value={task.description || "No description provided."}
               />
-              <TextBlock label="Context" value={task.context || "No additional context."} />
               <PermissionSummary profile={task.permissionProfile} />
             </article>
 
@@ -142,6 +139,17 @@ function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; e
             isLoading={runsQuery.isLoading}
             error={runsQuery.error}
           />
+          {runContextOpen ? (
+            <RunTaskContextDialog
+              busy={mutations.trigger.isPending}
+              taskTitle={task.title}
+              onCancel={() => setRunContextOpen(false)}
+              onRun={(input) => {
+                setRunContextOpen(false);
+                mutations.trigger.mutate({ id: task.id, input });
+              }}
+            />
+          ) : null}
         </>
       ) : null}
     </div>

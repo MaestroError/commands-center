@@ -37,7 +37,6 @@ const task: Task = {
   agentId: "agent-1",
   title: "Ship release",
   description: "Prepare release notes.",
-  context: "Use changelog.",
   todos: [
     {
       id: "todo-1",
@@ -64,6 +63,7 @@ const run: TaskRun = {
   status: "completed",
   triggerSource: "manual",
   renderedPrompt: "Task: Ship release",
+  context: { text: "Use changelog." },
   renderedContext: { taskTitle: "Ship release" },
   effectivePermissions: { toolPermissions: [{ pattern: "bash_*", action: "allow" }] },
   resultSummary: "Done.",
@@ -157,11 +157,18 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Run now" }));
+    await user.type(screen.getByLabelText(/Run context/i), "Use changelog.");
+    await user.click(screen.getByRole("button", { name: "Run task" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/tasks/task-1/trigger",
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ triggerSource: "manual", context: { text: "Use changelog." } }),
+        }),
       );
     });
   });

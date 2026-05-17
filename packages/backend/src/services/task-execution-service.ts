@@ -39,12 +39,14 @@ export function createTaskExecutionService(options: {
         agentId: task.agentId,
         status: "queued",
         triggerSource: parsed.triggerSource,
+        context: parsed.context,
         renderedPrompt: renderTaskRunPrompt(task, renderedContext),
         renderedContext,
         effectivePermissions,
       });
 
-      return runQueuedTask(run.id);
+      void runQueuedTask(run.id).catch(() => undefined);
+      return run;
     },
 
     async runQueuedTask(runId: string): Promise<TaskRun> {
@@ -219,7 +221,11 @@ export function createTaskExecutionService(options: {
 
 function buildRenderedContext(
   task: Task,
-  trigger: { triggerSource: TriggerTaskInput["triggerSource"]; metadata?: Record<string, unknown> },
+  trigger: {
+    triggerSource: TriggerTaskInput["triggerSource"];
+    context?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  },
 ): Record<string, unknown> {
   return {
     taskId: task.id,
@@ -227,6 +233,7 @@ function buildRenderedContext(
     taskDescription: task.description,
     assignedAgentId: task.agentId,
     triggerSource: trigger.triggerSource,
+    runContext: trigger.context,
     triggerMetadata: trigger.metadata,
     schedule: task.schedule,
     todos: task.todos,
@@ -238,7 +245,9 @@ function renderTaskRunPrompt(task: Task, renderedContext: Record<string, unknown
     `Task: ${task.title}`,
     `Assigned agent ID: ${task.agentId}`,
     task.description ? `Description: ${task.description}` : undefined,
-    task.context ? `Context: ${task.context}` : undefined,
+    renderedContext["runContext"]
+      ? `Context: ${JSON.stringify(renderedContext["runContext"], null, 2)}`
+      : undefined,
     task.todos.length > 0
       ? `Todos:\n${task.todos.map((todo) => `- [${todo.status === "completed" ? "x" : " "}] ${todo.content}`).join("\n")}`
       : undefined,

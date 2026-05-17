@@ -13,6 +13,7 @@ import type {
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
+import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
 import { formatDate, formatToken } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
 import { useAgentsQuery } from "@/hooks/use-agents-query";
@@ -47,6 +48,7 @@ function TaskListPage() {
   const tasksQuery = useTasksQuery(filters);
   const agentsQuery = useAgentsQuery();
   const mutations = useTaskMutations();
+  const [runTask, setRunTask] = useState<Task>();
   const agents = agentsQuery.data ?? [];
   const tasks = tasksQuery.data ?? [];
   const error = readError(tasksQuery.error ?? agentsQuery.error);
@@ -191,11 +193,22 @@ function TaskListPage() {
               onDisable={() => void mutations.disable.mutate(task.id)}
               onEnable={() => void mutations.enable.mutate(task.id)}
               onRestore={() => void mutations.restore.mutate(task.id)}
-              onTrigger={() => void mutations.trigger.mutate(task.id)}
+              onTrigger={() => setRunTask(task)}
               task={task}
             />
           ))}
         </section>
+      ) : null}
+      {runTask ? (
+        <RunTaskContextDialog
+          busy={mutations.trigger.isPending}
+          taskTitle={runTask.title}
+          onCancel={() => setRunTask(undefined)}
+          onRun={(input) => {
+            setRunTask(undefined);
+            mutations.trigger.mutate({ id: runTask.id, input });
+          }}
+        />
       ) : null}
     </div>
   );
@@ -318,7 +331,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
             Cancel
           </Link>
         }
-        description="Define the prompt context, schedule, assigned agent, and lightweight task todo list."
+        description="Define the schedule, assigned agent, and lightweight task todo list. Run-specific context is added when triggering the task."
         eyebrow="Tasks"
         title={props.mode === "create" ? "Create task" : "Edit task"}
       />
@@ -367,15 +380,6 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
               onChange={(event) => updateForm({ description: event.target.value })}
             />
           </label>
-          <label className="grid gap-1 text-sm text-text-secondary">
-            Context
-            <textarea
-              className="cc-input min-h-32 resize-y"
-              value={form.context}
-              onChange={(event) => updateForm({ context: event.target.value })}
-            />
-          </label>
-
           <div className="grid gap-4 lg:grid-cols-3">
             <label className="grid gap-1 text-sm text-text-secondary">
               Trigger mode
@@ -482,7 +486,6 @@ type FormState = {
   agentId: string;
   title: string;
   description: string;
-  context: string;
   triggerMode: TaskTriggerMode;
   runAtLocal: string;
   cronExpression: string;
@@ -494,7 +497,6 @@ function taskToForm(task?: Task): FormState {
     agentId: task?.agentId ?? "",
     title: task?.title ?? "",
     description: task?.description ?? "",
-    context: task?.context ?? "",
     triggerMode: task?.triggerMode ?? "manual",
     runAtLocal:
       task?.schedule.mode === "scheduled_once" ? toLocalDateTime(task.schedule.runAt) : "",
@@ -508,7 +510,6 @@ function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {
     agentId: form.agentId,
     title: form.title,
     description: form.description,
-    context: form.context,
     todos: form.todosText
       .split("\n")
       .map((line) => line.trim())

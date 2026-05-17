@@ -43,7 +43,9 @@ describe("createTaskSchedulerService", () => {
       const states = await schedulerService.listStates();
 
       expect(runs).toHaveLength(1);
-      expect(runs[0]?.status).toBe("completed");
+      await expect
+        .poll(async () => (await taskService.getRunById(String(runs[0]?.id)))?.status)
+        .toBe("completed");
       expect(states.find((state) => state.taskId === task.id)?.nextRunAt).toBeUndefined();
     } finally {
       schedulerService.stop();

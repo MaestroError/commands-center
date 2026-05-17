@@ -36,6 +36,10 @@ const taskIdInputSchema = z.object({
   taskId: z.string().trim().min(1),
 });
 
+const triggerTaskToolInputSchema = taskIdInputSchema.extend({
+  context: z.record(z.string(), z.unknown()).optional(),
+});
+
 const getTaskRunInputSchema = taskIdInputSchema.extend({
   runId: z.string().trim().min(1),
 });
@@ -183,23 +187,23 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       name: triggerTaskToolMetadata.name,
       description: triggerTaskToolMetadata.description,
       context: triggerTaskToolMetadata.context,
-      inputSchema: taskIdInputSchema,
+      inputSchema: triggerTaskToolInputSchema,
       outputSchema: taskRunSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
-          const parsed = taskIdInputSchema.parse(args);
+          const parsed = triggerTaskToolInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
 
           await confirmMutation(options, {
             agentId,
             title: "Trigger task",
             description: `Manually trigger task '${parsed.taskId}'.`,
-            metadata: { taskId: parsed.taskId, triggerSource: "manual" },
+            metadata: { taskId: parsed.taskId, triggerSource: "manual", context: parsed.context },
           });
 
           const run = await options.taskExecutionService.trigger(
             parsed.taskId,
-            triggerTaskInputSchema.parse({ triggerSource: "manual" }),
+            triggerTaskInputSchema.parse({ triggerSource: "manual", context: parsed.context }),
           );
           return success("Task triggered.", taskRunSchema.parse(run));
         }, "Failed to trigger task."),

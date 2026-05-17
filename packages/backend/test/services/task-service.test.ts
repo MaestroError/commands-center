@@ -16,7 +16,6 @@ describe("createTaskService", () => {
         agentId: agent.id,
         title: "Manual release notes",
         description: "Draft release notes.",
-        context: "Use merged PRs.",
         todos: [{ content: "Collect merged PRs" }],
         triggerMode: "manual",
       });
@@ -159,6 +158,7 @@ describe("createTaskService", () => {
         taskId: task.id,
         agentId: agent.id,
         triggerSource: "manual",
+        context: { text: "Use release branch." },
         renderedPrompt: "Do the task.",
         renderedContext: { title: task.title },
         effectivePermissions: { approvalPolicy: "auto_approve" },
@@ -173,6 +173,7 @@ describe("createTaskService", () => {
 
       expect(updated?.status).toBe("completed");
       expect(runs).toHaveLength(1);
+      expect(fetched?.context).toEqual({ text: "Use release branch." });
       expect(fetched?.renderedContext).toEqual({ title: task.title });
       expect(fetched?.effectivePermissions?.approvalPolicy).toBe("auto_approve");
     } finally {

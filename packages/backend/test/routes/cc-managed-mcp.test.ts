@@ -312,7 +312,6 @@ describe("cc-managed MCP routes", () => {
           arguments: {
             title: "Draft weekly report",
             description: "Summarize project activity.",
-            context: "Use recent notes.",
             todos: [{ content: "Read notes" }],
           },
         },
@@ -362,7 +361,6 @@ describe("cc-managed MCP routes", () => {
         agentId: agent.id,
         title: "Run smoke checks",
         description: "Check critical path.",
-        context: "Use current build.",
         todos: [],
         triggerMode: "manual",
       });
@@ -371,7 +369,10 @@ describe("cc-managed MCP routes", () => {
         server,
         authHeader,
         "tools/call",
-        { name: "trigger_task", arguments: { taskId: task.id } },
+        {
+          name: "trigger_task",
+          arguments: { taskId: task.id, context: { text: "Use current build." } },
+        },
         3,
       );
 
@@ -382,8 +383,12 @@ describe("cc-managed MCP routes", () => {
 
       expect(triggerJson.result?.structuredContent).toMatchObject({
         taskId: task.id,
-        status: "completed",
+        status: "queued",
+        context: { text: "Use current build." },
       });
+      await expect
+        .poll(async () => (await taskService.listRuns(task.id))[0]?.status)
+        .toBe("completed");
     } finally {
       await server.close();
       await testDb.cleanup();
