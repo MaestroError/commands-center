@@ -376,6 +376,41 @@ describe("runCli", () => {
     expect(consoleLog).toHaveBeenNthCalledWith(1, "CLAIM code: claim-code");
   });
 
+  it("prints claim codes as json when requested", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
+
+    await runCli(["claim", "--format", "json"]);
+
+    expect(consoleLog).toHaveBeenCalledWith(
+      JSON.stringify({
+        purpose: "claim",
+        code: "claim-code",
+        warning: "temporary owner recovery power",
+      }),
+    );
+  });
+
+  it("requires the default env file before generating a claim code", async () => {
+    await expect(runCli(["claim"])).rejects.toThrow(
+      "No CommandsCenter env file found at /home/test/.cc/.env. Start CommandsCenter first with ccenter start, or pass --cc-env-file to an existing env file.",
+    );
+
+    expect(writeFileSyncMock).not.toHaveBeenCalled();
+    expect(loadRuntimeConfigMock).not.toHaveBeenCalled();
+    expect(rotateClaimCodeMock).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicit env file before generating a claim code", async () => {
+    await expect(runCli(["claim", "--cc-env-file", "/opt/commandscenter/.env"])).rejects.toThrow(
+      'Env file not found: /opt/commandscenter/.env. Start CommandsCenter first with ccenter start --cc-env-file "/opt/commandscenter/.env", or pass an existing env file.',
+    );
+
+    expect(writeFileSyncMock).not.toHaveBeenCalled();
+    expect(loadEnvFileMock).not.toHaveBeenCalled();
+    expect(rotateClaimCodeMock).not.toHaveBeenCalled();
+  });
+
   it("explains reclaim codes do not invalidate the current password immediately", async () => {
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
     existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");

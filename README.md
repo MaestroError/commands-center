@@ -54,6 +54,8 @@ CommandsCenter production use is centered on the globally installed `ccenter` bi
 3. If no `--cc-env-file` is passed, `~/.cc/.env` is loaded. `ccenter start` and `ccenter serve` create it from `.env.prod.example` on first run when missing.
 4. Built-in defaults are used for optional settings.
 
+`ccenter claim` and `ccenter claim-code` require an existing env file. Start the instance first, then use the same env file and workspace context to rotate claim/reclaim codes.
+
 Default global layout:
 
 ```bash
@@ -92,6 +94,7 @@ ccenter start --cc-env-file /opt/commandscenter/.env
 ccenter serve --cc-env-file /opt/commandscenter/.env
 ccenter claim --cc-env-file /opt/commandscenter/.env
 ccenter claim-code --cc-env-file /opt/commandscenter/.env
+ccenter claim --cc-env-file /opt/commandscenter/.env --format json --yes
 ccenter upgrade
 ccenter upgrade --rollback
 ```
@@ -155,7 +158,7 @@ bash scripts/install-ccenter-service.sh
 
 On Ubuntu, the script writes `/etc/systemd/system/commandscenter.service`. On macOS, it writes `~/Library/LaunchAgents/com.commandscenter.app.plist`.
 
-After the service starts, the installer prints the owner claim code. Keep that code and enter it on the claim screen to unlock the instance. On Linux, the installer runs the systemd unit as the installing user by default; if you override `CCENTER_SERVICE_USER`, the installer runs the claim command as that user too.
+After the service starts and creates the env file, the installer prints the owner claim code. Keep that code and enter it on the claim screen to unlock the instance. On Linux, the installer runs the systemd unit as the installing user by default; if you override `CCENTER_SERVICE_USER`, the installer runs the claim command as that user too and passes the same `CC_WORKSPACE_DIR` used by the service.
 
 ### VPS With Systemd
 
@@ -210,7 +213,7 @@ curl http://127.0.0.1:3000/api/health
 Generate the owner claim code as the service user so the `0600` auth file remains writable by the service:
 
 ```bash
-sudo -u commandscenter ccenter claim --cc-env-file /opt/commandscenter/.env
+sudo -u commandscenter env CC_WORKSPACE_DIR=/opt/commandscenter/workspace ccenter claim --cc-env-file /opt/commandscenter/.env
 ```
 
 Upgrade on VPS:

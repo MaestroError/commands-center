@@ -15,7 +15,7 @@ Add a separate real-server E2E suite that verifies a fresh CommandsCenter instal
 
 1. Build the CLI package with `pnpm build:cli`.
 2. Create a temporary directory and `.env` file with `CC_WORKSPACE_DIR`, `CC_SECRET_KEY`, `CC_UPDATE_CHECK=false`, and a test-only port.
-3. Run `node packages/cli/dist/bin.mjs claim --yes --cc-env-file <tmp>/.env` and parse `CLAIM code: <code>` from stdout.
+3. Run `node packages/cli/dist/bin.mjs claim --yes --format json --cc-env-file <tmp>/.env` and parse `code` from stdout JSON.
 4. Start `node packages/cli/dist/bin.mjs start --host 127.0.0.1 --port <port> --cc-env-file <tmp>/.env` as the Playwright web server.
 5. Navigate to `/` and assert redirect to `/claim`.
 6. Submit the claim code, owner password, and confirmation.

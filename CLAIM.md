@@ -67,6 +67,8 @@ To test session invalidation, sign in from two browsers or one normal window plu
 
 Production runs usually use `ccenter` and an env file. Keep `CC_WORKSPACE_DIR` stable, because the workspace directory is the source of truth for auth, database, agents, settings, and history.
 
+`ccenter start` and `ccenter serve` create the env file on first run when it is missing. `ccenter claim` and `ccenter claim-code` require an existing env file; they do not create one.
+
 Example production env file:
 
 ```bash
@@ -94,6 +96,12 @@ ccenter claim --cc-env-file /etc/commandscenter.env
 
 `ccenter claim-code` is an alias for the same command.
 
+For automation, use machine-readable output:
+
+```bash
+ccenter claim --cc-env-file /etc/commandscenter.env --format json --yes
+```
+
 If an active claim/reclaim code already exists, `ccenter claim` asks for confirmation before generating a new one. Confirming removes the old code and prints a new code; only the newest code works. For non-interactive automation, use `--yes`:
 
 ```bash
@@ -106,7 +114,7 @@ Production notes:
 
 - Set `CC_PUBLIC_ORIGIN` to the exact external origin users open in the browser.
 - Add `CC_ALLOWED_ORIGINS` only for additional trusted proxy aliases.
-- Run `ccenter claim` on the host that has access to the same `CC_WORKSPACE_DIR` as the running server.
+- Run `ccenter claim` on the host that has access to the same `CC_WORKSPACE_DIR` as the running server. If the service sets `CC_WORKSPACE_DIR` outside the env file, pass that variable to the claim command too.
 - Run `ccenter claim` as the same OS user as the service, or from inside the same container, so the `0600` auth file remains readable and writable by the runtime.
 - Treat claim/reclaim codes like temporary root credentials.
 - Prefer password change from `Profile` for normal credential rotation.
@@ -149,7 +157,7 @@ Do not generate the claim code on the host unless the host command uses the exac
 
 The service installer starts the service, generates the first owner claim code using the same env file and runtime user, and prints the code in the install summary. Keep that code and enter it on the claim screen to unlock the instance.
 
-On Linux, the installer writes the systemd service with `User=` and `Group=` set to the installing user by default. Override with `CCENTER_SERVICE_USER` and `CCENTER_SERVICE_GROUP` only when you intentionally run under another account; the installer will run the claim command as that service user.
+On Linux, the installer writes the systemd service with `User=` and `Group=` set to the installing user by default. Override with `CCENTER_SERVICE_USER` and `CCENTER_SERVICE_GROUP` only when you intentionally run under another account; the installer will run the claim command as that service user and pass the same `CC_WORKSPACE_DIR` used by the service.
 
 ## Public Domain Claiming
 

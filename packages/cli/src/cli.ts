@@ -20,7 +20,8 @@ import {
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "0.0.0.0";
-const ENV_FILE_CREATING_COMMANDS = new Set(["start", "serve", "claim", "claim-code"]);
+const ENV_FILE_CREATING_COMMANDS = new Set(["start", "serve"]);
+const ENV_FILE_REQUIRING_COMMANDS = new Set(["claim", "claim-code"]);
 
 export type CliCommand = "start" | "serve" | "upgrade" | "claim" | "claim-code";
 
@@ -29,6 +30,7 @@ export type CliArgs = {
   host?: string;
   port?: number;
   envFile?: string;
+  format: "text" | "json";
   help: boolean;
   version: boolean;
   rollback: boolean;
@@ -53,6 +55,7 @@ export function printHelp(): void {
     --port, -p <number>        Port to listen on (default: ${String(DEFAULT_PORT)})
     --host, -h <string>        Host to bind to (default: ${DEFAULT_HOST})
     --cc-env-file <path>       Load environment variables from a file
+    --format <text|json>       Output format for claim commands (default: text)
     --rollback                 Reinstall the previous recorded version
     --yes, -y                  Confirm claim-code rotation prompts
 `);
@@ -63,6 +66,7 @@ export function parseCliArgs(args: string[]): CliArgs {
   let port: number | undefined;
   let host: string | undefined;
   let envFile: string | undefined;
+  let format: "text" | "json" = "text";
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
@@ -83,6 +87,12 @@ export function parseCliArgs(args: string[]): CliArgs {
     if ((arg === "--host" || arg === "-h") && next) {
       host = next;
       i++;
+      continue;
+    }
+
+    if (arg === "--format" && (next === "text" || next === "json")) {
+      format = next;
+      i++;
     }
   }
 
@@ -91,6 +101,7 @@ export function parseCliArgs(args: string[]): CliArgs {
     host,
     port,
     envFile,
+    format,
     help: args.includes("--help"),
     version: args.includes("--version"),
     rollback: args.includes("--rollback"),
@@ -127,7 +138,7 @@ export async function runCli(args: string[]): Promise<void> {
   }
 
   if (parsedArgs.command === "claim" || parsedArgs.command === "claim-code") {
-    await runClaim(parsedArgs.yes);
+    await runClaim({ yes: parsedArgs.yes, format: parsedArgs.format });
     return;
   }
 
@@ -159,7 +170,7 @@ export async function runCli(args: string[]): Promise<void> {
   });
 }
 
-async function runClaim(yes: boolean): Promise<void> {
+async function runClaim(options: { yes: boolean; format: "text" | "json" }): Promise<void> {
   const config = loadRuntimeConfig();
   const service = createOwnerAccessService({ config, logger: createLogger(config) });
   const state = await service.getState();
@@ -168,7 +179,7 @@ async function runClaim(yes: boolean): Promise<void> {
 
   if (isActiveClaimCode(existingCode)) {
     const purpose = claimed ? "reclaim" : "claim";
-    const confirmed = yes || (await confirmClaimCodeRotation(purpose));
+    const confirmed = options.yes || (await confirmClaimCodeRotation(purpose));
 
     if (!confirmed) {
       console.log("Claim-code generation cancelled.");
@@ -177,6 +188,12 @@ async function runClaim(yes: boolean): Promise<void> {
   }
 
   const result = await service.rotateClaimCode();
+
+  if (options.format === "json") {
+    console.log(JSON.stringify(result));
+    return;
+  }
+
   console.log(`${result.purpose.toUpperCase()} code: ${result.code}`);
   console.log(result.warning);
 
@@ -245,6 +262,12 @@ function loadCliEnv(parsedArgs: CliArgs): void {
       process.env["CC_FIRST_RUN_ENV_FILE_PATH"] = parsedArgs.envFile;
     }
 
+    if (ENV_FILE_REQUIRING_COMMANDS.has(parsedArgs.command) && !existsSync(parsedArgs.envFile)) {
+      throw new Error(
+        `Env file not found: ${parsedArgs.envFile}. Start CommandsCenter first with ccenter start --cc-env-file "${parsedArgs.envFile}", or pass an existing env file.`,
+      );
+    }
+
     loadEnvFile(parsedArgs.envFile);
     return;
   }
@@ -265,6 +288,13 @@ function loadCliEnv(parsedArgs: CliArgs): void {
 
   if (existsSync(defaultEnvFile)) {
     loadEnvFile(defaultEnvFile);
+    return;
+  }
+
+  if (ENV_FILE_REQUIRING_COMMANDS.has(parsedArgs.command)) {
+    throw new Error(
+      `No CommandsCenter env file found at ${defaultEnvFile}. Start CommandsCenter first with ccenter start, or pass --cc-env-file to an existing env file.`,
+    );
   }
 }
 
