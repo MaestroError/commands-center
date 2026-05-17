@@ -19,7 +19,7 @@ export function QuickFilePanel(props: Props) {
   }
 
   return (
-    <div data-testid="quick-file-panel">
+    <div className="flex h-full min-h-0 flex-col" data-testid="quick-file-panel">
       <QuickInspectorSurface
         controller={props.controller}
         onCancelLiveRequest={props.onCancelLiveRequest}
