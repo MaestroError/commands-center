@@ -9,8 +9,8 @@ import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orche
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
 
-const STRONG_PASSWORD = "CorrectHorseBatteryStaple42";
-const NEXT_STRONG_PASSWORD = "CorrectHorseBatteryStaple43";
+const STRONG_PASSWORD = "CorrectHorseBatteryStaple42!";
+const NEXT_STRONG_PASSWORD = "CorrectHorseBatteryStaple43!";
 
 describe("owner auth routes", () => {
   it("reports unclaimed status without exposing auth internals", async () => {

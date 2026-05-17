@@ -9,6 +9,10 @@ import { changeOwnerPassword } from "@/lib/api";
 import { queryClient } from "@/lib/query-client";
 
 const MIN_PASSWORD_LENGTH = 10;
+const UPPERCASE_LETTER_PATTERN = /[A-Z]/;
+const LOWERCASE_LETTER_PATTERN = /[a-z]/;
+const NUMBER_PATTERN = /\d/;
+const SYMBOL_PATTERN = /[^A-Za-z0-9]/;
 
 export function ProfilePage() {
   const { theme, themes, setTheme } = useTheme();
@@ -87,8 +91,8 @@ export function ProfilePage() {
       <section className="cc-panel p-6">
         <h2 className="text-lg font-semibold text-text-primary">Owner password</h2>
         <p className="mt-2 text-sm text-text-secondary">
-          Change the password for this workspace owner. Use at least 10 characters and avoid common
-          or reused passwords.
+          Change the password for this workspace owner. Use at least 10 characters, including
+          uppercase, lowercase, a number, and a symbol. Avoid common or reused passwords.
         </p>
         <form
           className="mt-5 grid gap-4 sm:max-w-xl"
@@ -122,8 +126,8 @@ export function ProfilePage() {
             />
           </label>
           <p className="text-xs leading-5 text-text-secondary">
-            Passwords must be at least {MIN_PASSWORD_LENGTH.toString()} characters, not common, and
-            different from the current password.
+            Passwords must be at least {MIN_PASSWORD_LENGTH.toString()} characters and include
+            uppercase, lowercase, a number, and a symbol.
           </p>
           {passwordError ? <p className="text-sm text-danger">{passwordError}</p> : null}
           {passwordSuccess ? <p className="text-sm text-success">{passwordSuccess}</p> : null}
@@ -170,6 +174,22 @@ function validatePasswordForm(input: {
 
   if (input.currentPassword === input.newPassword) {
     return "New password must be different from the current password.";
+  }
+
+  if (!UPPERCASE_LETTER_PATTERN.test(input.newPassword)) {
+    return "New password must include at least one uppercase letter.";
+  }
+
+  if (!LOWERCASE_LETTER_PATTERN.test(input.newPassword)) {
+    return "New password must include at least one lowercase letter.";
+  }
+
+  if (!NUMBER_PATTERN.test(input.newPassword)) {
+    return "New password must include at least one number.";
+  }
+
+  if (!SYMBOL_PATTERN.test(input.newPassword)) {
+    return "New password must include at least one symbol.";
   }
 
   return null;

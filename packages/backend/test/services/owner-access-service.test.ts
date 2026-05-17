@@ -9,8 +9,8 @@ import {
 import { verifyOwnerSecret } from "../../src/lib/owner-password";
 import { createTestDatabase } from "../helpers/db";
 
-const STRONG_PASSWORD = "CorrectHorseBatteryStaple42";
-const NEXT_STRONG_PASSWORD = "CorrectHorseBatteryStaple43";
+const STRONG_PASSWORD = "CorrectHorseBatteryStaple42!";
+const NEXT_STRONG_PASSWORD = "CorrectHorseBatteryStaple43!";
 
 describe("owner-access-service", () => {
   it("initializes portable auth state under the workspace auth directory", async () => {

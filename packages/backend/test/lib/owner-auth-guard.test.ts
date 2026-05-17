@@ -15,7 +15,7 @@ import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { createTestDatabase } from "../helpers/db";
 
-const STRONG_PASSWORD = "CorrectHorseBatteryStaple42";
+const STRONG_PASSWORD = "CorrectHorseBatteryStaple42!";
 
 describe("owner auth guard", () => {
   it("keeps the public route allowlist explicit", () => {

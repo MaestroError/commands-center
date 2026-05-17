@@ -538,8 +538,8 @@ describe("App", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Profile" }));
     await user.type(screen.getByLabelText("Current password"), "current-owner-password");
-    await user.type(screen.getByLabelText("New password"), "new-owner-password");
-    await user.type(screen.getByLabelText("Confirm new password"), "different-password");
+    await user.type(screen.getByLabelText("New password"), "NewOwnerPassword1!");
+    await user.type(screen.getByLabelText("Confirm new password"), "DifferentPassword1!");
     await user.click(screen.getByRole("button", { name: "Change password" }));
 
     expect(screen.getByText("New password confirmation must match.")).toBeInTheDocument();
@@ -577,8 +577,8 @@ describe("App", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Profile" }));
     await user.type(screen.getByLabelText("Current password"), "wrong-owner-password");
-    await user.type(screen.getByLabelText("New password"), "new-owner-password");
-    await user.type(screen.getByLabelText("Confirm new password"), "new-owner-password");
+    await user.type(screen.getByLabelText("New password"), "NewOwnerPassword1!");
+    await user.type(screen.getByLabelText("Confirm new password"), "NewOwnerPassword1!");
     await user.click(screen.getByRole("button", { name: "Change password" }));
 
     expect(await screen.findByText("Invalid credentials.")).toBeInTheDocument();
@@ -616,8 +616,8 @@ describe("App", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Profile" }));
     await user.type(screen.getByLabelText("Current password"), "current-owner-password");
-    await user.type(screen.getByLabelText("New password"), "new-owner-password");
-    await user.type(screen.getByLabelText("Confirm new password"), "new-owner-password");
+    await user.type(screen.getByLabelText("New password"), "NewOwnerPassword1!");
+    await user.type(screen.getByLabelText("Confirm new password"), "NewOwnerPassword1!");
     await user.click(screen.getByRole("button", { name: "Change password" }));
 
     expect(

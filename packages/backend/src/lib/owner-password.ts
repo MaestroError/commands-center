@@ -6,6 +6,10 @@ const SCRYPT_BLOCK_SIZE = 8;
 const SCRYPT_PARALLELIZATION = 1;
 const SCRYPT_MAX_MEMORY = 64 * 1024 * 1024;
 const MIN_PASSWORD_LENGTH = 10;
+const UPPERCASE_LETTER_PATTERN = /[A-Z]/;
+const LOWERCASE_LETTER_PATTERN = /[a-z]/;
+const NUMBER_PATTERN = /\d/;
+const SYMBOL_PATTERN = /[^A-Za-z0-9]/;
 
 const COMMON_WEAK_PASSWORDS = new Set([
   "password",
@@ -44,6 +48,22 @@ export function validateOwnerPassword(options: {
 
   if (options.password.length < MIN_PASSWORD_LENGTH) {
     issues.push(`Password must be at least ${String(MIN_PASSWORD_LENGTH)} characters.`);
+  }
+
+  if (!UPPERCASE_LETTER_PATTERN.test(options.password)) {
+    issues.push("Password must include at least one uppercase letter.");
+  }
+
+  if (!LOWERCASE_LETTER_PATTERN.test(options.password)) {
+    issues.push("Password must include at least one lowercase letter.");
+  }
+
+  if (!NUMBER_PATTERN.test(options.password)) {
+    issues.push("Password must include at least one number.");
+  }
+
+  if (!SYMBOL_PATTERN.test(options.password)) {
+    issues.push("Password must include at least one symbol.");
   }
 
   if (COMMON_WEAK_PASSWORDS.has(normalizedPassword)) {
