@@ -18,7 +18,10 @@ import type { TaskExecutionService } from "./task-execution-service.js";
 import type { TaskService } from "./task-service.js";
 
 const DEFAULT_TICK_MS = 30_000;
+const MAX_RECURRING_SEARCH_DAYS = 3660;
 const zonedFormatters = new Map<string, Intl.DateTimeFormat>();
+
+type RecurringTaskSchedule = Extract<Task["schedule"], { mode: "recurring" }>;
 
 type ZonedDateTimeParts = {
   year: number;
@@ -162,21 +165,54 @@ export function createTaskSchedulerService(options: {
       return;
     }
 
+    let scheduledAt = dueAt;
+
     try {
-      const scheduledAt = readLatestDueOccurrence(task, dueAt, at);
+      scheduledAt = computeCatchUpOccurrence(task, dueAt, at);
       await options.executionService.trigger(task.id, {
         triggerSource: "scheduled",
         metadata: { scheduledAt: scheduledAt.toISOString() },
       });
       await upsertState(task, undefined, undefined, scheduledAt);
     } catch (error) {
+      await createFailedScheduledRun(task, scheduledAt, error);
       await upsertState(
         task,
-        computeNextRunAtAfter(task, at, at),
+        computeNextRunAtAfter(task, scheduledAt, at),
         error instanceof Error ? error.message : "Scheduled task run failed.",
-        at,
+        scheduledAt,
       );
     }
+  }
+
+  async function createFailedScheduledRun(
+    task: Task,
+    scheduledAt: Date,
+    error: unknown,
+  ): Promise<void> {
+    await options.taskService.createRun({
+      taskId: task.id,
+      agentId: task.agentId,
+      status: "failed",
+      triggerSource: "scheduled",
+      renderedPrompt: "",
+      renderedContext: {
+        taskId: task.id,
+        taskTitle: task.title,
+        taskDescription: task.description,
+        assignedAgentId: task.agentId,
+        triggerSource: "scheduled",
+        triggerMetadata: { scheduledAt: scheduledAt.toISOString() },
+        schedule: task.schedule,
+        todos: task.todos,
+      },
+      errorMessage: error instanceof Error ? error.message : "Scheduled task run failed.",
+      errorDetails: {
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        stage: "scheduled_trigger",
+      },
+      completedAt: now().toISOString(),
+    });
   }
 
   async function reconcileTaskState(task: Task, from: Date): Promise<TaskSchedulerState> {
@@ -284,15 +320,21 @@ function computeNextRunAtAfter(task: Task, from: Date, after: Date): Date | unde
 }
 
 export function computeNextRecurringRun(
-  schedule: Extract<Task["schedule"], { mode: "recurring" }>,
+  schedule: RecurringTaskSchedule,
   from: Date,
   after = from,
 ): Date {
+  const direct = computeDirectRecurringRun(schedule, from, after, "next");
+
+  if (direct) {
+    return direct;
+  }
+
   const timezone = schedule.timezone;
   const anchor = new Date(schedule.anchorAt);
   let candidate = anchor;
 
-  for (let attempts = 0; attempts < 3660; attempts += 1) {
+  for (let attempts = 0; attempts < MAX_RECURRING_SEARCH_DAYS; attempts += 1) {
     if (candidate > from && candidate > after) {
       return candidate;
     }
@@ -303,14 +345,20 @@ export function computeNextRecurringRun(
   throw new Error("Could not compute next recurring task run within ten years.");
 }
 
-function readLatestDueOccurrence(task: Task, firstDueAt: Date, at: Date): Date {
+function computeCatchUpOccurrence(task: Task, firstDueAt: Date, at: Date): Date {
   if (task.schedule.mode !== "recurring") {
     return firstDueAt;
   }
 
+  const direct = computeDirectRecurringRun(task.schedule, firstDueAt, at, "latest");
+
+  if (direct) {
+    return direct;
+  }
+
   let latest = firstDueAt;
 
-  for (let attempts = 0; attempts < 3660; attempts += 1) {
+  for (let attempts = 0; attempts < MAX_RECURRING_SEARCH_DAYS; attempts += 1) {
     const next = computeNextRecurringRun(task.schedule, latest);
 
     if (next > at) {
@@ -320,7 +368,97 @@ function readLatestDueOccurrence(task: Task, firstDueAt: Date, at: Date): Date {
     latest = next;
   }
 
-  return latest;
+  throw new Error("Could not compute latest due recurring task run within ten years.");
+}
+
+function computeDirectRecurringRun(
+  schedule: RecurringTaskSchedule,
+  from: Date,
+  after: Date,
+  mode: "next" | "latest",
+): Date | undefined {
+  const rule = schedule.repeatRule;
+
+  if (rule.frequency === "month" || rule.frequency === "year" || rule.weekdays?.length) {
+    return undefined;
+  }
+
+  const timezone = schedule.timezone;
+  const interval = rule.frequency === "week" ? rule.interval * 7 : rule.interval;
+  const unit = rule.frequency === "hour" ? "hour" : "day";
+  const anchorParts = readZonedDateTimeParts(new Date(schedule.anchorAt), timezone);
+  const fromParts = readZonedDateTimeParts(from, timezone);
+  const afterParts = readZonedDateTimeParts(after, timezone);
+
+  if (mode === "next") {
+    const fromCount = Math.floor(readZonedUnitDistance(anchorParts, fromParts, unit) / interval);
+    const afterCount = Math.floor(readZonedUnitDistance(anchorParts, afterParts, unit) / interval);
+    let count = Math.max(0, fromCount, afterCount);
+    let candidate = fromZonedDateTimeParts(
+      addZonedUnits(anchorParts, count * interval, unit),
+      timezone,
+    );
+
+    while (candidate <= from || candidate <= after) {
+      count += 1;
+      candidate = fromZonedDateTimeParts(
+        addZonedUnits(anchorParts, count * interval, unit),
+        timezone,
+      );
+    }
+
+    return candidate;
+  }
+
+  let count = Math.max(
+    0,
+    Math.floor(readZonedUnitDistance(fromParts, afterParts, unit) / interval),
+  );
+  let candidate = fromZonedDateTimeParts(
+    addZonedUnits(fromParts, count * interval, unit),
+    timezone,
+  );
+
+  while (candidate > after && count > 0) {
+    count -= 1;
+    candidate = fromZonedDateTimeParts(addZonedUnits(fromParts, count * interval, unit), timezone);
+  }
+
+  return candidate;
+}
+
+function addZonedUnits(
+  value: ZonedDateTimeParts,
+  count: number,
+  unit: "hour" | "day",
+): ZonedDateTimeParts {
+  return unit === "hour" ? addZonedHours(value, count) : addZonedDays(value, count);
+}
+
+function readZonedUnitDistance(
+  left: ZonedDateTimeParts,
+  right: ZonedDateTimeParts,
+  unit: "hour" | "day",
+): number {
+  if (unit === "day") {
+    return daysBetweenZonedDates(left, right);
+  }
+
+  const leftTime = readZonedLocalTimeMs(left);
+  const rightTime = readZonedLocalTimeMs(right);
+  return Math.floor((rightTime - leftTime) / 3_600_000);
+}
+
+function readZonedLocalTimeMs(value: ZonedDateTimeParts): number {
+  return Date.UTC(
+    value.year,
+    value.month - 1,
+    value.day,
+    value.hour,
+    value.minute,
+    value.second,
+    value.millisecond,
+  );
 }
 
 function advanceRecurringCandidate(

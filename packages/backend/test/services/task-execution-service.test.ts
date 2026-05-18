@@ -106,13 +106,22 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("logs detached task execution failures", async () => {
+  it("marks detached task execution failures as failed runs", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const logger = { error: vi.fn() } as unknown as Logger;
+    let setRunStatusCalls = 0;
     const failingTaskService = {
       ...taskService,
-      setRunStatus: vi.fn().mockResolvedValue(undefined),
+      setRunStatus: vi.fn((...args: Parameters<typeof taskService.setRunStatus>) => {
+        setRunStatusCalls += 1;
+
+        if (setRunStatusCalls === 1) {
+          return Promise.resolve(undefined);
+        }
+
+        return taskService.setRunStatus(...args);
+      }),
     } satisfies ReturnType<typeof createTaskService>;
     const executionService = createTaskExecutionService({
       taskService: failingTaskService,
@@ -129,12 +138,12 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expect
-        .poll(() => logger.error)
-        .toHaveBeenCalledWith(
-          expect.objectContaining({ runId: run.id, taskId: task.id }),
-          "task run failed",
-        );
+      await expectRunStatus(taskService, run.id, "failed");
+      const failed = await taskService.getRunById(run.id);
+
+      expect(failed?.errorMessage).toBe("Task run not found.");
+      expect(failed?.errorDetails).toEqual({ errorName: "ApiError", stage: "task_run_start" });
+      expect(logger.error).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
     }

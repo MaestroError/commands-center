@@ -49,7 +49,7 @@ export function createTaskExecutionService(options: {
       });
 
       void runQueuedTask(run.id).catch((error: unknown) => {
-        options.logger?.error({ err: error, runId: run.id, taskId: task.id }, "task run failed");
+        void markDetachedRunFailed(run, error);
       });
       return run;
     },
@@ -179,6 +179,31 @@ export function createTaskExecutionService(options: {
 
       notifyRunTerminal(failed);
       return failed;
+    }
+  }
+
+  async function markDetachedRunFailed(run: TaskRun, error: unknown): Promise<void> {
+    try {
+      const failed = await options.taskService.setRunStatus(run.id, "failed", {
+        completedAt: new Date().toISOString(),
+        errorMessage: error instanceof Error ? error.message : "Task execution failed.",
+        errorDetails: {
+          errorName: error instanceof Error ? error.name : "UnknownError",
+          stage: "task_run_start",
+        },
+      });
+
+      if (failed) {
+        notifyRunTerminal(failed);
+        return;
+      }
+
+      options.logger?.error({ err: error, runId: run.id, taskId: run.taskId }, "task run failed");
+    } catch (failureUpdateError) {
+      options.logger?.error(
+        { err: error, failureUpdateError, runId: run.id, taskId: run.taskId },
+        "task run failed",
+      );
     }
   }
 
