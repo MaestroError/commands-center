@@ -37,7 +37,6 @@ const task: Task = {
   agentId: "agent-1",
   title: "Ship release",
   description: "Prepare release notes.",
-  context: "Use changelog.",
   todos: [
     {
       id: "todo-1",
@@ -64,6 +63,7 @@ const run: TaskRun = {
   status: "completed",
   triggerSource: "manual",
   renderedPrompt: "Task: Ship release",
+  context: { text: "Use changelog." },
   renderedContext: { taskTitle: "Ship release" },
   effectivePermissions: { toolPermissions: [{ pattern: "bash_*", action: "allow" }] },
   resultSummary: "Done.",
@@ -157,11 +157,18 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Run now" }));
+    await user.type(screen.getByLabelText(/Run context/i), "Use changelog.");
+    await user.click(screen.getByRole("button", { name: "Run task" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/tasks/task-1/trigger",
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ triggerSource: "manual", context: { text: "Use changelog." } }),
+        }),
       );
     });
   });
@@ -183,6 +190,36 @@ describe("TasksPage", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
+  });
+
+  it("creates a custom hourly recurring task from the form", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage mode="create" />, "/tasks/new");
+
+    const user = userEvent.setup();
+    await screen.findByRole("combobox", { name: /Assigned agent/i });
+    await user.type(screen.getByLabelText(/Title/i), "Hourly review");
+    await user.selectOptions(screen.getByLabelText(/Assigned agent/i), "agent-1");
+    await user.selectOptions(screen.getByLabelText(/Trigger mode/i), "recurring");
+    await user.selectOptions(screen.getByLabelText(/Repeat/i), "custom");
+    await user.clear(screen.getByLabelText(/Every/i));
+    await user.type(screen.getByLabelText(/Every/i), "4");
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"frequency":"hour"'),
+        }),
+      );
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tasks",
+      expect.objectContaining({ body: expect.stringContaining('"interval":4') }),
+    );
   });
 });
 
@@ -206,14 +243,19 @@ describe("TaskDetailPage", () => {
     mockFetch({
       taskPayload: {
         ...task,
-        schedule: { mode: "recurring", cronExpression: "0 9 * * 1" },
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
+        },
       },
       runsPayload: [],
     });
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
-    await screen.findByText("0 9 * * 1");
+    await screen.findByText("Every 1 week on Mon");
     await waitFor(() => {
       expect(screen.queryByTestId("task-runs-loading")).not.toBeInTheDocument();
     });

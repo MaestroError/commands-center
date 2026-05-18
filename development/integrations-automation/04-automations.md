@@ -2,7 +2,7 @@
 
 ## Outcome
 
-The user can create agent-backed tasks with context and todos, trigger them manually or on a schedule, review execution history, inspect or continue the OpenCode sessions created by task runs, and manage active or archived tasks.
+The user can create agent-backed tasks with todos, trigger them manually or on a schedule with run-specific context, review execution history, inspect or continue the OpenCode sessions created by task runs, and manage active or archived tasks.
 
 ## Why this is a separate PR
 
@@ -22,14 +22,14 @@ This is a full product feature with its own task model, scheduler, execution lif
 ## Scope
 
 - Rename the product surface from **Automations** to **Tasks** in navigation, routes, page titles, API naming where practical, and user-facing copy
-- Implement tasks as durable records with title, description, context, todo list, status, schedule, agent assignment, permission profile, archived state, created/updated timestamps, and latest result summary
-- Support three trigger modes: manual trigger only, one-time scheduled run, and repeated schedule using cron-like expressions
+- Implement tasks as durable records with title, description, todo list, status, schedule, agent assignment, permission profile, archived state, created/updated timestamps, and latest result summary
+- Support three trigger modes: manual trigger only, one-time scheduled run, and repeated schedule using a TickTick-style recurrence rule
 - Implement scheduler abstraction for local mode, with persisted scheduler state in the portable workspace database
 - Implement task CRUD, archive, restore, delete, enable, disable, manual trigger, run cancel, and status behavior as backend services exposed via REST API routes
 - Expose task-run-safe execution helpers through `cc_app`, and expose chat-based task management through a separate Tasks Management MCP surface, so AI agents can both manage tasks in chat and operate inside task sessions safely
 - Enforce optional max-task limit from config
-- Run each task execution as a separate OpenCode agent session with enriched prompt context that includes task title, description, context, todos, trigger metadata, and previous relevant run result when useful
-- Persist every task run with status, started/completed timestamps, trigger source, rendered prompt/context, error details, result summary, and linked OpenCode session ID
+- Run each task execution as a separate OpenCode agent session with enriched prompt context that includes task title, description, run-specific context, todos, trigger metadata, and previous relevant run result when useful
+- Persist every task run with status, started/completed timestamps, trigger source, run-specific context, rendered prompt/context, error details, result summary, and linked OpenCode session ID
 - Persist OpenCode sessions triggered by task runs so users can inspect them later and continue the same session from direct chat when appropriate
 - Catch and persist execution failures, including scheduler errors, OpenCode request failures, permission failures, and cancellation
 - Add per-task tool and MCP permission scoping so task runs can allow a different subset of tools than the base agent, while explicitly excluding unsafe/live tools from all task sessions
@@ -42,8 +42,8 @@ This is a full product feature with its own task model, scheduler, execution lif
 
 ## Data Model Requirements
 
-- `tasks`: durable task definition with title, description, context, todos JSON, status, trigger mode, schedule definition, agent ID, permission profile, enabled/archived flags, and timestamps
-- `task_runs`: append-only run history with task ID, agent ID, OpenCode session ID, status, trigger source, rendered prompt/context, result, error details, started/completed timestamps, and cancellation metadata
+- `tasks`: durable task definition with title, description, todos JSON, status, trigger mode, schedule definition, agent ID, permission profile, enabled/archived flags, and timestamps
+- `task_runs`: append-only run history with task ID, agent ID, OpenCode session ID, status, trigger source, run-specific context, rendered prompt/context, result, error details, started/completed timestamps, and cancellation metadata
 - `task_run_events`: optional append-only event log for lifecycle transitions and streaming/status diagnostics if needed for reliable UI updates
 - Task status values should cover at least draft, enabled, disabled, archived, running, failed, and completed where applicable
 - Run status values should cover at least queued, running, completed, failed, cancelled, and skipped
@@ -72,7 +72,7 @@ This is a full product feature with its own task model, scheduler, execution lif
 - Rename sidebar/menu item from **Automations** to **Tasks**
 - Add active tasks indicator to the top header; it should show the count of running task runs and link to the active runs/tasks page
 - Tasks list supports filtering by status, trigger mode, agent, and archived state
-- Task detail shows current status, next scheduled run, latest run result, todos, context, permission summary, and run history
+- Task detail shows current status, next scheduled run, latest run result, todos, permission summary, and run history
 - Run detail shows status timeline, rendered prompt/context, result, error details, and linked OpenCode session
 - Manual trigger is available from list and detail views when the task is enabled and not already running, subject to scheduler/execution constraints
 
@@ -81,7 +81,7 @@ This is a full product feature with its own task model, scheduler, execution lif
 - Behavior matches the Tasks screen requirements and updates/replaces `design/screens/automations/acceptance_criteria.md` with Tasks terminology
 - Navigation and user-facing copy use **Tasks**, not **Automations**
 - A task can be unscheduled/manual-only, scheduled once, or scheduled repeatedly
-- A task has title, description, context, todos, status, permission profile, and latest result visibility
+- A task has title, description, todos, status, permission profile, and latest result visibility
 - Each run creates and persists a separate OpenCode agent session link
 - Users can inspect task-created sessions and continue them in chat when valid
 - Run history shows execution status, trigger source, time, rendered prompt/context, result, linked session, and error details when present
@@ -132,3 +132,11 @@ This epic should be split into sub-epics. It is now too broad for one safe PR be
 6. **I4.6 Tasks Management MCP** — `development/integrations-automation/04-tasks-sub-epics/06-app-mcp-task-management-tools.md`
    - Expose task creation, manual trigger, one-time scheduling, list/read, and status checks via a separate chat-oriented Tasks Management MCP
    - Ensure MCP tools call the same task services as REST/UI
+
+7. **I4.7 Task Run Variable Context** — `development/integrations-automation/04-tasks-sub-epics/07-task-run-variable-context.md`
+   - Move context from task definitions to task runs
+   - Allow REST, UI, scheduler, and the existing `trigger_task` MCP tool to pass optional context at trigger time
+
+8. **I4.8 TickTick-Style Recurring Tasks** — `development/integrations-automation/04-tasks-sub-epics/08-ticktick-style-recurring-tasks.md`
+   - Replace user-facing cron recurrence with structured repeat rules
+   - Schedule one concrete run at a time and calculate the next run after completion

@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { CreateTaskInput, ListTasksQuery, Task, UpdateTaskInput } from "@cc/shared/schemas";
+import type {
+  CreateTaskInput,
+  ListTasksQuery,
+  Task,
+  TriggerTaskInput,
+  UpdateTaskInput,
+} from "@cc/shared/schemas";
 
 import {
   archiveTask,
@@ -103,7 +109,8 @@ export function useTaskMutations() {
       onSuccess: async () => invalidateTasks(),
     }),
     trigger: useMutation({
-      mutationFn: (id: string) => triggerTask(id, { triggerSource: "manual" }),
+      mutationFn: ({ id, input }: { id: string; input?: Partial<TriggerTaskInput> }) =>
+        triggerTask(id, { triggerSource: "manual", ...input }),
       onSuccess: async (run) => {
         queryClient.setQueryData(queryKeys.taskRun(run.taskId, run.id), run);
         await Promise.all([

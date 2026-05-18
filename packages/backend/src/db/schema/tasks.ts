@@ -47,6 +47,7 @@ export const task_runs = sqliteTable(
     opencode_session_id: text("opencode_session_id"),
     status: text("status").notNull(),
     trigger_source: text("trigger_source").notNull(),
+    context_json: text("context_json"),
     rendered_prompt: text("rendered_prompt").notNull(),
     rendered_context_json: text("rendered_context_json"),
     effective_permissions_json: text("effective_permissions_json"),

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Logger } from "pino";
 
 import type { AppDb } from "../../src/db/client";
 import { agents } from "../../src/db/schema/index";
@@ -31,11 +32,10 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
       const history = await taskService.listRuns(task.id);
 
-      expect(run.status).toBe("completed");
-      expect(run.startedAt).toBeDefined();
-      expect(run.completedAt).toBeDefined();
+      expect(run.status).toBe("queued");
       expect(run.renderedPrompt).toContain("Task: Manual task");
       expect(history).toHaveLength(1);
+      await expectRunStatus(taskService, run.id, "completed");
     } finally {
       await testDb.cleanup();
     }
@@ -58,21 +58,92 @@ describe("createTaskExecutionService", () => {
         agentId: agent.id,
         title: "Session task",
         description: "Use OpenCode.",
-        context: "Persist everything.",
         triggerMode: "manual",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+      const completedRun = await taskService.getRunById(run.id);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
 
-      expect(run.status).toBe("completed");
-      expect(run.opencodeSessionId).toBe("session-1");
+      expect(completedRun?.opencodeSessionId).toBe("session-1");
       expect(run.renderedPrompt).toContain("Assigned agent ID:");
-      expect(run.resultSummary).toContain("Task finished:");
+      expect(completedRun?.resultSummary).toContain("Task finished:");
       expect(inspection.conversation?.source).toBe("task_run");
       expect(inspection.conversation?.messages).toHaveLength(2);
       expect(conversations).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("persists and renders context supplied for a specific run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const executionService = createTaskExecutionService({ taskService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Contextual task",
+        triggerMode: "manual",
+      });
+
+      const run = await executionService.trigger(task.id, {
+        triggerSource: "manual",
+        context: { text: "Use current build 123." },
+      });
+
+      expect(run.status).toBe("queued");
+      expect(run.context).toEqual({ text: "Use current build 123." });
+      expect(run.renderedContext?.["runContext"]).toEqual({ text: "Use current build 123." });
+      expect(run.renderedPrompt).toContain("Use current build 123.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("marks detached task execution failures as failed runs", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const logger = { error: vi.fn() } as unknown as Logger;
+    let setRunStatusCalls = 0;
+    const failingTaskService = {
+      ...taskService,
+      setRunStatus: vi.fn((...args: Parameters<typeof taskService.setRunStatus>) => {
+        setRunStatusCalls += 1;
+
+        if (setRunStatusCalls === 1) {
+          return Promise.resolve(undefined);
+        }
+
+        return taskService.setRunStatus(...args);
+      }),
+    } satisfies ReturnType<typeof createTaskService>;
+    const executionService = createTaskExecutionService({
+      taskService: failingTaskService,
+      logger,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Unstartable task",
+        triggerMode: "manual",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "failed");
+      const failed = await taskService.getRunById(run.id);
+
+      expect(failed?.errorMessage).toBe("Task run not found.");
+      expect(failed?.errorDetails).toEqual({ errorName: "ApiError", stage: "task_run_start" });
+      expect(logger.error).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
     }
@@ -98,6 +169,7 @@ describe("createTaskExecutionService", () => {
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, run.id, "completed");
       const opened = await conversationService.openTaskRunConversationInChat(task.id, run.id);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
@@ -145,14 +217,17 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      expect(run.status).toBe("completed");
-      expect(run.effectivePermissions?.toolPermissions).toEqual([
+      expect(run.status).toBe("queued");
+      await expectRunStatus(taskService, run.id, "completed");
+      const completedRun = await taskService.getRunById(run.id);
+
+      expect(completedRun?.effectivePermissions?.toolPermissions).toEqual([
         { pattern: "bash_*", action: "allow" },
       ]);
-      expect(run.effectivePermissions?.diagnostics?.map((diagnostic) => diagnostic.code)).toContain(
-        "ask_mode_not_allowed_for_task_run",
-      );
-      expect(run.effectivePermissions?.diagnostics).toContainEqual(
+      expect(
+        completedRun?.effectivePermissions?.diagnostics?.map((diagnostic) => diagnostic.code),
+      ).toContain("ask_mode_not_allowed_for_task_run");
+      expect(completedRun?.effectivePermissions?.diagnostics).toContainEqual(
         expect.objectContaining({ details: { pattern: "bash_*" } }),
       );
       expect(opencodeService.createSession).toHaveBeenCalledWith(
@@ -213,6 +288,14 @@ describe("createTaskExecutionService", () => {
     }
   });
 });
+
+async function expectRunStatus(
+  taskService: ReturnType<typeof createTaskService>,
+  runId: string,
+  status: string,
+): Promise<void> {
+  await expect.poll(async () => (await taskService.getRunById(runId))?.status).toBe(status);
+}
 
 async function insertAgent(
   db: AppDb,

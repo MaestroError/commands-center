@@ -59,10 +59,21 @@ export const scheduledOnceTaskScheduleSchema = z.object({
   timezone: z.string().trim().min(1).optional(),
 });
 
+export const taskRepeatFrequencySchema = z.enum(["hour", "day", "week", "month", "year"]);
+
+export const taskWeekdaySchema = z.number().int().min(0).max(6);
+
+export const taskRepeatRuleSchema = z.object({
+  frequency: taskRepeatFrequencySchema,
+  interval: z.number().int().min(1).default(1),
+  weekdays: z.array(taskWeekdaySchema).optional(),
+});
+
 export const recurringTaskScheduleSchema = z.object({
   mode: z.literal("recurring"),
-  cronExpression: z.string().trim().min(1),
-  timezone: z.string().trim().min(1).optional(),
+  anchorAt: z.string().datetime(),
+  timezone: z.string().trim().min(1),
+  repeatRule: taskRepeatRuleSchema,
 });
 
 export const taskScheduleSchema = z.discriminatedUnion("mode", [
@@ -93,7 +104,6 @@ export const createTaskInputSchema = z.object({
   agentId: z.string().trim().min(1),
   title: z.string().trim().min(1),
   description: z.string().trim().default(""),
-  context: z.string().trim().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
   status: taskStatusSchema.optional(),
   triggerMode: taskTriggerModeSchema.default("manual"),
@@ -106,7 +116,6 @@ export const updateTaskInputSchema = z.object({
   agentId: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
-  context: z.string().trim().optional(),
   todos: z.array(taskTodoInputSchema).optional(),
   status: taskStatusSchema.optional(),
   triggerMode: taskTriggerModeSchema.optional(),
@@ -129,6 +138,7 @@ export const listTaskRunsQuerySchema = z.object({
 
 export const triggerTaskInputSchema = z.object({
   triggerSource: taskRunTriggerSourceSchema.default("manual"),
+  context: looseRecordSchema.optional(),
   metadata: looseRecordSchema.optional(),
 });
 
@@ -141,7 +151,6 @@ export const taskSchema = z.object({
   agentId: z.string().min(1),
   title: z.string().min(1),
   description: z.string(),
-  context: z.string(),
   todos: z.array(taskTodoSchema),
   status: taskStatusSchema,
   triggerMode: taskTriggerModeSchema,
@@ -163,6 +172,7 @@ export const createTaskRunInputSchema = z.object({
   status: taskRunStatusSchema.default("queued"),
   triggerSource: taskRunTriggerSourceSchema,
   opencodeSessionId: z.string().trim().min(1).optional(),
+  context: looseRecordSchema.optional(),
   renderedPrompt: z.string().default(""),
   renderedContext: looseRecordSchema.optional(),
   effectivePermissions: taskPermissionProfileSchema.optional(),
@@ -180,6 +190,7 @@ export const updateTaskRunInputSchema = z.object({
   status: taskRunStatusSchema.optional(),
   opencodeSessionId: z.string().trim().min(1).optional(),
   renderedPrompt: z.string().optional(),
+  context: looseRecordSchema.optional(),
   renderedContext: looseRecordSchema.optional(),
   effectivePermissions: taskPermissionProfileSchema.optional(),
   resultSummary: z.string().optional(),
@@ -200,6 +211,7 @@ export const taskRunSchema = z.object({
   status: taskRunStatusSchema,
   triggerSource: taskRunTriggerSourceSchema,
   renderedPrompt: z.string(),
+  context: looseRecordSchema.optional(),
   renderedContext: looseRecordSchema.optional(),
   effectivePermissions: taskPermissionProfileSchema.optional(),
   resultSummary: z.string().optional(),
@@ -259,6 +271,7 @@ export type TaskSchedule = z.infer<typeof taskScheduleSchema>;
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 export type TaskTodo = z.infer<typeof taskTodoSchema>;
 export type TaskTriggerMode = z.infer<typeof taskTriggerModeSchema>;
+export type TaskRepeatRule = z.infer<typeof taskRepeatRuleSchema>;
 export type TriggerTaskInput = z.input<typeof triggerTaskInputSchema>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
 export type UpdateTaskRunInput = z.input<typeof updateTaskRunInputSchema>;

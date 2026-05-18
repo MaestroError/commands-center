@@ -6,6 +6,7 @@ import {
   type TaskRun,
   type TriggerTaskInput,
 } from "@cc/shared/schemas";
+import type { Logger } from "pino";
 
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { ConversationService } from "./conversation-service.js";
@@ -21,6 +22,8 @@ export function createTaskExecutionService(options: {
   taskService: TaskService;
   conversationService?: ConversationService;
   taskPermissionService?: TaskPermissionService;
+  onRunTerminal?: (run: TaskRun) => void | Promise<void>;
+  logger?: Logger;
 }) {
   return {
     async trigger(taskId: string, input: Partial<TriggerTaskInput> = {}): Promise<TaskRun> {
@@ -39,12 +42,16 @@ export function createTaskExecutionService(options: {
         agentId: task.agentId,
         status: "queued",
         triggerSource: parsed.triggerSource,
+        context: parsed.context,
         renderedPrompt: renderTaskRunPrompt(task, renderedContext),
         renderedContext,
         effectivePermissions,
       });
 
-      return runQueuedTask(run.id);
+      void runQueuedTask(run.id).catch((error: unknown) => {
+        void markDetachedRunFailed(run, error);
+      });
+      return run;
     },
 
     async runQueuedTask(runId: string): Promise<TaskRun> {
@@ -68,6 +75,7 @@ export function createTaskExecutionService(options: {
         throw new NotFoundError("Task run not found.");
       }
 
+      notifyRunTerminal(cancelled);
       return cancelled;
     },
 
@@ -140,6 +148,7 @@ export function createTaskExecutionService(options: {
           throw new NotFoundError("Task run not found.");
         }
 
+        notifyRunTerminal(completed);
         return completed;
       }
 
@@ -152,6 +161,7 @@ export function createTaskExecutionService(options: {
         throw new NotFoundError("Task run not found.");
       }
 
+      notifyRunTerminal(completed);
       return completed;
     } catch (error) {
       const failed = await options.taskService.setRunStatus(running.id, "failed", {
@@ -167,7 +177,33 @@ export function createTaskExecutionService(options: {
         throw new NotFoundError("Task run not found.");
       }
 
+      notifyRunTerminal(failed);
       return failed;
+    }
+  }
+
+  async function markDetachedRunFailed(run: TaskRun, error: unknown): Promise<void> {
+    try {
+      const failed = await options.taskService.setRunStatus(run.id, "failed", {
+        completedAt: new Date().toISOString(),
+        errorMessage: error instanceof Error ? error.message : "Task execution failed.",
+        errorDetails: {
+          errorName: error instanceof Error ? error.name : "UnknownError",
+          stage: "task_run_start",
+        },
+      });
+
+      if (failed) {
+        notifyRunTerminal(failed);
+        return;
+      }
+
+      options.logger?.error({ err: error, runId: run.id, taskId: run.taskId }, "task run failed");
+    } catch (failureUpdateError) {
+      options.logger?.error(
+        { err: error, failureUpdateError, runId: run.id, taskId: run.taskId },
+        "task run failed",
+      );
     }
   }
 
@@ -197,6 +233,8 @@ export function createTaskExecutionService(options: {
           completedAt: new Date().toISOString(),
         });
 
+        notifyRunTerminal(skipped);
+
         throw new BadRequestError("Task is not enabled and was skipped.", { runId: skipped.id });
       }
 
@@ -215,11 +253,19 @@ export function createTaskExecutionService(options: {
 
     throw new NotFoundError("Task run not found.");
   }
+
+  function notifyRunTerminal(run: TaskRun): void {
+    void options.onRunTerminal?.(run);
+  }
 }
 
 function buildRenderedContext(
   task: Task,
-  trigger: { triggerSource: TriggerTaskInput["triggerSource"]; metadata?: Record<string, unknown> },
+  trigger: {
+    triggerSource: TriggerTaskInput["triggerSource"];
+    context?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  },
 ): Record<string, unknown> {
   return {
     taskId: task.id,
@@ -227,6 +273,7 @@ function buildRenderedContext(
     taskDescription: task.description,
     assignedAgentId: task.agentId,
     triggerSource: trigger.triggerSource,
+    runContext: trigger.context,
     triggerMetadata: trigger.metadata,
     schedule: task.schedule,
     todos: task.todos,
@@ -238,7 +285,9 @@ function renderTaskRunPrompt(task: Task, renderedContext: Record<string, unknown
     `Task: ${task.title}`,
     `Assigned agent ID: ${task.agentId}`,
     task.description ? `Description: ${task.description}` : undefined,
-    task.context ? `Context: ${task.context}` : undefined,
+    renderedContext["runContext"]
+      ? `Context: ${JSON.stringify(renderedContext["runContext"], null, 2)}`
+      : undefined,
     task.todos.length > 0
       ? `Todos:\n${task.todos.map((todo) => `- [${todo.status === "completed" ? "x" : " "}] ${todo.content}`).join("\n")}`
       : undefined,

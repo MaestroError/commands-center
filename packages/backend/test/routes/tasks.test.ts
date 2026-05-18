@@ -57,7 +57,6 @@ describe("task routes", () => {
           agentId: agent.id,
           title: "Ship release",
           description: "Prepare the release.",
-          context: "Use current changelog.",
           todos: [{ content: "Read changelog" }],
           triggerMode: "manual",
         },
@@ -89,25 +88,14 @@ describe("task routes", () => {
       const triggered = await server.inject({
         method: "POST",
         url: `/api/tasks/${task.id}/trigger`,
-        payload: { triggerSource: "manual" },
+        payload: { triggerSource: "manual", context: { text: "Use current changelog." } },
       });
       const runs = await server.inject({ method: "GET", url: `/api/tasks/${task.id}/runs` });
-      const runId = runs.json<{ id: string }[]>()[0]?.id;
-      const session = await server.inject({
-        method: "GET",
-        url: `/api/tasks/${task.id}/runs/${String(runId)}/session`,
-      });
-      const openInChat = await server.inject({
-        method: "POST",
-        url: `/api/tasks/${task.id}/runs/${String(runId)}/open-in-chat`,
-      });
-      const activeRuns = await server.inject({ method: "GET", url: "/api/tasks/runs/active" });
+      const runId = triggered.json<{ id: string }>().id;
       const schedulerState = await server.inject({
         method: "GET",
         url: "/api/tasks/scheduler/state",
       });
-      const deleted = await server.inject({ method: "DELETE", url: `/api/tasks/${task.id}` });
-      const afterDelete = await server.inject({ method: "GET", url: `/api/tasks/${task.id}` });
 
       expect(listed.statusCode).toBe(200);
       expect(listed.json()).toHaveLength(1);
@@ -124,8 +112,26 @@ describe("task routes", () => {
       expect(runs.statusCode).toBe(200);
       expect(runs.json()).toHaveLength(1);
       expect(triggered.statusCode).toBe(200);
-      expect(triggered.json().status).toBe("completed");
-      expect(triggered.json().opencodeSessionId).toBe("session-1");
+      expect(triggered.json().status).toBe("queued");
+      expect(triggered.json().context).toEqual({ text: "Use current changelog." });
+      await expect
+        .poll(async () => {
+          const response = await server.inject({
+            method: "GET",
+            url: `/api/tasks/${task.id}/runs/${String(runId)}`,
+          });
+          return response.json<{ status?: string }>().status;
+        })
+        .toBe("completed");
+      const session = await server.inject({
+        method: "GET",
+        url: `/api/tasks/${task.id}/runs/${String(runId)}/session`,
+      });
+      const openInChat = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${String(runId)}/open-in-chat`,
+      });
+      const activeRuns = await server.inject({ method: "GET", url: "/api/tasks/runs/active" });
       expect(session.statusCode).toBe(200);
       expect(session.json().conversation.source).toBe("task_run");
       expect(openInChat.statusCode).toBe(200);
@@ -133,6 +139,9 @@ describe("task routes", () => {
       expect(activeRuns.statusCode).toBe(200);
       expect(activeRuns.json()).toEqual([]);
       expect(schedulerState.statusCode).toBe(200);
+      const deleted = await server.inject({ method: "DELETE", url: `/api/tasks/${task.id}` });
+      const afterDelete = await server.inject({ method: "GET", url: `/api/tasks/${task.id}` });
+
       expect(deleted.statusCode).toBe(204);
       expect(afterDelete.statusCode).toBe(404);
     } finally {

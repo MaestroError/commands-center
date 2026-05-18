@@ -137,10 +137,13 @@ export async function startServerRuntime(
     config,
     opencodeService,
   });
+  const taskSchedulerServiceRef: { current?: TaskSchedulerService } = {};
   const taskExecutionService = createTaskExecutionService({
     taskService,
     conversationService,
     taskPermissionService,
+    logger,
+    onRunTerminal: (run) => taskSchedulerServiceRef.current?.handleRunTerminal(run),
   });
   const taskSchedulerService = createTaskSchedulerService({
     db: database.db,
@@ -148,6 +151,7 @@ export async function startServerRuntime(
     executionService: taskExecutionService,
     logger,
   });
+  taskSchedulerServiceRef.current = taskSchedulerService;
   const scheduler = createSchedulerService({ delegate: taskSchedulerService });
   const packageInfo = readPackageInfo();
   const drainRuntime: {

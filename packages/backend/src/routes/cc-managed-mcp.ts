@@ -48,7 +48,7 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
     context.taskService ?? createTaskService({ db: context.database.db, config: context.config });
   const taskExecutionService =
     context.taskExecutionService ??
-    createTaskExecutionService({ taskService, conversationService });
+    createTaskExecutionService({ taskService, conversationService, logger: context.logger });
   const customToolActionService = createCustomToolActionService({
     customToolService,
     agentService,
