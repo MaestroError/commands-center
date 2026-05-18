@@ -284,7 +284,7 @@ function renderTaskRunPrompt(task: Task, renderedContext: Record<string, unknown
   return [
     `Task: ${task.title}`,
     `Assigned agent ID: ${task.agentId}`,
-    task.description ? `Description: ${task.description}` : undefined,
+    task.description ? `Task prompt:\n${task.description}` : undefined,
     renderedContext["runContext"]
       ? `Context: ${JSON.stringify(renderedContext["runContext"], null, 2)}`
       : undefined,

@@ -14,15 +14,23 @@ import type {
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
+import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
+import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import {
   formatDate,
   formatRepeatSummary,
   formatToken,
   formatWeekday,
 } from "@/components/tasks/task-format";
+import {
+  buildTaskPromptText,
+  createTaskPromptValue,
+  type TaskPromptValue,
+} from "@/components/tasks/task-prompt";
 import { StatusBadge } from "@/components/tasks/task-ui";
-import { useAgentsQuery } from "@/hooks/use-agents-query";
+import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
+import { useAgentCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
 import { useTaskMutations, useTaskQuery, useTasksQuery } from "@/hooks/use-tasks-query";
 
 type TasksPageProps = {
@@ -331,18 +339,39 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
   const params = useParams();
   const taskQuery = useTaskQuery(props.mode === "edit" ? params["id"] : undefined);
   const agentsQuery = useAgentsQuery();
+  const catalogQuery = useAgentCatalogQuery();
   const mutations = useTaskMutations();
   const task = taskQuery.data;
   const agents = agentsQuery.data ?? [];
   const [form, setForm] = useState<FormState>(() => taskToForm(task));
+  const selectedAgent = agents.find((agent) => agent.id === form.agentId);
+  const taskSkills = useMemo(() => {
+    if (!selectedAgent || !catalogQuery.data) return [];
+
+    const selectedSlugs = new Set([
+      ...selectedAgent.capabilities.builtInSkills,
+      ...(selectedAgent.capabilities.workspaceSkills ?? []),
+    ]);
+
+    return [...catalogQuery.data.builtInSkills, ...(catalogQuery.data.workspaceSkills ?? [])]
+      .filter((skill) => selectedSlugs.has(skill.slug))
+      .map((skill) => ({ slug: skill.slug, description: skill.description }));
+  }, [catalogQuery.data, selectedAgent]);
 
   useMemo(() => {
     if (task) setForm(taskToForm(task));
   }, [task]);
 
-  const isLoading = agentsQuery.isLoading || (props.mode === "edit" && taskQuery.isLoading);
+  const isLoading =
+    agentsQuery.isLoading ||
+    catalogQuery.isLoading ||
+    (props.mode === "edit" && taskQuery.isLoading);
   const error = readError(
-    agentsQuery.error ?? taskQuery.error ?? mutations.create.error ?? mutations.update.error,
+    agentsQuery.error ??
+      catalogQuery.error ??
+      taskQuery.error ??
+      mutations.create.error ??
+      mutations.update.error,
   );
 
   return (
@@ -365,179 +394,208 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
       {error ? <ErrorState description={error} title="Task could not be saved." /> : null}
 
       {!isLoading ? (
-        <form
-          className="cc-panel grid gap-5 p-4 sm:p-6"
-          onSubmit={(event) => void handleSubmit(event)}
-        >
-          <div className="grid gap-4 lg:grid-cols-2">
-            <label className="grid gap-1 text-sm text-text-secondary">
-              Title
-              <input
-                className="cc-input"
-                required
-                value={form.title}
-                onChange={(event) => updateForm({ title: event.target.value })}
-              />
-            </label>
-            <label className="grid gap-1 text-sm text-text-secondary">
-              Assigned agent
-              <select
-                className="cc-input"
-                required
-                value={form.agentId}
-                onChange={(event) => updateForm({ agentId: event.target.value })}
-              >
-                <option value="">Select an agent</option>
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+        <WorkspaceLayout
+          contextPane={{
+            title: selectedAgent ? `${selectedAgent.name} workspace` : "Agent workspace",
+            tabs: [
+              {
+                id: "files",
+                label: "Files",
+                content: selectedAgent ? (
+                  <WorkspaceFilesTab agentId={selectedAgent.id} agentSlug={selectedAgent.slug} />
+                ) : (
+                  <p className="p-3 text-sm text-text-secondary">
+                    Select an agent to browse workspace files and drag files into the task prompt.
+                  </p>
+                ),
+              },
+            ],
+            defaultTabId: "files",
+          }}
+          primary={
+            <form
+              className="grid h-full gap-5 overflow-auto p-4 sm:p-6"
+              onSubmit={(event) => void handleSubmit(event)}
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <label className="grid gap-1 text-sm text-text-secondary">
+                  Title
+                  <input
+                    className="cc-input"
+                    required
+                    value={form.title}
+                    onChange={(event) => updateForm({ title: event.target.value })}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm text-text-secondary">
+                  Assigned agent
+                  <select
+                    className="cc-input"
+                    required
+                    value={form.agentId}
+                    onChange={(event) => updateForm({ agentId: event.target.value })}
+                  >
+                    <option value="">Select an agent</option>
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
 
-          <label className="grid gap-1 text-sm text-text-secondary">
-            Description
-            <textarea
-              className="cc-input min-h-24 resize-y"
-              value={form.description}
-              onChange={(event) => updateForm({ description: event.target.value })}
-            />
-          </label>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <label className="grid gap-1 text-sm text-text-secondary">
-              Trigger mode
-              <select
-                className="cc-input"
-                value={form.triggerMode}
-                onChange={(event) =>
-                  updateForm({ triggerMode: event.target.value as TaskTriggerMode })
-                }
-              >
-                {TRIGGER_MODES.map((mode) => (
-                  <option key={mode} value={mode}>
-                    {formatToken(mode)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {form.triggerMode === "scheduled_once" ? (
-              <label className="grid gap-1 text-sm text-text-secondary lg:col-span-2">
-                Run at
-                <input
-                  className="cc-input"
-                  type="datetime-local"
-                  value={form.runAtLocal}
-                  onChange={(event) => updateForm({ runAtLocal: event.target.value })}
+              <section className="grid gap-1 text-sm text-text-secondary">
+                <div>
+                  <h2 className="font-medium text-text-primary">Task prompt</h2>
+                  <p className="text-xs text-text-secondary">
+                    Use # to mention workspace files and / to pick a skill available to the selected
+                    agent.
+                  </p>
+                </div>
+                <TaskPromptComposer
+                  agentId={form.agentId || undefined}
+                  disabled={!form.agentId}
+                  onChange={(prompt) => updateForm({ prompt })}
+                  skills={taskSkills}
+                  value={form.prompt}
                 />
-              </label>
-            ) : null}
-            {form.triggerMode === "recurring" ? (
-              <section className="grid gap-3 rounded-xl border border-border bg-surface p-4 lg:col-span-2">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1 text-sm text-text-secondary">
-                    Repeat
-                    <select
-                      className="cc-input"
-                      value={form.repeatPreset}
-                      onChange={(event) =>
-                        updateForm({ repeatPreset: event.target.value as RepeatPreset })
-                      }
-                    >
-                      {REPEAT_PRESETS.map((preset) => (
-                        <option key={preset} value={preset}>
-                          {formatRepeatPreset(preset)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-1 text-sm text-text-secondary">
-                    Starts at
+              </section>
+              <div className="grid gap-4 lg:grid-cols-3">
+                <label className="grid gap-1 text-sm text-text-secondary">
+                  Trigger mode
+                  <select
+                    className="cc-input"
+                    value={form.triggerMode}
+                    onChange={(event) =>
+                      updateForm({ triggerMode: event.target.value as TaskTriggerMode })
+                    }
+                  >
+                    {TRIGGER_MODES.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {formatToken(mode)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {form.triggerMode === "scheduled_once" ? (
+                  <label className="grid gap-1 text-sm text-text-secondary lg:col-span-2">
+                    Run at
                     <input
                       className="cc-input"
                       type="datetime-local"
-                      value={form.anchorAtLocal}
-                      onChange={(event) => updateForm({ anchorAtLocal: event.target.value })}
+                      value={form.runAtLocal}
+                      onChange={(event) => updateForm({ runAtLocal: event.target.value })}
                     />
                   </label>
-                </div>
-                {form.repeatPreset === "custom" ? (
-                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                    <label className="grid gap-1 text-sm text-text-secondary">
-                      Every
-                      <input
-                        className="cc-input"
-                        min={1}
-                        type="number"
-                        value={form.repeatInterval}
-                        onChange={(event) => updateForm({ repeatInterval: event.target.value })}
-                      />
-                    </label>
-                    <label className="grid gap-1 text-sm text-text-secondary">
-                      Unit
-                      <select
-                        className="cc-input"
-                        value={form.repeatFrequency}
-                        onChange={(event) =>
-                          updateForm({ repeatFrequency: event.target.value as RepeatFrequency })
-                        }
-                      >
-                        {REPEAT_FREQUENCIES.map((frequency) => (
-                          <option key={frequency} value={frequency}>
-                            {formatToken(frequency)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {form.repeatFrequency === "week" ? (
+                ) : null}
+                {form.triggerMode === "recurring" ? (
+                  <section className="grid gap-3 rounded-xl border border-border bg-surface p-4 lg:col-span-2">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="grid gap-1 text-sm text-text-secondary">
+                        Repeat
+                        <select
+                          className="cc-input"
+                          value={form.repeatPreset}
+                          onChange={(event) =>
+                            updateForm({ repeatPreset: event.target.value as RepeatPreset })
+                          }
+                        >
+                          {REPEAT_PRESETS.map((preset) => (
+                            <option key={preset} value={preset}>
+                              {formatRepeatPreset(preset)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="grid gap-1 text-sm text-text-secondary">
+                        Starts at
+                        <input
+                          className="cc-input"
+                          type="datetime-local"
+                          value={form.anchorAtLocal}
+                          onChange={(event) => updateForm({ anchorAtLocal: event.target.value })}
+                        />
+                      </label>
+                    </div>
+                    {form.repeatPreset === "custom" ? (
+                      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                        <label className="grid gap-1 text-sm text-text-secondary">
+                          Every
+                          <input
+                            className="cc-input"
+                            min={1}
+                            type="number"
+                            value={form.repeatInterval}
+                            onChange={(event) => updateForm({ repeatInterval: event.target.value })}
+                          />
+                        </label>
+                        <label className="grid gap-1 text-sm text-text-secondary">
+                          Unit
+                          <select
+                            className="cc-input"
+                            value={form.repeatFrequency}
+                            onChange={(event) =>
+                              updateForm({ repeatFrequency: event.target.value as RepeatFrequency })
+                            }
+                          >
+                            {REPEAT_FREQUENCIES.map((frequency) => (
+                              <option key={frequency} value={frequency}>
+                                {formatToken(frequency)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {form.repeatFrequency === "week" ? (
+                          <WeekdayPicker form={form} updateForm={updateForm} />
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {form.repeatPreset === "weekly" ? (
                       <WeekdayPicker form={form} updateForm={updateForm} />
                     ) : null}
-                  </div>
+                    <p className="text-sm text-text-secondary">
+                      {formatRepeatSummary(buildRepeatRule(form))}
+                    </p>
+                  </section>
                 ) : null}
-                {form.repeatPreset === "weekly" ? (
-                  <WeekdayPicker form={form} updateForm={updateForm} />
-                ) : null}
-                <p className="text-sm text-text-secondary">
-                  {formatRepeatSummary(buildRepeatRule(form))}
+              </div>
+
+              <label className="grid gap-1 text-sm text-text-secondary">
+                Todo items, one per line
+                <textarea
+                  className="cc-input min-h-28 resize-y"
+                  value={form.todosText}
+                  onChange={(event) => updateForm({ todosText: event.target.value })}
+                />
+              </label>
+
+              <section className="rounded-xl border border-border bg-surface p-4">
+                <h2 className="font-semibold text-text-primary">Permission profile</h2>
+                <p className="mt-1 text-sm leading-6 text-text-secondary">
+                  This UI currently inherits the assigned agent permissions. Task runs still persist
+                  their effective permission snapshot and auto-approve task-safe rules.
                 </p>
               </section>
-            ) : null}
-          </div>
 
-          <label className="grid gap-1 text-sm text-text-secondary">
-            Todo items, one per line
-            <textarea
-              className="cc-input min-h-28 resize-y"
-              value={form.todosText}
-              onChange={(event) => updateForm({ todosText: event.target.value })}
-            />
-          </label>
-
-          <section className="rounded-xl border border-border bg-surface p-4">
-            <h2 className="font-semibold text-text-primary">Permission profile</h2>
-            <p className="mt-1 text-sm leading-6 text-text-secondary">
-              This UI currently inherits the assigned agent permissions. Task runs still persist
-              their effective permission snapshot and auto-approve task-safe rules.
-            </p>
-          </section>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              className="cc-button"
-              disabled={mutations.create.isPending || mutations.update.isPending}
-              type="submit"
-            >
-              {props.mode === "create" ? "Create task" : "Save task"}
-            </button>
-            <Link
-              className="cc-button cc-button-secondary"
-              to={task ? `/tasks/${task.id}` : "/tasks"}
-            >
-              Cancel
-            </Link>
-          </div>
-        </form>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="cc-button"
+                  disabled={mutations.create.isPending || mutations.update.isPending}
+                  type="submit"
+                >
+                  {props.mode === "create" ? "Create task" : "Save task"}
+                </button>
+                <Link
+                  className="cc-button cc-button-secondary"
+                  to={task ? `/tasks/${task.id}` : "/tasks"}
+                >
+                  Cancel
+                </Link>
+              </div>
+            </form>
+          }
+        />
       ) : null}
     </div>
   );
@@ -569,7 +627,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
 type FormState = {
   agentId: string;
   title: string;
-  description: string;
+  prompt: TaskPromptValue;
   triggerMode: TaskTriggerMode;
   runAtLocal: string;
   anchorAtLocal: string;
@@ -588,7 +646,7 @@ function taskToForm(task?: Task): FormState {
   return {
     agentId: task?.agentId ?? "",
     title: task?.title ?? "",
-    description: task?.description ?? "",
+    prompt: createTaskPromptValue(task?.description ?? ""),
     triggerMode: task?.triggerMode ?? "manual",
     runAtLocal:
       task?.schedule.mode === "scheduled_once" ? toLocalDateTime(task.schedule.runAt) : "",
@@ -611,7 +669,7 @@ function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {
   return {
     agentId: form.agentId,
     title: form.title,
-    description: form.description,
+    description: buildTaskPromptText(form.prompt),
     todos: form.todosText
       .split("\n")
       .map((line) => line.trim())

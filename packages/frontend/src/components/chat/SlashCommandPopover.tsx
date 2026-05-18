@@ -15,6 +15,7 @@ const BUILTIN_COMMANDS: SlashCommand[] = [
 interface SlashCommandPopoverProps {
   query: string;
   skills?: { slug: string; description?: string }[];
+  includeBuiltInCommands?: boolean;
   onSelect: (command: SlashCommand) => void;
   onClose: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
@@ -25,6 +26,7 @@ interface SlashCommandPopoverProps {
 export function SlashCommandPopover({
   query,
   skills,
+  includeBuiltInCommands = true,
   onSelect,
   onClose,
   onKeyDown: parentOnKeyDown,
@@ -39,8 +41,8 @@ export function SlashCommandPopover({
       description: s.description ?? `Run the ${s.slug} skill`,
       type: "skill" as const,
     }));
-    return [...BUILTIN_COMMANDS, ...skillCommands];
-  }, [skills]);
+    return includeBuiltInCommands ? [...BUILTIN_COMMANDS, ...skillCommands] : skillCommands;
+  }, [includeBuiltInCommands, skills]);
 
   const { filtered, activeIndex, setActiveIndex, onKeyDown, setQuery } =
     useFilteredList<SlashCommand>({

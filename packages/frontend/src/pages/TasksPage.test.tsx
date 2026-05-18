@@ -2,9 +2,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import type { Agent, ConversationDetail, Task, TaskRun } from "@cc/shared/schemas";
+import type { Agent, AgentCatalog, ConversationDetail, Task, TaskRun } from "@cc/shared/schemas";
 
 import { formatDate } from "@/components/tasks/task-format";
 import { TaskDetailPage } from "@/pages/TaskDetailPage";
@@ -130,6 +130,25 @@ const conversation: ConversationDetail = {
   ],
 };
 
+const catalog: AgentCatalog = {
+  builtInSkills: [
+    {
+      name: "Screen requirements writing",
+      slug: "screen-requirements-writing",
+      description: "Write screen requirements",
+      category: "design",
+      metadata: {},
+      detailsMarkdown: "Write requirements.",
+      files: [],
+    },
+  ],
+  workspaceSkills: [],
+  providerModels: [],
+  mcpServers: [],
+  appMcpServers: [],
+  customTools: [],
+};
+
 type MockFetchOptions = {
   sessionPayload?: {
     run?: typeof run;
@@ -139,8 +158,13 @@ type MockFetchOptions = {
   };
   taskPayload?: typeof task;
   agentsPayload?: (typeof agent)[];
+  catalogPayload?: AgentCatalog;
   runsPayload?: TaskRun[];
 };
+
+beforeAll(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -188,6 +212,42 @@ describe("TasksPage", () => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/tasks",
         expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("creates a task prompt with selected file and skill mentions", async () => {
+    const skilledAgent: Agent = {
+      ...agent,
+      capabilities: {
+        ...agent.capabilities,
+        builtInSkills: ["screen-requirements-writing"],
+      },
+    };
+    const fetchMock = mockFetch({ agentsPayload: [skilledAgent] });
+
+    renderWithRouter(<TasksPage mode="create" />, "/tasks/new");
+
+    const user = userEvent.setup();
+    await screen.findByRole("combobox", { name: /Assigned agent/i });
+    await user.type(screen.getByLabelText(/Title/i), "Requirements review");
+    await user.selectOptions(screen.getByLabelText(/Assigned agent/i), "agent-1");
+    await user.type(screen.getByLabelText(/Task prompt/i), "#PRD");
+    await user.click(await screen.findByRole("button", { name: /PRD.md/i }));
+    await user.type(screen.getByLabelText(/Task prompt/i), "/screen");
+    await user.click(await screen.findByRole("button", { name: /screen-requirements-writing/i }));
+    await user.type(screen.getByLabelText(/Task prompt/i), "Update requirements");
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining(
+            '"description":"Use skill \\"screen-requirements-writing\\". #PRD.md Update requirements"',
+          ),
+        }),
       );
     });
   });
@@ -566,12 +626,22 @@ function mockFetch(options: MockFetchOptions = {}) {
     (sessionDiagnostics.length === 0 && sessionConversation !== undefined);
   const taskPayload = options.taskPayload ?? task;
   const agentsPayload = options.agentsPayload ?? [agent];
+  const catalogPayload = options.catalogPayload ?? catalog;
   const runsPayload = options.runsPayload ?? [sessionRun];
 
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : input.toString();
 
     if (url === "/api/agents") return Promise.resolve(jsonResponse(200, agentsPayload));
+    if (url === "/api/agents/catalog") return Promise.resolve(jsonResponse(200, catalogPayload));
+    if (url.startsWith("/api/agents/agent-1/workspace/find/file")) {
+      return Promise.resolve(jsonResponse(200, ["PRD.md"]));
+    }
+    if (url.startsWith("/api/agents/agent-1/workspace/file")) {
+      return Promise.resolve(
+        jsonResponse(200, [{ name: "PRD.md", path: "PRD.md", type: "file", ignored: false }]),
+      );
+    }
     if (url === "/api/tasks") {
       const method = input instanceof Request ? input.method : init?.method;
       return Promise.resolve(
