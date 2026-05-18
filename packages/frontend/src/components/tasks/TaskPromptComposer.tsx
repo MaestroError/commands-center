@@ -160,6 +160,11 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
   const handleDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
+
+      if (disabled) {
+        return;
+      }
+
       const fileMentionPath = event.dataTransfer.getData("application/x-cc-file-mention");
 
       if (fileMentionPath.length > 0) {
@@ -167,7 +172,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
         textareaRef.current?.focus();
       }
     },
-    [addMentionedFile],
+    [addMentionedFile, disabled],
   );
 
   const handleRemoveMention = useCallback(
@@ -203,7 +208,11 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
 
   return (
     <div
-      className="relative rounded-md border border-border bg-surface"
+      className={`relative rounded-md border border-border transition ${
+        disabled
+          ? "cursor-not-allowed bg-surface-elevated opacity-75 ring-1 ring-inset ring-border"
+          : "bg-surface"
+      }`}
       onDrop={handleDrop}
       onDragOver={(event) => event.preventDefault()}
     >
@@ -265,7 +274,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
       <div className="relative p-3">
         <textarea
           aria-label="Task prompt"
-          className="max-h-52 min-h-32 w-full resize-y bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary"
+          className="max-h-52 min-h-32 w-full resize-y bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary disabled:cursor-not-allowed disabled:text-text-secondary disabled:placeholder:text-text-secondary/70"
           disabled={disabled}
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}

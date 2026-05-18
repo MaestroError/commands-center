@@ -490,12 +490,12 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                   </label>
                 ) : null}
                 {form.triggerMode === "recurring" ? (
-                  <section className="grid gap-3 rounded-xl border border-border bg-surface p-4 lg:col-span-2">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="grid gap-1 text-sm text-text-secondary">
+                  <section className="grid min-w-0 gap-3 rounded-xl border border-border bg-surface p-4 lg:col-span-2">
+                    <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                      <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
                         Repeat
                         <select
-                          className="cc-input"
+                          className="cc-input min-w-0"
                           value={form.repeatPreset}
                           onChange={(event) =>
                             updateForm({ repeatPreset: event.target.value as RepeatPreset })
@@ -508,10 +508,10 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                           ))}
                         </select>
                       </label>
-                      <label className="grid gap-1 text-sm text-text-secondary">
+                      <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
                         Starts at
                         <input
-                          className="cc-input"
+                          className="cc-input min-w-0"
                           type="datetime-local"
                           value={form.anchorAtLocal}
                           onChange={(event) => updateForm({ anchorAtLocal: event.target.value })}
@@ -520,20 +520,20 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                     </div>
                     {form.repeatPreset === "custom" ? (
                       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                        <label className="grid gap-1 text-sm text-text-secondary">
+                        <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
                           Every
                           <input
-                            className="cc-input"
+                            className="cc-input min-w-0"
                             min={1}
                             type="number"
                             value={form.repeatInterval}
                             onChange={(event) => updateForm({ repeatInterval: event.target.value })}
                           />
                         </label>
-                        <label className="grid gap-1 text-sm text-text-secondary">
+                        <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
                           Unit
                           <select
-                            className="cc-input"
+                            className="cc-input min-w-0"
                             value={form.repeatFrequency}
                             onChange={(event) =>
                               updateForm({ repeatFrequency: event.target.value as RepeatFrequency })
