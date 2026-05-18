@@ -252,6 +252,54 @@ describe("TasksPage", () => {
     });
   });
 
+  it("prefills task creation from converted user message state", async () => {
+    const skilledAgent: Agent = {
+      ...agent,
+      capabilities: {
+        ...agent.capabilities,
+        builtInSkills: ["screen-requirements-writing"],
+      },
+    };
+    const fetchMock = mockFetch({ agentsPayload: [skilledAgent] });
+
+    renderWithRouter(<TasksPage mode="create" />, "/tasks/new", {
+      taskPrefill: {
+        agentId: "agent-1",
+        prompt: {
+          text: "Update requirements",
+          mentionedFiles: [{ path: "PRD.md", filename: "PRD.md" }],
+          selectedSkill: {
+            slug: "screen-requirements-writing",
+            description: "Write screen requirements",
+          },
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    await screen.findByRole("combobox", { name: /Assigned agent/i });
+
+    expect(screen.getByLabelText(/Assigned agent/i)).toHaveValue("agent-1");
+    expect(screen.getByLabelText(/Task prompt/i)).toHaveValue("Update requirements");
+    expect(screen.getByText("/screen-requirements-writing")).toBeInTheDocument();
+    expect(screen.getByText("PRD.md")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/Title/i), "Requirements review");
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining(
+            '"description":"Use skill \\"screen-requirements-writing\\". #PRD.md Update requirements"',
+          ),
+        }),
+      );
+    });
+  });
+
   it("creates a custom hourly recurring task from the form", async () => {
     const fetchMock = mockFetch();
 
@@ -591,12 +639,12 @@ describe("TaskDetailPage", () => {
   });
 });
 
-function renderWithRouter(element: React.ReactElement, initialPath: string) {
+function renderWithRouter(element: React.ReactElement, initialPath: string, state?: unknown) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[initialPath]}>
+      <MemoryRouter initialEntries={[state ? { pathname: initialPath, state } : initialPath]}>
         <Routes>
           <Route element={element} path="/tasks" />
           <Route element={element} path="/tasks/new" />

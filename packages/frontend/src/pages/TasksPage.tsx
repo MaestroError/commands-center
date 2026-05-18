@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import type {
   Agent,
@@ -32,6 +32,7 @@ import { StatusBadge } from "@/components/tasks/task-ui";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
 import { useAgentCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
 import { useTaskMutations, useTaskQuery, useTasksQuery } from "@/hooks/use-tasks-query";
+import { isTaskCreationPrefill, type TaskCreationPrefill } from "@/services/task-prefill-service";
 
 type TasksPageProps = {
   mode?: "list" | "create" | "edit";
@@ -336,6 +337,7 @@ function TaskCard(props: {
 
 function TaskFormPage(props: { mode: "create" | "edit" }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const params = useParams();
   const taskQuery = useTaskQuery(props.mode === "edit" ? params["id"] : undefined);
   const agentsQuery = useAgentsQuery();
@@ -343,7 +345,8 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
   const mutations = useTaskMutations();
   const task = taskQuery.data;
   const agents = agentsQuery.data ?? [];
-  const [form, setForm] = useState<FormState>(() => taskToForm(task));
+  const prefill = getTaskCreationPrefill(location.state);
+  const [form, setForm] = useState<FormState>(() => taskToForm(task, prefill));
   const selectedAgent = agents.find((agent) => agent.id === form.agentId);
   const taskSkills = useMemo(() => {
     if (!selectedAgent || !catalogQuery.data) return [];
@@ -642,11 +645,13 @@ type FormState = {
 type RepeatPreset = (typeof REPEAT_PRESETS)[number];
 type RepeatFrequency = (typeof REPEAT_FREQUENCIES)[number];
 
-function taskToForm(task?: Task): FormState {
+function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormState {
   return {
-    agentId: task?.agentId ?? "",
+    agentId: task?.agentId ?? prefill?.agentId ?? "",
     title: task?.title ?? "",
-    prompt: createTaskPromptValue(task?.description ?? ""),
+    prompt: task
+      ? createTaskPromptValue(task.description)
+      : (prefill?.prompt ?? createTaskPromptValue()),
     triggerMode: task?.triggerMode ?? "manual",
     runAtLocal:
       task?.schedule.mode === "scheduled_once" ? toLocalDateTime(task.schedule.runAt) : "",
@@ -663,6 +668,15 @@ function taskToForm(task?: Task): FormState {
       task?.schedule.mode === "recurring" ? (task.schedule.repeatRule.weekdays ?? []) : [],
     todosText: task?.todos.map((todo) => todo.content).join("\n") ?? "",
   };
+}
+
+function getTaskCreationPrefill(state: unknown): TaskCreationPrefill | undefined {
+  if (!state || typeof state !== "object" || !("taskPrefill" in state)) {
+    return undefined;
+  }
+
+  const taskPrefill = (state as { taskPrefill: unknown }).taskPrefill;
+  return isTaskCreationPrefill(taskPrefill) ? taskPrefill : undefined;
 }
 
 function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {

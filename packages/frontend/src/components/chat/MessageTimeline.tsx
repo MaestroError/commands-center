@@ -1,4 +1,4 @@
-import { Check, Copy } from "lucide-react";
+import { Check, ClipboardList, Copy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ConversationMessage, ConversationPart, SessionStatus } from "@cc/shared/schemas";
@@ -14,6 +14,7 @@ type MessageTimelineProps = {
   sessionStatus: SessionStatus;
   sendError?: string | null;
   onAttachmentClick?: (filename: string) => void;
+  onConvertUserMessageToTask?: (message: ConversationMessage, parts: ConversationPart[]) => void;
 };
 
 export function MessageTimeline({
@@ -22,6 +23,7 @@ export function MessageTimeline({
   sessionStatus,
   sendError,
   onAttachmentClick,
+  onConvertUserMessageToTask,
 }: MessageTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -75,7 +77,16 @@ export function MessageTimeline({
             <div className={msg.role === "user" ? "flex justify-end" : "flex justify-start"}>
               <div className={msg.role === "user" ? "group max-w-[80%]" : "group max-w-[90%]"}>
                 <div className="flex items-start gap-2">
-                  {msg.role === "user" ? <MessageCopyButton copyText={copyText} /> : null}
+                  {msg.role === "user" ? (
+                    <div className="flex gap-1">
+                      <ConvertToTaskButton
+                        message={msg}
+                        onConvert={onConvertUserMessageToTask}
+                        parts={msgParts}
+                      />
+                      <MessageCopyButton copyText={copyText} />
+                    </div>
+                  ) : null}
                   {msg.role === "user" ? (
                     <UserMessage
                       message={msg}
@@ -136,6 +147,28 @@ export function MessageTimeline({
 
       <div ref={sentinelRef} />
     </div>
+  );
+}
+
+function ConvertToTaskButton(props: {
+  message: ConversationMessage;
+  parts: ConversationPart[];
+  onConvert?: (message: ConversationMessage, parts: ConversationPart[]) => void;
+}) {
+  if (!props.onConvert) {
+    return null;
+  }
+
+  return (
+    <button
+      aria-label="Convert to task"
+      className="mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-secondary opacity-70 transition hover:border-accent/50 hover:text-text-primary focus:opacity-100 group-hover:opacity-100"
+      onClick={() => props.onConvert?.(props.message, props.parts)}
+      title="Convert to task"
+      type="button"
+    >
+      <ClipboardList aria-hidden="true" className="h-3.5 w-3.5" />
+    </button>
   );
 }
 

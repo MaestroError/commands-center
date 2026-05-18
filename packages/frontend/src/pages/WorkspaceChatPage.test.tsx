@@ -89,7 +89,17 @@ vi.mock("@/components/chat/WorkspaceTerminalPane", () => ({
 }));
 
 vi.mock("@/components/chat/MessageTimeline", () => ({
-  MessageTimeline: ({ onAttachmentClick }: { onAttachmentClick?: (filename: string) => void }) => (
+  MessageTimeline: ({
+    messages,
+    onAttachmentClick,
+    onConvertUserMessageToTask,
+    parts,
+  }: {
+    messages: Array<{ id: string; role: string; content: string }>;
+    onAttachmentClick?: (filename: string) => void;
+    onConvertUserMessageToTask?: (message: unknown, parts: unknown[]) => void;
+    parts: Record<string, unknown[]>;
+  }) => (
     <div>
       <button
         data-testid="message-attachment-pill"
@@ -98,6 +108,18 @@ vi.mock("@/components/chat/MessageTimeline", () => ({
       >
         Attachment pill
       </button>
+      {messages.map((message) =>
+        message.role === "user" ? (
+          <button
+            data-testid={`convert-message-${message.id}`}
+            key={message.id}
+            onClick={() => onConvertUserMessageToTask?.(message, parts[message.id] ?? [])}
+            type="button"
+          >
+            Convert message
+          </button>
+        ) : null,
+      )}
       <div data-testid="message-timeline">MessageTimeline</div>
     </div>
   ),
@@ -374,6 +396,116 @@ describe("WorkspaceChatPage", () => {
     expect(screen.getByTestId("media-tab")).toHaveTextContent(
       "MediaTab:conv-1:Carpenter Vacancy Redberry.pdf",
     );
+  });
+
+  it("navigates to task creation with converted user message state", async () => {
+    const user = userEvent.setup();
+
+    mockParams = { agentId: "planner", conversationId: "conv-1" };
+    useConversationMock.mockReturnValue(
+      makeConversation({
+        conversation: {
+          id: "conv-1",
+          messages: [
+            {
+              id: "msg-1",
+              conversationId: "conv-1",
+              role: "user",
+              content: 'Use skill "review". #README.md Check this',
+              parts: [],
+              attachments: [],
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+        agent: {
+          id: "agent-1",
+          slug: "planner",
+          name: "Planner",
+          role: "Plans work",
+          iconPath: undefined,
+          workspacePath: "/workspace/planner",
+          capabilities: {
+            builtInSkills: ["review"],
+            workspaceSkills: [],
+            mcpServers: [],
+            toolPermissions: [],
+          },
+        },
+      }),
+    );
+    useAgentCatalogQueryMock.mockReturnValue({
+      data: {
+        builtInSkills: [{ slug: "review", description: "Review code" }],
+        workspaceSkills: [],
+      },
+    });
+
+    render(<WorkspaceChatPage />);
+
+    await user.click(screen.getByTestId("convert-message-msg-1"));
+
+    expect(navigateMock).toHaveBeenCalledWith("/tasks/new", {
+      state: {
+        taskPrefill: {
+          agentId: "agent-1",
+          prompt: {
+            text: "Check this",
+            mentionedFiles: [{ path: "README.md", filename: "README.md" }],
+            selectedSkill: { slug: "review", description: "Review code" },
+          },
+        },
+      },
+    });
+  });
+
+  it("warns before converting a user message with attachments", async () => {
+    const user = userEvent.setup();
+
+    mockParams = { agentId: "planner", conversationId: "conv-1" };
+    useConversationMock.mockReturnValue(
+      makeConversation({
+        conversation: {
+          id: "conv-1",
+          messages: [
+            {
+              id: "msg-1",
+              conversationId: "conv-1",
+              role: "user",
+              content: "Create follow-up task",
+              parts: [],
+              attachments: [
+                { id: "att-1", type: "file", filename: "notes.txt", mimeType: "text/plain" },
+              ],
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    );
+    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [], workspaceSkills: [] } });
+
+    render(<WorkspaceChatPage />);
+
+    await user.click(screen.getByTestId("convert-message-msg-1"));
+
+    expect(
+      screen.getByRole("dialog", { name: "Convert message with attachments" }),
+    ).toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalledWith("/tasks/new", expect.anything());
+
+    await user.click(screen.getByRole("button", { name: "Continue without attachments" }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/tasks/new", {
+      state: {
+        taskPrefill: {
+          agentId: "agent-1",
+          prompt: { text: "Create follow-up task", mentionedFiles: [], selectedSkill: null },
+        },
+      },
+    });
   });
 
   it("lazy-mounts and unmounts the workspace terminal bottom pane from the chat header toggle", async () => {

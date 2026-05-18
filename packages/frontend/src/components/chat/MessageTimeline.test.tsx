@@ -259,6 +259,37 @@ describe("MessageTimeline", () => {
     expect(writeClipboardSpy).toHaveBeenCalledWith("Copy this");
   });
 
+  it("calls convert to task for user messages", async () => {
+    const message = makeMessage({ id: "user-task", role: "user", content: "Create task" });
+    const onConvert = vi.fn();
+
+    render(
+      <MessageTimeline
+        messages={[message]}
+        onConvertUserMessageToTask={onConvert}
+        parts={{}}
+        sessionStatus={{ type: "idle" }}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Convert to task" }));
+
+    expect(onConvert).toHaveBeenCalledWith(message, []);
+  });
+
+  it("does not show convert to task for assistant messages", () => {
+    render(
+      <MessageTimeline
+        messages={[makeMessage({ id: "assistant-task", role: "assistant", content: "Reply" })]}
+        onConvertUserMessageToTask={vi.fn()}
+        parts={{}}
+        sessionStatus={{ type: "idle" }}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Convert to task" })).not.toBeInTheDocument();
+  });
+
   it("copies assistant text parts", async () => {
     const assistantMessage = makeMessage({
       id: "assistant-copy",
