@@ -39,6 +39,20 @@ describe("createTaskSchedulerService", () => {
     expect(next.toISOString()).toBe("2026-06-02T09:00:00.000Z");
   });
 
+  it("keeps daily recurring runs at the configured timezone wall time across DST", () => {
+    const next = computeNextRecurringRun(
+      {
+        mode: "recurring",
+        anchorAt: "2026-03-07T14:00:00.000Z",
+        timezone: "America/New_York",
+        repeatRule: { frequency: "day", interval: 1 },
+      },
+      new Date("2026-03-08T15:00:00.000Z"),
+    );
+
+    expect(next.toISOString()).toBe("2026-03-09T13:00:00.000Z");
+  });
+
   it("computes weekly selected weekday recurring runs", () => {
     const next = computeNextRecurringRun(
       {
@@ -53,6 +67,20 @@ describe("createTaskSchedulerService", () => {
     expect(next.toISOString()).toBe("2026-06-04T09:00:00.000Z");
   });
 
+  it("matches weekly selected weekdays in the configured timezone", () => {
+    const next = computeNextRecurringRun(
+      {
+        mode: "recurring",
+        anchorAt: "2026-06-01T04:30:00.000Z",
+        timezone: "Asia/Tbilisi",
+        repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
+      },
+      new Date("2026-06-01T05:00:00.000Z"),
+    );
+
+    expect(next.toISOString()).toBe("2026-06-08T04:30:00.000Z");
+  });
+
   it("computes monthly day-of-month recurring runs", () => {
     const next = computeNextRecurringRun(
       {
@@ -65,6 +93,20 @@ describe("createTaskSchedulerService", () => {
     );
 
     expect(next.toISOString()).toBe("2026-02-28T09:00:00.000Z");
+  });
+
+  it("keeps monthly recurring runs at the configured timezone wall time across DST", () => {
+    const next = computeNextRecurringRun(
+      {
+        mode: "recurring",
+        anchorAt: "2026-10-31T13:00:00.000Z",
+        timezone: "America/New_York",
+        repeatRule: { frequency: "month", interval: 1 },
+      },
+      new Date("2026-10-31T14:00:00.000Z"),
+    );
+
+    expect(next.toISOString()).toBe("2026-11-30T14:00:00.000Z");
   });
 
   it("runs due one-time scheduled tasks once", async () => {

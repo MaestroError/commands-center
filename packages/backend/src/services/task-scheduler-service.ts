@@ -18,6 +18,17 @@ import type { TaskExecutionService } from "./task-execution-service.js";
 import type { TaskService } from "./task-service.js";
 
 const DEFAULT_TICK_MS = 30_000;
+const zonedFormatters = new Map<string, Intl.DateTimeFormat>();
+
+type ZonedDateTimeParts = {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+  millisecond: number;
+};
 
 export type TaskSchedulerService = ReturnType<typeof createTaskSchedulerService>;
 
@@ -277,6 +288,7 @@ export function computeNextRecurringRun(
   from: Date,
   after = from,
 ): Date {
+  const timezone = schedule.timezone;
   const anchor = new Date(schedule.anchorAt);
   let candidate = anchor;
 
@@ -285,7 +297,7 @@ export function computeNextRecurringRun(
       return candidate;
     }
 
-    candidate = advanceRecurringCandidate(anchor, candidate, schedule.repeatRule);
+    candidate = advanceRecurringCandidate(anchor, candidate, timezone, schedule.repeatRule);
   }
 
   throw new Error("Could not compute next recurring task run within ten years.");
@@ -314,100 +326,260 @@ function readLatestDueOccurrence(task: Task, firstDueAt: Date, at: Date): Date {
 function advanceRecurringCandidate(
   anchor: Date,
   current: Date,
+  timezone: string,
   rule: Extract<Task["schedule"], { mode: "recurring" }>["repeatRule"],
 ): Date {
+  const anchorParts = readZonedDateTimeParts(anchor, timezone);
+  const currentParts = readZonedDateTimeParts(current, timezone);
+
   if (rule.frequency === "hour") {
-    return addUtcHours(current, rule.interval);
+    return fromZonedDateTimeParts(addZonedHours(currentParts, rule.interval), timezone);
   }
 
   if (rule.frequency === "day") {
-    return addUtcDays(current, rule.interval);
+    return fromZonedDateTimeParts(addZonedDays(currentParts, rule.interval), timezone);
   }
 
   if (rule.frequency === "week" && rule.weekdays?.length) {
-    return nextWeeklyWeekday(anchor, current, rule.interval, rule.weekdays);
+    return nextWeeklyWeekday(anchorParts, currentParts, timezone, rule.interval, rule.weekdays);
   }
 
   if (rule.frequency === "week") {
-    return addUtcDays(current, rule.interval * 7);
+    return fromZonedDateTimeParts(addZonedDays(currentParts, rule.interval * 7), timezone);
   }
 
   if (rule.frequency === "month") {
-    return addUtcMonths(anchor, current, rule.interval);
+    return fromZonedDateTimeParts(
+      addZonedMonths(anchorParts, currentParts, rule.interval),
+      timezone,
+    );
   }
 
-  return addUtcYears(anchor, current, rule.interval);
+  return fromZonedDateTimeParts(addZonedYears(anchorParts, currentParts, rule.interval), timezone);
 }
 
 function nextWeeklyWeekday(
-  anchor: Date,
-  current: Date,
+  anchor: ZonedDateTimeParts,
+  current: ZonedDateTimeParts,
+  timezone: string,
   interval: number,
   weekdays: number[],
 ): Date {
   const selected = [...new Set(weekdays)].sort((left, right) => left - right);
-  let candidate = addUtcDays(current, 1);
+  let candidate = withZonedAnchorTime(addZonedDays(current, 1), anchor);
 
   for (let attempts = 0; attempts < 3660; attempts += 1) {
-    const weeksSinceAnchor = Math.floor(daysBetweenUtc(anchor, candidate) / 7);
+    const weeksSinceAnchor = Math.floor(daysBetweenZonedDates(anchor, candidate) / 7);
 
     if (
       weeksSinceAnchor >= 0 &&
       weeksSinceAnchor % interval === 0 &&
-      selected.includes(candidate.getUTCDay())
+      selected.includes(readZonedWeekday(candidate))
     ) {
-      return withAnchorTime(candidate, anchor);
+      return fromZonedDateTimeParts(candidate, timezone);
     }
 
-    candidate = addUtcDays(candidate, 1);
+    candidate = withZonedAnchorTime(addZonedDays(candidate, 1), anchor);
   }
 
   throw new Error("Could not compute next weekly recurring task run within ten years.");
 }
 
-function addUtcHours(value: Date, hours: number): Date {
-  return new Date(value.getTime() + hours * 60 * 60 * 1000);
-}
-
-function addUtcDays(value: Date, days: number): Date {
-  const next = new Date(value);
-  next.setUTCDate(next.getUTCDate() + days);
-  return next;
-}
-
-function addUtcMonths(anchor: Date, current: Date, months: number): Date {
-  const next = new Date(current);
-  next.setUTCMonth(next.getUTCMonth() + months, 1);
-  next.setUTCDate(Math.min(anchor.getUTCDate(), daysInUtcMonth(next)));
-  return withAnchorTime(next, anchor);
-}
-
-function addUtcYears(anchor: Date, current: Date, years: number): Date {
-  const next = new Date(current);
-  next.setUTCFullYear(next.getUTCFullYear() + years, anchor.getUTCMonth(), 1);
-  next.setUTCDate(Math.min(anchor.getUTCDate(), daysInUtcMonth(next)));
-  return withAnchorTime(next, anchor);
-}
-
-function withAnchorTime(value: Date, anchor: Date): Date {
-  const next = new Date(value);
-  next.setUTCHours(
-    anchor.getUTCHours(),
-    anchor.getUTCMinutes(),
-    anchor.getUTCSeconds(),
-    anchor.getUTCMilliseconds(),
+function addZonedHours(value: ZonedDateTimeParts, hours: number): ZonedDateTimeParts {
+  return readUtcDateTimeParts(
+    new Date(
+      Date.UTC(
+        value.year,
+        value.month - 1,
+        value.day,
+        value.hour + hours,
+        value.minute,
+        value.second,
+        value.millisecond,
+      ),
+    ),
   );
-  return next;
 }
 
-function daysInUtcMonth(value: Date): number {
-  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0)).getUTCDate();
+function addZonedDays(value: ZonedDateTimeParts, days: number): ZonedDateTimeParts {
+  return readUtcDateTimeParts(
+    new Date(
+      Date.UTC(
+        value.year,
+        value.month - 1,
+        value.day + days,
+        value.hour,
+        value.minute,
+        value.second,
+        value.millisecond,
+      ),
+    ),
+  );
 }
 
-function daysBetweenUtc(left: Date, right: Date): number {
-  const leftDay = Date.UTC(left.getUTCFullYear(), left.getUTCMonth(), left.getUTCDate());
-  const rightDay = Date.UTC(right.getUTCFullYear(), right.getUTCMonth(), right.getUTCDate());
+function addZonedMonths(
+  anchor: ZonedDateTimeParts,
+  current: ZonedDateTimeParts,
+  months: number,
+): ZonedDateTimeParts {
+  const next = readUtcDateTimeParts(
+    new Date(Date.UTC(current.year, current.month - 1 + months, 1)),
+  );
+
+  return {
+    ...withZonedAnchorTime(next, anchor),
+    day: Math.min(anchor.day, daysInMonth(next.year, next.month)),
+  };
+}
+
+function addZonedYears(
+  anchor: ZonedDateTimeParts,
+  current: ZonedDateTimeParts,
+  years: number,
+): ZonedDateTimeParts {
+  const next = { ...current, year: current.year + years, month: anchor.month };
+
+  return {
+    ...withZonedAnchorTime(next, anchor),
+    day: Math.min(anchor.day, daysInMonth(next.year, next.month)),
+  };
+}
+
+function withZonedAnchorTime(
+  value: ZonedDateTimeParts,
+  anchor: ZonedDateTimeParts,
+): ZonedDateTimeParts {
+  return {
+    ...value,
+    hour: anchor.hour,
+    minute: anchor.minute,
+    second: anchor.second,
+    millisecond: anchor.millisecond,
+  };
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function daysBetweenZonedDates(left: ZonedDateTimeParts, right: ZonedDateTimeParts): number {
+  const leftDay = Date.UTC(left.year, left.month - 1, left.day);
+  const rightDay = Date.UTC(right.year, right.month - 1, right.day);
   return Math.floor((rightDay - leftDay) / 86_400_000);
+}
+
+function readZonedWeekday(value: ZonedDateTimeParts): number {
+  return new Date(Date.UTC(value.year, value.month - 1, value.day)).getUTCDay();
+}
+
+function readZonedDateTimeParts(value: Date, timezone: string): ZonedDateTimeParts {
+  const parts = getZonedFormatter(timezone).formatToParts(value);
+  const values = new Map<Intl.DateTimeFormatPartTypes, string>();
+
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      values.set(part.type, part.value);
+    }
+  }
+
+  return {
+    year: Number.parseInt(values.get("year") ?? "", 10),
+    month: Number.parseInt(values.get("month") ?? "", 10),
+    day: Number.parseInt(values.get("day") ?? "", 10),
+    hour: Number.parseInt(values.get("hour") ?? "", 10),
+    minute: Number.parseInt(values.get("minute") ?? "", 10),
+    second: Number.parseInt(values.get("second") ?? "", 10),
+    millisecond: value.getUTCMilliseconds(),
+  };
+}
+
+function readUtcDateTimeParts(value: Date): ZonedDateTimeParts {
+  return {
+    year: value.getUTCFullYear(),
+    month: value.getUTCMonth() + 1,
+    day: value.getUTCDate(),
+    hour: value.getUTCHours(),
+    minute: value.getUTCMinutes(),
+    second: value.getUTCSeconds(),
+    millisecond: value.getUTCMilliseconds(),
+  };
+}
+
+function fromZonedDateTimeParts(value: ZonedDateTimeParts, timezone: string): Date {
+  const utcTime = Date.UTC(
+    value.year,
+    value.month - 1,
+    value.day,
+    value.hour,
+    value.minute,
+    value.second,
+    value.millisecond,
+  );
+  let candidate = new Date(utcTime);
+
+  for (let attempts = 0; attempts < 6; attempts += 1) {
+    const offset = readTimezoneOffsetMs(candidate, timezone);
+    const next = new Date(utcTime - offset);
+
+    if (zonedDateTimePartsEqual(readZonedDateTimeParts(next, timezone), value)) {
+      return next;
+    }
+
+    candidate = next;
+  }
+
+  return candidate;
+}
+
+function readTimezoneOffsetMs(value: Date, timezone: string): number {
+  const parts = readZonedDateTimeParts(value, timezone);
+  const zonedAsUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+    parts.millisecond,
+  );
+
+  return zonedAsUtc - value.getTime();
+}
+
+function zonedDateTimePartsEqual(left: ZonedDateTimeParts, right: ZonedDateTimeParts): boolean {
+  return (
+    left.year === right.year &&
+    left.month === right.month &&
+    left.day === right.day &&
+    left.hour === right.hour &&
+    left.minute === right.minute &&
+    left.second === right.second &&
+    left.millisecond === right.millisecond
+  );
+}
+
+function getZonedFormatter(timezone: string): Intl.DateTimeFormat {
+  const cached = zonedFormatters.get(timezone);
+
+  if (cached) {
+    return cached;
+  }
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    calendar: "gregory",
+    numberingSystem: "latn",
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  zonedFormatters.set(timezone, formatter);
+  return formatter;
 }
 
 function readScheduledAt(run: TaskRun): Date | undefined {
