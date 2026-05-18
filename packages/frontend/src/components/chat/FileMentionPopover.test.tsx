@@ -47,6 +47,27 @@ describe("FileMentionPopover", () => {
     expect(api.searchAgentWorkspaceFiles).toHaveBeenCalledWith("agent-1", "read");
   });
 
+  it("filters node_modules results from file mentions", async () => {
+    vi.mocked(api.searchAgentWorkspaceFiles).mockResolvedValueOnce([
+      "README.md",
+      "node_modules/package/index.js",
+      "src/node_modules/test.js",
+    ]);
+
+    render(
+      <FileMentionPopover
+        agentId="agent-1"
+        query="node"
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        onKeyDown={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /README\.md/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /node_modules/i })).not.toBeInTheDocument();
+  });
+
   it("selects the active result when Enter is pressed", async () => {
     vi.mocked(api.searchAgentWorkspaceFiles).mockResolvedValueOnce(["README.md", "src/index.ts"]);
     const onSelect = vi.fn();

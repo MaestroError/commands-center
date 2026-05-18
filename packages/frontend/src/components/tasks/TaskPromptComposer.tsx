@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { FileMentionPopover } from "@/components/chat/FileMentionPopover";
+import { isMentionableWorkspacePath } from "@/components/chat/file-mention";
 import { SlashCommandPopover, type SlashCommand } from "@/components/chat/SlashCommandPopover";
 import type { TaskPromptValue } from "@/components/tasks/task-prompt";
 
@@ -60,6 +61,10 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
 
   const addMentionedFile = useCallback(
     (path: string) => {
+      if (!isMentionableWorkspacePath(path)) {
+        return;
+      }
+
       const currentValue = valueRef.current;
       const isFolder = path.endsWith("/");
       const filename = isFolder ? path : (path.split("/").pop() ?? path);
@@ -75,6 +80,11 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
 
   const handleFileMentionSelect = useCallback(
     (path: string) => {
+      if (!isMentionableWorkspacePath(path)) {
+        setActivePopover(null);
+        return;
+      }
+
       const currentValue = valueRef.current;
       const isFolder = path.endsWith("/");
       const filename = isFolder ? path : (path.split("/").pop() ?? path);

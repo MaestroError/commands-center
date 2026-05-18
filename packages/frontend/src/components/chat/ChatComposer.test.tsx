@@ -229,4 +229,22 @@ describe("ChatComposer", () => {
 
     expect(props.onSend).toHaveBeenCalledWith({ text: "#src/index.ts ", attachments: [] });
   });
+
+  it("ignores dropped node_modules file mentions", () => {
+    const { props } = renderComposer();
+    const composer = screen
+      .getByPlaceholderText('Type a message... Use "#" to mention')
+      .closest(".relative") as HTMLElement;
+    const dataTransfer = {
+      files: [] as File[],
+      getData: (type: string) =>
+        type === "application/x-cc-file-mention" ? "node_modules/pkg/index.js" : "",
+    } as unknown as DataTransfer;
+
+    fireEvent.drop(composer, { dataTransfer });
+
+    expect(screen.queryByText("index.js")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(props.onSend).not.toHaveBeenCalled();
+  });
 });

@@ -6,6 +6,7 @@ import { AutoApproveToggle } from "./AutoApproveToggle";
 import { AttachmentBar } from "./AttachmentBar";
 import { resolveAttachmentMimeType } from "./attachment-utils";
 import { FileMentionPopover } from "./FileMentionPopover";
+import { isMentionableWorkspacePath } from "./file-mention";
 import { SlashCommandPopover, type SlashCommand } from "./SlashCommandPopover";
 
 type ComposerMode = "normal" | "shell";
@@ -274,6 +275,10 @@ export function ChatComposer({
 
   const handleFileMentionSelect = useCallback(
     (path: string) => {
+      if (!isMentionableWorkspacePath(path)) {
+        return;
+      }
+
       const isFolder = path.endsWith("/");
       const display = isFolder ? path : (path.split("/").pop() ?? path);
       setMentionedFiles((prev) => {
@@ -302,6 +307,10 @@ export function ChatComposer({
   );
 
   const addMentionedFile = useCallback((path: string) => {
+    if (!isMentionableWorkspacePath(path)) {
+      return;
+    }
+
     const isFolder = path.endsWith("/");
     const display = isFolder ? path : (path.split("/").pop() ?? path);
 

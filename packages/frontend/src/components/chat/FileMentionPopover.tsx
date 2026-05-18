@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useFilteredList } from "../../hooks/use-filtered-list";
 import * as api from "../../lib/api";
+import { isMentionableWorkspacePath } from "./file-mention";
 
 interface FileMentionPopoverProps {
   agentId: string;
@@ -36,7 +37,7 @@ export function FileMentionPopover({
         }
         try {
           const files = await api.searchAgentWorkspaceFiles(agentId, q);
-          return files.map((path) => ({ path, display: path }));
+          return files.filter(isMentionableWorkspacePath).map((path) => ({ path, display: path }));
         } catch {
           return [];
         }
