@@ -12,6 +12,11 @@ type Props = {
 export function RunTaskContextDialog(props: Props) {
   const [contextText, setContextText] = useState("");
 
+  function handleRun() {
+    const text = contextText.trim();
+    props.onRun(text ? { context: { text } } : undefined);
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/80 p-4 backdrop-blur-sm">
       <section className="cc-panel w-full max-w-xl p-5" role="dialog" aria-modal="true">
@@ -52,9 +57,4 @@ export function RunTaskContextDialog(props: Props) {
       </section>
     </div>
   );
-
-  function handleRun() {
-    const text = contextText.trim();
-    props.onRun(text ? { context: { text } } : undefined);
-  }
 }

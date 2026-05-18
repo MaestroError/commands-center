@@ -142,6 +142,7 @@ export async function startServerRuntime(
     taskService,
     conversationService,
     taskPermissionService,
+    logger,
     onRunTerminal: (run) => taskSchedulerServiceRef.current?.handleRunTerminal(run),
   });
   const taskSchedulerService = createTaskSchedulerService({

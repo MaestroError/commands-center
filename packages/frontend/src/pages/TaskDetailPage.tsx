@@ -7,7 +7,6 @@ import type {
   ConversationPart,
   Task,
   TaskPermissionProfile,
-  TaskRepeatRule,
   TaskRun,
 } from "@cc/shared/schemas";
 
@@ -15,7 +14,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageSt
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
-import { formatDate, formatToken } from "@/components/tasks/task-format";
+import { formatDate, formatRepeatSummary, formatToken } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
 import { useAgentsQuery } from "@/hooks/use-agents-query";
 import {
@@ -571,18 +570,6 @@ function formatSchedule(task: Task): string {
   if (task.schedule.mode === "scheduled_once") return formatDate(task.schedule.runAt);
   if (task.schedule.mode === "recurring") return formatRepeatSummary(task.schedule.repeatRule);
   return "Manual only";
-}
-
-function formatRepeatSummary(rule: TaskRepeatRule): string {
-  if (rule.frequency === "hour" && rule.interval === 1) return "Every hour";
-
-  const unit = rule.interval === 1 ? rule.frequency : `${rule.frequency}s`;
-  const weekdays = rule.weekdays?.map(formatWeekday).filter(Boolean);
-  return `Every ${String(rule.interval)} ${unit}${weekdays?.length ? ` on ${weekdays.join(", ")}` : ""}`;
-}
-
-function formatWeekday(value: number): string | undefined {
-  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][value];
 }
 
 function readError(error: unknown): string {

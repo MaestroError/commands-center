@@ -15,7 +15,12 @@ import type {
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
-import { formatDate, formatToken } from "@/components/tasks/task-format";
+import {
+  formatDate,
+  formatRepeatSummary,
+  formatToken,
+  formatWeekday,
+} from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
 import { useAgentsQuery } from "@/hooks/use-agents-query";
 import { useTaskMutations, useTaskQuery, useTasksQuery } from "@/hooks/use-tasks-query";
@@ -47,13 +52,13 @@ const REPEAT_PRESETS = [
 ] as const;
 const REPEAT_FREQUENCIES = ["hour", "day", "week", "month", "year"] as const;
 const WEEKDAYS = [
-  { value: 0, label: "Sun" },
-  { value: 1, label: "Mon" },
-  { value: 2, label: "Tue" },
-  { value: 3, label: "Wed" },
-  { value: 4, label: "Thu" },
-  { value: 5, label: "Fri" },
-  { value: 6, label: "Sat" },
+  { value: 0, label: formatWeekday(0) ?? "Sun" },
+  { value: 1, label: formatWeekday(1) ?? "Mon" },
+  { value: 2, label: formatWeekday(2) ?? "Tue" },
+  { value: 3, label: formatWeekday(3) ?? "Wed" },
+  { value: 4, label: formatWeekday(4) ?? "Thu" },
+  { value: 5, label: formatWeekday(5) ?? "Fri" },
+  { value: 6, label: formatWeekday(6) ?? "Sat" },
 ] as const;
 
 export function TasksPage(props: TasksPageProps) {
@@ -709,14 +714,6 @@ function formatRepeatPreset(preset: RepeatPreset): string {
   if (preset === "hourly") return "Every hour";
   if (preset === "weekday") return "Every weekday";
   return preset === "custom" ? "Custom" : formatToken(preset);
-}
-
-function formatRepeatSummary(rule: TaskRepeatRule): string {
-  if (rule.frequency === "hour" && rule.interval === 1) return "Every hour";
-
-  const unit = rule.interval === 1 ? rule.frequency : `${rule.frequency}s`;
-  const weekdays = rule.weekdays?.map((value) => WEEKDAYS[value]?.label).filter(Boolean);
-  return `Every ${String(rule.interval)} ${unit}${weekdays?.length ? ` on ${weekdays.join(", ")}` : ""}`;
 }
 
 function readFilters(params: URLSearchParams): Partial<ListTasksQuery> {

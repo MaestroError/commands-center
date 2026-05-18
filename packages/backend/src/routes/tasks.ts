@@ -52,6 +52,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     createTaskExecutionService({
       taskService: service,
       conversationService,
+      logger: context.logger,
       onRunTerminal: (run) => fallbackTaskSchedulerServiceRef.current?.handleRunTerminal(run),
     });
   const taskSchedulerService =

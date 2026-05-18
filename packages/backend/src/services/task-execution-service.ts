@@ -6,6 +6,7 @@ import {
   type TaskRun,
   type TriggerTaskInput,
 } from "@cc/shared/schemas";
+import type { Logger } from "pino";
 
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { ConversationService } from "./conversation-service.js";
@@ -22,6 +23,7 @@ export function createTaskExecutionService(options: {
   conversationService?: ConversationService;
   taskPermissionService?: TaskPermissionService;
   onRunTerminal?: (run: TaskRun) => void | Promise<void>;
+  logger?: Logger;
 }) {
   return {
     async trigger(taskId: string, input: Partial<TriggerTaskInput> = {}): Promise<TaskRun> {
@@ -46,7 +48,9 @@ export function createTaskExecutionService(options: {
         effectivePermissions,
       });
 
-      void runQueuedTask(run.id).catch(() => undefined);
+      void runQueuedTask(run.id).catch((error: unknown) => {
+        options.logger?.error({ err: error, runId: run.id, taskId: task.id }, "task run failed");
+      });
       return run;
     },
 

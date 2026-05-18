@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Logger } from "pino";
 
 import type { AppDb } from "../../src/db/client";
 import { agents } from "../../src/db/schema/index";
@@ -100,6 +101,40 @@ describe("createTaskExecutionService", () => {
       expect(run.context).toEqual({ text: "Use current build 123." });
       expect(run.renderedContext?.["runContext"]).toEqual({ text: "Use current build 123." });
       expect(run.renderedPrompt).toContain("Use current build 123.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("logs detached task execution failures", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const logger = { error: vi.fn() } as unknown as Logger;
+    const failingTaskService = {
+      ...taskService,
+      setRunStatus: vi.fn().mockResolvedValue(undefined),
+    } satisfies ReturnType<typeof createTaskService>;
+    const executionService = createTaskExecutionService({
+      taskService: failingTaskService,
+      logger,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Unstartable task",
+        triggerMode: "manual",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expect
+        .poll(() => logger.error)
+        .toHaveBeenCalledWith(
+          expect.objectContaining({ runId: run.id, taskId: task.id }),
+          "task run failed",
+        );
     } finally {
       await testDb.cleanup();
     }
