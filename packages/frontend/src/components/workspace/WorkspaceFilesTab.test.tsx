@@ -186,6 +186,17 @@ describe("WorkspaceFilesTab", () => {
     expect(onOpenFile).toHaveBeenCalledWith("README.md");
   });
 
+  it("hides the quick editor action when no open handler is provided", async () => {
+    vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce(rootNodes);
+
+    renderWithRouter();
+
+    expect(await screen.findByText("README.md")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Open README.md in quick editor" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens a file in the quick editor on double click", async () => {
     vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce(rootNodes);
     const onOpenFile = vi.fn();

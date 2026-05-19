@@ -1,6 +1,6 @@
-import { useParams, useNavigate } from "react-router-dom";
-import { lazy, Suspense, useMemo, useEffect, useRef, useState } from "react";
-import type { LiveRequest } from "@cc/shared/schemas";
+import { useNavigate, useParams } from "react-router-dom";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ConversationMessage, ConversationPart, LiveRequest } from "@cc/shared/schemas";
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatHeader } from "@/components/chat/ChatHeader";
@@ -22,6 +22,10 @@ import { useConversation } from "@/hooks/use-conversation";
 import { useAgentCatalogQuery } from "@/hooks/use-agents-query";
 import { resolveAgentWorkspacePath } from "@/lib/agent-workspace-path";
 import { recordRecentAgent } from "@/lib/recent-agents";
+import {
+  createTaskPrefillFromUserMessage,
+  type TaskCreationPrefill,
+} from "@/services/task-prefill-service";
 
 const DevDebugPanel = import.meta.env.DEV
   ? lazy(() => import("@/components/dev/DevDebugPanel").then((m) => ({ default: m.DevDebugPanel })))
@@ -48,6 +52,7 @@ export function WorkspaceChatPage() {
   const [mediaSearchQuery, setMediaSearchQuery] = useState("");
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [bottomPaneHeight, setBottomPaneHeight] = useState<number>();
+  const [pendingTaskPrefill, setPendingTaskPrefill] = useState<TaskCreationPrefill | null>(null);
   const autoResolvedLiveRequestIdsRef = useRef(new Set<string>());
 
   // Sync URL when conversation changes (initial load or switching)
@@ -63,11 +68,17 @@ export function WorkspaceChatPage() {
   }, [conv.conversation?.id, agentSlug, urlConversationId, navigate]);
 
   const skills = useMemo(() => {
-    if (!conv.agent || !catalog) return undefined;
+    if (!conv.agent) return undefined;
+
     const slugs = new Set([
       ...conv.agent.capabilities.builtInSkills,
       ...(conv.agent.capabilities.workspaceSkills ?? []),
     ]);
+
+    if (!catalog) {
+      return [...slugs].map((slug) => ({ slug }));
+    }
+
     return [...catalog.builtInSkills, ...(catalog.workspaceSkills ?? [])]
       .filter((s) => slugs.has(s.slug))
       .map((s) => ({ slug: s.slug, description: s.description }));
@@ -133,6 +144,46 @@ export function WorkspaceChatPage() {
     setMediaSearchQuery(filename);
     setActiveContextTabId("media");
   };
+
+  const navigateToTaskCreation = useCallback(
+    (prefill: TaskCreationPrefill) => {
+      void navigate("/tasks/new", { state: { taskPrefill: prefill } });
+    },
+    [navigate],
+  );
+
+  const handleConvertUserMessageToTask = useCallback(
+    (message: ConversationMessage, parts: ConversationPart[]) => {
+      if (!conv.agent) {
+        return;
+      }
+
+      const result = createTaskPrefillFromUserMessage({
+        message,
+        parts,
+        agentId: conv.agent.id,
+        skills,
+      });
+
+      if (result.hasUnsupportedAttachments) {
+        setPendingTaskPrefill(result.prefill);
+        return;
+      }
+
+      navigateToTaskCreation(result.prefill);
+    },
+    [conv.agent, navigateToTaskCreation, skills],
+  );
+
+  const handleConfirmAttachmentWarning = useCallback(() => {
+    if (!pendingTaskPrefill) {
+      return;
+    }
+
+    const prefill = pendingTaskPrefill;
+    setPendingTaskPrefill(null);
+    navigateToTaskCreation(prefill);
+  }, [navigateToTaskCreation, pendingTaskPrefill]);
 
   const handleOpenQuickFile = (path: string) => {
     if (!agentSlug) {
@@ -257,6 +308,7 @@ export function WorkspaceChatPage() {
                     sessionStatus={conv.sessionStatus}
                     sendError={conv.sendError}
                     onAttachmentClick={handleAttachmentMediaSearch}
+                    onConvertUserMessageToTask={handleConvertUserMessageToTask}
                   />
 
                   {conv.pendingPermission ? (
@@ -325,6 +377,89 @@ export function WorkspaceChatPage() {
           />
         </Suspense>
       )}
+      {pendingTaskPrefill ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            aria-describedby="attachment-warning-description"
+            aria-labelledby="attachment-warning-title"
+            aria-modal="true"
+            className="cc-panel w-full max-w-md p-5"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setPendingTaskPrefill(null);
+                return;
+              }
+
+              if (event.key !== "Tab") {
+                return;
+              }
+
+              const focusableElements = Array.from(
+                event.currentTarget.querySelectorAll<HTMLElement>(
+                  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                ),
+              ).filter((element) => !element.hasAttribute("disabled") && element.tabIndex !== -1);
+
+              if (focusableElements.length === 0) {
+                event.preventDefault();
+                return;
+              }
+
+              const firstElement = focusableElements[0];
+              const lastElement = focusableElements[focusableElements.length - 1];
+
+              if (!firstElement || !lastElement) {
+                event.preventDefault();
+                return;
+              }
+
+              const activeElement = document.activeElement;
+
+              if (event.shiftKey) {
+                if (
+                  activeElement === firstElement ||
+                  !event.currentTarget.contains(activeElement)
+                ) {
+                  event.preventDefault();
+                  lastElement.focus();
+                }
+                return;
+              }
+
+              if (activeElement === lastElement) {
+                event.preventDefault();
+                firstElement.focus();
+              }
+            }}
+            role="alertdialog"
+          >
+            <h2 className="text-lg font-semibold text-text-primary" id="attachment-warning-title">
+              Attachments cannot be copied
+            </h2>
+            <p
+              className="mt-2 text-sm leading-6 text-text-secondary"
+              id="attachment-warning-description"
+            >
+              Task prompts do not support chat attachments. Continue without attachments, then
+              upload the files and mention them while creating the task if they are still needed.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                autoFocus
+                className="cc-button cc-button-secondary"
+                onClick={() => setPendingTaskPrefill(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button className="cc-button" onClick={handleConfirmAttachmentWarning} type="button">
+                Continue without attachments
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

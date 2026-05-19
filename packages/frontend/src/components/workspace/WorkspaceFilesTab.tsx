@@ -579,7 +579,7 @@ function TreeNode(props: TreeNodeProps) {
         >
           <FolderSearch className="h-3.5 w-3.5" />
         </button>
-        {!isDir ? (
+        {!isDir && props.onOpenFile ? (
           <button
             aria-label={`Open ${node.name} in quick editor`}
             className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary opacity-100 transition hover:text-text-primary sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"

@@ -26,6 +26,7 @@ describe("createTaskExecutionService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Manual task",
+        description: "Review #PRD.md.",
         triggerMode: "manual",
       });
 
@@ -34,6 +35,7 @@ describe("createTaskExecutionService", () => {
 
       expect(run.status).toBe("queued");
       expect(run.renderedPrompt).toContain("Task: Manual task");
+      expect(run.renderedPrompt).toContain("Task prompt:\nReview #PRD.md.");
       expect(history).toHaveLength(1);
       await expectRunStatus(taskService, run.id, "completed");
     } finally {
