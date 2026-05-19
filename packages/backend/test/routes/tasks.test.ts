@@ -72,6 +72,10 @@ describe("task routes", () => {
         url: `/api/tasks/${task.id}`,
         payload: { title: "Ship stable release", status: "completed" },
       });
+      const duplicated = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/duplicate`,
+      });
       const disabled = await server.inject({
         method: "POST",
         url: `/api/tasks/${task.id}/disable`,
@@ -102,6 +106,10 @@ describe("task routes", () => {
       expect(fetched.statusCode).toBe(200);
       expect(updated.statusCode).toBe(200);
       expect(updated.json().status).toBe("completed");
+      expect(duplicated.statusCode).toBe(201);
+      expect(duplicated.json().id).not.toBe(task.id);
+      expect(duplicated.json().title).toBe("Ship stable release copy");
+      expect(duplicated.json().enabled).toBe(false);
       expect(disabled.statusCode).toBe(200);
       expect(disabled.json().status).toBe("disabled");
       expect(enabled.statusCode).toBe(200);

@@ -77,6 +77,7 @@ export function TasksPage(props: TasksPageProps) {
 }
 
 function TaskListPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => readFilters(searchParams), [searchParams]);
   const tasksQuery = useTasksQuery(filters);
@@ -225,6 +226,11 @@ function TaskListPage() {
               onArchive={() => void mutations.archive.mutate(task.id)}
               onDelete={() => void mutations.remove.mutate(task.id)}
               onDisable={() => void mutations.disable.mutate(task.id)}
+              onDuplicate={() => {
+                mutations.duplicate.mutate(task.id, {
+                  onSuccess: (duplicated) => void navigate(`/tasks/${duplicated.id}/edit`),
+                });
+              }}
               onEnable={() => void mutations.enable.mutate(task.id)}
               onRestore={() => void mutations.restore.mutate(task.id)}
               onTrigger={() => setRunTask(task)}
@@ -254,6 +260,7 @@ function TaskCard(props: {
   onTrigger: () => void;
   onEnable: () => void;
   onDisable: () => void;
+  onDuplicate: () => void;
   onArchive: () => void;
   onRestore: () => void;
   onDelete: () => void;
@@ -303,6 +310,9 @@ function TaskCard(props: {
         <Link className="cc-button cc-button-secondary" to={`/tasks/${task.id}/edit`}>
           Edit
         </Link>
+        <button className="cc-button cc-button-secondary" onClick={props.onDuplicate} type="button">
+          Duplicate
+        </button>
         {!task.archived ? (
           <button className="cc-button" onClick={props.onTrigger} type="button">
             Run now

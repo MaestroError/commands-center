@@ -13,6 +13,7 @@ import {
   createTask,
   deleteTask,
   disableTask,
+  duplicateTask,
   enableTask,
   getTask,
   getTaskRun,
@@ -95,6 +96,13 @@ export function useTaskMutations() {
     }),
     update: useMutation({
       mutationFn: ({ id, input }: { id: string; input: UpdateTaskInput }) => updateTask(id, input),
+      onSuccess: async (task) => {
+        queryClient.setQueryData(queryKeys.task(task.id), task);
+        await invalidateTasks(task);
+      },
+    }),
+    duplicate: useMutation({
+      mutationFn: duplicateTask,
       onSuccess: async (task) => {
         queryClient.setQueryData(queryKeys.task(task.id), task);
         await invalidateTasks(task);
