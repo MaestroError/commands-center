@@ -36,7 +36,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
       return;
     }
 
-    const slashMatch = beforeCursor.match(/\/(\S*)$/);
+    const slashMatch = beforeCursor.match(/(?:^|\s)\/(\S*)$/);
 
     if (slashMatch) {
       setActivePopover("slash");

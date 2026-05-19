@@ -460,6 +460,63 @@ describe("WorkspaceChatPage", () => {
     });
   });
 
+  it("preserves converted skill slug before catalog details load", async () => {
+    const user = userEvent.setup();
+
+    mockParams = { agentId: "planner", conversationId: "conv-1" };
+    useConversationMock.mockReturnValue(
+      makeConversation({
+        conversation: {
+          id: "conv-1",
+          messages: [
+            {
+              id: "msg-1",
+              conversationId: "conv-1",
+              role: "user",
+              content: 'Use skill "review". Check this',
+              parts: [],
+              attachments: [],
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+        agent: {
+          id: "agent-1",
+          slug: "planner",
+          name: "Planner",
+          role: "Plans work",
+          iconPath: undefined,
+          workspacePath: "/workspace/planner",
+          capabilities: {
+            builtInSkills: ["review"],
+            workspaceSkills: [],
+            mcpServers: [],
+            toolPermissions: [],
+          },
+        },
+      }),
+    );
+    useAgentCatalogQueryMock.mockReturnValue({ data: undefined });
+
+    render(<WorkspaceChatPage />);
+
+    await user.click(screen.getByTestId("convert-message-msg-1"));
+
+    expect(navigateMock).toHaveBeenCalledWith("/tasks/new", {
+      state: {
+        taskPrefill: {
+          agentId: "agent-1",
+          prompt: {
+            text: "Check this",
+            mentionedFiles: [],
+            selectedSkill: { slug: "review", description: undefined },
+          },
+        },
+      },
+    });
+  });
+
   it("warns before converting a user message with attachments", async () => {
     const user = userEvent.setup();
 

@@ -68,11 +68,17 @@ export function WorkspaceChatPage() {
   }, [conv.conversation?.id, agentSlug, urlConversationId, navigate]);
 
   const skills = useMemo(() => {
-    if (!conv.agent || !catalog) return undefined;
+    if (!conv.agent) return undefined;
+
     const slugs = new Set([
       ...conv.agent.capabilities.builtInSkills,
       ...(conv.agent.capabilities.workspaceSkills ?? []),
     ]);
+
+    if (!catalog) {
+      return [...slugs].map((slug) => ({ slug }));
+    }
+
     return [...catalog.builtInSkills, ...(catalog.workspaceSkills ?? [])]
       .filter((s) => slugs.has(s.slug))
       .map((s) => ({ slug: s.slug, description: s.description }));
