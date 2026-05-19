@@ -300,6 +300,60 @@ describe("TasksPage", () => {
     });
   });
 
+  it("clears converted message references when assigned agent changes", async () => {
+    const skilledAgent: Agent = {
+      ...agent,
+      capabilities: {
+        ...agent.capabilities,
+        builtInSkills: ["screen-requirements-writing"],
+      },
+    };
+    const otherAgent: Agent = {
+      ...agent,
+      id: "agent-2",
+      slug: "writer",
+      name: "Writer",
+      capabilities: { ...agent.capabilities },
+    };
+    const fetchMock = mockFetch({ agentsPayload: [skilledAgent, otherAgent] });
+
+    renderWithRouter(<TasksPage mode="create" />, "/tasks/new", {
+      taskPrefill: {
+        agentId: "agent-1",
+        prompt: {
+          text: "Update requirements",
+          mentionedFiles: [{ path: "PRD.md", filename: "PRD.md" }],
+          selectedSkill: {
+            slug: "screen-requirements-writing",
+            description: "Write screen requirements",
+          },
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    await screen.findByRole("combobox", { name: /Assigned agent/i });
+
+    await user.selectOptions(screen.getByLabelText(/Assigned agent/i), "agent-2");
+
+    expect(screen.getByLabelText(/Task prompt/i)).toHaveValue("Update requirements");
+    expect(screen.queryByText("/screen-requirements-writing")).not.toBeInTheDocument();
+    expect(screen.queryByText("PRD.md")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/Title/i), "Requirements review");
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"description":"Update requirements"'),
+        }),
+      );
+    });
+  });
+
   it("creates a custom hourly recurring task from the form", async () => {
     const fetchMock = mockFetch();
 

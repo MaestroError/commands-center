@@ -492,7 +492,7 @@ describe("WorkspaceChatPage", () => {
     await user.click(screen.getByTestId("convert-message-msg-1"));
 
     expect(
-      screen.getByRole("dialog", { name: "Convert message with attachments" }),
+      screen.getByRole("alertdialog", { name: "Attachments cannot be copied" }),
     ).toBeInTheDocument();
     expect(navigateMock).not.toHaveBeenCalledWith("/tasks/new", expect.anything());
 

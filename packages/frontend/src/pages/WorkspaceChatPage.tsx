@@ -402,10 +402,19 @@ export function WorkspaceChatPage() {
 
               const firstElement = focusableElements[0];
               const lastElement = focusableElements[focusableElements.length - 1];
+
+              if (!firstElement || !lastElement) {
+                event.preventDefault();
+                return;
+              }
+
               const activeElement = document.activeElement;
 
               if (event.shiftKey) {
-                if (activeElement === firstElement || !event.currentTarget.contains(activeElement)) {
+                if (
+                  activeElement === firstElement ||
+                  !event.currentTarget.contains(activeElement)
+                ) {
                   event.preventDefault();
                   lastElement.focus();
                 }

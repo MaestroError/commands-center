@@ -441,7 +441,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                     className="cc-input"
                     required
                     value={form.agentId}
-                    onChange={(event) => updateForm({ agentId: event.target.value })}
+                    onChange={(event) => handleAgentChange(event.target.value)}
                   >
                     <option value="">Select an agent</option>
                     {agents.map((agent) => (
@@ -610,6 +610,21 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
 
   function updateForm(patch: Partial<FormState>) {
     setForm((current) => ({ ...current, ...patch }));
+  }
+
+  function handleAgentChange(agentId: string) {
+    setForm((current) => ({
+      ...current,
+      agentId,
+      prompt:
+        current.agentId === agentId
+          ? current.prompt
+          : {
+              ...current.prompt,
+              mentionedFiles: [],
+              selectedSkill: null,
+            },
+    }));
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
