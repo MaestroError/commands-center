@@ -374,19 +374,64 @@ export function WorkspaceChatPage() {
       {pendingTaskPrefill ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div
-            aria-label="Convert message with attachments"
+            aria-describedby="attachment-warning-description"
+            aria-labelledby="attachment-warning-title"
+            aria-modal="true"
             className="cc-panel w-full max-w-md p-5"
-            role="dialog"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setPendingTaskPrefill(null);
+                return;
+              }
+
+              if (event.key !== "Tab") {
+                return;
+              }
+
+              const focusableElements = Array.from(
+                event.currentTarget.querySelectorAll<HTMLElement>(
+                  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                ),
+              ).filter((element) => !element.hasAttribute("disabled") && element.tabIndex !== -1);
+
+              if (focusableElements.length === 0) {
+                event.preventDefault();
+                return;
+              }
+
+              const firstElement = focusableElements[0];
+              const lastElement = focusableElements[focusableElements.length - 1];
+              const activeElement = document.activeElement;
+
+              if (event.shiftKey) {
+                if (activeElement === firstElement || !event.currentTarget.contains(activeElement)) {
+                  event.preventDefault();
+                  lastElement.focus();
+                }
+                return;
+              }
+
+              if (activeElement === lastElement) {
+                event.preventDefault();
+                firstElement.focus();
+              }
+            }}
+            role="alertdialog"
           >
-            <h2 className="text-lg font-semibold text-text-primary">
+            <h2 className="text-lg font-semibold text-text-primary" id="attachment-warning-title">
               Attachments cannot be copied
             </h2>
-            <p className="mt-2 text-sm leading-6 text-text-secondary">
+            <p
+              className="mt-2 text-sm leading-6 text-text-secondary"
+              id="attachment-warning-description"
+            >
               Task prompts do not support chat attachments. Continue without attachments, then
               upload the files and mention them while creating the task if they are still needed.
             </p>
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               <button
+                autoFocus
                 className="cc-button cc-button-secondary"
                 onClick={() => setPendingTaskPrefill(null)}
                 type="button"

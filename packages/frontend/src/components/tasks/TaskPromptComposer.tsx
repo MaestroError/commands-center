@@ -123,13 +123,27 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
         return;
       }
 
+      const currentText = valueRef.current.text;
+      const cursorPosition = getCursorPosition();
+      const beforeCursor = currentText.substring(0, cursorPosition);
+      const afterCursor = currentText.substring(cursorPosition);
+      const slashMatch = beforeCursor.match(/\/(\S*)$/);
+      const slashTokenLength = slashMatch?.[0].length ?? 0;
+      const nextCursorPosition = cursorPosition - slashTokenLength;
+      const nextText = slashMatch
+        ? `${beforeCursor.slice(0, nextCursorPosition)}${afterCursor}`
+        : currentText;
+
       updateValue({
         selectedSkill: { slug: command.name, description: command.description },
-        text: "",
+        text: nextText,
       });
-      setTimeout(() => textareaRef.current?.focus(), 0);
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        setCursorPosition(nextCursorPosition);
+      }, 0);
     },
-    [updateValue],
+    [getCursorPosition, setCursorPosition, updateValue],
   );
 
   const handleTextChange = useCallback(
