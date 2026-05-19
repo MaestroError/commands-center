@@ -405,7 +405,12 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                 id: "files",
                 label: "Files",
                 content: selectedAgent ? (
-                  <WorkspaceFilesTab agentId={selectedAgent.id} agentSlug={selectedAgent.slug} />
+                  <div className="flex h-full flex-col">
+                    <p className="px-3 pt-3 text-sm text-text-secondary">
+                      Browse workspace files and drag relevant files into the task prompt.
+                    </p>
+                    <WorkspaceFilesTab agentId={selectedAgent.id} agentSlug={selectedAgent.slug} />
+                  </div>
                 ) : (
                   <p className="p-3 text-sm text-text-secondary">
                     Select an agent to browse workspace files and drag files into the task prompt.
