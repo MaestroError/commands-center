@@ -53,6 +53,7 @@ export function TaskDetailPage(props: TaskDetailPageProps) {
 }
 
 function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; error: unknown }) {
+  const navigate = useNavigate();
   const mutations = useTaskMutations();
   const runsQuery = useTaskRunsQuery(props.task?.id);
   const [runContextOpen, setRunContextOpen] = useState(false);
@@ -70,6 +71,17 @@ function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; e
               <Link className="cc-button cc-button-secondary" to={`/tasks/${task.id}/edit`}>
                 Edit
               </Link>
+              <button
+                className="cc-button cc-button-secondary"
+                onClick={() => {
+                  mutations.duplicate.mutate(task.id, {
+                    onSuccess: (duplicated) => void navigate(`/tasks/${duplicated.id}/edit`),
+                  });
+                }}
+                type="button"
+              >
+                Duplicate
+              </button>
               <button className="cc-button" onClick={() => setRunContextOpen(true)} type="button">
                 Run now
               </button>

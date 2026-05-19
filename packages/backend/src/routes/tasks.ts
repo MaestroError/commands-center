@@ -174,6 +174,28 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   );
 
   app.post(
+    "/api/tasks/:id/duplicate",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          201: taskSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const task = await service.duplicate(request.params.id);
+
+      if (!task) {
+        throw new NotFoundError("Task not found.");
+      }
+
+      reply.code(201);
+      return task;
+    },
+  );
+
+  app.post(
     "/api/tasks/:id/archive",
     {
       schema: {

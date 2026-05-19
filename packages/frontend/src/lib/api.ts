@@ -663,6 +663,12 @@ export async function updateTask(id: string, input: UpdateTaskInput): Promise<Ta
   });
 }
 
+export async function duplicateTask(id: string): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/duplicate`, taskSchema, {
+    method: "POST",
+  });
+}
+
 export async function archiveTask(id: string): Promise<Task> {
   return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/archive`, taskSchema, {
     method: "POST",

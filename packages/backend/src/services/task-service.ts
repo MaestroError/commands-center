@@ -122,6 +122,27 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return mapTask(row);
     },
 
+    async duplicate(id: string): Promise<Task | undefined> {
+      const existing = await getTaskRow(id, { includeArchived: true });
+
+      if (!existing) {
+        return undefined;
+      }
+
+      const task = mapTask(existing);
+
+      return this.create({
+        agentId: task.agentId,
+        title: `${task.title} copy`,
+        description: task.description,
+        todos: task.todos.map((todo) => ({ content: todo.content, status: todo.status })),
+        triggerMode: task.triggerMode,
+        schedule: task.schedule,
+        permissionProfile: task.permissionProfile,
+        enabled: false,
+      });
+    },
+
     async update(id: string, input: UpdateTaskInput): Promise<Task | undefined> {
       const parsed = updateTaskInputSchema.parse(input);
       const existing = await getTaskRow(id);

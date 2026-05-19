@@ -129,6 +129,62 @@ describe("createTaskService", () => {
     }
   });
 
+  it("duplicates a task without copying runs or enabled state", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const created = await service.create({
+        agentId: agent.id,
+        title: "Weekly status",
+        description: "Summarize #status.md.",
+        todos: [{ content: "Read updates", status: "completed" }],
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
+        },
+        permissionProfile: { approvalPolicy: "auto_approve" },
+      });
+      await service.createRun({
+        taskId: created.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        renderedPrompt: "Do the task.",
+      });
+
+      const duplicated = await service.duplicate(created.id);
+
+      expect(duplicated?.id).not.toBe(created.id);
+      expect(duplicated?.title).toBe("Weekly status copy");
+      expect(duplicated?.description).toBe("Summarize #status.md.");
+      expect(duplicated?.schedule).toEqual(created.schedule);
+      expect(duplicated?.permissionProfile?.approvalPolicy).toBe("auto_approve");
+      expect(duplicated?.enabled).toBe(false);
+      expect(duplicated?.status).toBe("disabled");
+      expect(duplicated?.todos[0]?.id).not.toBe(created.todos[0]?.id);
+      expect(duplicated?.todos[0]?.content).toBe("Read updates");
+      expect(duplicated?.latestResultSummary).toBeUndefined();
+      await expect(service.listRuns(duplicated?.id ?? "missing")).resolves.toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns undefined when duplicating a missing task", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      await expect(service.duplicate("missing")).resolves.toBeUndefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("enforces the configured max task limit", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({
@@ -138,11 +194,16 @@ describe("createTaskService", () => {
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      await service.create({ agentId: agent.id, title: "First", triggerMode: "manual" });
+      const first = await service.create({
+        agentId: agent.id,
+        title: "First",
+        triggerMode: "manual",
+      });
 
       await expect(
         service.create({ agentId: agent.id, title: "Second", triggerMode: "manual" }),
       ).rejects.toThrow("Maximum task limit reached");
+      await expect(service.duplicate(first.id)).rejects.toThrow("Maximum task limit reached");
     } finally {
       await testDb.cleanup();
     }

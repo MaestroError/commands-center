@@ -197,6 +197,23 @@ describe("TasksPage", () => {
     });
   });
 
+  it("duplicates a task from the task list", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Duplicate" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/duplicate",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    expect(await screen.findByText("edit:task-2")).toBeInTheDocument();
+  });
+
   it("creates a task from the form", async () => {
     const fetchMock = mockFetch();
 
@@ -422,6 +439,32 @@ describe("TaskDetailPage", () => {
       expect(screen.queryByTestId("task-runs-loading")).not.toBeInTheDocument();
     });
     expect(screen.getByText("No runs yet")).toBeInTheDocument();
+  });
+
+  it("duplicates a task from the task detail page", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Duplicate" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/duplicate",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    expect(await screen.findByText("edit:task-2")).toBeInTheDocument();
+  });
+
+  it("does not show duplicate on task run pages", async () => {
+    mockFetch();
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    await screen.findByRole("tab", { name: "Session" });
+    expect(screen.queryByRole("button", { name: "Duplicate" })).not.toBeInTheDocument();
   });
 
   it("shows task run inspection details", async () => {
@@ -702,6 +745,7 @@ function renderWithRouter(element: React.ReactElement, initialPath: string, stat
         <Routes>
           <Route element={element} path="/tasks" />
           <Route element={element} path="/tasks/new" />
+          <Route element={<EditRouteProbe />} path="/tasks/:id/edit" />
           <Route element={element} path="/tasks/:id" />
           <Route element={element} path="/tasks/:id/runs/:runId" />
           <Route element={<ChatRouteProbe />} path="/chat/:agentId/:conversationId" />
@@ -714,6 +758,11 @@ function renderWithRouter(element: React.ReactElement, initialPath: string, stat
 function ChatRouteProbe() {
   const params = useParams();
   return <div>{`${params["agentId"]}/${params["conversationId"]}`}</div>;
+}
+
+function EditRouteProbe() {
+  const params = useParams();
+  return <div>{`edit:${params["id"]}`}</div>;
 }
 
 function mockFetch(options: MockFetchOptions = {}) {
@@ -753,6 +802,18 @@ function mockFetch(options: MockFetchOptions = {}) {
       );
     }
     if (url.startsWith("/api/tasks?")) return Promise.resolve(jsonResponse(200, [taskPayload]));
+    if (url === "/api/tasks/task-1/duplicate") {
+      return Promise.resolve(
+        jsonResponse(201, {
+          ...taskPayload,
+          id: "task-2",
+          title: `${taskPayload.title} copy`,
+          enabled: false,
+          status: "disabled",
+          latestResultSummary: undefined,
+        }),
+      );
+    }
     if (url === "/api/tasks/task-1") return Promise.resolve(jsonResponse(200, taskPayload));
     if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, runsPayload));
     if (url === "/api/tasks/task-1/runs/run-1")
