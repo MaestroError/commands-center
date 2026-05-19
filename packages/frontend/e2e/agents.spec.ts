@@ -51,12 +51,22 @@ test("creates and edits an agent", async ({ page }) => {
 
   await expect(page).toHaveURL(/\/agents\/planner\/edit$/);
   await expect(page.getByLabel(/^Name/)).toHaveValue("Planner");
+  await expect(page.getByLabel(/^Role/)).toHaveValue("plan work");
   await expect(page.getByRole("button", { name: /^Use 🤖 avatar$/ })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
+
+  const updateResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/agents/agent-") &&
+      response.request().method() === "PATCH" &&
+      response.status() === 200,
+  );
   await page.getByLabel(/^Role/).fill("plan features");
+  await expect(page.getByLabel(/^Role/)).toHaveValue("plan features");
   await page.getByRole("button", { name: "Save changes" }).click();
+  await updateResponse;
   await expect(page.getByLabel(/^Role/)).toHaveValue("plan features");
 });
 
