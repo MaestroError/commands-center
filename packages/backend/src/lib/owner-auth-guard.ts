@@ -9,6 +9,7 @@ import type { RuntimeContext } from "./start-server-runtime.js";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const STATIC_ASSET_PATTERN = /\.[a-zA-Z0-9]+$/;
+const CC_MANAGED_MCP_ROUTE_PATTERN = /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/;
 
 export function registerOwnerAuthGuard(
   context: RuntimeContext,
@@ -27,7 +28,9 @@ export function registerOwnerAuthGuard(
     }
 
     if (isPublicRoute(method, pathname)) {
-      validateOriginForMutation(context, request);
+      if (!CC_MANAGED_MCP_ROUTE_PATTERN.test(pathname)) {
+        validateOriginForMutation(context, request);
+      }
       return;
     }
 

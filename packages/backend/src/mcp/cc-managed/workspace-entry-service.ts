@@ -23,6 +23,26 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
         }
       >
     > {
+      return this.buildEntriesWithOverrides({ slug: agent.slug, capabilities: agent.capabilities });
+    },
+
+    async buildEntriesWithOverrides(agent: {
+      slug: string;
+      capabilities: AgentCapabilitySelection;
+      enabledServerNames?: readonly string[];
+    }): Promise<
+      Record<
+        string,
+        {
+          type: "remote";
+          url: string;
+          enabled: boolean;
+          oauth: false;
+          headers: Record<string, string>;
+        }
+      >
+    > {
+      const enabledServerNames = new Set(agent.enabledServerNames ?? []);
       const entries = await Promise.all(
         listCcManagedMcpServers(options.registry).map(async (server) => {
           const token = await options.authTokenService.issueToken(agent.slug, server.name);
@@ -32,7 +52,9 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
             {
               type: "remote" as const,
               url: buildServerUrl(options.config, server.routeSegment, agent.slug),
-              enabled: options.toolAccessService.isServerEnabled(agent.capabilities, server),
+              enabled:
+                enabledServerNames.has(server.name) ||
+                options.toolAccessService.isServerEnabled(agent.capabilities, server),
               oauth: false as const,
               headers: {
                 Authorization: `Bearer ${token}`,

@@ -1,5 +1,6 @@
 import type {
   AgentCapabilitySelection,
+  AgentMcpOverride,
   AgentMcpServer,
   AgentPermissionRule,
 } from "@cc/shared/schemas";
@@ -47,20 +48,45 @@ export function setMcpServerEnabled(
 
   return {
     ...capabilities,
+    mcpServers: upsertMcpServerSelection(capabilities.mcpServers ?? [], {
+      name: serverName,
+      enabled: false,
+      action: "deny",
+    }),
+    toolPermissions: removeMcpToolPermissions(capabilities, serverName),
+  };
+}
+
+export function clearMcpServerOverride(
+  capabilities: AgentCapabilitySelection,
+  serverName: string,
+): AgentCapabilitySelection {
+  return {
+    ...capabilities,
     mcpServers: (capabilities.mcpServers ?? []).filter((server) => server.name !== serverName),
-    toolPermissions: (capabilities.toolPermissions ?? []).filter(
-      (rule) => !rule.pattern.startsWith(`${serverName}_`),
-    ),
+    toolPermissions: removeMcpToolPermissions(capabilities, serverName),
   };
 }
 
 export function setMcpServerAction(
   capabilities: AgentCapabilitySelection,
   serverName: string,
-  action: AgentMcpServer["action"],
+  action: AgentMcpOverride,
 ): AgentCapabilitySelection {
-  if (action === "deny") {
-    return setMcpServerEnabled(capabilities, serverName, false);
+  if (action === "none") {
+    return clearMcpServerOverride(capabilities, serverName);
+  }
+
+  if (action === "disabled") {
+    return {
+      ...capabilities,
+      mcpServers: upsertMcpServerSelection(capabilities.mcpServers ?? [], {
+        name: serverName,
+        enabled: false,
+        action: "deny",
+      }),
+      toolPermissions: removeMcpToolPermissions(capabilities, serverName),
+    };
   }
 
   return {
@@ -153,12 +179,27 @@ export function setAppMcpToolEnabled(
 export function getMcpServerAction(
   capabilities: AgentCapabilitySelection,
   serverName: string,
-): AgentPermissionRule["action"] {
-  return getMcpServerSelection(capabilities, serverName)?.action ?? "deny";
+): AgentMcpOverride {
+  const selection = getMcpServerSelection(capabilities, serverName);
+
+  if (!selection) {
+    return "none";
+  }
+
+  return selection.enabled === false || selection.action === "deny" ? "disabled" : selection.action;
 }
 
 function buildAppMcpToolPattern(serverName: string, toolName: string): string {
   return `${serverName}_${toolName}`;
+}
+
+function removeMcpToolPermissions(
+  capabilities: AgentCapabilitySelection,
+  serverName: string,
+): NonNullable<AgentCapabilitySelection["toolPermissions"]> {
+  return (capabilities.toolPermissions ?? []).filter(
+    (rule) => !rule.pattern.startsWith(`${serverName}_`),
+  );
 }
 
 export function getAppMcpServerAction(

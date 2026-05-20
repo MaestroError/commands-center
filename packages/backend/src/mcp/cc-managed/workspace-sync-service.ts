@@ -104,9 +104,20 @@ function isConfigUpToDate(
   nextEntries: Record<string, { url: string; headers: Record<string, string>; enabled: boolean }>,
 ): boolean {
   const mcp = config["mcp"];
+  const permission = config["permission"];
 
-  if (!mcp || typeof mcp !== "object") {
+  if (!mcp || typeof mcp !== "object" || !permission || typeof permission !== "object") {
     return false;
+  }
+
+  for (const pattern of [
+    "cc_default_set_task_result",
+    "cc_default_add_task_artifact",
+    "cc_default_mark_needs_human_review",
+  ]) {
+    if ((permission as Record<string, unknown>)[pattern] !== "deny") {
+      return false;
+    }
   }
 
   return Object.entries(nextEntries).every(([name, entry]) => {

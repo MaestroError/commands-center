@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 import type { Logger } from "pino";
 
@@ -72,7 +75,7 @@ describe("createTaskExecutionService", () => {
 
       expect(completedRun?.opencodeSessionId).toBe("session-1");
       expect(run.renderedPrompt).toContain("Assigned agent ID:");
-      expect(completedRun?.resultSummary).toContain("Task finished:");
+      expect(completedRun?.finalMessage).toContain("Task finished:");
       expect(inspection.conversation?.source).toBe("task_run");
       expect(inspection.conversation?.messages).toHaveLength(2);
       expect(conversations).toEqual([]);
@@ -272,10 +275,19 @@ describe("createTaskExecutionService", () => {
         expect.any(String),
         expect.objectContaining({
           permission: expect.arrayContaining([
+            { permission: "cc_default_*", pattern: "*", action: "allow" },
             { permission: "bash_*", pattern: "*", action: "allow" },
           ]),
         }),
       );
+      const agentConfig = JSON.parse(
+        await readFile(
+          join(testDb.config.paths.subdirectories.agents, agent.slug, "opencode.jsonc"),
+          "utf8",
+        ),
+      ) as { mcp: Record<string, { enabled: boolean }> };
+
+      expect(agentConfig.mcp["cc_default"]?.enabled).toBe(true);
     } finally {
       await testDb.cleanup();
     }

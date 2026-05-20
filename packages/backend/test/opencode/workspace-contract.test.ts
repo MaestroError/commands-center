@@ -75,6 +75,9 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
         },
       },
       permission: {
+        cc_default_set_task_result: "deny",
+        cc_default_add_task_artifact: "deny",
+        cc_default_mark_needs_human_review: "deny",
         "github_*": "allow",
         custom_write: "ask",
       },
@@ -113,10 +116,47 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
 
     const parsed = JSON.parse(rendered.configJsonc) as { permission: Record<string, string> };
 
-    expect(Object.keys(parsed.permission)).toEqual(["github_*", "github_create_issue"]);
+    expect(Object.keys(parsed.permission)).toEqual([
+      "cc_default_set_task_result",
+      "cc_default_add_task_artifact",
+      "cc_default_mark_needs_human_review",
+      "github_*",
+      "github_create_issue",
+    ]);
   });
 
-  it("does not write CC-managed tool permissions to opencode.jsonc", () => {
+  it("renders disabled MCP server overrides without wildcard permissions", () => {
+    const rendered = renderOpenCodeWorkspace({
+      name: "Writer",
+      role: "write docs",
+      instructions: "Write useful docs and keep them accurate.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {
+        builtInSkills: [],
+        workspaceSkills: [],
+        customTools: [],
+        mcpServers: [{ name: "github", enabled: false, action: "deny" }],
+        toolPermissions: [],
+        appMcpServers: [],
+        appToolPermissions: [],
+      },
+    });
+
+    expect(JSON.parse(rendered.configJsonc)).toEqual({
+      $schema: "https://opencode.ai/config.json",
+      model: "openai/gpt-4.1",
+      mcp: {
+        github: { enabled: false },
+      },
+      permission: {
+        cc_default_set_task_result: "deny",
+        cc_default_add_task_artifact: "deny",
+        cc_default_mark_needs_human_review: "deny",
+      },
+    });
+  });
+
+  it("writes only CC-managed task-run tool denies to opencode.jsonc", () => {
     const rendered = renderOpenCodeWorkspace({
       name: "Writer",
       role: "write docs",
@@ -152,7 +192,11 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
 
     const parsed = JSON.parse(rendered.configJsonc) as { permission: Record<string, string> };
 
-    expect(parsed.permission).toEqual({});
+    expect(parsed.permission).toEqual({
+      cc_default_set_task_result: "deny",
+      cc_default_add_task_artifact: "deny",
+      cc_default_mark_needs_human_review: "deny",
+    });
   });
 
   it("copies validated skills into the documented .opencode path", async () => {

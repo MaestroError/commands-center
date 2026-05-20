@@ -124,7 +124,7 @@ function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; e
             <aside className="cc-panel grid gap-4 p-5">
               <Metric label="Assigned agent" value={props.agent?.name ?? task.agentId} />
               <Metric label="Schedule" value={formatSchedule(task)} />
-              <Metric label="Latest result" value={task.latestResultSummary ?? "No runs yet"} />
+              <Metric label="Latest result" value={task.latestFinalMessage ?? "No runs yet"} />
               <div>
                 <h2 className="font-semibold text-text-primary">Todos</h2>
                 {task.todos.length > 0 ? (
@@ -219,7 +219,7 @@ function RunHistory(props: {
                   <td className="py-3 pr-3 text-text-secondary">{formatDate(run.startedAt)}</td>
                   <td className="py-3 pr-3 text-text-secondary">{formatDate(run.completedAt)}</td>
                   <td className="max-w-sm truncate py-3 pr-3 text-text-secondary">
-                    {run.resultSummary ?? run.errorMessage ?? "No summary"}
+                    {run.finalMessage ?? run.errorMessage ?? "No summary"}
                   </td>
                   <td className="py-3 pr-3">
                     <Link
@@ -361,7 +361,7 @@ function TaskRunSessionTab(props: {
         </div>
         <Metric
           label="Summary"
-          value={props.run.resultSummary ?? props.run.errorMessage ?? "No summary"}
+          value={props.run.finalMessage ?? props.run.errorMessage ?? "No summary"}
         />
         <Metric label="Messages" value={String(messageCount)} />
         {props.diagnostics.length ? (

@@ -4,10 +4,14 @@ import { z } from "zod";
 import {
   createTaskInputSchema,
   createTaskRunInputSchema,
+  addTaskRunArtifactInputSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
+  markTaskRunNeedsReviewInputSchema,
+  setTaskRunResultInputSchema,
   taskListSchema,
   taskPermissionProfileSchema,
+  taskRunArtifactSchema,
   taskRunListSchema,
   taskRunSchema,
   taskScheduleSchema,
@@ -18,6 +22,7 @@ import {
   updateTaskRunInputSchema,
   type CreateTaskInput,
   type CreateTaskRunInput,
+  type TaskRunArtifact,
   type ListTaskRunsQuery,
   type ListTasksQuery,
   type Task,
@@ -141,7 +146,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
             permission_profile_json: stringifyOptional(parsed.permissionProfile),
             enabled,
             archived,
-            latest_result_summary: null,
+            latest_final_message: null,
             latest_task_id: null,
             created_at: timestamp,
             updated_at: timestamp,
@@ -169,7 +174,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           permission_profile_json: stringifyOptional(parsed.permissionProfile),
           enabled,
           archived,
-          latest_result_summary: null,
+          latest_final_message: null,
           scheduled_for: null,
           due_at: null,
           created_at: timestamp,
@@ -198,7 +203,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           permission_profile_json: stringifyOptional(parsed.permissionProfile),
           enabled,
           archived,
-          latest_result_summary: null,
+          latest_final_message: null,
           scheduled_for: null,
           due_at: null,
           created_at: timestamp,
@@ -515,7 +520,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           permission_profile_json: template.permission_profile_json,
           enabled: true,
           archived: false,
-          latest_result_summary: null,
+          latest_final_message: null,
           scheduled_for: scheduledFor,
           due_at: scheduledFor,
           created_at: timestamp,
@@ -661,7 +666,11 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           rendered_prompt: parsed.renderedPrompt,
           rendered_context_json: stringifyOptional(parsed.renderedContext),
           effective_permissions_json: stringifyOptional(parsed.effectivePermissions),
-          result_summary: parsed.resultSummary ?? null,
+          final_message: parsed.finalMessage ?? null,
+          result_text: parsed.resultText ?? null,
+          artifacts_json: JSON.stringify(parsed.artifacts),
+          needs_human_review: parsed.needsHumanReview,
+          human_review_reason: parsed.humanReviewReason ?? null,
           result_json: stringifyOptional(parsed.result),
           error_message: parsed.errorMessage ?? null,
           error_details_json: stringifyOptional(parsed.errorDetails),
@@ -709,7 +718,14 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
             parsed.effectivePermissions === undefined
               ? existing.effective_permissions_json
               : stringifyOptional(parsed.effectivePermissions),
-          result_summary: parsed.resultSummary ?? existing.result_summary,
+          final_message: parsed.finalMessage ?? existing.final_message,
+          result_text: parsed.resultText ?? existing.result_text,
+          artifacts_json:
+            parsed.artifacts === undefined
+              ? existing.artifacts_json
+              : JSON.stringify(parsed.artifacts),
+          needs_human_review: parsed.needsHumanReview ?? existing.needs_human_review,
+          human_review_reason: parsed.humanReviewReason ?? existing.human_review_reason,
           result_json:
             parsed.result === undefined ? existing.result_json : stringifyOptional(parsed.result),
           error_message: parsed.errorMessage ?? existing.error_message,
@@ -740,7 +756,80 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
     ): Promise<TaskRun | undefined> {
       return this.updateRun(id, { ...input, status });
     },
+
+    async setRunResultText(
+      taskRunId: string,
+      agentId: string,
+      resultText: string,
+    ): Promise<TaskRun> {
+      const parsed = setTaskRunResultInputSchema.parse({ taskRunId, resultText });
+      await requireWritableRun(parsed.taskRunId, agentId);
+      const updated = await this.updateRun(parsed.taskRunId, { resultText: parsed.resultText });
+
+      if (!updated) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      return updated;
+    },
+
+    async addRunArtifact(
+      taskRunId: string,
+      agentId: string,
+      artifact: TaskRunArtifact,
+    ): Promise<TaskRun> {
+      const parsed = addTaskRunArtifactInputSchema.parse({ taskRunId, artifact });
+      const run = await requireWritableRun(parsed.taskRunId, agentId);
+      const updated = await this.updateRun(parsed.taskRunId, {
+        artifacts: [...run.artifacts, parsed.artifact],
+      });
+
+      if (!updated) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      return updated;
+    },
+
+    async markRunNeedsHumanReview(
+      taskRunId: string,
+      agentId: string,
+      reason?: string,
+    ): Promise<TaskRun> {
+      const parsed = markTaskRunNeedsReviewInputSchema.parse({ taskRunId, reason });
+      await requireWritableRun(parsed.taskRunId, agentId);
+      const updated = await this.updateRun(parsed.taskRunId, {
+        needsHumanReview: true,
+        humanReviewReason: parsed.reason,
+      });
+
+      if (!updated) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      return updated;
+    },
   };
+
+  async function requireWritableRun(taskRunId: string, agentId: string): Promise<TaskRun> {
+    const run = await options.db.query.task_runs.findFirst({
+      where: (table, operators) => operators.eq(table.id, taskRunId),
+    });
+
+    if (!run) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    if (run.agent_id !== agentId) {
+      throw new BadRequestError("Task run agent must match the calling agent.");
+    }
+
+    if (run.status !== "running") {
+      throw new ConflictError("Only running task runs can be updated by an agent.");
+    }
+
+    return mapTaskRun(run);
+  }
 
   async function setEnabled(id: string, enabled: boolean): Promise<Task | undefined> {
     const existing = await getTaskRow(id);
@@ -981,7 +1070,7 @@ function mapTask(row: typeof tasks.$inferSelect): Task {
     permissionProfile: parseOptional(row.permission_profile_json, taskPermissionProfileSchema),
     enabled: row.enabled,
     archived: row.archived,
-    latestResultSummary: row.latest_result_summary ?? undefined,
+    latestFinalMessage: row.latest_final_message ?? undefined,
     scheduledFor: row.scheduled_for?.toISOString(),
     dueAt: row.due_at?.toISOString(),
     createdAt: row.created_at.toISOString(),
@@ -1004,7 +1093,7 @@ function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task {
     permissionProfile: parseOptional(row.permission_profile_json, taskPermissionProfileSchema),
     enabled: row.enabled,
     archived: row.archived,
-    latestResultSummary: row.latest_result_summary ?? undefined,
+    latestFinalMessage: row.latest_final_message ?? undefined,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     archivedAt: row.archived_at?.toISOString(),
@@ -1026,7 +1115,11 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
       row.effective_permissions_json,
       taskPermissionProfileSchema,
     ),
-    resultSummary: row.result_summary ?? undefined,
+    finalMessage: row.final_message ?? undefined,
+    resultText: row.result_text ?? undefined,
+    artifacts: parseTaskRunArtifacts(row.artifacts_json),
+    needsHumanReview: row.needs_human_review ?? false,
+    humanReviewReason: row.human_review_reason ?? undefined,
     result: parseJsonRecord(row.result_json),
     errorMessage: row.error_message ?? undefined,
     errorDetails: parseJsonRecord(row.error_details_json),
@@ -1053,6 +1146,10 @@ function stringifyOptional(value: unknown): string | null {
 
 function parseJsonRecord(value: string | null): Record<string, unknown> | undefined {
   return value ? z.record(z.string(), z.unknown()).parse(JSON.parse(value)) : undefined;
+}
+
+function parseTaskRunArtifacts(value: string | null): TaskRunArtifact[] {
+  return value ? taskRunArtifactSchema.array().parse(JSON.parse(value)) : [];
 }
 
 function parseOptional<T>(

@@ -134,11 +134,11 @@ export function createTaskExecutionService(options: {
           text: running.renderedPrompt,
           attachments: [],
         });
-        const resultSummary = summarizeTaskRunConversation(synced);
+        const finalMessage = summarizeTaskRunConversation(synced);
 
         const completed = await options.taskService.setRunStatus(running.id, "completed", {
           completedAt: new Date().toISOString(),
-          resultSummary,
+          finalMessage,
           result: {
             conversationId: synced.id,
             messageCount: synced.messageCount,
@@ -155,7 +155,7 @@ export function createTaskExecutionService(options: {
 
       const completed = await options.taskService.setRunStatus(running.id, "completed", {
         completedAt: new Date().toISOString(),
-        resultSummary: `Task '${task.title}' execution recorded. OpenCode execution is implemented in I4.3.`,
+        finalMessage: `Task '${task.title}' execution recorded. OpenCode execution is implemented in I4.3.`,
       });
 
       if (!completed) {
@@ -230,7 +230,7 @@ export function createTaskExecutionService(options: {
           status: "skipped",
           triggerSource,
           renderedPrompt: "",
-          resultSummary: "Task was skipped because it is not enabled.",
+          finalMessage: "Task was skipped because it is not enabled.",
           completedAt: new Date().toISOString(),
         });
 

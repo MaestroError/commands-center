@@ -553,6 +553,108 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
+  it("serves cc_default task-run outcome tools", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService: createTaskExecutionService({ taskService }),
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default");
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Outcome task",
+        description: "Capture results.",
+        triggerMode: "manual",
+      });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Do the task.",
+      });
+
+      const listToolsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/list",
+        {},
+        20,
+      );
+      const resultResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "set_task_result", arguments: { taskRunId: run.id, resultText: "Done." } },
+        21,
+      );
+      const artifactResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        {
+          name: "add_task_artifact",
+          arguments: {
+            taskRunId: run.id,
+            artifact: { title: "Report", path: ".cc/artifacts/report.md" },
+          },
+        },
+        22,
+      );
+      const reviewResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        {
+          name: "mark_needs_human_review",
+          arguments: { taskRunId: run.id, reason: "Approve before publishing." },
+        },
+        23,
+      );
+
+      expect(listToolsResponse.body).toContain('"name":"set_task_result"');
+      expect(listToolsResponse.body).toContain('"name":"add_task_artifact"');
+      expect(listToolsResponse.body).toContain('"name":"mark_needs_human_review"');
+      expect(parseSseJson(resultResponse.body)).toMatchObject({
+        result: { structuredContent: { resultText: "Done." } },
+      });
+      expect(parseSseJson(artifactResponse.body)).toMatchObject({
+        result: { structuredContent: { artifacts: [{ title: "Report" }] } },
+      });
+      expect(parseSseJson(reviewResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            needsHumanReview: true,
+            humanReviewReason: "Approve before publishing.",
+          },
+        },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("reports structured validation errors for task management tools", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -683,9 +785,29 @@ async function callMcpToolRouteForAgent(
   params: Record<string, unknown>,
   id: number,
 ) {
+  return callMcpToolRouteForServer(
+    server,
+    agentSlug,
+    "cc-tasks-management",
+    authHeader,
+    method,
+    params,
+    id,
+  );
+}
+
+async function callMcpToolRouteForServer(
+  server: InjectServer,
+  agentSlug: string,
+  routeSegment: string,
+  authHeader: string,
+  method: string,
+  params: Record<string, unknown>,
+  id: number,
+) {
   return server.inject({
     method: "POST",
-    url: `/api/mcp/cc/cc-tasks-management/agents/${agentSlug}`,
+    url: `/api/mcp/cc/${routeSegment}/agents/${agentSlug}`,
     headers: {
       Authorization: authHeader,
       Accept: "application/json, text/event-stream",

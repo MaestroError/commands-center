@@ -10,6 +10,9 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { method: "POST", path: "/api/auth/login" },
   { method: "POST", path: "/api/auth/logout" },
   { method: "POST", path: "/api/auth/reclaim" },
+  { method: "GET", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
+  { method: "POST", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
+  { method: "DELETE", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
 ];
 
 export function isPublicRoute(method: string, pathname: string): boolean {

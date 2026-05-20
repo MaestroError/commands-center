@@ -46,7 +46,7 @@ beforeEach(() => {
           name: "cc_app",
           enabledByDefault: false,
           description: "CommandsCenter app-managed capabilities for this agent.",
-          tools: [{ name: "add_secret", description: "Add a workspace secret." }],
+          tools: [{ name: "add_secret", description: "Add a workspace secret.", context: "chat" }],
         },
         {
           name: "cc_tool_management",
@@ -54,8 +54,12 @@ beforeEach(() => {
           description:
             "CommandsCenter-managed tool creation and library maintenance for this agent.",
           tools: [
-            { name: "create_custom_tool", description: "Create a custom tool." },
-            { name: "copy_custom_tool_to_agent", description: "Copy a custom tool." },
+            { name: "create_custom_tool", description: "Create a custom tool.", context: "chat" },
+            {
+              name: "copy_custom_tool_to_agent",
+              description: "Copy a custom tool.",
+              context: "task_run",
+            },
           ],
         },
       ],
@@ -317,6 +321,9 @@ describe("AgentEditorPage", () => {
     renderEditor();
 
     fireEvent.click(screen.getByRole("button", { name: "cc_tool_management Allow" }));
+
+    expect(screen.getByText("Task run")).toBeInTheDocument();
+
     fireEvent.click(
       screen.getByRole("switch", { name: "cc_tool_management copy_custom_tool_to_agent" }),
     );

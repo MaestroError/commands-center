@@ -7,6 +7,8 @@ import type {
   Agent,
   AgentCatalog,
   AgentCapabilitySelection,
+  AgentMcpOverride,
+  AppMcpToolContext,
   BuiltInSkill,
   CreateAgentInput,
   CustomToolAgentCopy,
@@ -479,7 +481,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                           <p className="mt-2 text-sm text-text-secondary">{server.description}</p>
                         </div>
 
-                        <McpServerPermissionControl
+                        <AppMcpServerPermissionControl
                           label={server.name}
                           onChange={(action) => setAppMcpServerPermission(server.name, action)}
                           value={serverAction}
@@ -499,7 +501,10 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                                 key={tool.name}
                               >
                                 <div className="min-w-0">
-                                  <p className="font-medium text-text-primary">{tool.name}</p>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="font-medium text-text-primary">{tool.name}</p>
+                                    <ToolContextBadge context={tool.context} />
+                                  </div>
                                   <p className="mt-1 text-sm text-text-secondary">
                                     {tool.description}
                                   </p>
@@ -734,7 +739,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     }
   }
 
-  function setMcpServerPermission(serverName: string, action: PermissionAction) {
+  function setMcpServerPermission(serverName: string, action: AgentMcpOverride) {
     setForm((current) => ({
       ...current,
       capabilities: setMcpServerAction(current.capabilities, serverName, action),
@@ -979,6 +984,60 @@ function createInitialForm(catalog: AgentCatalog, agent?: Agent): AgentFormState
 
 function McpServerPermissionControl(props: {
   label: string;
+  value: AgentMcpOverride;
+  onChange: (action: AgentMcpOverride) => void;
+}) {
+  const options = [
+    {
+      value: "none" as const,
+      label: "None",
+      selectedClassName: "border-border bg-surface-elevated text-text-primary",
+    },
+    {
+      value: "disabled" as const,
+      label: "Disabled",
+      selectedClassName: "border-rose-500 bg-rose-500/10 text-rose-600",
+    },
+    {
+      value: "ask" as const,
+      label: "Ask",
+      selectedClassName: "border-amber-500 bg-amber-500/10 text-amber-600",
+    },
+    {
+      value: "allow" as const,
+      label: "Allow",
+      selectedClassName: "border-emerald-500 bg-emerald-500/10 text-emerald-600",
+    },
+  ];
+
+  return (
+    <div className="inline-flex rounded-xl border border-border bg-surface p-1">
+      {options.map((option) => {
+        const selected = props.value === option.value;
+
+        return (
+          <button
+            aria-label={`${props.label} ${option.label}`}
+            aria-pressed={selected}
+            className={
+              selected
+                ? `rounded-lg border px-3 py-1.5 text-xs font-medium transition ${option.selectedClassName}`
+                : "rounded-lg border border-transparent px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
+            }
+            key={option.value}
+            onClick={() => props.onChange(option.value)}
+            type="button"
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function AppMcpServerPermissionControl(props: {
+  label: string;
   value: PermissionAction;
   onChange: (action: PermissionAction) => void;
 }) {
@@ -1082,6 +1141,20 @@ function StatusBadge(props: { status: CustomToolDriftStatus }) {
   }[props.status];
 
   return <span className={className}>{label}</span>;
+}
+
+function ToolContextBadge(props: { context: AppMcpToolContext }) {
+  const label = {
+    chat: "Chat",
+    task_run: "Task run",
+    both: "Chat + task",
+  }[props.context];
+
+  return (
+    <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary">
+      {label}
+    </span>
+  );
 }
 
 function resolveCustomToolOverwriteSlugs(

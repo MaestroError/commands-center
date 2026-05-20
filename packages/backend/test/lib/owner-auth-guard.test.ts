@@ -27,8 +27,12 @@ describe("owner auth guard", () => {
       { method: "POST", path: "/api/auth/login" },
       { method: "POST", path: "/api/auth/logout" },
       { method: "POST", path: "/api/auth/reclaim" },
+      { method: "GET", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
+      { method: "POST", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
+      { method: "DELETE", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
     ]);
     expect(isPublicRoute("GET", "/api/opencode")).toBe(false);
+    expect(isPublicRoute("POST", "/api/mcp/cc/cc-app/agents/writer")).toBe(true);
   });
 
   it("rejects protected API requests without an owner session", async () => {
@@ -69,6 +73,41 @@ describe("owner auth guard", () => {
       expect(response.json()).toEqual({
         error: { code: "forbidden", message: "CSRF token is invalid." },
       });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("lets CC-managed MCP routes use their own bearer auth without owner session or origin", async () => {
+    const testDb = await createTestDatabase();
+    const productionConfig = loadRuntimeConfig({
+      cwd: testDb.cwd,
+      env: { NODE_ENV: "production", CC_PUBLIC_ORIGIN: "https://commands.example.com" },
+    });
+    const ownerAccessService = createOwnerAccessService({ config: productionConfig });
+    const server = await createAuthServer(testDb, ownerAccessService, productionConfig);
+
+    try {
+      await claimWorkspace(ownerAccessService);
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/mcp/cc/cc-app/agents/writer",
+        headers: {
+          authorization: "Bearer invalid",
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+        },
+        payload: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+          params: {},
+        },
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.body).toContain("Invalid bearer token");
     } finally {
       await server.close();
       await testDb.cleanup();

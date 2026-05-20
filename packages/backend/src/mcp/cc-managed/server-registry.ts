@@ -19,6 +19,12 @@ import {
   createShowFileToUserDefinition,
   showFileToUserToolMetadata,
 } from "./groups/cc-app/tools/show-file-to-user.js";
+import {
+  addTaskArtifactToolMetadata,
+  createTaskRunOutcomeToolDefinitions,
+  markNeedsHumanReviewToolMetadata,
+  setTaskResultToolMetadata,
+} from "./groups/cc-default/tools/task-run-outcome-tools.js";
 import { createCopyCustomToolToAgentDefinition } from "./groups/cc-tool-management/tools/copy-custom-tool-to-agent.js";
 import { copyCustomToolToAgentMetadata } from "./groups/cc-tool-management/tools/copy-custom-tool-to-agent.js";
 import {
@@ -76,6 +82,7 @@ export type CcManagedMcpServerDefinition = {
   routeSegment: string;
   description: string;
   enabledByDefault: boolean;
+  systemManaged?: boolean;
   catalogTools: readonly CcManagedToolMetadata[];
   tools: readonly CcManagedToolDefinition[];
 };
@@ -145,8 +152,30 @@ export function createCcManagedMcpServerRegistry(options: {
           }),
         ]
       : [];
+  const taskRunOutcomeTools: CcManagedToolDefinition[] =
+    options.db && options.taskService
+      ? [
+          ...createTaskRunOutcomeToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+          }),
+        ]
+      : [];
 
   return [
+    {
+      name: "cc_default",
+      routeSegment: "cc-default",
+      description: "CommandsCenter default task-run outcome reporting tools.",
+      enabledByDefault: true,
+      systemManaged: true,
+      catalogTools: [
+        setTaskResultToolMetadata,
+        addTaskArtifactToolMetadata,
+        markNeedsHumanReviewToolMetadata,
+      ],
+      tools: taskRunOutcomeTools,
+    },
     {
       name: "cc_app",
       routeSegment: "cc-app",

@@ -122,11 +122,13 @@ export function buildOpenCodeSessionPermissions(
   permissions: TaskPermissionProfile,
 ): OpenCodePermissionRule[] {
   return [
-    ...(permissions.mcpServers ?? []).map((server) => ({
-      permission: `${server.name}_*`,
-      pattern: "*",
-      action: server.action,
-    })),
+    ...(permissions.mcpServers ?? [])
+      .filter((server) => server.enabled !== false)
+      .map((server) => ({
+        permission: `${server.name}_*`,
+        pattern: "*",
+        action: server.action,
+      })),
     ...(permissions.toolPermissions ?? []).map((rule) => ({
       permission: rule.pattern,
       pattern: "*",
@@ -154,7 +156,8 @@ function filterAppToolsForTaskRun(
   diagnostics: TaskPermissionDiagnostic[];
 } {
   const diagnostics: TaskPermissionDiagnostic[] = [];
-  const appMcpServers = (permissions.appMcpServers ?? []).filter((serverSelection) => {
+  const selectedAppMcpServers = permissions.appMcpServers ?? [];
+  const appMcpServers = selectedAppMcpServers.filter((serverSelection) => {
     const server = registry.find((entry) => entry.name === serverSelection.name);
 
     if (!server) {
@@ -177,10 +180,12 @@ function filterAppToolsForTaskRun(
     return false;
   });
   const deniedPatterns = new Set<string>();
+  const allowedTaskRunPatterns = new Set<string>();
 
   for (const server of registry) {
     for (const tool of server.catalogTools) {
       if (tool.context === "task_run" || tool.context === "both") {
+        allowedTaskRunPatterns.add(buildCcManagedToolPermissionPattern(server.name, tool.name));
         continue;
       }
 
@@ -194,10 +199,27 @@ function filterAppToolsForTaskRun(
     }
   }
 
+  for (const server of registry) {
+    const hasTaskRunTools = server.catalogTools.some(
+      (tool) => tool.context === "task_run" || tool.context === "both",
+    );
+
+    if (!server.enabledByDefault || !hasTaskRunTools) {
+      continue;
+    }
+
+    if (!appMcpServers.some((selection) => selection.name === server.name)) {
+      appMcpServers.push({ name: server.name, enabled: true, action: "allow" });
+    }
+  }
+
   return {
     appMcpServers,
     appToolPermissions: [
-      ...(permissions.appToolPermissions ?? []).filter((rule) => !deniedPatterns.has(rule.pattern)),
+      ...(permissions.appToolPermissions ?? []).filter(
+        (rule) => !deniedPatterns.has(rule.pattern) && !allowedTaskRunPatterns.has(rule.pattern),
+      ),
+      ...[...allowedTaskRunPatterns].map((pattern) => ({ pattern, action: "allow" as const })),
       ...[...deniedPatterns].map((pattern) => ({ pattern, action: "deny" as const })),
     ],
     diagnostics,

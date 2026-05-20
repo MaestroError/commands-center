@@ -50,7 +50,7 @@ const task: Task = {
   schedule: { mode: "manual" },
   enabled: true,
   archived: false,
-  latestResultSummary: "Ready to publish.",
+  latestFinalMessage: "Ready to publish.",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -66,7 +66,9 @@ const run: TaskRun = {
   context: { text: "Use changelog." },
   renderedContext: { taskTitle: "Ship release" },
   effectivePermissions: { toolPermissions: [{ pattern: "bash_*", action: "allow" }] },
-  resultSummary: "Done.",
+  finalMessage: "Done.",
+  artifacts: [],
+  needsHumanReview: false,
   result: { messageCount: 2 },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -810,7 +812,7 @@ function mockFetch(options: MockFetchOptions = {}) {
           title: `${taskPayload.title} copy`,
           enabled: false,
           status: "disabled",
-          latestResultSummary: undefined,
+          latestFinalMessage: undefined,
         }),
       );
     }

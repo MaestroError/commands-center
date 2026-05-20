@@ -146,6 +146,33 @@ export const cancelTaskRunInputSchema = z.object({
   reason: z.string().trim().min(1).optional(),
 });
 
+export const taskRunArtifactSchema = z
+  .object({
+    title: z.string().trim().min(1),
+    description: z.string().trim().min(1).optional(),
+    url: z.string().trim().url().optional(),
+    path: z.string().trim().min(1).optional(),
+  })
+  .refine((artifact) => (artifact.url ? 1 : 0) + (artifact.path ? 1 : 0) === 1, {
+    message: "Exactly one of url or path is required.",
+    path: ["url"],
+  });
+
+export const setTaskRunResultInputSchema = z.object({
+  taskRunId: z.string().trim().min(1),
+  resultText: z.string().trim().min(1),
+});
+
+export const addTaskRunArtifactInputSchema = z.object({
+  taskRunId: z.string().trim().min(1),
+  artifact: taskRunArtifactSchema,
+});
+
+export const markTaskRunNeedsReviewInputSchema = z.object({
+  taskRunId: z.string().trim().min(1),
+  reason: z.string().trim().min(1).optional(),
+});
+
 export const taskSchema = z.object({
   id: z.string().min(1),
   templateId: z.string().min(1).optional(),
@@ -159,7 +186,7 @@ export const taskSchema = z.object({
   permissionProfile: taskPermissionProfileSchema.optional(),
   enabled: z.boolean(),
   archived: z.boolean(),
-  latestResultSummary: z.string().optional(),
+  latestFinalMessage: z.string().optional(),
   scheduledFor: z.string().datetime().optional(),
   dueAt: z.string().datetime().optional(),
   createdAt: z.string().datetime(),
@@ -185,7 +212,11 @@ export const createTaskRunInputSchema = z.object({
   renderedPrompt: z.string().default(""),
   renderedContext: looseRecordSchema.optional(),
   effectivePermissions: taskPermissionProfileSchema.optional(),
-  resultSummary: z.string().optional(),
+  finalMessage: z.string().optional(),
+  resultText: z.string().optional(),
+  artifacts: z.array(taskRunArtifactSchema).default([]),
+  needsHumanReview: z.boolean().default(false),
+  humanReviewReason: z.string().optional(),
   result: looseRecordSchema.optional(),
   errorMessage: z.string().optional(),
   errorDetails: looseRecordSchema.optional(),
@@ -202,7 +233,11 @@ export const updateTaskRunInputSchema = z.object({
   context: looseRecordSchema.optional(),
   renderedContext: looseRecordSchema.optional(),
   effectivePermissions: taskPermissionProfileSchema.optional(),
-  resultSummary: z.string().optional(),
+  finalMessage: z.string().optional(),
+  resultText: z.string().optional(),
+  artifacts: z.array(taskRunArtifactSchema).optional(),
+  needsHumanReview: z.boolean().optional(),
+  humanReviewReason: z.string().optional(),
   result: looseRecordSchema.optional(),
   errorMessage: z.string().optional(),
   errorDetails: looseRecordSchema.optional(),
@@ -223,7 +258,11 @@ export const taskRunSchema = z.object({
   context: looseRecordSchema.optional(),
   renderedContext: looseRecordSchema.optional(),
   effectivePermissions: taskPermissionProfileSchema.optional(),
-  resultSummary: z.string().optional(),
+  finalMessage: z.string().optional(),
+  resultText: z.string().optional(),
+  artifacts: z.array(taskRunArtifactSchema),
+  needsHumanReview: z.boolean(),
+  humanReviewReason: z.string().optional(),
   result: looseRecordSchema.optional(),
   errorMessage: z.string().optional(),
   errorDetails: looseRecordSchema.optional(),
@@ -265,12 +304,14 @@ export const taskRunSessionInspectionSchema = z.object({
 
 export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
 export type CreateTaskRunInput = z.input<typeof createTaskRunInputSchema>;
+export type AddTaskRunArtifactInput = z.input<typeof addTaskRunArtifactInputSchema>;
 export type CancelTaskRunInput = z.input<typeof cancelTaskRunInputSchema>;
 export type ListTaskRunsQuery = z.infer<typeof listTaskRunsQuerySchema>;
 export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskTemplate = z.infer<typeof taskTemplateSchema>;
 export type TaskPermissionProfile = z.infer<typeof taskPermissionProfileSchema>;
+export type TaskRunArtifact = z.infer<typeof taskRunArtifactSchema>;
 export type TaskRun = z.infer<typeof taskRunSchema>;
 export type TaskRunSessionDiagnostic = z.infer<typeof taskRunSessionDiagnosticSchema>;
 export type TaskRunSessionInspection = z.infer<typeof taskRunSessionInspectionSchema>;
@@ -285,4 +326,6 @@ export type TaskRepeatRule = z.infer<typeof taskRepeatRuleSchema>;
 export type TriggerTaskInput = z.input<typeof triggerTaskInputSchema>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
 export type UpdateTaskRunInput = z.input<typeof updateTaskRunInputSchema>;
+export type MarkTaskRunNeedsReviewInput = z.input<typeof markTaskRunNeedsReviewInputSchema>;
+export type SetTaskRunResultInput = z.input<typeof setTaskRunResultInputSchema>;
 export { permissionActionSchema };
