@@ -2,10 +2,43 @@ import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import { agents } from "./agents.js";
 
+export const task_templates = sqliteTable(
+  "task_templates",
+  {
+    id: text("id").primaryKey(),
+    agent_id: text("agent_id")
+      .notNull()
+      .references(() => agents.id),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    todos_json: text("todos_json").notNull(),
+    status: text("status").notNull(),
+    trigger_mode: text("trigger_mode").notNull(),
+    schedule_json: text("schedule_json").notNull(),
+    permission_profile_json: text("permission_profile_json"),
+    enabled: integer("enabled", { mode: "boolean" }).notNull(),
+    archived: integer("archived", { mode: "boolean" }).notNull(),
+    latest_result_summary: text("latest_result_summary"),
+    latest_task_id: text("latest_task_id"),
+    created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    archived_at: integer("archived_at", { mode: "timestamp_ms" }),
+    deleted_at: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("task_templates_agent_id_idx").on(table.agent_id),
+    index("task_templates_status_idx").on(table.status),
+    index("task_templates_trigger_mode_idx").on(table.trigger_mode),
+    index("task_templates_archived_idx").on(table.archived),
+    index("task_templates_deleted_at_idx").on(table.deleted_at),
+  ],
+);
+
 export const tasks = sqliteTable(
   "tasks",
   {
     id: text("id").primaryKey(),
+    template_id: text("template_id").references(() => task_templates.id),
     agent_id: text("agent_id")
       .notNull()
       .references(() => agents.id),
@@ -15,17 +48,21 @@ export const tasks = sqliteTable(
     todos_json: text("todos_json").notNull(),
     status: text("status").notNull(),
     trigger_mode: text("trigger_mode").notNull(),
+    trigger_source: text("trigger_source"),
     schedule_json: text("schedule_json").notNull(),
     permission_profile_json: text("permission_profile_json"),
     enabled: integer("enabled", { mode: "boolean" }).notNull(),
     archived: integer("archived", { mode: "boolean" }).notNull(),
     latest_result_summary: text("latest_result_summary"),
+    scheduled_for: integer("scheduled_for", { mode: "timestamp_ms" }),
+    due_at: integer("due_at", { mode: "timestamp_ms" }),
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     archived_at: integer("archived_at", { mode: "timestamp_ms" }),
     deleted_at: integer("deleted_at", { mode: "timestamp_ms" }),
   },
   (table) => [
+    index("tasks_template_id_idx").on(table.template_id),
     index("tasks_agent_id_idx").on(table.agent_id),
     index("tasks_status_idx").on(table.status),
     index("tasks_trigger_mode_idx").on(table.trigger_mode),

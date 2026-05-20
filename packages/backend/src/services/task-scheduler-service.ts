@@ -138,13 +138,19 @@ export function createTaskSchedulerService(options: {
       const task = await options.taskService.get(run.taskId);
       const scheduledAt = readScheduledAt(run);
 
-      if (!task || !scheduledAt) {
+      if (!task?.templateId || !scheduledAt) {
+        return;
+      }
+
+      const template = await options.taskService.get(task.templateId);
+
+      if (!template) {
         return;
       }
 
       await upsertState(
-        task,
-        computeNextRunAtAfter(task, scheduledAt, now()),
+        template,
+        computeNextRunAtAfter(template, scheduledAt, now()),
         undefined,
         scheduledAt,
       );
@@ -190,21 +196,34 @@ export function createTaskSchedulerService(options: {
     scheduledAt: Date,
     error: unknown,
   ): Promise<void> {
+    const occurrence =
+      task.templateId === task.id
+        ? await options.taskService.createTaskFromTemplate(task.id, {
+            scheduledFor: scheduledAt.toISOString(),
+            triggerSource: "scheduled",
+          })
+        : task;
+
+    if (!occurrence) {
+      return;
+    }
+
     await options.taskService.createRun({
-      taskId: task.id,
-      agentId: task.agentId,
+      taskId: occurrence.id,
+      agentId: occurrence.agentId,
       status: "failed",
       triggerSource: "scheduled",
       renderedPrompt: "",
       renderedContext: {
-        taskId: task.id,
-        taskTitle: task.title,
-        taskDescription: task.description,
-        assignedAgentId: task.agentId,
+        taskId: occurrence.id,
+        templateId: task.id,
+        taskTitle: occurrence.title,
+        taskDescription: occurrence.description,
+        assignedAgentId: occurrence.agentId,
         triggerSource: "scheduled",
         triggerMetadata: { scheduledAt: scheduledAt.toISOString() },
         schedule: task.schedule,
-        todos: task.todos,
+        todos: occurrence.todos,
       },
       errorMessage: error instanceof Error ? error.message : "Scheduled task run failed.",
       errorDetails: {

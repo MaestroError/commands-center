@@ -148,6 +148,7 @@ export const cancelTaskRunInputSchema = z.object({
 
 export const taskSchema = z.object({
   id: z.string().min(1),
+  templateId: z.string().min(1).optional(),
   agentId: z.string().min(1),
   title: z.string().min(1),
   description: z.string(),
@@ -159,12 +160,20 @@ export const taskSchema = z.object({
   enabled: z.boolean(),
   archived: z.boolean(),
   latestResultSummary: z.string().optional(),
+  scheduledFor: z.string().datetime().optional(),
+  dueAt: z.string().datetime().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   archivedAt: z.string().datetime().optional(),
 });
 
 export const taskListSchema = z.array(taskSchema);
+
+export const taskTemplateSchema = taskSchema.extend({
+  latestTaskId: z.string().min(1).optional(),
+});
+
+export const taskTemplateListSchema = z.array(taskTemplateSchema);
 
 export const createTaskRunInputSchema = z.object({
   taskId: z.string().trim().min(1),
@@ -260,6 +269,7 @@ export type CancelTaskRunInput = z.input<typeof cancelTaskRunInputSchema>;
 export type ListTaskRunsQuery = z.infer<typeof listTaskRunsQuerySchema>;
 export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;
 export type Task = z.infer<typeof taskSchema>;
+export type TaskTemplate = z.infer<typeof taskTemplateSchema>;
 export type TaskPermissionProfile = z.infer<typeof taskPermissionProfileSchema>;
 export type TaskRun = z.infer<typeof taskRunSchema>;
 export type TaskRunSessionDiagnostic = z.infer<typeof taskRunSessionDiagnosticSchema>;

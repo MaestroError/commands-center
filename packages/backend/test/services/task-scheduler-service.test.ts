@@ -185,6 +185,7 @@ describe("createTaskSchedulerService", () => {
       await schedulerService.tick(new Date("2026-06-02T12:00:00.000Z"));
 
       const runs = await taskService.listRuns(task.id);
+      const occurrences = await taskService.listTemplateTasks(task.id);
       await expect
         .poll(
           async () =>
@@ -194,6 +195,8 @@ describe("createTaskSchedulerService", () => {
         .toBe("2026-06-03T12:00:00.000Z");
 
       expect(runs).toHaveLength(1);
+      expect(occurrences).toHaveLength(1);
+      expect(runs[0]?.taskId).toBe(occurrences[0]?.id);
     } finally {
       schedulerService.stop();
       await testDb.cleanup();

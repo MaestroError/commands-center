@@ -108,6 +108,42 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("triggers templates by creating a task occurrence execution", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const executionService = createTaskExecutionService({ taskService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await taskService.create({
+        agentId: agent.id,
+        title: "Scheduled template",
+        description: "Original prompt.",
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "day", interval: 1 },
+        },
+      });
+
+      const run = await executionService.trigger(template.id, {
+        triggerSource: "scheduled",
+        metadata: { scheduledAt: "2026-06-02T09:00:00.000Z" },
+      });
+      const occurrences = await taskService.listTemplateTasks(template.id);
+
+      expect(occurrences).toHaveLength(1);
+      expect(run.taskId).toBe(occurrences[0]?.id);
+      expect(run.renderedContext?.["templateId"]).toBe(template.id);
+      expect(run.renderedPrompt).toContain("Original prompt.");
+      await expectRunStatus(taskService, run.id, "completed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("marks detached task execution failures as failed runs", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

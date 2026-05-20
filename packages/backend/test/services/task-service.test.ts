@@ -149,8 +149,16 @@ describe("createTaskService", () => {
         },
         permissionProfile: { approvalPolicy: "auto_approve" },
       });
+      const occurrence = await service.createTaskFromTemplate(created.id, {
+        triggerSource: "manual",
+      });
+
+      if (!occurrence) {
+        throw new Error("Expected task occurrence to be created.");
+      }
+
       await service.createRun({
-        taskId: created.id,
+        taskId: occurrence.id,
         agentId: agent.id,
         triggerSource: "manual",
         renderedPrompt: "Do the task.",
@@ -242,6 +250,77 @@ describe("createTaskService", () => {
       expect(fetched?.context).toEqual({ text: "Use release branch." });
       expect(fetched?.renderedContext).toEqual({ title: task.title });
       expect(fetched?.effectivePermissions?.approvalPolicy).toBe("auto_approve");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("creates task occurrences from templates with frozen task data", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.create({
+        agentId: agent.id,
+        title: "Weekly report",
+        description: "Use the old prompt.",
+        todos: [{ content: "Read metrics" }],
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+      const occurrence = await service.createTaskFromTemplate(template.id, {
+        scheduledFor: "2026-06-08T09:00:00.000Z",
+        triggerSource: "scheduled",
+      });
+
+      await service.update(template.id, { description: "Use the new prompt." });
+
+      const storedOccurrence = occurrence ? await service.get(occurrence.id) : undefined;
+      const occurrences = await service.listTemplateTasks(template.id);
+
+      expect(storedOccurrence?.templateId).toBe(template.id);
+      expect(storedOccurrence?.description).toBe("Use the old prompt.");
+      expect(storedOccurrence?.scheduledFor).toBe("2026-06-08T09:00:00.000Z");
+      expect(occurrences.map((task) => task.id)).toEqual([occurrence?.id]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("allows multiple executions for the same task occurrence", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Reviewable task",
+        triggerMode: "manual",
+      });
+
+      const first = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        renderedPrompt: "First attempt.",
+      });
+      const second = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        renderedPrompt: "Second attempt.",
+      });
+      const runs = await service.listRuns(task.id);
+
+      expect(runs.map((run) => run.id).sort()).toEqual([first.id, second.id].sort());
+      expect(new Set(runs.map((run) => run.taskId))).toEqual(new Set([task.id]));
     } finally {
       await testDb.cleanup();
     }

@@ -432,10 +432,22 @@ export function createConversationService(options: {
     taskId: string,
     taskRunId: string,
   ): Promise<ConversationRow | undefined> {
-    return options.db.query.conversations.findFirst({
+    const exact = await options.db.query.conversations.findFirst({
       where: (table, operators) =>
         operators.and(
           operators.eq(table.task_id, taskId),
+          operators.eq(table.task_run_id, taskRunId),
+          operators.eq(table.status, "active"),
+        ),
+    });
+
+    if (exact) {
+      return exact;
+    }
+
+    return options.db.query.conversations.findFirst({
+      where: (table, operators) =>
+        operators.and(
           operators.eq(table.task_run_id, taskRunId),
           operators.eq(table.status, "active"),
         ),

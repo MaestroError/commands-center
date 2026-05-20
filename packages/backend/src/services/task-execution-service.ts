@@ -28,7 +28,8 @@ export function createTaskExecutionService(options: {
   return {
     async trigger(taskId: string, input: Partial<TriggerTaskInput> = {}): Promise<TaskRun> {
       const parsed = triggerTaskInputSchema.parse(input);
-      const task = await requireRunnableTask(taskId, parsed.triggerSource);
+      const target = await requireRunnableTask(taskId, parsed.triggerSource);
+      const task = await resolveExecutableTask(target, parsed);
       const activeRun = await options.taskService.getActiveRunForTask(task.id);
 
       if (activeRun) {
@@ -244,6 +245,24 @@ export function createTaskExecutionService(options: {
     return task;
   }
 
+  async function resolveExecutableTask(task: Task, trigger: TriggerTaskInput): Promise<Task> {
+    if (task.templateId !== task.id) {
+      return task;
+    }
+
+    const scheduledAt = readScheduledAtFromTrigger(trigger);
+    const occurrence = await options.taskService.createTaskFromTemplate(task.id, {
+      scheduledFor: scheduledAt,
+      triggerSource: trigger.triggerSource,
+    });
+
+    if (!occurrence) {
+      throw new NotFoundError("Task template not found.");
+    }
+
+    return occurrence;
+  }
+
   async function findRun(runId: string): Promise<TaskRun> {
     const run = await options.taskService.getRunById(runId);
 
@@ -259,6 +278,11 @@ export function createTaskExecutionService(options: {
   }
 }
 
+function readScheduledAtFromTrigger(trigger: TriggerTaskInput): string | undefined {
+  const scheduledAt = trigger.metadata?.["scheduledAt"];
+  return typeof scheduledAt === "string" ? scheduledAt : undefined;
+}
+
 function buildRenderedContext(
   task: Task,
   trigger: {
@@ -269,6 +293,7 @@ function buildRenderedContext(
 ): Record<string, unknown> {
   return {
     taskId: task.id,
+    templateId: task.templateId,
     taskTitle: task.title,
     taskDescription: task.description,
     assignedAgentId: task.agentId,
