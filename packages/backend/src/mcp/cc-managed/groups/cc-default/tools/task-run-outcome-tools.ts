@@ -112,7 +112,6 @@ async function executeTool(
 
     return {
       isError: true,
-      structuredContent: { error: { message } },
       content: [{ type: "text", text: message }],
     };
   }

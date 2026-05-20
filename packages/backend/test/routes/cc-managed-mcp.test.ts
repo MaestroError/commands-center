@@ -655,6 +655,54 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
+  it("returns meaningful cc_default tool errors without output schema failures", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService: createTaskExecutionService({ taskService }),
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default");
+      const response = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "set_task_result", arguments: { taskRunId: "missing", resultText: "Done." } },
+        24,
+      );
+
+      expect(response.statusCode).toBe(200);
+      const body = parseSseJson(response.body) as {
+        result?: {
+          isError?: boolean;
+          content?: Array<{ type: string; text: string }>;
+          structuredContent?: unknown;
+        };
+      };
+
+      expect(body.result?.isError).toBe(true);
+      expect(body.result?.structuredContent).toBeUndefined();
+      expect(body.result?.content?.[0]?.text).toContain("Task run not found");
+      expect(response.body).not.toContain("Structured content does not match");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("reports structured validation errors for task management tools", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
