@@ -180,12 +180,16 @@ function filterAppToolsForTaskRun(
     return false;
   });
   const deniedPatterns = new Set<string>();
-  const allowedTaskRunPatterns = new Set<string>();
+  const autoAllowedTaskRunPatterns = new Set<string>();
 
   for (const server of registry) {
     for (const tool of server.catalogTools) {
       if (tool.context === "task_run" || tool.context === "both") {
-        allowedTaskRunPatterns.add(buildCcManagedToolPermissionPattern(server.name, tool.name));
+        if (server.enabledByDefault) {
+          autoAllowedTaskRunPatterns.add(
+            buildCcManagedToolPermissionPattern(server.name, tool.name),
+          );
+        }
         continue;
       }
 
@@ -212,14 +216,18 @@ function filterAppToolsForTaskRun(
       appMcpServers.push({ name: server.name, enabled: true, action: "allow" });
     }
   }
+  const appToolPermissions = (permissions.appToolPermissions ?? []).filter(
+    (rule) => !deniedPatterns.has(rule.pattern),
+  );
+  const existingPatterns = new Set(appToolPermissions.map((rule) => rule.pattern));
 
   return {
     appMcpServers,
     appToolPermissions: [
-      ...(permissions.appToolPermissions ?? []).filter(
-        (rule) => !deniedPatterns.has(rule.pattern) && !allowedTaskRunPatterns.has(rule.pattern),
-      ),
-      ...[...allowedTaskRunPatterns].map((pattern) => ({ pattern, action: "allow" as const })),
+      ...appToolPermissions,
+      ...[...autoAllowedTaskRunPatterns]
+        .filter((pattern) => !existingPatterns.has(pattern))
+        .map((pattern) => ({ pattern, action: "allow" as const })),
       ...[...deniedPatterns].map((pattern) => ({ pattern, action: "deny" as const })),
     ],
     diagnostics,

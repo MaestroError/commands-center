@@ -80,6 +80,48 @@ describe("createTaskPermissionService", () => {
     }
   });
 
+  it("preserves explicit denies for task-run app tools", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const permissionService = createTaskPermissionService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: {} as OpenCodeService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db, {
+        appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "deny" }],
+      });
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Restricted outcome task",
+        triggerMode: "manual",
+      });
+
+      const effective = await permissionService.compute(task);
+
+      expect(effective.appMcpServers).toEqual([
+        { name: "cc_default", enabled: true, action: "allow" },
+      ]);
+      expect(effective.appToolPermissions).toContainEqual({
+        pattern: "cc_default_set_task_result",
+        action: "deny",
+      });
+      expect(
+        effective.appToolPermissions?.filter(
+          (rule) => rule.pattern === "cc_default_set_task_result" && rule.action === "allow",
+        ),
+      ).toEqual([]);
+      expect(effective.appToolPermissions).toContainEqual({
+        pattern: "cc_default_add_task_artifact",
+        action: "allow",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("builds OpenCode session rules from effective permissions", () => {
     const rules = buildOpenCodeSessionPermissions({
       mcpServers: [
