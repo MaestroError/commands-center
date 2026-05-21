@@ -212,6 +212,9 @@ db/
 - All tables use ULIDs as primary keys (not auto-increment) for portability
 - Critical tables (conversations, audit logs) are append-only
 - Every schema change produces a migration via `drizzle-kit generate`
+- Do not manually add migration SQL without also updating Drizzle metadata snapshots and `_journal.json`
+- If `drizzle-kit generate` repeats old changes, stop and fix stale migration metadata instead of committing the duplicate migration
+- For Drizzle rename prompts, choose rename only when the same persisted data moved to a new column name; otherwise choose create/drop
 - Migrations are committed to version control
 - Never modify a migration that has been applied — create a new one
 - The `client.ts` must switch drivers based on `DATABASE_URL`:
@@ -403,9 +406,11 @@ Two reference repositories are cloned in `examples/` (gitignored). Use these for
 1. Modify the schema file in `packages/backend/src/db/schema/`
 2. Run `pnpm --filter @cc/backend db:generate`
 3. Review the generated migration SQL
-4. Test the migration against both PostgreSQL and SQLite
-5. Commit the schema change and migration together
-6. Never edit a migration that has been applied to any environment
+4. Check that the generated migration does not repeat old migration changes; repeated changes mean Drizzle metadata snapshots are stale
+5. If a manual migration is required, update the matching Drizzle snapshot metadata and `_journal.json` in the same change
+6. Test the migration against both PostgreSQL and SQLite
+7. Commit the schema change, migration SQL, and migration metadata together
+8. Never edit a migration that has been applied to any environment
 
 ### Updating Documentation
 

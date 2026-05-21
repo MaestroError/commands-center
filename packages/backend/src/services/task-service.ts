@@ -776,45 +776,46 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return updated;
     },
 
-    async addRunArtifact(
+    addRunArtifact(
       taskRunId: string,
       agentId: string,
       artifact: TaskRunArtifact,
     ): Promise<TaskRun> {
       const parsed = addTaskRunArtifactInputSchema.parse({ taskRunId, artifact });
 
-      return options.db.transaction(async (tx) => {
-        const run = await tx.query.task_runs.findFirst({
-          where: (table, operators) => operators.eq(table.id, parsed.taskRunId),
-        });
+      return Promise.resolve(
+        options.db.transaction((tx) => {
+          const run = tx.select().from(task_runs).where(eq(task_runs.id, parsed.taskRunId)).get();
 
-        if (!run) {
-          throw new NotFoundError("Task run not found.");
-        }
+          if (!run) {
+            throw new NotFoundError("Task run not found.");
+          }
 
-        if (run.agent_id !== agentId) {
-          throw new BadRequestError("Task run agent must match the calling agent.");
-        }
+          if (run.agent_id !== agentId) {
+            throw new BadRequestError("Task run agent must match the calling agent.");
+          }
 
-        if (run.status !== "running") {
-          throw new ConflictError("Only running task runs can be updated by an agent.");
-        }
+          if (run.status !== "running") {
+            throw new ConflictError("Only running task runs can be updated by an agent.");
+          }
 
-        const [updated] = await tx
-          .update(task_runs)
-          .set({
-            artifacts_json: JSON.stringify([...mapTaskRun(run).artifacts, parsed.artifact]),
-            updated_at: now(),
-          })
-          .where(eq(task_runs.id, parsed.taskRunId))
-          .returning();
+          const updated = tx
+            .update(task_runs)
+            .set({
+              artifacts_json: JSON.stringify([...mapTaskRun(run).artifacts, parsed.artifact]),
+              updated_at: now(),
+            })
+            .where(eq(task_runs.id, parsed.taskRunId))
+            .returning()
+            .get();
 
-        if (!updated) {
-          throw new NotFoundError("Task run not found.");
-        }
+          if (!updated) {
+            throw new NotFoundError("Task run not found.");
+          }
 
-        return mapTaskRun(updated);
-      });
+          return mapTaskRun(updated);
+        }),
+      );
     },
 
     async markRunNeedsHumanReview(
