@@ -782,16 +782,39 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       artifact: TaskRunArtifact,
     ): Promise<TaskRun> {
       const parsed = addTaskRunArtifactInputSchema.parse({ taskRunId, artifact });
-      const run = await requireWritableRun(parsed.taskRunId, agentId);
-      const updated = await this.updateRun(parsed.taskRunId, {
-        artifacts: [...run.artifacts, parsed.artifact],
+
+      return options.db.transaction(async (tx) => {
+        const run = await tx.query.task_runs.findFirst({
+          where: (table, operators) => operators.eq(table.id, parsed.taskRunId),
+        });
+
+        if (!run) {
+          throw new NotFoundError("Task run not found.");
+        }
+
+        if (run.agent_id !== agentId) {
+          throw new BadRequestError("Task run agent must match the calling agent.");
+        }
+
+        if (run.status !== "running") {
+          throw new ConflictError("Only running task runs can be updated by an agent.");
+        }
+
+        const [updated] = await tx
+          .update(task_runs)
+          .set({
+            artifacts_json: JSON.stringify([...mapTaskRun(run).artifacts, parsed.artifact]),
+            updated_at: now(),
+          })
+          .where(eq(task_runs.id, parsed.taskRunId))
+          .returning();
+
+        if (!updated) {
+          throw new NotFoundError("Task run not found.");
+        }
+
+        return mapTaskRun(updated);
       });
-
-      if (!updated) {
-        throw new NotFoundError("Task run not found.");
-      }
-
-      return updated;
     },
 
     async markRunNeedsHumanReview(

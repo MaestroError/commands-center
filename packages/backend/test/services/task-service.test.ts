@@ -350,6 +350,47 @@ describe("createTaskService", () => {
     }
   });
 
+  it("preserves parallel artifact appends", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Collect artifacts",
+        triggerMode: "manual",
+      });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Do the task.",
+      });
+
+      await Promise.all([
+        service.addRunArtifact(run.id, agent.id, {
+          title: "First artifact",
+          path: ".cc/artifacts/first.md",
+        }),
+        service.addRunArtifact(run.id, agent.id, {
+          title: "Second artifact",
+          path: ".cc/artifacts/second.md",
+        }),
+      ]);
+
+      const updated = await service.getRun(task.id, run.id);
+
+      expect(updated?.artifacts).toEqual([
+        { title: "First artifact", path: ".cc/artifacts/first.md" },
+        { title: "Second artifact", path: ".cc/artifacts/second.md" },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("rejects outcome updates for the wrong agent or non-running runs", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
