@@ -203,6 +203,7 @@ export const taskTemplateSchema = taskSchema.extend({
 export const taskTemplateListSchema = z.array(taskTemplateSchema);
 
 export const createTaskRunInputSchema = z.object({
+  id: z.string().trim().min(1).optional(),
   taskId: z.string().trim().min(1),
   agentId: z.string().trim().min(1),
   status: taskRunStatusSchema.default("queued"),

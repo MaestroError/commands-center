@@ -22,20 +22,19 @@ type ToolResult = {
 export const setTaskResultToolMetadata = {
   name: "set_task_result",
   description:
-    "Set the explicit agent-authored result text for the active CommandsCenter task run.",
+    "Set the explicit result text for the active task, which simply describes the final outcome.",
   context: "task_run",
 } as const;
 
 export const addTaskArtifactToolMetadata = {
   name: "add_task_artifact",
-  description:
-    "Attach a generated file, URL, or other artifact to the active CommandsCenter task run.",
+  description: "Attach a generated file, URL, or other artifact to the active task.",
   context: "task_run",
 } as const;
 
 export const markNeedsHumanReviewToolMetadata = {
   name: "mark_needs_human_review",
-  description: "Mark the active CommandsCenter task run as requiring user review or follow-up.",
+  description: "Mark the active task as requiring user review or follow-up.",
   context: "task_run",
 } as const;
 

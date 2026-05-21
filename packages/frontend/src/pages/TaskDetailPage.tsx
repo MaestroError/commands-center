@@ -363,6 +363,16 @@ function TaskRunSessionTab(props: {
           label="Summary"
           value={props.run.finalMessage ?? props.run.errorMessage ?? "No summary"}
         />
+        <Metric label="Result" value={props.run.resultText ?? "No result text set."} />
+        <Metric
+          label="Human review"
+          value={
+            props.run.needsHumanReview
+              ? (props.run.humanReviewReason ?? "Required")
+              : "Not required"
+          }
+        />
+        <JsonBlock label="Artifacts" value={props.run.artifacts} />
         <Metric label="Messages" value={String(messageCount)} />
         {props.diagnostics.length ? (
           <JsonBlock label="Session diagnostics" value={props.diagnostics} />
@@ -405,6 +415,14 @@ function TaskRunDetailsTab(props: {
         code
       />
       <JsonBlock label="Rendered context" value={props.run.renderedContext} />
+      <TextBlock label="Result text" value={props.run.resultText ?? "No result text set."} />
+      <JsonBlock label="Artifacts" value={props.run.artifacts} />
+      <Metric
+        label="Human review"
+        value={
+          props.run.needsHumanReview ? (props.run.humanReviewReason ?? "Required") : "Not required"
+        }
+      />
       <JsonBlock label="Result" value={props.run.result} />
       <JsonBlock label="Effective permissions" value={props.run.effectivePermissions} />
       {props.diagnostics.length ? (

@@ -656,7 +656,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const [row] = await options.db
         .insert(task_runs)
         .values({
-          id: createId(),
+          id: parsed.id ?? createId(),
           task_id: parsed.taskId,
           agent_id: parsed.agentId,
           opencode_session_id: parsed.opencodeSessionId ?? null,

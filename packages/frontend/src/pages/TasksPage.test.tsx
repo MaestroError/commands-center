@@ -67,8 +67,16 @@ const run: TaskRun = {
   renderedContext: { taskTitle: "Ship release" },
   effectivePermissions: { toolPermissions: [{ pattern: "bash_*", action: "allow" }] },
   finalMessage: "Done.",
-  artifacts: [],
-  needsHumanReview: false,
+  resultText: "Saved all 24 available tools to `tools-23.md`.",
+  artifacts: [
+    {
+      title: "Tool list",
+      path: "tools-23.md",
+      description: "Generated tool inventory.",
+    },
+  ],
+  needsHumanReview: true,
+  humanReviewReason: "Confirm the generated tool list is complete.",
   result: { messageCount: 2 },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -476,6 +484,9 @@ describe("TaskDetailPage", () => {
 
     await screen.findByRole("tab", { name: "Session" });
     expect(screen.getByText("session-1")).toBeInTheDocument();
+    expect(screen.getByText("Saved all 24 available tools to `tools-23.md`.")).toBeInTheDocument();
+    expect(screen.getByText("Confirm the generated tool list is complete.")).toBeInTheDocument();
+    expect(screen.getByText(/"path": "tools-23.md"/)).toBeInTheDocument();
     expect(screen.queryByText("Rendered prompt")).not.toBeInTheDocument();
   });
 
@@ -488,6 +499,9 @@ describe("TaskDetailPage", () => {
     await user.click(await screen.findByRole("tab", { name: "Details" }));
 
     expect(screen.getByText("Rendered prompt")).toBeInTheDocument();
+    expect(screen.getByText("Result text")).toBeInTheDocument();
+    expect(screen.getAllByText("Artifacts").length).toBeGreaterThan(0);
+    expect(screen.getByText("Human review")).toBeInTheDocument();
     expect(screen.getByText("session-1")).toBeInTheDocument();
     expect(screen.getByText(/bash_/)).toBeInTheDocument();
   });
