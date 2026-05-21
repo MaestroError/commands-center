@@ -334,6 +334,40 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("records skipped runs for disabled scheduled templates", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const executionService = createTaskExecutionService({ taskService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await taskService.create({
+        agentId: agent.id,
+        title: "Disabled scheduled template",
+        triggerMode: "recurring",
+        enabled: false,
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "day", interval: 1 },
+        },
+      });
+
+      await expect(
+        executionService.trigger(template.id, { triggerSource: "scheduled" }),
+      ).rejects.toThrow("Task is not enabled and was skipped.");
+
+      const runs = await taskService.listRuns(template.id);
+
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.status).toBe("skipped");
+      expect(runs[0]?.taskId).toBe(template.id);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("cancels queued task runs", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

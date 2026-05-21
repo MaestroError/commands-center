@@ -646,7 +646,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
     async createRun(input: CreateTaskRunInput): Promise<TaskRun> {
       const parsed = createTaskRunInputSchema.parse(input);
-      const task = await requireTask(parsed.taskId, { includeArchived: true });
+      const task = await requireTask(parsed.taskId, {
+        includeArchived: true,
+        includeTemplateProxy: true,
+      });
 
       if (task.agent_id !== parsed.agentId) {
         throw new BadRequestError("Task run agent must match the task agent.");
@@ -909,7 +912,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
   async function requireTask(
     id: string,
-    options?: { includeArchived?: boolean },
+    options?: { includeArchived?: boolean; includeTemplateProxy?: boolean },
   ): Promise<typeof tasks.$inferSelect> {
     const row = await getTaskRow(id, options);
 
@@ -935,19 +938,21 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
   async function getTaskRow(
     id: string,
-    getOptions?: { includeArchived?: boolean },
+    getOptions?: { includeArchived?: boolean; includeTemplateProxy?: boolean },
   ): Promise<typeof tasks.$inferSelect | undefined> {
     return options.db.query.tasks.findFirst({
       where: (table, operators) => {
         const filters = [operators.eq(table.id, id), operators.isNull(table.deleted_at)];
 
-        const nonTemplateProxyFilter = operators.or(
-          operators.isNull(table.template_id),
-          operators.ne(table.template_id, id),
-        );
+        if (!getOptions?.includeTemplateProxy) {
+          const nonTemplateProxyFilter = operators.or(
+            operators.isNull(table.template_id),
+            operators.ne(table.template_id, id),
+          );
 
-        if (nonTemplateProxyFilter) {
-          filters.push(nonTemplateProxyFilter);
+          if (nonTemplateProxyFilter) {
+            filters.push(nonTemplateProxyFilter);
+          }
         }
 
         if (!getOptions?.includeArchived) {
