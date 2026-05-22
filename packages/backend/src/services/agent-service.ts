@@ -299,15 +299,18 @@ export function createAgentService(options: {
           ).values(),
         ),
         mcpServers: mcpRows,
-        appMcpServers: listCcManagedMcpServers(appMcpRegistry).map((server) => ({
-          name: server.name,
-          enabledByDefault: server.enabledByDefault,
-          description: server.description,
-          tools: server.catalogTools.map((tool) => ({
-            name: tool.name,
-            description: tool.description,
+        appMcpServers: listCcManagedMcpServers(appMcpRegistry)
+          .filter((server) => !server.systemManaged)
+          .map((server) => ({
+            name: server.name,
+            enabledByDefault: server.enabledByDefault,
+            description: server.description,
+            tools: server.catalogTools.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              context: tool.context,
+            })),
           })),
-        })),
         customTools: toolRows.map((tool) => ({
           slug: tool.slug,
           name: tool.name,

@@ -19,7 +19,7 @@ export function createCcManagedMcpToolAccessService() {
     listEnabledTools(
       capabilities: AgentCapabilitySelection,
       server: CcManagedMcpServerDefinition,
-      context: "chat" | "task_run" = "chat",
+      context?: "chat" | "task_run",
     ): readonly CcManagedToolDefinition[] {
       if (!this.isServerEnabled(capabilities, server)) {
         return [];
@@ -27,7 +27,7 @@ export function createCcManagedMcpToolAccessService() {
 
       return server.tools.filter(
         (tool) =>
-          isToolAvailableInContext(tool, context) &&
+          (context === undefined || isToolAvailableInContext(tool, context)) &&
           this.getToolAction(capabilities, server.name, tool.name) !== "deny",
       );
     },

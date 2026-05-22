@@ -7,6 +7,11 @@ import type { AgentCapabilitySelection, BuiltInSkill } from "../schemas/agents.j
 
 const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const TASK_RUN_TOOL_PERMISSION_DENIES = {
+  cc_default_set_task_result: "deny",
+  cc_default_add_task_artifact: "deny",
+  cc_default_mark_needs_human_review: "deny",
+} as const;
 
 const permissionActionSchema = z.enum(["allow", "ask", "deny"]);
 const permissionRuleSchema = z.record(z.string().min(1), permissionActionSchema);
@@ -177,10 +182,11 @@ export function renderOpenCodeWorkspace(input: OpenCodeWorkspaceInput): {
       ...(input.appMcpEntries ?? {}),
     },
     permission: {
+      ...TASK_RUN_TOOL_PERMISSION_DENIES,
       ...Object.fromEntries([
-        ...(input.capabilities.mcpServers ?? []).map(
-          (server) => [`${server.name}_*`, server.action] as const,
-        ),
+        ...(input.capabilities.mcpServers ?? [])
+          .filter((server) => server.enabled !== false)
+          .map((server) => [`${server.name}_*`, server.action] as const),
         ...(input.capabilities.toolPermissions ?? []).map(
           (rule) => [rule.pattern, rule.action] as const,
         ),

@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const permissionActionSchema = z.enum(["allow", "ask", "deny"]);
+export const agentMcpOverrideSchema = z.enum(["none", "allow", "ask", "disabled"]);
+export const appMcpToolContextSchema = z.enum(["chat", "task_run", "both"]);
 
 export const builtInSkillSchema = z.object({
   name: z.string().min(1),
@@ -42,6 +44,7 @@ export const agentCatalogSchema = z.object({
           z.object({
             name: z.string().min(1),
             description: z.string().min(1),
+            context: appMcpToolContextSchema,
           }),
         )
         .default([]),
@@ -125,6 +128,7 @@ export const workspaceSkillListSchema = z.array(workspaceSkillSchema);
 
 export type Agent = z.infer<typeof agentSchema>;
 export type AgentCatalog = z.infer<typeof agentCatalogSchema>;
+export type AgentMcpOverride = z.infer<typeof agentMcpOverrideSchema>;
 export type AgentCapabilitySelection = z.input<typeof agentCapabilitySelectionSchema>;
 export type BuiltInSkill = z.infer<typeof builtInSkillSchema>;
 export type WorkspaceSkill = z.infer<typeof workspaceSkillSchema>;

@@ -240,11 +240,13 @@ describe("createAgentService", () => {
               name: "add_secret",
               description:
                 "Ask the CommandsCenter operator to securely enter a workspace secret while the agent waits.",
+              context: "chat",
             },
             {
               name: "show_file_to_user",
               description:
                 "Open a file from this agent workspace in the CommandsCenter operator's preview tab while the agent waits. Accepts either an agent-relative path or an absolute path inside this agent workspace.",
+              context: "chat",
             },
           ],
         },
@@ -258,11 +260,13 @@ describe("createAgentService", () => {
               name: "create_custom_tool",
               description:
                 "Create a blank CommandsCenter custom tool and return the folder path the agent should edit.",
+              context: "chat",
             },
             {
               name: "copy_custom_tool_to_agent",
               description:
                 "Copy a global CommandsCenter custom tool into an agent workspace, asking the operator when overwrite or rename is needed.",
+              context: "chat",
             },
           ],
         },
@@ -275,36 +279,44 @@ describe("createAgentService", () => {
               name: "create_task",
               description:
                 "Create a CommandsCenter task for the calling agent after operator confirmation.",
+              context: "chat",
             },
             {
               name: "list_tasks",
               description: "List CommandsCenter tasks visible in this workspace.",
+              context: "chat",
             },
             {
               name: "get_task",
               description: "Read a CommandsCenter task by id.",
+              context: "chat",
             },
             {
               name: "trigger_task",
               description:
                 "Manually trigger an existing CommandsCenter task after operator confirmation.",
+              context: "chat",
             },
             {
               name: "schedule_one_time_task",
               description:
                 "Create a one-time scheduled CommandsCenter task after operator confirmation.",
+              context: "chat",
             },
             {
               name: "list_task_runs",
               description: "List recent runs for a CommandsCenter task.",
+              context: "chat",
             },
             {
               name: "get_task_run",
               description: "Read a CommandsCenter task run by task id and run id.",
+              context: "chat",
             },
             {
               name: "list_recurring_task_history",
               description: "Inspect recent run history for a recurring CommandsCenter task.",
+              context: "chat",
             },
           ],
         },

@@ -18,6 +18,7 @@ import {
   type SendConversationPromptInput,
   type SendConversationShellInput,
 } from "../schemas/conversations.js";
+import { agentCapabilitySelectionSchema } from "@cc/shared/schemas";
 
 import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
@@ -25,8 +26,19 @@ import { type agents, conversations, messages } from "../db/schema/index.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
 import { cleanTitle, extractMediaItems, mapRemoteMessage } from "../lib/message-mapper.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
-import { resolveAgentWorkspacePath } from "./agent-workspace.js";
+import {
+  getBuiltInSkillRoot,
+  getWorkspaceSkillRoot,
+  resolveAgentWorkspacePath,
+} from "./agent-workspace.js";
 import type { OpenCodeService, OpenCodeSessionPermissionRule } from "./opencode-service.js";
+import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
+import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
+import { createCustomToolService } from "./custom-tool-service.js";
+import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-registry.js";
+import { createCcManagedMcpToolAccessService } from "../mcp/cc-managed/tool-access-service.js";
+import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/workspace-entry-service.js";
+import { writeOpenCodeWorkspace } from "../opencode/workspace-contract.js";
 
 type AgentRow = typeof agents.$inferSelect;
 type AgentRuntimeRow = AgentRow & { workspace_path: string };
@@ -52,6 +64,21 @@ export function createConversationService(options: {
   config: RuntimeConfig;
   opencodeService: OpenCodeService;
 }) {
+  const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
+    config: options.config,
+    authTokenService: createCcManagedMcpAuthTokenService({
+      authStateStore: createCcManagedMcpAuthStateStore(options.config),
+    }),
+    toolAccessService: createCcManagedMcpToolAccessService(),
+    registry: createCcManagedMcpServerRegistry({
+      customToolService: createCustomToolService({
+        db: options.db,
+        config: options.config,
+        opencodeService: options.opencodeService,
+      }),
+    }),
+  });
+
   return {
     async resolveCurrent(agentId: string): Promise<ConversationSnapshot> {
       const agent = await getAgent(agentId);
@@ -109,6 +136,7 @@ export function createConversationService(options: {
       permission?: OpenCodeSessionPermissionRule[];
     }): Promise<ConversationDetail> {
       const agent = await getAgent(input.agentId);
+      await enableTaskRunAppMcpEntries(agent, input.permission ?? []);
       const conversation = await createConversation(agent, {
         source: "task_run",
         title: input.title,
@@ -432,10 +460,22 @@ export function createConversationService(options: {
     taskId: string,
     taskRunId: string,
   ): Promise<ConversationRow | undefined> {
-    return options.db.query.conversations.findFirst({
+    const exact = await options.db.query.conversations.findFirst({
       where: (table, operators) =>
         operators.and(
           operators.eq(table.task_id, taskId),
+          operators.eq(table.task_run_id, taskRunId),
+          operators.eq(table.status, "active"),
+        ),
+    });
+
+    if (exact) {
+      return exact;
+    }
+
+    return options.db.query.conversations.findFirst({
+      where: (table, operators) =>
+        operators.and(
           operators.eq(table.task_run_id, taskRunId),
           operators.eq(table.status, "active"),
         ),
@@ -635,6 +675,40 @@ export function createConversationService(options: {
       createdAt: conversation.created_at.toISOString(),
       updatedAt: conversation.updated_at.toISOString(),
       convertedAt: conversation.converted_at?.toISOString(),
+    });
+  }
+
+  async function enableTaskRunAppMcpEntries(
+    agent: AgentRuntimeRow,
+    permission: OpenCodeSessionPermissionRule[],
+  ): Promise<void> {
+    const enabledServerNames = permission.flatMap((rule) =>
+      rule.permission.endsWith("_*") ? [rule.permission.slice(0, -2)] : [],
+    );
+
+    if (enabledServerNames.length === 0) {
+      return;
+    }
+
+    const capabilities = agentCapabilitySelectionSchema.parse(JSON.parse(agent.capabilities_json));
+    const appMcpEntries = await appMcpWorkspaceEntryService.buildEntriesWithOverrides({
+      slug: agent.slug,
+      capabilities,
+      enabledServerNames,
+    });
+
+    await writeOpenCodeWorkspace({
+      workspacePath: agent.workspace_path,
+      input: {
+        name: agent.name,
+        role: agent.role,
+        instructions: agent.instructions,
+        defaultModel: agent.default_model,
+        capabilities,
+        appMcpEntries,
+      },
+      skillRoot: getBuiltInSkillRoot(options.config),
+      workspaceSkillRoot: getWorkspaceSkillRoot(options.config),
     });
   }
 }

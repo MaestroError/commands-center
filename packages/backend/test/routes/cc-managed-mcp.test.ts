@@ -395,6 +395,314 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
+  it("serves every task management tool against the refactored task model", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_tasks_management");
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Manual MCP task",
+        description: "Run from MCP.",
+        triggerMode: "manual",
+      });
+      const recurring = await taskService.create({
+        agentId: agent.id,
+        title: "Recurring MCP task",
+        description: "Keep history.",
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "day", interval: 1 },
+        },
+      });
+
+      const listToolsResponse = await callMcpToolRoute(server, authHeader, "tools/list", {}, 6);
+
+      for (const toolName of [
+        "create_task",
+        "list_tasks",
+        "get_task",
+        "trigger_task",
+        "schedule_one_time_task",
+        "list_task_runs",
+        "get_task_run",
+        "list_recurring_task_history",
+      ]) {
+        expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
+      }
+
+      const scheduledResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        {
+          name: "schedule_one_time_task",
+          arguments: {
+            title: "One-time MCP task",
+            description: "Run once later.",
+            runAt: "2026-06-10T12:00:00.000Z",
+          },
+        },
+        7,
+      );
+      const listedResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "list_tasks", arguments: { agentId: agent.id } },
+        8,
+      );
+      const getTaskResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "get_task", arguments: { taskId: task.id } },
+        9,
+      );
+      const triggerResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "trigger_task", arguments: { taskId: task.id } },
+        10,
+      );
+
+      const triggerJson = parseSseJson(triggerResponse.body) as {
+        result?: { structuredContent?: { id?: string } };
+      };
+      const runId = triggerJson.result?.structuredContent?.id;
+
+      if (!runId) {
+        throw new Error("Expected trigger_task to return a run id.");
+      }
+
+      const listRunsResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "list_task_runs", arguments: { taskId: task.id } },
+        11,
+      );
+      const getRunResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "get_task_run", arguments: { taskId: task.id, runId } },
+        12,
+      );
+
+      await taskExecutionService.trigger(recurring.id, {
+        triggerSource: "scheduled",
+        metadata: { scheduledAt: "2026-06-02T09:00:00.000Z" },
+      });
+      const historyResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "list_recurring_task_history", arguments: { taskId: recurring.id, limit: 5 } },
+        13,
+      );
+
+      expect(scheduledResponse.statusCode).toBe(200);
+      expect(parseSseJson(scheduledResponse.body)).toMatchObject({
+        result: {
+          structuredContent: { title: "One-time MCP task", triggerMode: "scheduled_once" },
+        },
+      });
+      expect(parseSseJson(listedResponse.body)).toMatchObject({
+        result: { structuredContent: { tasks: expect.any(Array) } },
+      });
+      expect(parseSseJson(getTaskResponse.body)).toMatchObject({
+        result: { structuredContent: { id: task.id, title: "Manual MCP task" } },
+      });
+      expect(parseSseJson(listRunsResponse.body)).toMatchObject({
+        result: { structuredContent: { runs: [expect.objectContaining({ id: runId })] } },
+      });
+      expect(parseSseJson(getRunResponse.body)).toMatchObject({
+        result: { structuredContent: { id: runId, taskId: task.id } },
+      });
+      expect(parseSseJson(historyResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            task: { id: recurring.id, triggerMode: "recurring" },
+            runs: [expect.objectContaining({ triggerSource: "scheduled" })],
+          },
+        },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("serves cc_default task-run outcome tools", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService: createTaskExecutionService({ taskService }),
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default");
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Outcome task",
+        description: "Capture results.",
+        triggerMode: "manual",
+      });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Do the task.",
+      });
+
+      const listToolsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/list",
+        {},
+        20,
+      );
+      const resultResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "set_task_result", arguments: { taskRunId: run.id, resultText: "Done." } },
+        21,
+      );
+      const artifactResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        {
+          name: "add_task_artifact",
+          arguments: {
+            taskRunId: run.id,
+            artifact: { title: "Report", path: ".cc/artifacts/report.md" },
+          },
+        },
+        22,
+      );
+      const reviewResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        {
+          name: "mark_needs_human_review",
+          arguments: { taskRunId: run.id, reason: "Approve before publishing." },
+        },
+        23,
+      );
+
+      expect(listToolsResponse.body).toContain('"name":"set_task_result"');
+      expect(listToolsResponse.body).toContain('"name":"add_task_artifact"');
+      expect(listToolsResponse.body).toContain('"name":"mark_needs_human_review"');
+      expect(parseSseJson(resultResponse.body)).toMatchObject({
+        result: { structuredContent: { resultText: "Done." } },
+      });
+      expect(parseSseJson(artifactResponse.body)).toMatchObject({
+        result: { structuredContent: { artifacts: [{ title: "Report" }] } },
+      });
+      expect(parseSseJson(reviewResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            needsHumanReview: true,
+            humanReviewReason: "Approve before publishing.",
+          },
+        },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns meaningful cc_default tool errors without output schema failures", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService: createTaskExecutionService({ taskService }),
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default");
+      const response = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "set_task_result", arguments: { taskRunId: "missing", resultText: "Done." } },
+        24,
+      );
+
+      expect(response.statusCode).toBe(200);
+      const body = parseSseJson(response.body) as {
+        result?: {
+          isError?: boolean;
+          content?: Array<{ type: string; text: string }>;
+          structuredContent?: unknown;
+        };
+      };
+
+      expect(body.result?.isError).toBe(true);
+      expect(body.result?.structuredContent).toBeUndefined();
+      expect(body.result?.content?.[0]?.text).toContain("Task run not found");
+      expect(response.body).not.toContain("Structured content does not match");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("reports structured validation errors for task management tools", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -525,9 +833,29 @@ async function callMcpToolRouteForAgent(
   params: Record<string, unknown>,
   id: number,
 ) {
+  return callMcpToolRouteForServer(
+    server,
+    agentSlug,
+    "cc-tasks-management",
+    authHeader,
+    method,
+    params,
+    id,
+  );
+}
+
+async function callMcpToolRouteForServer(
+  server: InjectServer,
+  agentSlug: string,
+  routeSegment: string,
+  authHeader: string,
+  method: string,
+  params: Record<string, unknown>,
+  id: number,
+) {
   return server.inject({
     method: "POST",
-    url: `/api/mcp/cc/cc-tasks-management/agents/${agentSlug}`,
+    url: `/api/mcp/cc/${routeSegment}/agents/${agentSlug}`,
     headers: {
       Authorization: authHeader,
       Accept: "application/json, text/event-stream",

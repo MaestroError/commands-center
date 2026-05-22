@@ -57,11 +57,17 @@ describe("createTaskPermissionService", () => {
 
       const effective = await permissionService.compute(task);
 
-      expect(effective.appMcpServers).toEqual([]);
+      expect(effective.appMcpServers).toEqual([
+        { name: "cc_default", enabled: true, action: "allow" },
+      ]);
       expect(effective.toolPermissions).toEqual([{ pattern: "bash_*", action: "allow" }]);
       expect(effective.appToolPermissions).toContainEqual({
         pattern: "cc_app_show_file_to_user",
         action: "deny",
+      });
+      expect(effective.appToolPermissions).toContainEqual({
+        pattern: "cc_default_set_task_result",
+        action: "allow",
       });
       expect(effective.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
         "chat_only_tool_hidden_from_task_run",
@@ -74,9 +80,54 @@ describe("createTaskPermissionService", () => {
     }
   });
 
+  it("preserves explicit denies for task-run app tools", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const permissionService = createTaskPermissionService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: {} as OpenCodeService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db, {
+        appToolPermissions: [{ pattern: "cc_default_set_task_result", action: "deny" }],
+      });
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Restricted outcome task",
+        triggerMode: "manual",
+      });
+
+      const effective = await permissionService.compute(task);
+
+      expect(effective.appMcpServers).toEqual([
+        { name: "cc_default", enabled: true, action: "allow" },
+      ]);
+      expect(effective.appToolPermissions).toContainEqual({
+        pattern: "cc_default_set_task_result",
+        action: "deny",
+      });
+      expect(
+        effective.appToolPermissions?.filter(
+          (rule) => rule.pattern === "cc_default_set_task_result" && rule.action === "allow",
+        ),
+      ).toEqual([]);
+      expect(effective.appToolPermissions).toContainEqual({
+        pattern: "cc_default_add_task_artifact",
+        action: "allow",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("builds OpenCode session rules from effective permissions", () => {
     const rules = buildOpenCodeSessionPermissions({
-      mcpServers: [{ name: "github", enabled: true, action: "allow" }],
+      mcpServers: [
+        { name: "github", enabled: true, action: "allow" },
+        { name: "jira", enabled: false, action: "deny" },
+      ],
       toolPermissions: [{ pattern: "bash_*", action: "deny" }],
       appToolPermissions: [{ pattern: "cc_app_add_secret", action: "deny" }],
     });

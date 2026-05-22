@@ -297,9 +297,9 @@ function TaskCard(props: {
         />
       </div>
 
-      {task.latestResultSummary ? (
+      {task.latestFinalMessage ? (
         <p className="rounded-lg border border-border bg-surface p-3 text-sm leading-6 text-text-secondary">
-          {task.latestResultSummary}
+          {task.latestFinalMessage}
         </p>
       ) : null}
 
