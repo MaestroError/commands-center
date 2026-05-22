@@ -500,17 +500,41 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const timestamp = now();
 
       if (existingTemplate) {
-        const [row] = await options.db
-          .update(task_templates)
-          .set({
-            enabled: false,
-            updated_at: timestamp,
-            deleted_at: timestamp,
-          })
-          .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
-          .returning({ id: task_templates.id });
+        return Promise.resolve(
+          options.db.transaction((tx) => {
+            const row = tx
+              .update(task_templates)
+              .set({
+                enabled: false,
+                updated_at: timestamp,
+                deleted_at: timestamp,
+              })
+              .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
+              .returning({ id: task_templates.id })
+              .get();
 
-        return row !== undefined;
+            if (!row) {
+              return false;
+            }
+
+            const proxy = tx
+              .update(tasks)
+              .set({
+                enabled: false,
+                updated_at: timestamp,
+                deleted_at: timestamp,
+              })
+              .where(and(eq(tasks.id, id), eq(tasks.template_id, id), isNull(tasks.deleted_at)))
+              .returning({ id: tasks.id })
+              .get();
+
+            if (!proxy) {
+              throw new Error("Failed to delete task template proxy record.");
+            }
+
+            return true;
+          }),
+        );
       }
 
       const [row] = await options.db

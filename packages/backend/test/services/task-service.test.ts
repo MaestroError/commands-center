@@ -219,6 +219,36 @@ describe("createTaskService", () => {
     }
   });
 
+  it("removes deleted task templates from the configured max task limit", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({
+      db: testDb.client.db,
+      config: { ...testDb.config, tasks: { maxTasks: 1 } },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.create({
+        agentId: agent.id,
+        title: "Weekly report",
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+
+      await service.delete(template.id);
+      await expect(
+        service.create({ agentId: agent.id, title: "Replacement", triggerMode: "manual" }),
+      ).resolves.toMatchObject({ title: "Replacement" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("creates, updates, lists, and retrieves task run metadata", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
