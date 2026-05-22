@@ -278,33 +278,68 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         : parseTaskTodos(source.todos_json);
 
       if (existingTemplate) {
-        const [row] = await options.db
-          .update(task_templates)
-          .set({
-            agent_id: parsed.agentId ?? existingTemplate.agent_id,
-            title: parsed.title ?? existingTemplate.title,
-            description: parsed.description ?? existingTemplate.description,
-            todos_json: JSON.stringify(todos),
-            status,
-            trigger_mode: triggerMode,
-            schedule_json: JSON.stringify(schedule),
-            permission_profile_json:
-              parsed.permissionProfile === undefined
-                ? existingTemplate.permission_profile_json
-                : stringifyOptional(parsed.permissionProfile),
-            enabled,
-            archived,
-            updated_at: timestamp,
-            archived_at: archived ? (existingTemplate.archived_at ?? timestamp) : null,
-          })
-          .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
-          .returning();
+        const nextAgentId = parsed.agentId ?? existingTemplate.agent_id;
+        const nextTitle = parsed.title ?? existingTemplate.title;
+        const nextDescription = parsed.description ?? existingTemplate.description;
+        const nextPermissionProfileJson =
+          parsed.permissionProfile === undefined
+            ? existingTemplate.permission_profile_json
+            : stringifyOptional(parsed.permissionProfile);
+        const nextArchivedAt = archived ? (existingTemplate.archived_at ?? timestamp) : null;
 
-        if (!row) {
-          throw new Error("Failed to update task template record.");
-        }
+        return Promise.resolve(
+          options.db.transaction((tx) => {
+            const row = tx
+              .update(task_templates)
+              .set({
+                agent_id: nextAgentId,
+                title: nextTitle,
+                description: nextDescription,
+                todos_json: JSON.stringify(todos),
+                status,
+                trigger_mode: triggerMode,
+                schedule_json: JSON.stringify(schedule),
+                permission_profile_json: nextPermissionProfileJson,
+                enabled,
+                archived,
+                updated_at: timestamp,
+                archived_at: nextArchivedAt,
+              })
+              .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
+              .returning()
+              .get();
 
-        return mapTemplateAsTask(row);
+            if (!row) {
+              throw new Error("Failed to update task template record.");
+            }
+
+            const proxy = tx
+              .update(tasks)
+              .set({
+                agent_id: nextAgentId,
+                title: nextTitle,
+                description: nextDescription,
+                todos_json: JSON.stringify(todos),
+                status,
+                trigger_mode: triggerMode,
+                schedule_json: JSON.stringify(schedule),
+                permission_profile_json: nextPermissionProfileJson,
+                enabled,
+                archived,
+                updated_at: timestamp,
+                archived_at: nextArchivedAt,
+              })
+              .where(and(eq(tasks.id, id), eq(tasks.template_id, id), isNull(tasks.deleted_at)))
+              .returning()
+              .get();
+
+            if (!proxy) {
+              throw new Error("Failed to update task template proxy record.");
+            }
+
+            return mapTemplateAsTask(row);
+          }),
+        );
       }
 
       if (!existing) {

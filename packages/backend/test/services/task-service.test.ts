@@ -462,6 +462,46 @@ describe("createTaskService", () => {
     }
   });
 
+  it("syncs the template proxy row when updating a task template", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const firstAgent = await insertAgent(testDb.client.db);
+      const secondAgent = await insertAgent(testDb.client.db, {
+        id: "agent-second",
+        slug: "second-agent",
+        name: "Second Agent",
+      });
+      const template = await service.create({
+        agentId: firstAgent.id,
+        title: "Weekly report",
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+
+      await service.update(template.id, {
+        agentId: secondAgent.id,
+        title: "Updated weekly report",
+      });
+      const run = await service.createRun({
+        taskId: template.id,
+        agentId: secondAgent.id,
+        triggerSource: "manual",
+        renderedPrompt: "Run the updated template.",
+      });
+
+      expect(run.agentId).toBe(secondAgent.id);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("allows multiple executions for the same task occurrence", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
