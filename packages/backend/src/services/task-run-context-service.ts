@@ -65,7 +65,7 @@ export function createTaskRunContextService(options: { db?: AppDb }) {
       const renderedContext = {
         task: {
           id: input.task.id,
-          templateId: input.task.templateId,
+          templateId: input.task.sourceTemplateId ?? input.task.templateId,
           title: input.task.title,
           description: input.task.description,
           status: input.task.status,
@@ -91,7 +91,7 @@ export function createTaskRunContextService(options: { db?: AppDb }) {
           metadata: input.trigger.metadata,
         },
         taskId: input.task.id,
-        templateId: input.task.templateId,
+        templateId: input.task.sourceTemplateId ?? input.task.templateId,
         taskTitle: input.task.title,
         taskDescription: input.task.description,
         assignedAgentId: input.runAgentId,

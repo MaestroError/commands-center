@@ -1,15 +1,16 @@
 import { z } from "zod";
 
 import {
+  createTaskTemplateInputSchema,
   createTaskInputSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
+  taskCommentSchema,
   taskListSchema,
   taskRunListSchema,
   taskRunSchema,
   taskSchema,
-  triggerTaskInputSchema,
-  type CreateTaskInput,
+  taskTemplateSchema,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../../../../../db/client.js";
@@ -36,8 +37,18 @@ const taskIdInputSchema = z.object({
   taskId: z.string().trim().min(1),
 });
 
-const triggerTaskToolInputSchema = taskIdInputSchema.extend({
+const queueTaskToolInputSchema = taskIdInputSchema.extend({
   context: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+const scheduleTaskToolInputSchema = taskIdInputSchema.extend({
+  scheduledAt: z.string().datetime(),
+  dueAt: z.string().datetime().optional(),
+});
+
+const addTaskCommentToolInputSchema = taskIdInputSchema.extend({
+  body: z.string().trim().min(1),
 });
 
 const getTaskRunInputSchema = taskIdInputSchema.extend({
@@ -50,13 +61,8 @@ const createManagedTaskInputSchema = createTaskInputSchema
     agentId: z.string().trim().min(1).optional(),
   });
 
-const scheduleOneTimeTaskInputSchema = createManagedTaskInputSchema.extend({
-  runAt: z.string().datetime(),
-  timezone: z.string().trim().min(1).optional(),
-});
-
-const recurringHistoryInputSchema = taskIdInputSchema.extend({
-  limit: z.number().int().min(1).max(50).optional(),
+const createManagedTaskTemplateInputSchema = createTaskTemplateInputSchema.extend({
+  defaultAgentId: z.string().trim().min(1).optional(),
 });
 
 const listTasksOutputSchema = z.object({
@@ -64,11 +70,6 @@ const listTasksOutputSchema = z.object({
 });
 
 const listTaskRunsOutputSchema = z.object({
-  runs: taskRunListSchema,
-});
-
-const recurringHistoryOutputSchema = z.object({
-  task: taskSchema,
   runs: taskRunListSchema,
 });
 
@@ -95,15 +96,21 @@ export const getTaskToolMetadata = {
   context: "chat",
 } as const;
 
-export const triggerTaskToolMetadata = {
-  name: "trigger_task",
-  description: "Manually trigger an existing CommandsCenter task after operator confirmation.",
+export const queueTaskToolMetadata = {
+  name: "queue_task",
+  description: "Queue an existing CommandsCenter task after operator confirmation.",
   context: "chat",
 } as const;
 
-export const scheduleOneTimeTaskToolMetadata = {
-  name: "schedule_one_time_task",
-  description: "Create a one-time scheduled CommandsCenter task after operator confirmation.",
+export const scheduleTaskToolMetadata = {
+  name: "schedule_task",
+  description: "Schedule an existing CommandsCenter task for later execution.",
+  context: "chat",
+} as const;
+
+export const addTaskCommentToolMetadata = {
+  name: "add_task_comment",
+  description: "Add an operator-visible comment or follow-up note to a CommandsCenter task.",
   context: "chat",
 } as const;
 
@@ -119,9 +126,15 @@ export const getTaskRunToolMetadata = {
   context: "chat",
 } as const;
 
-export const listRecurringTaskHistoryToolMetadata = {
-  name: "list_recurring_task_history",
-  description: "Inspect recent run history for a recurring CommandsCenter task.",
+export const createTaskTemplateToolMetadata = {
+  name: "create_task_template",
+  description: "Create a recurring CommandsCenter task template after operator confirmation.",
+  context: "chat",
+} as const;
+
+export const runTaskTemplateNowToolMetadata = {
+  name: "run_task_template_now",
+  description: "Generate and queue a run from a recurring CommandsCenter task template.",
   context: "chat",
 } as const;
 
@@ -184,66 +197,94 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
         }, "Failed to get task."),
     },
     {
-      name: triggerTaskToolMetadata.name,
-      description: triggerTaskToolMetadata.description,
-      context: triggerTaskToolMetadata.context,
-      inputSchema: triggerTaskToolInputSchema,
+      name: queueTaskToolMetadata.name,
+      description: queueTaskToolMetadata.description,
+      context: queueTaskToolMetadata.context,
+      inputSchema: queueTaskToolInputSchema,
       outputSchema: taskRunSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
-          const parsed = triggerTaskToolInputSchema.parse(args);
+          const parsed = queueTaskToolInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
 
           await confirmMutation(options, {
             agentId,
-            title: "Trigger task",
-            description: `Manually trigger task '${parsed.taskId}'.`,
-            metadata: { taskId: parsed.taskId, triggerSource: "manual", context: parsed.context },
+            title: "Queue task",
+            description: `Queue task '${parsed.taskId}'.`,
+            metadata: {
+              taskId: parsed.taskId,
+              triggerSource: "manual",
+              context: parsed.context,
+              runMetadata: parsed.metadata,
+            },
           });
 
-          const run = await options.taskExecutionService.trigger(
-            parsed.taskId,
-            triggerTaskInputSchema.parse({ triggerSource: "manual", context: parsed.context }),
-          );
-          return success("Task triggered.", taskRunSchema.parse(run));
-        }, "Failed to trigger task."),
+          const run = await options.taskExecutionService.queue(parsed.taskId, {
+            triggerSource: "manual",
+            context: parsed.context,
+            metadata: parsed.metadata,
+          });
+          return success("Task queued.", taskRunSchema.parse(run));
+        }, "Failed to queue task."),
     },
     {
-      name: scheduleOneTimeTaskToolMetadata.name,
-      description: scheduleOneTimeTaskToolMetadata.description,
-      context: scheduleOneTimeTaskToolMetadata.context,
-      inputSchema: scheduleOneTimeTaskInputSchema,
+      name: scheduleTaskToolMetadata.name,
+      description: scheduleTaskToolMetadata.description,
+      context: scheduleTaskToolMetadata.context,
+      inputSchema: scheduleTaskToolInputSchema,
       outputSchema: taskSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
-          const parsed = scheduleOneTimeTaskInputSchema.parse(args);
-          const agentId =
-            parsed.agentId ?? (await requireCallingAgentId(options.db, context.agentSlug));
-          const input: CreateTaskInput = createTaskInputSchema.parse({
-            ...parsed,
-            agentId,
-            triggerMode: "scheduled_once",
-            schedule: {
-              mode: "scheduled_once",
-              runAt: parsed.runAt,
-              timezone: parsed.timezone,
-            },
-          });
+          const parsed = scheduleTaskToolInputSchema.parse(args);
+          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
 
           await confirmMutation(options, {
             agentId,
-            title: "Schedule one-time task",
-            description: `Schedule task '${input.title}' for ${parsed.runAt}.`,
+            title: "Schedule task",
+            description: `Schedule task '${parsed.taskId}' for ${parsed.scheduledAt}.`,
             metadata: {
-              taskTitle: input.title,
-              triggerMode: input.triggerMode,
-              runAt: parsed.runAt,
+              taskId: parsed.taskId,
+              scheduledAt: parsed.scheduledAt,
+              dueAt: parsed.dueAt,
             },
           });
 
-          const task = await options.taskService.create(input);
-          return success("One-time task scheduled.", taskSchema.parse(task));
-        }, "Failed to schedule one-time task."),
+          const task = await options.taskService.update(parsed.taskId, {
+            status: "scheduled",
+            scheduledAt: parsed.scheduledAt,
+            dueAt: parsed.dueAt,
+          });
+
+          if (!task) {
+            throw new Error("Task not found.");
+          }
+
+          return success("Task scheduled.", taskSchema.parse(task));
+        }, "Failed to schedule task."),
+    },
+    {
+      name: addTaskCommentToolMetadata.name,
+      description: addTaskCommentToolMetadata.description,
+      context: addTaskCommentToolMetadata.context,
+      inputSchema: addTaskCommentToolInputSchema,
+      outputSchema: taskCommentSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const parsed = addTaskCommentToolInputSchema.parse(args);
+          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+
+          await confirmMutation(options, {
+            agentId,
+            title: "Add task comment",
+            description: `Add a comment to task '${parsed.taskId}'.`,
+            metadata: { taskId: parsed.taskId },
+          });
+
+          const comment = await options.taskService.createComment(parsed.taskId, {
+            body: parsed.body,
+          });
+          return success("Task comment added.", comment);
+        }, "Failed to add task comment."),
     },
     {
       name: listTaskRunsToolMetadata.name,
@@ -283,36 +324,57 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
         }, "Failed to get task run."),
     },
     {
-      name: listRecurringTaskHistoryToolMetadata.name,
-      description: listRecurringTaskHistoryToolMetadata.description,
-      context: listRecurringTaskHistoryToolMetadata.context,
-      inputSchema: recurringHistoryInputSchema,
-      outputSchema: recurringHistoryOutputSchema,
-      execute: async (args: unknown) =>
+      name: createTaskTemplateToolMetadata.name,
+      description: createTaskTemplateToolMetadata.description,
+      context: createTaskTemplateToolMetadata.context,
+      inputSchema: createManagedTaskTemplateInputSchema,
+      outputSchema: taskTemplateSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
-          const parsed = recurringHistoryInputSchema.parse(args);
-          const task = await options.taskService.get(parsed.taskId);
+          const parsed = createManagedTaskTemplateInputSchema.parse(args);
+          const defaultAgentId =
+            parsed.defaultAgentId ?? (await requireCallingAgentId(options.db, context.agentSlug));
 
-          if (!task) {
-            throw new Error("Task not found.");
-          }
+          await confirmMutation(options, {
+            agentId: defaultAgentId,
+            title: "Create task template",
+            description: `Create recurring task template '${parsed.title}'.`,
+            metadata: { taskTitle: parsed.title, recurrence: parsed.recurrence },
+          });
 
-          if (task.triggerMode !== "recurring") {
-            throw new Error("Task is not recurring.");
-          }
+          const template = await options.taskService.createTemplate({ ...parsed, defaultAgentId });
+          return success("Task template created.", taskTemplateSchema.parse(template));
+        }, "Failed to create task template."),
+    },
+    {
+      name: runTaskTemplateNowToolMetadata.name,
+      description: runTaskTemplateNowToolMetadata.description,
+      context: runTaskTemplateNowToolMetadata.context,
+      inputSchema: queueTaskToolInputSchema,
+      outputSchema: taskRunSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const parsed = queueTaskToolInputSchema.parse(args);
+          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
 
-          const runs = (await options.taskService.listRuns(task.id, {})).slice(
-            0,
-            parsed.limit ?? 10,
-          );
-          return success(
-            `Found ${String(runs.length)} recurring task run${runs.length === 1 ? "" : "s"}.`,
-            {
-              task,
-              runs: taskRunListSchema.parse(runs),
+          await confirmMutation(options, {
+            agentId,
+            title: "Run task template now",
+            description: `Run template '${parsed.taskId}' now.`,
+            metadata: {
+              taskId: parsed.taskId,
+              context: parsed.context,
+              runMetadata: parsed.metadata,
             },
-          );
-        }, "Failed to list recurring task history."),
+          });
+
+          const run = await options.taskExecutionService.queue(parsed.taskId, {
+            triggerSource: "template",
+            context: parsed.context,
+            metadata: parsed.metadata,
+          });
+          return success("Task template queued.", taskRunSchema.parse(run));
+        }, "Failed to run task template."),
     },
   ] as const;
 }

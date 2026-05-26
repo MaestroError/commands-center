@@ -4,17 +4,29 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import {
   activeTaskRunListSchema,
   cancelTaskRunInputSchema,
+  createTaskTemplateInputSchema,
   createTaskInputSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
+  queueTaskInputSchema,
+  taskCommentInputSchema,
+  taskCommentListSchema,
+  taskCommentSchema,
   taskListSchema,
   taskRunListSchema,
   taskRunSchema,
   taskRunSessionInspectionSchema,
   taskSchedulerStateListSchema,
   taskSchema,
-  triggerTaskInputSchema,
+  taskSubtaskInputSchema,
+  taskSubtaskListSchema,
+  taskSubtaskSchema,
+  taskTemplateListSchema,
+  taskTemplateRunNowInputSchema,
+  taskTemplateSchema,
+  updateTaskCommentInputSchema,
   updateTaskInputSchema,
+  updateTaskSubtaskInputSchema,
 } from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
@@ -31,6 +43,14 @@ const taskIdParamsSchema = z.object({
 
 const taskRunParamsSchema = taskIdParamsSchema.extend({
   runId: z.string().min(1),
+});
+
+const taskCommentParamsSchema = taskIdParamsSchema.extend({
+  commentId: z.string().min(1),
+});
+
+const taskSubtaskParamsSchema = taskIdParamsSchema.extend({
+  subtaskId: z.string().min(1),
 });
 
 export function registerTaskRoutes(server: AppServer, context: RuntimeContext): void {
@@ -113,6 +133,65 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       },
     },
     async (request) => service.list(request.query),
+  );
+
+  app.get(
+    "/api/tasks/archive",
+    {
+      schema: {
+        response: {
+          200: taskListSchema,
+        },
+      },
+    },
+    async () => service.listArchived(),
+  );
+
+  app.get(
+    "/api/tasks/templates",
+    {
+      schema: {
+        response: {
+          200: taskTemplateListSchema,
+        },
+      },
+    },
+    async () => service.listTemplates(),
+  );
+
+  app.post(
+    "/api/tasks/templates",
+    {
+      schema: {
+        body: createTaskTemplateInputSchema,
+        response: {
+          201: taskTemplateSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      reply.code(201);
+      return service.createTemplate(request.body);
+    },
+  );
+
+  app.post(
+    "/api/tasks/templates/:id/run-now",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: taskTemplateRunNowInputSchema,
+        response: {
+          200: taskRunSchema,
+        },
+      },
+    },
+    async (request) =>
+      executionService.queue(request.params.id, {
+        triggerSource: "template",
+        context: request.body.context,
+        metadata: request.body.metadata,
+      }),
   );
 
   app.post(
@@ -218,6 +297,27 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   );
 
   app.post(
+    "/api/tasks/:id/accept",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskSchema,
+        },
+      },
+    },
+    async (request) => {
+      const task = await service.acceptTask(request.params.id);
+
+      if (!task) {
+        throw new NotFoundError("Task not found.");
+      }
+
+      return task;
+    },
+  );
+
+  app.post(
     "/api/tasks/:id/restore",
     {
       schema: {
@@ -235,6 +335,118 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       }
 
       return task;
+    },
+  );
+
+  app.get(
+    "/api/tasks/:id/comments",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskCommentListSchema,
+        },
+      },
+    },
+    async (request) => service.listComments(request.params.id),
+  );
+
+  app.post(
+    "/api/tasks/:id/comments",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: taskCommentInputSchema,
+        response: {
+          201: taskCommentSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      reply.code(201);
+      return service.createComment(request.params.id, request.body);
+    },
+  );
+
+  app.patch(
+    "/api/tasks/:id/comments/:commentId",
+    {
+      schema: {
+        params: taskCommentParamsSchema,
+        body: updateTaskCommentInputSchema,
+        response: {
+          200: taskCommentSchema,
+        },
+      },
+    },
+    async (request) => {
+      const comment = await service.updateComment(
+        request.params.id,
+        request.params.commentId,
+        request.body,
+      );
+
+      if (!comment) {
+        throw new NotFoundError("Task comment not found.");
+      }
+
+      return comment;
+    },
+  );
+
+  app.get(
+    "/api/tasks/:id/subtasks",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskSubtaskListSchema,
+        },
+      },
+    },
+    async (request) => service.listSubtasks(request.params.id),
+  );
+
+  app.post(
+    "/api/tasks/:id/subtasks",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: taskSubtaskInputSchema,
+        response: {
+          201: taskSubtaskSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      reply.code(201);
+      return service.createSubtask(request.params.id, request.body);
+    },
+  );
+
+  app.patch(
+    "/api/tasks/:id/subtasks/:subtaskId",
+    {
+      schema: {
+        params: taskSubtaskParamsSchema,
+        body: updateTaskSubtaskInputSchema,
+        response: {
+          200: taskSubtaskSchema,
+        },
+      },
+    },
+    async (request) => {
+      const subtask = await service.updateSubtask(
+        request.params.id,
+        request.params.subtaskId,
+        request.body,
+      );
+
+      if (!subtask) {
+        throw new NotFoundError("Task subtask not found.");
+      }
+
+      return subtask;
     },
   );
 
@@ -313,17 +525,17 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   );
 
   app.post(
-    "/api/tasks/:id/trigger",
+    "/api/tasks/:id/queue",
     {
       schema: {
         params: taskIdParamsSchema,
-        body: triggerTaskInputSchema,
+        body: queueTaskInputSchema.omit({ taskId: true }),
         response: {
           200: taskRunSchema,
         },
       },
     },
-    async (request) => executionService.trigger(request.params.id, request.body),
+    async (request) => executionService.queue(request.params.id, request.body),
   );
 
   app.get(

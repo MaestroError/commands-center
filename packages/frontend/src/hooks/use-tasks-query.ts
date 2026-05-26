@@ -22,8 +22,8 @@ import {
   listTaskRuns,
   listTasks,
   openTaskRunInChat,
+  queueTask,
   restoreTask,
-  triggerTask,
   updateTask,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
@@ -118,7 +118,7 @@ export function useTaskMutations() {
     }),
     trigger: useMutation({
       mutationFn: ({ id, input }: { id: string; input?: Partial<TriggerTaskInput> }) =>
-        triggerTask(id, { triggerSource: "manual", ...input }),
+        queueTask(id, { triggerSource: "manual", ...input }),
       onSuccess: async (run) => {
         queryClient.setQueryData(queryKeys.taskRun(run.taskId, run.id), run);
         await Promise.all([

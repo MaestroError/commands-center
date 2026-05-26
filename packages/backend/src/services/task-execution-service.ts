@@ -1,10 +1,10 @@
 import {
   cancelTaskRunInputSchema,
-  triggerTaskInputSchema,
+  queueTaskInputSchema,
   type CancelTaskRunInput,
+  type QueueTaskInput,
   type Task,
   type TaskRun,
-  type TriggerTaskInput,
 } from "@cc/shared/schemas";
 import type { Logger } from "pino";
 
@@ -20,6 +20,7 @@ import {
 import type { TaskService } from "./task-service.js";
 
 export type TaskExecutionService = ReturnType<typeof createTaskExecutionService>;
+type QueueTaskExecutionInput = Partial<Omit<QueueTaskInput, "taskId">>;
 
 export function createTaskExecutionService(options: {
   db?: AppDb;
@@ -32,11 +33,11 @@ export function createTaskExecutionService(options: {
   const taskRunContextService = createTaskRunContextService({ db: options.db });
 
   return {
-    async trigger(taskId: string, input: Partial<TriggerTaskInput> = {}): Promise<TaskRun> {
+    async trigger(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
       return queueTask(taskId, input);
     },
 
-    async queue(taskId: string, input: Partial<TriggerTaskInput> = {}): Promise<TaskRun> {
+    async queue(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
       return queueTask(taskId, input);
     },
 
@@ -70,26 +71,25 @@ export function createTaskExecutionService(options: {
     },
   };
 
-  async function queueTask(
-    taskId: string,
-    input: Partial<TriggerTaskInput> = {},
-  ): Promise<TaskRun> {
-    const parsed = triggerTaskInputSchema.parse(input);
+  async function queueTask(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
+    const parsed = queueTaskInputSchema.parse({ taskId, ...input });
     const target = await requireRunnableTask(taskId, parsed.triggerSource);
     const task = await resolveExecutableTask(target, parsed);
 
     const taskRunId = createId();
-    const runAgentId = task.agentId;
+    const runAgentId = parsed.agentId ?? task.defaultAgentId ?? task.agentId;
     const { renderedContext, renderedPrompt } = await taskRunContextService.build({
       task,
       runId: taskRunId,
       runAgentId,
+      subtaskId: parsed.subtaskId,
       trigger: parsed,
     });
     const effectivePermissions = await options.taskPermissionService?.compute(task);
     const run = await options.taskService.queueTask({
       id: taskRunId,
       taskId: task.id,
+      subtaskId: parsed.subtaskId,
       agentId: runAgentId,
       triggerSource: parsed.triggerSource,
       context: parsed.context,
@@ -230,7 +230,7 @@ export function createTaskExecutionService(options: {
 
   async function requireRunnableTask(
     taskId: string,
-    triggerSource: TriggerTaskInput["triggerSource"],
+    triggerSource: QueueTaskInput["triggerSource"],
   ): Promise<Task> {
     const task = await options.taskService.get(taskId);
 
@@ -265,7 +265,7 @@ export function createTaskExecutionService(options: {
     return task;
   }
 
-  async function resolveExecutableTask(task: Task, trigger: TriggerTaskInput): Promise<Task> {
+  async function resolveExecutableTask(task: Task, trigger: QueueTaskInput): Promise<Task> {
     if (task.templateId !== task.id) {
       return task;
     }
@@ -298,7 +298,7 @@ export function createTaskExecutionService(options: {
   }
 }
 
-function readScheduledAtFromTrigger(trigger: TriggerTaskInput): string | undefined {
+function readScheduledAtFromTrigger(trigger: QueueTaskInput): string | undefined {
   const scheduledAt = trigger.metadata?.["scheduledAt"];
   return typeof scheduledAt === "string" ? scheduledAt : undefined;
 }

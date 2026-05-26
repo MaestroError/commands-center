@@ -301,7 +301,7 @@ describe("cc-managed MCP routes", () => {
 
       expect(listToolsResponse.statusCode).toBe(200);
       expect(listToolsResponse.body).toContain('"name":"create_task"');
-      expect(listToolsResponse.body).toContain('"name":"trigger_task"');
+      expect(listToolsResponse.body).toContain('"name":"queue_task"');
 
       const createTaskResponse = await callMcpToolRoute(
         server,
@@ -338,7 +338,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("triggers tasks through task management tools", async () => {
+  it("queues tasks through task management tools", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const taskExecutionService = createTaskExecutionService({ taskService });
@@ -365,23 +365,23 @@ describe("cc-managed MCP routes", () => {
         triggerMode: "manual",
       });
       const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_tasks_management");
-      const triggerResponse = await callMcpToolRoute(
+      const queueResponse = await callMcpToolRoute(
         server,
         authHeader,
         "tools/call",
         {
-          name: "trigger_task",
+          name: "queue_task",
           arguments: { taskId: task.id, context: { text: "Use current build." } },
         },
         3,
       );
 
-      expect(triggerResponse.statusCode).toBe(200);
-      const triggerJson = parseSseJson(triggerResponse.body) as {
+      expect(queueResponse.statusCode).toBe(200);
+      const queueJson = parseSseJson(queueResponse.body) as {
         result?: { structuredContent?: { taskId?: string; status?: string } };
       };
 
-      expect(triggerJson.result?.structuredContent).toMatchObject({
+      expect(queueJson.result?.structuredContent).toMatchObject({
         taskId: task.id,
         status: "queued",
         context: { text: "Use current build." },
@@ -440,11 +440,13 @@ describe("cc-managed MCP routes", () => {
         "create_task",
         "list_tasks",
         "get_task",
-        "trigger_task",
-        "schedule_one_time_task",
+        "queue_task",
+        "schedule_task",
+        "add_task_comment",
         "list_task_runs",
         "get_task_run",
-        "list_recurring_task_history",
+        "create_task_template",
+        "run_task_template_now",
       ]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
@@ -454,14 +456,26 @@ describe("cc-managed MCP routes", () => {
         authHeader,
         "tools/call",
         {
-          name: "schedule_one_time_task",
+          name: "schedule_task",
           arguments: {
-            title: "One-time MCP task",
-            description: "Run once later.",
-            runAt: "2026-06-10T12:00:00.000Z",
+            taskId: task.id,
+            scheduledAt: "2026-06-10T12:00:00.000Z",
           },
         },
         7,
+      );
+      const commentResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        {
+          name: "add_task_comment",
+          arguments: {
+            taskId: task.id,
+            body: "Review before accepting.",
+          },
+        },
+        14,
       );
       const listedResponse = await callMcpToolRoute(
         server,
@@ -481,7 +495,7 @@ describe("cc-managed MCP routes", () => {
         server,
         authHeader,
         "tools/call",
-        { name: "trigger_task", arguments: { taskId: task.id } },
+        { name: "queue_task", arguments: { taskId: task.id } },
         10,
       );
 
@@ -491,7 +505,7 @@ describe("cc-managed MCP routes", () => {
       const runId = triggerJson.result?.structuredContent?.id;
 
       if (!runId) {
-        throw new Error("Expected trigger_task to return a run id.");
+        throw new Error("Expected queue_task to return a run id.");
       }
 
       const listRunsResponse = await callMcpToolRoute(
@@ -509,23 +523,40 @@ describe("cc-managed MCP routes", () => {
         12,
       );
 
-      await taskExecutionService.trigger(recurring.id, {
-        triggerSource: "scheduled",
-        metadata: { scheduledAt: "2026-06-02T09:00:00.000Z" },
-      });
-      const historyResponse = await callMcpToolRoute(
+      const createTemplateResponse = await callMcpToolRoute(
         server,
         authHeader,
         "tools/call",
-        { name: "list_recurring_task_history", arguments: { taskId: recurring.id, limit: 5 } },
+        {
+          name: "create_task_template",
+          arguments: {
+            title: "Created MCP template",
+            recurrence: {
+              mode: "recurring",
+              anchorAt: "2026-06-01T09:00:00.000Z",
+              timezone: "UTC",
+              repeatRule: { frequency: "day", interval: 1 },
+            },
+          },
+        },
         13,
+      );
+      const runTemplateResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "run_task_template_now", arguments: { taskId: recurring.id } },
+        15,
       );
 
       expect(scheduledResponse.statusCode).toBe(200);
       expect(parseSseJson(scheduledResponse.body)).toMatchObject({
         result: {
-          structuredContent: { title: "One-time MCP task", triggerMode: "scheduled_once" },
+          structuredContent: { id: task.id, status: "scheduled" },
         },
+      });
+      expect(parseSseJson(commentResponse.body)).toMatchObject({
+        result: { structuredContent: { body: "Review before accepting.", status: "open" } },
       });
       expect(parseSseJson(listedResponse.body)).toMatchObject({
         result: { structuredContent: { tasks: expect.any(Array) } },
@@ -539,13 +570,16 @@ describe("cc-managed MCP routes", () => {
       expect(parseSseJson(getRunResponse.body)).toMatchObject({
         result: { structuredContent: { id: runId, taskId: task.id } },
       });
-      expect(parseSseJson(historyResponse.body)).toMatchObject({
+      expect(parseSseJson(createTemplateResponse.body)).toMatchObject({
         result: {
           structuredContent: {
-            task: { id: recurring.id, triggerMode: "recurring" },
-            runs: [expect.objectContaining({ triggerSource: "scheduled" })],
+            title: "Created MCP template",
+            defaultAgentId: agent.id,
           },
         },
+      });
+      expect(parseSseJson(runTemplateResponse.body)).toMatchObject({
+        result: { structuredContent: { status: "queued", triggerSource: "template" } },
       });
     } finally {
       await server.close();

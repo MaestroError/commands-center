@@ -161,7 +161,6 @@ import {
   updateAgentInputSchema,
   updateMcpServerInputSchema,
   updateTaskInputSchema,
-  triggerTaskInputSchema,
   type TriggerTaskInput,
   updateSystemUpdatePreferencesInputSchema,
 } from "@cc/shared/schemas";
@@ -736,13 +735,13 @@ export async function openTaskRunInChat(
   );
 }
 
-export async function triggerTask(
+export async function queueTask(
   id: string,
   input: Partial<TriggerTaskInput> = { triggerSource: "manual" },
 ): Promise<TaskRun> {
-  return requestJson<TaskRun>(`/api/tasks/${encodeURIComponent(id)}/trigger`, taskRunSchema, {
+  return requestJson<TaskRun>(`/api/tasks/${encodeURIComponent(id)}/queue`, taskRunSchema, {
     method: "POST",
-    body: triggerTaskInputSchema.parse(input),
+    body: input,
   });
 }
 

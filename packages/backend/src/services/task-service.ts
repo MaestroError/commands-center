@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   createTaskInputSchema,
+  createTaskTemplateInputSchema,
   createTaskRunInputSchema,
   addTaskRunArtifactInputSchema,
   listTaskRunsQuerySchema,
@@ -10,6 +11,9 @@ import {
   markTaskRunNeedsReviewInputSchema,
   queueTaskInputSchema,
   setTaskRunResultInputSchema,
+  taskCommentInputSchema,
+  taskCommentListSchema,
+  taskCommentSchema,
   taskListSchema,
   taskPermissionProfileSchema,
   taskRunArtifactSchema,
@@ -17,29 +21,48 @@ import {
   taskRunSchema,
   taskScheduleSchema,
   taskSchema,
+  taskSubtaskInputSchema,
+  taskSubtaskListSchema,
+  taskSubtaskSchema,
+  taskTemplateListSchema,
+  taskTemplateSchema,
   taskTodoInputSchema,
   taskTodoSchema,
+  updateTaskCommentInputSchema,
   updateTaskInputSchema,
   updateTaskRunInputSchema,
+  updateTaskSubtaskInputSchema,
   type CreateTaskInput,
+  type CreateTaskTemplateInput,
   type CreateTaskRunInput,
   type TaskRunArtifact,
   type ListTaskRunsQuery,
   type ListTasksQuery,
   type QueueTaskInput,
   type Task,
+  type TaskComment,
   type TaskRun,
   type TaskRunStatus,
   type TaskSchedule,
+  type TaskSubtask,
+  type TaskTemplate,
   type TaskStatus,
   type TaskTodo,
+  type UpdateTaskCommentInput,
   type UpdateTaskInput,
   type UpdateTaskRunInput,
+  type UpdateTaskSubtaskInput,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../db/client.js";
 import { createId, now } from "../db/ids.js";
-import { task_runs, task_templates, tasks } from "../db/schema/index.js";
+import {
+  task_comments,
+  task_runs,
+  task_subtasks,
+  task_templates,
+  tasks,
+} from "../db/schema/index.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 
@@ -50,6 +73,12 @@ type QueueTaskOptions = QueueTaskInput & {
   renderedPrompt?: string;
   renderedContext?: Record<string, unknown>;
   effectivePermissions?: CreateTaskRunInput["effectivePermissions"];
+};
+
+type CreateTaskFromTemplateInput = {
+  occurrenceAt?: string;
+  scheduledFor?: string;
+  triggerSource?: TaskRun["triggerSource"];
 };
 
 export function createTaskService(options: { db: AppDb; config: RuntimeConfig }) {
@@ -112,14 +141,74 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       );
     },
 
-    async get(id: string): Promise<Task | undefined> {
-      const row = await getTaskRow(id);
+    async get(id: string, getOptions?: { includeArchived?: boolean }): Promise<Task | undefined> {
+      const row = await getTaskRow(id, getOptions);
       if (row) {
         return mapTask(row);
       }
 
-      const template = await getTemplateRow(id);
+      const template = await getTemplateRow(id, getOptions);
       return template ? mapTemplateAsTask(template) : undefined;
+    },
+
+    async listArchived(): Promise<Task[]> {
+      return this.list({ includeArchived: true, status: "archived" });
+    },
+
+    async listTemplates(): Promise<TaskTemplate[]> {
+      const rows = await options.db.query.task_templates.findMany({
+        where: (table, operators) => operators.isNull(table.deleted_at),
+        orderBy: (table, operators) => [operators.desc(table.updated_at)],
+      });
+
+      return taskTemplateListSchema.parse(rows.map(mapTaskTemplate));
+    },
+
+    async getTemplate(id: string): Promise<TaskTemplate | undefined> {
+      const row = await getTemplateRow(id, { includeArchived: true });
+      return row ? mapTaskTemplate(row) : undefined;
+    },
+
+    async createTemplate(input: CreateTaskTemplateInput): Promise<TaskTemplate> {
+      const parsed = createTaskTemplateInputSchema.parse(input);
+      await requireActiveAgent(parsed.defaultAgentId);
+      await enforceTaskLimit();
+
+      const timestamp = now();
+      const todos = normalizeTodos(parsed.todos, timestamp);
+      const enabled = parsed.enabled ?? true;
+      const [row] = await options.db
+        .insert(task_templates)
+        .values({
+          id: createId(),
+          agent_id: parsed.defaultAgentId,
+          default_agent_id: parsed.defaultAgentId,
+          title: parsed.title,
+          description: parsed.description,
+          todos_json: JSON.stringify(todos),
+          status: enabled ? "enabled" : "disabled",
+          trigger_mode: "recurring",
+          schedule_json: JSON.stringify(parsed.recurrence),
+          recurrence_json: JSON.stringify(parsed.recurrence),
+          permission_profile_json: stringifyOptional(parsed.permissionProfile),
+          enabled,
+          archived: false,
+          latest_final_message: null,
+          latest_task_id: null,
+          next_occurrence_at: new Date(parsed.recurrence.anchorAt),
+          last_generated_occurrence_at: null,
+          created_at: timestamp,
+          updated_at: timestamp,
+          archived_at: null,
+          deleted_at: null,
+        })
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to create task template record.");
+      }
+
+      return mapTaskTemplate(row);
     },
 
     async create(input: CreateTaskInput): Promise<Task> {
@@ -137,7 +226,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         enabled,
         archived,
       });
+      const defaultAgentId = parsed.defaultAgentId ?? parsed.agentId;
       const todos = normalizeTodos(parsed.todos, timestamp);
+
+      if (parsed.defaultAgentId) {
+        await requireActiveAgent(parsed.defaultAgentId);
+      }
 
       if (triggerMode !== "manual") {
         const id = createId();
@@ -146,6 +240,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           .values({
             id,
             agent_id: parsed.agentId,
+            default_agent_id: defaultAgentId,
             title: parsed.title,
             description: parsed.description,
             todos_json: JSON.stringify(todos),
@@ -157,6 +252,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
             archived,
             latest_final_message: null,
             latest_task_id: null,
+            next_occurrence_at: schedule.mode === "recurring" ? new Date(schedule.anchorAt) : null,
             created_at: timestamp,
             updated_at: timestamp,
             archived_at: archived ? timestamp : null,
@@ -172,6 +268,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           id,
           template_id: id,
           agent_id: parsed.agentId,
+          default_agent_id: defaultAgentId,
           title: parsed.title,
           description: parsed.description,
           context: "",
@@ -184,8 +281,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           enabled,
           archived,
           latest_final_message: null,
+          source_template_id: null,
+          source_occurrence_at: null,
+          scheduled_at: parsed.scheduledAt ? new Date(parsed.scheduledAt) : null,
           scheduled_for: null,
-          due_at: null,
+          due_at: parsed.dueAt ? new Date(parsed.dueAt) : null,
+          done_at: null,
           created_at: timestamp,
           updated_at: timestamp,
           archived_at: archived ? timestamp : null,
@@ -201,6 +302,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           id: createId(),
           template_id: null,
           agent_id: parsed.agentId,
+          default_agent_id: defaultAgentId,
           title: parsed.title,
           description: parsed.description,
           context: "",
@@ -213,8 +315,13 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           enabled,
           archived,
           latest_final_message: null,
+          latest_run_id: null,
+          source_template_id: null,
+          source_occurrence_at: null,
+          scheduled_at: parsed.scheduledAt ? new Date(parsed.scheduledAt) : null,
           scheduled_for: null,
-          due_at: null,
+          due_at: parsed.dueAt ? new Date(parsed.dueAt) : null,
+          done_at: null,
           created_at: timestamp,
           updated_at: timestamp,
           archived_at: archived ? timestamp : null,
@@ -266,6 +373,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         await requireActiveAgent(parsed.agentId);
       }
 
+      if (parsed.defaultAgentId) {
+        await requireActiveAgent(parsed.defaultAgentId);
+      }
+
       const timestamp = now();
       const source = existing ?? existingTemplate!;
       const triggerMode = parsed.triggerMode ?? source.trigger_mode;
@@ -275,7 +386,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       );
       const archived = parsed.status === "archived" ? true : source.archived;
       const enabled =
-        parsed.enabled ?? (parsed.status ? parsed.status === "enabled" : source.enabled);
+        parsed.enabled ??
+        (parsed.status === "enabled"
+          ? true
+          : parsed.status === "disabled" || parsed.status === "draft"
+            ? false
+            : source.enabled);
       const status = normalizeTaskStatus({
         requestedStatus: parsed.status,
         enabled,
@@ -288,6 +404,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
       if (existingTemplate) {
         const nextAgentId = parsed.agentId ?? existingTemplate.agent_id;
+        const nextDefaultAgentId = parsed.defaultAgentId ?? existingTemplate.default_agent_id;
         const nextTitle = parsed.title ?? existingTemplate.title;
         const nextDescription = parsed.description ?? existingTemplate.description;
         const nextPermissionProfileJson =
@@ -302,6 +419,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
               .update(task_templates)
               .set({
                 agent_id: nextAgentId,
+                default_agent_id: nextDefaultAgentId,
                 title: nextTitle,
                 description: nextDescription,
                 todos_json: JSON.stringify(todos),
@@ -326,6 +444,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
               .update(tasks)
               .set({
                 agent_id: nextAgentId,
+                default_agent_id: nextDefaultAgentId,
                 title: nextTitle,
                 description: nextDescription,
                 todos_json: JSON.stringify(todos),
@@ -359,6 +478,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         .update(tasks)
         .set({
           agent_id: parsed.agentId ?? existing.agent_id,
+          default_agent_id: parsed.defaultAgentId ?? existing.default_agent_id,
           title: parsed.title ?? existing.title,
           description: parsed.description ?? existing.description,
           todos_json: JSON.stringify(todos),
@@ -371,6 +491,8 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
               : stringifyOptional(parsed.permissionProfile),
           enabled,
           archived,
+          scheduled_at: parsed.scheduledAt ? new Date(parsed.scheduledAt) : existing.scheduled_at,
+          due_at: parsed.dueAt ? new Date(parsed.dueAt) : existing.due_at,
           updated_at: timestamp,
           archived_at: archived ? (existing.archived_at ?? timestamp) : null,
         })
@@ -525,6 +647,185 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return mapTask(row);
     },
 
+    async listComments(taskId: string): Promise<TaskComment[]> {
+      await requireTask(taskId, { includeArchived: true });
+      const rows = await options.db.query.task_comments.findMany({
+        where: (table, operators) =>
+          operators.and(operators.eq(table.task_id, taskId), operators.isNull(table.deleted_at)),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+
+      return taskCommentListSchema.parse(rows.map(mapTaskComment));
+    },
+
+    async createComment(taskId: string, input: unknown): Promise<TaskComment> {
+      await requireTask(taskId, { includeArchived: true });
+      const parsed = taskCommentInputSchema.parse(input);
+      const timestamp = now();
+      const [row] = await options.db
+        .insert(task_comments)
+        .values({
+          id: createId(),
+          task_id: taskId,
+          body: parsed.body,
+          status: parsed.status,
+          included_in_run_id: null,
+          created_at: timestamp,
+          updated_at: timestamp,
+          resolved_at: parsed.status === "resolved" ? timestamp : null,
+          deleted_at: null,
+        })
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to create task comment record.");
+      }
+
+      return mapTaskComment(row);
+    },
+
+    async updateComment(
+      taskId: string,
+      commentId: string,
+      input: UpdateTaskCommentInput,
+    ): Promise<TaskComment | undefined> {
+      await requireTask(taskId, { includeArchived: true });
+      const parsed = updateTaskCommentInputSchema.parse(input);
+      const existing = await options.db.query.task_comments.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.id, commentId),
+            operators.eq(table.task_id, taskId),
+            operators.isNull(table.deleted_at),
+          ),
+      });
+
+      if (!existing) {
+        return undefined;
+      }
+
+      const timestamp = now();
+      const status = parsed.status ?? existing.status;
+      const [row] = await options.db
+        .update(task_comments)
+        .set({
+          body: parsed.body ?? existing.body,
+          status,
+          resolved_at: status === "resolved" ? (existing.resolved_at ?? timestamp) : null,
+          updated_at: timestamp,
+        })
+        .where(
+          and(
+            eq(task_comments.id, commentId),
+            eq(task_comments.task_id, taskId),
+            isNull(task_comments.deleted_at),
+          ),
+        )
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to update task comment record.");
+      }
+
+      return mapTaskComment(row);
+    },
+
+    async listSubtasks(taskId: string): Promise<TaskSubtask[]> {
+      await requireTask(taskId, { includeArchived: true });
+      const rows = await options.db.query.task_subtasks.findMany({
+        where: (table, operators) =>
+          operators.and(operators.eq(table.task_id, taskId), operators.isNull(table.deleted_at)),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+
+      return taskSubtaskListSchema.parse(rows.map(mapTaskSubtask));
+    },
+
+    async createSubtask(taskId: string, input: unknown): Promise<TaskSubtask> {
+      await requireTask(taskId, { includeArchived: true });
+      const parsed = taskSubtaskInputSchema.parse(input);
+
+      if (parsed.defaultAgentId) {
+        await requireActiveAgent(parsed.defaultAgentId);
+      }
+
+      const timestamp = now();
+      const [row] = await options.db
+        .insert(task_subtasks)
+        .values({
+          id: createId(),
+          task_id: taskId,
+          default_agent_id: parsed.defaultAgentId ?? null,
+          title: parsed.title,
+          description: parsed.description,
+          status: parsed.status,
+          created_at: timestamp,
+          updated_at: timestamp,
+          completed_at: parsed.status === "done" ? timestamp : null,
+          deleted_at: null,
+        })
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to create task subtask record.");
+      }
+
+      return mapTaskSubtask(row);
+    },
+
+    async updateSubtask(
+      taskId: string,
+      subtaskId: string,
+      input: UpdateTaskSubtaskInput,
+    ): Promise<TaskSubtask | undefined> {
+      await requireTask(taskId, { includeArchived: true });
+      const parsed = updateTaskSubtaskInputSchema.parse(input);
+
+      if (parsed.defaultAgentId) {
+        await requireActiveAgent(parsed.defaultAgentId);
+      }
+
+      const existing = await options.db.query.task_subtasks.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.id, subtaskId),
+            operators.eq(table.task_id, taskId),
+            operators.isNull(table.deleted_at),
+          ),
+      });
+
+      if (!existing) {
+        return undefined;
+      }
+
+      const timestamp = now();
+      const status = parsed.status ?? existing.status;
+      const [row] = await options.db
+        .update(task_subtasks)
+        .set({
+          title: parsed.title ?? existing.title,
+          description: parsed.description ?? existing.description,
+          default_agent_id: parsed.defaultAgentId ?? existing.default_agent_id,
+          status,
+          completed_at: status === "done" ? (existing.completed_at ?? timestamp) : null,
+          updated_at: timestamp,
+        })
+        .where(
+          and(
+            eq(task_subtasks.id, subtaskId),
+            eq(task_subtasks.task_id, taskId),
+            isNull(task_subtasks.deleted_at),
+          ),
+        )
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to update task subtask record.");
+      }
+
+      return mapTaskSubtask(row);
+    },
+
     async enable(id: string): Promise<Task | undefined> {
       return setEnabled(id, true);
     },
@@ -598,7 +899,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
     async createTaskFromTemplate(
       templateId: string,
-      input: { scheduledFor?: string; triggerSource?: TaskRun["triggerSource"] } = {},
+      input: CreateTaskFromTemplateInput = {},
     ): Promise<Task | undefined> {
       const template = await getTemplateRow(templateId);
 
@@ -608,17 +909,34 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
       const timestamp = now();
       const scheduledFor = input.scheduledFor ? new Date(input.scheduledFor) : null;
+      const occurrenceAt = input.occurrenceAt
+        ? new Date(input.occurrenceAt)
+        : (scheduledFor ?? timestamp);
+      const existing = await options.db.query.tasks.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.source_template_id, template.id),
+            operators.eq(table.source_occurrence_at, occurrenceAt),
+            operators.isNull(table.deleted_at),
+          ),
+      });
+
+      if (existing) {
+        return mapTask(existing);
+      }
+
       const [row] = await options.db
         .insert(tasks)
         .values({
           id: createId(),
-          template_id: template.id,
+          template_id: null,
           agent_id: template.agent_id,
+          default_agent_id: template.default_agent_id,
           title: template.title,
           description: template.description,
           context: "",
           todos_json: template.todos_json,
-          status: "enabled",
+          status: scheduledFor ? "scheduled" : "backlog",
           trigger_mode: "manual",
           trigger_source: input.triggerSource ?? "scheduled",
           schedule_json: JSON.stringify({ mode: "manual" }),
@@ -626,8 +944,13 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           enabled: true,
           archived: false,
           latest_final_message: null,
+          latest_run_id: null,
+          source_template_id: template.id,
+          source_occurrence_at: occurrenceAt,
+          scheduled_at: scheduledFor,
           scheduled_for: scheduledFor,
           due_at: scheduledFor,
+          done_at: null,
           created_at: timestamp,
           updated_at: timestamp,
           archived_at: null,
@@ -641,10 +964,58 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
       await options.db
         .update(task_templates)
-        .set({ latest_task_id: row.id, updated_at: timestamp })
+        .set({
+          latest_task_id: row.id,
+          last_generated_occurrence_at: occurrenceAt,
+          updated_at: timestamp,
+        })
         .where(eq(task_templates.id, template.id));
 
       return mapTask(row);
+    },
+
+    async listDueScheduledTasks(at: Date): Promise<Task[]> {
+      const rows = await options.db.query.tasks.findMany({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.status, "scheduled"),
+            operators.lte(table.scheduled_at, at),
+            operators.eq(table.archived, false),
+            operators.isNull(table.deleted_at),
+          ),
+        orderBy: (table, operators) => [operators.asc(table.scheduled_at)],
+      });
+
+      return taskListSchema.parse(rows.map(mapTask));
+    },
+
+    async listRecurringTemplates(): Promise<Task[]> {
+      const rows = await options.db.query.task_templates.findMany({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.enabled, true),
+            operators.eq(table.archived, false),
+            operators.eq(table.trigger_mode, "recurring"),
+            operators.isNull(table.deleted_at),
+          ),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+
+      return taskListSchema.parse(rows.map(mapTemplateAsTask));
+    },
+
+    async listDoneTasksReadyToArchive(before: Date): Promise<Task[]> {
+      const rows = await options.db.query.tasks.findMany({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.status, "done"),
+            operators.eq(table.archived, false),
+            operators.lte(table.done_at, before),
+            operators.isNull(table.deleted_at),
+          ),
+      });
+
+      return taskListSchema.parse(rows.map(mapTask));
     },
 
     async listTemplateTasks(templateId: string): Promise<Task[]> {
@@ -652,8 +1023,13 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const rows = await options.db.query.tasks.findMany({
         where: (table, operators) =>
           operators.and(
-            operators.eq(table.template_id, templateId),
-            operators.ne(table.id, templateId),
+            operators.or(
+              operators.and(
+                operators.eq(table.template_id, templateId),
+                operators.ne(table.id, templateId),
+              ),
+              operators.eq(table.source_template_id, templateId),
+            ),
             operators.isNull(table.deleted_at),
           ),
         orderBy: (table, operators) => [operators.desc(table.created_at)],
@@ -1195,7 +1571,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
     const rows = await options.db.query.tasks.findMany({
       where: (table, operators) =>
         operators.and(
-          operators.eq(table.template_id, templateId),
+          operators.or(
+            operators.eq(table.template_id, templateId),
+            operators.eq(table.source_template_id, templateId),
+          ),
           operators.isNull(table.deleted_at),
         ),
       columns: { id: true },
@@ -1335,6 +1714,55 @@ function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     archivedAt: row.archived_at?.toISOString(),
+  });
+}
+
+function mapTaskTemplate(row: typeof task_templates.$inferSelect): TaskTemplate {
+  return taskTemplateSchema.parse({
+    id: row.id,
+    defaultAgentId: row.default_agent_id ?? row.agent_id,
+    title: row.title,
+    description: row.description,
+    todos: parseTaskTodos(row.todos_json),
+    status: row.archived ? "archived" : row.enabled ? "enabled" : "disabled",
+    recurrence: parseTaskSchedule(row.recurrence_json ?? row.schedule_json),
+    permissionProfile: parseOptional(row.permission_profile_json, taskPermissionProfileSchema),
+    enabled: row.enabled,
+    archived: row.archived,
+    latestFinalMessage: row.latest_final_message ?? undefined,
+    latestTaskId: row.latest_task_id ?? undefined,
+    nextOccurrenceAt: row.next_occurrence_at?.toISOString(),
+    lastGeneratedOccurrenceAt: row.last_generated_occurrence_at?.toISOString(),
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    archivedAt: row.archived_at?.toISOString(),
+  });
+}
+
+function mapTaskComment(row: typeof task_comments.$inferSelect): TaskComment {
+  return taskCommentSchema.parse({
+    id: row.id,
+    taskId: row.task_id,
+    body: row.body,
+    status: row.status,
+    includedInRunId: row.included_in_run_id ?? undefined,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    resolvedAt: row.resolved_at?.toISOString(),
+  });
+}
+
+function mapTaskSubtask(row: typeof task_subtasks.$inferSelect): TaskSubtask {
+  return taskSubtaskSchema.parse({
+    id: row.id,
+    taskId: row.task_id,
+    defaultAgentId: row.default_agent_id ?? undefined,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    completedAt: row.completed_at?.toISOString(),
   });
 }
 

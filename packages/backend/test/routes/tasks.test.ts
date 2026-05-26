@@ -19,7 +19,7 @@ import type {
 import { createTestDatabase } from "../helpers/db";
 
 describe("task routes", () => {
-  it("supports task lifecycle and run history endpoints", async () => {
+  it("supports board task lifecycle and run history endpoints", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const opencodeService = createMockOpenCodeService();
@@ -70,7 +70,7 @@ describe("task routes", () => {
       const updated = await server.inject({
         method: "PATCH",
         url: `/api/tasks/${task.id}`,
-        payload: { title: "Ship stable release", status: "completed" },
+        payload: { title: "Ship stable release", status: "ready_to_check" },
       });
       const duplicated = await server.inject({
         method: "POST",
@@ -89,13 +89,13 @@ describe("task routes", () => {
         method: "POST",
         url: `/api/tasks/${task.id}/restore`,
       });
-      const triggered = await server.inject({
+      const queued = await server.inject({
         method: "POST",
-        url: `/api/tasks/${task.id}/trigger`,
+        url: `/api/tasks/${task.id}/queue`,
         payload: { triggerSource: "manual", context: { text: "Use current changelog." } },
       });
       const runs = await server.inject({ method: "GET", url: `/api/tasks/${task.id}/runs` });
-      const runId = triggered.json<{ id: string }>().id;
+      const runId = queued.json<{ id: string }>().id;
       const schedulerState = await server.inject({
         method: "GET",
         url: "/api/tasks/scheduler/state",
@@ -105,7 +105,7 @@ describe("task routes", () => {
       expect(listed.json()).toHaveLength(1);
       expect(fetched.statusCode).toBe(200);
       expect(updated.statusCode).toBe(200);
-      expect(updated.json().status).toBe("completed");
+      expect(updated.json().status).toBe("ready_to_check");
       expect(duplicated.statusCode).toBe(201);
       expect(duplicated.json().id).not.toBe(task.id);
       expect(duplicated.json().title).toBe("Ship stable release copy");
@@ -119,9 +119,9 @@ describe("task routes", () => {
       expect(restored.json().archived).toBe(false);
       expect(runs.statusCode).toBe(200);
       expect(runs.json()).toHaveLength(1);
-      expect(triggered.statusCode).toBe(200);
-      expect(triggered.json().status).toBe("queued");
-      expect(triggered.json().context).toEqual({ text: "Use current changelog." });
+      expect(queued.statusCode).toBe(200);
+      expect(queued.json().status).toBe("queued");
+      expect(queued.json().context).toEqual({ text: "Use current changelog." });
       await expect
         .poll(async () => {
           const response = await server.inject({
@@ -140,12 +140,18 @@ describe("task routes", () => {
         url: `/api/tasks/${task.id}/runs/${String(runId)}/open-in-chat`,
       });
       const activeRuns = await server.inject({ method: "GET", url: "/api/tasks/runs/active" });
+      const accepted = await server.inject({ method: "POST", url: `/api/tasks/${task.id}/accept` });
+      const archiveList = await server.inject({ method: "GET", url: "/api/tasks/archive" });
       expect(session.statusCode).toBe(200);
       expect(session.json().conversation.source).toBe("task_run");
       expect(openInChat.statusCode).toBe(200);
       expect(openInChat.json().current.source).toBe("chat");
       expect(activeRuns.statusCode).toBe(200);
       expect(activeRuns.json()).toEqual([]);
+      expect(accepted.statusCode).toBe(200);
+      expect(accepted.json().status).toBe("done");
+      expect(archiveList.statusCode).toBe(200);
+      expect(archiveList.json()).toEqual([]);
       expect(schedulerState.statusCode).toBe(200);
       const deleted = await server.inject({ method: "DELETE", url: `/api/tasks/${task.id}` });
       const afterDelete = await server.inject({ method: "GET", url: `/api/tasks/${task.id}` });
@@ -205,6 +211,110 @@ describe("task routes", () => {
       expect(first.statusCode).toBe(201);
       expect(second.statusCode).toBe(409);
       expect(second.json().error.message).toBe("Maximum task limit reached.");
+    } finally {
+      taskSchedulerService.stop();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("supports comments, subtasks, and recurring template endpoints", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const taskSchedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService: taskExecutionService,
+    });
+    const server = createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService({ delegate: taskSchedulerService }),
+      taskService,
+      taskExecutionService,
+      taskSchedulerService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/tasks",
+        payload: { agentId: agent.id, title: "Board task", triggerMode: "manual" },
+      });
+      const task = created.json<{ id: string }>();
+      const comment = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/comments`,
+        payload: { body: "Please verify docs." },
+      });
+      const updatedComment = await server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/comments/${String(comment.json<{ id: string }>().id)}`,
+        payload: { status: "resolved" },
+      });
+      const comments = await server.inject({
+        method: "GET",
+        url: `/api/tasks/${task.id}/comments`,
+      });
+      const subtask = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/subtasks`,
+        payload: { title: "Docs check", defaultAgentId: agent.id },
+      });
+      const updatedSubtask = await server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/subtasks/${String(subtask.json<{ id: string }>().id)}`,
+        payload: { status: "done" },
+      });
+      const subtasks = await server.inject({
+        method: "GET",
+        url: `/api/tasks/${task.id}/subtasks`,
+      });
+      const template = await server.inject({
+        method: "POST",
+        url: "/api/tasks/templates",
+        payload: {
+          defaultAgentId: agent.id,
+          title: "Daily template",
+          recurrence: {
+            mode: "recurring",
+            anchorAt: "2026-06-01T09:00:00.000Z",
+            timezone: "UTC",
+            repeatRule: { frequency: "day", interval: 1 },
+          },
+        },
+      });
+      const templates = await server.inject({ method: "GET", url: "/api/tasks/templates" });
+      const runNow = await server.inject({
+        method: "POST",
+        url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}/run-now`,
+        payload: { context: { reason: "manual check" } },
+      });
+
+      expect(comment.statusCode).toBe(201);
+      expect(updatedComment.statusCode).toBe(200);
+      expect(updatedComment.json().status).toBe("resolved");
+      expect(comments.statusCode).toBe(200);
+      expect(comments.json()).toHaveLength(1);
+      expect(subtask.statusCode).toBe(201);
+      expect(updatedSubtask.statusCode).toBe(200);
+      expect(updatedSubtask.json().completedAt).toBeDefined();
+      expect(subtasks.statusCode).toBe(200);
+      expect(subtasks.json()).toHaveLength(1);
+      expect(template.statusCode).toBe(201);
+      expect(template.json().defaultAgentId).toBe(agent.id);
+      expect(templates.statusCode).toBe(200);
+      expect(templates.json()).toHaveLength(1);
+      expect(runNow.statusCode).toBe(200);
+      expect(runNow.json().status).toBe("queued");
+      expect(runNow.json().triggerSource).toBe("template");
     } finally {
       taskSchedulerService.stop();
       await server.close();

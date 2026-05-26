@@ -159,6 +159,18 @@ export const taskSubtaskInputSchema = z.object({
   status: taskSubtaskStatusSchema.default("backlog"),
 });
 
+export const updateTaskCommentInputSchema = z.object({
+  body: z.string().trim().min(1).optional(),
+  status: taskCommentStatusSchema.optional(),
+});
+
+export const updateTaskSubtaskInputSchema = z.object({
+  title: z.string().trim().min(1).optional(),
+  description: z.string().trim().optional(),
+  defaultAgentId: z.string().trim().min(1).optional(),
+  status: taskSubtaskStatusSchema.optional(),
+});
+
 export const taskSubtaskSchema = taskSubtaskInputSchema.extend({
   id: z.string().min(1),
   taskId: z.string().min(1),
@@ -169,24 +181,30 @@ export const taskSubtaskSchema = taskSubtaskInputSchema.extend({
 
 export const createTaskInputSchema = z.object({
   agentId: z.string().trim().min(1),
+  defaultAgentId: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1),
   description: z.string().trim().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
   status: taskStatusSchema.optional(),
   triggerMode: taskTriggerModeSchema.default("manual"),
   schedule: taskScheduleSchema.optional(),
+  scheduledAt: z.string().datetime().optional(),
+  dueAt: z.string().datetime().optional(),
   permissionProfile: taskPermissionProfileSchema.optional(),
   enabled: z.boolean().optional(),
 });
 
 export const updateTaskInputSchema = z.object({
   agentId: z.string().trim().min(1).optional(),
+  defaultAgentId: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
   todos: z.array(taskTodoInputSchema).optional(),
   status: taskStatusSchema.optional(),
   triggerMode: taskTriggerModeSchema.optional(),
   schedule: taskScheduleSchema.optional(),
+  scheduledAt: z.string().datetime().optional(),
+  dueAt: z.string().datetime().optional(),
   permissionProfile: taskPermissionProfileSchema.optional(),
   enabled: z.boolean().optional(),
 });
@@ -292,6 +310,21 @@ export const taskTemplateSchema = z.object({
 });
 
 export const taskTemplateListSchema = z.array(taskTemplateSchema);
+
+export const taskTemplateRunNowInputSchema = z.object({
+  context: looseRecordSchema.optional(),
+  metadata: looseRecordSchema.optional(),
+});
+
+export const createTaskTemplateInputSchema = z.object({
+  defaultAgentId: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  description: z.string().trim().default(""),
+  todos: z.array(taskTodoInputSchema).default([]),
+  recurrence: recurringTaskScheduleSchema,
+  permissionProfile: taskPermissionProfileSchema.optional(),
+  enabled: z.boolean().optional(),
+});
 
 export const createTaskRunInputSchema = z.object({
   id: z.string().trim().min(1).optional(),
@@ -408,6 +441,7 @@ export const taskRunSessionInspectionSchema = z.object({
 });
 
 export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
+export type CreateTaskTemplateInput = z.input<typeof createTaskTemplateInputSchema>;
 export type CreateTaskRunInput = z.input<typeof createTaskRunInputSchema>;
 export type AddTaskRunArtifactInput = z.input<typeof addTaskRunArtifactInputSchema>;
 export type CancelTaskRunInput = z.input<typeof cancelTaskRunInputSchema>;
@@ -437,8 +471,10 @@ export type TaskTodo = z.infer<typeof taskTodoSchema>;
 export type TaskTriggerMode = z.infer<typeof taskTriggerModeSchema>;
 export type TaskRepeatRule = z.infer<typeof taskRepeatRuleSchema>;
 export type TriggerTaskInput = z.input<typeof triggerTaskInputSchema>;
+export type UpdateTaskCommentInput = z.input<typeof updateTaskCommentInputSchema>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
 export type UpdateTaskRunInput = z.input<typeof updateTaskRunInputSchema>;
+export type UpdateTaskSubtaskInput = z.input<typeof updateTaskSubtaskInputSchema>;
 export type MarkTaskRunNeedsReviewInput = z.input<typeof markTaskRunNeedsReviewInputSchema>;
 export type SetTaskRunResultInput = z.input<typeof setTaskRunResultInputSchema>;
 export { permissionActionSchema };

@@ -33,14 +33,16 @@ import {
 } from "./groups/cc-tool-management/tools/create-custom-tool.js";
 import {
   createTaskToolMetadata,
+  createTaskTemplateToolMetadata,
   createTasksManagementToolDefinitions,
   getTaskRunToolMetadata,
   getTaskToolMetadata,
-  listRecurringTaskHistoryToolMetadata,
+  addTaskCommentToolMetadata,
+  queueTaskToolMetadata,
+  runTaskTemplateNowToolMetadata,
+  scheduleTaskToolMetadata,
   listTaskRunsToolMetadata,
   listTasksToolMetadata,
-  scheduleOneTimeTaskToolMetadata,
-  triggerTaskToolMetadata,
 } from "./groups/cc-tasks-management/tools/task-management-tools.js";
 
 export type CcManagedToolContext = {
@@ -201,11 +203,13 @@ export function createCcManagedMcpServerRegistry(options: {
         createTaskToolMetadata,
         listTasksToolMetadata,
         getTaskToolMetadata,
-        triggerTaskToolMetadata,
-        scheduleOneTimeTaskToolMetadata,
+        queueTaskToolMetadata,
+        scheduleTaskToolMetadata,
+        addTaskCommentToolMetadata,
         listTaskRunsToolMetadata,
         getTaskRunToolMetadata,
-        listRecurringTaskHistoryToolMetadata,
+        createTaskTemplateToolMetadata,
+        runTaskTemplateNowToolMetadata,
       ],
       tools: taskManagementTools,
     },

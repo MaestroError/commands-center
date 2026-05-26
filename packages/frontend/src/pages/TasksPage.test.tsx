@@ -198,7 +198,7 @@ describe("TasksPage", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/trigger",
+        "/api/tasks/task-1/queue",
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({ triggerSource: "manual", context: { text: "Use changelog." } }),
@@ -852,7 +852,7 @@ function mockFetch(options: MockFetchOptions = {}) {
         }),
       );
     }
-    if (url === "/api/tasks/task-1/trigger") return Promise.resolve(jsonResponse(200, run));
+    if (url === "/api/tasks/task-1/queue") return Promise.resolve(jsonResponse(200, run));
     return Promise.reject(new Error(`Unexpected fetch URL: ${url}`));
   });
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppDb } from "../../src/db/client";
+import { upsertSetting } from "../../src/db/helpers";
 import { agents } from "../../src/db/schema/index";
 import {
   createTaskExecutionService,
@@ -112,7 +113,7 @@ describe("createTaskSchedulerService", () => {
     expect(next.toISOString()).toBe("2026-11-30T14:00:00.000Z");
   });
 
-  it("runs due one-time scheduled tasks once", async () => {
+  it("keeps legacy one-time scheduled templates out of the board scheduler", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const schedulerServiceRef: { current?: ReturnType<typeof createTaskSchedulerService> } = {};
@@ -137,16 +138,54 @@ describe("createTaskSchedulerService", () => {
       });
 
       await schedulerService.tick(new Date("2026-06-01T12:01:00.000Z"));
-      await schedulerService.tick(new Date("2026-06-01T12:02:00.000Z"));
 
       const runs = await taskService.listRuns(task.id);
       const states = await schedulerService.listStates();
 
+      expect(runs).toHaveLength(0);
+      expect(states.find((state) => state.taskId === task.id)).toBeUndefined();
+    } finally {
+      schedulerService.stop();
+      await testDb.cleanup();
+    }
+  });
+
+  it("queues due board scheduled tasks once", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const schedulerServiceRef: { current?: ReturnType<typeof createTaskSchedulerService> } = {};
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      onRunTerminal: (run) => schedulerServiceRef.current?.handleRunTerminal(run),
+    });
+    const schedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService,
+    });
+    schedulerServiceRef.current = schedulerService;
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Board scheduled",
+        triggerMode: "manual",
+        status: "scheduled",
+        scheduledAt: "2026-06-01T12:00:00.000Z",
+      });
+
+      await schedulerService.tick(new Date("2026-06-01T12:01:00.000Z"));
+      await expect.poll(async () => await taskService.listRuns(task.id)).toHaveLength(1);
+      await schedulerService.tick(new Date("2026-06-01T12:02:00.000Z"));
+
+      const runs = await taskService.listRuns(task.id);
+      const queued = await taskService.get(task.id);
+
       expect(runs).toHaveLength(1);
-      await expect
-        .poll(async () => (await taskService.getRunById(String(runs[0]?.id)))?.status)
-        .toBe("completed");
-      expect(states.find((state) => state.taskId === task.id)?.nextRunAt).toBeUndefined();
+      expect(runs[0]?.triggerSource).toBe("scheduled");
+      expect(queued?.status).toBe("ready_to_check");
     } finally {
       schedulerService.stop();
       await testDb.cleanup();
@@ -197,6 +236,198 @@ describe("createTaskSchedulerService", () => {
       expect(runs).toHaveLength(1);
       expect(occurrences).toHaveLength(1);
       expect(runs[0]?.taskId).toBe(occurrences[0]?.id);
+      expect(occurrences[0]?.sourceTemplateId).toBe(task.id);
+      expect(occurrences[0]?.sourceOccurrenceAt).toBe("2026-06-02T12:00:00.000Z");
+    } finally {
+      schedulerService.stop();
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not generate duplicate recurring tasks on duplicate ticks", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const schedulerServiceRef: { current?: ReturnType<typeof createTaskSchedulerService> } = {};
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      onRunTerminal: (run) => schedulerServiceRef.current?.handleRunTerminal(run),
+    });
+    const schedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService,
+    });
+    schedulerServiceRef.current = schedulerService;
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await taskService.create({
+        agentId: agent.id,
+        title: "Recurring once",
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T12:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "day", interval: 1 },
+        },
+      });
+
+      await schedulerService.tick(new Date("2026-06-02T12:00:00.000Z"));
+      await schedulerService.tick(new Date("2026-06-02T12:00:00.000Z"));
+
+      const occurrences = await taskService.listTemplateTasks(template.id);
+      const runs = await taskService.listRuns(template.id);
+
+      expect(occurrences).toHaveLength(1);
+      expect(runs).toHaveLength(1);
+    } finally {
+      schedulerService.stop();
+      await testDb.cleanup();
+    }
+  });
+
+  it("supports run now on a template by creating and queueing a generated task", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const executionService = createTaskExecutionService({ db: testDb.client.db, taskService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await taskService.create({
+        agentId: agent.id,
+        title: "Run template now",
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T12:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "day", interval: 1 },
+        },
+      });
+      const generated = await taskService.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-01T12:30:00.000Z",
+        triggerSource: "template",
+      });
+
+      if (!generated) {
+        throw new Error("Expected generated task.");
+      }
+
+      const run = await executionService.queue(generated.id, {
+        triggerSource: "template",
+        metadata: { templateId: template.id },
+      });
+
+      await expect
+        .poll(async () => (await taskService.getRunById(run.id))?.status)
+        .toBe("completed");
+      const queued = await taskService.get(generated.id);
+
+      expect(queued?.sourceTemplateId).toBe(template.id);
+      expect(queued?.status).toBe("ready_to_check");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps generated task rescheduling independent from template recurrence", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await taskService.create({
+        agentId: agent.id,
+        title: "Independent recurrence",
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T12:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "day", interval: 1 },
+        },
+      });
+      const generated = await taskService.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-02T12:00:00.000Z",
+        triggerSource: "template",
+      });
+
+      if (!generated) {
+        throw new Error("Expected generated task.");
+      }
+
+      await taskService.update(generated.id, {
+        status: "scheduled",
+        scheduledAt: "2026-06-03T12:00:00.000Z",
+      });
+      const unchangedTemplate = await taskService.get(template.id);
+
+      expect(unchangedTemplate?.schedule).toEqual(template.schedule);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("archives done tasks after the default retention window", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const executionService = createTaskExecutionService({ db: testDb.client.db, taskService });
+    const schedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Archive done",
+        triggerMode: "manual",
+        status: "ready_to_check",
+      });
+
+      await taskService.acceptTask(task.id);
+      await schedulerService.tick(new Date(Date.now() + 8 * 24 * 60 * 60 * 1000));
+      const archived = await taskService.get(task.id);
+
+      expect(archived).toBeUndefined();
+      expect(await taskService.get(task.id, { includeArchived: true })).toMatchObject({
+        status: "archived",
+      });
+    } finally {
+      schedulerService.stop();
+      await testDb.cleanup();
+    }
+  });
+
+  it("uses configured done task auto-archive retention", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const executionService = createTaskExecutionService({ db: testDb.client.db, taskService });
+    const schedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService,
+    });
+
+    try {
+      await upsertSetting(testDb.client.db, "taskDoneAutoArchiveWeeks", 2);
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Archive later",
+        triggerMode: "manual",
+        status: "ready_to_check",
+      });
+
+      await taskService.acceptTask(task.id);
+      await schedulerService.tick(new Date(Date.now() + 8 * 24 * 60 * 60 * 1000));
+      const stillVisible = await taskService.get(task.id);
+
+      expect(stillVisible?.status).toBe("done");
     } finally {
       schedulerService.stop();
       await testDb.cleanup();
@@ -244,7 +475,7 @@ describe("createTaskSchedulerService", () => {
         .toBe("2026-06-09T09:00:00.000Z");
 
       expect(runs).toHaveLength(1);
-      expect(runs[0]?.renderedContext?.["triggerMetadata"]).toEqual({
+      expect(runs[0]?.renderedContext?.["triggerMetadata"]).toMatchObject({
         scheduledAt: "2026-06-08T09:00:00.000Z",
       });
     } finally {
@@ -290,7 +521,7 @@ describe("createTaskSchedulerService", () => {
       const runs = await taskService.listRuns(task.id);
 
       expect(runs).toHaveLength(1);
-      expect(runs[0]?.renderedContext?.["triggerMetadata"]).toEqual({
+      expect(runs[0]?.renderedContext?.["triggerMetadata"]).toMatchObject({
         scheduledAt: "2026-06-06T14:00:00.000Z",
       });
     } finally {
@@ -336,7 +567,7 @@ describe("createTaskSchedulerService", () => {
       const runs = await taskService.listRuns(task.id);
 
       expect(runs).toHaveLength(1);
-      expect(runs[0]?.renderedContext?.["triggerMetadata"]).toEqual({
+      expect(runs[0]?.renderedContext?.["triggerMetadata"]).toMatchObject({
         scheduledAt: "2027-06-01T12:00:00.000Z",
       });
     } finally {
@@ -350,6 +581,7 @@ describe("createTaskSchedulerService", () => {
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const executionService = {
       trigger: vi.fn().mockRejectedValue(new Error("Trigger setup failed.")),
+      queue: vi.fn().mockRejectedValue(new Error("Trigger setup failed.")),
       runQueuedTask: vi.fn(),
       cancel: vi.fn(),
       listActiveRuns: vi.fn(),
@@ -383,7 +615,7 @@ describe("createTaskSchedulerService", () => {
       expect(runs[0]?.triggerSource).toBe("scheduled");
       expect(runs[0]?.errorMessage).toBe("Trigger setup failed.");
       expect(runs[0]?.errorDetails).toEqual({ errorName: "Error", stage: "scheduled_trigger" });
-      expect(runs[0]?.renderedContext?.["triggerMetadata"]).toEqual({
+      expect(runs[0]?.renderedContext?.["triggerMetadata"]).toMatchObject({
         scheduledAt: "2026-06-01T10:00:00.000Z",
       });
     } finally {

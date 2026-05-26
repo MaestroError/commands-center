@@ -101,8 +101,8 @@ Implement this sub-epic in phases. Existing task, task run, task template, and t
 3. ✅ **Phase 2: Data Reset and Schema Cutover** — `09-board-oriented-task-system-redesign/02-data-reset-and-schema-cutover.md`
 4. ✅ **Phase 3: Backend Queue Lifecycle** — `09-board-oriented-task-system-redesign/03-backend-queue-lifecycle.md`
 5. ✅ **Phase 4: Task Run Context Builder** — `09-board-oriented-task-system-redesign/04-task-run-context-builder.md`
-6. **Phase 5: Scheduler, Templates, and Archival** — `09-board-oriented-task-system-redesign/05-scheduler-templates-and-archival.md`
-7. **Phase 6: REST API and MCP Surface** — `09-board-oriented-task-system-redesign/06-rest-api-and-mcp-surface.md`
+6. ✅ **Phase 5: Scheduler, Templates, and Archival** — `09-board-oriented-task-system-redesign/05-scheduler-templates-and-archival.md`
+7. ✅ **Phase 6: REST API and MCP Surface** — `09-board-oriented-task-system-redesign/06-rest-api-and-mcp-surface.md`
 8. **Phase 7: Frontend Integration** — `09-board-oriented-task-system-redesign/07-frontend-integration.md`
 
 ## Out of Scope

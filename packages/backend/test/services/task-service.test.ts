@@ -483,10 +483,46 @@ describe("createTaskService", () => {
       const storedOccurrence = occurrence ? await service.get(occurrence.id) : undefined;
       const occurrences = await service.listTemplateTasks(template.id);
 
-      expect(storedOccurrence?.templateId).toBe(template.id);
+      expect(storedOccurrence?.templateId).toBeUndefined();
+      expect(storedOccurrence?.sourceTemplateId).toBe(template.id);
+      expect(storedOccurrence?.sourceOccurrenceAt).toBe("2026-06-08T09:00:00.000Z");
       expect(storedOccurrence?.description).toBe("Use the old prompt.");
       expect(storedOccurrence?.scheduledFor).toBe("2026-06-08T09:00:00.000Z");
       expect(occurrences.map((task) => task.id)).toEqual([occurrence?.id]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns the existing generated task for duplicate template occurrences", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.create({
+        agentId: agent.id,
+        title: "Weekly report",
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+      const first = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-08T09:00:00.000Z",
+        triggerSource: "template",
+      });
+      const second = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-08T09:00:00.000Z",
+        triggerSource: "template",
+      });
+      const occurrences = await service.listTemplateTasks(template.id);
+
+      expect(second?.id).toBe(first?.id);
+      expect(occurrences).toHaveLength(1);
     } finally {
       await testDb.cleanup();
     }

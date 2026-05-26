@@ -12,13 +12,16 @@ import {
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../db/client.js";
+import { getSetting } from "../db/helpers.js";
 import { now } from "../db/ids.js";
 import { task_scheduler_state } from "../db/schema/index.js";
 import type { TaskExecutionService } from "./task-execution-service.js";
 import type { TaskService } from "./task-service.js";
 
 const DEFAULT_TICK_MS = 30_000;
+const DEFAULT_DONE_AUTO_ARCHIVE_WEEKS = 1;
 const MAX_RECURRING_SEARCH_DAYS = 3660;
+const TASK_DONE_AUTO_ARCHIVE_WEEKS_SETTING = "taskDoneAutoArchiveWeeks";
 const zonedFormatters = new Map<string, Intl.DateTimeFormat>();
 
 type RecurringTaskSchedule = Extract<Task["schedule"], { mode: "recurring" }>;
@@ -81,11 +84,12 @@ export function createTaskSchedulerService(options: {
     },
 
     async reconcile(from = now()): Promise<TaskSchedulerState[]> {
-      const scheduledTasks = await options.taskService.list({ includeArchived: false });
+      const [scheduledTasks, recurringTemplates] = await Promise.all([
+        options.taskService.list({ status: "scheduled", includeArchived: false }),
+        options.taskService.listRecurringTemplates(),
+      ]);
       const states = await Promise.all(
-        scheduledTasks
-          .filter((task) => task.triggerMode !== "manual")
-          .map((task) => reconcileTaskState(task, from)),
+        [...scheduledTasks, ...recurringTemplates].map((task) => reconcileTaskState(task, from)),
       );
 
       return taskSchedulerStateListSchema.parse(states);
@@ -106,6 +110,7 @@ export function createTaskSchedulerService(options: {
 
       try {
         await this.reconcile(at);
+        await archiveDoneTasks(at);
         const dueRows = await options.db.query.task_scheduler_state.findMany({
           where: (table, operators) =>
             operators.and(
@@ -174,8 +179,36 @@ export function createTaskSchedulerService(options: {
     let scheduledAt = dueAt;
 
     try {
-      scheduledAt = computeCatchUpOccurrence(task, dueAt, at);
-      await options.executionService.trigger(task.id, {
+      if (task.templateId === task.id && task.schedule.mode === "recurring") {
+        scheduledAt = computeCatchUpOccurrence(task, dueAt, at);
+        const generatedTask = await options.taskService.createTaskFromTemplate(task.id, {
+          occurrenceAt: scheduledAt.toISOString(),
+          triggerSource: "template",
+        });
+
+        if (!generatedTask) {
+          throw new Error("Task template not found.");
+        }
+
+        const activeRun = await options.taskService.getActiveRunForTask(generatedTask.id);
+
+        if (!activeRun && generatedTask.status !== "queued") {
+          await options.executionService.queue(generatedTask.id, {
+            triggerSource: "template",
+            metadata: { scheduledAt: scheduledAt.toISOString(), templateId: task.id },
+          });
+        }
+
+        await upsertState(
+          task,
+          computeNextRunAtAfter(task, scheduledAt, at),
+          undefined,
+          scheduledAt,
+        );
+        return;
+      }
+
+      await options.executionService.queue(task.id, {
         triggerSource: "scheduled",
         metadata: { scheduledAt: scheduledAt.toISOString() },
       });
@@ -199,6 +232,7 @@ export function createTaskSchedulerService(options: {
     const occurrence =
       task.templateId === task.id
         ? await options.taskService.createTaskFromTemplate(task.id, {
+            occurrenceAt: scheduledAt.toISOString(),
             scheduledFor: scheduledAt.toISOString(),
             triggerSource: "scheduled",
           })
@@ -234,6 +268,24 @@ export function createTaskSchedulerService(options: {
     });
   }
 
+  async function archiveDoneTasks(at: Date): Promise<void> {
+    const retentionWeeks = await getDoneAutoArchiveWeeks();
+    const archiveBefore = new Date(at.getTime() - retentionWeeks * 7 * 24 * 60 * 60 * 1000);
+    const tasks = await options.taskService.listDoneTasksReadyToArchive(archiveBefore);
+
+    for (const task of tasks) {
+      await options.taskService.archiveTask(task.id);
+    }
+  }
+
+  async function getDoneAutoArchiveWeeks(): Promise<number> {
+    const setting = await getSetting<unknown>(options.db, TASK_DONE_AUTO_ARCHIVE_WEEKS_SETTING);
+
+    return typeof setting === "number" && Number.isFinite(setting) && setting >= 0
+      ? setting
+      : DEFAULT_DONE_AUTO_ARCHIVE_WEEKS;
+  }
+
   async function reconcileTaskState(task: Task, from: Date): Promise<TaskSchedulerState> {
     const existing = await options.db.query.task_scheduler_state.findFirst({
       where: (table, operators) => operators.eq(table.task_id, task.id),
@@ -242,6 +294,10 @@ export function createTaskSchedulerService(options: {
 
     if (existingNextRunAt && existingNextRunAt <= from) {
       return mapSchedulerState(existing);
+    }
+
+    if (task.status === "scheduled" && task.scheduledAt && !existing?.last_scheduled_at) {
+      return upsertState(task, new Date(task.scheduledAt));
     }
 
     return upsertState(task, computeNextRunAt(task, getScheduleBaseTime(task, existing, from)));
@@ -324,6 +380,11 @@ export function computeNextRunAt(task: Task, from: Date): Date | undefined {
 function computeNextRunAtAfter(task: Task, from: Date, after: Date): Date | undefined {
   if (!task.enabled || task.archived || task.status === "disabled" || task.status === "draft") {
     return undefined;
+  }
+
+  if (task.status === "scheduled" && task.scheduledAt) {
+    const scheduledAt = new Date(task.scheduledAt);
+    return scheduledAt > after ? scheduledAt : undefined;
   }
 
   if (task.schedule.mode === "scheduled_once") {
