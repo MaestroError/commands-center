@@ -103,11 +103,23 @@ Implement this sub-epic in phases. Existing task, task run, task template, and t
 5. ✅ **Phase 4: Task Run Context Builder** — `09-board-oriented-task-system-redesign/04-task-run-context-builder.md`
 6. ✅ **Phase 5: Scheduler, Templates, and Archival** — `09-board-oriented-task-system-redesign/05-scheduler-templates-and-archival.md`
 7. ✅ **Phase 6: REST API and MCP Surface** — `09-board-oriented-task-system-redesign/06-rest-api-and-mcp-surface.md`
-8. **Phase 7: Frontend Integration** — `09-board-oriented-task-system-redesign/07-frontend-integration.md`
+8. **Phase 7: Frontend Integration** — planned from the UI epics below.
+
+## UI Planning Epics
+
+- ✅ **Level 1-2: Navigation and Board** — `09-board-oriented-task-system-redesign/07-ui-level-1-2-navigation-and-board.md`
+- **Level 3: Board Cards** — `09-board-oriented-task-system-redesign/08-ui-level-3-board-cards.md`
+- **Level 4: Task Detail Container** — `09-board-oriented-task-system-redesign/09-ui-level-4-task-detail-container.md`
+- **Level 5: Task Detail Sections** — `09-board-oriented-task-system-redesign/10-ui-level-5-task-detail-sections.md`
+- **Recurring Templates** — `09-board-oriented-task-system-redesign/11-ui-recurring-templates.md`
+- **Comments, Feedback, and Context** — `09-board-oriented-task-system-redesign/12-ui-comments-feedback-and-context.md`
+- **Subtasks** — `09-board-oriented-task-system-redesign/13-ui-subtasks.md`
+- **Task Runs, Session Check, and Open In Chat** — `09-board-oriented-task-system-redesign/14-ui-task-runs-session-and-chat.md`
+- **Scheduling and Archive** — `09-board-oriented-task-system-redesign/15-ui-scheduling-and-archive.md`
 
 ## Out of Scope
 
-- Board layout, drag-and-drop interactions, columns, filters, cards, and archive screen UI details; those remain in the parent epic's UX story and future screen requirements.
+- Technical implementation details for the UI epics; those should be planned immediately before frontend development.
 - Multi-user assignment or permissions.
 - External distributed workers.
 - Full API-triggered task creation beyond reserving trigger source semantics for future use.

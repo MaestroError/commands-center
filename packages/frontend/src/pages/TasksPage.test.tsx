@@ -4,7 +4,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import type { Agent, AgentCatalog, ConversationDetail, Task, TaskRun } from "@cc/shared/schemas";
+import type {
+  Agent,
+  AgentCatalog,
+  ConversationDetail,
+  Task,
+  TaskRun,
+  TaskTemplate,
+} from "@cc/shared/schemas";
 
 import { formatDate } from "@/components/tasks/task-format";
 import { TaskDetailPage } from "@/pages/TaskDetailPage";
@@ -45,12 +52,42 @@ const task: Task = {
       createdAt: "2026-01-01T00:00:00.000Z",
     },
   ],
-  status: "enabled",
+  status: "backlog",
   triggerMode: "manual",
   schedule: { mode: "manual" },
   enabled: true,
   archived: false,
   latestFinalMessage: "Ready to publish.",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const archivedTask: Task = {
+  ...task,
+  id: "task-archived",
+  title: "Archived release",
+  status: "archived",
+  archived: true,
+  archivedAt: "2026-01-08T00:00:00.000Z",
+};
+
+const taskTemplate: TaskTemplate = {
+  id: "template-1",
+  defaultAgentId: "agent-1",
+  title: "Weekly release notes",
+  description: "Generate release note draft every week.",
+  todos: [],
+  status: "enabled",
+  recurrence: {
+    mode: "recurring",
+    anchorAt: "2026-01-01T00:00:00.000Z",
+    timezone: "UTC",
+    repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
+  },
+  enabled: true,
+  archived: false,
+  latestTaskId: "task-1",
+  nextOccurrenceAt: "2026-01-08T00:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -170,6 +207,8 @@ type MockFetchOptions = {
   agentsPayload?: (typeof agent)[];
   catalogPayload?: AgentCatalog;
   runsPayload?: TaskRun[];
+  archivedTasksPayload?: Task[];
+  templatesPayload?: TaskTemplate[];
 };
 
 beforeAll(() => {
@@ -181,7 +220,20 @@ afterEach(() => {
 });
 
 describe("TasksPage", () => {
-  it("lists tasks and supports manual trigger", async () => {
+  it("renders board columns by default", async () => {
+    mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(await screen.findByRole("heading", { name: "Backlog" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Scheduled" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Queued" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Ready to Check" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Review" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Done" })).toBeInTheDocument();
+  });
+
+  it("lists board tasks and supports queueing", async () => {
     const fetchMock = mockFetch();
 
     renderWithRouter(<TasksPage />, "/tasks");
@@ -190,7 +242,7 @@ describe("TasksPage", () => {
     expect(screen.getAllByText("Planner").length).toBeGreaterThan(0);
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Run now" }));
+    await user.click(screen.getByRole("button", { name: "Queue" }));
     await user.type(screen.getByLabelText(/Run context/i), "Use changelog.");
     await user.click(screen.getByRole("button", { name: "Run task" }));
 
@@ -205,6 +257,26 @@ describe("TasksPage", () => {
         }),
       );
     });
+  });
+
+  it("shows templates separately from the board", async () => {
+    mockFetch({ templatesPayload: [taskTemplate] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
+
+    expect(
+      await screen.findByRole("heading", { name: "Weekly release notes" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Backlog" })).not.toBeInTheDocument();
+  });
+
+  it("shows archived tasks separately from the board", async () => {
+    mockFetch({ archivedTasksPayload: [archivedTask] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=archive");
+
+    expect(await screen.findByRole("link", { name: "Archived release" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Backlog" })).not.toBeInTheDocument();
   });
 
   it("duplicates a task from the task list", async () => {
@@ -795,6 +867,8 @@ function mockFetch(options: MockFetchOptions = {}) {
   const agentsPayload = options.agentsPayload ?? [agent];
   const catalogPayload = options.catalogPayload ?? catalog;
   const runsPayload = options.runsPayload ?? [sessionRun];
+  const archivedTasksPayload = options.archivedTasksPayload ?? [];
+  const templatesPayload = options.templatesPayload ?? [];
 
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : input.toString();
@@ -809,6 +883,9 @@ function mockFetch(options: MockFetchOptions = {}) {
         jsonResponse(200, [{ name: "PRD.md", path: "PRD.md", type: "file", ignored: false }]),
       );
     }
+    if (url === "/api/tasks/archive")
+      return Promise.resolve(jsonResponse(200, archivedTasksPayload));
+    if (url === "/api/tasks/templates") return Promise.resolve(jsonResponse(200, templatesPayload));
     if (url === "/api/tasks") {
       const method = input instanceof Request ? input.method : init?.method;
       return Promise.resolve(

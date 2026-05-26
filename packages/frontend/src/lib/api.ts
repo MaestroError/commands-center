@@ -75,6 +75,7 @@ import {
   taskRunSessionInspectionSchema,
   taskSchedulerStateListSchema,
   taskSchema,
+  taskTemplateListSchema,
   terminalListResponseSchema,
   terminalResizeInputSchema,
   terminalSessionSchema,
@@ -143,6 +144,7 @@ import {
   type SystemUpdatePreferences,
   type SystemVersion,
   type Task,
+  type TaskTemplate,
   type TaskRun,
   type TaskRunSessionInspection,
   type TaskSchedulerState,
@@ -644,6 +646,14 @@ export async function listTasks(query: Partial<ListTasksQuery> = {}): Promise<Ta
 
   const suffix = params.toString() ? `?${params.toString()}` : "";
   return requestJson<Task[]>(`/api/tasks${suffix}`, taskListSchema);
+}
+
+export async function listArchivedTasks(): Promise<Task[]> {
+  return requestJson<Task[]>("/api/tasks/archive", taskListSchema);
+}
+
+export async function listTaskTemplates(): Promise<TaskTemplate[]> {
+  return requestJson<TaskTemplate[]>("/api/tasks/templates", taskTemplateListSchema);
 }
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {

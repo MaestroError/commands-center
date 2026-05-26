@@ -18,7 +18,9 @@ import {
   getTask,
   getTaskRun,
   inspectTaskRunSession,
+  listArchivedTasks,
   listActiveTaskRuns,
+  listTaskTemplates,
   listTaskRuns,
   listTasks,
   openTaskRunInChat,
@@ -32,6 +34,20 @@ export function useTasksQuery(query: Partial<ListTasksQuery> = {}) {
   return useQuery({
     queryKey: queryKeys.tasks(query),
     queryFn: () => listTasks(query),
+  });
+}
+
+export function useArchivedTasksQuery() {
+  return useQuery({
+    queryKey: queryKeys.taskArchive,
+    queryFn: listArchivedTasks,
+  });
+}
+
+export function useTaskTemplatesQuery() {
+  return useQuery({
+    queryKey: queryKeys.taskTemplates,
+    queryFn: listTaskTemplates,
   });
 }
 
@@ -80,6 +96,8 @@ export function useTaskMutations() {
   const invalidateTasks = async (task?: Task) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.taskArchive }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplates }),
       queryClient.invalidateQueries({ queryKey: queryKeys.activeTaskRuns }),
       task ? queryClient.invalidateQueries({ queryKey: queryKeys.task(task.id) }) : undefined,
       task ? queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(task.id) }) : undefined,

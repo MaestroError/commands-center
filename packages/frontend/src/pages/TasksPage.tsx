@@ -3,9 +3,10 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 
 import type {
   Agent,
+  BoardTaskStatus,
   CreateTaskInput,
-  ListTasksQuery,
   Task,
+  TaskTemplate,
   TaskRepeatRule,
   TaskSchedule,
   TaskTriggerMode,
@@ -31,25 +32,64 @@ import {
 import { StatusBadge } from "@/components/tasks/task-ui";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
 import { useAgentCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
-import { useTaskMutations, useTaskQuery, useTasksQuery } from "@/hooks/use-tasks-query";
+import {
+  useArchivedTasksQuery,
+  useTaskMutations,
+  useTaskQuery,
+  useTasksQuery,
+  useTaskTemplatesQuery,
+} from "@/hooks/use-tasks-query";
 import { isTaskCreationPrefill, type TaskCreationPrefill } from "@/services/task-prefill-service";
 
 type TasksPageProps = {
   mode?: "list" | "create" | "edit";
 };
 
-const TASK_STATUSES = [
-  "draft",
-  "enabled",
-  "disabled",
-  "archived",
-  "running",
-  "in_progress",
-  "failed",
-  "completed",
-] as const;
-
 const TRIGGER_MODES = ["manual", "scheduled_once", "recurring"] as const;
+const TASK_VIEWS = ["board", "templates", "archive"] as const;
+const BOARD_COLUMNS = [
+  {
+    status: "backlog",
+    title: "Backlog",
+    description: "Tasks that exist but are not scheduled, queued, ready, under review, or done.",
+    empty: "New unscheduled tasks appear here before they enter active work.",
+  },
+  {
+    status: "scheduled",
+    title: "Scheduled",
+    description: "Tasks that should enter execution later or carry timing priority.",
+    empty: "Scheduled tasks will queue automatically when their time arrives.",
+  },
+  {
+    status: "queued",
+    title: "Queued",
+    description: "Tasks with queued or running AI work.",
+    empty: "Queued and running work appears here while the agent is active.",
+  },
+  {
+    status: "ready_to_check",
+    title: "Ready to Check",
+    description: "AI work finished successfully and is waiting for acceptance.",
+    empty: "Completed AI runs appear here for review before acceptance.",
+  },
+  {
+    status: "review",
+    title: "Review",
+    description: "Tasks that failed, need a decision, or need feedback before retry.",
+    empty: "Failures and human-review requests appear here.",
+  },
+  {
+    status: "done",
+    title: "Done",
+    description: "Tasks explicitly accepted by the operator.",
+    empty: "Accepted work stays here until archival.",
+  },
+] satisfies Array<{
+  status: BoardTaskStatus;
+  title: string;
+  description: string;
+  empty: string;
+}>;
 const REPEAT_PRESETS = [
   "hourly",
   "daily",
@@ -79,14 +119,22 @@ export function TasksPage(props: TasksPageProps) {
 function TaskListPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const filters = useMemo(() => readFilters(searchParams), [searchParams]);
-  const tasksQuery = useTasksQuery(filters);
+  const view = readTaskView(searchParams);
+  const currentSearch = searchParams.toString() ? `?${searchParams.toString()}` : "";
+  const tasksQuery = useTasksQuery({ includeArchived: false });
+  const templatesQuery = useTaskTemplatesQuery();
+  const archiveQuery = useArchivedTasksQuery();
   const agentsQuery = useAgentsQuery();
   const mutations = useTaskMutations();
   const [runTask, setRunTask] = useState<Task>();
   const agents = agentsQuery.data ?? [];
-  const tasks = tasksQuery.data ?? [];
-  const error = readError(tasksQuery.error ?? agentsQuery.error);
+  const boardTasks = tasksQuery.data ?? [];
+  const templates = templatesQuery.data ?? [];
+  const archivedTasks = archiveQuery.data ?? [];
+  const activeQuery =
+    view === "templates" ? templatesQuery : view === "archive" ? archiveQuery : tasksQuery;
+  const error = readError(activeQuery.error ?? agentsQuery.error);
+  const isLoading = activeQuery.isLoading || agentsQuery.isLoading;
 
   return (
     <div className="grid gap-4">
@@ -96,106 +144,20 @@ function TaskListPage() {
             Create task
           </Link>
         }
-        description="Create scheduled or manual work, inspect run history, and keep task sessions separate from normal chat until you open them."
+        description="Use the board for daily task work, templates for recurring generators, and archive for completed history."
         eyebrow="Tasks"
         title="Workspace tasks"
       />
 
-      <section className="cc-panel grid gap-4 p-4 sm:p-6">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-text-primary">Filters</h2>
-            <p className="mt-1 text-sm text-text-secondary">
-              Narrow by state, schedule style, assigned agent, or include archived work.
-            </p>
-          </div>
-          <button
-            className="cc-button cc-button-secondary w-fit"
-            onClick={() => setSearchParams({})}
-            type="button"
-          >
-            Clear filters
-          </button>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="grid gap-1 text-sm text-text-secondary">
-            Status
-            <select
-              className="cc-input"
-              onChange={(event) =>
-                setFilter(searchParams, setSearchParams, "status", event.target.value)
-              }
-              value={filters.status ?? ""}
-            >
-              <option value="">Any status</option>
-              {TASK_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {formatToken(status)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm text-text-secondary">
-            Trigger mode
-            <select
-              className="cc-input"
-              onChange={(event) =>
-                setFilter(searchParams, setSearchParams, "triggerMode", event.target.value)
-              }
-              value={filters.triggerMode ?? ""}
-            >
-              <option value="">Any trigger</option>
-              {TRIGGER_MODES.map((mode) => (
-                <option key={mode} value={mode}>
-                  {formatToken(mode)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm text-text-secondary">
-            Agent
-            <select
-              className="cc-input"
-              onChange={(event) =>
-                setFilter(searchParams, setSearchParams, "agentId", event.target.value)
-              }
-              value={filters.agentId ?? ""}
-            >
-              <option value="">Any agent</option>
-              {agents.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2 rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary">
-            <input
-              checked={filters.includeArchived ?? false}
-              onChange={(event) =>
-                setFilter(
-                  searchParams,
-                  setSearchParams,
-                  "includeArchived",
-                  event.target.checked ? "true" : "",
-                )
-              }
-              type="checkbox"
-            />
-            Include archived tasks
-          </label>
-        </div>
-      </section>
+      <TaskViewNav searchParams={searchParams} setSearchParams={setSearchParams} view={view} />
 
-      {tasksQuery.isLoading || agentsQuery.isLoading ? (
-        <LoadingState testId="tasks-loading" />
-      ) : null}
+      {isLoading ? <LoadingState testId="tasks-loading" /> : null}
       {error ? (
         <ErrorState
           action={
             <button
               className="cc-button cc-button-secondary"
-              onClick={() => void tasksQuery.refetch()}
+              onClick={() => void activeQuery.refetch()}
               type="button"
             >
               Try again
@@ -205,39 +167,46 @@ function TaskListPage() {
           title="Tasks could not be loaded."
         />
       ) : null}
-      {!tasksQuery.isLoading && !error && tasks.length === 0 ? (
+      {!isLoading && !error && view === "board" && boardTasks.length === 0 ? (
         <EmptyState
           action={
             <Link className="cc-button" to="/tasks/new">
               Create your first task
             </Link>
           }
-          description="Tasks can run manually, once at a scheduled time, or on a simple repeat schedule."
-          title="No tasks match this view"
+          description="Tasks become board cards so you can move work from backlog through acceptance."
+          title="No tasks on the board"
         />
       ) : null}
 
-      {tasks.length > 0 ? (
-        <section className="grid gap-4 xl:grid-cols-2">
-          {tasks.map((task) => (
-            <TaskCard
-              agent={agents.find((entry) => entry.id === task.agentId)}
-              key={task.id}
-              onArchive={() => void mutations.archive.mutate(task.id)}
-              onDelete={() => void mutations.remove.mutate(task.id)}
-              onDisable={() => void mutations.disable.mutate(task.id)}
-              onDuplicate={() => {
-                mutations.duplicate.mutate(task.id, {
-                  onSuccess: (duplicated) => void navigate(`/tasks/${duplicated.id}/edit`),
-                });
-              }}
-              onEnable={() => void mutations.enable.mutate(task.id)}
-              onRestore={() => void mutations.restore.mutate(task.id)}
-              onTrigger={() => setRunTask(task)}
-              task={task}
-            />
-          ))}
-        </section>
+      {!isLoading && !error && view === "board" && boardTasks.length > 0 ? (
+        <TaskBoard
+          agents={agents}
+          currentSearch={currentSearch}
+          onArchive={(task) => void mutations.archive.mutate(task.id)}
+          onDuplicate={(task) => {
+            mutations.duplicate.mutate(task.id, {
+              onSuccess: (duplicated) =>
+                void navigate(`/tasks/${duplicated.id}/edit${currentSearch}`),
+            });
+          }}
+          onQueue={setRunTask}
+          tasks={boardTasks}
+        />
+      ) : null}
+
+      {!isLoading && !error && view === "templates" ? (
+        <TaskTemplatesView agents={agents} currentSearch={currentSearch} templates={templates} />
+      ) : null}
+
+      {!isLoading && !error && view === "archive" ? (
+        <TaskArchiveView
+          agents={agents}
+          currentSearch={currentSearch}
+          onDelete={(task) => void mutations.remove.mutate(task.id)}
+          onRestore={(task) => void mutations.restore.mutate(task.id)}
+          tasks={archivedTasks}
+        />
       ) : null}
       {runTask ? (
         <RunTaskContextDialog
@@ -254,94 +223,262 @@ function TaskListPage() {
   );
 }
 
-function TaskCard(props: {
+function TaskViewNav(props: {
+  view: TaskView;
+  searchParams: URLSearchParams;
+  setSearchParams: (params: URLSearchParams) => void;
+}) {
+  return (
+    <nav aria-label="Tasks views" className="cc-panel flex flex-wrap gap-2 p-2">
+      {TASK_VIEWS.map((view) => (
+        <button
+          aria-current={props.view === view ? "page" : undefined}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+            props.view === view
+              ? "bg-accent text-accent-contrast"
+              : "text-text-secondary hover:bg-surface hover:text-text-primary"
+          }`}
+          key={view}
+          onClick={() => setTaskView(props.searchParams, props.setSearchParams, view)}
+          type="button"
+        >
+          {formatTaskView(view)}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function TaskBoard(props: {
+  tasks: Task[];
+  agents: Agent[];
+  currentSearch: string;
+  onArchive: (task: Task) => void;
+  onDuplicate: (task: Task) => void;
+  onQueue: (task: Task) => void;
+}) {
+  return (
+    <section className="grid gap-4 xl:grid-cols-3 2xl:grid-cols-6" data-testid="tasks-board">
+      {BOARD_COLUMNS.map((column) => {
+        const columnTasks = props.tasks.filter((task) => readBoardStatus(task) === column.status);
+
+        return (
+          <div className="cc-panel flex min-h-80 flex-col gap-3 p-4" key={column.status}>
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="font-semibold text-text-primary">{column.title}</h2>
+                <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary">
+                  {columnTasks.length}
+                </span>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-text-secondary">{column.description}</p>
+            </div>
+            {columnTasks.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border bg-surface/60 p-3 text-xs leading-5 text-text-secondary">
+                {column.empty}
+              </p>
+            ) : null}
+            <div className="grid gap-3">
+              {columnTasks.map((task) => (
+                <TaskBoardCard
+                  agent={props.agents.find((entry) => entry.id === task.agentId)}
+                  currentSearch={props.currentSearch}
+                  key={task.id}
+                  onArchive={() => props.onArchive(task)}
+                  onDuplicate={() => props.onDuplicate(task)}
+                  onQueue={() => props.onQueue(task)}
+                  task={task}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+function TaskBoardCard(props: {
   task: Task;
   agent?: Agent;
-  onTrigger: () => void;
-  onEnable: () => void;
-  onDisable: () => void;
+  currentSearch: string;
+  onQueue: () => void;
   onDuplicate: () => void;
   onArchive: () => void;
-  onRestore: () => void;
-  onDelete: () => void;
 }) {
   const task = props.task;
   return (
-    <article className="cc-panel grid gap-5 p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              className="text-xl font-semibold text-text-primary transition hover:text-accent"
-              to={`/tasks/${task.id}`}
-            >
-              {task.title}
-            </Link>
-            <StatusBadge status={task.status} />
-          </div>
-          <p className="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">
-            {task.description || "No description provided."}
-          </p>
-        </div>
-        <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
-          {formatToken(task.triggerMode)}
+    <article className="grid gap-3 rounded-xl border border-border bg-surface p-4">
+      <div className="grid gap-2">
+        <Link
+          className="font-semibold leading-6 text-text-primary transition hover:text-accent"
+          to={`/tasks/${task.id}${props.currentSearch}`}
+        >
+          {task.title}
+        </Link>
+        <p className="line-clamp-3 text-sm leading-6 text-text-secondary">
+          {task.description || "No description provided."}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusBadge status={readBoardStatus(task)} />
+        <span className="rounded-full border border-border bg-background px-3 py-1 text-xs text-text-secondary">
+          {props.agent?.name ?? task.agentId}
         </span>
       </div>
 
-      <div className="grid gap-3 text-sm text-text-secondary sm:grid-cols-3">
-        <Metric label="Agent" value={props.agent?.name ?? task.agentId} />
-        <Metric label="Next run" value={formatNextRun(task.schedule)} />
-        <Metric
-          label="Todos"
-          value={`${String(task.todos.filter((todo) => todo.status === "completed").length)}/${String(task.todos.length)}`}
-        />
-      </div>
-
       {task.latestFinalMessage ? (
-        <p className="rounded-lg border border-border bg-surface p-3 text-sm leading-6 text-text-secondary">
+        <p className="rounded-lg border border-border bg-background p-3 text-sm leading-6 text-text-secondary">
           {task.latestFinalMessage}
         </p>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <Link className="cc-button cc-button-secondary" to={`/tasks/${task.id}`}>
+        <Link
+          className="cc-button cc-button-secondary"
+          to={`/tasks/${task.id}${props.currentSearch}`}
+        >
           Details
         </Link>
-        <Link className="cc-button cc-button-secondary" to={`/tasks/${task.id}/edit`}>
+        <Link
+          className="cc-button cc-button-secondary"
+          to={`/tasks/${task.id}/edit${props.currentSearch}`}
+        >
           Edit
         </Link>
         <button className="cc-button cc-button-secondary" onClick={props.onDuplicate} type="button">
           Duplicate
         </button>
-        {!task.archived ? (
-          <button className="cc-button" onClick={props.onTrigger} type="button">
-            Run now
-          </button>
-        ) : null}
-        {!task.archived && task.enabled ? (
-          <button className="cc-button cc-button-secondary" onClick={props.onDisable} type="button">
-            Disable
-          </button>
-        ) : null}
-        {!task.archived && !task.enabled ? (
-          <button className="cc-button cc-button-secondary" onClick={props.onEnable} type="button">
-            Enable
-          </button>
-        ) : null}
-        {task.archived ? (
-          <button className="cc-button cc-button-secondary" onClick={props.onRestore} type="button">
-            Restore
-          </button>
-        ) : (
-          <button className="cc-button cc-button-secondary" onClick={props.onArchive} type="button">
-            Archive
-          </button>
-        )}
-        <button className="cc-button cc-button-danger" onClick={props.onDelete} type="button">
-          Delete
+        <button className="cc-button" onClick={props.onQueue} type="button">
+          Queue
+        </button>
+        <button className="cc-button cc-button-secondary" onClick={props.onArchive} type="button">
+          Archive
         </button>
       </div>
     </article>
+  );
+}
+
+function TaskTemplatesView(props: {
+  templates: TaskTemplate[];
+  agents: Agent[];
+  currentSearch: string;
+}) {
+  if (props.templates.length === 0) {
+    return (
+      <EmptyState
+        action={
+          <button className="cc-button" disabled type="button">
+            Create template
+          </button>
+        }
+        description="Recurring generators create normal board tasks on their schedule. Template creation will live here."
+        title="No recurring templates yet"
+      />
+    );
+  }
+
+  return (
+    <section className="grid gap-4 xl:grid-cols-2">
+      {props.templates.map((template) => {
+        const agent = props.agents.find((entry) => entry.id === template.defaultAgentId);
+        return (
+          <article className="cc-panel grid gap-4 p-5" key={template.id}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-text-primary">{template.title}</h2>
+                <p className="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">
+                  {template.description || "No description provided."}
+                </p>
+              </div>
+              <StatusBadge status={template.status} />
+            </div>
+            <div className="grid gap-3 text-sm text-text-secondary sm:grid-cols-3">
+              <Metric label="Default agent" value={agent?.name ?? template.defaultAgentId} />
+              <Metric
+                label="Recurrence"
+                value={formatRepeatSummary(template.recurrence.repeatRule)}
+              />
+              <Metric label="Next task" value={formatDate(template.nextOccurrenceAt)} />
+            </div>
+            {template.latestTaskId ? (
+              <Link
+                className="cc-button cc-button-secondary w-fit"
+                to={`/tasks/${template.latestTaskId}${props.currentSearch}`}
+              >
+                Open latest task
+              </Link>
+            ) : null}
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
+function TaskArchiveView(props: {
+  tasks: Task[];
+  agents: Agent[];
+  currentSearch: string;
+  onRestore: (task: Task) => void;
+  onDelete: (task: Task) => void;
+}) {
+  if (props.tasks.length === 0) {
+    return (
+      <EmptyState
+        description="Accepted or archived tasks appear here after they leave the active board."
+        title="No archived tasks yet"
+      />
+    );
+  }
+
+  return (
+    <section className="grid gap-4 xl:grid-cols-2">
+      {props.tasks.map((task) => (
+        <article className="cc-panel grid gap-4 p-5" key={task.id}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <Link
+                className="text-xl font-semibold text-text-primary transition hover:text-accent"
+                to={`/tasks/${task.id}${props.currentSearch}`}
+              >
+                {task.title}
+              </Link>
+              <p className="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">
+                {task.description || "No description provided."}
+              </p>
+            </div>
+            <StatusBadge status="archived" />
+          </div>
+          <div className="grid gap-3 text-sm text-text-secondary sm:grid-cols-3">
+            <Metric
+              label="Agent"
+              value={props.agents.find((entry) => entry.id === task.agentId)?.name ?? task.agentId}
+            />
+            <Metric label="Archived" value={formatDate(task.archivedAt)} />
+            <Metric label="Completed" value={formatDate(task.doneAt)} />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="cc-button cc-button-secondary"
+              onClick={() => props.onRestore(task)}
+              type="button"
+            >
+              Restore
+            </button>
+            <button
+              className="cc-button cc-button-danger"
+              onClick={() => props.onDelete(task)}
+              type="button"
+            >
+              Delete
+            </button>
+          </div>
+        </article>
+      ))}
+    </section>
   );
 }
 
@@ -674,6 +811,7 @@ type FormState = {
 
 type RepeatPreset = (typeof REPEAT_PRESETS)[number];
 type RepeatFrequency = (typeof REPEAT_FREQUENCIES)[number];
+type TaskView = (typeof TASK_VIEWS)[number];
 
 function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormState {
   return {
@@ -818,25 +956,32 @@ function formatRepeatPreset(preset: RepeatPreset): string {
   return preset === "custom" ? "Custom" : formatToken(preset);
 }
 
-function readFilters(params: URLSearchParams): Partial<ListTasksQuery> {
-  return {
-    status: (params.get("status") as ListTasksQuery["status"]) || undefined,
-    triggerMode: (params.get("triggerMode") as ListTasksQuery["triggerMode"]) || undefined,
-    agentId: params.get("agentId") || undefined,
-    includeArchived: params.get("includeArchived") === "true",
-  };
+function readTaskView(params: URLSearchParams): TaskView {
+  const view = params.get("view");
+  return TASK_VIEWS.includes(view as TaskView) ? (view as TaskView) : "board";
 }
 
-function setFilter(
+function setTaskView(
   params: URLSearchParams,
   setSearchParams: (params: URLSearchParams) => void,
-  key: string,
-  value: string,
+  view: TaskView,
 ) {
   const next = new URLSearchParams(params);
-  if (value) next.set(key, value);
-  else next.delete(key);
+  if (view === "board") next.delete("view");
+  else next.set("view", view);
   setSearchParams(next);
+}
+
+function formatTaskView(view: TaskView): string {
+  if (view === "board") return "Board";
+  if (view === "templates") return "Templates";
+  return "Archive";
+}
+
+function readBoardStatus(task: Task): BoardTaskStatus {
+  return BOARD_COLUMNS.some((column) => column.status === task.status)
+    ? (task.status as BoardTaskStatus)
+    : "backlog";
 }
 
 function Metric(props: { label: string; value: string }) {
@@ -846,12 +991,6 @@ function Metric(props: { label: string; value: string }) {
       <p className="mt-1 truncate font-medium text-text-primary">{props.value}</p>
     </div>
   );
-}
-
-function formatNextRun(schedule: TaskSchedule): string {
-  if (schedule.mode === "scheduled_once") return formatDate(schedule.runAt);
-  if (schedule.mode === "recurring") return formatRepeatSummary(schedule.repeatRule);
-  return "Manual only";
 }
 
 function readLocalTimezone(): string {
