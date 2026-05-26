@@ -564,6 +564,173 @@ describe("createTaskService", () => {
       await testDb.cleanup();
     }
   });
+
+  it("queues a backlog task and records run metadata", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Queue me",
+        triggerMode: "manual",
+        status: "backlog",
+      });
+      const run = await service.queueTask({
+        taskId: task.id,
+        triggerSource: "api",
+        metadata: { requestedBy: "test" },
+        renderedPrompt: "Do the queued task.",
+      });
+      const queued = await service.get(task.id);
+
+      expect(run.status).toBe("queued");
+      expect(run.triggerMetadata).toEqual({ requestedBy: "test" });
+      expect(queued?.status).toBe("queued");
+      expect(queued?.latestRunId).toBe(run.id);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects duplicate active runs for the same task", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Queue once",
+        triggerMode: "manual",
+        status: "backlog",
+      });
+
+      await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+      await expect(service.queueTask({ taskId: task.id, triggerSource: "manual" })).rejects.toThrow(
+        "Task already has an active run.",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("allows retry after a terminal run", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Retry me",
+        triggerMode: "manual",
+        status: "backlog",
+      });
+      const first = await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+
+      await service.setRunStatus(first.id, "completed");
+      const second = await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+      const runs = await service.listRuns(task.id);
+
+      expect(second.id).not.toBe(first.id);
+      expect(runs.map((run) => run.id).sort()).toEqual([first.id, second.id].sort());
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("moves successful runs to ready to check", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Review success",
+        triggerMode: "manual",
+        status: "backlog",
+      });
+      const run = await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+
+      await service.setRunStatus(run.id, "completed", { finalMessage: "Finished." });
+      const updated = await service.get(task.id);
+
+      expect(updated?.status).toBe("ready_to_check");
+      expect(updated?.latestFinalMessage).toBe("Finished.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("moves failed runs to review", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Review failure",
+        triggerMode: "manual",
+        status: "backlog",
+      });
+      const run = await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+
+      await service.setRunStatus(run.id, "failed", { errorMessage: "Could not finish." });
+      const updated = await service.get(task.id);
+
+      expect(updated?.status).toBe("review");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("moves human-review outcomes to review", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Needs user",
+        triggerMode: "manual",
+        status: "backlog",
+      });
+      const run = await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+
+      await service.setRunStatus(run.id, "completed", { outcome: "needs_human_review" });
+      const updated = await service.get(task.id);
+
+      expect(updated?.status).toBe("review");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("accepts reviewed tasks as done", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Accept me",
+        triggerMode: "manual",
+        status: "ready_to_check",
+      });
+      const accepted = await service.acceptTask(task.id);
+
+      expect(accepted?.status).toBe("done");
+      expect(accepted?.doneAt).toBeDefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
 });
 
 async function insertAgent(

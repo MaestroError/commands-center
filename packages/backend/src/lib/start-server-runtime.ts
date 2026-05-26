@@ -139,6 +139,7 @@ export async function startServerRuntime(
   });
   const taskSchedulerServiceRef: { current?: TaskSchedulerService } = {};
   const taskExecutionService = createTaskExecutionService({
+    db: database.db,
     taskService,
     conversationService,
     taskPermissionService,

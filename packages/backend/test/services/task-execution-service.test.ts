@@ -40,7 +40,7 @@ describe("createTaskExecutionService", () => {
       expect(run.renderedPrompt).toContain("<Task>");
       expect(run.renderedPrompt).toContain(`<TaskRunId>\n${run.id}\n</TaskRunId>`);
       expect(run.renderedPrompt).toContain("<Goal>\nReview #PRD.md.\n</Goal>");
-      expect(run.renderedPrompt).not.toContain("Manual task");
+      expect(run.renderedPrompt).toContain("Manual task");
       expect(run.renderedPrompt).not.toContain("<TriggerSource>");
       expect(run.renderedPrompt).not.toContain("<Schedule>");
       expect(history).toHaveLength(1);

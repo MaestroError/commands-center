@@ -19,6 +19,7 @@ import {
   deleteWorkspaceSkill,
   type FileSaveConflictError,
   getWorkspaceTree,
+  loginOwner,
   listTerminalSessions,
   logoutOwner,
   readApiError,
@@ -248,6 +249,21 @@ describe("readApiError", () => {
 
   it("falls back to status text when message is missing", () => {
     expect(readApiError({ error: {} }, 500, "Server Error")).toBe("Server Error");
+  });
+});
+
+describe("JSON response handling", () => {
+  it("throws a helpful error when login receives the app shell HTML", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response('<!doctype html><html><body><div id="root"></div></body></html>', {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+    );
+
+    await expect(loginOwner({ password: "owner-password", rememberBrowser: true })).rejects.toThrow(
+      "Unexpected HTML response from /api/auth/login. The app shell was returned instead of the API response.",
+    );
   });
 });
 

@@ -50,6 +50,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   const executionService =
     context.taskExecutionService ??
     createTaskExecutionService({
+      db: context.database.db,
       taskService: service,
       conversationService,
       logger: context.logger,

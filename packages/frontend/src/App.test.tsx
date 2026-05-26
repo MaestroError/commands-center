@@ -425,6 +425,39 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/agents");
   });
 
+  it("shows a helpful login error when the API returns the app shell HTML", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-unauthenticated" }));
+      }
+
+      if (input === "/api/auth/login") {
+        return Promise.resolve(
+          new Response('<!doctype html><html><body><div id="root"></div></body></html>', {
+            status: 200,
+            headers: { "content-type": "text/html; charset=utf-8" },
+          }),
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    window.history.replaceState({}, "", "/agents");
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Password"), "owner-password");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(
+      await screen.findByText(
+        "Unexpected HTML response from /api/auth/login. The app shell was returned instead of the API response.",
+      ),
+    ).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/login");
+  });
+
   it("claims the workspace and returns to the requested protected route", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       if (input === "/api/auth/status") {

@@ -143,6 +143,40 @@ Use a different env file when needed:
 bash scripts/stop-ccenter-service.sh --env-file /opt/commandscenter/.env
 ```
 
+Once the service is installed you can also manage it directly without the scripts.
+
+macOS (launchd):
+
+```bash
+# Check whether it is running
+launchctl print gui/$(id -u)/com.commandscenter.app
+
+# Stop until the next login
+launchctl stop com.commandscenter.app
+
+# Disable auto-start at login
+launchctl disable gui/$(id -u)/com.commandscenter.app
+
+# Re-enable auto-start at login
+launchctl enable gui/$(id -u)/com.commandscenter.app
+```
+
+Linux (systemd):
+
+```bash
+# Check status
+sudo systemctl status commandscenter
+
+# Stop
+sudo systemctl stop commandscenter
+
+# Disable auto-start at boot
+sudo systemctl disable commandscenter
+
+# Re-enable auto-start at boot
+sudo systemctl enable commandscenter
+```
+
 Contributor-only local tarball testing is documented in [CONTRIBUTING.md](CONTRIBUTING.md#cli-build-smoke-test).
 
 Useful overrides:

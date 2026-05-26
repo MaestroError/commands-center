@@ -181,6 +181,8 @@ type ApiFetchOptions = {
   signal?: AbortSignal;
 };
 
+const JSON_CONTENT_TYPE = "application/json";
+
 export async function getAuthStatus(): Promise<OwnerAuthStatusResult> {
   return requestJson<OwnerAuthStatusResult>("/api/auth/status", ownerAuthStatusResultSchema);
 }
@@ -972,13 +974,37 @@ async function requestJson<T>(
     body: options?.body ? JSON.stringify(options.body) : undefined,
   });
 
-  const payload = (await response.json().catch(() => undefined)) as unknown;
+  const payload = await readJsonPayload(url, response);
 
   if (!response.ok) {
     throw new Error(readApiError(payload, response.status, response.statusText));
   }
 
   return schema.parse(payload);
+}
+
+async function readJsonPayload(url: string, response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+
+  if (!contentType.includes(JSON_CONTENT_TYPE)) {
+    const body = await response.text().catch(() => "");
+    throw new Error(describeUnexpectedJsonResponse(url, contentType, body));
+  }
+
+  const payload = (await response.json().catch(() => undefined)) as unknown;
+  if (payload === undefined) {
+    throw new Error(`Received an invalid JSON response from ${url}.`);
+  }
+
+  return payload;
+}
+
+function describeUnexpectedJsonResponse(url: string, contentType: string, body: string): string {
+  if (contentType.includes("text/html") || body.includes("<!doctype html")) {
+    return `Unexpected HTML response from ${url}. The app shell was returned instead of the API response.`;
+  }
+
+  return `Unexpected non-JSON response from ${url}.`;
 }
 
 async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Response> {

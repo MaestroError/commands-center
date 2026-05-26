@@ -10,16 +10,27 @@ import { conversationDetailSchema } from "./conversations.js";
 
 const looseRecordSchema = z.record(z.string(), z.unknown());
 
-export const taskStatusSchema = z.enum([
+export const boardTaskStatusSchema = z.enum([
+  "backlog",
+  "scheduled",
+  "queued",
+  "ready_to_check",
+  "review",
+  "done",
+  "archived",
+]);
+
+const legacyTaskStatusSchema = z.enum([
   "draft",
   "enabled",
   "disabled",
-  "archived",
   "running",
   "in_progress",
   "failed",
   "completed",
 ]);
+
+export const taskStatusSchema = z.union([boardTaskStatusSchema, legacyTaskStatusSchema]);
 
 export const taskRunStatusSchema = z.enum([
   "queued",
@@ -32,7 +43,25 @@ export const taskRunStatusSchema = z.enum([
 
 export const taskTriggerModeSchema = z.enum(["manual", "scheduled_once", "recurring"]);
 
-export const taskRunTriggerSourceSchema = z.enum(["manual", "scheduled", "system"]);
+export const taskRunOutcomeSchema = z.enum(["success", "needs_human_review", "failed"]);
+
+export const taskRunTriggerSourceSchema = z.enum([
+  "manual",
+  "scheduled",
+  "api",
+  "template",
+  "system",
+]);
+
+export const taskCommentStatusSchema = z.enum(["open", "included", "resolved"]);
+
+export const taskSubtaskStatusSchema = z.enum([
+  "backlog",
+  "queued",
+  "ready_to_check",
+  "review",
+  "done",
+]);
 
 export const taskTodoStatusSchema = z.enum(["pending", "in_progress", "completed"]);
 
@@ -98,6 +127,44 @@ export const taskPermissionProfileSchema = z.object({
       }),
     )
     .optional(),
+});
+
+export const queueTaskInputSchema = z.object({
+  taskId: z.string().trim().min(1),
+  subtaskId: z.string().trim().min(1).optional(),
+  agentId: z.string().trim().min(1).optional(),
+  triggerSource: taskRunTriggerSourceSchema.default("manual"),
+  context: looseRecordSchema.optional(),
+  metadata: looseRecordSchema.optional(),
+});
+
+export const taskCommentInputSchema = z.object({
+  body: z.string().trim().min(1),
+  status: taskCommentStatusSchema.default("open"),
+});
+
+export const taskCommentSchema = taskCommentInputSchema.extend({
+  id: z.string().min(1),
+  taskId: z.string().min(1),
+  includedInRunId: z.string().min(1).optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  resolvedAt: z.string().datetime().optional(),
+});
+
+export const taskSubtaskInputSchema = z.object({
+  title: z.string().trim().min(1),
+  description: z.string().trim().default(""),
+  defaultAgentId: z.string().trim().min(1).optional(),
+  status: taskSubtaskStatusSchema.default("backlog"),
+});
+
+export const taskSubtaskSchema = taskSubtaskInputSchema.extend({
+  id: z.string().min(1),
+  taskId: z.string().min(1),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  completedAt: z.string().datetime().optional(),
 });
 
 export const createTaskInputSchema = z.object({
@@ -177,6 +244,7 @@ export const taskSchema = z.object({
   id: z.string().min(1),
   templateId: z.string().min(1).optional(),
   agentId: z.string().min(1),
+  defaultAgentId: z.string().min(1).optional(),
   title: z.string().min(1),
   description: z.string(),
   todos: z.array(taskTodoSchema),
@@ -187,8 +255,13 @@ export const taskSchema = z.object({
   enabled: z.boolean(),
   archived: z.boolean(),
   latestFinalMessage: z.string().optional(),
+  latestRunId: z.string().min(1).optional(),
+  sourceTemplateId: z.string().min(1).optional(),
+  sourceOccurrenceAt: z.string().datetime().optional(),
+  scheduledAt: z.string().datetime().optional(),
   scheduledFor: z.string().datetime().optional(),
   dueAt: z.string().datetime().optional(),
+  doneAt: z.string().datetime().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   archivedAt: z.string().datetime().optional(),
@@ -196,8 +269,26 @@ export const taskSchema = z.object({
 
 export const taskListSchema = z.array(taskSchema);
 
-export const taskTemplateSchema = taskSchema.extend({
+export const taskTemplateStatusSchema = z.enum(["enabled", "disabled", "archived"]);
+
+export const taskTemplateSchema = z.object({
+  id: z.string().min(1),
+  defaultAgentId: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string(),
+  todos: z.array(taskTodoSchema),
+  status: taskTemplateStatusSchema,
+  recurrence: recurringTaskScheduleSchema,
+  permissionProfile: taskPermissionProfileSchema.optional(),
+  enabled: z.boolean(),
+  archived: z.boolean(),
+  latestFinalMessage: z.string().optional(),
   latestTaskId: z.string().min(1).optional(),
+  nextOccurrenceAt: z.string().datetime().optional(),
+  lastGeneratedOccurrenceAt: z.string().datetime().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  archivedAt: z.string().datetime().optional(),
 });
 
 export const taskTemplateListSchema = z.array(taskTemplateSchema);
@@ -205,11 +296,14 @@ export const taskTemplateListSchema = z.array(taskTemplateSchema);
 export const createTaskRunInputSchema = z.object({
   id: z.string().trim().min(1).optional(),
   taskId: z.string().trim().min(1),
+  subtaskId: z.string().trim().min(1).optional(),
   agentId: z.string().trim().min(1),
   status: taskRunStatusSchema.default("queued"),
   triggerSource: taskRunTriggerSourceSchema,
+  outcome: taskRunOutcomeSchema.optional(),
   opencodeSessionId: z.string().trim().min(1).optional(),
   context: looseRecordSchema.optional(),
+  triggerMetadata: looseRecordSchema.optional(),
   renderedPrompt: z.string().default(""),
   renderedContext: looseRecordSchema.optional(),
   effectivePermissions: taskPermissionProfileSchema.optional(),
@@ -229,9 +323,12 @@ export const createTaskRunInputSchema = z.object({
 
 export const updateTaskRunInputSchema = z.object({
   status: taskRunStatusSchema.optional(),
+  subtaskId: z.string().trim().min(1).optional(),
+  outcome: taskRunOutcomeSchema.optional(),
   opencodeSessionId: z.string().trim().min(1).optional(),
   renderedPrompt: z.string().optional(),
   context: looseRecordSchema.optional(),
+  triggerMetadata: looseRecordSchema.optional(),
   renderedContext: looseRecordSchema.optional(),
   effectivePermissions: taskPermissionProfileSchema.optional(),
   finalMessage: z.string().optional(),
@@ -251,12 +348,15 @@ export const updateTaskRunInputSchema = z.object({
 export const taskRunSchema = z.object({
   id: z.string().min(1),
   taskId: z.string().min(1),
+  subtaskId: z.string().min(1).optional(),
   agentId: z.string().min(1),
   opencodeSessionId: z.string().min(1).optional(),
   status: taskRunStatusSchema,
   triggerSource: taskRunTriggerSourceSchema,
+  outcome: taskRunOutcomeSchema.optional(),
   renderedPrompt: z.string(),
   context: looseRecordSchema.optional(),
+  triggerMetadata: looseRecordSchema.optional(),
   renderedContext: looseRecordSchema.optional(),
   effectivePermissions: taskPermissionProfileSchema.optional(),
   finalMessage: z.string().optional(),
@@ -276,6 +376,10 @@ export const taskRunSchema = z.object({
 });
 
 export const taskRunListSchema = z.array(taskRunSchema);
+
+export const taskCommentListSchema = z.array(taskCommentSchema);
+
+export const taskSubtaskListSchema = z.array(taskSubtaskSchema);
 
 export const activeTaskRunListSchema = taskRunListSchema;
 
@@ -307,19 +411,27 @@ export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
 export type CreateTaskRunInput = z.input<typeof createTaskRunInputSchema>;
 export type AddTaskRunArtifactInput = z.input<typeof addTaskRunArtifactInputSchema>;
 export type CancelTaskRunInput = z.input<typeof cancelTaskRunInputSchema>;
+export type QueueTaskInput = z.input<typeof queueTaskInputSchema>;
 export type ListTaskRunsQuery = z.infer<typeof listTaskRunsQuerySchema>;
 export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;
+export type BoardTaskStatus = z.infer<typeof boardTaskStatusSchema>;
 export type Task = z.infer<typeof taskSchema>;
+export type TaskComment = z.infer<typeof taskCommentSchema>;
+export type TaskCommentStatus = z.infer<typeof taskCommentStatusSchema>;
 export type TaskTemplate = z.infer<typeof taskTemplateSchema>;
+export type TaskTemplateStatus = z.infer<typeof taskTemplateStatusSchema>;
 export type TaskPermissionProfile = z.infer<typeof taskPermissionProfileSchema>;
 export type TaskRunArtifact = z.infer<typeof taskRunArtifactSchema>;
 export type TaskRun = z.infer<typeof taskRunSchema>;
+export type TaskRunOutcome = z.infer<typeof taskRunOutcomeSchema>;
 export type TaskRunSessionDiagnostic = z.infer<typeof taskRunSessionDiagnosticSchema>;
 export type TaskRunSessionInspection = z.infer<typeof taskRunSessionInspectionSchema>;
 export type TaskRunStatus = z.infer<typeof taskRunStatusSchema>;
 export type TaskRunTriggerSource = z.infer<typeof taskRunTriggerSourceSchema>;
 export type TaskSchedulerState = z.infer<typeof taskSchedulerStateSchema>;
 export type TaskSchedule = z.infer<typeof taskScheduleSchema>;
+export type TaskSubtask = z.infer<typeof taskSubtaskSchema>;
+export type TaskSubtaskStatus = z.infer<typeof taskSubtaskStatusSchema>;
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 export type TaskTodo = z.infer<typeof taskTodoSchema>;
 export type TaskTriggerMode = z.infer<typeof taskTriggerModeSchema>;

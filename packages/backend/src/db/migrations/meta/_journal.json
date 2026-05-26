@@ -78,6 +78,20 @@
       "when": 1779292801000,
       "tag": "0010_task_run_outcomes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1779748203126,
+      "tag": "0011_board_task_contracts",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1779754637317,
+      "tag": "0012_reset_task_board_data",
+      "breakpoints": true
     }
   ]
 }

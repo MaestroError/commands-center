@@ -8,6 +8,7 @@ import {
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
   markTaskRunNeedsReviewInputSchema,
+  queueTaskInputSchema,
   setTaskRunResultInputSchema,
   taskListSchema,
   taskPermissionProfileSchema,
@@ -25,6 +26,7 @@ import {
   type TaskRunArtifact,
   type ListTaskRunsQuery,
   type ListTasksQuery,
+  type QueueTaskInput,
   type Task,
   type TaskRun,
   type TaskRunStatus,
@@ -42,6 +44,13 @@ import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 
 export type TaskService = ReturnType<typeof createTaskService>;
+
+type QueueTaskOptions = QueueTaskInput & {
+  id?: string;
+  renderedPrompt?: string;
+  renderedContext?: Record<string, unknown>;
+  effectivePermissions?: CreateTaskRunInput["effectivePermissions"];
+};
 
 export function createTaskService(options: { db: AppDb; config: RuntimeConfig }) {
   return {
@@ -426,6 +435,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return mapTask(row);
     },
 
+    archiveTask(id: string): Promise<Task | undefined> {
+      return this.archive(id);
+    },
+
     async restore(id: string): Promise<Task | undefined> {
       const existing = await getTaskRow(id, { includeArchived: true });
       const existingTemplate = existing
@@ -474,6 +487,39 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
       if (!row) {
         throw new Error("Failed to restore task record.");
+      }
+
+      return mapTask(row);
+    },
+
+    restoreTask(id: string): Promise<Task | undefined> {
+      return this.restore(id);
+    },
+
+    async acceptTask(id: string): Promise<Task | undefined> {
+      const existing = await getTaskRow(id);
+
+      if (!existing) {
+        return undefined;
+      }
+
+      if (existing.archived) {
+        throw new BadRequestError("Archived tasks cannot be accepted.");
+      }
+
+      const timestamp = now();
+      const [row] = await options.db
+        .update(tasks)
+        .set({
+          status: "done",
+          done_at: timestamp,
+          updated_at: timestamp,
+        })
+        .where(and(eq(tasks.id, id), isNull(tasks.deleted_at)))
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to accept task record.");
       }
 
       return mapTask(row);
@@ -690,11 +736,14 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return taskRunListSchema.parse(rows.map(mapTaskRun));
     },
 
-    async getActiveRunForTask(taskId: string): Promise<TaskRun | undefined> {
+    async getActiveRunForTask(taskId: string, subtaskId?: string): Promise<TaskRun | undefined> {
       const row = await options.db.query.task_runs.findFirst({
         where: (table, operators) =>
           operators.and(
             operators.eq(table.task_id, taskId),
+            subtaskId
+              ? operators.eq(table.subtask_id, subtaskId)
+              : operators.isNull(table.subtask_id),
             operators.inArray(table.status, ["queued", "running"]),
           ),
         orderBy: (table, operators) => [operators.desc(table.created_at)],
@@ -703,16 +752,59 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return row ? mapTaskRun(row) : undefined;
     },
 
+    async queueTask(input: QueueTaskOptions): Promise<TaskRun> {
+      const parsed = queueTaskInputSchema.parse(input);
+      const task = await requireTask(parsed.taskId, { includeArchived: true });
+
+      if (task.archived) {
+        throw new BadRequestError("Archived tasks cannot be queued.");
+      }
+
+      if (!task.enabled || task.status === "disabled" || task.status === "draft") {
+        throw new BadRequestError("Task must be enabled before it can be queued.");
+      }
+
+      const activeRun = await this.getActiveRunForTask(task.id, parsed.subtaskId);
+
+      if (activeRun) {
+        throw new ConflictError("Task already has an active run.", { runId: activeRun.id });
+      }
+
+      const run = await this.createRun({
+        id: input.id,
+        taskId: task.id,
+        subtaskId: parsed.subtaskId,
+        agentId: parsed.agentId ?? task.default_agent_id ?? task.agent_id,
+        status: "queued",
+        triggerSource: parsed.triggerSource,
+        context: parsed.context,
+        triggerMetadata: parsed.metadata,
+        renderedPrompt: input.renderedPrompt ?? "",
+        renderedContext: input.renderedContext,
+        effectivePermissions: input.effectivePermissions,
+      });
+      const timestamp = now();
+
+      await options.db
+        .update(tasks)
+        .set({
+          status: "queued",
+          latest_run_id: run.id,
+          updated_at: timestamp,
+        })
+        .where(and(eq(tasks.id, task.id), isNull(tasks.deleted_at)));
+
+      return run;
+    },
+
     async createRun(input: CreateTaskRunInput): Promise<TaskRun> {
       const parsed = createTaskRunInputSchema.parse(input);
-      const task = await requireTask(parsed.taskId, {
+      await requireTask(parsed.taskId, {
         includeArchived: true,
         includeTemplateProxy: true,
       });
 
-      if (task.agent_id !== parsed.agentId) {
-        throw new BadRequestError("Task run agent must match the task agent.");
-      }
+      await requireActiveAgent(parsed.agentId);
 
       const timestamp = now();
       const [row] = await options.db
@@ -720,11 +812,14 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         .values({
           id: parsed.id ?? createId(),
           task_id: parsed.taskId,
+          subtask_id: parsed.subtaskId ?? null,
           agent_id: parsed.agentId,
           opencode_session_id: parsed.opencodeSessionId ?? null,
           status: parsed.status,
           trigger_source: parsed.triggerSource,
+          outcome: parsed.outcome ?? null,
           context_json: stringifyOptional(parsed.context),
+          trigger_metadata_json: stringifyOptional(parsed.triggerMetadata),
           rendered_prompt: parsed.renderedPrompt,
           rendered_context_json: stringifyOptional(parsed.renderedContext),
           effective_permissions_json: stringifyOptional(parsed.effectivePermissions),
@@ -766,11 +861,17 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         .update(task_runs)
         .set({
           opencode_session_id: parsed.opencodeSessionId ?? existing.opencode_session_id,
+          subtask_id: parsed.subtaskId ?? existing.subtask_id,
           status: parsed.status ?? existing.status,
+          outcome: parsed.outcome ?? existing.outcome,
           context_json:
             parsed.context === undefined
               ? existing.context_json
               : stringifyOptional(parsed.context),
+          trigger_metadata_json:
+            parsed.triggerMetadata === undefined
+              ? existing.trigger_metadata_json
+              : stringifyOptional(parsed.triggerMetadata),
           rendered_prompt: parsed.renderedPrompt ?? existing.rendered_prompt,
           rendered_context_json:
             parsed.renderedContext === undefined
@@ -816,7 +917,13 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       status: TaskRunStatus,
       input: Omit<UpdateTaskRunInput, "status"> = {},
     ): Promise<TaskRun | undefined> {
-      return this.updateRun(id, { ...input, status });
+      const run = await this.updateRun(id, { ...input, status });
+
+      if (run) {
+        await applyTaskStatusForTerminalRun(run);
+      }
+
+      return run;
     },
 
     async setRunResultText(
@@ -915,6 +1022,26 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
     }
 
     return mapTaskRun(run);
+  }
+
+  async function applyTaskStatusForTerminalRun(run: TaskRun): Promise<void> {
+    const status = getTaskStatusAfterTerminalRun(run);
+
+    if (!status) {
+      return;
+    }
+
+    const timestamp = now();
+
+    await options.db
+      .update(tasks)
+      .set({
+        status,
+        latest_run_id: run.id,
+        ...(run.finalMessage === undefined ? {} : { latest_final_message: run.finalMessage }),
+        updated_at: timestamp,
+      })
+      .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)));
   }
 
   async function setEnabled(id: string, enabled: boolean): Promise<Task | undefined> {
@@ -1144,11 +1271,28 @@ function normalizeTodos(input: unknown[], timestamp: Date): TaskTodo[] {
   });
 }
 
+function getTaskStatusAfterTerminalRun(run: TaskRun): TaskStatus | undefined {
+  if (run.status === "failed") {
+    return "review";
+  }
+
+  if (run.status !== "completed") {
+    return undefined;
+  }
+
+  if (run.outcome === "failed" || run.outcome === "needs_human_review" || run.needsHumanReview) {
+    return "review";
+  }
+
+  return "ready_to_check";
+}
+
 function mapTask(row: typeof tasks.$inferSelect): Task {
   return taskSchema.parse({
     id: row.id,
     templateId: row.template_id ?? undefined,
     agentId: row.agent_id,
+    defaultAgentId: row.default_agent_id ?? undefined,
     title: row.title,
     description: row.description,
     todos: parseTaskTodos(row.todos_json),
@@ -1159,8 +1303,13 @@ function mapTask(row: typeof tasks.$inferSelect): Task {
     enabled: row.enabled,
     archived: row.archived,
     latestFinalMessage: row.latest_final_message ?? undefined,
+    latestRunId: row.latest_run_id ?? undefined,
+    sourceTemplateId: row.source_template_id ?? undefined,
+    sourceOccurrenceAt: row.source_occurrence_at?.toISOString(),
+    scheduledAt: row.scheduled_at?.toISOString(),
     scheduledFor: row.scheduled_for?.toISOString(),
     dueAt: row.due_at?.toISOString(),
+    doneAt: row.done_at?.toISOString(),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     archivedAt: row.archived_at?.toISOString(),
@@ -1172,6 +1321,7 @@ function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task {
     id: row.id,
     templateId: row.id,
     agentId: row.agent_id,
+    defaultAgentId: row.default_agent_id ?? undefined,
     title: row.title,
     description: row.description,
     todos: parseTaskTodos(row.todos_json),
@@ -1192,12 +1342,15 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
   return taskRunSchema.parse({
     id: row.id,
     taskId: row.task_id,
+    subtaskId: row.subtask_id ?? undefined,
     agentId: row.agent_id,
     opencodeSessionId: row.opencode_session_id ?? undefined,
     status: row.status,
     triggerSource: row.trigger_source,
+    outcome: row.outcome ?? undefined,
     renderedPrompt: row.rendered_prompt,
     context: parseJsonRecord(row.context_json),
+    triggerMetadata: parseJsonRecord(row.trigger_metadata_json),
     renderedContext: parseJsonRecord(row.rendered_context_json),
     effectivePermissions: parseOptional(
       row.effective_permissions_json,
