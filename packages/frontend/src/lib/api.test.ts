@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   abortConversation,
+  acceptTask,
+  cancelTaskRun,
   cancelLiveRequest,
   changeOwnerPassword,
   claimWorkspace,
@@ -161,6 +163,35 @@ describe("deleteConversation", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     await expect(deleteConversation("agent-1", "conv-1")).resolves.toBeUndefined();
+  });
+});
+
+describe("task actions", () => {
+  it("accepts a task through the task accept endpoint", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse(makeTaskPayload({ status: "done" })));
+
+    await expect(acceptTask("task-1")).resolves.toMatchObject({ id: "task-1", status: "done" });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/accept", { method: "POST" });
+  });
+
+  it("cancels a task run with a reason", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse(makeTaskRunPayload({ status: "cancelled" })));
+
+    await expect(cancelTaskRun("task-1", "run-1", { reason: "Stop" })).resolves.toMatchObject({
+      id: "run-1",
+      status: "cancelled",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: "Stop" }),
+    });
   });
 });
 
@@ -647,3 +678,37 @@ describe("additional request wrapper coverage", () => {
     );
   });
 });
+
+function makeTaskPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "task-1",
+    agentId: "agent-1",
+    title: "Ship release",
+    description: "Prepare release notes.",
+    todos: [],
+    status: "backlog",
+    triggerMode: "manual",
+    schedule: { mode: "manual" },
+    enabled: true,
+    archived: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeTaskRunPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "run-1",
+    taskId: "task-1",
+    agentId: "agent-1",
+    status: "running",
+    triggerSource: "manual",
+    renderedPrompt: "Task: Ship release",
+    artifacts: [],
+    needsHumanReview: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}

@@ -207,6 +207,7 @@ type MockFetchOptions = {
   agentsPayload?: (typeof agent)[];
   catalogPayload?: AgentCatalog;
   runsPayload?: TaskRun[];
+  activeRunsPayload?: TaskRun[];
   archivedTasksPayload?: Task[];
   templatesPayload?: TaskTemplate[];
 };
@@ -277,6 +278,129 @@ describe("TasksPage", () => {
 
     expect(await screen.findByRole("link", { name: "Archived release" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Backlog" })).not.toBeInTheDocument();
+  });
+
+  it("shows scheduled card timing and queue-now action", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        status: "scheduled",
+        scheduledAt: "2026-01-02T12:00:00.000Z",
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(await screen.findByRole("button", { name: "Queue now" })).toBeInTheDocument();
+    expect(screen.getAllByText(/Scheduled/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Todos: 0/1")).toBeInTheDocument();
+  });
+
+  it("shows active run actions for queued cards", async () => {
+    const fetchMock = mockFetch({
+      activeRunsPayload: [{ ...run, status: "running" }],
+      taskPayload: { ...task, status: "queued", latestRunId: "run-1" },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(await screen.findByRole("link", { name: "View run" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel run" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Queue" })).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Cancel run" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/runs/run-1/cancel",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("accepts ready-to-check cards", async () => {
+    const fetchMock = mockFetch({
+      taskPayload: {
+        ...task,
+        status: "ready_to_check",
+        latestRunId: "run-1",
+        latestFinalMessage: "Release notes are ready.",
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(await screen.findByText("Release notes are ready.")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/accept",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("retries review cards", async () => {
+    const fetchMock = mockFetch({
+      taskPayload: {
+        ...task,
+        status: "review",
+        latestRunId: "run-1",
+        latestFinalMessage: "Confirm the generated tool list is complete.",
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Retry" }));
+    await user.click(screen.getByRole("button", { name: "Run task" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/queue",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("shows generated recurring task context on cards", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        sourceTemplateId: "template-1",
+        sourceOccurrenceAt: "2026-01-08T00:00:00.000Z",
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(await screen.findByText(/Generated/)).toBeInTheDocument();
+  });
+
+  it("reopens done cards", async () => {
+    const fetchMock = mockFetch({
+      taskPayload: { ...task, status: "done", doneAt: "2026-01-02T00:00:00.000Z" },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Reopen" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ status: "backlog" }),
+        }),
+      );
+    });
   });
 
   it("duplicates a task from the task list", async () => {
@@ -867,6 +991,7 @@ function mockFetch(options: MockFetchOptions = {}) {
   const agentsPayload = options.agentsPayload ?? [agent];
   const catalogPayload = options.catalogPayload ?? catalog;
   const runsPayload = options.runsPayload ?? [sessionRun];
+  const activeRunsPayload = options.activeRunsPayload ?? [];
   const archivedTasksPayload = options.archivedTasksPayload ?? [];
   const templatesPayload = options.templatesPayload ?? [];
 
@@ -886,6 +1011,8 @@ function mockFetch(options: MockFetchOptions = {}) {
     if (url === "/api/tasks/archive")
       return Promise.resolve(jsonResponse(200, archivedTasksPayload));
     if (url === "/api/tasks/templates") return Promise.resolve(jsonResponse(200, templatesPayload));
+    if (url === "/api/tasks/runs/active")
+      return Promise.resolve(jsonResponse(200, activeRunsPayload));
     if (url === "/api/tasks") {
       const method = input instanceof Request ? input.method : init?.method;
       return Promise.resolve(
@@ -930,6 +1057,9 @@ function mockFetch(options: MockFetchOptions = {}) {
       );
     }
     if (url === "/api/tasks/task-1/queue") return Promise.resolve(jsonResponse(200, run));
+    if (url === "/api/tasks/task-1/accept") return Promise.resolve(jsonResponse(200, taskPayload));
+    if (url === "/api/tasks/task-1/runs/run-1/cancel")
+      return Promise.resolve(jsonResponse(200, { ...run, status: "cancelled" }));
     return Promise.reject(new Error(`Unexpected fetch URL: ${url}`));
   });
 }

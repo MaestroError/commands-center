@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
+  CancelTaskRunInput,
   CreateTaskInput,
   ListTasksQuery,
   Task,
@@ -9,7 +10,9 @@ import type {
 } from "@cc/shared/schemas";
 
 import {
+  acceptTask,
   archiveTask,
+  cancelTaskRun,
   createTask,
   deleteTask,
   disableTask,
@@ -127,6 +130,7 @@ export function useTaskMutations() {
       },
     }),
     archive: useMutation({ mutationFn: archiveTask, onSuccess: invalidateTasks }),
+    accept: useMutation({ mutationFn: acceptTask, onSuccess: invalidateTasks }),
     restore: useMutation({ mutationFn: restoreTask, onSuccess: invalidateTasks }),
     enable: useMutation({ mutationFn: enableTask, onSuccess: invalidateTasks }),
     disable: useMutation({ mutationFn: disableTask, onSuccess: invalidateTasks }),
@@ -137,6 +141,26 @@ export function useTaskMutations() {
     trigger: useMutation({
       mutationFn: ({ id, input }: { id: string; input?: Partial<TriggerTaskInput> }) =>
         queueTask(id, { triggerSource: "manual", ...input }),
+      onSuccess: async (run) => {
+        queryClient.setQueryData(queryKeys.taskRun(run.taskId, run.id), run);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.task(run.taskId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(run.taskId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.activeTaskRuns }),
+          queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        ]);
+      },
+    }),
+    cancelRun: useMutation({
+      mutationFn: ({
+        taskId,
+        runId,
+        input,
+      }: {
+        taskId: string;
+        runId: string;
+        input?: CancelTaskRunInput;
+      }) => cancelTaskRun(taskId, runId, input),
       onSuccess: async (run) => {
         queryClient.setQueryData(queryKeys.taskRun(run.taskId, run.id), run);
         await Promise.all([

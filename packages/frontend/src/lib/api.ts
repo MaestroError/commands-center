@@ -1,5 +1,6 @@
 import {
   agentCatalogSchema,
+  cancelTaskRunInputSchema,
   copyCustomToolToAgentsInputSchema,
   customToolAgentCopyListSchema,
   customToolBulkCopyResultSchema,
@@ -85,6 +86,7 @@ import {
   workspaceSkillUploadInputSchema,
   type Agent,
   type AgentCatalog,
+  type CancelTaskRunInput,
   type CopyCustomToolToAgentsInput,
   type CreateCustomToolInput,
   type CustomTool,
@@ -686,6 +688,12 @@ export async function archiveTask(id: string): Promise<Task> {
   });
 }
 
+export async function acceptTask(id: string): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/accept`, taskSchema, {
+    method: "POST",
+  });
+}
+
 export async function restoreTask(id: string): Promise<Task> {
   return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/restore`, taskSchema, {
     method: "POST",
@@ -753,6 +761,21 @@ export async function queueTask(
     method: "POST",
     body: input,
   });
+}
+
+export async function cancelTaskRun(
+  taskId: string,
+  runId: string,
+  input: CancelTaskRunInput = {},
+): Promise<TaskRun> {
+  return requestJson<TaskRun>(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/cancel`,
+    taskRunSchema,
+    {
+      method: "POST",
+      body: cancelTaskRunInputSchema.parse(input),
+    },
+  );
 }
 
 export async function listActiveTaskRuns(): Promise<TaskRun[]> {

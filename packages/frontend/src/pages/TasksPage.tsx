@@ -6,6 +6,7 @@ import type {
   BoardTaskStatus,
   CreateTaskInput,
   Task,
+  TaskRun,
   TaskTemplate,
   TaskRepeatRule,
   TaskSchedule,
@@ -33,6 +34,7 @@ import { StatusBadge } from "@/components/tasks/task-ui";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
 import { useAgentCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
 import {
+  useActiveTaskRunsQuery,
   useArchivedTasksQuery,
   useTaskMutations,
   useTaskQuery,
@@ -124,6 +126,7 @@ function TaskListPage() {
   const tasksQuery = useTasksQuery({ includeArchived: false });
   const templatesQuery = useTaskTemplatesQuery();
   const archiveQuery = useArchivedTasksQuery();
+  const activeRunsQuery = useActiveTaskRunsQuery();
   const agentsQuery = useAgentsQuery();
   const mutations = useTaskMutations();
   const [runTask, setRunTask] = useState<Task>();
@@ -182,8 +185,17 @@ function TaskListPage() {
       {!isLoading && !error && view === "board" && boardTasks.length > 0 ? (
         <TaskBoard
           agents={agents}
+          activeRuns={activeRunsQuery.data ?? []}
           currentSearch={currentSearch}
+          onAccept={(task) => void mutations.accept.mutate(task.id)}
           onArchive={(task) => void mutations.archive.mutate(task.id)}
+          onCancelRun={(run) =>
+            void mutations.cancelRun.mutate({
+              taskId: run.taskId,
+              runId: run.id,
+              input: { reason: "Cancelled from task board." },
+            })
+          }
           onDuplicate={(task) => {
             mutations.duplicate.mutate(task.id, {
               onSuccess: (duplicated) =>
@@ -191,6 +203,9 @@ function TaskListPage() {
             });
           }}
           onQueue={setRunTask}
+          onReopen={(task) =>
+            void mutations.update.mutate({ id: task.id, input: { status: "backlog" } })
+          }
           tasks={boardTasks}
         />
       ) : null}
@@ -252,10 +267,14 @@ function TaskViewNav(props: {
 function TaskBoard(props: {
   tasks: Task[];
   agents: Agent[];
+  activeRuns: TaskRun[];
   currentSearch: string;
+  onAccept: (task: Task) => void;
   onArchive: (task: Task) => void;
+  onCancelRun: (run: TaskRun) => void;
   onDuplicate: (task: Task) => void;
   onQueue: (task: Task) => void;
+  onReopen: (task: Task) => void;
 }) {
   return (
     <section className="grid gap-4 xl:grid-cols-3 2xl:grid-cols-6" data-testid="tasks-board">
@@ -281,12 +300,16 @@ function TaskBoard(props: {
             <div className="grid gap-3">
               {columnTasks.map((task) => (
                 <TaskBoardCard
+                  activeRun={props.activeRuns.find((run) => run.taskId === task.id)}
                   agent={props.agents.find((entry) => entry.id === task.agentId)}
                   currentSearch={props.currentSearch}
                   key={task.id}
+                  onAccept={() => props.onAccept(task)}
                   onArchive={() => props.onArchive(task)}
+                  onCancelRun={(run) => props.onCancelRun(run)}
                   onDuplicate={() => props.onDuplicate(task)}
                   onQueue={() => props.onQueue(task)}
+                  onReopen={() => props.onReopen(task)}
                   task={task}
                 />
               ))}
@@ -301,14 +324,25 @@ function TaskBoard(props: {
 function TaskBoardCard(props: {
   task: Task;
   agent?: Agent;
+  activeRun?: TaskRun;
   currentSearch: string;
+  onAccept: () => void;
   onQueue: () => void;
+  onCancelRun: (run: TaskRun) => void;
   onDuplicate: () => void;
   onArchive: () => void;
+  onReopen: () => void;
 }) {
   const task = props.task;
+  const boardStatus = readBoardStatus(task);
+  const latestRunPath = task.latestRunId
+    ? `/tasks/${task.id}/runs/${task.latestRunId}${props.currentSearch}`
+    : undefined;
+  const activeRunPath = props.activeRun
+    ? `/tasks/${task.id}/runs/${props.activeRun.id}${props.currentSearch}`
+    : undefined;
   return (
-    <article className="grid gap-3 rounded-xl border border-border bg-surface p-4">
+    <article className={readCardClassName(boardStatus)}>
       <div className="grid gap-2">
         <Link
           className="font-semibold leading-6 text-text-primary transition hover:text-accent"
@@ -322,42 +356,179 @@ function TaskBoardCard(props: {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge status={readBoardStatus(task)} />
+        <StatusBadge status={boardStatus} />
+        {props.activeRun ? <StatusBadge status={props.activeRun.status} /> : null}
         <span className="rounded-full border border-border bg-background px-3 py-1 text-xs text-text-secondary">
           {props.agent?.name ?? task.agentId}
         </span>
+        {(task.scheduledAt ?? task.scheduledFor ?? task.dueAt) ? (
+          <span className="rounded-full border border-border bg-background px-3 py-1 text-xs text-text-secondary">
+            {formatTimingBadge(task)}
+          </span>
+        ) : null}
+        {task.sourceTemplateId ? (
+          <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent">
+            Generated{task.sourceOccurrenceAt ? ` ${formatDate(task.sourceOccurrenceAt)}` : ""}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="grid gap-2 text-xs text-text-secondary">
+        <span>Todos: {formatTodoProgress(task)}</span>
+        <span>Updated: {formatDate(task.updatedAt)}</span>
       </div>
 
       {task.latestFinalMessage ? (
-        <p className="rounded-lg border border-border bg-background p-3 text-sm leading-6 text-text-secondary">
-          {task.latestFinalMessage}
-        </p>
+        <p className={readResultClassName(boardStatus)}>{task.latestFinalMessage}</p>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
+        <TaskCardActions
+          activeRun={props.activeRun}
+          activeRunPath={activeRunPath}
+          boardStatus={boardStatus}
+          currentSearch={props.currentSearch}
+          latestRunPath={latestRunPath}
+          onAccept={props.onAccept}
+          onArchive={props.onArchive}
+          onCancelRun={props.onCancelRun}
+          onDuplicate={props.onDuplicate}
+          onQueue={props.onQueue}
+          onReopen={props.onReopen}
+          task={task}
+        />
+      </div>
+    </article>
+  );
+}
+
+function TaskCardActions(props: {
+  task: Task;
+  boardStatus: BoardTaskStatus;
+  currentSearch: string;
+  activeRun?: TaskRun;
+  activeRunPath?: string;
+  latestRunPath?: string;
+  onAccept: () => void;
+  onArchive: () => void;
+  onCancelRun: (run: TaskRun) => void;
+  onDuplicate: () => void;
+  onQueue: () => void;
+  onReopen: () => void;
+}) {
+  if (props.boardStatus === "queued") {
+    return (
+      <>
+        {props.activeRunPath ? (
+          <Link className="cc-button" to={props.activeRunPath}>
+            View run
+          </Link>
+        ) : null}
+        {props.activeRun ? (
+          <button
+            className="cc-button cc-button-secondary"
+            onClick={() => {
+              if (props.activeRun) props.onCancelRun(props.activeRun);
+            }}
+            type="button"
+          >
+            Cancel run
+          </button>
+        ) : null}
+        {!props.activeRun ? (
+          <button className="cc-button" onClick={props.onQueue} type="button">
+            Queue
+          </button>
+        ) : null}
         <Link
           className="cc-button cc-button-secondary"
-          to={`/tasks/${task.id}${props.currentSearch}`}
+          to={`/tasks/${props.task.id}${props.currentSearch}`}
         >
           Details
         </Link>
+      </>
+    );
+  }
+
+  if (props.boardStatus === "ready_to_check") {
+    return (
+      <>
+        <button className="cc-button" onClick={props.onAccept} type="button">
+          Accept
+        </button>
+        {props.latestRunPath ? (
+          <Link className="cc-button cc-button-secondary" to={props.latestRunPath}>
+            Open run
+          </Link>
+        ) : null}
         <Link
           className="cc-button cc-button-secondary"
-          to={`/tasks/${task.id}/edit${props.currentSearch}`}
+          to={`/tasks/${props.task.id}${props.currentSearch}`}
+        >
+          Details
+        </Link>
+      </>
+    );
+  }
+
+  if (props.boardStatus === "review") {
+    return (
+      <>
+        <button className="cc-button" onClick={props.onQueue} type="button">
+          Retry
+        </button>
+        {props.latestRunPath ? (
+          <Link className="cc-button cc-button-secondary" to={props.latestRunPath}>
+            Open run
+          </Link>
+        ) : null}
+        <Link
+          className="cc-button cc-button-secondary"
+          to={`/tasks/${props.task.id}/edit${props.currentSearch}`}
         >
           Edit
         </Link>
-        <button className="cc-button cc-button-secondary" onClick={props.onDuplicate} type="button">
-          Duplicate
-        </button>
-        <button className="cc-button" onClick={props.onQueue} type="button">
-          Queue
+      </>
+    );
+  }
+
+  if (props.boardStatus === "done") {
+    return (
+      <>
+        <button className="cc-button" onClick={props.onReopen} type="button">
+          Reopen
         </button>
         <button className="cc-button cc-button-secondary" onClick={props.onArchive} type="button">
           Archive
         </button>
-      </div>
-    </article>
+        <Link
+          className="cc-button cc-button-secondary"
+          to={`/tasks/${props.task.id}${props.currentSearch}`}
+        >
+          Details
+        </Link>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <button className="cc-button" onClick={props.onQueue} type="button">
+        {props.boardStatus === "scheduled" ? "Queue now" : "Queue"}
+      </button>
+      <Link
+        className="cc-button cc-button-secondary"
+        to={`/tasks/${props.task.id}/edit${props.currentSearch}`}
+      >
+        {props.boardStatus === "scheduled" ? "Reschedule" : "Edit"}
+      </Link>
+      <button className="cc-button cc-button-secondary" onClick={props.onDuplicate} type="button">
+        Duplicate
+      </button>
+      <button className="cc-button cc-button-secondary" onClick={props.onArchive} type="button">
+        Archive
+      </button>
+    </>
   );
 }
 
@@ -982,6 +1153,44 @@ function readBoardStatus(task: Task): BoardTaskStatus {
   return BOARD_COLUMNS.some((column) => column.status === task.status)
     ? (task.status as BoardTaskStatus)
     : "backlog";
+}
+
+function readCardClassName(status: BoardTaskStatus): string {
+  const emphasis =
+    status === "ready_to_check"
+      ? "border-accent/40 bg-accent/5"
+      : status === "review"
+        ? "border-amber-400/40 bg-amber-400/5"
+        : status === "queued"
+          ? "border-accent/30 bg-surface-elevated"
+          : "border-border bg-surface";
+
+  return `grid gap-3 rounded-xl border p-4 ${emphasis}`;
+}
+
+function readResultClassName(status: BoardTaskStatus): string {
+  const emphasis =
+    status === "ready_to_check"
+      ? "border-accent/30 bg-accent/10 text-text-primary"
+      : status === "review"
+        ? "border-amber-400/30 bg-amber-400/10 text-text-primary"
+        : "border-border bg-background text-text-secondary";
+
+  return `rounded-lg border p-3 text-sm leading-6 ${emphasis}`;
+}
+
+function formatTimingBadge(task: Task): string {
+  if (task.scheduledAt) return `Scheduled ${formatDate(task.scheduledAt)}`;
+  if (task.scheduledFor) return `Scheduled ${formatDate(task.scheduledFor)}`;
+  if (task.dueAt) return `Due ${formatDate(task.dueAt)}`;
+  return "Not scheduled";
+}
+
+function formatTodoProgress(task: Task): string {
+  if (task.todos.length === 0) return "0/0";
+
+  const completed = task.todos.filter((todo) => todo.status === "completed").length;
+  return `${String(completed)}/${String(task.todos.length)}`;
 }
 
 function Metric(props: { label: string; value: string }) {
