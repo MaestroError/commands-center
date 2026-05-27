@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   CancelTaskRunInput,
   CreateTaskInput,
+  CreateTaskTemplateInput,
   ListTasksQuery,
   Task,
+  TaskTemplateRunNowInput,
   TriggerTaskInput,
   UpdateTaskInput,
 } from "@cc/shared/schemas";
@@ -14,21 +16,26 @@ import {
   archiveTask,
   cancelTaskRun,
   createTask,
+  createTaskFromTemplate,
+  createTaskTemplate,
   deleteTask,
   disableTask,
   duplicateTask,
   enableTask,
   getTask,
+  getTaskTemplate,
   getTaskRun,
   inspectTaskRunSession,
   listArchivedTasks,
   listActiveTaskRuns,
+  listTaskTemplateTasks,
   listTaskTemplates,
   listTaskRuns,
   listTasks,
   openTaskRunInChat,
   queueTask,
   restoreTask,
+  runTaskTemplateNow,
   updateTask,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
@@ -51,6 +58,22 @@ export function useTaskTemplatesQuery() {
   return useQuery({
     queryKey: queryKeys.taskTemplates,
     queryFn: listTaskTemplates,
+  });
+}
+
+export function useTaskTemplateQuery(templateId?: string) {
+  return useQuery({
+    queryKey: queryKeys.taskTemplate(templateId ?? "missing"),
+    queryFn: () => getTaskTemplate(templateId ?? ""),
+    enabled: Boolean(templateId),
+  });
+}
+
+export function useTaskTemplateTasksQuery(templateId?: string) {
+  return useQuery({
+    queryKey: queryKeys.taskTemplateTasks(templateId ?? "missing"),
+    queryFn: () => listTaskTemplateTasks(templateId ?? ""),
+    enabled: Boolean(templateId),
   });
 }
 
@@ -115,6 +138,28 @@ export function useTaskMutations() {
         await invalidateTasks(task);
       },
     }),
+    createTemplate: useMutation({
+      mutationFn: (input: CreateTaskTemplateInput) => createTaskTemplate(input),
+      onSuccess: async (template) => {
+        queryClient.setQueryData(queryKeys.taskTemplate(template.id), template);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplates });
+      },
+    }),
+    createFromTemplate: useMutation({
+      mutationFn: (id: string) => createTaskFromTemplate(id),
+      onSuccess: async (task) => {
+        queryClient.setQueryData(queryKeys.task(task.id), task);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplates }),
+          task.sourceTemplateId
+            ? queryClient.invalidateQueries({
+                queryKey: queryKeys.taskTemplateTasks(task.sourceTemplateId),
+              })
+            : undefined,
+          queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        ]);
+      },
+    }),
     update: useMutation({
       mutationFn: ({ id, input }: { id: string; input: UpdateTaskInput }) => updateTask(id, input),
       onSuccess: async (task) => {
@@ -144,6 +189,22 @@ export function useTaskMutations() {
       onSuccess: async (run) => {
         queryClient.setQueryData(queryKeys.taskRun(run.taskId, run.id), run);
         await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.task(run.taskId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(run.taskId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.activeTaskRuns }),
+          queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        ]);
+      },
+    }),
+    runTemplateNow: useMutation({
+      mutationFn: ({ id, input }: { id: string; input?: TaskTemplateRunNowInput }) =>
+        runTaskTemplateNow(id, input),
+      onSuccess: async (run, variables) => {
+        queryClient.setQueryData(queryKeys.taskRun(run.taskId, run.id), run);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplates }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplate(variables.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplateTasks(variables.id) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.task(run.taskId) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(run.taskId) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.activeTaskRuns }),

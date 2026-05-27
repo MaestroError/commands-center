@@ -19,6 +19,8 @@ export const queryKeys = {
   tasks: (query?: Record<string, unknown>) => ["tasks", query ?? {}] as const,
   taskArchive: ["task-archive"] as const,
   taskTemplates: ["task-templates"] as const,
+  taskTemplate: (templateId: string) => ["task-template", templateId] as const,
+  taskTemplateTasks: (templateId: string) => ["task-template-tasks", templateId] as const,
   task: (taskId: string) => ["task", taskId] as const,
   taskRuns: (taskId: string) => ["task-runs", taskId] as const,
   taskRun: (taskId: string, runId: string) => ["task-run", taskId, runId] as const,

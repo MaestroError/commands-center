@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
@@ -330,29 +330,6 @@ export function createTaskSchedulerService(options: {
     }
 
     const timestamp = now();
-    const existing = await options.db.query.task_scheduler_state.findFirst({
-      where: (table, operators) => operators.eq(table.task_id, task.id),
-    });
-
-    if (existing) {
-      const [row] = await options.db
-        .update(task_scheduler_state)
-        .set({
-          next_run_at: nextRunAt ?? null,
-          last_scheduled_at: lastScheduledAt ?? existing.last_scheduled_at,
-          last_error: error ?? null,
-          updated_at: timestamp,
-        })
-        .where(eq(task_scheduler_state.task_id, task.id))
-        .returning();
-
-      if (!row) {
-        throw new Error("Failed to update task scheduler state.");
-      }
-
-      return mapSchedulerState(row);
-    }
-
     const [row] = await options.db
       .insert(task_scheduler_state)
       .values({
@@ -363,10 +340,19 @@ export function createTaskSchedulerService(options: {
         created_at: timestamp,
         updated_at: timestamp,
       })
+      .onConflictDoUpdate({
+        target: task_scheduler_state.task_id,
+        set: {
+          next_run_at: nextRunAt ?? null,
+          last_scheduled_at: lastScheduledAt ?? sql`${task_scheduler_state.last_scheduled_at}`,
+          last_error: error ?? null,
+          updated_at: timestamp,
+        },
+      })
       .returning();
 
     if (!row) {
-      throw new Error("Failed to create task scheduler state.");
+      throw new Error("Failed to upsert task scheduler state.");
     }
 
     return mapSchedulerState(row);

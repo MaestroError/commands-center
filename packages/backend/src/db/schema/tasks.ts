@@ -188,9 +188,7 @@ export const task_runs = sqliteTable(
 export const task_scheduler_state = sqliteTable(
   "task_scheduler_state",
   {
-    task_id: text("task_id")
-      .primaryKey()
-      .references(() => tasks.id),
+    task_id: text("task_id").primaryKey(),
     next_run_at: integer("next_run_at", { mode: "timestamp_ms" }),
     last_scheduled_at: integer("last_scheduled_at", { mode: "timestamp_ms" }),
     last_error: text("last_error"),

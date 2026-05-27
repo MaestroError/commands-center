@@ -302,6 +302,7 @@ export {
   type TaskSubtaskStatus,
   type TaskStatus,
   type TaskTemplate,
+  type TaskTemplateRunNowInput,
   type TaskTemplateStatus,
   type TaskTodo,
   type TaskTriggerMode,

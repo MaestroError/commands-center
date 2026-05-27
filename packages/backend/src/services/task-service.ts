@@ -10,6 +10,7 @@ import {
   listTasksQuerySchema,
   markTaskRunNeedsReviewInputSchema,
   queueTaskInputSchema,
+  recurringTaskScheduleSchema,
   setTaskRunResultInputSchema,
   taskCommentInputSchema,
   taskCommentListSchema,
@@ -177,6 +178,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const timestamp = now();
       const todos = normalizeTodos(parsed.todos, timestamp);
       const enabled = parsed.enabled ?? true;
+      const schedule = parsed.recurrence ?? { mode: "manual" };
       const [row] = await options.db
         .insert(task_templates)
         .values({
@@ -187,15 +189,15 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           description: parsed.description,
           todos_json: JSON.stringify(todos),
           status: enabled ? "enabled" : "disabled",
-          trigger_mode: "recurring",
-          schedule_json: JSON.stringify(parsed.recurrence),
-          recurrence_json: JSON.stringify(parsed.recurrence),
+          trigger_mode: parsed.recurrence ? "recurring" : "manual",
+          schedule_json: JSON.stringify(schedule),
+          recurrence_json: parsed.recurrence ? JSON.stringify(parsed.recurrence) : null,
           permission_profile_json: stringifyOptional(parsed.permissionProfile),
           enabled,
           archived: false,
           latest_final_message: null,
           latest_task_id: null,
-          next_occurrence_at: new Date(parsed.recurrence.anchorAt),
+          next_occurrence_at: parsed.recurrence ? new Date(parsed.recurrence.anchorAt) : null,
           last_generated_occurrence_at: null,
           created_at: timestamp,
           updated_at: timestamp,
@@ -1725,7 +1727,9 @@ function mapTaskTemplate(row: typeof task_templates.$inferSelect): TaskTemplate 
     description: row.description,
     todos: parseTaskTodos(row.todos_json),
     status: row.archived ? "archived" : row.enabled ? "enabled" : "disabled",
-    recurrence: parseTaskSchedule(row.recurrence_json ?? row.schedule_json),
+    recurrence: row.recurrence_json
+      ? recurringTaskScheduleSchema.parse(JSON.parse(row.recurrence_json))
+      : undefined,
     permissionProfile: parseOptional(row.permission_profile_json, taskPermissionProfileSchema),
     enabled: row.enabled,
     archived: row.archived,

@@ -292,6 +292,18 @@ describe("task routes", () => {
         },
       });
       const templates = await server.inject({ method: "GET", url: "/api/tasks/templates" });
+      const templateDetail = await server.inject({
+        method: "GET",
+        url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}`,
+      });
+      const createdFromTemplate = await server.inject({
+        method: "POST",
+        url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}/tasks`,
+      });
+      const templateTasks = await server.inject({
+        method: "GET",
+        url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}/tasks`,
+      });
       const runNow = await server.inject({
         method: "POST",
         url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}/run-now`,
@@ -312,6 +324,12 @@ describe("task routes", () => {
       expect(template.json().defaultAgentId).toBe(agent.id);
       expect(templates.statusCode).toBe(200);
       expect(templates.json()).toHaveLength(1);
+      expect(templateDetail.statusCode).toBe(200);
+      expect(templateDetail.json().id).toBe(template.json<{ id: string }>().id);
+      expect(createdFromTemplate.statusCode).toBe(201);
+      expect(createdFromTemplate.json().sourceTemplateId).toBe(template.json<{ id: string }>().id);
+      expect(templateTasks.statusCode).toBe(200);
+      expect(templateTasks.json().length).toBeGreaterThan(0);
       expect(runNow.statusCode).toBe(200);
       expect(runNow.json().status).toBe("queued");
       expect(runNow.json().triggerSource).toBe("template");

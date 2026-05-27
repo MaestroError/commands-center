@@ -45,11 +45,13 @@ Redesign the Tasks system around Jira-like board work items and AI execution att
 - Do not create a task template for one-time scheduled work.
 - Keep scheduler state portable inside the workspace database.
 
-### Recurring Templates
+### Task Templates
 
-- Represent recurring work as task templates that generate normal tasks.
+- Represent reusable task setup as task templates that generate normal tasks on demand.
+- Allow templates to be manual-only or optionally repeating.
 - When a template occurrence is due, create a normal task with a source template ID and source occurrence timestamp.
 - Queue the generated task immediately when the template configuration says the occurrence should execute at generation time.
+- Support Create Task on a task template by creating a new normal task without queueing it.
 - Support Run Now on a task template by creating a new normal task and immediately queueing it.
 - Ensure rescheduling or editing one generated task does not change the recurring template's future schedule.
 - Enforce idempotency for generated occurrences with a uniqueness rule over source template ID and source occurrence timestamp.
@@ -111,7 +113,7 @@ Implement this sub-epic in phases. Existing task, task run, task template, and t
 - ✅ **Level 3: Board Cards** — `09-board-oriented-task-system-redesign/08-ui-level-3-board-cards.md`
 - ✅ **Level 4: Task Detail Container** — `09-board-oriented-task-system-redesign/09-ui-level-4-task-detail-container.md`
 - ✅ **Level 5: Task Detail Sections** — `09-board-oriented-task-system-redesign/10-ui-level-5-task-detail-sections.md`
-- **Recurring Templates** — `09-board-oriented-task-system-redesign/11-ui-recurring-templates.md`
+- ✅ **Task Templates** — `09-board-oriented-task-system-redesign/11-ui-recurring-templates.md`
 - **Comments, Feedback, and Context** — `09-board-oriented-task-system-redesign/12-ui-comments-feedback-and-context.md`
 - **Subtasks** — `09-board-oriented-task-system-redesign/13-ui-subtasks.md`
 - **Task Runs, Session Check, and Open In Chat** — `09-board-oriented-task-system-redesign/14-ui-task-runs-session-and-chat.md`
@@ -131,7 +133,8 @@ Implement this sub-epic in phases. Existing task, task run, task template, and t
 - One-time scheduled tasks are normal tasks that enter queued through the scheduler.
 - Recurring templates generate normal tasks and never receive task runs directly.
 - Run Now on a normal task queues the existing task and creates a new run for that task.
-- Run Now on a recurring template creates a normal task and queues that task.
+- Create Task on a template creates a normal task without queueing it.
+- Run Now on a template creates a normal task and queues that task.
 - Successful runs move the task to ready_to_check, not done.
 - Failed runs and needs-human-review outcomes move the task to review.
 - Re-queueing a task after feedback creates a new task run on the same task and includes previous run context.

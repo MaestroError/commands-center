@@ -296,7 +296,7 @@ export const taskTemplateSchema = z.object({
   description: z.string(),
   todos: z.array(taskTodoSchema),
   status: taskTemplateStatusSchema,
-  recurrence: recurringTaskScheduleSchema,
+  recurrence: recurringTaskScheduleSchema.optional(),
   permissionProfile: taskPermissionProfileSchema.optional(),
   enabled: z.boolean(),
   archived: z.boolean(),
@@ -321,7 +321,7 @@ export const createTaskTemplateInputSchema = z.object({
   title: z.string().trim().min(1),
   description: z.string().trim().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
-  recurrence: recurringTaskScheduleSchema,
+  recurrence: recurringTaskScheduleSchema.optional(),
   permissionProfile: taskPermissionProfileSchema.optional(),
   enabled: z.boolean().optional(),
 });
@@ -442,6 +442,7 @@ export const taskRunSessionInspectionSchema = z.object({
 
 export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
 export type CreateTaskTemplateInput = z.input<typeof createTaskTemplateInputSchema>;
+export type TaskTemplateRunNowInput = z.input<typeof taskTemplateRunNowInputSchema>;
 export type CreateTaskRunInput = z.input<typeof createTaskRunInputSchema>;
 export type AddTaskRunArtifactInput = z.input<typeof addTaskRunArtifactInputSchema>;
 export type CancelTaskRunInput = z.input<typeof cancelTaskRunInputSchema>;

@@ -5,6 +5,7 @@ import type {
   Agent,
   BoardTaskStatus,
   CreateTaskInput,
+  CreateTaskTemplateInput,
   Task,
   TaskRun,
   TaskTemplate,
@@ -39,6 +40,8 @@ import {
   useArchivedTasksQuery,
   useTaskMutations,
   useTaskQuery,
+  useTaskTemplateQuery,
+  useTaskTemplateTasksQuery,
   useTaskRunsQuery,
   useTasksQuery,
   useTaskTemplatesQuery,
@@ -135,6 +138,7 @@ function TaskListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = readTaskView(searchParams);
   const selectedTaskId = searchParams.get("task") ?? undefined;
+  const selectedTemplateId = searchParams.get("template") ?? undefined;
   const currentSearch = searchParams.toString() ? `?${searchParams.toString()}` : "";
   const tasksQuery = useTasksQuery({ includeArchived: false });
   const templatesQuery = useTaskTemplatesQuery();
@@ -143,6 +147,7 @@ function TaskListPage() {
   const agentsQuery = useAgentsQuery();
   const mutations = useTaskMutations();
   const [runTask, setRunTask] = useState<Task>();
+  const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   const agents = agentsQuery.data ?? [];
   const boardTasks = tasksQuery.data ?? [];
   const templates = templatesQuery.data ?? [];
@@ -156,11 +161,17 @@ function TaskListPage() {
     <div className="grid gap-4">
       <PageHeader
         actions={
-          <Link className="cc-button" to="/tasks/new">
-            Create task
-          </Link>
+          view === "templates" ? (
+            <button className="cc-button" onClick={() => setIsCreatingTemplate(true)} type="button">
+              Create template
+            </button>
+          ) : (
+            <Link className="cc-button" to="/tasks/new">
+              Create task
+            </Link>
+          )
         }
-        description="Use the board for daily task work, templates for recurring generators, and archive for completed history."
+        description="Use the board for daily task work, templates for reusable task setup, and archive for completed history."
         eyebrow="Tasks"
         title="Workspace tasks"
       />
@@ -225,7 +236,39 @@ function TaskListPage() {
       ) : null}
 
       {!isLoading && !error && view === "templates" ? (
-        <TaskTemplatesView agents={agents} currentSearch={currentSearch} templates={templates} />
+        <TaskTemplatesView
+          agents={agents}
+          currentSearch={currentSearch}
+          isCreating={isCreatingTemplate}
+          isCreatingBusy={mutations.createTemplate.isPending}
+          onCancelCreate={() => setIsCreatingTemplate(false)}
+          onCreate={(input) => {
+            mutations.createTemplate.mutate(input, {
+              onSuccess: (template) => {
+                setIsCreatingTemplate(false);
+                setSelectedTemplate(searchParams, setSearchParams, template.id);
+              },
+            });
+          }}
+          onRunNow={(template) => {
+            mutations.runTemplateNow.mutate(
+              { id: template.id },
+              {
+                onSuccess: (run) => {
+                  selectGeneratedTask(searchParams, setSearchParams, run.taskId);
+                },
+              },
+            );
+          }}
+          onCreateTask={(template) => {
+            mutations.createFromTemplate.mutate(template.id, {
+              onSuccess: (task) => selectGeneratedTask(searchParams, setSearchParams, task.id),
+            });
+          }}
+          onSelect={(template) => setSelectedTemplate(searchParams, setSearchParams, template.id)}
+          onStartCreate={() => setIsCreatingTemplate(true)}
+          templates={templates}
+        />
       ) : null}
 
       {!isLoading && !error && view === "archive" ? (
@@ -262,6 +305,32 @@ function TaskListPage() {
             void mutations.update.mutate({ id: task.id, input: { status: "backlog" } })
           }
           taskId={selectedTaskId}
+        />
+      ) : null}
+      {selectedTemplateId ? (
+        <TaskTemplateDetailPanel
+          agents={agents}
+          currentSearch={currentSearch}
+          onClose={() => clearSelectedTemplate(searchParams, setSearchParams)}
+          onOpenTask={(taskId) => {
+            selectGeneratedTask(searchParams, setSearchParams, taskId);
+          }}
+          onCreateTask={(template) => {
+            mutations.createFromTemplate.mutate(template.id, {
+              onSuccess: (task) => selectGeneratedTask(searchParams, setSearchParams, task.id),
+            });
+          }}
+          onRunNow={(template) => {
+            mutations.runTemplateNow.mutate(
+              { id: template.id },
+              {
+                onSuccess: (run) => {
+                  selectGeneratedTask(searchParams, setSearchParams, run.taskId);
+                },
+              },
+            );
+          }}
+          templateId={selectedTemplateId}
         />
       ) : null}
     </div>
@@ -962,55 +1031,449 @@ function TaskTemplatesView(props: {
   templates: TaskTemplate[];
   agents: Agent[];
   currentSearch: string;
+  isCreating: boolean;
+  isCreatingBusy: boolean;
+  onCancelCreate: () => void;
+  onCreate: (input: CreateTaskTemplateInput) => void;
+  onCreateTask: (template: TaskTemplate) => void;
+  onRunNow: (template: TaskTemplate) => void;
+  onSelect: (template: TaskTemplate) => void;
+  onStartCreate: () => void;
 }) {
+  const content = props.isCreating ? (
+    <TaskTemplateCreateForm
+      agents={props.agents}
+      isBusy={props.isCreatingBusy}
+      onCancel={props.onCancelCreate}
+      onSubmit={props.onCreate}
+    />
+  ) : null;
+
   if (props.templates.length === 0) {
+    if (props.isCreating) {
+      return <div className="grid gap-4">{content}</div>;
+    }
+
+    return (
+      <div className="grid gap-4">
+        <EmptyState
+          action={
+            <button className="cc-button" onClick={props.onStartCreate} type="button">
+              Create template
+            </button>
+          }
+          description="Templates store reusable task setup. Add repetition only when the template should run on a schedule."
+          title="No task templates yet"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4">
+      {content}
+      <section className="grid gap-4 xl:grid-cols-2">
+        {props.templates.map((template) => {
+          const agent = props.agents.find((entry) => entry.id === template.defaultAgentId);
+          return (
+            <article className="cc-panel grid gap-4 p-5" key={template.id}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <button
+                    className="text-left text-xl font-semibold text-text-primary transition hover:text-accent"
+                    onClick={() => props.onSelect(template)}
+                    type="button"
+                  >
+                    {template.title}
+                  </button>
+                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">
+                    {template.description || "No description provided."}
+                  </p>
+                </div>
+                <StatusBadge status={template.status} />
+              </div>
+              <div className="grid gap-3 text-sm text-text-secondary sm:grid-cols-3">
+                <Metric label="Default agent" value={agent?.name ?? template.defaultAgentId} />
+                <Metric label="Repeat" value={formatTemplateRepeat(template)} />
+                <Metric label="Next task" value={formatDate(template.nextOccurrenceAt)} />
+                <Metric
+                  label="Last generated"
+                  value={formatDate(template.lastGeneratedOccurrenceAt)}
+                />
+                <Metric label="Latest task" value={template.latestTaskId ?? "None yet"} />
+                <Metric label="Timezone" value={template.recurrence?.timezone ?? "Not repeating"} />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="cc-button cc-button-secondary"
+                  onClick={() => props.onCreateTask(template)}
+                  type="button"
+                >
+                  Create task
+                </button>
+                <button
+                  className="cc-button"
+                  onClick={() => props.onRunNow(template)}
+                  type="button"
+                >
+                  Run now
+                </button>
+                <button
+                  className="cc-button cc-button-secondary"
+                  onClick={() => props.onSelect(template)}
+                  type="button"
+                >
+                  View details
+                </button>
+                {template.latestTaskId ? (
+                  <Link
+                    className="cc-button cc-button-secondary"
+                    to={`/tasks/${template.latestTaskId}${props.currentSearch}`}
+                  >
+                    Open latest task
+                  </Link>
+                ) : null}
+              </div>
+            </article>
+          );
+        })}
+      </section>
+    </div>
+  );
+}
+
+function TaskTemplateCreateForm(props: {
+  agents: Agent[];
+  isBusy: boolean;
+  onCancel: () => void;
+  onSubmit: (input: CreateTaskTemplateInput) => void;
+}) {
+  const [form, setForm] = useState<FormState>(() => ({
+    agentId: "",
+    title: "",
+    prompt: createTaskPromptValue(),
+    triggerMode: "recurring",
+    runAtLocal: "",
+    anchorAtLocal: toLocalDateTime(new Date().toISOString()),
+    timezone: readLocalTimezone(),
+    repeatPreset: "weekly",
+    repeatFrequency: "week",
+    repeatInterval: "1",
+    repeatWeekdays: [1],
+    repeatEnabled: false,
+    todosText: "",
+  }));
+
+  return (
+    <form
+      className="cc-panel grid gap-4 p-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        props.onSubmit(formToTemplateInput(form));
+      }}
+    >
+      <div>
+        <h2 className="text-xl font-semibold text-text-primary">Create task template</h2>
+        <p className="mt-1 text-sm text-text-secondary">
+          Templates store reusable task setup. Create a task from a template manually, run it
+          immediately, or enable repeating.
+        </p>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Title
+          <input
+            className="cc-input"
+            required
+            value={form.title}
+            onChange={(event) => updateForm({ title: event.target.value })}
+          />
+        </label>
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Default agent
+          <select
+            className="cc-input"
+            required
+            value={form.agentId}
+            onChange={(event) => updateForm({ agentId: event.target.value })}
+          >
+            <option value="">Select an agent</option>
+            {props.agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="grid gap-1 text-sm text-text-secondary">
+        Task prompt
+        <textarea
+          className="cc-input min-h-28 resize-y"
+          value={form.prompt.text}
+          onChange={(event) => updateForm({ prompt: createTaskPromptValue(event.target.value) })}
+        />
+      </label>
+      <section className="grid min-w-0 gap-3 rounded-xl border border-border bg-surface p-4">
+        <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
+          <input
+            checked={form.repeatEnabled}
+            onChange={(event) => updateForm({ repeatEnabled: event.target.checked })}
+            type="checkbox"
+          />
+          Repeat on a schedule
+        </label>
+        {form.repeatEnabled ? (
+          <>
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+              <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                Repeat
+                <select
+                  className="cc-input min-w-0"
+                  value={form.repeatPreset}
+                  onChange={(event) =>
+                    updateForm({ repeatPreset: event.target.value as RepeatPreset })
+                  }
+                >
+                  {REPEAT_PRESETS.map((preset) => (
+                    <option key={preset} value={preset}>
+                      {formatRepeatPreset(preset)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                First occurrence
+                <input
+                  className="cc-input min-w-0"
+                  type="datetime-local"
+                  value={form.anchorAtLocal}
+                  onChange={(event) => updateForm({ anchorAtLocal: event.target.value })}
+                />
+              </label>
+            </div>
+            {form.repeatPreset === "custom" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                  Every
+                  <input
+                    className="cc-input min-w-0"
+                    min={1}
+                    type="number"
+                    value={form.repeatInterval}
+                    onChange={(event) => updateForm({ repeatInterval: event.target.value })}
+                  />
+                </label>
+                <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                  Unit
+                  <select
+                    className="cc-input min-w-0"
+                    value={form.repeatFrequency}
+                    onChange={(event) =>
+                      updateForm({ repeatFrequency: event.target.value as RepeatFrequency })
+                    }
+                  >
+                    {REPEAT_FREQUENCIES.map((frequency) => (
+                      <option key={frequency} value={frequency}>
+                        {formatToken(frequency)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {form.repeatFrequency === "week" ? (
+                  <WeekdayPicker form={form} updateForm={updateForm} />
+                ) : null}
+              </div>
+            ) : null}
+            {form.repeatPreset === "weekly" ? (
+              <WeekdayPicker form={form} updateForm={updateForm} />
+            ) : null}
+            <p className="text-sm text-text-secondary">
+              {formatRepeatSummary(buildRepeatRule(form))}
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-text-secondary">
+            Repetition is off. This template will only create tasks when you choose Create task or
+            Run now.
+          </p>
+        )}
+      </section>
+      <label className="grid gap-1 text-sm text-text-secondary">
+        Todo items, one per line
+        <textarea
+          className="cc-input min-h-24 resize-y"
+          value={form.todosText}
+          onChange={(event) => updateForm({ todosText: event.target.value })}
+        />
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <button className="cc-button" disabled={props.isBusy} type="submit">
+          Create template
+        </button>
+        <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+
+  function updateForm(patch: Partial<FormState>) {
+    setForm((current) => ({ ...current, ...patch }));
+  }
+}
+
+function TaskTemplateDetailPanel(props: {
+  templateId: string;
+  agents: Agent[];
+  currentSearch: string;
+  onClose: () => void;
+  onCreateTask: (template: TaskTemplate) => void;
+  onOpenTask: (taskId: string) => void;
+  onRunNow: (template: TaskTemplate) => void;
+}) {
+  const templateQuery = useTaskTemplateQuery(props.templateId);
+  const tasksQuery = useTaskTemplateTasksQuery(props.templateId);
+  const template = templateQuery.data;
+  const agent = template
+    ? props.agents.find((entry) => entry.id === template.defaultAgentId)
+    : undefined;
+  const error = readError(templateQuery.error ?? tasksQuery.error);
+
+  return (
+    <aside
+      aria-label="Task template detail panel"
+      className="fixed inset-y-0 right-0 z-40 grid w-full grid-rows-[auto_1fr] border-l border-border bg-surface-elevated shadow-2xl sm:max-w-2xl"
+    >
+      <header className="flex items-start justify-between gap-4 border-b border-border bg-surface-elevated p-4">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-text-secondary">Task template</p>
+          <h2 className="mt-1 text-xl font-semibold text-text-primary">
+            {template?.title ?? "Loading template"}
+          </h2>
+        </div>
+        <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          Back to templates
+        </button>
+      </header>
+      <div className="overflow-auto bg-surface-elevated p-4">
+        {templateQuery.isLoading ? <LoadingState testId="task-template-panel-loading" /> : null}
+        {error ? <ErrorState description={error} title="Template could not be loaded." /> : null}
+        {template ? (
+          <div className="grid gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge status={template.status} />
+              <span className="rounded-full border border-border bg-surface px-2 py-1 text-xs text-text-secondary">
+                {formatTemplateRepeat(template)}
+              </span>
+            </div>
+            <TextBlock
+              label="Description"
+              value={template.description || "No description provided."}
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Metric label="Default agent" value={agent?.name ?? template.defaultAgentId} />
+              <Metric label="Next occurrence" value={formatDate(template.nextOccurrenceAt)} />
+              <Metric
+                label="Previous occurrence"
+                value={formatDate(template.lastGeneratedOccurrenceAt)}
+              />
+              <Metric label="Timezone" value={template.recurrence?.timezone ?? "Not repeating"} />
+            </div>
+            <TaskTodos task={templateAsTask(template)} />
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="cc-button cc-button-secondary"
+                onClick={() => props.onCreateTask(template)}
+                type="button"
+              >
+                Create task
+              </button>
+              <button className="cc-button" onClick={() => props.onRunNow(template)} type="button">
+                Run now
+              </button>
+              {template.latestTaskId ? (
+                <button
+                  className="cc-button cc-button-secondary"
+                  onClick={() => props.onOpenTask(template.latestTaskId ?? "")}
+                  type="button"
+                >
+                  Open latest task
+                </button>
+              ) : null}
+            </div>
+            <GeneratedTaskHistory
+              currentSearch={props.currentSearch}
+              error={tasksQuery.error}
+              isLoading={tasksQuery.isLoading}
+              onOpenTask={props.onOpenTask}
+              tasks={tasksQuery.data ?? []}
+            />
+          </div>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+function GeneratedTaskHistory(props: {
+  tasks: Task[];
+  currentSearch: string;
+  isLoading: boolean;
+  error: unknown;
+  onOpenTask: (taskId: string) => void;
+}) {
+  if (props.isLoading) return <LoadingState testId="template-generated-tasks-loading" />;
+  if (props.error) {
+    return (
+      <ErrorState
+        description={readError(props.error) ?? "Unknown error"}
+        title="Generated tasks could not be loaded."
+      />
+    );
+  }
+  if (props.tasks.length === 0) {
     return (
       <EmptyState
-        action={
-          <button className="cc-button" disabled type="button">
-            Create template
-          </button>
-        }
-        description="Recurring generators create normal board tasks on their schedule. Template creation will live here."
-        title="No recurring templates yet"
+        description="Scheduled occurrences and Run Now results will appear here after the template generates tasks."
+        title="No generated tasks yet"
       />
     );
   }
 
   return (
-    <section className="grid gap-4 xl:grid-cols-2">
-      {props.templates.map((template) => {
-        const agent = props.agents.find((entry) => entry.id === template.defaultAgentId);
-        return (
-          <article className="cc-panel grid gap-4 p-5" key={template.id}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-text-primary">{template.title}</h2>
-                <p className="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">
-                  {template.description || "No description provided."}
-                </p>
-              </div>
-              <StatusBadge status={template.status} />
-            </div>
-            <div className="grid gap-3 text-sm text-text-secondary sm:grid-cols-3">
-              <Metric label="Default agent" value={agent?.name ?? template.defaultAgentId} />
-              <Metric
-                label="Recurrence"
-                value={formatRepeatSummary(template.recurrence.repeatRule)}
-              />
-              <Metric label="Next task" value={formatDate(template.nextOccurrenceAt)} />
-            </div>
-            {template.latestTaskId ? (
-              <Link
-                className="cc-button cc-button-secondary w-fit"
-                to={`/tasks/${template.latestTaskId}${props.currentSearch}`}
+    <section className="grid gap-3">
+      <h3 className="font-semibold text-text-primary">Generated tasks</h3>
+      {props.tasks.map((task) => (
+        <article className="rounded-xl border border-border bg-surface p-4" key={task.id}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <button
+                className="text-left font-semibold text-text-primary transition hover:text-accent"
+                onClick={() => props.onOpenTask(task.id)}
+                type="button"
               >
-                Open latest task
-              </Link>
+                {task.title}
+              </button>
+              <p className="mt-1 text-sm text-text-secondary">{formatSourceTemplate(task)}</p>
+            </div>
+            <StatusBadge status={readBoardStatus(task)} />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              className="cc-button cc-button-secondary"
+              to={`/tasks/${task.id}${props.currentSearch}`}
+            >
+              Open full page
+            </Link>
+            {task.latestFinalMessage ? (
+              <span className="rounded-full border border-border bg-background px-2 py-1 text-xs text-text-secondary">
+                {task.latestFinalMessage}
+              </span>
             ) : null}
-          </article>
-        );
-      })}
+          </div>
+        </article>
+      ))}
     </section>
   );
 }
@@ -1403,6 +1866,7 @@ type FormState = {
   repeatFrequency: RepeatFrequency;
   repeatInterval: string;
   repeatWeekdays: number[];
+  repeatEnabled: boolean;
   todosText: string;
 };
 
@@ -1431,6 +1895,7 @@ function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormState {
       task?.schedule.mode === "recurring" ? String(task.schedule.repeatRule.interval) : "1",
     repeatWeekdays:
       task?.schedule.mode === "recurring" ? (task.schedule.repeatRule.weekdays ?? []) : [],
+    repeatEnabled: task?.schedule.mode === "recurring",
     todosText: task?.todos.map((todo) => todo.content).join("\n") ?? "",
   };
 }
@@ -1457,6 +1922,52 @@ function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {
     triggerMode: form.triggerMode,
     schedule: buildSchedule(form),
     enabled: true,
+  };
+}
+
+function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
+  const input: CreateTaskTemplateInput = {
+    defaultAgentId: form.agentId,
+    title: form.title,
+    description: buildTaskPromptText(form.prompt),
+    todos: form.todosText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((content) => ({ content })),
+    enabled: true,
+  };
+
+  if (form.repeatEnabled) {
+    input.recurrence = {
+      mode: "recurring",
+      anchorAt: new Date(form.anchorAtLocal || Date.now()).toISOString(),
+      timezone: form.timezone || readLocalTimezone(),
+      repeatRule: buildRepeatRule(form),
+    };
+  }
+
+  return input;
+}
+
+function templateAsTask(template: TaskTemplate): Task {
+  return {
+    id: template.id,
+    agentId: template.defaultAgentId,
+    defaultAgentId: template.defaultAgentId,
+    templateId: template.id,
+    title: template.title,
+    description: template.description,
+    todos: template.todos,
+    status: template.archived ? "archived" : template.enabled ? "backlog" : "disabled",
+    triggerMode: template.recurrence ? "recurring" : "manual",
+    schedule: template.recurrence ?? { mode: "manual" },
+    enabled: template.enabled,
+    archived: template.archived,
+    latestFinalMessage: template.latestFinalMessage,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+    archivedAt: template.archivedAt,
   };
 }
 
@@ -1588,6 +2099,39 @@ function clearSelectedTask(
   setSearchParams(next);
 }
 
+function setSelectedTemplate(
+  params: URLSearchParams,
+  setSearchParams: (params: URLSearchParams) => void,
+  templateId: string,
+) {
+  const next = new URLSearchParams(params);
+  next.set("view", "templates");
+  next.delete("task");
+  next.set("template", templateId);
+  setSearchParams(next);
+}
+
+function clearSelectedTemplate(
+  params: URLSearchParams,
+  setSearchParams: (params: URLSearchParams) => void,
+) {
+  const next = new URLSearchParams(params);
+  next.delete("template");
+  setSearchParams(next);
+}
+
+function selectGeneratedTask(
+  params: URLSearchParams,
+  setSearchParams: (params: URLSearchParams) => void,
+  taskId: string,
+) {
+  const next = new URLSearchParams(params);
+  next.delete("view");
+  next.delete("template");
+  next.set("task", taskId);
+  setSearchParams(next);
+}
+
 function buildPanelSearch(currentSearch: string, taskId: string): string {
   const params = new URLSearchParams(
     currentSearch.startsWith("?") ? currentSearch.slice(1) : currentSearch,
@@ -1671,6 +2215,12 @@ function formatSourceTemplate(task: Task): string {
   return task.sourceOccurrenceAt
     ? `Generated ${formatDate(task.sourceOccurrenceAt)}`
     : "Generated from template";
+}
+
+function formatTemplateRepeat(template: TaskTemplate): string {
+  return template.recurrence
+    ? formatRepeatSummary(template.recurrence.repeatRule)
+    : "Manual template";
 }
 
 function formatSchedule(task: Task): string {

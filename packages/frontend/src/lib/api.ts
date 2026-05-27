@@ -17,6 +17,7 @@ import {
   createCustomToolInputSchema,
   createMcpServerInputSchema,
   createTaskInputSchema,
+  createTaskTemplateInputSchema,
   engineStatusSchema,
   fileManagerCreateEntryInputSchema,
   fileManagerCreateEntryResponseSchema,
@@ -77,6 +78,8 @@ import {
   taskSchedulerStateListSchema,
   taskSchema,
   taskTemplateListSchema,
+  taskTemplateRunNowInputSchema,
+  taskTemplateSchema,
   terminalListResponseSchema,
   terminalResizeInputSchema,
   terminalSessionSchema,
@@ -97,6 +100,7 @@ import {
   type CreateAgentInput,
   type CreateMcpServerInput,
   type CreateTaskInput,
+  type CreateTaskTemplateInput,
   type ConversationDetail,
   type ConversationSnapshot,
   type ConversationSummary,
@@ -147,6 +151,7 @@ import {
   type SystemVersion,
   type Task,
   type TaskTemplate,
+  type TaskTemplateRunNowInput,
   type TaskRun,
   type TaskRunSessionInspection,
   type TaskSchedulerState,
@@ -656,6 +661,47 @@ export async function listArchivedTasks(): Promise<Task[]> {
 
 export async function listTaskTemplates(): Promise<TaskTemplate[]> {
   return requestJson<TaskTemplate[]>("/api/tasks/templates", taskTemplateListSchema);
+}
+
+export async function getTaskTemplate(id: string): Promise<TaskTemplate> {
+  return requestJson<TaskTemplate>(
+    `/api/tasks/templates/${encodeURIComponent(id)}`,
+    taskTemplateSchema,
+  );
+}
+
+export async function listTaskTemplateTasks(id: string): Promise<Task[]> {
+  return requestJson<Task[]>(
+    `/api/tasks/templates/${encodeURIComponent(id)}/tasks`,
+    taskListSchema,
+  );
+}
+
+export async function createTaskTemplate(input: CreateTaskTemplateInput): Promise<TaskTemplate> {
+  return requestJson<TaskTemplate>("/api/tasks/templates", taskTemplateSchema, {
+    method: "POST",
+    body: createTaskTemplateInputSchema.parse(input),
+  });
+}
+
+export async function createTaskFromTemplate(id: string): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/templates/${encodeURIComponent(id)}/tasks`, taskSchema, {
+    method: "POST",
+  });
+}
+
+export async function runTaskTemplateNow(
+  id: string,
+  input: TaskTemplateRunNowInput = {},
+): Promise<TaskRun> {
+  return requestJson<TaskRun>(
+    `/api/tasks/templates/${encodeURIComponent(id)}/run-now`,
+    taskRunSchema,
+    {
+      method: "POST",
+      body: taskTemplateRunNowInputSchema.parse(input),
+    },
+  );
 }
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {

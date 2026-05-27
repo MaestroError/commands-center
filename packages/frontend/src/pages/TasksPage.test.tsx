@@ -71,6 +71,14 @@ const archivedTask: Task = {
   archivedAt: "2026-01-08T00:00:00.000Z",
 };
 
+const generatedTask: Task = {
+  ...task,
+  id: "generated-task-1",
+  title: "Weekly release notes",
+  sourceTemplateId: "template-1",
+  sourceOccurrenceAt: "2026-01-01T00:00:00.000Z",
+};
+
 const taskTemplate: TaskTemplate = {
   id: "template-1",
   defaultAgentId: "agent-1",
@@ -90,6 +98,15 @@ const taskTemplate: TaskTemplate = {
   nextOccurrenceAt: "2026-01-08T00:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const manualTaskTemplate: TaskTemplate = {
+  ...taskTemplate,
+  id: "template-manual",
+  title: "Reusable release checklist",
+  recurrence: undefined,
+  latestTaskId: undefined,
+  nextOccurrenceAt: undefined,
 };
 
 const run: TaskRun = {
@@ -210,6 +227,7 @@ type MockFetchOptions = {
   activeRunsPayload?: TaskRun[];
   archivedTasksPayload?: Task[];
   templatesPayload?: TaskTemplate[];
+  templateTasksPayload?: Task[];
 };
 
 beforeAll(() => {
@@ -290,10 +308,87 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks?view=templates");
 
-    expect(
-      await screen.findByRole("heading", { name: "Weekly release notes" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Weekly release notes" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Backlog" })).not.toBeInTheDocument();
+  });
+
+  it("runs a template immediately and opens the generated task", async () => {
+    const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Run now" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/templates/template-1/run-now",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    expect(
+      await screen.findByRole("complementary", { name: "Task detail panel" }),
+    ).toBeInTheDocument();
+  });
+
+  it("creates a task from a non-repeating template", async () => {
+    const fetchMock = mockFetch({ templatesPayload: [manualTaskTemplate] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
+
+    expect(await screen.findByText("Manual template")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/templates/template-manual/tasks",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    expect(
+      await screen.findByRole("complementary", { name: "Task detail panel" }),
+    ).toBeInTheDocument();
+  });
+
+  it("creates a template without enabling repetition", async () => {
+    const fetchMock = mockFetch({ templatesPayload: [] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Create template" }));
+    await user.type(screen.getByLabelText("Title"), "Reusable release checklist");
+    await user.selectOptions(screen.getByLabelText("Default agent"), "agent-1");
+    await user.type(screen.getByLabelText("Task prompt"), "Draft release notes.");
+    const createButtons = screen.getAllByRole("button", { name: "Create template" });
+    expect(createButtons[1]).toBeDefined();
+    await user.click(createButtons[1] as HTMLElement);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/templates",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.not.stringContaining("recurrence"),
+        }),
+      );
+    });
+  });
+
+  it("shows template detail with generated task history", async () => {
+    mockFetch({ templatesPayload: [taskTemplate], templateTasksPayload: [generatedTask] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates&template=template-1");
+
+    expect(
+      await screen.findByRole("complementary", { name: "Task template detail panel" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Generated tasks" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Weekly release notes" }).length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("shows archived tasks separately from the board", async () => {
@@ -1039,6 +1134,7 @@ function mockFetch(options: MockFetchOptions = {}) {
   const activeRunsPayload = options.activeRunsPayload ?? [];
   const archivedTasksPayload = options.archivedTasksPayload ?? [];
   const templatesPayload = options.templatesPayload ?? [];
+  const templateTasksPayload = options.templateTasksPayload ?? [generatedTask];
 
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : input.toString();
@@ -1055,7 +1151,30 @@ function mockFetch(options: MockFetchOptions = {}) {
     }
     if (url === "/api/tasks/archive")
       return Promise.resolve(jsonResponse(200, archivedTasksPayload));
-    if (url === "/api/tasks/templates") return Promise.resolve(jsonResponse(200, templatesPayload));
+    if (url === "/api/tasks/templates") {
+      const method = input instanceof Request ? input.method : init?.method;
+      return Promise.resolve(
+        method === "POST" ? jsonResponse(201, taskTemplate) : jsonResponse(200, templatesPayload),
+      );
+    }
+    if (url === "/api/tasks/templates/template-1")
+      return Promise.resolve(jsonResponse(200, taskTemplate));
+    if (url === "/api/tasks/templates/template-1/tasks") {
+      const method = input instanceof Request ? input.method : init?.method;
+      return Promise.resolve(
+        method === "POST"
+          ? jsonResponse(201, generatedTask)
+          : jsonResponse(200, templateTasksPayload),
+      );
+    }
+    if (url === "/api/tasks/templates/template-manual/tasks") {
+      return Promise.resolve(jsonResponse(201, generatedTask));
+    }
+    if (url === "/api/tasks/templates/template-1/run-now") {
+      return Promise.resolve(
+        jsonResponse(200, { ...run, taskId: "task-1", triggerSource: "template" }),
+      );
+    }
     if (url === "/api/tasks/runs/active")
       return Promise.resolve(jsonResponse(200, activeRunsPayload));
     if (url === "/api/tasks") {

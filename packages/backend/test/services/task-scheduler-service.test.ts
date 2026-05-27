@@ -288,6 +288,40 @@ describe("createTaskSchedulerService", () => {
     }
   });
 
+  it("reconciles scheduler state idempotently when called concurrently", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const executionService = createTaskExecutionService({ db: testDb.client.db, taskService });
+    const schedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Concurrent scheduled",
+        triggerMode: "manual",
+        status: "scheduled",
+        scheduledAt: "2026-06-03T12:00:00.000Z",
+      });
+
+      await Promise.all([
+        schedulerService.reconcile(new Date("2026-06-02T12:00:00.000Z")),
+        schedulerService.reconcile(new Date("2026-06-02T12:00:00.000Z")),
+      ]);
+
+      const states = await schedulerService.listStates();
+
+      expect(states.filter((state) => state.taskId === task.id)).toHaveLength(1);
+    } finally {
+      schedulerService.stop();
+      await testDb.cleanup();
+    }
+  });
+
   it("supports run now on a template by creating and queueing a generated task", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

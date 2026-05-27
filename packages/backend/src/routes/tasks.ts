@@ -175,6 +175,64 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     },
   );
 
+  app.get(
+    "/api/tasks/templates/:id",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskTemplateSchema,
+        },
+      },
+    },
+    async (request) => {
+      const template = await service.getTemplate(request.params.id);
+
+      if (!template) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      return template;
+    },
+  );
+
+  app.get(
+    "/api/tasks/templates/:id/tasks",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskListSchema,
+        },
+      },
+    },
+    async (request) => service.listTemplateTasks(request.params.id),
+  );
+
+  app.post(
+    "/api/tasks/templates/:id/tasks",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          201: taskSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const task = await service.createTaskFromTemplate(request.params.id, {
+        triggerSource: "template",
+      });
+
+      if (!task) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      reply.code(201);
+      return task;
+    },
+  );
+
   app.post(
     "/api/tasks/templates/:id/run-now",
     {
