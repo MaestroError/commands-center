@@ -165,13 +165,12 @@ export function createTaskSchedulerService(options: {
   async function runDueTask(taskId: string, dueAt: Date, at: Date): Promise<void> {
     const task = await options.taskService.get(taskId);
 
-    if (
-      !task ||
-      task.archived ||
-      !task.enabled ||
-      task.status === "disabled" ||
-      task.status === "draft"
-    ) {
+    if (!task) {
+      await deleteState(taskId);
+      return;
+    }
+
+    if (task.archived || !task.enabled || task.status === "disabled" || task.status === "draft") {
       await upsertState(task, undefined, "Task is disabled, archived, missing, or draft.");
       return;
     }
@@ -356,6 +355,12 @@ export function createTaskSchedulerService(options: {
     }
 
     return mapSchedulerState(row);
+  }
+
+  async function deleteState(taskId: string): Promise<void> {
+    await options.db
+      .delete(task_scheduler_state)
+      .where(sql`${task_scheduler_state.task_id} = ${taskId}`);
   }
 }
 

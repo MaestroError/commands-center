@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { AppDb } from "../../src/db/client";
 import { upsertSetting } from "../../src/db/helpers";
-import { agents } from "../../src/db/schema/index";
+import { agents, task_scheduler_state } from "../../src/db/schema/index";
 import {
   createTaskExecutionService,
   type TaskExecutionService,
@@ -316,6 +316,38 @@ describe("createTaskSchedulerService", () => {
       const states = await schedulerService.listStates();
 
       expect(states.filter((state) => state.taskId === task.id)).toHaveLength(1);
+    } finally {
+      schedulerService.stop();
+      await testDb.cleanup();
+    }
+  });
+
+  it("deletes stale due scheduler state for missing tasks", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const executionService = createTaskExecutionService({ db: testDb.client.db, taskService });
+    const schedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService,
+    });
+
+    try {
+      const timestamp = new Date("2026-06-01T12:00:00.000Z");
+      await testDb.client.db.insert(task_scheduler_state).values({
+        task_id: "missing-task",
+        next_run_at: timestamp,
+        last_scheduled_at: null,
+        last_error: null,
+        created_at: timestamp,
+        updated_at: timestamp,
+      });
+
+      await schedulerService.tick(new Date("2026-06-01T12:01:00.000Z"));
+
+      const states = await schedulerService.listStates();
+
+      expect(states.find((state) => state.taskId === "missing-task")).toBeUndefined();
     } finally {
       schedulerService.stop();
       await testDb.cleanup();
