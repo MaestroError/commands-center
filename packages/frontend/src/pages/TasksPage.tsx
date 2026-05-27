@@ -16,6 +16,7 @@ import type {
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
+import { TabBar } from "@/components/common/TabBar";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
@@ -38,6 +39,7 @@ import {
   useArchivedTasksQuery,
   useTaskMutations,
   useTaskQuery,
+  useTaskRunsQuery,
   useTasksQuery,
   useTaskTemplatesQuery,
 } from "@/hooks/use-tasks-query";
@@ -47,8 +49,18 @@ type TasksPageProps = {
   mode?: "list" | "create" | "edit";
 };
 
+type DetailSectionId = "overview" | "feedback" | "subtasks" | "runs" | "context" | "activity";
+
 const TRIGGER_MODES = ["manual", "scheduled_once", "recurring"] as const;
 const TASK_VIEWS = ["board", "templates", "archive"] as const;
+const DETAIL_SECTION_TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "feedback", label: "Feedback" },
+  { id: "subtasks", label: "Subtasks" },
+  { id: "runs", label: "Runs" },
+  { id: "context", label: "Context" },
+  { id: "activity", label: "Activity" },
+];
 const BOARD_COLUMNS = [
   {
     status: "backlog",
@@ -122,6 +134,7 @@ function TaskListPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const view = readTaskView(searchParams);
+  const selectedTaskId = searchParams.get("task") ?? undefined;
   const currentSearch = searchParams.toString() ? `?${searchParams.toString()}` : "";
   const tasksQuery = useTasksQuery({ includeArchived: false });
   const templatesQuery = useTaskTemplatesQuery();
@@ -206,6 +219,7 @@ function TaskListPage() {
           onReopen={(task) =>
             void mutations.update.mutate({ id: task.id, input: { status: "backlog" } })
           }
+          onSelect={(task) => setSelectedTask(searchParams, setSearchParams, task.id)}
           tasks={boardTasks}
         />
       ) : null}
@@ -232,6 +246,22 @@ function TaskListPage() {
             setRunTask(undefined);
             mutations.trigger.mutate({ id: runTask.id, input });
           }}
+        />
+      ) : null}
+      {selectedTaskId ? (
+        <TaskDetailPanel
+          activeRun={activeRunsQuery.data?.find((run) => run.taskId === selectedTaskId)}
+          agents={agents}
+          currentSearch={currentSearch}
+          onAccept={(task) => void mutations.accept.mutate(task.id)}
+          onArchive={(task) => void mutations.archive.mutate(task.id)}
+          onClose={() => clearSelectedTask(searchParams, setSearchParams)}
+          onQueue={setRunTask}
+          onRestore={(task) => void mutations.restore.mutate(task.id)}
+          onReopen={(task) =>
+            void mutations.update.mutate({ id: task.id, input: { status: "backlog" } })
+          }
+          taskId={selectedTaskId}
         />
       ) : null}
     </div>
@@ -275,48 +305,55 @@ function TaskBoard(props: {
   onDuplicate: (task: Task) => void;
   onQueue: (task: Task) => void;
   onReopen: (task: Task) => void;
+  onSelect: (task: Task) => void;
 }) {
   return (
-    <section className="grid gap-4 xl:grid-cols-3 2xl:grid-cols-6" data-testid="tasks-board">
-      {BOARD_COLUMNS.map((column) => {
-        const columnTasks = props.tasks.filter((task) => readBoardStatus(task) === column.status);
+    <section className="overflow-x-auto pb-3" data-testid="tasks-board">
+      <div className="flex min-w-max gap-4">
+        {BOARD_COLUMNS.map((column) => {
+          const columnTasks = props.tasks.filter((task) => readBoardStatus(task) === column.status);
 
-        return (
-          <div className="cc-panel flex min-h-80 flex-col gap-3 p-4" key={column.status}>
-            <div>
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="font-semibold text-text-primary">{column.title}</h2>
-                <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary">
-                  {columnTasks.length}
-                </span>
+          return (
+            <div
+              className="cc-panel flex min-h-80 w-80 shrink-0 flex-col gap-3 p-4"
+              key={column.status}
+            >
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="font-semibold text-text-primary">{column.title}</h2>
+                  <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary">
+                    {columnTasks.length}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-text-secondary">{column.description}</p>
               </div>
-              <p className="mt-2 text-xs leading-5 text-text-secondary">{column.description}</p>
+              {columnTasks.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border bg-surface/60 p-3 text-xs leading-5 text-text-secondary">
+                  {column.empty}
+                </p>
+              ) : null}
+              <div className="grid gap-3">
+                {columnTasks.map((task) => (
+                  <TaskBoardCard
+                    activeRun={props.activeRuns.find((run) => run.taskId === task.id)}
+                    agent={props.agents.find((entry) => entry.id === task.agentId)}
+                    currentSearch={props.currentSearch}
+                    key={task.id}
+                    onAccept={() => props.onAccept(task)}
+                    onArchive={() => props.onArchive(task)}
+                    onCancelRun={(run) => props.onCancelRun(run)}
+                    onDuplicate={() => props.onDuplicate(task)}
+                    onQueue={() => props.onQueue(task)}
+                    onReopen={() => props.onReopen(task)}
+                    onSelect={() => props.onSelect(task)}
+                    task={task}
+                  />
+                ))}
+              </div>
             </div>
-            {columnTasks.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border bg-surface/60 p-3 text-xs leading-5 text-text-secondary">
-                {column.empty}
-              </p>
-            ) : null}
-            <div className="grid gap-3">
-              {columnTasks.map((task) => (
-                <TaskBoardCard
-                  activeRun={props.activeRuns.find((run) => run.taskId === task.id)}
-                  agent={props.agents.find((entry) => entry.id === task.agentId)}
-                  currentSearch={props.currentSearch}
-                  key={task.id}
-                  onAccept={() => props.onAccept(task)}
-                  onArchive={() => props.onArchive(task)}
-                  onCancelRun={(run) => props.onCancelRun(run)}
-                  onDuplicate={() => props.onDuplicate(task)}
-                  onQueue={() => props.onQueue(task)}
-                  onReopen={() => props.onReopen(task)}
-                  task={task}
-                />
-              ))}
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -332,6 +369,7 @@ function TaskBoardCard(props: {
   onDuplicate: () => void;
   onArchive: () => void;
   onReopen: () => void;
+  onSelect: () => void;
 }) {
   const task = props.task;
   const boardStatus = readBoardStatus(task);
@@ -346,7 +384,8 @@ function TaskBoardCard(props: {
       <div className="grid gap-2">
         <Link
           className="font-semibold leading-6 text-text-primary transition hover:text-accent"
-          to={`/tasks/${task.id}${props.currentSearch}`}
+          to={`/tasks${buildPanelSearch(props.currentSearch, task.id)}`}
+          onClick={props.onSelect}
         >
           {task.title}
         </Link>
@@ -395,6 +434,7 @@ function TaskBoardCard(props: {
           onDuplicate={props.onDuplicate}
           onQueue={props.onQueue}
           onReopen={props.onReopen}
+          onSelect={props.onSelect}
           task={task}
         />
       </div>
@@ -415,6 +455,7 @@ function TaskCardActions(props: {
   onDuplicate: () => void;
   onQueue: () => void;
   onReopen: () => void;
+  onSelect: () => void;
 }) {
   if (props.boardStatus === "queued") {
     return (
@@ -442,7 +483,8 @@ function TaskCardActions(props: {
         ) : null}
         <Link
           className="cc-button cc-button-secondary"
-          to={`/tasks/${props.task.id}${props.currentSearch}`}
+          to={`/tasks${buildPanelSearch(props.currentSearch, props.task.id)}`}
+          onClick={props.onSelect}
         >
           Details
         </Link>
@@ -463,7 +505,8 @@ function TaskCardActions(props: {
         ) : null}
         <Link
           className="cc-button cc-button-secondary"
-          to={`/tasks/${props.task.id}${props.currentSearch}`}
+          to={`/tasks${buildPanelSearch(props.currentSearch, props.task.id)}`}
+          onClick={props.onSelect}
         >
           Details
         </Link>
@@ -503,7 +546,8 @@ function TaskCardActions(props: {
         </button>
         <Link
           className="cc-button cc-button-secondary"
-          to={`/tasks/${props.task.id}${props.currentSearch}`}
+          to={`/tasks${buildPanelSearch(props.currentSearch, props.task.id)}`}
+          onClick={props.onSelect}
         >
           Details
         </Link>
@@ -529,6 +573,388 @@ function TaskCardActions(props: {
         Archive
       </button>
     </>
+  );
+}
+
+function TaskDetailPanel(props: {
+  taskId: string;
+  agents: Agent[];
+  activeRun?: TaskRun;
+  currentSearch: string;
+  onAccept: (task: Task) => void;
+  onArchive: (task: Task) => void;
+  onClose: () => void;
+  onQueue: (task: Task) => void;
+  onRestore: (task: Task) => void;
+  onReopen: (task: Task) => void;
+}) {
+  const taskQuery = useTaskQuery(props.taskId);
+  const runsQuery = useTaskRunsQuery(props.taskId);
+  const [selectedSectionId, setSelectedSectionId] = useState<DetailSectionId>();
+  const task = taskQuery.data;
+  const agent = props.agents.find((entry) => entry.id === task?.agentId);
+  const activeSectionId = selectedSectionId ?? getDefaultDetailSection(task);
+
+  return (
+    <aside
+      aria-label="Task detail panel"
+      className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col border-l border-border bg-surface-elevated shadow-2xl lg:top-0"
+    >
+      <div className="flex items-start justify-between gap-4 border-b border-border bg-surface-elevated p-4 sm:p-5">
+        <div className="min-w-0">
+          <p className="cc-eyebrow">Task Detail</p>
+          <h2 className="mt-2 text-2xl font-semibold text-text-primary">
+            {task?.title ?? "Task detail"}
+          </h2>
+        </div>
+        <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          Close
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto bg-surface-elevated p-4 sm:p-5">
+        {taskQuery.isLoading ? <LoadingState testId="task-panel-loading" /> : null}
+        {taskQuery.error ? (
+          <ErrorState
+            description={readError(taskQuery.error) ?? "Unknown error"}
+            title="Task could not be loaded."
+          />
+        ) : null}
+        {!taskQuery.isLoading && !task ? (
+          <EmptyState description="This task no longer exists." title="Task not found" />
+        ) : null}
+        {task ? (
+          <div className="grid gap-4">
+            <div className="cc-panel grid gap-4 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge status={task.status} />
+                {props.activeRun ? <StatusBadge status={props.activeRun.status} /> : null}
+                <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
+                  {agent?.name ?? task.agentId}
+                </span>
+                {(task.scheduledAt ?? task.scheduledFor ?? task.dueAt) ? (
+                  <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
+                    {formatTimingBadge(task)}
+                  </span>
+                ) : null}
+                {task.sourceTemplateId ? (
+                  <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent">
+                    Generated
+                    {task.sourceOccurrenceAt ? ` ${formatDate(task.sourceOccurrenceAt)}` : ""}
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-sm leading-6 text-text-secondary">
+                {task.description || "No description provided."}
+              </p>
+              {task.latestFinalMessage ? (
+                <p className={readResultClassName(readBoardStatus(task))}>
+                  {task.latestFinalMessage}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="cc-panel grid gap-3 p-4">
+              <h3 className="font-semibold text-text-primary">Recommended action</h3>
+              <div className="flex flex-wrap gap-2">
+                <TaskPanelPrimaryActions
+                  activeRun={props.activeRun}
+                  currentSearch={props.currentSearch}
+                  onAccept={() => props.onAccept(task)}
+                  onArchive={() => props.onArchive(task)}
+                  onQueue={() => props.onQueue(task)}
+                  onRestore={() => props.onRestore(task)}
+                  onReopen={() => props.onReopen(task)}
+                  task={task}
+                />
+              </div>
+            </div>
+
+            <article className="cc-panel overflow-hidden p-0">
+              <TabBar
+                activeTabId={activeSectionId}
+                onTabChange={(tabId) => setSelectedSectionId(tabId as DetailSectionId)}
+                tabs={DETAIL_SECTION_TABS}
+              />
+              <div className="p-4">
+                <TaskDetailSectionContent
+                  activeRun={props.activeRun}
+                  agent={agent}
+                  isRunsLoading={runsQuery.isLoading}
+                  runs={runsQuery.data ?? []}
+                  runsError={runsQuery.error}
+                  sectionId={activeSectionId}
+                  task={task}
+                  taskId={task.id}
+                />
+              </div>
+            </article>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Metric label="Todos" value={formatTodoProgress(task)} />
+              <Metric label="Updated" value={formatDate(task.updatedAt)} />
+              <Metric label="Schedule" value={formatSchedule(task)} />
+              <Metric label="Latest run" value={task.latestRunId ?? "No runs yet"} />
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {task ? (
+        <div className="flex flex-wrap gap-2 border-t border-border bg-surface-elevated p-4 sm:p-5">
+          <Link
+            className="cc-button"
+            to={`/tasks/${task.id}${buildFullPageSearch(props.currentSearch)}`}
+          >
+            Open full page
+          </Link>
+          <Link
+            className="cc-button cc-button-secondary"
+            to={`/tasks/${task.id}/edit${buildFullPageSearch(props.currentSearch)}`}
+          >
+            Edit
+          </Link>
+          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+            Back to board
+          </button>
+        </div>
+      ) : null}
+    </aside>
+  );
+}
+
+function TaskPanelPrimaryActions(props: {
+  task: Task;
+  activeRun?: TaskRun;
+  currentSearch: string;
+  onAccept: () => void;
+  onArchive: () => void;
+  onQueue: () => void;
+  onRestore: () => void;
+  onReopen: () => void;
+}) {
+  const status = readBoardStatus(props.task);
+
+  if (props.task.archived || status === "archived") {
+    return (
+      <button className="cc-button" onClick={props.onRestore} type="button">
+        Restore
+      </button>
+    );
+  }
+
+  if (status === "queued" && props.activeRun) {
+    return (
+      <Link
+        className="cc-button"
+        to={`/tasks/${props.task.id}/runs/${props.activeRun.id}${props.currentSearch}`}
+      >
+        View active run
+      </Link>
+    );
+  }
+
+  if (status === "ready_to_check") {
+    return (
+      <button className="cc-button" onClick={props.onAccept} type="button">
+        Accept
+      </button>
+    );
+  }
+
+  if (status === "review") {
+    return (
+      <button className="cc-button" onClick={props.onQueue} type="button">
+        Retry
+      </button>
+    );
+  }
+
+  if (status === "done") {
+    return (
+      <>
+        <button className="cc-button" onClick={props.onArchive} type="button">
+          Archive
+        </button>
+        <button className="cc-button cc-button-secondary" onClick={props.onReopen} type="button">
+          Reopen
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <button className="cc-button" onClick={props.onQueue} type="button">
+      {status === "scheduled" ? "Queue now" : "Queue"}
+    </button>
+  );
+}
+
+function TaskDetailSectionContent(props: {
+  sectionId: DetailSectionId;
+  task: Task;
+  taskId: string;
+  agent?: Agent;
+  activeRun?: TaskRun;
+  runs: TaskRun[];
+  isRunsLoading: boolean;
+  runsError: unknown;
+}) {
+  if (props.sectionId === "overview") {
+    return (
+      <div className="grid gap-4">
+        <TextBlock
+          label="Description"
+          value={props.task.description || "No description provided."}
+        />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Metric label="Status" value={formatToken(readBoardStatus(props.task))} />
+          <Metric label="Agent" value={props.agent?.name ?? props.task.agentId} />
+          <Metric label="Schedule" value={formatSchedule(props.task)} />
+          <Metric label="Source" value={formatSourceTemplate(props.task)} />
+        </div>
+        <TaskTodos task={props.task} />
+      </div>
+    );
+  }
+
+  if (props.sectionId === "feedback") {
+    return (
+      <DecisionSection
+        description={
+          readBoardStatus(props.task) === "review"
+            ? "Add the missing direction here before retrying this task. Comment editing arrives in the feedback epic."
+            : "Feedback comments and follow-up instructions that affect future runs will appear here."
+        }
+        title={readBoardStatus(props.task) === "review" ? "Feedback needed" : "No feedback yet"}
+      />
+    );
+  }
+
+  if (props.sectionId === "subtasks") {
+    return (
+      <DecisionSection
+        description="Lightweight work breakdown under this parent task will appear here in the subtasks epic."
+        title="No subtasks yet"
+      />
+    );
+  }
+
+  if (props.sectionId === "runs") {
+    return (
+      <TaskRunsSection
+        activeRun={props.activeRun}
+        error={props.runsError}
+        isLoading={props.isRunsLoading}
+        runs={props.runs}
+        task={props.task}
+        taskId={props.taskId}
+      />
+    );
+  }
+
+  if (props.sectionId === "context") {
+    return (
+      <DecisionSection
+        description="Next-run context and immutable past run context snapshots will appear here once context preview is wired."
+        title="Context preview pending"
+      />
+    );
+  }
+
+  return <TaskActivitySection runs={props.runs} task={props.task} />;
+}
+
+function TaskRunsSection(props: {
+  task: Task;
+  taskId: string;
+  runs: TaskRun[];
+  activeRun?: TaskRun;
+  isLoading: boolean;
+  error: unknown;
+}) {
+  return (
+    <div className="grid gap-4">
+      {props.task.latestFinalMessage ? (
+        <p className={readResultClassName(readBoardStatus(props.task))}>
+          {props.task.latestFinalMessage}
+        </p>
+      ) : null}
+      {props.activeRun ? (
+        <Link className="cc-button w-fit" to={`/tasks/${props.taskId}/runs/${props.activeRun.id}`}>
+          View active run
+        </Link>
+      ) : null}
+      <RunHistory
+        taskId={props.taskId}
+        runs={props.runs}
+        isLoading={props.isLoading}
+        error={props.error}
+      />
+    </div>
+  );
+}
+
+function TaskActivitySection(props: { task: Task; runs: TaskRun[] }) {
+  const latestRun = props.runs[0];
+
+  return (
+    <div className="grid gap-3 text-sm text-text-secondary">
+      <ActivityItem label="Created" value={formatDate(props.task.createdAt)} />
+      <ActivityItem label="Updated" value={formatDate(props.task.updatedAt)} />
+      {props.task.doneAt ? (
+        <ActivityItem label="Accepted" value={formatDate(props.task.doneAt)} />
+      ) : null}
+      {props.task.archivedAt ? (
+        <ActivityItem label="Archived" value={formatDate(props.task.archivedAt)} />
+      ) : null}
+      {props.task.sourceOccurrenceAt ? (
+        <ActivityItem label="Generated" value={formatDate(props.task.sourceOccurrenceAt)} />
+      ) : null}
+      {latestRun ? (
+        <ActivityItem label="Latest run" value={latestRun.finalMessage ?? latestRun.status} />
+      ) : null}
+    </div>
+  );
+}
+
+function TaskTodos(props: { task: Task }) {
+  if (props.task.todos.length === 0) {
+    return <p className="text-sm text-text-secondary">No todo items.</p>;
+  }
+
+  return (
+    <div>
+      <h3 className="font-semibold text-text-primary">Todos</h3>
+      <ul className="mt-3 grid gap-2">
+        {props.task.todos.map((todo) => (
+          <li
+            className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
+            key={todo.id}
+          >
+            {todo.status === "completed" ? "[x]" : "[ ]"} {todo.content}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function DecisionSection(props: { title: string; description: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <h3 className="font-semibold text-text-primary">{props.title}</h3>
+      <p className="mt-2 text-sm leading-6 text-text-secondary">{props.description}</p>
+    </div>
+  );
+}
+
+function ActivityItem(props: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface p-3">
+      <p className="text-xs uppercase tracking-wide text-text-secondary">{props.label}</p>
+      <p className="mt-1 text-text-primary">{props.value}</p>
+    </div>
   );
 }
 
@@ -1143,6 +1569,43 @@ function setTaskView(
   setSearchParams(next);
 }
 
+function setSelectedTask(
+  params: URLSearchParams,
+  setSearchParams: (params: URLSearchParams) => void,
+  taskId: string,
+) {
+  const next = new URLSearchParams(params);
+  next.set("task", taskId);
+  setSearchParams(next);
+}
+
+function clearSelectedTask(
+  params: URLSearchParams,
+  setSearchParams: (params: URLSearchParams) => void,
+) {
+  const next = new URLSearchParams(params);
+  next.delete("task");
+  setSearchParams(next);
+}
+
+function buildPanelSearch(currentSearch: string, taskId: string): string {
+  const params = new URLSearchParams(
+    currentSearch.startsWith("?") ? currentSearch.slice(1) : currentSearch,
+  );
+  params.set("task", taskId);
+  const next = params.toString();
+  return next ? `?${next}` : "";
+}
+
+function buildFullPageSearch(currentSearch: string): string {
+  const params = new URLSearchParams(
+    currentSearch.startsWith("?") ? currentSearch.slice(1) : currentSearch,
+  );
+  params.delete("task");
+  const next = params.toString();
+  return next ? `?${next}` : "";
+}
+
 function formatTaskView(view: TaskView): string {
   if (view === "board") return "Board";
   if (view === "templates") return "Templates";
@@ -1191,6 +1654,86 @@ function formatTodoProgress(task: Task): string {
 
   const completed = task.todos.filter((todo) => todo.status === "completed").length;
   return `${String(completed)}/${String(task.todos.length)}`;
+}
+
+function getDefaultDetailSection(task?: Task): DetailSectionId {
+  if (!task) return "overview";
+  const status = readBoardStatus(task);
+
+  if (status === "queued" || status === "ready_to_check") return "runs";
+  if (status === "review") return "feedback";
+  if (status === "done") return "activity";
+  return "overview";
+}
+
+function formatSourceTemplate(task: Task): string {
+  if (!task.sourceTemplateId) return "User-created task";
+  return task.sourceOccurrenceAt
+    ? `Generated ${formatDate(task.sourceOccurrenceAt)}`
+    : "Generated from template";
+}
+
+function formatSchedule(task: Task): string {
+  if (task.scheduledAt) return `Scheduled ${formatDate(task.scheduledAt)}`;
+  if (task.scheduledFor) return `Scheduled ${formatDate(task.scheduledFor)}`;
+  if (task.dueAt) return `Due ${formatDate(task.dueAt)}`;
+  if (task.schedule.mode === "scheduled_once") return formatDate(task.schedule.runAt);
+  if (task.schedule.mode === "recurring") return formatRepeatSummary(task.schedule.repeatRule);
+  return "Manual only";
+}
+
+function RunHistory(props: {
+  taskId: string;
+  runs: TaskRun[];
+  isLoading: boolean;
+  error: unknown;
+}) {
+  if (props.isLoading) return <LoadingState testId="task-panel-runs-loading" />;
+  if (props.error) {
+    return (
+      <ErrorState
+        description={readError(props.error) ?? "Unknown error"}
+        title="Runs could not be loaded."
+      />
+    );
+  }
+  if (props.runs.length === 0) {
+    return (
+      <EmptyState
+        description="Executions will appear here after this task runs."
+        title="No runs yet"
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-2">
+      {props.runs.map((run) => (
+        <Link
+          className="rounded-lg border border-border bg-surface p-3 text-sm transition hover:border-accent/40"
+          key={run.id}
+          to={`/tasks/${props.taskId}/runs/${run.id}`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={run.status} />
+            <span className="text-text-secondary">{formatToken(run.triggerSource)}</span>
+          </div>
+          <p className="mt-2 truncate text-text-secondary">
+            {run.finalMessage ?? run.errorMessage ?? "No summary"}
+          </p>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function TextBlock(props: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-wide text-text-secondary">{props.label}</p>
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-text-primary">{props.value}</p>
+    </div>
+  );
 }
 
 function Metric(props: { label: string; value: string }) {

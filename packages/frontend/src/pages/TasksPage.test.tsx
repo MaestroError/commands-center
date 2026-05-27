@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
@@ -226,6 +226,7 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks");
 
+    expect(await screen.findByTestId("tasks-board")).toHaveClass("overflow-x-auto");
     expect(await screen.findByRole("heading", { name: "Backlog" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Scheduled" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Queued" })).toBeInTheDocument();
@@ -258,6 +259,30 @@ describe("TasksPage", () => {
         }),
       );
     });
+  });
+
+  it("opens task detail in a board panel", async () => {
+    mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveClass("bg-surface-elevated");
+    expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Runs" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open full page" })).toHaveAttribute(
+      "href",
+      "/tasks/task-1",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Back to board" }));
+    expect(
+      screen.queryByRole("complementary", { name: "Task detail panel" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows templates separately from the board", async () => {
@@ -334,7 +359,14 @@ describe("TasksPage", () => {
     expect(await screen.findByText("Release notes are ready.")).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Accept" }));
+    await user.click(screen.getByRole("link", { name: "Ship release" }));
+    expect(await screen.findByRole("tab", { name: "Runs", selected: true })).toBeInTheDocument();
+
+    await user.click(
+      within(screen.getByRole("complementary", { name: "Task detail panel" })).getByRole("button", {
+        name: "Accept",
+      }),
+    );
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -641,10 +673,23 @@ describe("TaskDetailPage", () => {
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
     await screen.findByText("Every 1 week on Mon");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Runs" }));
     await waitFor(() => {
       expect(screen.queryByTestId("task-runs-loading")).not.toBeInTheDocument();
     });
     expect(screen.getByText("No runs yet")).toBeInTheDocument();
+  });
+
+  it("preserves tasks view context from full-page detail", async () => {
+    mockFetch();
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1?view=archive");
+
+    expect(await screen.findByRole("link", { name: "All tasks" })).toHaveAttribute(
+      "href",
+      "/tasks?view=archive",
+    );
   });
 
   it("duplicates a task from the task detail page", async () => {

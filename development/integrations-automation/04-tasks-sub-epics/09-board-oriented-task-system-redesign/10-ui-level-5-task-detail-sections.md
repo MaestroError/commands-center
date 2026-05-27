@@ -1,4 +1,4 @@
-# I4.9 UI Epic: Level 5 Task Detail Sections
+# ✅ I4.9 UI Epic: Level 5 Task Detail Sections
 
 ## Goal
 

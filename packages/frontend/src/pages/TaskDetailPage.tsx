@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import type {
   Agent,
@@ -29,6 +29,17 @@ type TaskDetailPageProps = {
   mode?: "task" | "run";
 };
 
+type DetailSectionId = "overview" | "feedback" | "subtasks" | "runs" | "context" | "activity";
+
+const DETAIL_SECTION_TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "feedback", label: "Feedback" },
+  { id: "subtasks", label: "Subtasks" },
+  { id: "runs", label: "Runs" },
+  { id: "context", label: "Context" },
+  { id: "activity", label: "Activity" },
+];
+
 export function TaskDetailPage(props: TaskDetailPageProps) {
   const params = useParams();
   const taskId = params["id"];
@@ -54,10 +65,13 @@ export function TaskDetailPage(props: TaskDetailPageProps) {
 
 function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; error: unknown }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const mutations = useTaskMutations();
   const runsQuery = useTaskRunsQuery(props.task?.id);
   const [runContextOpen, setRunContextOpen] = useState(false);
+  const [selectedSectionId, setSelectedSectionId] = useState<DetailSectionId>();
   const task = props.task;
+  const activeSectionId = selectedSectionId ?? getDefaultDetailSection(task);
 
   return (
     <div className="grid gap-4">
@@ -65,7 +79,7 @@ function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; e
         actions={
           task ? (
             <>
-              <Link className="cc-button cc-button-secondary" to="/tasks">
+              <Link className="cc-button cc-button-secondary" to={`/tasks${location.search}`}>
                 All tasks
               </Link>
               <Link className="cc-button cc-button-secondary" to={`/tasks/${task.id}/edit`}>
@@ -103,54 +117,34 @@ function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; e
 
       {task ? (
         <>
+          <TaskDecisionSummary task={task} />
           <section className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
-            <article className="cc-panel grid gap-5 p-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge status={task.status} />
-                <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
-                  {formatToken(task.triggerMode)}
-                </span>
-                <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
-                  {task.enabled ? "Enabled" : "Disabled"}
-                </span>
-              </div>
-              <TextBlock
-                label="Description"
-                value={task.description || "No description provided."}
+            <article className="cc-panel overflow-hidden p-0">
+              <TabBar
+                activeTabId={activeSectionId}
+                onTabChange={(tabId) => setSelectedSectionId(tabId as DetailSectionId)}
+                tabs={DETAIL_SECTION_TABS}
               />
-              <PermissionSummary profile={task.permissionProfile} />
+              <div className="p-5">
+                <TaskDetailSectionContent
+                  agent={props.agent}
+                  isRunsLoading={runsQuery.isLoading}
+                  runs={runsQuery.data ?? []}
+                  runsError={runsQuery.error}
+                  sectionId={activeSectionId}
+                  task={task}
+                  taskId={task.id}
+                />
+              </div>
             </article>
 
             <aside className="cc-panel grid gap-4 p-5">
               <Metric label="Assigned agent" value={props.agent?.name ?? task.agentId} />
               <Metric label="Schedule" value={formatSchedule(task)} />
               <Metric label="Latest result" value={task.latestFinalMessage ?? "No runs yet"} />
-              <div>
-                <h2 className="font-semibold text-text-primary">Todos</h2>
-                {task.todos.length > 0 ? (
-                  <ul className="mt-3 grid gap-2">
-                    {task.todos.map((todo) => (
-                      <li
-                        className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
-                        key={todo.id}
-                      >
-                        {todo.status === "completed" ? "[x]" : "[ ]"} {todo.content}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-sm text-text-secondary">No todo items.</p>
-                )}
-              </div>
+              <Metric label="Todos" value={formatTodoProgress(task)} />
             </aside>
           </section>
-
-          <RunHistory
-            taskId={task.id}
-            runs={runsQuery.data ?? []}
-            isLoading={runsQuery.isLoading}
-            error={runsQuery.error}
-          />
           {runContextOpen ? (
             <RunTaskContextDialog
               busy={mutations.trigger.isPending}
@@ -239,8 +233,174 @@ function RunHistory(props: {
   );
 }
 
+function TaskDecisionSummary(props: { task: Task }) {
+  const status = readBoardStatus(props.task);
+  if (status !== "ready_to_check" && status !== "review") return null;
+
+  return (
+    <section className="cc-panel p-5">
+      <h2 className="text-xl font-semibold text-text-primary">
+        {status === "ready_to_check" ? "Ready to check" : "Review needed"}
+      </h2>
+      <p className="mt-2 text-sm leading-6 text-text-secondary">
+        {props.task.latestFinalMessage ??
+          (status === "ready_to_check"
+            ? "The latest run completed successfully and is ready for acceptance."
+            : "This task needs feedback or a retry before it can move forward.")}
+      </p>
+    </section>
+  );
+}
+
+function TaskDetailSectionContent(props: {
+  sectionId: DetailSectionId;
+  task: Task;
+  taskId: string;
+  agent?: Agent;
+  runs: TaskRun[];
+  isRunsLoading: boolean;
+  runsError: unknown;
+}) {
+  if (props.sectionId === "overview") {
+    return (
+      <div className="grid gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={props.task.status} />
+          <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
+            {props.task.enabled ? "Enabled" : "Disabled"}
+          </span>
+          {props.task.sourceTemplateId ? (
+            <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent">
+              {formatSourceTemplate(props.task)}
+            </span>
+          ) : null}
+        </div>
+        <TextBlock
+          label="Description"
+          value={props.task.description || "No description provided."}
+        />
+        <PermissionSummary profile={props.task.permissionProfile} />
+        <TaskTodos task={props.task} />
+      </div>
+    );
+  }
+
+  if (props.sectionId === "feedback") {
+    return (
+      <DecisionSection
+        description={
+          readBoardStatus(props.task) === "review"
+            ? "Add feedback here before retrying. Comment editing arrives in the feedback epic."
+            : "Feedback comments and follow-up instructions that affect future runs will appear here."
+        }
+        title={readBoardStatus(props.task) === "review" ? "Feedback needed" : "No feedback yet"}
+      />
+    );
+  }
+
+  if (props.sectionId === "subtasks") {
+    return (
+      <DecisionSection
+        description="Lightweight work breakdown under this parent task will appear here in the subtasks epic."
+        title="No subtasks yet"
+      />
+    );
+  }
+
+  if (props.sectionId === "runs") {
+    return (
+      <div className="grid gap-4">
+        {props.task.latestFinalMessage ? (
+          <p className="rounded-lg border border-border bg-surface p-3 text-sm leading-6 text-text-secondary">
+            {props.task.latestFinalMessage}
+          </p>
+        ) : null}
+        <RunHistory
+          taskId={props.taskId}
+          runs={props.runs}
+          isLoading={props.isRunsLoading}
+          error={props.runsError}
+        />
+      </div>
+    );
+  }
+
+  if (props.sectionId === "context") {
+    return (
+      <DecisionSection
+        description="Next-run context and immutable past run context snapshots will appear here once context preview is wired."
+        title="Context preview pending"
+      />
+    );
+  }
+
+  return <TaskActivitySection runs={props.runs} task={props.task} />;
+}
+
+function TaskTodos(props: { task: Task }) {
+  if (props.task.todos.length === 0)
+    return <p className="text-sm text-text-secondary">No todo items.</p>;
+
+  return (
+    <div>
+      <h2 className="font-semibold text-text-primary">Todos</h2>
+      <ul className="mt-3 grid gap-2">
+        {props.task.todos.map((todo) => (
+          <li
+            className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
+            key={todo.id}
+          >
+            {todo.status === "completed" ? "[x]" : "[ ]"} {todo.content}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function TaskActivitySection(props: { task: Task; runs: TaskRun[] }) {
+  const latestRun = props.runs[0];
+  return (
+    <div className="grid gap-3 text-sm text-text-secondary">
+      <ActivityItem label="Created" value={formatDate(props.task.createdAt)} />
+      <ActivityItem label="Updated" value={formatDate(props.task.updatedAt)} />
+      {props.task.doneAt ? (
+        <ActivityItem label="Accepted" value={formatDate(props.task.doneAt)} />
+      ) : null}
+      {props.task.archivedAt ? (
+        <ActivityItem label="Archived" value={formatDate(props.task.archivedAt)} />
+      ) : null}
+      {props.task.sourceOccurrenceAt ? (
+        <ActivityItem label="Generated" value={formatDate(props.task.sourceOccurrenceAt)} />
+      ) : null}
+      {latestRun ? (
+        <ActivityItem label="Latest run" value={latestRun.finalMessage ?? latestRun.status} />
+      ) : null}
+    </div>
+  );
+}
+
+function DecisionSection(props: { title: string; description: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <h2 className="font-semibold text-text-primary">{props.title}</h2>
+      <p className="mt-2 text-sm leading-6 text-text-secondary">{props.description}</p>
+    </div>
+  );
+}
+
+function ActivityItem(props: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface p-3">
+      <p className="text-xs uppercase tracking-wide text-text-secondary">{props.label}</p>
+      <p className="mt-1 text-text-primary">{props.value}</p>
+    </div>
+  );
+}
+
 function TaskRunDetail(props: { task?: Task; taskId?: string; runId?: string; agents?: Agent[] }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const runQuery = useTaskRunQuery(props.taskId, props.runId);
   const sessionQuery = useTaskRunSessionQuery(props.taskId, props.runId);
   const mutations = useTaskMutations();
@@ -257,7 +417,11 @@ function TaskRunDetail(props: { task?: Task; taskId?: string; runId?: string; ag
           <>
             <Link
               className="cc-button cc-button-secondary"
-              to={props.taskId ? `/tasks/${props.taskId}` : "/tasks"}
+              to={
+                props.taskId
+                  ? `/tasks/${props.taskId}${location.search}`
+                  : `/tasks${location.search}`
+              }
             >
               Back to task
             </Link>
@@ -594,6 +758,33 @@ function Metric(props: { label: string; value: string }) {
       <p className="mt-1 break-words font-medium text-text-primary">{props.value}</p>
     </div>
   );
+}
+
+function getDefaultDetailSection(task?: Task): DetailSectionId {
+  if (!task) return "overview";
+  const status = readBoardStatus(task);
+
+  if (status === "queued" || status === "ready_to_check") return "runs";
+  if (status === "review") return "feedback";
+  if (status === "done") return "activity";
+  return "overview";
+}
+
+function readBoardStatus(task: Task): string {
+  return task.archived ? "archived" : task.status;
+}
+
+function formatTodoProgress(task: Task): string {
+  if (task.todos.length === 0) return "0/0";
+  const completed = task.todos.filter((todo) => todo.status === "completed").length;
+  return `${String(completed)}/${String(task.todos.length)}`;
+}
+
+function formatSourceTemplate(task: Task): string {
+  if (!task.sourceTemplateId) return "User-created task";
+  return task.sourceOccurrenceAt
+    ? `Generated ${formatDate(task.sourceOccurrenceAt)}`
+    : "Generated from template";
 }
 
 function formatSchedule(task: Task): string {

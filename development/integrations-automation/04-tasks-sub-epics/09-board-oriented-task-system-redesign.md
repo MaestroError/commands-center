@@ -109,8 +109,8 @@ Implement this sub-epic in phases. Existing task, task run, task template, and t
 
 - ✅ **Level 1-2: Navigation and Board** — `09-board-oriented-task-system-redesign/07-ui-level-1-2-navigation-and-board.md`
 - ✅ **Level 3: Board Cards** — `09-board-oriented-task-system-redesign/08-ui-level-3-board-cards.md`
-- **Level 4: Task Detail Container** — `09-board-oriented-task-system-redesign/09-ui-level-4-task-detail-container.md`
-- **Level 5: Task Detail Sections** — `09-board-oriented-task-system-redesign/10-ui-level-5-task-detail-sections.md`
+- ✅ **Level 4: Task Detail Container** — `09-board-oriented-task-system-redesign/09-ui-level-4-task-detail-container.md`
+- ✅ **Level 5: Task Detail Sections** — `09-board-oriented-task-system-redesign/10-ui-level-5-task-detail-sections.md`
 - **Recurring Templates** — `09-board-oriented-task-system-redesign/11-ui-recurring-templates.md`
 - **Comments, Feedback, and Context** — `09-board-oriented-task-system-redesign/12-ui-comments-feedback-and-context.md`
 - **Subtasks** — `09-board-oriented-task-system-redesign/13-ui-subtasks.md`
