@@ -1130,6 +1130,71 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return row ? mapTaskRun(row) : undefined;
     },
 
+    async getRunningRunForAgent(agentId: string): Promise<TaskRun | undefined> {
+      const row = await options.db.query.task_runs.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.agent_id, agentId),
+            operators.eq(table.status, "running"),
+          ),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+
+      return row ? mapTaskRun(row) : undefined;
+    },
+
+    async getNextQueuedRunForAgent(agentId: string): Promise<TaskRun | undefined> {
+      const row = await options.db.query.task_runs.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.agent_id, agentId),
+            operators.eq(table.status, "queued"),
+          ),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+
+      return row ? mapTaskRun(row) : undefined;
+    },
+
+    async tryStartQueuedRun(
+      id: string,
+      input: Omit<UpdateTaskRunInput, "status"> = {},
+    ): Promise<TaskRun | undefined> {
+      const existing = await options.db.query.task_runs.findFirst({
+        where: (table, operators) => operators.eq(table.id, id),
+      });
+
+      if (!existing || existing.status !== "queued") {
+        return undefined;
+      }
+
+      const running = await this.getRunningRunForAgent(existing.agent_id);
+
+      if (running) {
+        return undefined;
+      }
+
+      try {
+        const [row] = await options.db
+          .update(task_runs)
+          .set({
+            status: "running",
+            started_at: input.startedAt ? new Date(input.startedAt) : existing.started_at,
+            updated_at: now(),
+          })
+          .where(and(eq(task_runs.id, id), eq(task_runs.status, "queued")))
+          .returning();
+
+        return row ? mapTaskRun(row) : undefined;
+      } catch (error) {
+        if (isRunningAgentConstraintError(error)) {
+          return undefined;
+        }
+
+        throw error;
+      }
+    },
+
     async queueTask(input: QueueTaskOptions): Promise<TaskRun> {
       const parsed = queueTaskInputSchema.parse(input);
       const task = await requireTask(parsed.taskId, { includeArchived: true });
@@ -1653,7 +1718,7 @@ function normalizeTodos(input: unknown[], timestamp: Date): TaskTodo[] {
 }
 
 function getTaskStatusAfterTerminalRun(run: TaskRun): TaskStatus | undefined {
-  if (run.status === "failed") {
+  if (run.status === "failed" || run.status === "cancelled") {
     return "review";
   }
 
@@ -1666,6 +1731,14 @@ function getTaskStatusAfterTerminalRun(run: TaskRun): TaskStatus | undefined {
   }
 
   return "ready_to_check";
+}
+
+function isRunningAgentConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message.includes("task_runs_agent_running_unique_idx") ||
+      error.message.includes("UNIQUE constraint failed: task_runs.agent_id"))
+  );
 }
 
 function mapTask(row: typeof tasks.$inferSelect): Task {

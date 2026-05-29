@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronLeft, Clock3, Menu, Search } from "lucide-react";
+import { ChevronLeft, Clock3, ListChecks, Menu, Search } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { AgentAvatar } from "@/components/agents/agent-avatar";
@@ -37,6 +37,8 @@ export function AppShell() {
   const engineState = engineQuery.data?.state;
   const firstRun = systemVersionQuery.data?.firstRun;
   const activeRuns = activeRunsQuery.data ?? [];
+  const runningRuns = activeRuns.filter((run) => run.status === "running");
+  const queuedRuns = activeRuns.filter((run) => run.status === "queued");
   const [firstRunNoticeDismissed, setFirstRunNoticeDismissed] = useState(
     () => window.localStorage.getItem(FIRST_RUN_ENV_NOTICE_STORAGE_KEY) === "true",
   );
@@ -52,7 +54,7 @@ export function AppShell() {
   }, [pathname]);
 
   useEffect(() => {
-    if (activeRuns.length === 0) {
+    if (runningRuns.length === 0) {
       return;
     }
 
@@ -63,7 +65,7 @@ export function AppShell() {
 
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [activeRuns.length]);
+  }, [runningRuns.length]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -159,7 +161,8 @@ export function AppShell() {
                   {title}
                 </h1>
                 <EngineStatusBadge state={engineState} />
-                {activeRuns.length > 0 ? <ActiveRunsBadge count={activeRuns.length} /> : null}
+                {runningRuns.length > 0 ? <ActiveRunsBadge count={runningRuns.length} /> : null}
+                {queuedRuns.length > 0 ? <QueuedRunsBadge count={queuedRuns.length} /> : null}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -437,6 +440,19 @@ function ActiveRunsBadge(props: { count: number }) {
     >
       <Clock3 className="h-3.5 w-3.5 animate-pulse" />
       {props.count} active {props.count === 1 ? "task" : "tasks"}
+    </NavLink>
+  );
+}
+
+function QueuedRunsBadge(props: { count: number }) {
+  return (
+    <NavLink
+      className="hidden items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-xs text-accent transition hover:border-accent/50 sm:inline-flex"
+      to="/tasks?status=queued"
+      title="Queued task runs are waiting for their assigned agent."
+    >
+      <ListChecks className="h-3.5 w-3.5" />
+      {props.count} queued {props.count === 1 ? "task" : "tasks"}
     </NavLink>
   );
 }

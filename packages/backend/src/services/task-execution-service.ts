@@ -63,6 +63,7 @@ export function createTaskExecutionService(options: {
       }
 
       notifyRunTerminal(cancelled);
+      scheduleAgentDrain(cancelled.agentId);
       return cancelled;
     },
 
@@ -99,9 +100,7 @@ export function createTaskExecutionService(options: {
       effectivePermissions,
     });
 
-    void runQueuedTask(run.id).catch((error: unknown) => {
-      void markDetachedRunFailed(run, error);
-    });
+    scheduleAgentDrain(run.agentId);
     return run;
   }
 
@@ -116,12 +115,12 @@ export function createTaskExecutionService(options: {
       throw new BadRequestError("Only queued task runs can be started.");
     }
 
-    let running = await options.taskService.setRunStatus(run.id, "running", {
+    let running = await options.taskService.tryStartQueuedRun(run.id, {
       startedAt: new Date().toISOString(),
     });
 
     if (!running) {
-      throw new NotFoundError("Task run not found.");
+      return run;
     }
 
     try {
@@ -154,9 +153,17 @@ export function createTaskExecutionService(options: {
           text: running.renderedPrompt,
           attachments: [],
         });
+        const latest = await findRun(running.id);
+
+        if (latest.status !== "running") {
+          notifyRunTerminal(latest);
+          scheduleAgentDrain(latest.agentId);
+          return latest;
+        }
+
         const finalMessage = summarizeTaskRunConversation(synced);
 
-        const completed = await options.taskService.setRunStatus(running.id, "completed", {
+        const completed = await options.taskService.setRunStatus(latest.id, "completed", {
           completedAt: new Date().toISOString(),
           finalMessage,
           result: {
@@ -170,6 +177,7 @@ export function createTaskExecutionService(options: {
         }
 
         notifyRunTerminal(completed);
+        scheduleAgentDrain(completed.agentId);
         return completed;
       }
 
@@ -183,8 +191,17 @@ export function createTaskExecutionService(options: {
       }
 
       notifyRunTerminal(completed);
+      scheduleAgentDrain(completed.agentId);
       return completed;
     } catch (error) {
+      const latest = await findRun(running.id);
+
+      if (latest.status !== "running") {
+        notifyRunTerminal(latest);
+        scheduleAgentDrain(latest.agentId);
+        return latest;
+      }
+
       const failed = await options.taskService.setRunStatus(running.id, "failed", {
         completedAt: new Date().toISOString(),
         errorMessage: error instanceof Error ? error.message : "Task execution failed.",
@@ -199,32 +216,8 @@ export function createTaskExecutionService(options: {
       }
 
       notifyRunTerminal(failed);
+      scheduleAgentDrain(failed.agentId);
       return failed;
-    }
-  }
-
-  async function markDetachedRunFailed(run: TaskRun, error: unknown): Promise<void> {
-    try {
-      const failed = await options.taskService.setRunStatus(run.id, "failed", {
-        completedAt: new Date().toISOString(),
-        errorMessage: error instanceof Error ? error.message : "Task execution failed.",
-        errorDetails: {
-          errorName: error instanceof Error ? error.name : "UnknownError",
-          stage: "task_run_start",
-        },
-      });
-
-      if (failed) {
-        notifyRunTerminal(failed);
-        return;
-      }
-
-      options.logger?.error({ err: error, runId: run.id, taskId: run.taskId }, "task run failed");
-    } catch (failureUpdateError) {
-      options.logger?.error(
-        { err: error, failureUpdateError, runId: run.id, taskId: run.taskId },
-        "task run failed",
-      );
     }
   }
 
@@ -295,6 +288,32 @@ export function createTaskExecutionService(options: {
 
   function notifyRunTerminal(run: TaskRun): void {
     void options.onRunTerminal?.(run);
+  }
+
+  function scheduleAgentDrain(agentId: string): void {
+    void drainAgentQueue(agentId).catch((error: unknown) => {
+      options.logger?.error({ err: error, agentId }, "task queue drain failed");
+    });
+  }
+
+  async function drainAgentQueue(agentId: string): Promise<void> {
+    const running = await options.taskService.getRunningRunForAgent(agentId);
+
+    if (running) {
+      return;
+    }
+
+    const nextRun = await options.taskService.getNextQueuedRunForAgent(agentId);
+
+    if (!nextRun) {
+      return;
+    }
+
+    const started = await runQueuedTask(nextRun.id);
+
+    if (started.status === "queued") {
+      return;
+    }
   }
 }
 

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `task_runs_agent_running_unique_idx` ON `task_runs` (`agent_id`) WHERE "task_runs"."status" = 'running';

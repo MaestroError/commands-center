@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 import { agents } from "./agents.js";
@@ -180,6 +181,9 @@ export const task_runs = sqliteTable(
     index("task_runs_subtask_id_idx").on(table.subtask_id),
     index("task_runs_agent_id_idx").on(table.agent_id),
     index("task_runs_status_idx").on(table.status),
+    uniqueIndex("task_runs_agent_running_unique_idx")
+      .on(table.agent_id)
+      .where(sql`${table.status} = 'running'`),
     index("task_runs_outcome_idx").on(table.outcome),
     index("task_runs_created_at_idx").on(table.created_at),
   ],

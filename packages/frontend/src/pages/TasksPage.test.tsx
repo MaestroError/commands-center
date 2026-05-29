@@ -259,7 +259,10 @@ describe("TasksPage", () => {
     renderWithRouter(<TasksPage />, "/tasks");
 
     await screen.findByRole("link", { name: "Ship release" });
-    expect(screen.getAllByText("Planner").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Assignee: Planner")).toHaveAttribute("title", "Planner");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Planner");
+    expect(screen.getByText("PL")).toBeInTheDocument();
+    expect(screen.queryByText("Prepare release notes.")).not.toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Queue" }));
@@ -277,6 +280,21 @@ describe("TasksPage", () => {
         }),
       );
     });
+  });
+
+  it("keeps ready-to-check cards constrained inside the board column", async () => {
+    const finalMessage = "ReadyToCheckResultWithoutNaturalBreaks".repeat(4);
+    mockFetch({
+      taskPayload: { ...task, status: "ready_to_check", latestFinalMessage: finalMessage },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const taskLink = await screen.findByRole("link", { name: "Ship release" });
+    expect(screen.getByRole("heading", { name: "Ready to Check" })).toBeInTheDocument();
+    expect(taskLink.closest("article")).toHaveClass("min-w-0", "max-w-full");
+    expect(taskLink).toHaveClass("min-w-0", "[overflow-wrap:anywhere]");
+    expect(screen.getByText(finalMessage)).toHaveClass("min-w-0", "[overflow-wrap:anywhere]");
   });
 
   it("opens task detail in a board panel", async () => {
@@ -437,6 +455,20 @@ describe("TasksPage", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
+  });
+
+  it("does not show a running badge for queued-only cards", async () => {
+    mockFetch({
+      activeRunsPayload: [{ ...run, status: "queued" }],
+      taskPayload: { ...task, status: "queued", latestRunId: "run-1" },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(await screen.findByRole("link", { name: "View run" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel run" })).toBeInTheDocument();
+    expect(screen.queryByText("Running")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Queued").length).toBeGreaterThan(0);
   });
 
   it("accepts ready-to-check cards", async () => {

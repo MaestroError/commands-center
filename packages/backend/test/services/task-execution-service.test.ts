@@ -202,7 +202,7 @@ describe("createTaskExecutionService", () => {
       const failed = await taskService.getRunById(run.id);
 
       expect(failed?.errorMessage).toBe("Task run not found.");
-      expect(failed?.errorDetails).toEqual({ errorName: "ApiError", stage: "task_run_start" });
+      expect(failed?.errorDetails).toEqual({ errorName: "ApiError", stage: "task_session_create" });
       expect(logger.error).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
@@ -307,6 +307,116 @@ describe("createTaskExecutionService", () => {
       ) as { mcp: Record<string, { enabled: boolean }> };
 
       expect(agentConfig.mcp["cc_default"]?.enabled).toBe(true);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("runs one queued task at a time per agent", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const promptGate = createDeferred<void>();
+    const opencodeService = createMockOpenCodeService({ promptGate: promptGate.promise });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const firstTask = await taskService.create({ agentId: agent.id, title: "First task" });
+      const secondTask = await taskService.create({ agentId: agent.id, title: "Second task" });
+
+      const firstRun = await executionService.queue(firstTask.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, firstRun.id, "running");
+
+      const secondRun = await executionService.queue(secondTask.id, { triggerSource: "manual" });
+
+      expect((await taskService.getRunById(secondRun.id))?.status).toBe("queued");
+      expect(
+        (await taskService.listActiveRuns()).filter(
+          (run) => run.agentId === agent.id && run.status === "running",
+        ),
+      ).toHaveLength(1);
+
+      promptGate.resolve();
+
+      await expectRunStatus(taskService, firstRun.id, "completed");
+      await expectRunStatus(taskService, secondRun.id, "completed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("allows different agents to run task sessions in parallel", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const promptGate = createDeferred<void>();
+    const opencodeService = createMockOpenCodeService({ promptGate: promptGate.promise });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      const firstAgent = await insertAgent(testDb.client.db);
+      const secondAgent = await insertAgent(testDb.client.db);
+      const firstTask = await taskService.create({ agentId: firstAgent.id, title: "First agent" });
+      const secondTask = await taskService.create({
+        agentId: secondAgent.id,
+        title: "Second agent",
+      });
+
+      const firstRun = await executionService.queue(firstTask.id, { triggerSource: "manual" });
+      const secondRun = await executionService.queue(secondTask.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, firstRun.id, "running");
+      await expectRunStatus(taskService, secondRun.id, "running");
+
+      promptGate.resolve();
+
+      await expectRunStatus(taskService, firstRun.id, "completed");
+      await expectRunStatus(taskService, secondRun.id, "completed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("moves cancelled running tasks to review and drains the next queued task", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const promptGate = createDeferred<void>();
+    const opencodeService = createMockOpenCodeService({ promptGate: promptGate.promise });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const firstTask = await taskService.create({ agentId: agent.id, title: "Cancel me" });
+      const secondTask = await taskService.create({ agentId: agent.id, title: "Run after cancel" });
+
+      const firstRun = await executionService.queue(firstTask.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, firstRun.id, "running");
+
+      const secondRun = await executionService.queue(secondTask.id, { triggerSource: "manual" });
+      const cancelled = await executionService.cancel(firstRun.id, { reason: "Stop now." });
+
+      expect(cancelled.status).toBe("cancelled");
+      expect((await taskService.get(firstTask.id))?.status).toBe("review");
+      await expectRunStatus(taskService, secondRun.id, "running");
+
+      promptGate.resolve();
+
+      await expectRunStatus(taskService, firstRun.id, "cancelled");
+      await expectRunStatus(taskService, secondRun.id, "completed");
     } finally {
       await testDb.cleanup();
     }
@@ -431,7 +541,22 @@ async function insertAgent(
   return agent;
 }
 
-function createMockOpenCodeService(): OpenCodeService {
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value?: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value?: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = (value) => promiseResolve(value as T | PromiseLike<T>);
+    reject = promiseReject;
+  });
+
+  return { promise, resolve, reject };
+}
+
+function createMockOpenCodeService(options: { promptGate?: Promise<void> } = {}): OpenCodeService {
   const sessions = new Map<string, OpenCodeSession>();
   const messages = new Map<string, OpenCodeSessionMessage[]>();
   let sessionCount = 0;
@@ -471,7 +596,9 @@ function createMockOpenCodeService(): OpenCodeService {
     },
     listSessionMessages: (_directory: string, sessionID: string) =>
       Promise.resolve(messages.get(sessionID) ?? []),
-    promptSession: ({ sessionID, text }: { sessionID: string; text: string }) => {
+    promptSession: async ({ sessionID, text }: { sessionID: string; text: string }) => {
+      await options.promptGate;
+
       const sessionMessages = messages.get(sessionID);
       const session = sessions.get(sessionID);
 
@@ -506,7 +633,6 @@ function createMockOpenCodeService(): OpenCodeService {
         ],
       });
       session.time.updated = nextTime();
-      return Promise.resolve();
     },
   } as unknown as OpenCodeService;
 }

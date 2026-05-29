@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import type {
@@ -18,6 +18,7 @@ import type {
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
@@ -140,10 +141,15 @@ function TaskListPage() {
   const selectedTaskId = searchParams.get("task") ?? undefined;
   const selectedTemplateId = searchParams.get("template") ?? undefined;
   const currentSearch = searchParams.toString() ? `?${searchParams.toString()}` : "";
-  const tasksQuery = useTasksQuery({ includeArchived: false });
+  const activeRunsQuery = useActiveTaskRunsQuery();
+  const activeRuns = activeRunsQuery.data ?? [];
+  const previousActiveRunCountRef = useRef(0);
+  const tasksQuery = useTasksQuery(
+    { includeArchived: false },
+    { refetchInterval: activeRuns.length > 0 ? 3_000 : false },
+  );
   const templatesQuery = useTaskTemplatesQuery();
   const archiveQuery = useArchivedTasksQuery();
-  const activeRunsQuery = useActiveTaskRunsQuery();
   const agentsQuery = useAgentsQuery();
   const mutations = useTaskMutations();
   const [runTask, setRunTask] = useState<Task>();
@@ -156,6 +162,15 @@ function TaskListPage() {
     view === "templates" ? templatesQuery : view === "archive" ? archiveQuery : tasksQuery;
   const error = readError(activeQuery.error ?? agentsQuery.error);
   const isLoading = activeQuery.isLoading || agentsQuery.isLoading;
+  const refetchTasks = tasksQuery.refetch;
+
+  useEffect(() => {
+    if (previousActiveRunCountRef.current > 0 && activeRuns.length === 0) {
+      void refetchTasks();
+    }
+
+    previousActiveRunCountRef.current = activeRuns.length;
+  }, [activeRuns.length, refetchTasks]);
 
   return (
     <div className="grid gap-4">
@@ -209,7 +224,7 @@ function TaskListPage() {
       {!isLoading && !error && view === "board" && boardTasks.length > 0 ? (
         <TaskBoard
           agents={agents}
-          activeRuns={activeRunsQuery.data ?? []}
+          activeRuns={activeRuns}
           currentSearch={currentSearch}
           onAccept={(task) => void mutations.accept.mutate(task.id)}
           onArchive={(task) => void mutations.archive.mutate(task.id)}
@@ -384,7 +399,7 @@ function TaskBoard(props: {
 
           return (
             <div
-              className="cc-panel flex min-h-80 w-80 shrink-0 flex-col gap-3 p-4"
+              className="cc-panel flex min-h-80 w-80 min-w-0 shrink-0 flex-col gap-3 p-4"
               key={column.status}
             >
               <div>
@@ -401,7 +416,7 @@ function TaskBoard(props: {
                   {column.empty}
                 </p>
               ) : null}
-              <div className="grid gap-3">
+              <div className="grid min-w-0 gap-3">
                 {columnTasks.map((task) => (
                   <TaskBoardCard
                     activeRun={props.activeRuns.find((run) => run.taskId === task.id)}
@@ -451,24 +466,23 @@ function TaskBoardCard(props: {
   return (
     <article className={readCardClassName(boardStatus)}>
       <div className="grid gap-2">
-        <Link
-          className="font-semibold leading-6 text-text-primary transition hover:text-accent"
-          to={`/tasks${buildPanelSearch(props.currentSearch, task.id)}`}
-          onClick={props.onSelect}
-        >
-          {task.title}
-        </Link>
-        <p className="line-clamp-3 text-sm leading-6 text-text-secondary">
-          {task.description || "No description provided."}
-        </p>
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <Link
+            className="min-w-0 break-words [overflow-wrap:anywhere] font-semibold leading-6 text-text-primary transition hover:text-accent"
+            to={`/tasks${buildPanelSearch(props.currentSearch, task.id)}`}
+            onClick={props.onSelect}
+          >
+            {task.title}
+          </Link>
+          <BoardAssigneeAvatar agent={props.agent} fallbackName={task.agentId} />
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <StatusBadge status={boardStatus} />
-        {props.activeRun ? <StatusBadge status={props.activeRun.status} /> : null}
-        <span className="rounded-full border border-border bg-background px-3 py-1 text-xs text-text-secondary">
-          {props.agent?.name ?? task.agentId}
-        </span>
+        {props.activeRun?.status === "running" ? (
+          <StatusBadge status={props.activeRun.status} />
+        ) : null}
         {(task.scheduledAt ?? task.scheduledFor ?? task.dueAt) ? (
           <span className="rounded-full border border-border bg-background px-3 py-1 text-xs text-text-secondary">
             {formatTimingBadge(task)}
@@ -508,6 +522,32 @@ function TaskBoardCard(props: {
         />
       </div>
     </article>
+  );
+}
+
+function BoardAssigneeAvatar(props: { agent?: Agent; fallbackName: string }) {
+  const name = props.agent?.name ?? props.fallbackName;
+
+  return (
+    <span
+      aria-label={`Assignee: ${name}`}
+      className="group relative inline-flex shrink-0"
+      tabIndex={0}
+      title={name}
+    >
+      <AgentAvatar
+        className="h-7 w-7 rounded-full text-[11px]"
+        iconPath={props.agent?.iconPath}
+        name={name}
+        size="sm"
+      />
+      <span
+        className="pointer-events-none absolute right-0 top-full z-30 mt-2 w-max max-w-48 whitespace-normal break-words [overflow-wrap:anywhere] rounded-md border border-border bg-surface-elevated px-2 py-1 text-left text-xs text-text-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        role="tooltip"
+      >
+        {name}
+      </span>
+    </span>
   );
 }
 
@@ -697,7 +737,9 @@ function TaskDetailPanel(props: {
             <div className="cc-panel grid gap-4 p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={task.status} />
-                {props.activeRun ? <StatusBadge status={props.activeRun.status} /> : null}
+                {props.activeRun?.status === "running" ? (
+                  <StatusBadge status={props.activeRun.status} />
+                ) : null}
                 <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
                   {agent?.name ?? task.agentId}
                 </span>
@@ -818,7 +860,7 @@ function TaskPanelPrimaryActions(props: {
         className="cc-button"
         to={`/tasks/${props.task.id}/runs/${props.activeRun.id}${props.currentSearch}`}
       >
-        View active run
+        {props.activeRun.status === "running" ? "View active run" : "View queued run"}
       </Link>
     );
   }
@@ -951,7 +993,7 @@ function TaskRunsSection(props: {
       ) : null}
       {props.activeRun ? (
         <Link className="cc-button w-fit" to={`/tasks/${props.taskId}/runs/${props.activeRun.id}`}>
-          View active run
+          {props.activeRun.status === "running" ? "View active run" : "View queued run"}
         </Link>
       ) : null}
       <RunHistory
@@ -2172,7 +2214,7 @@ function readCardClassName(status: BoardTaskStatus): string {
           ? "border-accent/30 bg-surface-elevated"
           : "border-border bg-surface";
 
-  return `grid gap-3 rounded-xl border p-4 ${emphasis}`;
+  return `grid min-w-0 max-w-full gap-3 rounded-xl border p-4 ${emphasis}`;
 }
 
 function readResultClassName(status: BoardTaskStatus): string {
@@ -2183,7 +2225,7 @@ function readResultClassName(status: BoardTaskStatus): string {
         ? "border-amber-400/30 bg-amber-400/10 text-text-primary"
         : "border-border bg-background text-text-secondary";
 
-  return `rounded-lg border p-3 text-sm leading-6 ${emphasis}`;
+  return `min-w-0 break-words [overflow-wrap:anywhere] rounded-lg border p-3 text-sm leading-6 ${emphasis}`;
 }
 
 function formatTimingBadge(task: Task): string {

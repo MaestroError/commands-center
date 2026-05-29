@@ -40,10 +40,14 @@ import {
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 
-export function useTasksQuery(query: Partial<ListTasksQuery> = {}) {
+export function useTasksQuery(
+  query: Partial<ListTasksQuery> = {},
+  options: { refetchInterval?: number | false } = {},
+) {
   return useQuery({
     queryKey: queryKeys.tasks(query),
     queryFn: () => listTasks(query),
+    refetchInterval: options.refetchInterval,
   });
 }
 
