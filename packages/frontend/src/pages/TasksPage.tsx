@@ -7,6 +7,7 @@ import {
   type DragEvent,
   type FormEvent,
 } from "react";
+import { MessageSquareText } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import type {
@@ -415,7 +416,7 @@ function TaskListPage() {
     }
 
     if (status === "done") {
-      if (currentStatus === "ready_to_check") {
+      if (currentStatus === "ready_to_check" || currentStatus === "review") {
         mutations.accept.mutate(task.id);
       }
       return;
@@ -618,7 +619,12 @@ function TaskBoardCard(props: {
           >
             {task.title}
           </Link>
-          <BoardAssigneeAvatar agent={props.agent} fallbackName={task.agentId} />
+          <div className="flex shrink-0 items-center gap-2">
+            {task.latestFinalMessage ? (
+              <TaskResultMessageTooltip message={task.latestFinalMessage} />
+            ) : null}
+            <BoardAssigneeAvatar agent={props.agent} fallbackName={task.agentId} />
+          </div>
         </div>
       </div>
 
@@ -651,10 +657,6 @@ function TaskBoardCard(props: {
         <span>Updated: {formatDate(task.updatedAt)}</span>
       </div>
 
-      {task.latestFinalMessage ? (
-        <p className={readResultClassName(boardStatus)}>{task.latestFinalMessage}</p>
-      ) : null}
-
       <div className="flex flex-wrap gap-2">
         <TaskCardActions
           activeRun={props.activeRun}
@@ -674,6 +676,25 @@ function TaskBoardCard(props: {
         />
       </div>
     </article>
+  );
+}
+
+function TaskResultMessageTooltip(props: { message: string }) {
+  return (
+    <span className="group relative inline-flex shrink-0" tabIndex={0}>
+      <span
+        aria-label="Latest result message"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-surface-elevated text-text-secondary transition group-hover:border-accent/50 group-hover:text-accent group-focus-visible:border-accent/50 group-focus-visible:text-accent"
+      >
+        <MessageSquareText aria-hidden="true" className="h-3.5 w-3.5" />
+      </span>
+      <span
+        className="pointer-events-none absolute right-0 top-full z-30 mt-2 w-64 rounded-md border border-border bg-surface-elevated px-3 py-2 text-left text-xs leading-5 text-text-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        role="tooltip"
+      >
+        {formatResultMessagePreview(props.message)}
+      </span>
+    </span>
   );
 }
 
@@ -2835,8 +2856,12 @@ function canDropTaskOnStatus(task: Task, status: BoardTaskStatus, activeRuns: Ta
 
   if (currentStatus === status) return false;
   if (activeRuns.some((run) => run.taskId === task.id) || currentStatus === "queued") return false;
-  if (status === "done") return currentStatus === "ready_to_check";
+  if (status === "done") return currentStatus === "ready_to_check" || currentStatus === "review";
   return status !== "archived";
+}
+
+function formatResultMessagePreview(message: string): string {
+  return message.length > 200 ? `${message.slice(0, 200)}...` : message;
 }
 
 function readResultClassName(status: BoardTaskStatus): string {

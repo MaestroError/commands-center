@@ -321,7 +321,7 @@ describe("TasksPage", () => {
 
     await screen.findByRole("link", { name: "Ship release" });
     expect(screen.getByLabelText("Assignee: Planner")).toHaveAttribute("title", "Planner");
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Planner");
+    expect(screen.getByText("Planner", { selector: '[role="tooltip"]' })).toBeInTheDocument();
     expect(screen.getByText("PL")).toBeInTheDocument();
     expect(screen.queryByText("Prepare release notes.")).not.toBeInTheDocument();
 
@@ -361,7 +361,7 @@ describe("TasksPage", () => {
     expect(screen.getByRole("heading", { name: "Ready to Check" })).toBeInTheDocument();
     expect(taskLink.closest("article")).toHaveClass("min-w-0", "max-w-full");
     expect(taskLink).toHaveClass("min-w-0", "[overflow-wrap:anywhere]");
-    expect(screen.getByText(finalMessage)).toHaveClass("min-w-0", "[overflow-wrap:anywhere]");
+    expect(screen.getByLabelText("Latest result message")).toBeInTheDocument();
   });
 
   it("opens task detail in a board panel", async () => {
@@ -666,6 +666,49 @@ describe("TasksPage", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
+  });
+
+  it("accepts review tasks when dropped into done", async () => {
+    const fetchMock = mockFetch({ taskPayload: { ...task, status: "review" } });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const card = (await screen.findByRole("link", { name: "Ship release" })).closest("article");
+    const doneColumn = screen.getByRole("heading", { name: "Done" }).closest(".cc-panel");
+    expect(card).not.toBeNull();
+    expect(doneColumn).not.toBeNull();
+
+    if (!card || !doneColumn) {
+      throw new Error("Expected board card and done column.");
+    }
+
+    fireDragEvent(card, "dragStart");
+    expect(doneColumn).toHaveAttribute("data-drop-state", "ready");
+    fireDragEvent(doneColumn, "dragOver");
+    fireDragEvent(doneColumn, "drop");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/accept",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("shows the latest card result behind a message tooltip preview", async () => {
+    const longMessage = `${"A".repeat(200)} extra text`;
+    mockFetch({
+      taskPayload: {
+        ...task,
+        latestFinalMessage: longMessage,
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(await screen.findByLabelText("Latest result message")).toBeInTheDocument();
+    expect(screen.getByText(`${"A".repeat(200)}...`)).toBeInTheDocument();
+    expect(screen.queryByText(longMessage)).not.toBeInTheDocument();
   });
 
   it("deletes a template from the templates view", async () => {
