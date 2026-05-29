@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import type { AppDb } from "../../src/db/client";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
-import { agents, task_runs } from "../../src/db/schema/index";
+import { agents, task_runs, task_templates } from "../../src/db/schema/index";
 
 describe("createTaskService", () => {
   it("creates manual, one-time, and recurring tasks", async () => {
@@ -308,6 +308,38 @@ describe("createTaskService", () => {
       expect(archived).toBeUndefined();
       expect(restored).toBeUndefined();
       expect(storedTemplate?.id).toBe(template.id);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("ignores legacy archived flags on active task templates", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Legacy archived template",
+        description: "Should still be runnable.",
+        enabled: true,
+      });
+
+      await testDb.client.db
+        .update(task_templates)
+        .set({ archived: true, archived_at: new Date("2026-06-01T12:00:00.000Z") })
+        .where(eq(task_templates.id, template.id));
+
+      const listed = await service.listTemplates();
+      const storedTemplate = await service.getTemplate(template.id);
+      const generatedTask = await service.createTaskFromTemplate(template.id, {
+        triggerSource: "template",
+      });
+
+      expect(listed.map((entry) => entry.id)).toContain(template.id);
+      expect(storedTemplate?.id).toBe(template.id);
+      expect(generatedTask?.sourceTemplateId).toBe(template.id);
     } finally {
       await testDb.cleanup();
     }

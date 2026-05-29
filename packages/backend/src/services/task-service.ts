@@ -1500,18 +1500,11 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
   async function getTemplateRow(
     id: string,
-    getOptions?: { includeArchived?: boolean },
+    _getOptions?: { includeArchived?: boolean },
   ): Promise<typeof task_templates.$inferSelect | undefined> {
     return options.db.query.task_templates.findFirst({
-      where: (table, operators) => {
-        const filters = [operators.eq(table.id, id), operators.isNull(table.deleted_at)];
-
-        if (!getOptions?.includeArchived) {
-          filters.push(operators.eq(table.archived, false));
-        }
-
-        return operators.and(...filters);
-      },
+      where: (table, operators) =>
+        operators.and(operators.eq(table.id, id), operators.isNull(table.deleted_at)),
     });
   }
 
