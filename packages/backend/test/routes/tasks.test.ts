@@ -272,7 +272,7 @@ describe("task routes", () => {
     }
   });
 
-  it("supports comments, subtasks, and recurring template endpoints", async () => {
+  it("supports feedback, subtasks, and recurring template endpoints", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const taskContextAttachmentService = createTaskContextAttachmentService({
@@ -304,35 +304,40 @@ describe("task routes", () => {
 
     try {
       const agent = await insertAgent(testDb.client.db);
+      const mentionedAgent = await insertAgent(testDb.client.db);
       const created = await server.inject({
         method: "POST",
         url: "/api/tasks",
         payload: { agentId: agent.id, title: "Board task", triggerMode: "manual" },
       });
       const task = created.json<{ id: string }>();
-      const comment = await server.inject({
+      const feedback = await server.inject({
         method: "POST",
-        url: `/api/tasks/${task.id}/comments`,
-        payload: { body: "Please verify docs." },
+        url: `/api/tasks/${task.id}/feedback`,
+        payload: { body: "Please verify docs.", mentionedAgentIds: [mentionedAgent.id] },
       });
-      const updatedComment = await server.inject({
-        method: "PATCH",
-        url: `/api/tasks/${task.id}/comments/${String(comment.json<{ id: string }>().id)}`,
-        payload: { status: "resolved" },
-      });
-      const comments = await server.inject({
+      const feedbackList = await server.inject({
         method: "GET",
-        url: `/api/tasks/${task.id}/comments`,
+        url: `/api/tasks/${task.id}/feedback`,
+      });
+      const progress = await server.inject({
+        method: "GET",
+        url: `/api/tasks/subtask-progress?taskIds=${task.id}`,
+      });
+      const preview = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/queue/preview`,
+        payload: { triggerSource: "manual" },
       });
       const subtask = await server.inject({
         method: "POST",
         url: `/api/tasks/${task.id}/subtasks`,
-        payload: { title: "Docs check", defaultAgentId: agent.id },
+        payload: { description: "Docs check", agentId: agent.id },
       });
       const updatedSubtask = await server.inject({
         method: "PATCH",
         url: `/api/tasks/${task.id}/subtasks/${String(subtask.json<{ id: string }>().id)}`,
-        payload: { status: "done" },
+        payload: { description: "Docs check updated" },
       });
       const subtasks = await server.inject({
         method: "GET",
@@ -381,16 +386,45 @@ describe("task routes", () => {
         },
       });
 
-      expect(comment.statusCode).toBe(201);
-      expect(updatedComment.statusCode).toBe(200);
-      expect(updatedComment.json().status).toBe("resolved");
-      expect(comments.statusCode).toBe(200);
-      expect(comments.json()).toHaveLength(1);
+      expect(feedback.statusCode).toBe(201);
+      expect(feedback.json()).toMatchObject({
+        body: "Please verify docs.",
+        targetAgentIds: [mentionedAgent.id],
+      });
+      expect(
+        feedback.json<{ subtasks: Array<{ agentId: string; description: string }> }>().subtasks,
+      ).toEqual([
+        expect.objectContaining({ agentId: mentionedAgent.id, description: "Please verify docs." }),
+      ]);
+      expect(feedbackList.statusCode).toBe(200);
+      expect(feedbackList.json()).toHaveLength(1);
+      expect(feedbackList.json()[0].subtasks[0]).toMatchObject({
+        agentId: mentionedAgent.id,
+        status: "backlog",
+        replies: [],
+      });
+      expect(progress.statusCode).toBe(200);
+      expect(progress.json()).toEqual([
+        { taskId: task.id, total: 1, completed: 0, active: 0, review: 0 },
+      ]);
+      expect(preview.statusCode).toBe(200);
+      expect(preview.json()).toMatchObject({
+        taskId: task.id,
+        runAgentId: mentionedAgent.id,
+        subtask: { agentId: mentionedAgent.id, description: "Please verify docs." },
+        feedback: { id: feedback.json<{ id: string }>().id },
+      });
+      expect(preview.json<{ renderedPrompt: string }>().renderedPrompt).toContain(
+        `<AssignedAgentId>\n${mentionedAgent.id}\n</AssignedAgentId>`,
+      );
       expect(subtask.statusCode).toBe(201);
       expect(updatedSubtask.statusCode).toBe(200);
-      expect(updatedSubtask.json().completedAt).toBeDefined();
+      expect(updatedSubtask.json()).toMatchObject({
+        agentId: agent.id,
+        description: "Docs check updated",
+      });
       expect(subtasks.statusCode).toBe(200);
-      expect(subtasks.json()).toHaveLength(1);
+      expect(subtasks.json()).toHaveLength(2);
       expect(template.statusCode).toBe(201);
       expect(template.json().defaultAgentId).toBe(agent.id);
       expect(template.json()).not.toHaveProperty("archived");

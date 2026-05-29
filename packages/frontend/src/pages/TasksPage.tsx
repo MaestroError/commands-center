@@ -1,13 +1,27 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type FormEvent,
+} from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import type {
   Agent,
+  AgentCatalog,
   BoardTaskStatus,
+  CreateTaskFeedbackInput,
   CreateTaskInput,
   CreateTaskTemplateInput,
   Task,
+  TaskFeedbackThread,
+  TaskQueuePreview,
   TaskRun,
+  TaskSubtaskProgress,
+  TaskSubtask,
   TaskTemplate,
   TaskRepeatRule,
   TaskSchedule,
@@ -40,10 +54,13 @@ import {
   useActiveTaskRunsQuery,
   useArchivedTasksQuery,
   useTaskMutations,
+  useTaskFeedbackQuery,
   useTaskQuery,
   useTaskTemplateQuery,
   useTaskTemplateTasksQuery,
   useTaskRunsQuery,
+  useTaskSubtaskProgressQuery,
+  useTaskSubtasksQuery,
   useTasksQuery,
   useTaskTemplatesQuery,
 } from "@/hooks/use-tasks-query";
@@ -452,6 +469,10 @@ function TaskBoard(props: {
   const [draggedTaskId, setDraggedTaskId] = useState<string>();
   const [dragOverStatus, setDragOverStatus] = useState<BoardTaskStatus>();
   const draggedTask = props.tasks.find((task) => task.id === draggedTaskId);
+  const progressQuery = useTaskSubtaskProgressQuery(props.tasks.map((task) => task.id));
+  const progressByTaskId = new Map(
+    (progressQuery.data ?? []).map((entry) => [entry.taskId, entry]),
+  );
 
   return (
     <section className="overflow-x-auto pb-3" data-testid="tasks-board">
@@ -543,6 +564,7 @@ function TaskBoard(props: {
                     onQueue={() => props.onQueue(task)}
                     onReopen={() => props.onReopen(task)}
                     onSelect={() => props.onSelect(task)}
+                    progress={progressByTaskId.get(task.id)}
                     task={task}
                   />
                 ))}
@@ -559,6 +581,7 @@ function TaskBoardCard(props: {
   task: Task;
   agent?: Agent;
   activeRun?: TaskRun;
+  progress?: TaskSubtaskProgress;
   currentSearch: string;
   onDragEnd: () => void;
   onDragStart: (event: DragEvent<HTMLElement>) => void;
@@ -618,6 +641,13 @@ function TaskBoardCard(props: {
 
       <div className="grid gap-2 text-xs text-text-secondary">
         <span>Todos: {formatTodoProgress(task)}</span>
+        {props.progress?.total ? (
+          <span>
+            Subtasks: {props.progress.completed}/{props.progress.total}
+            {props.progress.active ? ` active ${String(props.progress.active)}` : ""}
+            {props.progress.review ? ` review ${String(props.progress.review)}` : ""}
+          </span>
+        ) : null}
         <span>Updated: {formatDate(task.updatedAt)}</span>
       </div>
 
@@ -859,7 +889,9 @@ function TaskDetailPanel(props: {
 }) {
   const taskQuery = useTaskQuery(props.taskId);
   const runsQuery = useTaskRunsQuery(props.taskId);
+  const mutations = useTaskMutations();
   const [selectedSectionId, setSelectedSectionId] = useState<DetailSectionId>();
+  const [queuePreview, setQueuePreview] = useState<TaskQueuePreview>();
   const task = taskQuery.data;
   const agent = props.agents.find((entry) => entry.id === task?.agentId);
   const activeSectionId = selectedSectionId ?? getDefaultDetailSection(task);
@@ -867,7 +899,7 @@ function TaskDetailPanel(props: {
   return (
     <aside
       aria-label="Task detail panel"
-      className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col border-l border-border bg-surface-elevated shadow-2xl lg:top-0"
+      className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl min-w-0 flex-col overflow-hidden border-l border-border bg-surface-elevated shadow-2xl lg:top-0"
     >
       <div className="flex items-start justify-between gap-4 border-b border-border bg-surface-elevated p-4 sm:p-5">
         <div className="min-w-0">
@@ -881,7 +913,7 @@ function TaskDetailPanel(props: {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-surface-elevated p-4 sm:p-5">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-surface-elevated p-4 sm:p-5">
         {taskQuery.isLoading ? <LoadingState testId="task-panel-loading" /> : null}
         {taskQuery.error ? (
           <ErrorState
@@ -893,8 +925,8 @@ function TaskDetailPanel(props: {
           <EmptyState description="This task no longer exists." title="Task not found" />
         ) : null}
         {task ? (
-          <div className="grid gap-4">
-            <div className="cc-panel grid gap-4 p-4">
+          <div className="grid min-w-0 gap-4">
+            <div className="cc-panel grid min-w-0 gap-4 overflow-hidden p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={task.status} />
                 {props.activeRun?.status === "running" ? (
@@ -915,7 +947,7 @@ function TaskDetailPanel(props: {
                   </span>
                 ) : null}
               </div>
-              <p className="text-sm leading-6 text-text-secondary">
+              <p className="min-w-0 break-words text-sm leading-6 text-text-secondary [overflow-wrap:anywhere]">
                 {task.description || "No description provided."}
               </p>
               {task.latestFinalMessage ? (
@@ -938,10 +970,23 @@ function TaskDetailPanel(props: {
                   onReopen={() => props.onReopen(task)}
                   task={task}
                 />
+                <button
+                  className="cc-button cc-button-secondary"
+                  onClick={() => {
+                    mutations.previewQueue.mutate(
+                      { id: task.id },
+                      { onSuccess: (preview) => setQueuePreview(preview) },
+                    );
+                  }}
+                  type="button"
+                >
+                  Preview context
+                </button>
               </div>
+              {queuePreview ? <QueuePreviewSummary preview={queuePreview} /> : null}
             </div>
 
-            <article className="cc-panel overflow-hidden p-0">
+            <article className="cc-panel overflow-visible p-0">
               <TabBar
                 activeTabId={activeSectionId}
                 onTabChange={(tabId) => setSelectedSectionId(tabId as DetailSectionId)}
@@ -951,6 +996,7 @@ function TaskDetailPanel(props: {
                 <TaskDetailSectionContent
                   activeRun={props.activeRun}
                   agent={agent}
+                  agents={props.agents}
                   isRunsLoading={runsQuery.isLoading}
                   runs={runsQuery.data ?? []}
                   runsError={runsQuery.error}
@@ -1068,6 +1114,7 @@ function TaskDetailSectionContent(props: {
   task: Task;
   taskId: string;
   agent?: Agent;
+  agents: Agent[];
   activeRun?: TaskRun;
   runs: TaskRun[];
   isRunsLoading: boolean;
@@ -1075,6 +1122,14 @@ function TaskDetailSectionContent(props: {
   onUpdateContext: (text: string) => void;
   onUploadContextAttachment: (file: File) => void;
 }) {
+  const feedbackQuery = useTaskFeedbackQuery(props.taskId);
+  const subtasksQuery = useTaskSubtasksQuery(props.taskId);
+  const catalogQuery = useAgentCatalogQuery();
+  const mutations = useTaskMutations();
+  const feedbackSkills = useTaskComposerSkills(props.agent, catalogQuery.data);
+  const isFeedbackSection = props.sectionId === "feedback";
+  const isSubtasksSection = props.sectionId === "subtasks";
+
   if (props.sectionId === "overview") {
     return (
       <div className="grid gap-4">
@@ -1093,24 +1148,30 @@ function TaskDetailSectionContent(props: {
     );
   }
 
-  if (props.sectionId === "feedback") {
+  if (isFeedbackSection) {
     return (
-      <DecisionSection
-        description={
-          readBoardStatus(props.task) === "review"
-            ? "Add the missing direction here before retrying this task. Comment editing arrives in the feedback epic."
-            : "Feedback comments and follow-up instructions that affect future runs will appear here."
-        }
-        title={readBoardStatus(props.task) === "review" ? "Feedback needed" : "No feedback yet"}
+      <TaskFeedbackSection
+        agents={props.agents}
+        error={feedbackQuery.error}
+        feedback={feedbackQuery.data ?? []}
+        isLoading={feedbackQuery.isLoading}
+        isSubmitting={mutations.createFeedback.isPending}
+        skills={feedbackSkills}
+        onSubmit={(input) => mutations.createFeedback.mutate({ id: props.taskId, input })}
+        task={props.task}
       />
     );
   }
 
-  if (props.sectionId === "subtasks") {
+  if (isSubtasksSection) {
     return (
-      <DecisionSection
-        description="Lightweight work breakdown under this parent task will appear here in the subtasks epic."
-        title="No subtasks yet"
+      <TaskSubtasksSection
+        agents={props.agents}
+        error={subtasksQuery.error}
+        isLoading={subtasksQuery.isLoading}
+        runs={props.runs}
+        taskId={props.taskId}
+        subtasks={subtasksQuery.data ?? []}
       />
     );
   }
@@ -1139,6 +1200,271 @@ function TaskDetailSectionContent(props: {
   }
 
   return <TaskActivitySection runs={props.runs} task={props.task} />;
+}
+
+function useTaskComposerSkills(
+  agent: Agent | undefined,
+  catalog: AgentCatalog | undefined,
+): { slug: string; description?: string }[] {
+  return useMemo(() => {
+    if (!agent || !catalog) return [];
+
+    const selectedSlugs = new Set([
+      ...agent.capabilities.builtInSkills,
+      ...(agent.capabilities.workspaceSkills ?? []),
+    ]);
+
+    return [...catalog.builtInSkills, ...(catalog.workspaceSkills ?? [])]
+      .filter((skill) => selectedSlugs.has(skill.slug))
+      .map((skill) => ({ slug: skill.slug, description: skill.description }));
+  }, [agent, catalog]);
+}
+
+function QueuePreviewSummary(props: { preview: TaskQueuePreview }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border bg-surface p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-medium text-text-primary">Next run context preview</p>
+          <p className="text-xs text-text-secondary">
+            Agent {props.preview.runAgentId}
+            {props.preview.subtask ? ` · subtask ${props.preview.subtask.id}` : " · parent task"}
+          </p>
+        </div>
+        <button
+          className="cc-button cc-button-secondary"
+          onClick={() => setOpen((value) => !value)}
+          type="button"
+        >
+          {open ? "Hide" : "Show"}
+        </button>
+      </div>
+      {open ? (
+        <div className="mt-3 grid gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-text-secondary">
+              Trusted task content
+            </p>
+            <pre className="mt-2 max-h-52 overflow-auto rounded-lg border border-border bg-background p-3 text-xs text-text-primary whitespace-pre-wrap">
+              {props.preview.renderedPrompt}
+            </pre>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-text-secondary">
+              Untrusted feedback and history context
+            </p>
+            <pre className="mt-2 max-h-52 overflow-auto rounded-lg border border-border bg-background p-3 text-xs text-text-primary whitespace-pre-wrap">
+              {JSON.stringify(props.preview.renderedContext, null, 2)}
+            </pre>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TaskFeedbackSection(props: {
+  task: Task;
+  agents: Agent[];
+  skills: { slug: string; description?: string }[];
+  feedback: TaskFeedbackThread[];
+  isLoading: boolean;
+  error: unknown;
+  isSubmitting: boolean;
+  onSubmit: (input: CreateTaskFeedbackInput) => void;
+}) {
+  const [prompt, setPrompt] = useState<TaskPromptValue>(() => createTaskPromptValue());
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const body = buildTaskPromptText(prompt);
+
+    if (!body) {
+      return;
+    }
+
+    props.onSubmit({
+      body,
+      mentionedAgentIds: prompt.mentionedAgents.map((agent) => agent.id),
+    });
+    setPrompt(createTaskPromptValue());
+  }
+
+  return (
+    <div className="grid gap-4">
+      <form
+        className="grid gap-3 rounded-lg border border-border bg-surface p-3"
+        onSubmit={handleSubmit}
+      >
+        <section className="grid gap-2 text-sm text-text-secondary">
+          <div>
+            <h3 className="font-medium text-text-primary">Feedback</h3>
+            <p className="text-xs text-text-secondary">
+              Use # for files, / for skills, and @ to mention agents for subtasks.
+            </p>
+          </div>
+          <TaskPromptComposer
+            agentId={props.task.agentId}
+            agents={props.agents}
+            fileSearchAgentId={prompt.mentionedAgents[0]?.id ?? null}
+            label="Feedback"
+            onChange={setPrompt}
+            placeholder="Describe the follow-up work or correction needed."
+            skills={props.skills}
+            value={prompt}
+          />
+        </section>
+        <p className="text-xs text-text-secondary">
+          If no agent is mentioned, feedback creates one subtask for the task default agent.
+        </p>
+        <button className="cc-button w-fit" disabled={props.isSubmitting} type="submit">
+          {props.isSubmitting ? "Adding..." : "Add feedback"}
+        </button>
+      </form>
+
+      {props.isLoading ? <LoadingState testId="task-feedback-loading" /> : null}
+      {props.error ? (
+        <ErrorState
+          description={readError(props.error) ?? "Request failed."}
+          title="Feedback could not be loaded."
+        />
+      ) : null}
+      {!props.isLoading && props.feedback.length === 0 ? (
+        <EmptyState
+          description="Feedback added here creates agent-assigned subtasks for the next queued run."
+          title="No feedback yet"
+        />
+      ) : null}
+      {props.feedback.length > 0 ? (
+        <div className="grid gap-3">
+          {props.feedback.map((entry) => (
+            <article className="rounded-lg border border-border bg-surface p-3" key={entry.id}>
+              <p className="text-sm leading-6 text-text-primary">{entry.body}</p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
+                <span>{formatDate(entry.createdAt)}</span>
+                <span>
+                  {entry.subtasks.length} subtask{entry.subtasks.length === 1 ? "" : "s"}
+                </span>
+                {entry.targetAgentIds.map((agentId) => (
+                  <span className="rounded-full border border-border px-2 py-1" key={agentId}>
+                    {readAgentName(props.agents, agentId)}
+                  </span>
+                ))}
+              </div>
+              <FeedbackReplies agents={props.agents} subtasks={entry.subtasks} />
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TaskSubtasksSection(props: {
+  agents: Agent[];
+  subtasks: TaskSubtask[];
+  runs: TaskRun[];
+  taskId: string;
+  isLoading: boolean;
+  error: unknown;
+}) {
+  return (
+    <div className="grid gap-4">
+      {props.isLoading ? <LoadingState testId="task-subtasks-loading" /> : null}
+      {props.error ? (
+        <ErrorState
+          description={readError(props.error) ?? "Request failed."}
+          title="Subtasks could not be loaded."
+        />
+      ) : null}
+      {!props.isLoading && props.subtasks.length === 0 ? (
+        <EmptyState
+          description="Feedback creates simple subtasks assigned to the mentioned agents."
+          title="No subtasks yet"
+        />
+      ) : null}
+      {props.subtasks.length > 0 ? (
+        <div className="grid gap-3">
+          {props.subtasks.map((subtask) => {
+            const subtaskRuns = props.runs.filter((run) => run.subtaskId === subtask.id);
+            const latestRun = subtaskRuns[0];
+
+            return (
+              <article className="rounded-lg border border-border bg-surface p-3" key={subtask.id}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium text-text-primary">
+                    {readAgentName(props.agents, subtask.agentId)}
+                  </span>
+                  <StatusBadge status={latestRun?.status ?? "backlog"} />
+                </div>
+                <p className="mt-2 text-sm leading-6 text-text-secondary">{subtask.description}</p>
+                {subtaskRuns.length > 0 ? (
+                  <div className="mt-3 grid gap-2">
+                    {subtaskRuns.map((run) => (
+                      <div
+                        className="rounded-lg border border-border bg-surface-muted p-3"
+                        key={run.id}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+                            <StatusBadge status={run.status} />
+                            <span>{formatDate(run.completedAt ?? run.updatedAt)}</span>
+                          </div>
+                          <Link
+                            className="font-medium text-accent underline-offset-4 hover:underline"
+                            to={`/tasks/${props.taskId}/runs/${run.id}`}
+                          >
+                            Open run
+                          </Link>
+                        </div>
+                        {run.finalMessage || run.resultText || run.errorMessage ? (
+                          <p className="mt-2 text-sm leading-6 text-text-secondary">
+                            {run.finalMessage ?? run.resultText ?? run.errorMessage}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function FeedbackReplies(props: { agents: Agent[]; subtasks: TaskFeedbackThread["subtasks"] }) {
+  const replies = props.subtasks.flatMap((subtask) =>
+    subtask.replies.map((reply) => ({ ...reply, agentId: subtask.agentId })),
+  );
+
+  if (replies.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 grid gap-2">
+      {replies.map((reply) => (
+        <div className={readSubtaskReplyClassName(reply.status)} key={reply.run.id}>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+            <span>{readAgentName(props.agents, reply.agentId)}</span>
+            <StatusBadge status={reply.status} />
+            <span>{formatDate(reply.run.completedAt ?? reply.run.updatedAt)}</span>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            {reply.run.finalMessage ??
+              reply.run.resultText ??
+              reply.run.errorMessage ??
+              "No result yet."}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function TaskRunsSection(props: {
@@ -1286,15 +1612,6 @@ function TaskTodos(props: { task: Task }) {
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function DecisionSection(props: { title: string; description: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <h3 className="font-semibold text-text-primary">{props.title}</h3>
-      <p className="mt-2 text-sm leading-6 text-text-secondary">{props.description}</p>
     </div>
   );
 }
@@ -1853,18 +2170,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
   const prefill = getTaskCreationPrefill(location.state);
   const [form, setForm] = useState<FormState>(() => taskToForm(task, prefill));
   const selectedAgent = agents.find((agent) => agent.id === form.agentId);
-  const taskSkills = useMemo(() => {
-    if (!selectedAgent || !catalogQuery.data) return [];
-
-    const selectedSlugs = new Set([
-      ...selectedAgent.capabilities.builtInSkills,
-      ...(selectedAgent.capabilities.workspaceSkills ?? []),
-    ]);
-
-    return [...catalogQuery.data.builtInSkills, ...(catalogQuery.data.workspaceSkills ?? [])]
-      .filter((skill) => selectedSlugs.has(skill.slug))
-      .map((skill) => ({ slug: skill.slug, description: skill.description }));
-  }, [catalogQuery.data, selectedAgent]);
+  const taskSkills = useTaskComposerSkills(selectedAgent, catalogQuery.data);
 
   useMemo(() => {
     if (task) setForm(taskToForm(task));
@@ -2127,6 +2433,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
           : {
               ...current.prompt,
               mentionedFiles: [],
+              mentionedAgents: [],
               selectedSkill: null,
             },
     }));
@@ -2468,6 +2775,10 @@ function readBoardStatus(task: Task): BoardTaskStatus {
     : "backlog";
 }
 
+function readAgentName(agents: Agent[], agentId: string): string {
+  return agents.find((agent) => agent.id === agentId)?.name ?? agentId;
+}
+
 function readCardClassName(status: BoardTaskStatus, draggable: boolean): string {
   const emphasis =
     status === "ready_to_check"
@@ -2537,6 +2848,17 @@ function readResultClassName(status: BoardTaskStatus): string {
         : "border-border bg-background text-text-secondary";
 
   return `min-w-0 break-words [overflow-wrap:anywhere] rounded-lg border p-3 text-sm leading-6 ${emphasis}`;
+}
+
+function readSubtaskReplyClassName(status: string): string {
+  const emphasis =
+    status === "review"
+      ? "border-amber-400/30 bg-amber-400/10"
+      : status === "done" || status === "ready_to_check"
+        ? "border-accent/30 bg-accent/10"
+        : "border-border bg-surface";
+
+  return `rounded-lg border p-3 ${emphasis}`;
 }
 
 function formatTimingBadge(task: Task): string {
@@ -2643,7 +2965,7 @@ function RunHistory(props: {
             <StatusBadge status={run.status} />
             <span className="text-text-secondary">{formatToken(run.triggerSource)}</span>
           </div>
-          <p className="mt-2 truncate text-text-secondary">
+          <p className="mt-2 break-words text-text-secondary [overflow-wrap:anywhere]">
             {run.finalMessage ?? run.errorMessage ?? "No summary"}
           </p>
         </Link>
@@ -2656,7 +2978,9 @@ function TextBlock(props: { label: string; value: string }) {
   return (
     <div>
       <p className="text-xs uppercase tracking-wide text-text-secondary">{props.label}</p>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-text-primary">{props.value}</p>
+      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-text-primary [overflow-wrap:anywhere]">
+        {props.value}
+      </p>
     </div>
   );
 }

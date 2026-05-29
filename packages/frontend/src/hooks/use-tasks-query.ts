@@ -2,12 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
   CancelTaskRunInput,
+  CreateTaskFeedbackInput,
   CreateTaskInput,
   CreateTaskTemplateInput,
   ListTasksQuery,
+  QueueTaskInput,
   Task,
   TaskTemplateRunNowInput,
-  TriggerTaskInput,
   UpdateTaskContextInput,
   UpdateTaskInput,
   UploadTaskContextAttachmentInput,
@@ -18,6 +19,7 @@ import {
   archiveTask,
   cancelTaskRun,
   createTask,
+  createTaskFeedback,
   createTaskFromTemplate,
   createTaskTemplate,
   deleteTask,
@@ -33,8 +35,12 @@ import {
   listTaskTemplateTasks,
   listTaskTemplates,
   listTaskRuns,
+  listTaskFeedback,
+  listTaskSubtaskProgress,
+  listTaskSubtasks,
   listTasks,
   openTaskRunInChat,
+  previewTaskQueue,
   queueTask,
   restoreTask,
   runTaskTemplateNow,
@@ -98,6 +104,30 @@ export function useTaskRunsQuery(taskId?: string) {
     queryKey: queryKeys.taskRuns(taskId ?? "missing"),
     queryFn: () => listTaskRuns(taskId ?? ""),
     enabled: Boolean(taskId),
+  });
+}
+
+export function useTaskFeedbackQuery(taskId?: string) {
+  return useQuery({
+    queryKey: queryKeys.taskFeedback(taskId ?? "missing"),
+    queryFn: () => listTaskFeedback(taskId ?? ""),
+    enabled: Boolean(taskId),
+  });
+}
+
+export function useTaskSubtasksQuery(taskId?: string) {
+  return useQuery({
+    queryKey: queryKeys.taskSubtasks(taskId ?? "missing"),
+    queryFn: () => listTaskSubtasks(taskId ?? ""),
+    enabled: Boolean(taskId),
+  });
+}
+
+export function useTaskSubtaskProgressQuery(taskIds: string[]) {
+  return useQuery({
+    queryKey: queryKeys.taskSubtaskProgress(taskIds),
+    queryFn: () => listTaskSubtaskProgress(taskIds),
+    enabled: taskIds.length > 0,
   });
 }
 
@@ -193,6 +223,18 @@ export function useTaskMutations() {
         ]);
       },
     }),
+    createFeedback: useMutation({
+      mutationFn: ({ id, input }: { id: string; input: CreateTaskFeedbackInput }) =>
+        createTaskFeedback(id, input),
+      onSuccess: async (feedback, variables) => {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskFeedback(variables.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskSubtasks(variables.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(feedback.taskId) }),
+          queryClient.invalidateQueries({ queryKey: ["task-subtask-progress"] }),
+        ]);
+      },
+    }),
     duplicate: useMutation({
       mutationFn: duplicateTask,
       onSuccess: async (task) => {
@@ -210,17 +252,32 @@ export function useTaskMutations() {
       onSuccess: async () => invalidateTasks(),
     }),
     trigger: useMutation({
-      mutationFn: ({ id, input }: { id: string; input?: Partial<TriggerTaskInput> }) =>
-        queueTask(id, { triggerSource: "manual", ...input }),
+      mutationFn: ({
+        id,
+        input,
+      }: {
+        id: string;
+        input?: Partial<Omit<QueueTaskInput, "taskId">>;
+      }) => queueTask(id, { triggerSource: "manual", ...input }),
       onSuccess: async (run) => {
         queryClient.setQueryData(queryKeys.taskRun(run.taskId, run.id), run);
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: queryKeys.task(run.taskId) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(run.taskId) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.activeTaskRuns }),
+          queryClient.invalidateQueries({ queryKey: ["task-subtask-progress"] }),
           queryClient.invalidateQueries({ queryKey: ["tasks"] }),
         ]);
       },
+    }),
+    previewQueue: useMutation({
+      mutationFn: ({
+        id,
+        input,
+      }: {
+        id: string;
+        input?: Partial<Omit<QueueTaskInput, "taskId">>;
+      }) => previewTaskQueue(id, { triggerSource: "manual", ...input }),
     }),
     runTemplateNow: useMutation({
       mutationFn: ({ id, input }: { id: string; input?: TaskTemplateRunNowInput }) =>

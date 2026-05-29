@@ -6,12 +6,14 @@ import {
   cancelTaskRunInputSchema,
   createTaskTemplateInputSchema,
   createTaskInputSchema,
+  createTaskFeedbackInputSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
   queueTaskInputSchema,
-  taskCommentInputSchema,
-  taskCommentListSchema,
-  taskCommentSchema,
+  taskQueuePreviewInputSchema,
+  taskQueuePreviewSchema,
+  taskFeedbackThreadListSchema,
+  taskFeedbackThreadSchema,
   taskListSchema,
   taskRunListSchema,
   taskRunSchema,
@@ -20,11 +22,11 @@ import {
   taskSchema,
   taskSubtaskInputSchema,
   taskSubtaskListSchema,
+  taskSubtaskProgressListSchema,
   taskSubtaskSchema,
   taskTemplateListSchema,
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
-  updateTaskCommentInputSchema,
   updateTaskContextInputSchema,
   updateTaskInputSchema,
   updateTaskSubtaskInputSchema,
@@ -47,10 +49,6 @@ const taskIdParamsSchema = z.object({
 
 const taskRunParamsSchema = taskIdParamsSchema.extend({
   runId: z.string().min(1),
-});
-
-const taskCommentParamsSchema = taskIdParamsSchema.extend({
-  commentId: z.string().min(1),
 });
 
 const taskSubtaskParamsSchema = taskIdParamsSchema.extend({
@@ -470,58 +468,32 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   );
 
   app.get(
-    "/api/tasks/:id/comments",
+    "/api/tasks/:id/feedback",
     {
       schema: {
         params: taskIdParamsSchema,
         response: {
-          200: taskCommentListSchema,
+          200: taskFeedbackThreadListSchema,
         },
       },
     },
-    async (request) => service.listComments(request.params.id),
+    async (request) => service.listFeedback(request.params.id),
   );
 
   app.post(
-    "/api/tasks/:id/comments",
+    "/api/tasks/:id/feedback",
     {
       schema: {
         params: taskIdParamsSchema,
-        body: taskCommentInputSchema,
+        body: createTaskFeedbackInputSchema,
         response: {
-          201: taskCommentSchema,
+          201: taskFeedbackThreadSchema,
         },
       },
     },
     async (request, reply) => {
       reply.code(201);
-      return service.createComment(request.params.id, request.body);
-    },
-  );
-
-  app.patch(
-    "/api/tasks/:id/comments/:commentId",
-    {
-      schema: {
-        params: taskCommentParamsSchema,
-        body: updateTaskCommentInputSchema,
-        response: {
-          200: taskCommentSchema,
-        },
-      },
-    },
-    async (request) => {
-      const comment = await service.updateComment(
-        request.params.id,
-        request.params.commentId,
-        request.body,
-      );
-
-      if (!comment) {
-        throw new NotFoundError("Task comment not found.");
-      }
-
-      return comment;
+      return service.createFeedback(request.params.id, request.body);
     },
   );
 
@@ -647,6 +619,25 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   );
 
   app.get(
+    "/api/tasks/subtask-progress",
+    {
+      schema: {
+        querystring: z.object({ taskIds: z.string().optional().default("") }),
+        response: {
+          200: taskSubtaskProgressListSchema,
+        },
+      },
+    },
+    async (request) =>
+      service.listSubtaskProgress(
+        request.query.taskIds
+          .split(",")
+          .map((taskId) => taskId.trim())
+          .filter(Boolean),
+      ),
+  );
+
+  app.get(
     "/api/tasks/:id/runs",
     {
       schema: {
@@ -658,6 +649,20 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       },
     },
     async (request) => service.listRuns(request.params.id, request.query),
+  );
+
+  app.post(
+    "/api/tasks/:id/queue/preview",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: taskQueuePreviewInputSchema,
+        response: {
+          200: taskQueuePreviewSchema,
+        },
+      },
+    },
+    async (request) => executionService.preview(request.params.id, request.body),
   );
 
   app.post(

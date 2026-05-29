@@ -302,12 +302,6 @@ describe("createAgentService", () => {
               context: "chat",
             },
             {
-              name: "add_task_comment",
-              description:
-                "Add an operator-visible comment or follow-up note to a CommandsCenter task.",
-              context: "chat",
-            },
-            {
               name: "list_task_runs",
               description: "List recent runs for a CommandsCenter task.",
               context: "chat",

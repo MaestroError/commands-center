@@ -3,18 +3,17 @@ import { describe, expect, it } from "vitest";
 import {
   addTaskRunArtifactInputSchema,
   boardTaskStatusSchema,
+  createTaskFeedbackInputSchema,
   createTaskRunInputSchema,
   markTaskRunNeedsReviewInputSchema,
   queueTaskInputSchema,
   setTaskRunResultInputSchema,
-  taskCommentSchema,
-  taskCommentStatusSchema,
+  taskFeedbackThreadSchema,
   taskRunArtifactSchema,
   taskRunOutcomeSchema,
   taskRunTriggerSourceSchema,
   taskTemplateRunNowInputSchema,
   taskSubtaskSchema,
-  taskSubtaskStatusSchema,
   taskTemplateSchema,
 } from "../../src/schemas/tasks.js";
 
@@ -95,55 +94,63 @@ describe("task schemas", () => {
     });
   });
 
-  describe("task comments and subtasks", () => {
-    it("accepts task comments with included run metadata", () => {
+  describe("task feedback and subtasks", () => {
+    it("accepts task feedback with created subtasks", () => {
       expect(
-        taskCommentSchema.parse({
-          id: "comment-1",
+        taskFeedbackThreadSchema.parse({
+          id: "feedback-1",
           taskId: "task-1",
           body: "Please simplify the implementation.",
-          status: "included",
-          includedInRunId: "run-1",
+          targetAgentIds: ["agent-1"],
+          subtasks: [
+            {
+              id: "subtask-1",
+              taskId: "task-1",
+              feedbackId: "feedback-1",
+              agentId: "agent-1",
+              description: "Please simplify the implementation.",
+              status: "backlog",
+              replies: [],
+              createdAt: "2026-06-01T12:00:00.000Z",
+              updatedAt: "2026-06-01T12:00:00.000Z",
+            },
+          ],
           createdAt: "2026-06-01T12:00:00.000Z",
-          updatedAt: "2026-06-01T12:05:00.000Z",
         }),
       ).toMatchObject({
-        id: "comment-1",
-        status: "included",
-        includedInRunId: "run-1",
+        id: "feedback-1",
+        targetAgentIds: ["agent-1"],
       });
     });
 
-    it("rejects empty task comments", () => {
-      expect(() => taskCommentSchema.parse({ body: "" })).toThrow();
+    it("rejects empty task feedback", () => {
+      expect(() => createTaskFeedbackInputSchema.parse({ body: "" })).toThrow();
     });
 
-    it("accepts task comment statuses", () => {
-      expect(taskCommentStatusSchema.parse("open")).toBe("open");
-      expect(taskCommentStatusSchema.parse("resolved")).toBe("resolved");
+    it("rejects feedback delegated to more than one mentioned agent", () => {
+      expect(() =>
+        createTaskFeedbackInputSchema.parse({
+          body: "Please inspect this section.",
+          mentionedAgentIds: ["agent-1", "agent-2"],
+        }),
+      ).toThrow();
     });
 
-    it("accepts subtasks with lightweight status", () => {
+    it("accepts simple agent-assigned subtasks", () => {
       expect(
         taskSubtaskSchema.parse({
           id: "subtask-1",
           taskId: "task-1",
-          title: "Update tests",
+          feedbackId: "feedback-1",
+          agentId: "agent-1",
           description: "Add retry coverage.",
-          defaultAgentId: "agent-1",
-          status: "queued",
           createdAt: "2026-06-01T12:00:00.000Z",
           updatedAt: "2026-06-01T12:05:00.000Z",
         }),
       ).toMatchObject({
         id: "subtask-1",
-        title: "Update tests",
-        status: "queued",
+        agentId: "agent-1",
       });
-    });
-
-    it("accepts task subtask statuses", () => {
-      expect(taskSubtaskStatusSchema.parse("ready_to_check")).toBe("ready_to_check");
     });
   });
 

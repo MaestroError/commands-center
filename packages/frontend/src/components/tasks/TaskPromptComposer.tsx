@@ -9,13 +9,18 @@ type TaskPromptComposerProps = {
   value: TaskPromptValue;
   onChange: (value: TaskPromptValue) => void;
   agentId?: string;
+  fileSearchAgentId?: string | null;
+  agents?: { id: string; name: string }[];
   skills?: { slug: string; description?: string }[];
   disabled?: boolean;
+  label?: string;
+  placeholder?: string;
 };
 
 export function TaskPromptComposer(props: TaskPromptComposerProps) {
-  const { agentId, disabled, onChange, skills, value } = props;
-  const [activePopover, setActivePopover] = useState<"file" | "slash" | null>(null);
+  const { agentId, agents = [], disabled, fileSearchAgentId, onChange, skills, value } = props;
+  const effectiveFileSearchAgentId = fileSearchAgentId === undefined ? agentId : fileSearchAgentId;
+  const [activePopover, setActivePopover] = useState<"agent" | "file" | "slash" | null>(null);
   const [popoverQuery, setPopoverQuery] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popoverKeyHandlerRef = useRef<((event: React.KeyboardEvent) => boolean) | null>(null);
@@ -30,9 +35,17 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
     const beforeCursor = value.text.substring(0, cursorPosition);
     const hashMatch = beforeCursor.match(/#(\S*)$/);
 
-    if (hashMatch && agentId) {
+    if (hashMatch) {
       setActivePopover("file");
       setPopoverQuery(hashMatch[1] ?? "");
+      return;
+    }
+
+    const agentMatch = beforeCursor.match(/@(\S*)$/);
+
+    if (agentMatch && agents.length > 0) {
+      setActivePopover("agent");
+      setPopoverQuery(agentMatch[1] ?? "");
       return;
     }
 
@@ -45,7 +58,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
     }
 
     setActivePopover(null);
-  }, [agentId, value.text]);
+  }, [agents.length, value.text]);
 
   const updateValue = useCallback(
     (patch: Partial<TaskPromptValue>) => onChange({ ...valueRef.current, ...patch }),
@@ -146,6 +159,33 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
     [getCursorPosition, setCursorPosition, updateValue],
   );
 
+  const handleAgentMentionSelect = useCallback(
+    (agent: { id: string; name: string }) => {
+      const currentValue = valueRef.current;
+      const mentionedAgents = [agent];
+      const cursorPosition = getCursorPosition();
+      const beforeCursor = currentValue.text.substring(0, cursorPosition);
+      const afterCursor = currentValue.text.substring(cursorPosition);
+      const atIndex = beforeCursor.lastIndexOf("@");
+
+      if (atIndex !== -1) {
+        updateValue({
+          mentionedAgents,
+          text: beforeCursor.substring(0, atIndex) + afterCursor,
+        });
+        setTimeout(() => {
+          setCursorPosition(atIndex);
+          textareaRef.current?.focus();
+        }, 0);
+      } else {
+        updateValue({ mentionedAgents });
+      }
+
+      setActivePopover(null);
+    },
+    [getCursorPosition, setCursorPosition, updateValue],
+  );
+
   const handleTextChange = useCallback(
     (event: React.ChangeEvent<HTMLTextAreaElement>) => updateValue({ text: event.target.value }),
     [updateValue],
@@ -198,14 +238,23 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
     [updateValue, value.mentionedFiles],
   );
 
+  const handleRemoveAgentMention = useCallback(
+    (id: string) => {
+      updateValue({
+        mentionedAgents: (value.mentionedAgents ?? []).filter((agent) => agent.id !== id),
+      });
+    },
+    [updateValue, value.mentionedAgents],
+  );
+
   const activateShortcut = useCallback(
-    (shortcut: "#" | "/") => {
+    (shortcut: "#" | "/" | "@") => {
       if (disabled) {
         return;
       }
 
       updateValue({ text: shortcut });
-      setActivePopover(shortcut === "#" ? "file" : "slash");
+      setActivePopover(shortcut === "#" ? "file" : shortcut === "@" ? "agent" : "slash");
       setPopoverQuery("");
 
       setTimeout(() => {
@@ -216,9 +265,15 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
     [disabled, updateValue],
   );
 
-  const placeholder = value.selectedSkill
-    ? `Prompt for /${value.selectedSkill.slug}...`
-    : 'Describe the task prompt... Use "#" for files and "/" for skills';
+  const placeholder =
+    props.placeholder ??
+    (value.selectedSkill
+      ? `Prompt for /${value.selectedSkill.slug}...`
+      : 'Describe the task prompt... Use "#" for files, "/" for skills, and "@" for agents');
+  const mentionedAgents = value.mentionedAgents ?? [];
+  const agentOptions = agents.filter((agent) =>
+    agent.name.toLowerCase().includes(popoverQuery.toLowerCase()),
+  );
 
   return (
     <div
@@ -263,8 +318,27 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
               </button>
             </span>
           ))}
+          {mentionedAgents.map((agent) => (
+            <span
+              className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-1 text-xs font-medium text-emerald-400"
+              key={agent.id}
+              title={agent.name}
+            >
+              @{agent.name}
+              <button
+                className="ml-0.5 rounded-full p-0.5 hover:bg-emerald-500/20"
+                onClick={() => handleRemoveAgentMention(agent.id)}
+                type="button"
+              >
+                x
+              </button>
+            </span>
+          ))}
         </div>
-        {value.text.length === 0 && !value.selectedSkill && value.mentionedFiles.length === 0 ? (
+        {value.text.length === 0 &&
+        !value.selectedSkill &&
+        value.mentionedFiles.length === 0 &&
+        mentionedAgents.length === 0 ? (
           <div className="hidden items-center gap-2 text-[11px] text-text-secondary lg:flex">
             <button
               className="rounded-full border border-border px-2 py-0.5 font-mono transition hover:border-accent hover:text-text-primary"
@@ -282,12 +356,20 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
             >
               / skills
             </button>
+            <button
+              className="rounded-full border border-border px-2 py-0.5 font-mono transition hover:border-accent hover:text-text-primary"
+              disabled={disabled || agents.length === 0}
+              onClick={() => activateShortcut("@")}
+              type="button"
+            >
+              @ agents
+            </button>
           </div>
         ) : null}
       </div>
       <div className="relative p-3">
         <textarea
-          aria-label="Task prompt"
+          aria-label={props.label ?? "Task prompt"}
           className="max-h-52 min-h-32 w-full resize-y bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary disabled:cursor-not-allowed disabled:text-text-secondary disabled:placeholder:text-text-secondary/70"
           disabled={disabled}
           onChange={handleTextChange}
@@ -296,9 +378,19 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
           ref={textareaRef}
           value={value.text}
         />
-        {activePopover === "file" && agentId ? (
+        {activePopover === "agent" ? (
+          <AgentMentionPopover
+            agents={agentOptions}
+            onClose={() => setActivePopover(null)}
+            onSelect={handleAgentMentionSelect}
+            registerKeyHandler={(handler) => {
+              popoverKeyHandlerRef.current = handler;
+            }}
+          />
+        ) : null}
+        {activePopover === "file" ? (
           <FileMentionPopover
-            agentId={agentId}
+            agentId={effectiveFileSearchAgentId ?? undefined}
             onClose={() => setActivePopover(null)}
             onKeyDown={() => undefined}
             onSelect={handleFileMentionSelect}
@@ -322,6 +414,72 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
           />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function AgentMentionPopover(props: {
+  agents: { id: string; name: string }[];
+  onClose: () => void;
+  onSelect: (agent: { id: string; name: string }) => void;
+  registerKeyHandler: (handler: (event: React.KeyboardEvent) => boolean) => void;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeOption = props.agents[activeIndex];
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [props.agents]);
+
+  useEffect(() => {
+    props.registerKeyHandler((event) => {
+      if (props.agents.length === 0) return false;
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveIndex((current) => (current + 1) % props.agents.length);
+        return true;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex((current) => (current - 1 + props.agents.length) % props.agents.length);
+        return true;
+      }
+
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        if (activeOption) props.onSelect(activeOption);
+        return true;
+      }
+
+      return false;
+    });
+  }, [activeOption, props]);
+
+  return (
+    <div className="absolute left-3 right-3 top-3 z-20 max-h-56 overflow-auto rounded-xl border border-border bg-surface-elevated p-2 shadow-xl">
+      {props.agents.length === 0 ? (
+        <p className="px-3 py-2 text-sm text-text-secondary">No agents match.</p>
+      ) : null}
+      {props.agents.map((agent, index) => (
+        <button
+          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
+            index === activeIndex
+              ? "bg-accent text-accent-contrast"
+              : "text-text-primary hover:bg-surface"
+          }`}
+          key={agent.id}
+          onClick={() => props.onSelect(agent)}
+          onMouseEnter={() => setActiveIndex(index)}
+          type="button"
+        >
+          <span>@{agent.name}</span>
+        </button>
+      ))}
+      <button className="sr-only" onClick={props.onClose} type="button">
+        Close agent mentions
+      </button>
     </div>
   );
 }

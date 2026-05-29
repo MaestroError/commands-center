@@ -94,6 +94,24 @@ export const tasks = sqliteTable(
   ],
 );
 
+export const task_feedback = sqliteTable(
+  "task_feedback",
+  {
+    id: text("id").primaryKey(),
+    task_id: text("task_id")
+      .notNull()
+      .references(() => tasks.id),
+    body: text("body").notNull(),
+    created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    deleted_at: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("task_feedback_task_id_idx").on(table.task_id),
+    index("task_feedback_deleted_at_idx").on(table.deleted_at),
+  ],
+);
+
 export const task_subtasks = sqliteTable(
   "task_subtasks",
   {
@@ -101,43 +119,20 @@ export const task_subtasks = sqliteTable(
     task_id: text("task_id")
       .notNull()
       .references(() => tasks.id),
-    default_agent_id: text("default_agent_id").references(() => agents.id),
-    title: text("title").notNull(),
+    feedback_id: text("feedback_id").references(() => task_feedback.id),
+    agent_id: text("agent_id")
+      .notNull()
+      .references(() => agents.id),
     description: text("description").notNull(),
-    status: text("status").notNull(),
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
-    completed_at: integer("completed_at", { mode: "timestamp_ms" }),
     deleted_at: integer("deleted_at", { mode: "timestamp_ms" }),
   },
   (table) => [
     index("task_subtasks_task_id_idx").on(table.task_id),
-    index("task_subtasks_default_agent_id_idx").on(table.default_agent_id),
-    index("task_subtasks_status_idx").on(table.status),
+    index("task_subtasks_feedback_id_idx").on(table.feedback_id),
+    index("task_subtasks_agent_id_idx").on(table.agent_id),
     index("task_subtasks_deleted_at_idx").on(table.deleted_at),
-  ],
-);
-
-export const task_comments = sqliteTable(
-  "task_comments",
-  {
-    id: text("id").primaryKey(),
-    task_id: text("task_id")
-      .notNull()
-      .references(() => tasks.id),
-    body: text("body").notNull(),
-    status: text("status").notNull(),
-    included_in_run_id: text("included_in_run_id"),
-    created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
-    resolved_at: integer("resolved_at", { mode: "timestamp_ms" }),
-    deleted_at: integer("deleted_at", { mode: "timestamp_ms" }),
-  },
-  (table) => [
-    index("task_comments_task_id_idx").on(table.task_id),
-    index("task_comments_status_idx").on(table.status),
-    index("task_comments_included_in_run_id_idx").on(table.included_in_run_id),
-    index("task_comments_deleted_at_idx").on(table.deleted_at),
   ],
 );
 

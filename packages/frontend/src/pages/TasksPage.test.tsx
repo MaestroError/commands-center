@@ -9,7 +9,9 @@ import type {
   AgentCatalog,
   ConversationDetail,
   Task,
+  TaskFeedbackThread,
   TaskRun,
+  TaskSubtaskProgress,
   TaskTemplate,
 } from "@cc/shared/schemas";
 
@@ -37,6 +39,13 @@ const agent: Agent = {
   },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const reviewerAgent: Agent = {
+  ...agent,
+  id: "agent-2",
+  slug: "reviewer",
+  name: "Reviewer",
 };
 
 const task: Task = {
@@ -135,6 +144,57 @@ const run: TaskRun = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
+const feedbackThread: TaskFeedbackThread = {
+  id: "feedback-1",
+  taskId: "task-1",
+  body: "Please retest the release flow.",
+  targetAgentIds: ["agent-1"],
+  subtasks: [
+    {
+      id: "subtask-1",
+      taskId: "task-1",
+      feedbackId: "feedback-1",
+      agentId: "agent-1",
+      description: "Please retest the release flow.",
+      status: "review",
+      latestRun: {
+        ...run,
+        id: "run-subtask-1",
+        subtaskId: "subtask-1",
+        status: "failed",
+        finalMessage: undefined,
+        resultText: undefined,
+        errorMessage: "Tests failed.",
+      },
+      replies: [
+        {
+          run: {
+            ...run,
+            id: "run-subtask-1",
+            subtaskId: "subtask-1",
+            status: "failed",
+            finalMessage: undefined,
+            resultText: undefined,
+            errorMessage: "Tests failed.",
+          },
+          status: "review",
+        },
+      ],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ],
+  createdAt: "2026-01-01T00:00:00.000Z",
+};
+
+const subtaskProgress: TaskSubtaskProgress = {
+  taskId: "task-1",
+  total: 2,
+  completed: 1,
+  active: 1,
+  review: 0,
+};
+
 const conversation: ConversationDetail = {
   id: "conv-1",
   agentId: "agent-1",
@@ -227,6 +287,8 @@ type MockFetchOptions = {
   archivedTasksPayload?: Task[];
   templatesPayload?: TaskTemplate[];
   templateTasksPayload?: Task[];
+  feedbackPayload?: TaskFeedbackThread[];
+  subtaskProgressPayload?: TaskSubtaskProgress[];
 };
 
 beforeAll(() => {
@@ -279,6 +341,14 @@ describe("TasksPage", () => {
     });
   });
 
+  it("shows subtask progress on board cards", async () => {
+    mockFetch({ subtaskProgressPayload: [subtaskProgress] });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(await screen.findByText("Subtasks: 1/2 active 1")).toBeInTheDocument();
+  });
+
   it("keeps ready-to-check cards constrained inside the board column", async () => {
     const finalMessage = "ReadyToCheckResultWithoutNaturalBreaks".repeat(4);
     mockFetch({
@@ -316,6 +386,127 @@ describe("TasksPage", () => {
     expect(
       screen.queryByRole("complementary", { name: "Task detail panel" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("previews queue context in the board panel", async () => {
+    const fetchMock = mockFetch({ feedbackPayload: [feedbackThread] });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("button", { name: "Preview context" }));
+
+    expect(await screen.findByText("Next run context preview")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show" }));
+    expect(screen.getByText("Preview prompt for Ship release")).toBeInTheDocument();
+    expect(screen.getByText(/Please retest the release flow/)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tasks/task-1/queue/preview",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("renders feedback replies as comments without subtask run actions", async () => {
+    mockFetch({ feedbackPayload: [feedbackThread] });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("tab", { name: "Feedback" }));
+
+    expect(await screen.findByText("Please retest the release flow.")).toBeInTheDocument();
+    expect(screen.getByText("Tests failed.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry subtask" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Inspect run" })).not.toBeInTheDocument();
+  });
+
+  it("opens subtask runs from the subtask tab", async () => {
+    mockFetch({
+      feedbackPayload: [feedbackThread],
+      runsPayload: feedbackThread.subtasks[0]?.latestRun
+        ? [feedbackThread.subtasks[0].latestRun]
+        : [],
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("tab", { name: "Subtasks" }));
+
+    expect(await screen.findByText("Please retest the release flow.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open run" })).toHaveAttribute(
+      "href",
+      "/tasks/task-1/runs/run-subtask-1",
+    );
+    expect(screen.queryByRole("button", { name: "Retry subtask" })).not.toBeInTheDocument();
+  });
+
+  it("submits feedback with file, skill, and agent mentions from the board panel", async () => {
+    const fetchMock = mockFetch({
+      agentsPayload: [
+        {
+          ...agent,
+          capabilities: { ...agent.capabilities, builtInSkills: ["screen-requirements-writing"] },
+        },
+        reviewerAgent,
+      ],
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("tab", { name: "Feedback" }));
+
+    const feedbackInput = await screen.findByLabelText("Feedback");
+    await user.type(feedbackInput, "/screen");
+    await user.click(await screen.findByRole("button", { name: /\/screen-requirements-writing/i }));
+    await user.type(feedbackInput, "#PRD");
+    await user.click(await screen.findByRole("button", { name: /PRD\.md/i }));
+    await user.type(feedbackInput, "Please coordinate with @review");
+    await user.click(await screen.findByRole("button", { name: "@Reviewer" }));
+    await user.click(screen.getByRole("button", { name: "Add feedback" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/search/files?query=PRD", { method: "GET" });
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        "/api/agents/agent-1/workspace/find/file?query=PRD",
+        { method: "GET" },
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/feedback",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            body: 'Use skill "screen-requirements-writing". #PRD.md Please coordinate with',
+            mentionedAgentIds: ["agent-2"],
+          }),
+        }),
+      );
+    });
+  });
+
+  it("searches mentioned agent files after feedback is delegated", async () => {
+    const fetchMock = mockFetch({ agentsPayload: [agent, reviewerAgent] });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("tab", { name: "Feedback" }));
+
+    const feedbackInput = await screen.findByLabelText("Feedback");
+    await user.type(feedbackInput, "Delegate to @review");
+    await user.click(await screen.findByRole("button", { name: "@Reviewer" }));
+    await user.type(feedbackInput, " #REVIEW");
+
+    expect(await screen.findByRole("button", { name: /REVIEW\.md/i })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/api/agents/agent-2/workspace/find/file?query=REVIEW", {
+      method: "GET",
+    });
   });
 
   it("updates persistent task context from the context tab", async () => {
@@ -889,6 +1080,7 @@ describe("TasksPage", () => {
         prompt: {
           text: "Update requirements",
           mentionedFiles: [{ path: "PRD.md", filename: "PRD.md" }],
+          mentionedAgents: [],
           selectedSkill: {
             slug: "screen-requirements-writing",
             description: "Write screen requirements",
@@ -944,6 +1136,7 @@ describe("TasksPage", () => {
         prompt: {
           text: "Update requirements",
           mentionedFiles: [{ path: "PRD.md", filename: "PRD.md" }],
+          mentionedAgents: [],
           selectedSkill: {
             slug: "screen-requirements-writing",
             description: "Write screen requirements",
@@ -1463,14 +1656,24 @@ function mockFetch(options: MockFetchOptions = {}) {
   const archivedTasksPayload = options.archivedTasksPayload ?? [];
   const templatesPayload = options.templatesPayload ?? [];
   const templateTasksPayload = options.templateTasksPayload ?? [generatedTask];
+  const feedbackPayload = options.feedbackPayload ?? [];
+  const subtaskProgressPayload = options.subtaskProgressPayload ?? [];
 
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : input.toString();
 
     if (url === "/api/agents") return Promise.resolve(jsonResponse(200, agentsPayload));
     if (url === "/api/agents/catalog") return Promise.resolve(jsonResponse(200, catalogPayload));
+    if (url.startsWith("/api/search/files")) {
+      return Promise.resolve(
+        jsonResponse(200, { nameMatches: [{ path: "PRD.md" }], contentMatches: [] }),
+      );
+    }
     if (url.startsWith("/api/agents/agent-1/workspace/find/file")) {
       return Promise.resolve(jsonResponse(200, ["PRD.md"]));
+    }
+    if (url.startsWith("/api/agents/agent-2/workspace/find/file")) {
+      return Promise.resolve(jsonResponse(200, ["REVIEW.md"]));
     }
     if (url.startsWith("/api/agents/agent-1/workspace/file")) {
       return Promise.resolve(
@@ -1505,6 +1708,9 @@ function mockFetch(options: MockFetchOptions = {}) {
     }
     if (url === "/api/tasks/runs/active")
       return Promise.resolve(jsonResponse(200, activeRunsPayload));
+    if (url.startsWith("/api/tasks/subtask-progress")) {
+      return Promise.resolve(jsonResponse(200, subtaskProgressPayload));
+    }
     if (url === "/api/tasks") {
       const method = input instanceof Request ? input.method : init?.method;
       return Promise.resolve(
@@ -1527,6 +1733,30 @@ function mockFetch(options: MockFetchOptions = {}) {
       );
     }
     if (url === "/api/tasks/task-1/context") return Promise.resolve(jsonResponse(200, taskPayload));
+    if (url === "/api/tasks/task-1/feedback") {
+      const method = input instanceof Request ? input.method : init?.method;
+      return Promise.resolve(
+        method === "POST" ? jsonResponse(201, feedbackThread) : jsonResponse(200, feedbackPayload),
+      );
+    }
+    if (url === "/api/tasks/task-1/subtasks") {
+      return Promise.resolve(
+        jsonResponse(
+          200,
+          feedbackPayload.flatMap((entry) =>
+            entry.subtasks.map((subtask) => ({
+              id: subtask.id,
+              taskId: subtask.taskId,
+              feedbackId: subtask.feedbackId,
+              agentId: subtask.agentId,
+              description: subtask.description,
+              createdAt: subtask.createdAt,
+              updatedAt: subtask.updatedAt,
+            })),
+          ),
+        ),
+      );
+    }
     if (url === "/api/tasks/task-1") return Promise.resolve(jsonResponse(200, taskPayload));
     if (url === "/api/tasks/template-1") return Promise.resolve(jsonResponse(204, null));
     if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, runsPayload));
@@ -1551,6 +1781,18 @@ function mockFetch(options: MockFetchOptions = {}) {
       );
     }
     if (url === "/api/tasks/task-1/queue") return Promise.resolve(jsonResponse(200, run));
+    if (url === "/api/tasks/task-1/queue/preview") {
+      return Promise.resolve(
+        jsonResponse(200, {
+          taskId: "task-1",
+          subtask: feedbackThread.subtasks[0],
+          feedback: feedbackThread,
+          runAgentId: "agent-1",
+          renderedPrompt: "Preview prompt for Ship release",
+          renderedContext: { feedback: { body: feedbackThread.body } },
+        }),
+      );
+    }
     if (url === "/api/tasks/task-1/accept") return Promise.resolve(jsonResponse(200, taskPayload));
     if (url === "/api/tasks/task-1/runs/run-1/cancel")
       return Promise.resolve(jsonResponse(200, { ...run, status: "cancelled" }));

@@ -5,7 +5,6 @@ import {
   createTaskInputSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
-  taskCommentSchema,
   appendTaskContextInputSchema,
   taskContextSchema,
   taskListSchema,
@@ -56,10 +55,6 @@ const appendTaskContextToolInputSchema = taskIdInputSchema.merge(appendTaskConte
 const scheduleTaskToolInputSchema = taskIdInputSchema.extend({
   scheduledAt: z.string().datetime(),
   dueAt: z.string().datetime().optional(),
-});
-
-const addTaskCommentToolInputSchema = taskIdInputSchema.extend({
-  body: z.string().trim().min(1),
 });
 
 const getTaskRunInputSchema = taskIdInputSchema.extend({
@@ -116,12 +111,6 @@ export const queueTaskToolMetadata = {
 export const scheduleTaskToolMetadata = {
   name: "schedule_task",
   description: "Schedule an existing CommandsCenter task for later execution.",
-  context: "chat",
-} as const;
-
-export const addTaskCommentToolMetadata = {
-  name: "add_task_comment",
-  description: "Add an operator-visible comment or follow-up note to a CommandsCenter task.",
   context: "chat",
 } as const;
 
@@ -288,30 +277,6 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
 
           return success("Task scheduled.", taskSchema.parse(task));
         }, "Failed to schedule task."),
-    },
-    {
-      name: addTaskCommentToolMetadata.name,
-      description: addTaskCommentToolMetadata.description,
-      context: addTaskCommentToolMetadata.context,
-      inputSchema: addTaskCommentToolInputSchema,
-      outputSchema: taskCommentSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
-        executeTool(async () => {
-          const parsed = addTaskCommentToolInputSchema.parse(args);
-          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
-
-          await confirmMutation(options, {
-            agentId,
-            title: "Add task comment",
-            description: `Add a comment to task '${parsed.taskId}'.`,
-            metadata: { taskId: parsed.taskId },
-          });
-
-          const comment = await options.taskService.createComment(parsed.taskId, {
-            body: parsed.body,
-          });
-          return success("Task comment added.", comment);
-        }, "Failed to add task comment."),
     },
     {
       name: listTaskRunsToolMetadata.name,

@@ -13,9 +13,9 @@ import {
   queueTaskInputSchema,
   recurringTaskScheduleSchema,
   setTaskRunResultInputSchema,
-  taskCommentInputSchema,
-  taskCommentListSchema,
-  taskCommentSchema,
+  createTaskFeedbackInputSchema,
+  taskFeedbackThreadListSchema,
+  taskFeedbackThreadSchema,
   taskContextInputSchema,
   taskContextSchema,
   taskListSchema,
@@ -27,12 +27,12 @@ import {
   taskSchema,
   taskSubtaskInputSchema,
   taskSubtaskListSchema,
+  taskSubtaskProgressListSchema,
   taskSubtaskSchema,
   taskTemplateListSchema,
   taskTemplateSchema,
   taskTodoInputSchema,
   taskTodoSchema,
-  updateTaskCommentInputSchema,
   updateTaskInputSchema,
   updateTaskRunInputSchema,
   updateTaskSubtaskInputSchema,
@@ -45,16 +45,17 @@ import {
   type ListTasksQuery,
   type QueueTaskInput,
   type Task,
-  type TaskComment,
   type TaskContext,
+  type TaskFeedbackThread,
   type TaskRun,
   type TaskRunStatus,
   type TaskSchedule,
   type TaskSubtask,
+  type TaskSubtaskDerivedStatus,
+  type TaskSubtaskProgress,
   type TaskTemplate,
   type TaskStatus,
   type TaskTodo,
-  type UpdateTaskCommentInput,
   type UpdateTaskInput,
   type UpdateTaskRunInput,
   type UpdateTaskSubtaskInput,
@@ -63,7 +64,7 @@ import {
 import type { AppDb } from "../db/client.js";
 import { createId, now } from "../db/ids.js";
 import {
-  task_comments,
+  task_feedback,
   task_runs,
   task_subtasks,
   task_templates,
@@ -535,87 +536,96 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return mapTask(row);
     },
 
-    async listComments(taskId: string): Promise<TaskComment[]> {
+    async listFeedback(taskId: string): Promise<TaskFeedbackThread[]> {
       await requireTask(taskId, { includeArchived: true });
-      const rows = await options.db.query.task_comments.findMany({
+      const rows = await options.db.query.task_feedback.findMany({
         where: (table, operators) =>
           operators.and(operators.eq(table.task_id, taskId), operators.isNull(table.deleted_at)),
         orderBy: (table, operators) => [operators.asc(table.created_at)],
       });
+      const subtasks = await this.listSubtasks(taskId);
+      const runs = await this.listRuns(taskId);
 
-      return taskCommentListSchema.parse(rows.map(mapTaskComment));
+      return taskFeedbackThreadListSchema.parse(
+        rows.map((row) =>
+          taskFeedbackThreadSchema.parse({
+            id: row.id,
+            taskId: row.task_id,
+            body: row.body,
+            targetAgentIds: subtasks
+              .filter((subtask) => subtask.feedbackId === row.id)
+              .map((subtask) => subtask.agentId),
+            subtasks: subtasks
+              .filter((subtask) => subtask.feedbackId === row.id)
+              .map((subtask) => mapSubtaskDetail(subtask, runs)),
+            createdAt: row.created_at.toISOString(),
+          }),
+        ),
+      );
     },
 
-    async createComment(taskId: string, input: unknown): Promise<TaskComment> {
-      await requireTask(taskId, { includeArchived: true });
-      const parsed = taskCommentInputSchema.parse(input);
+    async createFeedback(taskId: string, input: unknown): Promise<TaskFeedbackThread> {
+      const task = await requireTask(taskId, { includeArchived: true });
+      const parsed = createTaskFeedbackInputSchema.parse(input);
+      const targetAgentIds =
+        parsed.mentionedAgentIds.length > 0
+          ? parsed.mentionedAgentIds
+          : [task.default_agent_id ?? task.agent_id];
+
+      await Promise.all(targetAgentIds.map((agentId) => requireActiveAgent(agentId)));
+
       const timestamp = now();
-      const [row] = await options.db
-        .insert(task_comments)
-        .values({
-          id: createId(),
-          task_id: taskId,
-          body: parsed.body,
-          status: parsed.status,
-          included_in_run_id: null,
-          created_at: timestamp,
-          updated_at: timestamp,
-          resolved_at: parsed.status === "resolved" ? timestamp : null,
-          deleted_at: null,
-        })
-        .returning();
+      const feedbackId = createId();
+      const rows = options.db.transaction((tx) => {
+        const feedback = tx
+          .insert(task_feedback)
+          .values({
+            id: feedbackId,
+            task_id: task.id,
+            body: parsed.body,
+            created_at: timestamp,
+            updated_at: timestamp,
+            deleted_at: null,
+          })
+          .returning()
+          .get();
 
-      if (!row) {
-        throw new Error("Failed to create task comment record.");
-      }
+        if (!feedback) {
+          throw new Error("Failed to create task feedback record.");
+        }
 
-      return mapTaskComment(row);
-    },
+        return targetAgentIds.map((agentId) => {
+          const subtask = tx
+            .insert(task_subtasks)
+            .values({
+              id: createId(),
+              task_id: task.id,
+              feedback_id: feedback.id,
+              agent_id: agentId,
+              description: parsed.body,
+              created_at: timestamp,
+              updated_at: timestamp,
+              deleted_at: null,
+            })
+            .returning()
+            .get();
 
-    async updateComment(
-      taskId: string,
-      commentId: string,
-      input: UpdateTaskCommentInput,
-    ): Promise<TaskComment | undefined> {
-      await requireTask(taskId, { includeArchived: true });
-      const parsed = updateTaskCommentInputSchema.parse(input);
-      const existing = await options.db.query.task_comments.findFirst({
-        where: (table, operators) =>
-          operators.and(
-            operators.eq(table.id, commentId),
-            operators.eq(table.task_id, taskId),
-            operators.isNull(table.deleted_at),
-          ),
+          if (!subtask) {
+            throw new Error("Failed to create task subtask record.");
+          }
+
+          return subtask;
+        });
       });
 
-      if (!existing) {
-        return undefined;
-      }
-
-      const timestamp = now();
-      const status = parsed.status ?? existing.status;
-      const [row] = await options.db
-        .update(task_comments)
-        .set({
-          body: parsed.body ?? existing.body,
-          status,
-          resolved_at: status === "resolved" ? (existing.resolved_at ?? timestamp) : null,
-          updated_at: timestamp,
-        })
-        .where(
-          and(
-            eq(task_comments.id, commentId),
-            eq(task_comments.task_id, taskId),
-            isNull(task_comments.deleted_at),
-          ),
-        )
-        .returning();
-
-      if (!row) {
-        throw new Error("Failed to update task comment record.");
-      }
-
-      return mapTaskComment(row);
+      return taskFeedbackThreadSchema.parse({
+        id: feedbackId,
+        taskId: task.id,
+        body: parsed.body,
+        targetAgentIds,
+        subtasks: rows.map((row) => mapSubtaskDetail(mapTaskSubtask(row), [])),
+        createdAt: timestamp.toISOString(),
+      });
     },
 
     async listSubtasks(taskId: string): Promise<TaskSubtask[]> {
@@ -629,13 +639,52 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return taskSubtaskListSchema.parse(rows.map(mapTaskSubtask));
     },
 
+    async listSubtaskProgress(taskIds: string[]): Promise<TaskSubtaskProgress[]> {
+      const uniqueTaskIds = Array.from(new Set(taskIds.filter(Boolean)));
+
+      if (uniqueTaskIds.length === 0) {
+        return [];
+      }
+
+      const [subtaskRows, runRows] = await Promise.all([
+        options.db.query.task_subtasks.findMany({
+          where: (table, operators) =>
+            operators.and(
+              operators.inArray(table.task_id, uniqueTaskIds),
+              operators.isNull(table.deleted_at),
+            ),
+          orderBy: (table, operators) => [operators.asc(table.created_at)],
+        }),
+        options.db.query.task_runs.findMany({
+          where: (table, operators) => operators.inArray(table.task_id, uniqueTaskIds),
+          orderBy: (table, operators) => [operators.desc(table.created_at)],
+        }),
+      ]);
+      const runs = runRows.map(mapTaskRun);
+
+      return taskSubtaskProgressListSchema.parse(
+        uniqueTaskIds.map((taskId) => {
+          const taskSubtasks = subtaskRows
+            .filter((subtask) => subtask.task_id === taskId)
+            .map(mapTaskSubtask);
+          const statuses = taskSubtasks.map((subtask) => deriveSubtaskStatus(subtask, runs));
+
+          return {
+            taskId,
+            total: taskSubtasks.length,
+            completed: statuses.filter((status) => status === "done").length,
+            active: statuses.filter((status) => status === "queued" || status === "running").length,
+            review: statuses.filter((status) => status === "review").length,
+          };
+        }),
+      );
+    },
+
     async createSubtask(taskId: string, input: unknown): Promise<TaskSubtask> {
       await requireTask(taskId, { includeArchived: true });
       const parsed = taskSubtaskInputSchema.parse(input);
 
-      if (parsed.defaultAgentId) {
-        await requireActiveAgent(parsed.defaultAgentId);
-      }
+      await requireActiveAgent(parsed.agentId);
 
       const timestamp = now();
       const [row] = await options.db
@@ -643,13 +692,11 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         .values({
           id: createId(),
           task_id: taskId,
-          default_agent_id: parsed.defaultAgentId ?? null,
-          title: parsed.title,
+          feedback_id: null,
+          agent_id: parsed.agentId,
           description: parsed.description,
-          status: parsed.status,
           created_at: timestamp,
           updated_at: timestamp,
-          completed_at: parsed.status === "done" ? timestamp : null,
           deleted_at: null,
         })
         .returning();
@@ -669,8 +716,8 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       await requireTask(taskId, { includeArchived: true });
       const parsed = updateTaskSubtaskInputSchema.parse(input);
 
-      if (parsed.defaultAgentId) {
-        await requireActiveAgent(parsed.defaultAgentId);
+      if (parsed.agentId) {
+        await requireActiveAgent(parsed.agentId);
       }
 
       const existing = await options.db.query.task_subtasks.findFirst({
@@ -687,15 +734,11 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       }
 
       const timestamp = now();
-      const status = parsed.status ?? existing.status;
       const [row] = await options.db
         .update(task_subtasks)
         .set({
-          title: parsed.title ?? existing.title,
           description: parsed.description ?? existing.description,
-          default_agent_id: parsed.defaultAgentId ?? existing.default_agent_id,
-          status,
-          completed_at: status === "done" ? (existing.completed_at ?? timestamp) : null,
+          agent_id: parsed.agentId ?? existing.agent_id,
           updated_at: timestamp,
         })
         .where(
@@ -1094,11 +1137,26 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         throw new ConflictError("Task already has an active run.", { runId: activeRun.id });
       }
 
+      const subtask = parsed.subtaskId
+        ? await options.db.query.task_subtasks.findFirst({
+            where: (table, operators) =>
+              operators.and(
+                operators.eq(table.id, parsed.subtaskId ?? ""),
+                operators.eq(table.task_id, task.id),
+                operators.isNull(table.deleted_at),
+              ),
+          })
+        : undefined;
+
+      if (parsed.subtaskId && !subtask) {
+        throw new NotFoundError("Task subtask not found.");
+      }
+
       const run = await this.createRun({
         id: input.id,
         taskId: task.id,
         subtaskId: parsed.subtaskId,
-        agentId: parsed.agentId ?? task.default_agent_id ?? task.agent_id,
+        agentId: parsed.agentId ?? subtask?.agent_id ?? task.default_agent_id ?? task.agent_id,
         status: "queued",
         triggerSource: parsed.triggerSource,
         context: input.context,
@@ -1349,7 +1407,9 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
   }
 
   async function applyTaskStatusForTerminalRun(run: TaskRun): Promise<void> {
-    const status = getTaskStatusAfterTerminalRun(run);
+    const status = run.subtaskId
+      ? await getTaskStatusAfterTerminalSubtaskRun(run)
+      : getTaskStatusAfterTerminalRun(run);
 
     if (!status) {
       return;
@@ -1366,6 +1426,46 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         updated_at: timestamp,
       })
       .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)));
+  }
+
+  async function getTaskStatusAfterTerminalSubtaskRun(
+    run: TaskRun,
+  ): Promise<TaskStatus | undefined> {
+    const status = getTaskStatusAfterTerminalRun(run);
+
+    if (!status) {
+      return undefined;
+    }
+
+    const subtaskRows = await options.db.query.task_subtasks.findMany({
+      where: (table, operators) =>
+        operators.and(
+          operators.eq(table.task_id, run.taskId),
+          operators.isNotNull(table.feedback_id),
+          operators.isNull(table.deleted_at),
+        ),
+      orderBy: (table, operators) => [operators.asc(table.created_at)],
+    });
+
+    if (subtaskRows.length === 0) {
+      return status;
+    }
+
+    const runRows = await options.db.query.task_runs.findMany({
+      where: (table, operators) => operators.eq(table.task_id, run.taskId),
+      orderBy: (table, operators) => [operators.desc(table.created_at)],
+    });
+    const runs = runRows.map(mapTaskRun);
+    const subtaskIds = subtaskRows.map((subtask) => subtask.id);
+    const hasPending = subtaskIds.some((subtaskId) => !hasTerminalSubtaskRun(subtaskId, runs));
+
+    if (hasPending) {
+      return "queued";
+    }
+
+    return subtaskIds.some((subtaskId) => hasFailedSubtaskRun(subtaskId, runs))
+      ? "review"
+      : "ready_to_check";
   }
 
   async function setEnabled(id: string, enabled: boolean): Promise<Task | undefined> {
@@ -1607,6 +1707,24 @@ function getTaskStatusAfterTerminalRun(run: TaskRun): TaskStatus | undefined {
   return "ready_to_check";
 }
 
+function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
+  return runs.some(
+    (run) => run.subtaskId === subtaskId && run.status !== "queued" && run.status !== "running",
+  );
+}
+
+function hasFailedSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
+  return runs.some(
+    (run) =>
+      run.subtaskId === subtaskId &&
+      (run.status === "failed" ||
+        run.status === "cancelled" ||
+        run.outcome === "failed" ||
+        run.outcome === "needs_human_review" ||
+        run.needsHumanReview),
+  );
+}
+
 function isRunningAgentConstraintError(error: unknown): boolean {
   return (
     error instanceof Error &&
@@ -1689,31 +1807,58 @@ function mapTaskTemplate(row: typeof task_templates.$inferSelect): TaskTemplate 
   });
 }
 
-function mapTaskComment(row: typeof task_comments.$inferSelect): TaskComment {
-  return taskCommentSchema.parse({
-    id: row.id,
-    taskId: row.task_id,
-    body: row.body,
-    status: row.status,
-    includedInRunId: row.included_in_run_id ?? undefined,
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString(),
-    resolvedAt: row.resolved_at?.toISOString(),
-  });
-}
-
 function mapTaskSubtask(row: typeof task_subtasks.$inferSelect): TaskSubtask {
   return taskSubtaskSchema.parse({
     id: row.id,
     taskId: row.task_id,
-    defaultAgentId: row.default_agent_id ?? undefined,
-    title: row.title,
+    feedbackId: row.feedback_id ?? undefined,
+    agentId: row.agent_id,
     description: row.description,
-    status: row.status,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
-    completedAt: row.completed_at?.toISOString(),
   });
+}
+
+function mapSubtaskDetail(subtask: TaskSubtask, runs: TaskRun[]) {
+  const subtaskRuns = runs.filter((run) => run.subtaskId === subtask.id);
+  const replies = [...subtaskRuns]
+    .reverse()
+    .map((run) => ({ run, status: deriveRunSubtaskStatus(run) }));
+
+  return {
+    ...subtask,
+    status: deriveSubtaskStatus(subtask, runs),
+    latestRun: subtaskRuns[0],
+    replies,
+  };
+}
+
+function deriveSubtaskStatus(subtask: TaskSubtask, runs: TaskRun[]): TaskSubtaskDerivedStatus {
+  const latestRun = runs.find((run) => run.subtaskId === subtask.id);
+
+  return latestRun ? deriveRunSubtaskStatus(latestRun) : "backlog";
+}
+
+function deriveRunSubtaskStatus(run: TaskRun): TaskSubtaskDerivedStatus {
+  if (run.status === "queued" || run.status === "running") {
+    return run.status;
+  }
+
+  if (
+    run.status === "failed" ||
+    run.status === "cancelled" ||
+    run.outcome === "failed" ||
+    run.outcome === "needs_human_review" ||
+    run.needsHumanReview
+  ) {
+    return "review";
+  }
+
+  if (run.status === "completed") {
+    return "done";
+  }
+
+  return "backlog";
 }
 
 function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {

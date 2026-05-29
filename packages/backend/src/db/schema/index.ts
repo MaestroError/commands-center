@@ -6,7 +6,7 @@ export { providers } from "./providers.js";
 export { secrets } from "./secrets.js";
 export { settings } from "./settings.js";
 export {
-  task_comments,
+  task_feedback,
   task_runs,
   task_scheduler_state,
   task_subtasks,

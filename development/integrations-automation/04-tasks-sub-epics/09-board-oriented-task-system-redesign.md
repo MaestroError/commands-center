@@ -63,12 +63,13 @@ Redesign the Tasks system around Jira-like board work items and AI execution att
 - Use the task default agent when queueing unless the user selects another agent for that run.
 - Preserve historical run agent IDs when the task is reassigned later.
 
-### Comments and Feedback
+### Feedback Subtasks
 
-- Add task comments as first-class task context.
-- Treat new feedback comments as open/unhandled until they are included in a later run or resolved by the user.
-- Include open/unhandled comments in the next run's context as the run's actionable feedback.
-- Preserve comments separately from task runs so the UI can show a unified timeline without losing edit and run history.
+- Treat user feedback as actionable subtask creation instead of passive task comments.
+- Submitting feedback with no explicit agent mention creates one subtask assigned to the task assignee agent.
+- Submitting feedback with one or more agent mentions creates one subtask per mentioned agent.
+- Render each feedback submission as a Jira-like thread, with generated subtask run results appended as replies under the originating feedback.
+- Preserve feedback threads, generated subtasks, and task runs separately so the UI can show a unified timeline without losing edit and run history.
 
 ### Subtasks
 
@@ -80,11 +81,11 @@ Redesign the Tasks system around Jira-like board work items and AI execution att
 
 ### Task Run Context Snapshots
 
-- Build every task run prompt from the current task description, target subtask when present, open feedback comments, previous run results, previous review/failure notes, and previous artifacts.
+- Build every task run prompt from the current task description, target subtask or feedback thread when present, previous run results, previous review/failure notes, and previous artifacts.
 - Include artifact full paths or URLs in the context snapshot.
 - Persist the rendered prompt and structured context snapshot on the task run.
 - Keep snapshots immutable so later task edits do not change what a past run saw.
-- Let the UI present task data, comments, subtasks, runs, results, and artifacts as a unified task timeline while backend storage remains normalized.
+- Let the UI present task data, feedback threads, subtasks, runs, results, and artifacts as a unified task timeline while backend storage remains normalized.
 
 ### Done Retention and Archival
 
@@ -114,8 +115,7 @@ Implement this sub-epic in phases. Existing task, task run, task template, and t
 - ✅ **Level 4: Task Detail Container** — `09-board-oriented-task-system-redesign/09-ui-level-4-task-detail-container.md`
 - ✅ **Level 5: Task Detail Sections** — `09-board-oriented-task-system-redesign/10-ui-level-5-task-detail-sections.md`
 - ✅ **Task Templates** — `09-board-oriented-task-system-redesign/11-ui-recurring-templates.md`
-- **Comments, Feedback, and Context** — `09-board-oriented-task-system-redesign/12-ui-comments-feedback-and-context.md`
-- **Subtasks** — `09-board-oriented-task-system-redesign/13-ui-subtasks.md`
+- **Feedback Subtasks and Context** — `09-board-oriented-task-system-redesign/12-ui-comments-feedback-and-context.md`
 - **Task Runs, Session Check, and Open In Chat** — `09-board-oriented-task-system-redesign/14-ui-task-runs-session-and-chat.md`
 - **Scheduling and Archive** — `09-board-oriented-task-system-redesign/15-ui-scheduling-and-archive.md`
 
@@ -137,11 +137,11 @@ Implement this sub-epic in phases. Existing task, task run, task template, and t
 - Run Now on a template creates a normal task and queues that task.
 - Successful runs move the task to ready_to_check, not done.
 - Failed runs and needs-human-review outcomes move the task to review.
-- Re-queueing a task after feedback creates a new task run on the same task and includes previous run context.
+- Feedback creates assigned subtasks, and subtask runs append replies under the originating feedback thread.
 - Task runs store the actual executing agent independently from the task's default agent.
 - Subtask runs are recorded under the parent task and included in parent task context.
 - Done tasks auto-archive after the configured retention period.
-- All new task, template, schedule, comment, subtask, run, context snapshot, and archive state remains portable inside `.cc/workspace`.
+- All new task, template, schedule, feedback, subtask, run, context snapshot, and archive state remains portable inside `.cc/workspace`.
 
 ## Key Files to Create/Modify
 

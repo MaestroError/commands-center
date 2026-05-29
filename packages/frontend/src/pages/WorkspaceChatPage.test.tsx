@@ -453,6 +453,7 @@ describe("WorkspaceChatPage", () => {
           prompt: {
             text: "Check this",
             mentionedFiles: [{ path: "README.md", filename: "README.md" }],
+            mentionedAgents: [],
             selectedSkill: { slug: "review", description: "Review code" },
           },
         },
@@ -510,6 +511,7 @@ describe("WorkspaceChatPage", () => {
           prompt: {
             text: "Check this",
             mentionedFiles: [],
+            mentionedAgents: [],
             selectedSkill: { slug: "review", description: undefined },
           },
         },
@@ -559,7 +561,12 @@ describe("WorkspaceChatPage", () => {
       state: {
         taskPrefill: {
           agentId: "agent-1",
-          prompt: { text: "Create follow-up task", mentionedFiles: [], selectedSkill: null },
+          prompt: {
+            text: "Create follow-up task",
+            mentionedFiles: [],
+            mentionedAgents: [],
+            selectedSkill: null,
+          },
         },
       },
     });

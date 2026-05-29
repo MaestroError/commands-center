@@ -14,7 +14,12 @@ describe("createTaskPrefillFromUserMessage", () => {
 
     expect(result.prefill).toEqual({
       agentId: "agent-1",
-      prompt: { text: "Review the roadmap", mentionedFiles: [], selectedSkill: null },
+      prompt: {
+        text: "Review the roadmap",
+        mentionedFiles: [],
+        mentionedAgents: [],
+        selectedSkill: null,
+      },
     });
   });
 
@@ -34,6 +39,7 @@ describe("createTaskPrefillFromUserMessage", () => {
         { path: "README.md", filename: "README.md" },
         { path: "src/index.ts", filename: "index.ts" },
       ],
+      mentionedAgents: [],
       selectedSkill: { slug: "review", description: "Review code" },
     });
   });
@@ -51,6 +57,7 @@ describe("createTaskPrefillFromUserMessage", () => {
     expect(result.prefill.prompt).toEqual({
       text: "Check files",
       mentionedFiles: [{ path: "src/app.ts", filename: "app.ts" }],
+      mentionedAgents: [],
       selectedSkill: null,
     });
   });
@@ -83,7 +90,7 @@ describe("isTaskCreationPrefill", () => {
     expect(
       isTaskCreationPrefill({
         agentId: "agent-1",
-        prompt: { text: "Run task", mentionedFiles: [], selectedSkill: null },
+        prompt: { text: "Run task", mentionedFiles: [], mentionedAgents: [], selectedSkill: null },
       }),
     ).toBe(true);
   });

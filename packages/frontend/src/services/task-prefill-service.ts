@@ -38,6 +38,7 @@ export function createTaskPrefillFromUserMessage(
       prompt: {
         text: parsed.text,
         mentionedFiles,
+        mentionedAgents: [],
         selectedSkill: supportedSkill
           ? { slug: supportedSkill.slug, description: supportedSkill.description }
           : null,
@@ -60,6 +61,8 @@ export function isTaskCreationPrefill(value: unknown): value is TaskCreationPref
     Boolean(candidate.prompt) &&
     typeof candidate.prompt?.text === "string" &&
     Array.isArray(candidate.prompt.mentionedFiles) &&
+    (candidate.prompt.mentionedAgents === undefined ||
+      Array.isArray(candidate.prompt.mentionedAgents)) &&
     (candidate.prompt.selectedSkill === null || typeof candidate.prompt.selectedSkill === "object")
   );
 }

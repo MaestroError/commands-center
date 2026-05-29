@@ -16,6 +16,7 @@ import {
   createAgentInputSchema,
   createCustomToolInputSchema,
   createMcpServerInputSchema,
+  createTaskFeedbackInputSchema,
   createTaskInputSchema,
   createTaskTemplateInputSchema,
   engineStatusSchema,
@@ -72,11 +73,17 @@ import {
   systemUpdatePreferencesSchema,
   systemVersionSchema,
   taskListSchema,
+  taskFeedbackThreadListSchema,
+  taskFeedbackThreadSchema,
+  taskQueuePreviewInputSchema,
+  taskQueuePreviewSchema,
   taskRunListSchema,
   taskRunSchema,
   taskRunSessionInspectionSchema,
   taskSchedulerStateListSchema,
   taskSchema,
+  taskSubtaskListSchema,
+  taskSubtaskProgressListSchema,
   taskTemplateListSchema,
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
@@ -102,6 +109,7 @@ import {
   type ChatEvent,
   type CreateAgentInput,
   type CreateMcpServerInput,
+  type CreateTaskFeedbackInput,
   type CreateTaskInput,
   type CreateTaskTemplateInput,
   type ConversationDetail,
@@ -146,6 +154,7 @@ import {
   type ProviderOauthAuthorization,
   type ProviderOauthCompleteResult,
   type ProviderStatus,
+  type QueueTaskInput,
   type SecretMeta,
   type SessionMediaItem,
   type SendConversationPromptInput,
@@ -153,11 +162,15 @@ import {
   type SystemUpdatePreferences,
   type SystemVersion,
   type Task,
+  type TaskFeedbackThread,
+  type TaskQueuePreview,
   type TaskTemplate,
   type TaskTemplateRunNowInput,
   type TaskRun,
   type TaskRunSessionInspection,
   type TaskSchedulerState,
+  type TaskSubtask,
+  type TaskSubtaskProgress,
   type TerminalCreateInput,
   type TerminalSession,
   type TerminalResizeInput,
@@ -176,7 +189,6 @@ import {
   updateAgentInputSchema,
   updateMcpServerInputSchema,
   updateTaskInputSchema,
-  type TriggerTaskInput,
   updateSystemUpdatePreferencesInputSchema,
 } from "@cc/shared/schemas";
 
@@ -749,6 +761,57 @@ export async function uploadTaskContextAttachment(
   );
 }
 
+export async function listTaskFeedback(taskId: string): Promise<TaskFeedbackThread[]> {
+  return requestJson<TaskFeedbackThread[]>(
+    `/api/tasks/${encodeURIComponent(taskId)}/feedback`,
+    taskFeedbackThreadListSchema,
+  );
+}
+
+export async function createTaskFeedback(
+  taskId: string,
+  input: CreateTaskFeedbackInput,
+): Promise<TaskFeedbackThread> {
+  return requestJson<TaskFeedbackThread>(
+    `/api/tasks/${encodeURIComponent(taskId)}/feedback`,
+    taskFeedbackThreadSchema,
+    {
+      method: "POST",
+      body: createTaskFeedbackInputSchema.parse(input),
+    },
+  );
+}
+
+export async function listTaskSubtasks(taskId: string): Promise<TaskSubtask[]> {
+  return requestJson<TaskSubtask[]>(
+    `/api/tasks/${encodeURIComponent(taskId)}/subtasks`,
+    taskSubtaskListSchema,
+  );
+}
+
+export async function listTaskSubtaskProgress(taskIds: string[]): Promise<TaskSubtaskProgress[]> {
+  const params = new URLSearchParams();
+  params.set("taskIds", taskIds.join(","));
+  return requestJson<TaskSubtaskProgress[]>(
+    `/api/tasks/subtask-progress?${params.toString()}`,
+    taskSubtaskProgressListSchema,
+  );
+}
+
+export async function previewTaskQueue(
+  id: string,
+  input: Partial<Omit<QueueTaskInput, "taskId">> = { triggerSource: "manual" },
+): Promise<TaskQueuePreview> {
+  return requestJson<TaskQueuePreview>(
+    `/api/tasks/${encodeURIComponent(id)}/queue/preview`,
+    taskQueuePreviewSchema,
+    {
+      method: "POST",
+      body: taskQueuePreviewInputSchema.parse(input),
+    },
+  );
+}
+
 export async function duplicateTask(id: string): Promise<Task> {
   return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/duplicate`, taskSchema, {
     method: "POST",
@@ -828,7 +891,7 @@ export async function openTaskRunInChat(
 
 export async function queueTask(
   id: string,
-  input: Partial<TriggerTaskInput> = { triggerSource: "manual" },
+  input: Partial<Omit<QueueTaskInput, "taskId">> = { triggerSource: "manual" },
 ): Promise<TaskRun> {
   return requestJson<TaskRun>(`/api/tasks/${encodeURIComponent(id)}/queue`, taskRunSchema, {
     method: "POST",

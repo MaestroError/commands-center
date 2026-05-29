@@ -24,11 +24,13 @@ import {
   type FileSaveConflictError,
   getTaskTemplate,
   getWorkspaceTree,
+  listTaskSubtaskProgress,
   listTaskTemplateTasks,
   loginOwner,
   listTerminalSessions,
   logoutOwner,
   readApiError,
+  previewTaskQueue,
   removeMcpAuth,
   resizeTerminalSession,
   runTaskTemplateNow,
@@ -321,6 +323,45 @@ describe("task actions", () => {
     await expect(getTaskTemplate("template-1")).resolves.toMatchObject({ id: "template-1" });
 
     expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/templates/template-1", { method: "GET" });
+  });
+
+  it("loads subtask progress for board cards", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        makeJsonResponse([{ taskId: "task-1", total: 2, completed: 1, active: 1, review: 0 }]),
+      );
+
+    await expect(listTaskSubtaskProgress(["task-1", "task-2"])).resolves.toEqual([
+      { taskId: "task-1", total: 2, completed: 1, active: 1, review: 0 },
+    ]);
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/subtask-progress?taskIds=task-1%2Ctask-2", {
+      method: "GET",
+    });
+  });
+
+  it("previews a task queue request with a subtask", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse({
+        taskId: "task-1",
+        runAgentId: "agent-2",
+        subtask: makeTaskSubtaskPayload({ agentId: "agent-2" }),
+        renderedPrompt: "Task prompt",
+        renderedContext: { feedback: { body: "Retest" } },
+      }),
+    );
+
+    await expect(previewTaskQueue("task-1", { subtaskId: "subtask-1" })).resolves.toMatchObject({
+      taskId: "task-1",
+      runAgentId: "agent-2",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/queue/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ subtaskId: "subtask-1", triggerSource: "manual" }),
+    });
   });
 });
 
@@ -836,6 +877,19 @@ function makeTaskRunPayload(overrides: Record<string, unknown> = {}): Record<str
     renderedPrompt: "Task: Ship release",
     artifacts: [],
     needsHumanReview: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeTaskSubtaskPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "subtask-1",
+    taskId: "task-1",
+    feedbackId: "feedback-1",
+    agentId: "agent-1",
+    description: "Retest the release flow.",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,

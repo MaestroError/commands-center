@@ -441,7 +441,6 @@ describe("cc-managed MCP routes", () => {
         "get_task",
         "queue_task",
         "schedule_task",
-        "add_task_comment",
         "list_task_runs",
         "get_task_run",
         "create_task_template",
@@ -465,19 +464,6 @@ describe("cc-managed MCP routes", () => {
           },
         },
         7,
-      );
-      const commentResponse = await callMcpToolRoute(
-        server,
-        authHeader,
-        "tools/call",
-        {
-          name: "add_task_comment",
-          arguments: {
-            taskId: task.id,
-            body: "Review before accepting.",
-          },
-        },
-        14,
       );
       const listedResponse = await callMcpToolRoute(
         server,
@@ -583,9 +569,6 @@ describe("cc-managed MCP routes", () => {
         result: {
           structuredContent: { id: task.id, status: "scheduled" },
         },
-      });
-      expect(parseSseJson(commentResponse.body)).toMatchObject({
-        result: { structuredContent: { body: "Review before accepting.", status: "open" } },
       });
       expect(parseSseJson(listedResponse.body)).toMatchObject({
         result: { structuredContent: { tasks: expect.any(Array) } },

@@ -3,12 +3,15 @@ import {
   queueTaskInputSchema,
   taskContextInputSchema,
   taskContextSchema,
+  taskQueuePreviewSchema,
   uploadTaskContextAttachmentInputSchema,
   type CancelTaskRunInput,
   type QueueTaskInput,
   type TaskContext,
   type Task,
+  type TaskQueuePreview,
   type TaskRun,
+  type TaskSubtask,
 } from "@cc/shared/schemas";
 import type { Logger } from "pino";
 import { z } from "zod";
@@ -34,6 +37,11 @@ const queueTaskExecutionInputSchema = queueTaskInputSchema.extend({
   context: taskContextInputSchema.optional(),
   contextAttachmentUploads: z.array(uploadTaskContextAttachmentInputSchema).default([]),
 });
+type ParsedQueueTaskExecutionInput = z.infer<typeof queueTaskExecutionInputSchema>;
+type QueueSingleRunInput = Pick<
+  ParsedQueueTaskExecutionInput,
+  "agentId" | "metadata" | "subtaskId" | "triggerSource"
+>;
 
 export function createTaskExecutionService(options: {
   db?: AppDb;
@@ -53,6 +61,10 @@ export function createTaskExecutionService(options: {
 
     async queue(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
       return queueTask(taskId, input);
+    },
+
+    async preview(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskQueuePreview> {
+      return previewTask(taskId, input);
     },
 
     async runQueuedTask(runId: string): Promise<TaskRun> {
@@ -92,31 +104,87 @@ export function createTaskExecutionService(options: {
     const target = await requireRunnableTask(taskId, parsed.triggerSource);
     const task = await resolveExecutableTask(target, { ...parsed, context: triggerContext });
 
-    const taskRunId = createId();
-    const runAgentId = parsed.agentId ?? task.defaultAgentId ?? task.agentId;
+    if (!parsed.subtaskId) {
+      const pending = await listRunnableSubtasks(task.id);
+
+      if (pending.runnable.length > 0) {
+        return queueNextSubtaskRun(task, parsed, triggerContext, pending.runnable);
+      }
+
+      if (pending.hasActive) {
+        throw new BadRequestError("Task already has active feedback runs.");
+      }
+    }
+
+    const targetSubtask = parsed.subtaskId
+      ? await findSubtask(task.id, parsed.subtaskId)
+      : undefined;
+    return queueSingleRun(task, parsed, triggerContext, createId(), targetSubtask);
+  }
+
+  async function previewTask(
+    taskId: string,
+    input: QueueTaskExecutionInput = {},
+  ): Promise<TaskQueuePreview> {
+    const prepared = await prepareRun(taskId, input, "preview");
+    const feedback = prepared.subtaskId
+      ? (await options.taskService.listFeedback(prepared.task.id)).find((thread) =>
+          thread.subtasks.some((subtask) => subtask.id === prepared.subtaskId),
+        )
+      : undefined;
+
+    return taskQueuePreviewSchema.parse({
+      taskId: prepared.task.id,
+      subtask: prepared.targetSubtask,
+      feedback,
+      runAgentId: prepared.runAgentId,
+      renderedPrompt: prepared.renderedPrompt,
+      renderedContext: prepared.renderedContext,
+    });
+  }
+
+  async function prepareRun(
+    taskId: string,
+    input: QueueTaskExecutionInput,
+    runId: string,
+  ): Promise<{
+    parsed: z.infer<typeof queueTaskExecutionInputSchema>;
+    task: Task;
+    triggerContext?: TaskContext;
+    targetSubtask?: TaskSubtask;
+    subtaskId?: string;
+    runAgentId: string;
+    renderedContext: Record<string, unknown>;
+    renderedPrompt: string;
+  }> {
+    const parsed = queueTaskExecutionInputSchema.parse({ taskId, ...input });
+    const triggerContext = parsed.context ? taskContextSchema.parse(parsed.context) : undefined;
+    const target = await requireRunnableTask(taskId, parsed.triggerSource);
+    const task = await resolveExecutableTask(target, { ...parsed, context: triggerContext });
+    const targetSubtask = parsed.subtaskId
+      ? await findSubtask(task.id, parsed.subtaskId)
+      : (await listRunnableSubtasks(task.id)).runnable[0];
+    const subtaskId = parsed.subtaskId ?? targetSubtask?.id;
+    const runAgentId =
+      targetSubtask?.agentId ?? parsed.agentId ?? task.defaultAgentId ?? task.agentId;
     const { renderedContext, renderedPrompt } = await taskRunContextService.build({
       task,
-      runId: taskRunId,
+      runId,
       runAgentId,
-      subtaskId: parsed.subtaskId,
+      subtaskId,
       trigger: { ...parsed, context: triggerContext },
     });
-    const effectivePermissions = await options.taskPermissionService?.compute(task);
-    const run = await options.taskService.queueTask({
-      id: taskRunId,
-      taskId: task.id,
-      subtaskId: parsed.subtaskId,
-      agentId: runAgentId,
-      triggerSource: parsed.triggerSource,
-      context: triggerContext,
-      metadata: parsed.metadata,
-      renderedPrompt,
-      renderedContext,
-      effectivePermissions,
-    });
 
-    scheduleAgentDrain(run.agentId);
-    return run;
+    return {
+      parsed,
+      task,
+      triggerContext,
+      targetSubtask,
+      subtaskId,
+      runAgentId,
+      renderedContext,
+      renderedPrompt,
+    };
   }
 
   async function runQueuedTask(runId: string): Promise<TaskRun> {
@@ -147,7 +215,7 @@ export function createTaskExecutionService(options: {
 
       if (options.conversationService) {
         const conversation = await options.conversationService.createTaskRunConversation({
-          agentId: task.agentId,
+          agentId: running.agentId,
           taskId: task.id,
           taskRunId: running.id,
           title: `Task: ${task.title}`,
@@ -174,8 +242,7 @@ export function createTaskExecutionService(options: {
         const latest = await findRun(running.id);
 
         if (latest.status !== "running") {
-          notifyRunTerminal(latest);
-          scheduleAgentDrain(latest.agentId);
+          await handleTerminalRun(latest, { triggerContext: readRunContext(latest) });
           return latest;
         }
 
@@ -194,8 +261,7 @@ export function createTaskExecutionService(options: {
           throw new NotFoundError("Task run not found.");
         }
 
-        notifyRunTerminal(completed);
-        scheduleAgentDrain(completed.agentId);
+        await handleTerminalRun(completed, { triggerContext: readRunContext(running) });
         return completed;
       }
 
@@ -208,15 +274,13 @@ export function createTaskExecutionService(options: {
         throw new NotFoundError("Task run not found.");
       }
 
-      notifyRunTerminal(completed);
-      scheduleAgentDrain(completed.agentId);
+      await handleTerminalRun(completed, { triggerContext: readRunContext(running) });
       return completed;
     } catch (error) {
       const latest = await findRun(running.id);
 
       if (latest.status !== "running") {
-        notifyRunTerminal(latest);
-        scheduleAgentDrain(latest.agentId);
+        await handleTerminalRun(latest, { triggerContext: readRunContext(latest) });
         return latest;
       }
 
@@ -233,10 +297,144 @@ export function createTaskExecutionService(options: {
         throw new NotFoundError("Task run not found.");
       }
 
-      notifyRunTerminal(failed);
-      scheduleAgentDrain(failed.agentId);
+      await handleTerminalRun(failed, { triggerContext: readRunContext(running) });
       return failed;
     }
+  }
+
+  async function queueNextSubtaskRun(
+    task: Task,
+    parsed: QueueSingleRunInput,
+    triggerContext: TaskContext | undefined,
+    subtasks: TaskSubtask[],
+  ): Promise<TaskRun> {
+    const subtask = subtasks[0];
+
+    if (!subtask) {
+      throw new BadRequestError("No feedback runs were queued.");
+    }
+
+    return queueSingleRun(task, parsed, triggerContext, createId(), subtask);
+  }
+
+  async function queueSingleRun(
+    task: Task,
+    parsed: QueueSingleRunInput,
+    triggerContext: TaskContext | undefined,
+    taskRunId: string,
+    targetSubtask?: TaskSubtask,
+  ): Promise<TaskRun> {
+    const subtaskId = parsed.subtaskId ?? targetSubtask?.id;
+    const runAgentId =
+      targetSubtask?.agentId ?? parsed.agentId ?? task.defaultAgentId ?? task.agentId;
+    const { renderedContext, renderedPrompt } = await taskRunContextService.build({
+      task,
+      runId: taskRunId,
+      runAgentId,
+      subtaskId,
+      trigger: { ...parsed, context: triggerContext },
+    });
+    const effectivePermissions = await options.taskPermissionService?.compute(task);
+    const run = await options.taskService.queueTask({
+      id: taskRunId,
+      taskId: task.id,
+      subtaskId,
+      agentId: runAgentId,
+      triggerSource: parsed.triggerSource,
+      context: triggerContext,
+      metadata: parsed.metadata,
+      renderedPrompt,
+      renderedContext,
+      effectivePermissions,
+    });
+
+    scheduleAgentDrain(run.agentId);
+    return run;
+  }
+
+  async function listRunnableSubtasks(
+    taskId: string,
+  ): Promise<{ runnable: TaskSubtask[]; hasActive: boolean }> {
+    const subtasks = await options.taskService.listSubtasks(taskId);
+
+    if (subtasks.length === 0) {
+      return { runnable: [], hasActive: false };
+    }
+
+    const runs = await options.taskService.listRuns(taskId);
+    const activeSubtaskIds = new Set(
+      runs
+        .filter((run) => run.subtaskId && (run.status === "queued" || run.status === "running"))
+        .map((run) => run.subtaskId),
+    );
+
+    const unattemptedSubtasks = subtasks.filter(
+      (subtask) => !activeSubtaskIds.has(subtask.id) && !hasTerminalSubtaskRun(subtask.id, runs),
+    );
+    const retryableSubtasks = subtasks.filter(
+      (subtask) => !activeSubtaskIds.has(subtask.id) && !hasSuccessfulSubtaskRun(subtask.id, runs),
+    );
+
+    return {
+      runnable: unattemptedSubtasks.length > 0 ? unattemptedSubtasks : retryableSubtasks,
+      hasActive: activeSubtaskIds.size > 0,
+    };
+  }
+
+  async function handleTerminalRun(
+    run: TaskRun,
+    input: { triggerContext?: TaskContext },
+  ): Promise<void> {
+    notifyRunTerminal(run);
+    const queued = await queueNextFeedbackSubtaskAfter(run, input.triggerContext);
+    scheduleAgentDrain(queued?.agentId ?? run.agentId);
+  }
+
+  async function queueNextFeedbackSubtaskAfter(
+    run: TaskRun,
+    triggerContext: TaskContext | undefined,
+  ): Promise<TaskRun | undefined> {
+    if (!run.subtaskId) {
+      return undefined;
+    }
+
+    const task = await options.taskService.get(run.taskId);
+
+    if (!task) {
+      return undefined;
+    }
+
+    const pending = await listRunnableSubtasks(task.id);
+
+    if (pending.hasActive || pending.runnable.length === 0) {
+      return undefined;
+    }
+
+    return queueNextSubtaskRun(
+      task,
+      {
+        triggerSource: run.triggerSource,
+        metadata: run.triggerMetadata,
+      },
+      triggerContext,
+      pending.runnable,
+    );
+  }
+
+  function readRunContext(run: TaskRun): TaskContext | undefined {
+    return run.context ? taskContextSchema.parse(run.context) : undefined;
+  }
+
+  async function findSubtask(taskId: string, subtaskId: string): Promise<TaskSubtask> {
+    const subtask = (await options.taskService.listSubtasks(taskId)).find(
+      (entry) => entry.id === subtaskId,
+    );
+
+    if (!subtask) {
+      throw new NotFoundError("Task subtask not found.");
+    }
+
+    return subtask;
   }
 
   async function requireRunnableTask(
@@ -370,4 +568,21 @@ function summarizeTaskRunConversation(conversation: {
     .find((message) => message.role === "assistant" && message.content.trim());
 
   return assistantMessage?.content.trim() ?? "Task completed without an assistant summary.";
+}
+
+function hasSuccessfulSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
+  return runs.some(
+    (run) =>
+      run.subtaskId === subtaskId &&
+      run.status === "completed" &&
+      run.outcome !== "failed" &&
+      run.outcome !== "needs_human_review" &&
+      !run.needsHumanReview,
+  );
+}
+
+function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
+  return runs.some(
+    (run) => run.subtaskId === subtaskId && run.status !== "queued" && run.status !== "running",
+  );
 }

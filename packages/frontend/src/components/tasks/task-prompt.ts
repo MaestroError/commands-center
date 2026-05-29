@@ -1,6 +1,7 @@
 export type TaskPromptValue = {
   text: string;
   mentionedFiles: { path: string; filename: string }[];
+  mentionedAgents: { id: string; name: string }[];
   selectedSkill: { slug: string; description?: string } | null;
 };
 
@@ -13,5 +14,5 @@ export function buildTaskPromptText(value: TaskPromptValue): string {
 }
 
 export function createTaskPromptValue(text = ""): TaskPromptValue {
-  return { text, mentionedFiles: [], selectedSkill: null };
+  return { text, mentionedFiles: [], mentionedAgents: [], selectedSkill: null };
 }

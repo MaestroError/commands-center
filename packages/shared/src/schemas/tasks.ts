@@ -45,22 +45,21 @@ export const taskTriggerModeSchema = z.enum(["manual", "scheduled_once", "recurr
 
 export const taskRunOutcomeSchema = z.enum(["success", "needs_human_review", "failed"]);
 
+export const taskSubtaskDerivedStatusSchema = z.enum([
+  "backlog",
+  "queued",
+  "running",
+  "ready_to_check",
+  "review",
+  "done",
+]);
+
 export const taskRunTriggerSourceSchema = z.enum([
   "manual",
   "scheduled",
   "api",
   "template",
   "system",
-]);
-
-export const taskCommentStatusSchema = z.enum(["open", "included", "resolved"]);
-
-export const taskSubtaskStatusSchema = z.enum([
-  "backlog",
-  "queued",
-  "ready_to_check",
-  "review",
-  "done",
 ]);
 
 export const taskTodoStatusSchema = z.enum(["pending", "in_progress", "completed"]);
@@ -169,45 +168,27 @@ export const queueTaskInputSchema = z.object({
   metadata: looseRecordSchema.optional(),
 });
 
-export const taskCommentInputSchema = z.object({
-  body: z.string().trim().min(1),
-  status: taskCommentStatusSchema.default("open"),
-});
-
-export const taskCommentSchema = taskCommentInputSchema.extend({
-  id: z.string().min(1),
-  taskId: z.string().min(1),
-  includedInRunId: z.string().min(1).optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  resolvedAt: z.string().datetime().optional(),
-});
-
 export const taskSubtaskInputSchema = z.object({
-  title: z.string().trim().min(1),
   description: z.string().trim().default(""),
-  defaultAgentId: z.string().trim().min(1).optional(),
-  status: taskSubtaskStatusSchema.default("backlog"),
+  agentId: z.string().trim().min(1),
 });
 
-export const updateTaskCommentInputSchema = z.object({
-  body: z.string().trim().min(1).optional(),
-  status: taskCommentStatusSchema.optional(),
+export const createTaskFeedbackInputSchema = z.object({
+  body: z.string().trim().min(1),
+  mentionedAgentIds: z.array(z.string().trim().min(1)).max(1).default([]),
 });
 
 export const updateTaskSubtaskInputSchema = z.object({
-  title: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
-  defaultAgentId: z.string().trim().min(1).optional(),
-  status: taskSubtaskStatusSchema.optional(),
+  agentId: z.string().trim().min(1).optional(),
 });
 
 export const taskSubtaskSchema = taskSubtaskInputSchema.extend({
   id: z.string().min(1),
   taskId: z.string().min(1),
+  feedbackId: z.string().min(1).optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-  completedAt: z.string().datetime().optional(),
 });
 
 export const createTaskInputSchema = z.object({
@@ -439,9 +420,48 @@ export const taskRunSchema = z.object({
 
 export const taskRunListSchema = z.array(taskRunSchema);
 
-export const taskCommentListSchema = z.array(taskCommentSchema);
+export const taskSubtaskRunReplySchema = z.object({
+  run: taskRunSchema,
+  status: taskSubtaskDerivedStatusSchema,
+});
+
+export const taskSubtaskDetailSchema = taskSubtaskSchema.extend({
+  status: taskSubtaskDerivedStatusSchema,
+  latestRun: taskRunSchema.optional(),
+  replies: z.array(taskSubtaskRunReplySchema),
+});
+
+export const taskFeedbackThreadSchema = z.object({
+  id: z.string().min(1),
+  taskId: z.string().min(1),
+  body: z.string().min(1),
+  targetAgentIds: z.array(z.string().min(1)),
+  subtasks: z.array(taskSubtaskDetailSchema),
+  createdAt: z.string().datetime(),
+});
+
+export const taskSubtaskProgressSchema = z.object({
+  taskId: z.string().min(1),
+  total: z.number().int().nonnegative(),
+  completed: z.number().int().nonnegative(),
+  active: z.number().int().nonnegative(),
+  review: z.number().int().nonnegative(),
+});
+
+export const taskQueuePreviewInputSchema = queueTaskInputSchema.omit({ taskId: true });
+
+export const taskQueuePreviewSchema = z.object({
+  taskId: z.string().min(1),
+  subtask: taskSubtaskSchema.optional(),
+  feedback: taskFeedbackThreadSchema.optional(),
+  runAgentId: z.string().min(1),
+  renderedPrompt: z.string(),
+  renderedContext: looseRecordSchema,
+});
 
 export const taskSubtaskListSchema = z.array(taskSubtaskSchema);
+export const taskFeedbackThreadListSchema = z.array(taskFeedbackThreadSchema);
+export const taskSubtaskProgressListSchema = z.array(taskSubtaskProgressSchema);
 
 export const activeTaskRunListSchema = taskRunListSchema;
 
@@ -488,13 +508,14 @@ export type Task = z.infer<typeof taskSchema>;
 export type TaskContext = z.infer<typeof taskContextSchema>;
 export type TaskContextAttachment = z.infer<typeof taskContextAttachmentSchema>;
 export type AppendTaskContextInput = z.input<typeof appendTaskContextInputSchema>;
-export type TaskComment = z.infer<typeof taskCommentSchema>;
-export type TaskCommentStatus = z.infer<typeof taskCommentStatusSchema>;
+export type CreateTaskFeedbackInput = z.input<typeof createTaskFeedbackInputSchema>;
+export type TaskFeedbackThread = z.infer<typeof taskFeedbackThreadSchema>;
 export type TaskTemplate = z.infer<typeof taskTemplateSchema>;
 export type TaskPermissionProfile = z.infer<typeof taskPermissionProfileSchema>;
 export type TaskRunArtifact = z.infer<typeof taskRunArtifactSchema>;
 export type TaskRun = z.infer<typeof taskRunSchema>;
 export type TaskRunOutcome = z.infer<typeof taskRunOutcomeSchema>;
+export type TaskQueuePreview = z.infer<typeof taskQueuePreviewSchema>;
 export type TaskRunSessionDiagnostic = z.infer<typeof taskRunSessionDiagnosticSchema>;
 export type TaskRunSessionInspection = z.infer<typeof taskRunSessionInspectionSchema>;
 export type TaskRunStatus = z.infer<typeof taskRunStatusSchema>;
@@ -502,14 +523,15 @@ export type TaskRunTriggerSource = z.infer<typeof taskRunTriggerSourceSchema>;
 export type TaskSchedulerState = z.infer<typeof taskSchedulerStateSchema>;
 export type TaskSchedule = z.infer<typeof taskScheduleSchema>;
 export type TaskSubtask = z.infer<typeof taskSubtaskSchema>;
-export type TaskSubtaskStatus = z.infer<typeof taskSubtaskStatusSchema>;
+export type TaskSubtaskDetail = z.infer<typeof taskSubtaskDetailSchema>;
+export type TaskSubtaskDerivedStatus = z.infer<typeof taskSubtaskDerivedStatusSchema>;
+export type TaskSubtaskProgress = z.infer<typeof taskSubtaskProgressSchema>;
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 export type TaskTodo = z.infer<typeof taskTodoSchema>;
 export type TaskTriggerMode = z.infer<typeof taskTriggerModeSchema>;
 export type TaskRepeatRule = z.infer<typeof taskRepeatRuleSchema>;
 export type TriggerTaskInput = z.input<typeof triggerTaskInputSchema>;
 export type UpdateTaskContextInput = z.input<typeof updateTaskContextInputSchema>;
-export type UpdateTaskCommentInput = z.input<typeof updateTaskCommentInputSchema>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
 export type UpdateTaskRunInput = z.input<typeof updateTaskRunInputSchema>;
 export type UpdateTaskSubtaskInput = z.input<typeof updateTaskSubtaskInputSchema>;
