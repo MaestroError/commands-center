@@ -318,8 +318,32 @@ describe("TasksPage", () => {
     expect(screen.getByRole("heading", { name: "Scheduled" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Queued" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Ready to Check" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Review" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Done" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Queued info")).toBeInTheDocument();
+    expect(screen.getByText("Tasks with queued or running AI work.")).toHaveAttribute(
+      "role",
+      "tooltip",
+    );
+  });
+
+  it("shows review before ready-to-check when review tasks exist", async () => {
+    mockFetch({ taskPayload: { ...task, status: "review" } });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    await screen.findByTestId("tasks-board");
+    const headings = screen
+      .getAllByRole("heading", { level: 2 })
+      .map((heading) => heading.textContent);
+    expect(headings).toEqual([
+      "Backlog",
+      "Scheduled",
+      "Queued",
+      "Review",
+      "Ready to Check",
+      "Done",
+    ]);
   });
 
   it("lists board tasks and supports queueing", async () => {
@@ -596,25 +620,13 @@ describe("TasksPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("moves a board task by dropping it into another column", async () => {
-    const fetchMock = mockFetch();
+  it("marks ready-to-check cards for review", async () => {
+    const fetchMock = mockFetch({ taskPayload: { ...task, status: "ready_to_check" } });
 
     renderWithRouter(<TasksPage />, "/tasks");
 
-    const card = (await screen.findByRole("link", { name: "Ship release" })).closest("article");
-    const reviewColumn = screen.getByRole("heading", { name: "Review" }).closest(".cc-panel");
-    expect(card).not.toBeNull();
-    expect(reviewColumn).not.toBeNull();
-
-    if (!card || !reviewColumn) {
-      throw new Error("Expected board card and review column.");
-    }
-
-    fireDragEvent(card, "dragStart");
-    expect(reviewColumn).toHaveAttribute("data-drop-state", "ready");
-    fireDragEvent(reviewColumn, "dragOver");
-    expect(reviewColumn).toHaveAttribute("data-drop-state", "active");
-    fireDragEvent(reviewColumn, "drop");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Review" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(

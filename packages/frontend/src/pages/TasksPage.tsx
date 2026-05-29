@@ -14,6 +14,7 @@ import {
   CheckCheck,
   Copy,
   ExternalLink,
+  Flag,
   Info,
   MessageSquareText,
   Pencil,
@@ -119,16 +120,16 @@ const BOARD_COLUMNS = [
     empty: "Queued and running work appears here while the agent is active.",
   },
   {
-    status: "ready_to_check",
-    title: "Ready to Check",
-    description: "AI work finished successfully and is waiting for acceptance.",
-    empty: "Completed AI runs appear here for review before acceptance.",
-  },
-  {
     status: "review",
     title: "Review",
     description: "Tasks that failed, need a decision, or need feedback before retry.",
     empty: "Failures and human-review requests appear here.",
+  },
+  {
+    status: "ready_to_check",
+    title: "Ready to Check",
+    description: "AI work finished successfully and is waiting for acceptance.",
+    empty: "Completed AI runs appear here for review before acceptance.",
   },
   {
     status: "done",
@@ -294,6 +295,9 @@ function TaskListPage() {
           }}
           onMove={(task, status) => handleBoardMove(task, status)}
           onQueue={(task) => mutations.trigger.mutate({ id: task.id })}
+          onReview={(task) =>
+            void mutations.update.mutate({ id: task.id, input: { status: "review" } })
+          }
           onReopen={(task) =>
             void mutations.update.mutate({ id: task.id, input: { status: "backlog" } })
           }
@@ -479,6 +483,7 @@ function TaskBoard(props: {
   onSaveAsTemplate: (task: Task) => void;
   onMove: (task: Task, status: BoardTaskStatus) => void;
   onQueue: (task: Task) => void;
+  onReview: (task: Task) => void;
   onReopen: (task: Task) => void;
   onSelect: (task: Task) => void;
 }) {
@@ -495,6 +500,10 @@ function TaskBoard(props: {
       <div className="flex min-w-max gap-4">
         {BOARD_COLUMNS.map((column) => {
           const columnTasks = props.tasks.filter((task) => readBoardStatus(task) === column.status);
+
+          if (column.status === "review" && columnTasks.length === 0) {
+            return null;
+          }
 
           return (
             <div
@@ -543,12 +552,17 @@ function TaskBoard(props: {
             >
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="font-semibold text-text-primary">{column.title}</h2>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <h2 className="font-semibold text-text-primary">{column.title}</h2>
+                    <ColumnDescriptionTooltip
+                      title={column.title}
+                      description={column.description}
+                    />
+                  </div>
                   <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary">
                     {columnTasks.length}
                   </span>
                 </div>
-                <p className="mt-2 text-xs leading-5 text-text-secondary">{column.description}</p>
               </div>
               {columnTasks.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-border bg-surface/60 p-3 text-xs leading-5 text-text-secondary">
@@ -578,6 +592,7 @@ function TaskBoard(props: {
                     onDuplicate={() => props.onDuplicate(task)}
                     onSaveAsTemplate={() => props.onSaveAsTemplate(task)}
                     onQueue={() => props.onQueue(task)}
+                    onReview={() => props.onReview(task)}
                     onReopen={() => props.onReopen(task)}
                     onSelect={() => props.onSelect(task)}
                     progress={progressByTaskId.get(task.id)}
@@ -603,6 +618,7 @@ function TaskBoardCard(props: {
   onDragStart: (event: DragEvent<HTMLElement>) => void;
   onAccept: () => void;
   onQueue: () => void;
+  onReview: () => void;
   onCancelRun: (run: TaskRun) => void;
   onDuplicate: () => void;
   onSaveAsTemplate: () => void;
@@ -675,12 +691,30 @@ function TaskBoardCard(props: {
           onDuplicate={props.onDuplicate}
           onSaveAsTemplate={props.onSaveAsTemplate}
           onQueue={props.onQueue}
+          onReview={props.onReview}
           onReopen={props.onReopen}
           onSelect={props.onSelect}
           task={task}
         />
       </div>
     </article>
+  );
+}
+
+function ColumnDescriptionTooltip(props: { title: string; description: string }) {
+  return (
+    <span className="group relative inline-flex shrink-0" tabIndex={0}>
+      <Info
+        aria-label={`${props.title} info`}
+        className="h-4 w-4 rounded-full text-text-secondary transition group-hover:text-accent group-focus-visible:text-accent"
+      />
+      <span
+        className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-56 -translate-x-1/2 rounded-md border border-border bg-surface-elevated px-3 py-2 text-left text-xs leading-5 text-text-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        role="tooltip"
+      >
+        {props.description}
+      </span>
+    </span>
   );
 }
 
@@ -723,7 +757,10 @@ function TaskBoardCardMeta(props: { task: Task; progress?: TaskSubtaskProgress }
         </span>
       ) : null}
       {props.progress?.subtasks.length ? (
-        <span aria-label="Subtasks" className="inline-flex items-center -space-x-1.5 py-1">
+        <span
+          aria-label="Subtasks"
+          className="inline-flex items-center -space-x-1.5 py-1 group-hover/card:space-x-1"
+        >
           {props.progress.subtasks.map((subtask) => (
             <TaskSubtaskDot key={subtask.id} subtask={subtask} />
           ))}
@@ -735,7 +772,10 @@ function TaskBoardCardMeta(props: { task: Task; progress?: TaskSubtaskProgress }
 
 function TaskSubtaskDot(props: { subtask: TaskSubtaskProgress["subtasks"][number] }) {
   return (
-    <span className="group relative inline-flex" tabIndex={0}>
+    <span
+      className="group relative inline-flex transition-[margin] duration-150 ease-out"
+      tabIndex={0}
+    >
       <span
         aria-label={formatSubtaskDotLabel(props.subtask.description)}
         className={readSubtaskDotClassName(props.subtask.status)}
@@ -789,6 +829,7 @@ function TaskCardActions(props: {
   onDuplicate: () => void;
   onSaveAsTemplate: () => void;
   onQueue: () => void;
+  onReview: () => void;
   onReopen: () => void;
   onSelect: () => void;
 }) {
@@ -831,6 +872,7 @@ function TaskCardActions(props: {
           onClick={props.onAccept}
           variant="success"
         />
+        <TaskCardIconButton icon={Flag} label="Review" onClick={props.onReview} variant="warning" />
         {props.latestRunPath ? (
           <TaskCardIconLink icon={ExternalLink} label="Open run" to={props.latestRunPath} />
         ) : null}
@@ -2888,7 +2930,7 @@ function readCardClassName(status: BoardTaskStatus, draggable: boolean): string 
     ? "cursor-grab hover:-translate-y-1 hover:shadow-lg active:cursor-grabbing active:shadow-xl"
     : "cursor-default";
 
-  return `grid min-w-0 max-w-full gap-3 rounded-xl border p-4 transition duration-150 ease-out ${interaction} ${emphasis}`;
+  return `group/card grid min-w-0 max-w-full gap-3 rounded-xl border p-4 transition duration-150 ease-out ${interaction} ${emphasis}`;
 }
 
 function readColumnClassName(
