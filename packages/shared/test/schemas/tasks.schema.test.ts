@@ -156,7 +156,6 @@ describe("task schemas", () => {
           title: "Weekly status",
           description: "Summarize progress.",
           todos: [],
-          status: "enabled",
           recurrence: {
             mode: "recurring",
             anchorAt: "2026-06-01T09:00:00.000Z",
@@ -164,7 +163,6 @@ describe("task schemas", () => {
             repeatRule: { frequency: "week", interval: 1 },
           },
           enabled: true,
-          archived: false,
           nextOccurrenceAt: "2026-06-08T09:00:00.000Z",
           createdAt: "2026-06-01T09:00:00.000Z",
           updatedAt: "2026-06-01T09:00:00.000Z",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import type {
@@ -242,6 +242,24 @@ function TaskListPage() {
                 void navigate(`/tasks/${duplicated.id}/edit${currentSearch}`),
             });
           }}
+          onSaveAsTemplate={(task) => {
+            mutations.createTemplate.mutate(
+              {
+                defaultAgentId: task.defaultAgentId ?? task.agentId,
+                title: task.title,
+                description: task.description,
+                todos: task.todos.map((todo) => ({ content: todo.content, status: todo.status })),
+                permissionProfile: task.permissionProfile,
+                enabled: true,
+              },
+              {
+                onSuccess: (template) => {
+                  setSelectedTemplate(searchParams, setSearchParams, template.id);
+                },
+              },
+            );
+          }}
+          onMove={(task, status) => handleBoardMove(task, status)}
           onQueue={(task) => mutations.trigger.mutate({ id: task.id })}
           onReopen={(task) =>
             void mutations.update.mutate({ id: task.id, input: { status: "backlog" } })
@@ -366,6 +384,28 @@ function TaskListPage() {
       ) : null}
     </div>
   );
+
+  function handleBoardMove(task: Task, status: BoardTaskStatus) {
+    const activeRun = activeRuns.find((run) => run.taskId === task.id);
+    const currentStatus = readBoardStatus(task);
+
+    if (status === currentStatus) return;
+    if (activeRun || currentStatus === "queued") return;
+
+    if (status === "queued") {
+      mutations.trigger.mutate({ id: task.id });
+      return;
+    }
+
+    if (status === "done") {
+      if (currentStatus === "ready_to_check") {
+        mutations.accept.mutate(task.id);
+      }
+      return;
+    }
+
+    mutations.update.mutate({ id: task.id, input: { status } });
+  }
 }
 
 function TaskViewNav(props: {
@@ -403,10 +443,15 @@ function TaskBoard(props: {
   onArchive: (task: Task) => void;
   onCancelRun: (run: TaskRun) => void;
   onDuplicate: (task: Task) => void;
+  onSaveAsTemplate: (task: Task) => void;
+  onMove: (task: Task, status: BoardTaskStatus) => void;
   onQueue: (task: Task) => void;
   onReopen: (task: Task) => void;
   onSelect: (task: Task) => void;
 }) {
+  const [draggedTaskId, setDraggedTaskId] = useState<string>();
+  const draggedTask = props.tasks.find((task) => task.id === draggedTaskId);
+
   return (
     <section className="overflow-x-auto pb-3" data-testid="tasks-board">
       <div className="flex min-w-max gap-4">
@@ -415,7 +460,28 @@ function TaskBoard(props: {
 
           return (
             <div
-              className="cc-panel flex min-h-80 w-80 min-w-0 shrink-0 flex-col gap-3 p-4"
+              className={readColumnClassName(draggedTask, column.status, props.activeRuns)}
+              data-board-status={column.status}
+              onDragOver={(event) => {
+                if (
+                  draggedTask &&
+                  canDropTaskOnStatus(draggedTask, column.status, props.activeRuns)
+                ) {
+                  event.preventDefault();
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const task = props.tasks.find(
+                  (entry) => entry.id === event.dataTransfer.getData("text/plain"),
+                );
+
+                if (task && canDropTaskOnStatus(task, column.status, props.activeRuns)) {
+                  props.onMove(task, column.status);
+                }
+
+                setDraggedTaskId(undefined);
+              }}
               key={column.status}
             >
               <div>
@@ -442,7 +508,14 @@ function TaskBoard(props: {
                     onAccept={() => props.onAccept(task)}
                     onArchive={() => props.onArchive(task)}
                     onCancelRun={(run) => props.onCancelRun(run)}
+                    onDragEnd={() => setDraggedTaskId(undefined)}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", task.id);
+                      setDraggedTaskId(task.id);
+                    }}
                     onDuplicate={() => props.onDuplicate(task)}
+                    onSaveAsTemplate={() => props.onSaveAsTemplate(task)}
                     onQueue={() => props.onQueue(task)}
                     onReopen={() => props.onReopen(task)}
                     onSelect={() => props.onSelect(task)}
@@ -463,10 +536,13 @@ function TaskBoardCard(props: {
   agent?: Agent;
   activeRun?: TaskRun;
   currentSearch: string;
+  onDragEnd: () => void;
+  onDragStart: (event: DragEvent<HTMLElement>) => void;
   onAccept: () => void;
   onQueue: () => void;
   onCancelRun: (run: TaskRun) => void;
   onDuplicate: () => void;
+  onSaveAsTemplate: () => void;
   onArchive: () => void;
   onReopen: () => void;
   onSelect: () => void;
@@ -480,7 +556,12 @@ function TaskBoardCard(props: {
     ? `/tasks/${task.id}/runs/${props.activeRun.id}${props.currentSearch}`
     : undefined;
   return (
-    <article className={readCardClassName(boardStatus)}>
+    <article
+      className={readCardClassName(boardStatus)}
+      draggable={!props.activeRun}
+      onDragEnd={props.onDragEnd}
+      onDragStart={props.onDragStart}
+    >
       <div className="grid gap-2">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <Link
@@ -531,6 +612,7 @@ function TaskBoardCard(props: {
           onArchive={props.onArchive}
           onCancelRun={props.onCancelRun}
           onDuplicate={props.onDuplicate}
+          onSaveAsTemplate={props.onSaveAsTemplate}
           onQueue={props.onQueue}
           onReopen={props.onReopen}
           onSelect={props.onSelect}
@@ -578,6 +660,7 @@ function TaskCardActions(props: {
   onArchive: () => void;
   onCancelRun: (run: TaskRun) => void;
   onDuplicate: () => void;
+  onSaveAsTemplate: () => void;
   onQueue: () => void;
   onReopen: () => void;
   onSelect: () => void;
@@ -613,6 +696,13 @@ function TaskCardActions(props: {
         >
           Details
         </Link>
+        <button
+          className="cc-button cc-button-secondary"
+          onClick={props.onSaveAsTemplate}
+          type="button"
+        >
+          Save as template
+        </button>
       </>
     );
   }
@@ -635,6 +725,13 @@ function TaskCardActions(props: {
         >
           Details
         </Link>
+        <button
+          className="cc-button cc-button-secondary"
+          onClick={props.onSaveAsTemplate}
+          type="button"
+        >
+          Save as template
+        </button>
       </>
     );
   }
@@ -656,6 +753,13 @@ function TaskCardActions(props: {
         >
           Edit
         </Link>
+        <button
+          className="cc-button cc-button-secondary"
+          onClick={props.onSaveAsTemplate}
+          type="button"
+        >
+          Save as template
+        </button>
       </>
     );
   }
@@ -676,6 +780,13 @@ function TaskCardActions(props: {
         >
           Details
         </Link>
+        <button
+          className="cc-button cc-button-secondary"
+          onClick={props.onSaveAsTemplate}
+          type="button"
+        >
+          Save as template
+        </button>
       </>
     );
   }
@@ -693,6 +804,13 @@ function TaskCardActions(props: {
       </Link>
       <button className="cc-button cc-button-secondary" onClick={props.onDuplicate} type="button">
         Duplicate
+      </button>
+      <button
+        className="cc-button cc-button-secondary"
+        onClick={props.onSaveAsTemplate}
+        type="button"
+      >
+        Save as template
       </button>
       <button className="cc-button cc-button-secondary" onClick={props.onArchive} type="button">
         Archive
@@ -2120,11 +2238,10 @@ function templateAsTask(template: TaskTemplate): Task {
     triggerMode: template.recurrence ? "recurring" : "manual",
     schedule: template.recurrence ?? { mode: "manual" },
     enabled: template.enabled,
-    archived: template.archived,
+    archived: false,
     latestFinalMessage: template.latestFinalMessage,
     createdAt: template.createdAt,
     updatedAt: template.updatedAt,
-    archivedAt: template.archivedAt,
   };
 }
 
@@ -2338,6 +2455,29 @@ function readCardClassName(status: BoardTaskStatus): string {
           : "border-border bg-surface";
 
   return `grid min-w-0 max-w-full gap-3 rounded-xl border p-4 ${emphasis}`;
+}
+
+function readColumnClassName(
+  draggedTask: Task | undefined,
+  status: BoardTaskStatus,
+  activeRuns: TaskRun[],
+): string {
+  const base = "cc-panel flex min-h-80 w-80 min-w-0 shrink-0 flex-col gap-3 p-4 transition";
+
+  if (!draggedTask) return base;
+
+  return canDropTaskOnStatus(draggedTask, status, activeRuns)
+    ? `${base} border-accent/60 bg-accent/5`
+    : `${base} opacity-70`;
+}
+
+function canDropTaskOnStatus(task: Task, status: BoardTaskStatus, activeRuns: TaskRun[]): boolean {
+  const currentStatus = readBoardStatus(task);
+
+  if (currentStatus === status) return false;
+  if (activeRuns.some((run) => run.taskId === task.id) || currentStatus === "queued") return false;
+  if (status === "done") return currentStatus === "ready_to_check";
+  return status !== "archived";
 }
 
 function readResultClassName(status: BoardTaskStatus): string {

@@ -849,7 +849,6 @@ function makeTaskTemplatePayload(overrides: Record<string, unknown> = {}): Recor
     title: "Weekly release notes",
     description: "Draft notes.",
     todos: [],
-    status: "enabled",
     recurrence: {
       mode: "recurring",
       anchorAt: "2026-01-01T00:00:00.000Z",
@@ -857,7 +856,6 @@ function makeTaskTemplatePayload(overrides: Record<string, unknown> = {}): Recor
       repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
     },
     enabled: true,
-    archived: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,

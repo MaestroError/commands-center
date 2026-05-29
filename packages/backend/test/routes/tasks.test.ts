@@ -393,6 +393,9 @@ describe("task routes", () => {
       expect(subtasks.json()).toHaveLength(1);
       expect(template.statusCode).toBe(201);
       expect(template.json().defaultAgentId).toBe(agent.id);
+      expect(template.json()).not.toHaveProperty("archived");
+      expect(template.json()).not.toHaveProperty("archivedAt");
+      expect(template.json()).not.toHaveProperty("status");
       expect(templates.statusCode).toBe(200);
       expect(templates.json()).toHaveLength(1);
       expect(templateDetail.statusCode).toBe(200);

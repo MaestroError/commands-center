@@ -307,8 +307,30 @@ describe("createTaskService", () => {
 
       expect(archived).toBeUndefined();
       expect(restored).toBeUndefined();
-      expect(storedTemplate?.archived).toBe(false);
-      expect(storedTemplate?.status).toBe("enabled");
+      expect(storedTemplate?.id).toBe(template.id);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("deletes task templates that do not have proxy task rows", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Reusable report",
+        description: "Summarize recent changes.",
+        enabled: true,
+      });
+
+      const deleted = await service.delete(template.id);
+      const storedTemplate = await service.getTemplate(template.id);
+
+      expect(deleted).toBe(true);
+      expect(storedTemplate).toBeUndefined();
     } finally {
       await testDb.cleanup();
     }

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
@@ -86,7 +86,6 @@ const taskTemplate: TaskTemplate = {
   title: "Weekly release notes",
   description: "Generate release note draft every week.",
   todos: [],
-  status: "enabled",
   recurrence: {
     mode: "recurring",
     anchorAt: "2026-01-01T00:00:00.000Z",
@@ -94,7 +93,6 @@ const taskTemplate: TaskTemplate = {
     repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
   },
   enabled: true,
-  archived: false,
   latestTaskId: "task-1",
   nextOccurrenceAt: "2026-01-08T00:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -356,13 +354,125 @@ describe("TasksPage", () => {
   });
 
   it("shows templates without user-visible status badges", async () => {
-    mockFetch({ templatesPayload: [{ ...taskTemplate, status: "archived", archived: true }] });
+    mockFetch({ templatesPayload: [taskTemplate] });
 
     renderWithRouter(<TasksPage />, "/tasks?view=templates");
 
     expect(await screen.findByText("Template")).toBeInTheDocument();
     expect(screen.queryByText("Archived")).not.toBeInTheDocument();
     expect(screen.queryByText("Enabled")).not.toBeInTheDocument();
+  });
+
+  it("saves a board task as a reusable template", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Save as template" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/templates",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            defaultAgentId: "agent-1",
+            title: "Ship release",
+            description: "Prepare release notes.",
+            todos: [{ content: "Read changelog", status: "pending" }],
+            enabled: true,
+          }),
+        }),
+      );
+    });
+    expect(
+      await screen.findByRole("complementary", { name: "Task template detail panel" }),
+    ).toBeInTheDocument();
+  });
+
+  it("moves a board task by dropping it into another column", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const card = (await screen.findByRole("link", { name: "Ship release" })).closest("article");
+    const reviewColumn = screen.getByRole("heading", { name: "Review" }).closest(".cc-panel");
+    expect(card).not.toBeNull();
+    expect(reviewColumn).not.toBeNull();
+
+    if (!card || !reviewColumn) {
+      throw new Error("Expected board card and review column.");
+    }
+
+    fireDragEvent(card, "dragStart");
+    fireDragEvent(reviewColumn, "dragOver");
+    fireDragEvent(reviewColumn, "drop");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ status: "review" }),
+        }),
+      );
+    });
+  });
+
+  it("queues a board task when dropped into the queued column", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const card = (await screen.findByRole("link", { name: "Ship release" })).closest("article");
+    const queuedColumn = screen.getByRole("heading", { name: "Queued" }).closest(".cc-panel");
+    expect(card).not.toBeNull();
+    expect(queuedColumn).not.toBeNull();
+
+    if (!card || !queuedColumn) {
+      throw new Error("Expected board card and queued column.");
+    }
+
+    fireDragEvent(card, "dragStart");
+    fireDragEvent(queuedColumn, "dragOver");
+    fireDragEvent(queuedColumn, "drop");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/queue",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ triggerSource: "manual" }),
+        }),
+      );
+    });
+  });
+
+  it("accepts ready-to-check tasks when dropped into done", async () => {
+    const fetchMock = mockFetch({ taskPayload: { ...task, status: "ready_to_check" } });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const card = (await screen.findByRole("link", { name: "Ship release" })).closest("article");
+    const doneColumn = screen.getByRole("heading", { name: "Done" }).closest(".cc-panel");
+    expect(card).not.toBeNull();
+    expect(doneColumn).not.toBeNull();
+
+    if (!card || !doneColumn) {
+      throw new Error("Expected board card and done column.");
+    }
+
+    fireDragEvent(card, "dragStart");
+    fireDragEvent(doneColumn, "dragOver");
+    fireDragEvent(doneColumn, "drop");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/accept",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
   });
 
   it("deletes a template from the templates view", async () => {
@@ -1451,4 +1561,15 @@ function jsonResponse(status: number, body: unknown): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function fireDragEvent(element: Element, eventName: "dragStart" | "dragOver" | "drop") {
+  const store = new Map<string, string>();
+  const dataTransfer = {
+    effectAllowed: "move",
+    getData: (key: string) => store.get(key) ?? "task-1",
+    setData: vi.fn((key: string, value: string) => store.set(key, value)),
+  };
+
+  fireEvent[eventName](element, { dataTransfer });
 }

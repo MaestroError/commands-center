@@ -320,26 +320,21 @@ export const taskSchema = z.object({
 
 export const taskListSchema = z.array(taskSchema);
 
-export const taskTemplateStatusSchema = z.enum(["enabled", "disabled", "archived"]);
-
 export const taskTemplateSchema = z.object({
   id: z.string().min(1),
   defaultAgentId: z.string().min(1),
   title: z.string().min(1),
   description: z.string(),
   todos: z.array(taskTodoSchema),
-  status: taskTemplateStatusSchema,
   recurrence: recurringTaskScheduleSchema.optional(),
   permissionProfile: taskPermissionProfileSchema.optional(),
   enabled: z.boolean(),
-  archived: z.boolean(),
   latestFinalMessage: z.string().optional(),
   latestTaskId: z.string().min(1).optional(),
   nextOccurrenceAt: z.string().datetime().optional(),
   lastGeneratedOccurrenceAt: z.string().datetime().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-  archivedAt: z.string().datetime().optional(),
 });
 
 export const taskTemplateListSchema = z.array(taskTemplateSchema);
@@ -496,7 +491,6 @@ export type AppendTaskContextInput = z.input<typeof appendTaskContextInputSchema
 export type TaskComment = z.infer<typeof taskCommentSchema>;
 export type TaskCommentStatus = z.infer<typeof taskCommentStatusSchema>;
 export type TaskTemplate = z.infer<typeof taskTemplateSchema>;
-export type TaskTemplateStatus = z.infer<typeof taskTemplateStatusSchema>;
 export type TaskPermissionProfile = z.infer<typeof taskPermissionProfileSchema>;
 export type TaskRunArtifact = z.infer<typeof taskRunArtifactSchema>;
 export type TaskRun = z.infer<typeof taskRunSchema>;

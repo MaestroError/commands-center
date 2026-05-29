@@ -144,7 +144,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
     },
 
     async getTemplate(id: string): Promise<TaskTemplate | undefined> {
-      const row = await getTemplateRow(id, { includeArchived: true });
+      const row = await getTemplateRow(id);
       return row ? mapTaskTemplate(row) : undefined;
     },
 
@@ -345,9 +345,8 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
     async update(id: string, input: UpdateTaskInput): Promise<Task | undefined> {
       const parsed = updateTaskInputSchema.parse(input);
       const existing = await getTaskRow(id);
-      const existingTemplate = existing ? undefined : await getTemplateRow(id);
 
-      if (!existing && !existingTemplate) {
+      if (!existing) {
         return undefined;
       }
 
@@ -360,101 +359,28 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       }
 
       const timestamp = now();
-      const source = existing ?? existingTemplate!;
-      const triggerMode = parsed.triggerMode ?? source.trigger_mode;
+      const triggerMode = parsed.triggerMode ?? existing.trigger_mode;
       const schedule = normalizeSchedule(
         triggerMode,
-        parsed.schedule ?? parseTaskSchedule(source.schedule_json),
+        parsed.schedule ?? parseTaskSchedule(existing.schedule_json),
       );
-      const archived = parsed.status === "archived" ? true : source.archived;
+      const archived = parsed.status === "archived" ? true : existing.archived;
       const enabled =
         parsed.enabled ??
         (parsed.status === "enabled"
           ? true
           : parsed.status === "disabled" || parsed.status === "draft"
             ? false
-            : source.enabled);
+            : existing.enabled);
       const status = normalizeTaskStatus({
         requestedStatus: parsed.status,
         enabled,
         archived,
-        fallbackStatus: source.status as TaskStatus,
+        fallbackStatus: existing.status as TaskStatus,
       });
       const todos = parsed.todos
         ? normalizeTodos(parsed.todos, timestamp)
-        : parseTaskTodos(source.todos_json);
-
-      if (existingTemplate) {
-        const nextAgentId = parsed.agentId ?? existingTemplate.agent_id;
-        const nextDefaultAgentId = parsed.defaultAgentId ?? existingTemplate.default_agent_id;
-        const nextTitle = parsed.title ?? existingTemplate.title;
-        const nextDescription = parsed.description ?? existingTemplate.description;
-        const nextPermissionProfileJson =
-          parsed.permissionProfile === undefined
-            ? existingTemplate.permission_profile_json
-            : stringifyOptional(parsed.permissionProfile);
-        const nextArchivedAt = archived ? (existingTemplate.archived_at ?? timestamp) : null;
-
-        return Promise.resolve(
-          options.db.transaction((tx) => {
-            const row = tx
-              .update(task_templates)
-              .set({
-                agent_id: nextAgentId,
-                default_agent_id: nextDefaultAgentId,
-                title: nextTitle,
-                description: nextDescription,
-                todos_json: JSON.stringify(todos),
-                status,
-                trigger_mode: triggerMode,
-                schedule_json: JSON.stringify(schedule),
-                permission_profile_json: nextPermissionProfileJson,
-                enabled,
-                archived,
-                updated_at: timestamp,
-                archived_at: nextArchivedAt,
-              })
-              .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
-              .returning()
-              .get();
-
-            if (!row) {
-              throw new Error("Failed to update task template record.");
-            }
-
-            const proxy = tx
-              .update(tasks)
-              .set({
-                agent_id: nextAgentId,
-                default_agent_id: nextDefaultAgentId,
-                title: nextTitle,
-                description: nextDescription,
-                todos_json: JSON.stringify(todos),
-                status,
-                trigger_mode: triggerMode,
-                schedule_json: JSON.stringify(schedule),
-                permission_profile_json: nextPermissionProfileJson,
-                enabled,
-                archived,
-                updated_at: timestamp,
-                archived_at: nextArchivedAt,
-              })
-              .where(and(eq(tasks.id, id), eq(tasks.template_id, id), isNull(tasks.deleted_at)))
-              .returning()
-              .get();
-
-            if (!proxy) {
-              throw new Error("Failed to update task template proxy record.");
-            }
-
-            return mapTemplateAsTask(row);
-          }),
-        );
-      }
-
-      if (!existing) {
-        throw new Error("Task row disappeared during update.");
-      }
+        : parseTaskTodos(existing.todos_json);
 
       const [row] = await options.db
         .update(tasks)
@@ -826,8 +752,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
               return false;
             }
 
-            const proxy = tx
-              .update(tasks)
+            tx.update(tasks)
               .set({
                 enabled: false,
                 updated_at: timestamp,
@@ -836,10 +761,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
               .where(and(eq(tasks.id, id), eq(tasks.template_id, id), isNull(tasks.deleted_at)))
               .returning({ id: tasks.id })
               .get();
-
-            if (!proxy) {
-              throw new Error("Failed to delete task template proxy record.");
-            }
 
             return true;
           }),
@@ -1761,20 +1682,17 @@ function mapTaskTemplate(row: typeof task_templates.$inferSelect): TaskTemplate 
     title: row.title,
     description: row.description,
     todos: parseTaskTodos(row.todos_json),
-    status: row.archived ? "archived" : row.enabled ? "enabled" : "disabled",
     recurrence: row.recurrence_json
       ? recurringTaskScheduleSchema.parse(JSON.parse(row.recurrence_json))
       : undefined,
     permissionProfile: parseOptional(row.permission_profile_json, taskPermissionProfileSchema),
     enabled: row.enabled,
-    archived: row.archived,
     latestFinalMessage: row.latest_final_message ?? undefined,
     latestTaskId: row.latest_task_id ?? undefined,
     nextOccurrenceAt: row.next_occurrence_at?.toISOString(),
     lastGeneratedOccurrenceAt: row.last_generated_occurrence_at?.toISOString(),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
-    archivedAt: row.archived_at?.toISOString(),
   });
 }
 
