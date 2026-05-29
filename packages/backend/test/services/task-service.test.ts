@@ -907,6 +907,12 @@ describe("createTaskService", () => {
           completed: 1,
           active: 1,
           review: 1,
+          subtasks: [
+            expect.objectContaining({ id: backlogSubtask.id, status: "backlog" }),
+            expect.objectContaining({ id: completedSubtask.id, status: "done" }),
+            expect.objectContaining({ id: activeSubtask.id, status: "running" }),
+            expect.objectContaining({ id: reviewSubtask.id, status: "review" }),
+          ],
         },
       ]);
       expect(backlogSubtask.id).toBeDefined();

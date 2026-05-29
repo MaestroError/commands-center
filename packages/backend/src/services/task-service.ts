@@ -667,7 +667,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           const taskSubtasks = subtaskRows
             .filter((subtask) => subtask.task_id === taskId)
             .map(mapTaskSubtask);
-          const statuses = taskSubtasks.map((subtask) => deriveSubtaskStatus(subtask, runs));
+          const subtasks = taskSubtasks.map((subtask) => ({
+            id: subtask.id,
+            description: subtask.description,
+            status: deriveSubtaskStatus(subtask, runs),
+          }));
+          const statuses = subtasks.map((subtask) => subtask.status);
 
           return {
             taskId,
@@ -675,6 +680,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
             completed: statuses.filter((status) => status === "done").length,
             active: statuses.filter((status) => status === "queued" || status === "running").length,
             review: statuses.filter((status) => status === "review").length,
+            subtasks,
           };
         }),
       );

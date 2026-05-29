@@ -440,12 +440,19 @@ export const taskFeedbackThreadSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
+export const taskSubtaskProgressItemSchema = z.object({
+  id: z.string().min(1),
+  description: z.string(),
+  status: taskSubtaskDerivedStatusSchema,
+});
+
 export const taskSubtaskProgressSchema = z.object({
   taskId: z.string().min(1),
   total: z.number().int().nonnegative(),
   completed: z.number().int().nonnegative(),
   active: z.number().int().nonnegative(),
   review: z.number().int().nonnegative(),
+  subtasks: z.array(taskSubtaskProgressItemSchema).default([]),
 });
 
 export const taskQueuePreviewInputSchema = queueTaskInputSchema.omit({ taskId: true });

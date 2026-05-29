@@ -405,7 +405,19 @@ describe("task routes", () => {
       });
       expect(progress.statusCode).toBe(200);
       expect(progress.json()).toEqual([
-        { taskId: task.id, total: 1, completed: 0, active: 0, review: 0 },
+        {
+          taskId: task.id,
+          total: 1,
+          completed: 0,
+          active: 0,
+          review: 0,
+          subtasks: [
+            expect.objectContaining({
+              description: "Please verify docs.",
+              status: "backlog",
+            }),
+          ],
+        },
       ]);
       expect(preview.statusCode).toBe(200);
       expect(preview.json()).toMatchObject({

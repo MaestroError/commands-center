@@ -7,7 +7,22 @@ import {
   type DragEvent,
   type FormEvent,
 } from "react";
-import { MessageSquareText } from "lucide-react";
+import {
+  Archive,
+  CalendarClock,
+  Check,
+  CheckCheck,
+  Copy,
+  ExternalLink,
+  Info,
+  MessageSquareText,
+  Pencil,
+  Play,
+  RotateCcw,
+  Save,
+  XCircle,
+  type LucideIcon,
+} from "lucide-react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import type {
@@ -645,17 +660,7 @@ function TaskBoardCard(props: {
         ) : null}
       </div>
 
-      <div className="grid gap-2 text-xs text-text-secondary">
-        <span>Todos: {formatTodoProgress(task)}</span>
-        {props.progress?.total ? (
-          <span>
-            Subtasks: {props.progress.completed}/{props.progress.total}
-            {props.progress.active ? ` active ${String(props.progress.active)}` : ""}
-            {props.progress.review ? ` review ${String(props.progress.review)}` : ""}
-          </span>
-        ) : null}
-        <span>Updated: {formatDate(task.updatedAt)}</span>
-      </div>
+      <TaskBoardCardMeta progress={props.progress} task={task} />
 
       <div className="flex flex-wrap gap-2">
         <TaskCardActions
@@ -693,6 +698,53 @@ function TaskResultMessageTooltip(props: { message: string }) {
         role="tooltip"
       >
         {formatResultMessagePreview(props.message)}
+      </span>
+    </span>
+  );
+}
+
+function TaskBoardCardMeta(props: { task: Task; progress?: TaskSubtaskProgress }) {
+  const totalTodos = props.task.todos.length;
+  const completedTodos = props.task.todos.filter((todo) => todo.status === "completed").length;
+
+  if (totalTodos === 0 && !props.progress?.subtasks.length) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+      {totalTodos > 0 ? (
+        <span
+          aria-label={`Todos: ${completedTodos}/${totalTodos}`}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1"
+        >
+          <CheckCheck aria-hidden="true" className="h-3.5 w-3.5 text-accent" />
+          <span>{`${completedTodos}/${totalTodos}`}</span>
+        </span>
+      ) : null}
+      {props.progress?.subtasks.length ? (
+        <span aria-label="Subtasks" className="inline-flex items-center -space-x-1.5 py-1">
+          {props.progress.subtasks.map((subtask) => (
+            <TaskSubtaskDot key={subtask.id} subtask={subtask} />
+          ))}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function TaskSubtaskDot(props: { subtask: TaskSubtaskProgress["subtasks"][number] }) {
+  return (
+    <span className="group relative inline-flex" tabIndex={0}>
+      <span
+        aria-label={formatSubtaskDotLabel(props.subtask.description)}
+        className={readSubtaskDotClassName(props.subtask.status)}
+      />
+      <span
+        className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-56 -translate-x-1/2 rounded-md border border-border bg-surface-elevated px-2 py-1.5 text-left text-xs leading-5 text-text-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        role="tooltip"
+      >
+        {formatSubtaskPreview(props.subtask.description)}
       </span>
     </span>
   );
@@ -744,40 +796,28 @@ function TaskCardActions(props: {
     return (
       <>
         {props.activeRunPath ? (
-          <Link className="cc-button" to={props.activeRunPath}>
-            View run
-          </Link>
+          <TaskCardIconLink icon={ExternalLink} label="View run" to={props.activeRunPath} />
         ) : null}
         {props.activeRun ? (
-          <button
-            className="cc-button cc-button-secondary"
+          <TaskCardIconButton
+            icon={XCircle}
+            label="Cancel run"
             onClick={() => {
               if (props.activeRun) props.onCancelRun(props.activeRun);
             }}
-            type="button"
-          >
-            Cancel run
-          </button>
+            variant="danger"
+          />
         ) : null}
         {!props.activeRun ? (
-          <button className="cc-button" onClick={props.onQueue} type="button">
-            Queue
-          </button>
+          <TaskCardIconButton icon={Play} label="Queue" onClick={props.onQueue} variant="success" />
         ) : null}
-        <Link
-          className="cc-button cc-button-secondary"
+        <TaskCardIconLink
+          icon={Info}
+          label="Details"
           to={`/tasks${buildPanelSearch(props.currentSearch, props.task.id)}`}
           onClick={props.onSelect}
-        >
-          Details
-        </Link>
-        <button
-          className="cc-button cc-button-secondary"
-          onClick={props.onSaveAsTemplate}
-          type="button"
-        >
-          Save as template
-        </button>
+        />
+        <TaskCardIconButton icon={Save} label="Save as template" onClick={props.onSaveAsTemplate} />
       </>
     );
   }
@@ -785,28 +825,22 @@ function TaskCardActions(props: {
   if (props.boardStatus === "ready_to_check") {
     return (
       <>
-        <button className="cc-button" onClick={props.onAccept} type="button">
-          Accept
-        </button>
+        <TaskCardIconButton
+          icon={Check}
+          label="Accept"
+          onClick={props.onAccept}
+          variant="success"
+        />
         {props.latestRunPath ? (
-          <Link className="cc-button cc-button-secondary" to={props.latestRunPath}>
-            Open run
-          </Link>
+          <TaskCardIconLink icon={ExternalLink} label="Open run" to={props.latestRunPath} />
         ) : null}
-        <Link
-          className="cc-button cc-button-secondary"
+        <TaskCardIconLink
+          icon={Info}
+          label="Details"
           to={`/tasks${buildPanelSearch(props.currentSearch, props.task.id)}`}
           onClick={props.onSelect}
-        >
-          Details
-        </Link>
-        <button
-          className="cc-button cc-button-secondary"
-          onClick={props.onSaveAsTemplate}
-          type="button"
-        >
-          Save as template
-        </button>
+        />
+        <TaskCardIconButton icon={Save} label="Save as template" onClick={props.onSaveAsTemplate} />
       </>
     );
   }
@@ -814,27 +848,21 @@ function TaskCardActions(props: {
   if (props.boardStatus === "review") {
     return (
       <>
-        <button className="cc-button" onClick={props.onQueue} type="button">
-          Retry
-        </button>
+        <TaskCardIconButton
+          icon={RotateCcw}
+          label="Retry"
+          onClick={props.onQueue}
+          variant="warning"
+        />
         {props.latestRunPath ? (
-          <Link className="cc-button cc-button-secondary" to={props.latestRunPath}>
-            Open run
-          </Link>
+          <TaskCardIconLink icon={ExternalLink} label="Open run" to={props.latestRunPath} />
         ) : null}
-        <Link
-          className="cc-button cc-button-secondary"
+        <TaskCardIconLink
+          icon={Pencil}
+          label="Edit"
           to={`/tasks/${props.task.id}/edit${props.currentSearch}`}
-        >
-          Edit
-        </Link>
-        <button
-          className="cc-button cc-button-secondary"
-          onClick={props.onSaveAsTemplate}
-          type="button"
-        >
-          Save as template
-        </button>
+        />
+        <TaskCardIconButton icon={Save} label="Save as template" onClick={props.onSaveAsTemplate} />
       </>
     );
   }
@@ -842,55 +870,102 @@ function TaskCardActions(props: {
   if (props.boardStatus === "done") {
     return (
       <>
-        <button className="cc-button" onClick={props.onReopen} type="button">
-          Reopen
-        </button>
-        <button className="cc-button cc-button-secondary" onClick={props.onArchive} type="button">
-          Archive
-        </button>
-        <Link
-          className="cc-button cc-button-secondary"
+        <TaskCardIconButton icon={RotateCcw} label="Reopen" onClick={props.onReopen} />
+        <TaskCardIconButton
+          icon={Archive}
+          label="Archive"
+          onClick={props.onArchive}
+          variant="warning"
+        />
+        <TaskCardIconLink
+          icon={Info}
+          label="Details"
           to={`/tasks${buildPanelSearch(props.currentSearch, props.task.id)}`}
           onClick={props.onSelect}
-        >
-          Details
-        </Link>
-        <button
-          className="cc-button cc-button-secondary"
-          onClick={props.onSaveAsTemplate}
-          type="button"
-        >
-          Save as template
-        </button>
+        />
+        <TaskCardIconButton icon={Save} label="Save as template" onClick={props.onSaveAsTemplate} />
       </>
     );
   }
 
   return (
     <>
-      <button className="cc-button" onClick={props.onQueue} type="button">
-        {props.boardStatus === "scheduled" ? "Queue now" : "Queue"}
-      </button>
-      <Link
-        className="cc-button cc-button-secondary"
+      <TaskCardIconButton
+        icon={Play}
+        label={props.boardStatus === "scheduled" ? "Queue now" : "Queue"}
+        onClick={props.onQueue}
+        variant="success"
+      />
+      <TaskCardIconLink
+        icon={props.boardStatus === "scheduled" ? CalendarClock : Pencil}
+        label={props.boardStatus === "scheduled" ? "Reschedule" : "Edit"}
         to={`/tasks/${props.task.id}/edit${props.currentSearch}`}
-      >
-        {props.boardStatus === "scheduled" ? "Reschedule" : "Edit"}
-      </Link>
-      <button className="cc-button cc-button-secondary" onClick={props.onDuplicate} type="button">
-        Duplicate
-      </button>
-      <button
-        className="cc-button cc-button-secondary"
-        onClick={props.onSaveAsTemplate}
-        type="button"
-      >
-        Save as template
-      </button>
-      <button className="cc-button cc-button-secondary" onClick={props.onArchive} type="button">
-        Archive
-      </button>
+      />
+      <TaskCardIconButton icon={Copy} label="Duplicate" onClick={props.onDuplicate} />
+      <TaskCardIconButton icon={Save} label="Save as template" onClick={props.onSaveAsTemplate} />
+      <TaskCardIconButton
+        icon={Archive}
+        label="Archive"
+        onClick={props.onArchive}
+        variant="warning"
+      />
     </>
+  );
+}
+
+type TaskCardIconActionVariant = "normal" | "success" | "warning" | "danger";
+
+function TaskCardIconButton(props: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  variant?: TaskCardIconActionVariant;
+}) {
+  const Icon = props.icon;
+
+  return (
+    <button
+      aria-label={props.label}
+      className={readTaskCardIconActionClassName(props.variant)}
+      onClick={props.onClick}
+      type="button"
+    >
+      <Icon aria-hidden="true" className="h-4 w-4" />
+      <TaskCardIconActionTooltip label={props.label} />
+    </button>
+  );
+}
+
+function TaskCardIconLink(props: {
+  icon: LucideIcon;
+  label: string;
+  to: string;
+  onClick?: () => void;
+  variant?: TaskCardIconActionVariant;
+}) {
+  const Icon = props.icon;
+
+  return (
+    <Link
+      aria-label={props.label}
+      className={readTaskCardIconActionClassName(props.variant)}
+      onClick={props.onClick}
+      to={props.to}
+    >
+      <Icon aria-hidden="true" className="h-4 w-4" />
+      <TaskCardIconActionTooltip label={props.label} />
+    </Link>
+  );
+}
+
+function TaskCardIconActionTooltip(props: { label: string }) {
+  return (
+    <span
+      className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-max max-w-48 -translate-x-1/2 whitespace-normal rounded-md border border-border bg-surface-elevated px-2 py-1 text-xs font-medium text-text-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+      role="tooltip"
+    >
+      {props.label}
+    </span>
   );
 }
 
@@ -2860,8 +2935,42 @@ function canDropTaskOnStatus(task: Task, status: BoardTaskStatus, activeRuns: Ta
   return status !== "archived";
 }
 
+function readTaskCardIconActionClassName(variant: TaskCardIconActionVariant = "normal"): string {
+  const emphasis =
+    variant === "success"
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:border-emerald-500/60 hover:bg-emerald-500/15 dark:text-emerald-400"
+      : variant === "warning"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-600 hover:border-amber-500/60 hover:bg-amber-500/15 dark:text-amber-400"
+        : variant === "danger"
+          ? "border-red-500/30 bg-red-500/10 text-red-600 hover:border-red-500/60 hover:bg-red-500/15 dark:text-red-400"
+          : "border-border bg-surface-elevated text-text-secondary hover:border-accent/50 hover:text-accent";
+
+  return `group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background ${emphasis}`;
+}
+
 function formatResultMessagePreview(message: string): string {
   return message.length > 200 ? `${message.slice(0, 200)}...` : message;
+}
+
+function formatSubtaskPreview(description: string): string {
+  return description.length > 100 ? `${description.slice(0, 100)}...` : description;
+}
+
+function formatSubtaskDotLabel(description: string): string {
+  return `Subtask: ${formatSubtaskPreview(description) || "No description"}`;
+}
+
+function readSubtaskDotClassName(
+  status: TaskSubtaskProgress["subtasks"][number]["status"],
+): string {
+  const color =
+    status === "done"
+      ? "border-emerald-500 bg-emerald-500"
+      : status === "review"
+        ? "border-red-500 bg-red-500"
+        : "border-accent bg-accent";
+
+  return `block h-3 w-3 rounded-full border-2 ring-2 ring-surface ${color}`;
 }
 
 function readResultClassName(status: BoardTaskStatus): string {

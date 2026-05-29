@@ -193,6 +193,14 @@ const subtaskProgress: TaskSubtaskProgress = {
   completed: 1,
   active: 1,
   review: 0,
+  subtasks: [
+    { id: "subtask-1", description: "Implement the docs updates.", status: "done" },
+    {
+      id: "subtask-2",
+      description: `${"Review generated content. ".repeat(6)}Confirm it is complete.`,
+      status: "running",
+    },
+  ],
 };
 
 const conversation: ConversationDetail = {
@@ -324,6 +332,8 @@ describe("TasksPage", () => {
     expect(screen.getByText("Planner", { selector: '[role="tooltip"]' })).toBeInTheDocument();
     expect(screen.getByText("PL")).toBeInTheDocument();
     expect(screen.queryByText("Prepare release notes.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Queue" })).toBeInTheDocument();
+    expect(screen.getByText("Queue", { selector: '[role="tooltip"]' })).toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Queue" }));
@@ -346,7 +356,11 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks");
 
-    expect(await screen.findByText("Subtasks: 1/2 active 1")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Subtasks")).toBeInTheDocument();
+    expect(screen.getByLabelText("Subtask: Implement the docs updates.")).toBeInTheDocument();
+    expect(
+      screen.getByText(`${"Review generated content. ".repeat(3)}Review generated conte...`),
+    ).toBeInTheDocument();
   });
 
   it("keeps ready-to-check cards constrained inside the board column", async () => {
@@ -905,7 +919,8 @@ describe("TasksPage", () => {
 
     expect(await screen.findByRole("button", { name: "Queue now" })).toBeInTheDocument();
     expect(screen.getAllByText(/Scheduled/).length).toBeGreaterThan(0);
-    expect(screen.getByText("Todos: 0/1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Todos: 0/1")).toBeInTheDocument();
+    expect(screen.queryByText("Updated:")).not.toBeInTheDocument();
   });
 
   it("shows active run actions for queued cards", async () => {

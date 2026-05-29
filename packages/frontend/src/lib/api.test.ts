@@ -326,14 +326,28 @@ describe("task actions", () => {
   });
 
   it("loads subtask progress for board cards", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        makeJsonResponse([{ taskId: "task-1", total: 2, completed: 1, active: 1, review: 0 }]),
-      );
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse([
+        {
+          taskId: "task-1",
+          total: 2,
+          completed: 1,
+          active: 1,
+          review: 0,
+          subtasks: [{ id: "subtask-1", description: "Check docs.", status: "done" }],
+        },
+      ]),
+    );
 
     await expect(listTaskSubtaskProgress(["task-1", "task-2"])).resolves.toEqual([
-      { taskId: "task-1", total: 2, completed: 1, active: 1, review: 0 },
+      {
+        taskId: "task-1",
+        total: 2,
+        completed: 1,
+        active: 1,
+        review: 0,
+        subtasks: [{ id: "subtask-1", description: "Check docs.", status: "done" }],
+      },
     ]);
 
     expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/subtask-progress?taskIds=task-1%2Ctask-2", {
