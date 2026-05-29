@@ -406,7 +406,9 @@ describe("TasksPage", () => {
     }
 
     fireDragEvent(card, "dragStart");
+    expect(reviewColumn).toHaveAttribute("data-drop-state", "ready");
     fireDragEvent(reviewColumn, "dragOver");
+    expect(reviewColumn).toHaveAttribute("data-drop-state", "active");
     fireDragEvent(reviewColumn, "drop");
 
     await waitFor(() => {

@@ -450,6 +450,7 @@ function TaskBoard(props: {
   onSelect: (task: Task) => void;
 }) {
   const [draggedTaskId, setDraggedTaskId] = useState<string>();
+  const [dragOverStatus, setDragOverStatus] = useState<BoardTaskStatus>();
   const draggedTask = props.tasks.find((task) => task.id === draggedTaskId);
 
   return (
@@ -460,14 +461,32 @@ function TaskBoard(props: {
 
           return (
             <div
-              className={readColumnClassName(draggedTask, column.status, props.activeRuns)}
+              className={readColumnClassName(
+                draggedTask,
+                column.status,
+                props.activeRuns,
+                dragOverStatus === column.status,
+              )}
               data-board-status={column.status}
+              data-drop-state={readColumnDropState(
+                draggedTask,
+                column.status,
+                props.activeRuns,
+                dragOverStatus === column.status,
+              )}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  setDragOverStatus(undefined);
+                }
+              }}
               onDragOver={(event) => {
                 if (
                   draggedTask &&
                   canDropTaskOnStatus(draggedTask, column.status, props.activeRuns)
                 ) {
                   event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  setDragOverStatus(column.status);
                 }
               }}
               onDrop={(event) => {
@@ -481,6 +500,7 @@ function TaskBoard(props: {
                 }
 
                 setDraggedTaskId(undefined);
+                setDragOverStatus(undefined);
               }}
               key={column.status}
             >
@@ -508,11 +528,15 @@ function TaskBoard(props: {
                     onAccept={() => props.onAccept(task)}
                     onArchive={() => props.onArchive(task)}
                     onCancelRun={(run) => props.onCancelRun(run)}
-                    onDragEnd={() => setDraggedTaskId(undefined)}
+                    onDragEnd={() => {
+                      setDraggedTaskId(undefined);
+                      setDragOverStatus(undefined);
+                    }}
                     onDragStart={(event) => {
                       event.dataTransfer.effectAllowed = "move";
                       event.dataTransfer.setData("text/plain", task.id);
                       setDraggedTaskId(task.id);
+                      setDragOverStatus(undefined);
                     }}
                     onDuplicate={() => props.onDuplicate(task)}
                     onSaveAsTemplate={() => props.onSaveAsTemplate(task)}
@@ -557,7 +581,7 @@ function TaskBoardCard(props: {
     : undefined;
   return (
     <article
-      className={readCardClassName(boardStatus)}
+      className={readCardClassName(boardStatus, !props.activeRun)}
       draggable={!props.activeRun}
       onDragEnd={props.onDragEnd}
       onDragStart={props.onDragStart}
@@ -2444,7 +2468,7 @@ function readBoardStatus(task: Task): BoardTaskStatus {
     : "backlog";
 }
 
-function readCardClassName(status: BoardTaskStatus): string {
+function readCardClassName(status: BoardTaskStatus, draggable: boolean): string {
   const emphasis =
     status === "ready_to_check"
       ? "border-accent/40 bg-accent/5"
@@ -2453,22 +2477,46 @@ function readCardClassName(status: BoardTaskStatus): string {
         : status === "queued"
           ? "border-accent/30 bg-surface-elevated"
           : "border-border bg-surface";
+  const interaction = draggable
+    ? "cursor-grab hover:-translate-y-1 hover:shadow-lg active:cursor-grabbing active:shadow-xl"
+    : "cursor-default";
 
-  return `grid min-w-0 max-w-full gap-3 rounded-xl border p-4 ${emphasis}`;
+  return `grid min-w-0 max-w-full gap-3 rounded-xl border p-4 transition duration-150 ease-out ${interaction} ${emphasis}`;
 }
 
 function readColumnClassName(
   draggedTask: Task | undefined,
   status: BoardTaskStatus,
   activeRuns: TaskRun[],
+  isDragOver: boolean,
 ): string {
-  const base = "cc-panel flex min-h-80 w-80 min-w-0 shrink-0 flex-col gap-3 p-4 transition";
+  const base =
+    "cc-panel flex min-h-80 w-80 min-w-0 shrink-0 flex-col gap-3 border-2 p-4 transition duration-150 ease-out";
 
   if (!draggedTask) return base;
 
+  const canDrop = canDropTaskOnStatus(draggedTask, status, activeRuns);
+
+  if (!canDrop) return `${base} border-border opacity-60`;
+
+  return isDragOver
+    ? `${base} border-solid border-accent bg-accent/10 shadow-lg shadow-accent/10`
+    : `${base} border-dotted border-accent/80 bg-accent/5 shadow-sm`;
+}
+
+function readColumnDropState(
+  draggedTask: Task | undefined,
+  status: BoardTaskStatus,
+  activeRuns: TaskRun[],
+  isDragOver: boolean,
+): "idle" | "ready" | "active" | "blocked" {
+  if (!draggedTask) return "idle";
+
   return canDropTaskOnStatus(draggedTask, status, activeRuns)
-    ? `${base} border-accent/60 bg-accent/5`
-    : `${base} opacity-70`;
+    ? isDragOver
+      ? "active"
+      : "ready"
+    : "blocked";
 }
 
 function canDropTaskOnStatus(task: Task, status: BoardTaskStatus, activeRuns: TaskRun[]): boolean {
