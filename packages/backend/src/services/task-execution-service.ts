@@ -1,17 +1,24 @@
 import {
   cancelTaskRunInputSchema,
   queueTaskInputSchema,
+  taskContextInputSchema,
+  taskContextSchema,
+  uploadTaskContextAttachmentInputSchema,
   type CancelTaskRunInput,
   type QueueTaskInput,
+  type TaskContext,
+  type UploadTaskContextAttachmentInput,
   type Task,
   type TaskRun,
 } from "@cc/shared/schemas";
 import type { Logger } from "pino";
+import { z } from "zod";
 
 import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
 import type { ConversationService } from "./conversation-service.js";
+import type { TaskContextAttachmentService } from "./task-context-attachment-service.js";
 import { createTaskRunContextService } from "./task-run-context-service.js";
 import {
   buildOpenCodeSessionPermissions,
@@ -20,12 +27,20 @@ import {
 import type { TaskService } from "./task-service.js";
 
 export type TaskExecutionService = ReturnType<typeof createTaskExecutionService>;
-type QueueTaskExecutionInput = Partial<Omit<QueueTaskInput, "taskId">>;
+type QueueTaskExecutionInput = Partial<Omit<QueueTaskInput, "taskId">> & {
+  context?: TaskContext;
+  contextAttachmentUploads?: UploadTaskContextAttachmentInput[];
+};
+const queueTaskExecutionInputSchema = queueTaskInputSchema.extend({
+  context: taskContextInputSchema.optional(),
+  contextAttachmentUploads: z.array(uploadTaskContextAttachmentInputSchema).default([]),
+});
 
 export function createTaskExecutionService(options: {
   db?: AppDb;
   taskService: TaskService;
   conversationService?: ConversationService;
+  taskContextAttachmentService?: TaskContextAttachmentService;
   taskPermissionService?: TaskPermissionService;
   onRunTerminal?: (run: TaskRun) => void | Promise<void>;
   logger?: Logger;
@@ -73,9 +88,10 @@ export function createTaskExecutionService(options: {
   };
 
   async function queueTask(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
-    const parsed = queueTaskInputSchema.parse({ taskId, ...input });
+    const parsed = queueTaskExecutionInputSchema.parse({ taskId, ...input });
+    const triggerContext = parsed.context ? taskContextSchema.parse(parsed.context) : undefined;
     const target = await requireRunnableTask(taskId, parsed.triggerSource);
-    const task = await resolveExecutableTask(target, parsed);
+    const task = await resolveExecutableTask(target, { ...parsed, context: triggerContext });
 
     const taskRunId = createId();
     const runAgentId = parsed.agentId ?? task.defaultAgentId ?? task.agentId;
@@ -84,7 +100,7 @@ export function createTaskExecutionService(options: {
       runId: taskRunId,
       runAgentId,
       subtaskId: parsed.subtaskId,
-      trigger: parsed,
+      trigger: { ...parsed, context: triggerContext },
     });
     const effectivePermissions = await options.taskPermissionService?.compute(task);
     const run = await options.taskService.queueTask({
@@ -93,7 +109,7 @@ export function createTaskExecutionService(options: {
       subtaskId: parsed.subtaskId,
       agentId: runAgentId,
       triggerSource: parsed.triggerSource,
-      context: parsed.context,
+      context: triggerContext,
       metadata: parsed.metadata,
       renderedPrompt,
       renderedContext,
@@ -149,9 +165,12 @@ export function createTaskExecutionService(options: {
         }
 
         running = sessionLinked;
+        const attachments = options.taskContextAttachmentService
+          ? await options.taskContextAttachmentService.readConversationAttachments(task.context)
+          : [];
         const synced = await options.conversationService.sendTaskRunPrompt(conversation.id, {
           text: running.renderedPrompt,
-          attachments: [],
+          attachments,
         });
         const latest = await findRun(running.id);
 
@@ -258,19 +277,41 @@ export function createTaskExecutionService(options: {
     return task;
   }
 
-  async function resolveExecutableTask(task: Task, trigger: QueueTaskInput): Promise<Task> {
+  async function resolveExecutableTask(
+    task: Task,
+    trigger: QueueTaskInput & {
+      context?: TaskContext;
+      contextAttachmentUploads?: UploadTaskContextAttachmentInput[];
+    },
+  ): Promise<Task> {
     if (task.templateId !== task.id) {
       return task;
     }
 
     const scheduledAt = readScheduledAtFromTrigger(trigger);
-    const occurrence = await options.taskService.createTaskFromTemplate(task.id, {
+    let occurrence = await options.taskService.createTaskFromTemplate(task.id, {
       scheduledFor: scheduledAt,
       triggerSource: trigger.triggerSource,
+      context: trigger.context,
     });
 
     if (!occurrence) {
       throw new NotFoundError("Task template not found.");
+    }
+
+    const occurrenceTask = occurrence;
+    if (options.taskContextAttachmentService && trigger.contextAttachmentUploads?.length) {
+      const attachmentService = options.taskContextAttachmentService;
+      const attachments = await Promise.all(
+        trigger.contextAttachmentUploads.map((upload) =>
+          attachmentService.storeForTask(occurrenceTask.id, upload),
+        ),
+      );
+      const updated = await options.taskService.updateContext(occurrenceTask.id, {
+        ...occurrenceTask.context,
+        attachments: [...occurrenceTask.context.attachments, ...attachments],
+      });
+      occurrence = updated ?? occurrenceTask;
     }
 
     return occurrence;

@@ -327,10 +327,24 @@ function TaskDetailSectionContent(props: {
 
   if (props.sectionId === "context") {
     return (
-      <DecisionSection
-        description="Next-run context and immutable past run context snapshots will appear here once context preview is wired."
-        title="Context preview pending"
-      />
+      <div className="grid gap-4">
+        <TextBlock label="Task context" value={props.task.context.text || "No context provided."} />
+        {props.task.context.attachments.length > 0 ? (
+          <div className="grid gap-2">
+            <h2 className="font-semibold text-text-primary">Attachments</h2>
+            <ul className="grid gap-2">
+              {props.task.context.attachments.map((attachment) => (
+                <li
+                  className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
+                  key={attachment.id}
+                >
+                  {attachment.filename} · {attachment.mimeType}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
     );
   }
 

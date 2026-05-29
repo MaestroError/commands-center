@@ -6,11 +6,15 @@ import {
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
   taskCommentSchema,
+  appendTaskContextInputSchema,
+  taskContextSchema,
   taskListSchema,
   taskRunListSchema,
   taskRunSchema,
   taskSchema,
   taskTemplateSchema,
+  taskTemplateRunNowInputSchema,
+  updateTaskContextInputSchema,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../../../../../db/client.js";
@@ -38,9 +42,16 @@ const taskIdInputSchema = z.object({
 });
 
 const queueTaskToolInputSchema = taskIdInputSchema.extend({
-  context: z.record(z.string(), z.unknown()).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
+
+const runTaskTemplateNowToolInputSchema = taskIdInputSchema.merge(taskTemplateRunNowInputSchema);
+
+const updateTaskContextToolInputSchema = taskIdInputSchema.extend({
+  context: updateTaskContextInputSchema,
+});
+
+const appendTaskContextToolInputSchema = taskIdInputSchema.merge(appendTaskContextInputSchema);
 
 const scheduleTaskToolInputSchema = taskIdInputSchema.extend({
   scheduledAt: z.string().datetime(),
@@ -138,6 +149,24 @@ export const runTaskTemplateNowToolMetadata = {
   context: "chat",
 } as const;
 
+export const updateTaskContextToolMetadata = {
+  name: "update_task_context",
+  description: "Update persistent context for the current CommandsCenter task.",
+  context: "task_run",
+} as const;
+
+export const readTaskContextToolMetadata = {
+  name: "read_task_context",
+  description: "Read persistent context for the current CommandsCenter task.",
+  context: "task_run",
+} as const;
+
+export const appendTaskContextToolMetadata = {
+  name: "append_task_context",
+  description: "Append text to persistent context for the current CommandsCenter task.",
+  context: "task_run",
+} as const;
+
 export function createTasksManagementToolDefinitions(options: TaskManagementToolOptions) {
   return [
     {
@@ -214,14 +243,12 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             metadata: {
               taskId: parsed.taskId,
               triggerSource: "manual",
-              context: parsed.context,
               runMetadata: parsed.metadata,
             },
           });
 
           const run = await options.taskExecutionService.queue(parsed.taskId, {
             triggerSource: "manual",
-            context: parsed.context,
             metadata: parsed.metadata,
           });
           return success("Task queued.", taskRunSchema.parse(run));
@@ -350,11 +377,11 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       name: runTaskTemplateNowToolMetadata.name,
       description: runTaskTemplateNowToolMetadata.description,
       context: runTaskTemplateNowToolMetadata.context,
-      inputSchema: queueTaskToolInputSchema,
+      inputSchema: runTaskTemplateNowToolInputSchema,
       outputSchema: taskRunSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
-          const parsed = queueTaskToolInputSchema.parse(args);
+          const parsed = runTaskTemplateNowToolInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
 
           await confirmMutation(options, {
@@ -375,6 +402,62 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
           });
           return success("Task template queued.", taskRunSchema.parse(run));
         }, "Failed to run task template."),
+    },
+    {
+      name: readTaskContextToolMetadata.name,
+      description: readTaskContextToolMetadata.description,
+      context: readTaskContextToolMetadata.context,
+      inputSchema: taskIdInputSchema,
+      outputSchema: taskContextSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const parsed = taskIdInputSchema.parse(args);
+          const task = await options.taskService.get(parsed.taskId);
+
+          if (!task) {
+            throw new Error("Task not found.");
+          }
+
+          return success("Task context loaded.", taskContextSchema.parse(task.context));
+        }, "Failed to read task context."),
+    },
+    {
+      name: appendTaskContextToolMetadata.name,
+      description: appendTaskContextToolMetadata.description,
+      context: appendTaskContextToolMetadata.context,
+      inputSchema: appendTaskContextToolInputSchema,
+      outputSchema: taskContextSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const parsed = appendTaskContextToolInputSchema.parse(args);
+          const task = await options.taskService.appendContext(parsed.taskId, {
+            text: parsed.text,
+          });
+
+          if (!task) {
+            throw new Error("Task not found.");
+          }
+
+          return success("Task context appended.", taskContextSchema.parse(task.context));
+        }, "Failed to append task context."),
+    },
+    {
+      name: updateTaskContextToolMetadata.name,
+      description: updateTaskContextToolMetadata.description,
+      context: updateTaskContextToolMetadata.context,
+      inputSchema: updateTaskContextToolInputSchema,
+      outputSchema: taskSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const parsed = updateTaskContextToolInputSchema.parse(args);
+          const task = await options.taskService.updateContext(parsed.taskId, parsed.context);
+
+          if (!task) {
+            throw new Error("Task not found.");
+          }
+
+          return success("Task context updated.", taskSchema.parse(task));
+        }, "Failed to update task context."),
     },
   ] as const;
 }

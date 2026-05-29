@@ -47,14 +47,13 @@ describe("task schemas", () => {
       });
     });
 
-    it("accepts subtask, agent override, context, and metadata", () => {
+    it("accepts subtask, agent override, and metadata", () => {
       expect(
         queueTaskInputSchema.parse({
           taskId: "task-1",
           subtaskId: "subtask-1",
           agentId: "agent-2",
           triggerSource: "scheduled",
-          context: { feedback: "Try again." },
           metadata: { scheduledAt: "2026-06-01T12:00:00.000Z" },
         }),
       ).toEqual({
@@ -62,7 +61,6 @@ describe("task schemas", () => {
         subtaskId: "subtask-1",
         agentId: "agent-2",
         triggerSource: "scheduled",
-        context: { feedback: "Try again." },
         metadata: { scheduledAt: "2026-06-01T12:00:00.000Z" },
       });
     });

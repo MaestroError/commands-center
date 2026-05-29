@@ -32,6 +32,7 @@ import {
   createTaskExecutionService,
   type TaskExecutionService,
 } from "../services/task-execution-service.js";
+import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import {
   createTaskSchedulerService,
   type TaskSchedulerService,
@@ -127,6 +128,7 @@ export async function startServerRuntime(
   const workspaceWatchService = createWorkspaceWatchService({ logger });
   const liveRequestService = createLiveRequestService();
   const taskService = createTaskService({ db: database.db, config });
+  const taskContextAttachmentService = createTaskContextAttachmentService({ config, taskService });
   const conversationService = createConversationService({
     db: database.db,
     config,
@@ -142,6 +144,7 @@ export async function startServerRuntime(
     db: database.db,
     taskService,
     conversationService,
+    taskContextAttachmentService,
     taskPermissionService,
     logger,
     onRunTerminal: (run) => taskSchedulerServiceRef.current?.handleRunTerminal(run),

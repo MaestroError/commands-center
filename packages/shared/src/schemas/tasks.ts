@@ -78,6 +78,38 @@ export const taskTodoSchema = taskTodoInputSchema.extend({
   createdAt: z.string().datetime(),
 });
 
+export const taskContextAttachmentSchema = z.object({
+  id: z.string().min(1),
+  filename: z.string().min(1),
+  mimeType: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+  storageKey: z.string().min(1),
+  createdAt: z.string().datetime(),
+});
+
+export const taskContextSchema = z.object({
+  text: z.string().trim().optional(),
+  attachments: z.array(taskContextAttachmentSchema).default([]),
+});
+
+export const taskContextInputSchema = z.object({
+  text: z.string().trim().optional(),
+  attachments: z.array(taskContextAttachmentSchema).default([]),
+});
+
+export const updateTaskContextInputSchema = taskContextInputSchema;
+
+export const appendTaskContextInputSchema = z.object({
+  text: z.string().trim().min(1),
+});
+
+export const uploadTaskContextAttachmentInputSchema = z.object({
+  filename: z.string().trim().min(1),
+  mimeType: z.string().trim().min(1),
+  dataUrl: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+});
+
 export const manualTaskScheduleSchema = z.object({
   mode: z.literal("manual"),
 });
@@ -134,7 +166,6 @@ export const queueTaskInputSchema = z.object({
   subtaskId: z.string().trim().min(1).optional(),
   agentId: z.string().trim().min(1).optional(),
   triggerSource: taskRunTriggerSourceSchema.default("manual"),
-  context: looseRecordSchema.optional(),
   metadata: looseRecordSchema.optional(),
 });
 
@@ -190,6 +221,7 @@ export const createTaskInputSchema = z.object({
   schedule: taskScheduleSchema.optional(),
   scheduledAt: z.string().datetime().optional(),
   dueAt: z.string().datetime().optional(),
+  context: taskContextInputSchema.optional(),
   permissionProfile: taskPermissionProfileSchema.optional(),
   enabled: z.boolean().optional(),
 });
@@ -205,6 +237,7 @@ export const updateTaskInputSchema = z.object({
   schedule: taskScheduleSchema.optional(),
   scheduledAt: z.string().datetime().optional(),
   dueAt: z.string().datetime().optional(),
+  context: taskContextInputSchema.optional(),
   permissionProfile: taskPermissionProfileSchema.optional(),
   enabled: z.boolean().optional(),
 });
@@ -223,7 +256,6 @@ export const listTaskRunsQuerySchema = z.object({
 
 export const triggerTaskInputSchema = z.object({
   triggerSource: taskRunTriggerSourceSchema.default("manual"),
-  context: looseRecordSchema.optional(),
   metadata: looseRecordSchema.optional(),
 });
 
@@ -265,6 +297,7 @@ export const taskSchema = z.object({
   defaultAgentId: z.string().min(1).optional(),
   title: z.string().min(1),
   description: z.string(),
+  context: taskContextSchema.default({ attachments: [] }),
   todos: z.array(taskTodoSchema),
   status: taskStatusSchema,
   triggerMode: taskTriggerModeSchema,
@@ -312,7 +345,8 @@ export const taskTemplateSchema = z.object({
 export const taskTemplateListSchema = z.array(taskTemplateSchema);
 
 export const taskTemplateRunNowInputSchema = z.object({
-  context: looseRecordSchema.optional(),
+  context: taskContextInputSchema.optional(),
+  contextAttachmentUploads: z.array(uploadTaskContextAttachmentInputSchema).default([]),
   metadata: looseRecordSchema.optional(),
 });
 
@@ -416,6 +450,11 @@ export const taskSubtaskListSchema = z.array(taskSubtaskSchema);
 
 export const activeTaskRunListSchema = taskRunListSchema;
 
+export const uploadTaskContextAttachmentResponseSchema = z.object({
+  attachment: taskContextAttachmentSchema,
+  context: taskContextSchema,
+});
+
 export const taskSchedulerStateSchema = z.object({
   taskId: z.string().min(1),
   nextRunAt: z.string().datetime().optional(),
@@ -451,6 +490,9 @@ export type ListTaskRunsQuery = z.infer<typeof listTaskRunsQuerySchema>;
 export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;
 export type BoardTaskStatus = z.infer<typeof boardTaskStatusSchema>;
 export type Task = z.infer<typeof taskSchema>;
+export type TaskContext = z.infer<typeof taskContextSchema>;
+export type TaskContextAttachment = z.infer<typeof taskContextAttachmentSchema>;
+export type AppendTaskContextInput = z.input<typeof appendTaskContextInputSchema>;
 export type TaskComment = z.infer<typeof taskCommentSchema>;
 export type TaskCommentStatus = z.infer<typeof taskCommentStatusSchema>;
 export type TaskTemplate = z.infer<typeof taskTemplateSchema>;
@@ -472,10 +514,17 @@ export type TaskTodo = z.infer<typeof taskTodoSchema>;
 export type TaskTriggerMode = z.infer<typeof taskTriggerModeSchema>;
 export type TaskRepeatRule = z.infer<typeof taskRepeatRuleSchema>;
 export type TriggerTaskInput = z.input<typeof triggerTaskInputSchema>;
+export type UpdateTaskContextInput = z.input<typeof updateTaskContextInputSchema>;
 export type UpdateTaskCommentInput = z.input<typeof updateTaskCommentInputSchema>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
 export type UpdateTaskRunInput = z.input<typeof updateTaskRunInputSchema>;
 export type UpdateTaskSubtaskInput = z.input<typeof updateTaskSubtaskInputSchema>;
+export type UploadTaskContextAttachmentInput = z.input<
+  typeof uploadTaskContextAttachmentInputSchema
+>;
+export type UploadTaskContextAttachmentResponse = z.infer<
+  typeof uploadTaskContextAttachmentResponseSchema
+>;
 export type MarkTaskRunNeedsReviewInput = z.input<typeof markTaskRunNeedsReviewInputSchema>;
 export type SetTaskRunResultInput = z.input<typeof setTaskRunResultInputSchema>;
 export { permissionActionSchema };

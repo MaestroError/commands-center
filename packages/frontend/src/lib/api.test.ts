@@ -309,7 +309,7 @@ describe("task actions", () => {
     expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/templates/template-1/run-now", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ contextAttachmentUploads: [] }),
     });
   });
 

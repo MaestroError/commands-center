@@ -8,7 +8,9 @@ import type {
   Task,
   TaskTemplateRunNowInput,
   TriggerTaskInput,
+  UpdateTaskContextInput,
   UpdateTaskInput,
+  UploadTaskContextAttachmentInput,
 } from "@cc/shared/schemas";
 
 import {
@@ -37,6 +39,8 @@ import {
   restoreTask,
   runTaskTemplateNow,
   updateTask,
+  updateTaskContext,
+  uploadTaskContextAttachment,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -169,6 +173,24 @@ export function useTaskMutations() {
       onSuccess: async (task) => {
         queryClient.setQueryData(queryKeys.task(task.id), task);
         await invalidateTasks(task);
+      },
+    }),
+    updateContext: useMutation({
+      mutationFn: ({ id, input }: { id: string; input: UpdateTaskContextInput }) =>
+        updateTaskContext(id, input),
+      onSuccess: async (task) => {
+        queryClient.setQueryData(queryKeys.task(task.id), task);
+        await invalidateTasks(task);
+      },
+    }),
+    uploadContextAttachment: useMutation({
+      mutationFn: ({ id, input }: { id: string; input: UploadTaskContextAttachmentInput }) =>
+        uploadTaskContextAttachment(id, input),
+      onSuccess: async (_result, variables) => {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.task(variables.id) }),
+          queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        ]);
       },
     }),
     duplicate: useMutation({

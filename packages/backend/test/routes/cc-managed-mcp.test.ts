@@ -371,7 +371,7 @@ describe("cc-managed MCP routes", () => {
         "tools/call",
         {
           name: "queue_task",
-          arguments: { taskId: task.id, context: { text: "Use current build." } },
+          arguments: { taskId: task.id },
         },
         3,
       );
@@ -384,7 +384,6 @@ describe("cc-managed MCP routes", () => {
       expect(queueJson.result?.structuredContent).toMatchObject({
         taskId: task.id,
         status: "queued",
-        context: { text: "Use current build." },
       });
       await expect
         .poll(async () => (await taskService.listRuns(task.id))[0]?.status)
@@ -447,6 +446,9 @@ describe("cc-managed MCP routes", () => {
         "get_task_run",
         "create_task_template",
         "run_task_template_now",
+        "read_task_context",
+        "append_task_context",
+        "update_task_context",
       ]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }

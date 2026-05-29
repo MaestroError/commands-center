@@ -329,6 +329,21 @@ describe("createAgentService", () => {
                 "Generate and queue a run from a recurring CommandsCenter task template.",
               context: "chat",
             },
+            {
+              name: "read_task_context",
+              description: "Read persistent context for the current CommandsCenter task.",
+              context: "task_run",
+            },
+            {
+              name: "append_task_context",
+              description: "Append text to persistent context for the current CommandsCenter task.",
+              context: "task_run",
+            },
+            {
+              name: "update_task_context",
+              description: "Update persistent context for the current CommandsCenter task.",
+              context: "task_run",
+            },
           ],
         },
       ]);

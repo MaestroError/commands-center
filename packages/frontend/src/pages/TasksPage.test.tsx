@@ -44,6 +44,7 @@ const task: Task = {
   agentId: "agent-1",
   title: "Ship release",
   description: "Prepare release notes.",
+  context: { attachments: [] },
   todos: [
     {
       id: "todo-1",
@@ -266,8 +267,6 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Queue" }));
-    await user.type(screen.getByLabelText(/Run context/i), "Use changelog.");
-    await user.click(screen.getByRole("button", { name: "Run task" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
@@ -276,7 +275,7 @@ describe("TasksPage", () => {
         "/api/tasks/task-1/queue",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ triggerSource: "manual", context: { text: "Use changelog." } }),
+          body: JSON.stringify({ triggerSource: "manual" }),
         }),
       );
     });
@@ -321,6 +320,32 @@ describe("TasksPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("updates persistent task context from the context tab", async () => {
+    const fetchMock = mockFetch({
+      taskPayload: { ...task, context: { text: "Old context", attachments: [] } },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("tab", { name: "Context" }));
+    const contextInput = screen.getByLabelText(/Task context/i);
+    await user.clear(contextInput);
+    await user.type(contextInput, "Use the release checklist.");
+    await user.click(screen.getByRole("button", { name: "Save context" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/context",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ text: "Use the release checklist.", attachments: [] }),
+        }),
+      );
+    });
+  });
+
   it("shows templates separately from the board", async () => {
     mockFetch({ templatesPayload: [taskTemplate] });
 
@@ -337,12 +362,36 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Run now" }));
+    await user.type(screen.getByLabelText(/Run context/i), "Use changelog.");
+    await user.upload(
+      screen.getByLabelText(/Add attachments/i),
+      new File(["hello"], "notes.txt", { type: "text/plain" }),
+    );
+    expect(await screen.findByText(/notes.txt/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Run task" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/templates/template-1/run-now",
-        expect.objectContaining({ method: "POST" }),
+      const runNowCall = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          url === "/api/tasks/templates/template-1/run-now" && init?.method === "POST",
       );
+      expect(runNowCall).toBeDefined();
+      const requestBody = runNowCall?.[1]?.body;
+      expect(typeof requestBody).toBe("string");
+      if (typeof requestBody !== "string") {
+        throw new TypeError("Expected run-now request body to be a string.");
+      }
+      expect(JSON.parse(requestBody)).toEqual({
+        context: { text: "Use changelog.", attachments: [] },
+        contextAttachmentUploads: [
+          {
+            filename: "notes.txt",
+            mimeType: "text/plain",
+            sizeBytes: 5,
+            dataUrl: "data:text/plain;base64,aGVsbG8=",
+          },
+        ],
+      });
     });
     expect(
       await screen.findByRole("complementary", { name: "Task detail panel" }),
@@ -517,7 +566,6 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Retry" }));
-    await user.click(screen.getByRole("button", { name: "Run task" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -1230,6 +1278,7 @@ function mockFetch(options: MockFetchOptions = {}) {
         }),
       );
     }
+    if (url === "/api/tasks/task-1/context") return Promise.resolve(jsonResponse(200, taskPayload));
     if (url === "/api/tasks/task-1") return Promise.resolve(jsonResponse(200, taskPayload));
     if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, runsPayload));
     if (url === "/api/tasks/task-1/runs/run-1")

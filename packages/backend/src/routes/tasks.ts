@@ -25,8 +25,11 @@ import {
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
   updateTaskCommentInputSchema,
+  updateTaskContextInputSchema,
   updateTaskInputSchema,
   updateTaskSubtaskInputSchema,
+  uploadTaskContextAttachmentInputSchema,
+  uploadTaskContextAttachmentResponseSchema,
 } from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
@@ -34,6 +37,7 @@ import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { NotFoundError } from "../lib/api-error.js";
 import { createConversationService } from "../services/conversation-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
+import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
 import { createTaskService } from "../services/task-service.js";
 
@@ -64,6 +68,10 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     config: context.config,
     opencodeService: context.opencodeService,
   });
+  const taskContextAttachmentService = createTaskContextAttachmentService({
+    config: context.config,
+    taskService: service,
+  });
   const fallbackTaskSchedulerServiceRef: {
     current?: ReturnType<typeof createTaskSchedulerService>;
   } = {};
@@ -73,6 +81,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       db: context.database.db,
       taskService: service,
       conversationService,
+      taskContextAttachmentService,
       logger: context.logger,
       onRunTerminal: (run) => fallbackTaskSchedulerServiceRef.current?.handleRunTerminal(run),
     });
@@ -248,6 +257,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       executionService.queue(request.params.id, {
         triggerSource: "template",
         context: request.body.context,
+        contextAttachmentUploads: request.body.contextAttachmentUploads,
         metadata: request.body.metadata,
       }),
   );
@@ -302,6 +312,46 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     },
     async (request) => {
       const task = await service.update(request.params.id, request.body);
+
+      if (!task) {
+        throw new NotFoundError("Task not found.");
+      }
+
+      return task;
+    },
+  );
+
+  app.post(
+    "/api/tasks/:id/context/attachments",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: uploadTaskContextAttachmentInputSchema,
+        response: {
+          201: uploadTaskContextAttachmentResponseSchema,
+        },
+      },
+      bodyLimit: 14 * 1024 * 1024,
+    },
+    async (request, reply) => {
+      reply.code(201);
+      return taskContextAttachmentService.upload(request.params.id, request.body);
+    },
+  );
+
+  app.patch(
+    "/api/tasks/:id/context",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: updateTaskContextInputSchema,
+        response: {
+          200: taskSchema,
+        },
+      },
+    },
+    async (request) => {
+      const task = await service.updateContext(request.params.id, request.body);
 
       if (!task) {
         throw new NotFoundError("Task not found.");

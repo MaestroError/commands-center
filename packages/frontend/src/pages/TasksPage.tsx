@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import type {
@@ -152,7 +152,7 @@ function TaskListPage() {
   const archiveQuery = useArchivedTasksQuery();
   const agentsQuery = useAgentsQuery();
   const mutations = useTaskMutations();
-  const [runTask, setRunTask] = useState<Task>();
+  const [runTemplate, setRunTemplate] = useState<TaskTemplate>();
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   const agents = agentsQuery.data ?? [];
   const boardTasks = tasksQuery.data ?? [];
@@ -241,7 +241,7 @@ function TaskListPage() {
                 void navigate(`/tasks/${duplicated.id}/edit${currentSearch}`),
             });
           }}
-          onQueue={setRunTask}
+          onQueue={(task) => mutations.trigger.mutate({ id: task.id })}
           onReopen={(task) =>
             void mutations.update.mutate({ id: task.id, input: { status: "backlog" } })
           }
@@ -265,16 +265,7 @@ function TaskListPage() {
               },
             });
           }}
-          onRunNow={(template) => {
-            mutations.runTemplateNow.mutate(
-              { id: template.id },
-              {
-                onSuccess: (run) => {
-                  selectGeneratedTask(searchParams, setSearchParams, run.taskId);
-                },
-              },
-            );
-          }}
+          onRunNow={setRunTemplate}
           onCreateTask={(template) => {
             mutations.createFromTemplate.mutate(template.id, {
               onSuccess: (task) => selectGeneratedTask(searchParams, setSearchParams, task.id),
@@ -295,14 +286,22 @@ function TaskListPage() {
           tasks={archivedTasks}
         />
       ) : null}
-      {runTask ? (
+      {runTemplate ? (
         <RunTaskContextDialog
-          busy={mutations.trigger.isPending}
-          taskTitle={runTask.title}
-          onCancel={() => setRunTask(undefined)}
+          busy={mutations.runTemplateNow.isPending}
+          taskTitle={runTemplate.title}
+          onCancel={() => setRunTemplate(undefined)}
           onRun={(input) => {
-            setRunTask(undefined);
-            mutations.trigger.mutate({ id: runTask.id, input });
+            const templateId = runTemplate.id;
+            setRunTemplate(undefined);
+            mutations.runTemplateNow.mutate(
+              { id: templateId, input },
+              {
+                onSuccess: (run) => {
+                  selectGeneratedTask(searchParams, setSearchParams, run.taskId);
+                },
+              },
+            );
           }}
         />
       ) : null}
@@ -314,11 +313,30 @@ function TaskListPage() {
           onAccept={(task) => void mutations.accept.mutate(task.id)}
           onArchive={(task) => void mutations.archive.mutate(task.id)}
           onClose={() => clearSelectedTask(searchParams, setSearchParams)}
-          onQueue={setRunTask}
+          onQueue={(task) => mutations.trigger.mutate({ id: task.id })}
           onRestore={(task) => void mutations.restore.mutate(task.id)}
           onReopen={(task) =>
             void mutations.update.mutate({ id: task.id, input: { status: "backlog" } })
           }
+          onUpdateContext={(task, text) => {
+            mutations.updateContext.mutate({
+              id: task.id,
+              input: { text, attachments: task.context.attachments },
+            });
+          }}
+          onUploadContextAttachment={(task, file) => {
+            void readFileAsDataUrl(file).then((dataUrl) => {
+              mutations.uploadContextAttachment.mutate({
+                id: task.id,
+                input: {
+                  filename: file.name,
+                  mimeType: file.type,
+                  sizeBytes: file.size,
+                  dataUrl,
+                },
+              });
+            });
+          }}
           taskId={selectedTaskId}
         />
       ) : null}
@@ -335,16 +353,7 @@ function TaskListPage() {
               onSuccess: (task) => selectGeneratedTask(searchParams, setSearchParams, task.id),
             });
           }}
-          onRunNow={(template) => {
-            mutations.runTemplateNow.mutate(
-              { id: template.id },
-              {
-                onSuccess: (run) => {
-                  selectGeneratedTask(searchParams, setSearchParams, run.taskId);
-                },
-              },
-            );
-          }}
+          onRunNow={setRunTemplate}
           templateId={selectedTemplateId}
         />
       ) : null}
@@ -696,6 +705,8 @@ function TaskDetailPanel(props: {
   onQueue: (task: Task) => void;
   onRestore: (task: Task) => void;
   onReopen: (task: Task) => void;
+  onUpdateContext: (task: Task, text: string) => void;
+  onUploadContextAttachment: (task: Task, file: File) => void;
 }) {
   const taskQuery = useTaskQuery(props.taskId);
   const runsQuery = useTaskRunsQuery(props.taskId);
@@ -797,6 +808,8 @@ function TaskDetailPanel(props: {
                   sectionId={activeSectionId}
                   task={task}
                   taskId={task.id}
+                  onUpdateContext={(text) => props.onUpdateContext(task, text)}
+                  onUploadContextAttachment={(file) => props.onUploadContextAttachment(task, file)}
                 />
               </div>
             </article>
@@ -910,6 +923,8 @@ function TaskDetailSectionContent(props: {
   runs: TaskRun[];
   isRunsLoading: boolean;
   runsError: unknown;
+  onUpdateContext: (text: string) => void;
+  onUploadContextAttachment: (file: File) => void;
 }) {
   if (props.sectionId === "overview") {
     return (
@@ -966,9 +981,10 @@ function TaskDetailSectionContent(props: {
 
   if (props.sectionId === "context") {
     return (
-      <DecisionSection
-        description="Next-run context and immutable past run context snapshots will appear here once context preview is wired."
-        title="Context preview pending"
+      <TaskContextSection
+        onUpdate={props.onUpdateContext}
+        onUpload={props.onUploadContextAttachment}
+        task={props.task}
       />
     );
   }
@@ -1002,6 +1018,72 @@ function TaskRunsSection(props: {
         isLoading={props.isLoading}
         error={props.error}
       />
+    </div>
+  );
+}
+
+function TaskContextSection(props: {
+  task: Task;
+  onUpdate: (text: string) => void;
+  onUpload: (file: File) => void;
+}) {
+  const [text, setText] = useState(props.task.context.text ?? "");
+
+  useEffect(() => {
+    setText(props.task.context.text ?? "");
+  }, [props.task.context.text]);
+
+  function handleUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (file) {
+      props.onUpload(file);
+    }
+  }
+
+  return (
+    <div className="grid gap-4">
+      <label className="grid gap-2 text-sm text-text-secondary">
+        Task context
+        <textarea
+          className="cc-input min-h-40 resize-y"
+          onChange={(event) => setText(event.target.value)}
+          placeholder="Optional persistent context for future task runs..."
+          value={text}
+        />
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <button className="cc-button" onClick={() => props.onUpdate(text)} type="button">
+          Save context
+        </button>
+        <label className="cc-button cc-button-secondary cursor-pointer">
+          Add attachment
+          <input
+            accept=".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.gif"
+            className="sr-only"
+            onChange={handleUpload}
+            type="file"
+          />
+        </label>
+      </div>
+      {props.task.context.attachments.length > 0 ? (
+        <div className="grid gap-2">
+          <h3 className="font-semibold text-text-primary">Attachments</h3>
+          <ul className="grid gap-2">
+            {props.task.context.attachments.map((attachment) => (
+              <li
+                className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
+                key={attachment.id}
+              >
+                {attachment.filename} · {attachment.mimeType} · {formatBytes(attachment.sizeBytes)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="text-sm text-text-secondary">No context attachments yet.</p>
+      )}
     </div>
   );
 }
@@ -2000,6 +2082,7 @@ function templateAsTask(template: TaskTemplate): Task {
     templateId: template.id,
     title: template.title,
     description: template.description,
+    context: { attachments: [] },
     todos: template.todos,
     status: template.archived ? "archived" : template.enabled ? "backlog" : "disabled",
     triggerMode: template.recurrence ? "recurring" : "manual",
@@ -2240,6 +2323,28 @@ function formatTodoProgress(task: Task): string {
 
   const completed = task.todos.filter((todo) => todo.status === "completed").length;
   return `${String(completed)}/${String(task.todos.length)}`;
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${String(value)} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("Failed to read attachment."));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read attachment."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function getDefaultDetailSection(task?: Task): DetailSectionId {

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   createTaskInputSchema,
+  appendTaskContextInputSchema,
   createTaskTemplateInputSchema,
   createTaskRunInputSchema,
   addTaskRunArtifactInputSchema,
@@ -15,6 +16,8 @@ import {
   taskCommentInputSchema,
   taskCommentListSchema,
   taskCommentSchema,
+  taskContextInputSchema,
+  taskContextSchema,
   taskListSchema,
   taskPermissionProfileSchema,
   taskRunArtifactSchema,
@@ -34,6 +37,7 @@ import {
   updateTaskRunInputSchema,
   updateTaskSubtaskInputSchema,
   type CreateTaskInput,
+  type AppendTaskContextInput,
   type CreateTaskTemplateInput,
   type CreateTaskRunInput,
   type TaskRunArtifact,
@@ -42,6 +46,7 @@ import {
   type QueueTaskInput,
   type Task,
   type TaskComment,
+  type TaskContext,
   type TaskRun,
   type TaskRunStatus,
   type TaskSchedule,
@@ -71,6 +76,7 @@ export type TaskService = ReturnType<typeof createTaskService>;
 
 type QueueTaskOptions = QueueTaskInput & {
   id?: string;
+  context?: TaskContext;
   renderedPrompt?: string;
   renderedContext?: Record<string, unknown>;
   effectivePermissions?: CreateTaskRunInput["effectivePermissions"];
@@ -80,6 +86,7 @@ type CreateTaskFromTemplateInput = {
   occurrenceAt?: string;
   scheduledFor?: string;
   triggerSource?: TaskRun["triggerSource"];
+  context?: TaskContext;
 };
 
 export function createTaskService(options: { db: AppDb; config: RuntimeConfig }) {
@@ -230,6 +237,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       });
       const defaultAgentId = parsed.defaultAgentId ?? parsed.agentId;
       const todos = normalizeTodos(parsed.todos, timestamp);
+      const context = normalizeTaskContext(parsed.context);
 
       if (parsed.defaultAgentId) {
         await requireActiveAgent(parsed.defaultAgentId);
@@ -273,7 +281,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           default_agent_id: defaultAgentId,
           title: parsed.title,
           description: parsed.description,
-          context: "",
+          context: JSON.stringify(context),
           todos_json: JSON.stringify(todos),
           status,
           trigger_mode: triggerMode,
@@ -307,7 +315,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           default_agent_id: defaultAgentId,
           title: parsed.title,
           description: parsed.description,
-          context: "",
+          context: JSON.stringify(context),
           todos_json: JSON.stringify(todos),
           status,
           trigger_mode: triggerMode,
@@ -354,6 +362,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         agentId: task.agentId,
         title: `${task.title} copy`,
         description: task.description,
+        context: task.context,
         todos: task.todos.map((todo) => ({ content: todo.content, status: todo.status })),
         triggerMode: task.triggerMode,
         schedule: task.schedule,
@@ -483,6 +492,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           default_agent_id: parsed.defaultAgentId ?? existing.default_agent_id,
           title: parsed.title ?? existing.title,
           description: parsed.description ?? existing.description,
+          context:
+            parsed.context === undefined
+              ? existing.context
+              : JSON.stringify(normalizeTaskContext(parsed.context)),
           todos_json: JSON.stringify(todos),
           status,
           trigger_mode: triggerMode,
@@ -506,6 +519,32 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       }
 
       return mapTask(row);
+    },
+
+    async updateContext(id: string, input: TaskContext): Promise<Task | undefined> {
+      const context = normalizeTaskContext(input);
+      const [row] = await options.db
+        .update(tasks)
+        .set({
+          context: JSON.stringify(context),
+          updated_at: now(),
+        })
+        .where(and(eq(tasks.id, id), isNull(tasks.deleted_at), isNull(tasks.template_id)))
+        .returning();
+
+      return row ? mapTask(row) : undefined;
+    },
+
+    async appendContext(id: string, input: AppendTaskContextInput): Promise<Task | undefined> {
+      const parsed = appendTaskContextInputSchema.parse(input);
+      const task = await this.get(id);
+
+      if (!task || task.templateId === task.id) {
+        return undefined;
+      }
+
+      const text = [task.context.text, parsed.text].filter(Boolean).join("\n\n");
+      return this.updateContext(id, { ...task.context, text });
     },
 
     async archive(id: string): Promise<Task | undefined> {
@@ -936,7 +975,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           default_agent_id: template.default_agent_id,
           title: template.title,
           description: template.description,
-          context: "",
+          context: JSON.stringify(normalizeTaskContext(input.context)),
           todos_json: template.todos_json,
           status: scheduledFor ? "scheduled" : "backlog",
           trigger_mode: "manual",
@@ -1220,7 +1259,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         agentId: parsed.agentId ?? task.default_agent_id ?? task.agent_id,
         status: "queued",
         triggerSource: parsed.triggerSource,
-        context: parsed.context,
+        context: input.context,
         triggerMetadata: parsed.metadata,
         renderedPrompt: input.renderedPrompt ?? "",
         renderedContext: input.renderedContext,
@@ -1749,6 +1788,7 @@ function mapTask(row: typeof tasks.$inferSelect): Task {
     defaultAgentId: row.default_agent_id ?? undefined,
     title: row.title,
     description: row.description,
+    context: parseTaskContext(row.context),
     todos: parseTaskTodos(row.todos_json),
     status: row.status,
     triggerMode: row.trigger_mode,
@@ -1778,6 +1818,7 @@ function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task {
     defaultAgentId: row.default_agent_id ?? undefined,
     title: row.title,
     description: row.description,
+    context: normalizeTaskContext(),
     todos: parseTaskTodos(row.todos_json),
     status: row.status,
     triggerMode: row.trigger_mode,
@@ -1884,6 +1925,23 @@ function parseTaskSchedule(value: string): TaskSchedule {
 
 function parseTaskTodos(value: string): TaskTodo[] {
   return taskTodoSchema.array().parse(JSON.parse(value));
+}
+
+function normalizeTaskContext(input?: unknown): TaskContext {
+  const context = taskContextInputSchema.parse(input ?? {});
+
+  return taskContextSchema.parse({
+    text: context.text?.trim() || undefined,
+    attachments: context.attachments ?? [],
+  });
+}
+
+function parseTaskContext(value: string): TaskContext {
+  if (!value.trim()) {
+    return normalizeTaskContext();
+  }
+
+  return normalizeTaskContext(JSON.parse(value));
 }
 
 function stringifyOptional(value: unknown): string | null {

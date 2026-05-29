@@ -80,6 +80,7 @@ import {
   taskTemplateListSchema,
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
+  updateTaskContextInputSchema,
   terminalListResponseSchema,
   terminalResizeInputSchema,
   terminalSessionSchema,
@@ -87,6 +88,8 @@ import {
   workspaceSkillListSchema,
   workspaceSkillMutationResultSchema,
   workspaceSkillUploadInputSchema,
+  uploadTaskContextAttachmentInputSchema,
+  uploadTaskContextAttachmentResponseSchema,
   type Agent,
   type AgentCatalog,
   type CancelTaskRunInput,
@@ -161,12 +164,15 @@ import {
   type UpdateAgentInput,
   type UpdateMcpServerInput,
   type UpdateTaskInput,
+  type UpdateTaskContextInput,
   type UpdateSystemUpdatePreferencesInput,
   type UpdateWorkspaceSkillCategoryInput,
   type WorkspaceWatchEvent,
   type WorkspaceSkill,
   type WorkspaceSkillMutationResult,
   type WorkspaceSkillUploadInput,
+  type UploadTaskContextAttachmentInput,
+  type UploadTaskContextAttachmentResponse,
   updateAgentInputSchema,
   updateMcpServerInputSchema,
   updateTaskInputSchema,
@@ -720,6 +726,27 @@ export async function updateTask(id: string, input: UpdateTaskInput): Promise<Ta
     method: "PATCH",
     body: updateTaskInputSchema.parse(input),
   });
+}
+
+export async function updateTaskContext(id: string, input: UpdateTaskContextInput): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/context`, taskSchema, {
+    method: "PATCH",
+    body: updateTaskContextInputSchema.parse(input),
+  });
+}
+
+export async function uploadTaskContextAttachment(
+  id: string,
+  input: UploadTaskContextAttachmentInput,
+): Promise<UploadTaskContextAttachmentResponse> {
+  return requestJson<UploadTaskContextAttachmentResponse>(
+    `/api/tasks/${encodeURIComponent(id)}/context/attachments`,
+    uploadTaskContextAttachmentResponseSchema,
+    {
+      method: "POST",
+      body: uploadTaskContextAttachmentInputSchema.parse(input),
+    },
+  );
 }
 
 export async function duplicateTask(id: string): Promise<Task> {

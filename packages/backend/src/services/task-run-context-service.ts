@@ -6,6 +6,7 @@ import {
   taskSubtaskSchema,
   type Task,
   type TaskComment,
+  type TaskContext,
   type TaskRunArtifact,
   type TaskRunTriggerSource,
   type TaskSubtask,
@@ -16,7 +17,7 @@ import type { task_comments, task_subtasks } from "../db/schema/index.js";
 
 type TaskRunContextTrigger = {
   triggerSource: TaskRunTriggerSource;
-  context?: Record<string, unknown>;
+  context?: TaskContext;
   metadata?: Record<string, unknown>;
 };
 
@@ -68,6 +69,7 @@ export function createTaskRunContextService(options: { db?: AppDb }) {
           templateId: input.task.sourceTemplateId ?? input.task.templateId,
           title: input.task.title,
           description: input.task.description,
+          context: input.task.context,
           status: input.task.status,
           schedule: input.task.schedule,
           todos: input.task.todos,
@@ -94,6 +96,7 @@ export function createTaskRunContextService(options: { db?: AppDb }) {
         templateId: input.task.sourceTemplateId ?? input.task.templateId,
         taskTitle: input.task.title,
         taskDescription: input.task.description,
+        taskContext: input.task.context,
         assignedAgentId: input.runAgentId,
         triggerSource: input.trigger.triggerSource,
         runContext: input.trigger.context,

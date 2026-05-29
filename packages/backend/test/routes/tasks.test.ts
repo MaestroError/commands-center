@@ -89,10 +89,35 @@ describe("task routes", () => {
         method: "POST",
         url: `/api/tasks/${task.id}/restore`,
       });
+      const contextUpdated = await server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/context`,
+        payload: { text: "Use current changelog." },
+      });
+      const uploadedContext = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/context/attachments`,
+        payload: {
+          filename: "notes.txt",
+          mimeType: "text/plain",
+          sizeBytes: 5,
+          dataUrl: "data:text/plain;base64,aGVsbG8=",
+        },
+      });
+      const rejectedContext = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/context/attachments`,
+        payload: {
+          filename: "run.sh",
+          mimeType: "text/plain",
+          sizeBytes: 5,
+          dataUrl: "data:text/plain;base64,aGVsbG8=",
+        },
+      });
       const queued = await server.inject({
         method: "POST",
         url: `/api/tasks/${task.id}/queue`,
-        payload: { triggerSource: "manual", context: { text: "Use current changelog." } },
+        payload: { triggerSource: "manual" },
       });
       const runs = await server.inject({ method: "GET", url: `/api/tasks/${task.id}/runs` });
       const runId = queued.json<{ id: string }>().id;
@@ -117,11 +142,23 @@ describe("task routes", () => {
       expect(archived.json().status).toBe("archived");
       expect(restored.statusCode).toBe(200);
       expect(restored.json().archived).toBe(false);
+      expect(contextUpdated.statusCode).toBe(200);
+      expect(contextUpdated.json().context).toEqual({
+        text: "Use current changelog.",
+        attachments: [],
+      });
+      expect(uploadedContext.statusCode).toBe(201);
+      expect(uploadedContext.json().attachment).toMatchObject({
+        filename: "notes.txt",
+        mimeType: "text/plain",
+        sizeBytes: 5,
+      });
+      expect(rejectedContext.statusCode).toBe(400);
       expect(runs.statusCode).toBe(200);
       expect(runs.json()).toHaveLength(1);
       expect(queued.statusCode).toBe(200);
       expect(queued.json().status).toBe("queued");
-      expect(queued.json().context).toEqual({ text: "Use current changelog." });
+      expect(queued.json().context).toBeUndefined();
       await expect
         .poll(async () => {
           const response = await server.inject({
@@ -307,7 +344,17 @@ describe("task routes", () => {
       const runNow = await server.inject({
         method: "POST",
         url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}/run-now`,
-        payload: { context: { reason: "manual check" } },
+        payload: {
+          context: { text: "manual check" },
+          contextAttachmentUploads: [
+            {
+              filename: "template-notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+              dataUrl: "data:text/plain;base64,aGVsbG8=",
+            },
+          ],
+        },
       });
 
       expect(comment.statusCode).toBe(201);
@@ -333,6 +380,7 @@ describe("task routes", () => {
       expect(runNow.statusCode).toBe(200);
       expect(runNow.json().status).toBe("queued");
       expect(runNow.json().triggerSource).toBe("template");
+      expect(runNow.json().context).toEqual({ text: "manual check", attachments: [] });
     } finally {
       taskSchedulerService.stop();
       await server.close();
