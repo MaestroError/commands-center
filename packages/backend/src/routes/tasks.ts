@@ -253,13 +253,36 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
         },
       },
     },
-    async (request) =>
-      executionService.queue(request.params.id, {
+    async (request) => {
+      let task = await service.createTaskFromTemplate(request.params.id, {
         triggerSource: "template",
         context: request.body.context,
-        contextAttachmentUploads: request.body.contextAttachmentUploads,
+      });
+
+      if (!task) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      const createdTask = task;
+      if (request.body.contextAttachmentUploads.length > 0) {
+        const attachments = await Promise.all(
+          request.body.contextAttachmentUploads.map((upload) =>
+            taskContextAttachmentService.storeForTask(createdTask.id, upload),
+          ),
+        );
+        task =
+          (await service.updateContext(task.id, {
+            ...task.context,
+            attachments: [...task.context.attachments, ...attachments],
+          })) ?? task;
+      }
+
+      return executionService.queue(task.id, {
+        triggerSource: "template",
+        context: request.body.context,
         metadata: request.body.metadata,
-      }),
+      });
+    },
   );
 
   app.post(
@@ -608,10 +631,15 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       },
     },
     async (request, reply) => {
+      const task = await service.get(request.params.id, { includeArchived: true });
       const deleted = await service.delete(request.params.id);
 
       if (!deleted) {
         throw new NotFoundError("Task not found.");
+      }
+
+      if (task && task.templateId !== task.id) {
+        await taskContextAttachmentService.removeForTask(task);
       }
 
       reply.code(204);

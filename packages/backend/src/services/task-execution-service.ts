@@ -7,7 +7,6 @@ import {
   type CancelTaskRunInput,
   type QueueTaskInput,
   type TaskContext,
-  type UploadTaskContextAttachmentInput,
   type Task,
   type TaskRun,
 } from "@cc/shared/schemas";
@@ -29,7 +28,7 @@ import type { TaskService } from "./task-service.js";
 export type TaskExecutionService = ReturnType<typeof createTaskExecutionService>;
 type QueueTaskExecutionInput = Partial<Omit<QueueTaskInput, "taskId">> & {
   context?: TaskContext;
-  contextAttachmentUploads?: UploadTaskContextAttachmentInput[];
+  contextAttachmentUploads?: z.infer<typeof uploadTaskContextAttachmentInputSchema>[];
 };
 const queueTaskExecutionInputSchema = queueTaskInputSchema.extend({
   context: taskContextInputSchema.optional(),
@@ -281,7 +280,7 @@ export function createTaskExecutionService(options: {
     task: Task,
     trigger: QueueTaskInput & {
       context?: TaskContext;
-      contextAttachmentUploads?: UploadTaskContextAttachmentInput[];
+      contextAttachmentUploads?: z.infer<typeof uploadTaskContextAttachmentInputSchema>[];
     },
   ): Promise<Task> {
     if (task.templateId !== task.id) {

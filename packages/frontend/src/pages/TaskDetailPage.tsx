@@ -13,7 +13,6 @@ import type {
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
-import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
 import { formatDate, formatRepeatSummary, formatToken } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
 import { useAgentsQuery } from "@/hooks/use-agents-query";
@@ -24,6 +23,7 @@ import {
   useTaskRunsQuery,
   useTaskRunSessionQuery,
 } from "@/hooks/use-tasks-query";
+import { buildFileManagerHref } from "@/lib/file-manager-href";
 
 type TaskDetailPageProps = {
   mode?: "task" | "run";
@@ -68,7 +68,6 @@ function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; e
   const location = useLocation();
   const mutations = useTaskMutations();
   const runsQuery = useTaskRunsQuery(props.task?.id);
-  const [runContextOpen, setRunContextOpen] = useState(false);
   const [selectedSectionId, setSelectedSectionId] = useState<DetailSectionId>();
   const task = props.task;
   const activeSectionId = selectedSectionId ?? getDefaultDetailSection(task);
@@ -96,7 +95,11 @@ function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; e
               >
                 Duplicate
               </button>
-              <button className="cc-button" onClick={() => setRunContextOpen(true)} type="button">
+              <button
+                className="cc-button"
+                onClick={() => mutations.trigger.mutate({ id: task.id })}
+                type="button"
+              >
                 Run now
               </button>
             </>
@@ -145,17 +148,6 @@ function TaskOverview(props: { task?: Task; agent?: Agent; isLoading: boolean; e
               <Metric label="Todos" value={formatTodoProgress(task)} />
             </aside>
           </section>
-          {runContextOpen ? (
-            <RunTaskContextDialog
-              busy={mutations.trigger.isPending}
-              taskTitle={task.title}
-              onCancel={() => setRunContextOpen(false)}
-              onRun={(input) => {
-                setRunContextOpen(false);
-                mutations.trigger.mutate({ id: task.id, input });
-              }}
-            />
-          ) : null}
         </>
       ) : null}
     </div>
@@ -338,7 +330,15 @@ function TaskDetailSectionContent(props: {
                   className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
                   key={attachment.id}
                 >
-                  {attachment.filename} · {attachment.mimeType}
+                  <a
+                    className="font-medium text-accent underline-offset-4 hover:underline"
+                    href={buildTaskContextAttachmentHref(attachment.storageKey)}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {attachment.filename}
+                  </a>{" "}
+                  · {attachment.mimeType}
                 </li>
               ))}
             </ul>
@@ -349,6 +349,14 @@ function TaskDetailSectionContent(props: {
   }
 
   return <TaskActivitySection runs={props.runs} task={props.task} />;
+}
+
+function buildTaskContextAttachmentHref(storageKey: string): string {
+  return buildFileManagerHref({
+    root: "workspace",
+    path: `task-context-attachments/${storageKey}`,
+    openInEditor: true,
+  });
 }
 
 function TaskTodos(props: { task: Task }) {

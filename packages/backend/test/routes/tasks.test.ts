@@ -1,9 +1,13 @@
+import { access } from "node:fs/promises";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { agents } from "../../src/db/schema/index";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createTaskContextAttachmentService } from "../../src/services/task-context-attachment-service";
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskSchedulerService } from "../../src/services/task-scheduler-service";
 import { createTaskService } from "../../src/services/task-service";
@@ -153,6 +157,14 @@ describe("task routes", () => {
         mimeType: "text/plain",
         sizeBytes: 5,
       });
+      const attachmentDirectory = String(
+        uploadedContext.json<{ attachment: { storageKey: string } }>().attachment.storageKey,
+      ).split("/")[0];
+      if (!attachmentDirectory) {
+        throw new Error("Expected task context attachment storage directory.");
+      }
+      expect(attachmentDirectory).toContain("ship-stable-release");
+      expect(attachmentDirectory).toContain(task.id);
       expect(rejectedContext.statusCode).toBe(400);
       expect(runs.statusCode).toBe(200);
       expect(runs.json()).toHaveLength(1);
@@ -195,6 +207,11 @@ describe("task routes", () => {
 
       expect(deleted.statusCode).toBe(204);
       expect(afterDelete.statusCode).toBe(404);
+      await expect(
+        access(
+          join(testDb.config.paths.subdirectories.taskContextAttachments, attachmentDirectory),
+        ),
+      ).rejects.toThrow();
     } finally {
       taskSchedulerService.stop();
       await server.close();
@@ -258,7 +275,14 @@ describe("task routes", () => {
   it("supports comments, subtasks, and recurring template endpoints", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const taskExecutionService = createTaskExecutionService({ taskService });
+    const taskContextAttachmentService = createTaskContextAttachmentService({
+      config: testDb.config,
+      taskService,
+    });
+    const taskExecutionService = createTaskExecutionService({
+      taskService,
+      taskContextAttachmentService,
+    });
     const taskSchedulerService = createTaskSchedulerService({
       db: testDb.client.db,
       taskService,
@@ -381,6 +405,23 @@ describe("task routes", () => {
       expect(runNow.json().status).toBe("queued");
       expect(runNow.json().triggerSource).toBe("template");
       expect(runNow.json().context).toEqual({ text: "manual check", attachments: [] });
+      const runNowTask = await taskService.get(runNow.json<{ taskId: string }>().taskId);
+      expect(runNowTask).toMatchObject({
+        context: {
+          text: "manual check",
+          attachments: [
+            {
+              filename: "template-notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+            },
+          ],
+        },
+      });
+      const runNowAttachmentDirectory =
+        runNowTask?.context.attachments[0]?.storageKey.split("/")[0];
+      expect(runNowAttachmentDirectory).toContain("daily-template");
+      expect(runNowAttachmentDirectory).toContain(runNow.json<{ taskId: string }>().taskId);
     } finally {
       taskSchedulerService.stop();
       await server.close();

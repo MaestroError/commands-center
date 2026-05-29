@@ -249,6 +249,71 @@ describe("createTaskService", () => {
     }
   });
 
+  it("excludes task templates from task and archive lists", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.create({
+        agentId: agent.id,
+        title: "Weekly report",
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Manual task",
+        triggerMode: "manual",
+      });
+
+      await service.archive(task.id);
+      const listed = await service.list({ includeArchived: true });
+      const archived = await service.listArchived();
+
+      expect(listed.map((entry) => entry.id)).not.toContain(template.id);
+      expect(archived.map((entry) => entry.id)).toEqual([task.id]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not archive or restore task templates", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.create({
+        agentId: agent.id,
+        title: "Weekly report",
+        triggerMode: "recurring",
+        schedule: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+
+      const archived = await service.archive(template.id);
+      const restored = await service.restore(template.id);
+      const storedTemplate = await service.getTemplate(template.id);
+
+      expect(archived).toBeUndefined();
+      expect(restored).toBeUndefined();
+      expect(storedTemplate?.archived).toBe(false);
+      expect(storedTemplate?.status).toBe("enabled");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("creates, updates, lists, and retrieves task run metadata", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });

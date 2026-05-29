@@ -47,6 +47,7 @@ import {
   useTasksQuery,
   useTaskTemplatesQuery,
 } from "@/hooks/use-tasks-query";
+import { buildFileManagerHref } from "@/lib/file-manager-href";
 import { isTaskCreationPrefill, type TaskCreationPrefill } from "@/services/task-prefill-service";
 
 type TasksPageProps = {
@@ -266,6 +267,7 @@ function TaskListPage() {
             });
           }}
           onRunNow={setRunTemplate}
+          onDelete={(template) => void mutations.remove.mutate(template.id)}
           onCreateTask={(template) => {
             mutations.createFromTemplate.mutate(template.id, {
               onSuccess: (task) => selectGeneratedTask(searchParams, setSearchParams, task.id),
@@ -354,6 +356,11 @@ function TaskListPage() {
             });
           }}
           onRunNow={setRunTemplate}
+          onDelete={(template) => {
+            mutations.remove.mutate(template.id, {
+              onSuccess: () => clearSelectedTemplate(searchParams, setSearchParams),
+            });
+          }}
           templateId={selectedTemplateId}
         />
       ) : null}
@@ -1076,7 +1083,15 @@ function TaskContextSection(props: {
                 className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
                 key={attachment.id}
               >
-                {attachment.filename} · {attachment.mimeType} · {formatBytes(attachment.sizeBytes)}
+                <a
+                  className="font-medium text-accent underline-offset-4 hover:underline"
+                  href={buildTaskContextAttachmentHref(attachment.storageKey)}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {attachment.filename}
+                </a>{" "}
+                · {attachment.mimeType} · {formatBytes(attachment.sizeBytes)}
               </li>
             ))}
           </ul>
@@ -1161,6 +1176,7 @@ function TaskTemplatesView(props: {
   onCreate: (input: CreateTaskTemplateInput) => void;
   onCreateTask: (template: TaskTemplate) => void;
   onRunNow: (template: TaskTemplate) => void;
+  onDelete: (template: TaskTemplate) => void;
   onSelect: (template: TaskTemplate) => void;
   onStartCreate: () => void;
 }) {
@@ -1214,7 +1230,9 @@ function TaskTemplatesView(props: {
                     {template.description || "No description provided."}
                   </p>
                 </div>
-                <StatusBadge status={template.status} />
+                <span className="rounded-full border border-border bg-surface px-3 py-1 text-sm text-text-secondary">
+                  Template
+                </span>
               </div>
               <div className="grid gap-3 text-sm text-text-secondary sm:grid-cols-3">
                 <Metric label="Default agent" value={agent?.name ?? template.defaultAgentId} />
@@ -1257,6 +1275,13 @@ function TaskTemplatesView(props: {
                     Open latest task
                   </Link>
                 ) : null}
+                <button
+                  className="cc-button cc-button-secondary"
+                  onClick={() => props.onDelete(template)}
+                  type="button"
+                >
+                  Delete template
+                </button>
               </div>
             </article>
           );
@@ -1455,6 +1480,7 @@ function TaskTemplateDetailPanel(props: {
   onCreateTask: (template: TaskTemplate) => void;
   onOpenTask: (taskId: string) => void;
   onRunNow: (template: TaskTemplate) => void;
+  onDelete: (template: TaskTemplate) => void;
 }) {
   const templateQuery = useTaskTemplateQuery(props.templateId);
   const tasksQuery = useTaskTemplateTasksQuery(props.templateId);
@@ -1486,7 +1512,6 @@ function TaskTemplateDetailPanel(props: {
         {template ? (
           <div className="grid gap-4">
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={template.status} />
               <span className="rounded-full border border-border bg-surface px-2 py-1 text-xs text-text-secondary">
                 {formatTemplateRepeat(template)}
               </span>
@@ -1525,6 +1550,13 @@ function TaskTemplateDetailPanel(props: {
                   Open latest task
                 </button>
               ) : null}
+              <button
+                className="cc-button cc-button-secondary"
+                onClick={() => props.onDelete(template)}
+                type="button"
+              >
+                Delete template
+              </button>
             </div>
             <GeneratedTaskHistory
               currentSearch={props.currentSearch}
@@ -2084,7 +2116,7 @@ function templateAsTask(template: TaskTemplate): Task {
     description: template.description,
     context: { attachments: [] },
     todos: template.todos,
-    status: template.archived ? "archived" : template.enabled ? "backlog" : "disabled",
+    status: "backlog",
     triggerMode: template.recurrence ? "recurring" : "manual",
     schedule: template.recurrence ?? { mode: "manual" },
     enabled: template.enabled,
@@ -2094,6 +2126,14 @@ function templateAsTask(template: TaskTemplate): Task {
     updatedAt: template.updatedAt,
     archivedAt: template.archivedAt,
   };
+}
+
+function buildTaskContextAttachmentHref(storageKey: string): string {
+  return buildFileManagerHref({
+    root: "workspace",
+    path: `task-context-attachments/${storageKey}`,
+    openInEditor: true,
+  });
 }
 
 function buildSchedule(form: FormState): TaskSchedule {

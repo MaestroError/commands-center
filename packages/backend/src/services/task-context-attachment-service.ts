@@ -1,10 +1,11 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 
 import {
   taskContextSchema,
   uploadTaskContextAttachmentInputSchema,
   type SendConversationAttachmentInput,
+  type Task,
   type TaskContext,
   type TaskContextAttachment,
   type UploadTaskContextAttachmentInput,
@@ -42,9 +43,15 @@ export function createTaskContextAttachmentService(options: {
       taskId: string,
       input: UploadTaskContextAttachmentInput,
     ): Promise<TaskContextAttachment> {
+      const task = await options.taskService.get(taskId);
+
+      if (!task || task.templateId === task.id) {
+        throw new NotFoundError("Task not found.");
+      }
+
       return storeAttachment(
         options.config,
-        taskId,
+        task,
         uploadTaskContextAttachmentInputSchema.parse(input),
       );
     },
@@ -60,7 +67,7 @@ export function createTaskContextAttachmentService(options: {
         throw new NotFoundError("Task not found.");
       }
 
-      const attachment = await storeAttachment(options.config, taskId, parsed);
+      const attachment = await storeAttachment(options.config, task, parsed);
       const context = taskContextSchema.parse({
         ...task.context,
         attachments: [...task.context.attachments, attachment],
@@ -72,6 +79,23 @@ export function createTaskContextAttachmentService(options: {
       }
 
       return { attachment, context: updated.context };
+    },
+
+    async removeForTask(task: Task): Promise<void> {
+      const directories = new Set(
+        task.context.attachments
+          .map((attachment) => attachment.storageKey.split("/")[0])
+          .filter((directory): directory is string => Boolean(directory)),
+      );
+
+      await Promise.all(
+        [...directories].map((directory) =>
+          rm(join(options.config.paths.subdirectories.taskContextAttachments, directory), {
+            force: true,
+            recursive: true,
+          }),
+        ),
+      );
     },
 
     async readConversationAttachments(
@@ -101,7 +125,7 @@ export function createTaskContextAttachmentService(options: {
 
 async function storeAttachment(
   config: RuntimeConfig,
-  taskId: string,
+  task: Task,
   input: UploadTaskContextAttachmentInput,
 ): Promise<TaskContextAttachment> {
   const filename = validateFilename(input.filename);
@@ -118,8 +142,9 @@ async function storeAttachment(
 
   const id = createId();
   const ext = extname(filename).toLowerCase();
-  const storageKey = `${taskId}/${id}${ext}`;
-  const taskDirectory = join(config.paths.subdirectories.taskContextAttachments, taskId);
+  const taskDirectoryName = createTaskDirectoryName(task);
+  const storageKey = `${taskDirectoryName}/${id}${ext}`;
+  const taskDirectory = join(config.paths.subdirectories.taskContextAttachments, taskDirectoryName);
   await mkdir(taskDirectory, { recursive: true });
   await writeFile(join(taskDirectory, `${id}${ext}`), buffer, { mode: 0o600 });
 
@@ -131,6 +156,16 @@ async function storeAttachment(
     storageKey,
     createdAt: new Date().toISOString(),
   };
+}
+
+function createTaskDirectoryName(task: Task): string {
+  const titleSlug = task.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+
+  return `${titleSlug || "task"}-${task.id}`;
 }
 
 function validateFilename(input: string): string {

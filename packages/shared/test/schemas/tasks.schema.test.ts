@@ -12,6 +12,7 @@ import {
   taskRunArtifactSchema,
   taskRunOutcomeSchema,
   taskRunTriggerSourceSchema,
+  taskTemplateRunNowInputSchema,
   taskSubtaskSchema,
   taskSubtaskStatusSchema,
   taskTemplateSchema,
@@ -62,6 +63,34 @@ describe("task schemas", () => {
         agentId: "agent-2",
         triggerSource: "scheduled",
         metadata: { scheduledAt: "2026-06-01T12:00:00.000Z" },
+      });
+    });
+  });
+
+  describe("taskTemplateRunNowInputSchema", () => {
+    it("accepts optional context attachment uploads", () => {
+      expect(
+        taskTemplateRunNowInputSchema.parse({
+          context: { text: "Run with this note." },
+          contextAttachmentUploads: [
+            {
+              filename: "notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+              dataUrl: "data:text/plain;base64,aGVsbG8=",
+            },
+          ],
+        }),
+      ).toEqual({
+        context: { text: "Run with this note.", attachments: [] },
+        contextAttachmentUploads: [
+          {
+            filename: "notes.txt",
+            mimeType: "text/plain",
+            sizeBytes: 5,
+            dataUrl: "data:text/plain;base64,aGVsbG8=",
+          },
+        ],
       });
     });
   });

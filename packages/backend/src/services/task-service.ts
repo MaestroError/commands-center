@@ -117,36 +117,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         },
         orderBy: (table, operators) => [operators.desc(table.updated_at)],
       });
-      const templateRows = await options.db.query.task_templates.findMany({
-        where: (table, operators) => {
-          const filters = [operators.isNull(table.deleted_at)];
-
-          if (!parsed.includeArchived) {
-            filters.push(operators.eq(table.archived, false));
-          }
-
-          if (parsed.status) {
-            filters.push(operators.eq(table.status, parsed.status));
-          }
-
-          if (parsed.triggerMode) {
-            filters.push(operators.eq(table.trigger_mode, parsed.triggerMode));
-          }
-
-          if (parsed.agentId) {
-            filters.push(operators.eq(table.agent_id, parsed.agentId));
-          }
-
-          return operators.and(...filters);
-        },
-        orderBy: (table, operators) => [operators.desc(table.updated_at)],
-      });
-
-      return taskListSchema.parse(
-        [...rows.map(mapTask), ...templateRows.map(mapTemplateAsTask)].sort(
-          (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
-        ),
-      );
+      return taskListSchema.parse(rows.map(mapTask));
     },
 
     async get(id: string, getOptions?: { includeArchived?: boolean }): Promise<Task | undefined> {
@@ -549,36 +520,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
     async archive(id: string): Promise<Task | undefined> {
       const existing = await getTaskRow(id);
-      const existingTemplate = existing ? undefined : await getTemplateRow(id);
 
-      if (!existing && !existingTemplate) {
+      if (!existing) {
         return undefined;
       }
 
       const timestamp = now();
-
-      if (existingTemplate) {
-        const [row] = await options.db
-          .update(task_templates)
-          .set({
-            status: "archived",
-            archived: true,
-            updated_at: timestamp,
-            archived_at: existingTemplate.archived_at ?? timestamp,
-          })
-          .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
-          .returning();
-
-        if (!row) {
-          throw new Error("Failed to archive task template record.");
-        }
-
-        return mapTemplateAsTask(row);
-      }
-
-      if (!existing) {
-        throw new Error("Task row disappeared during archive.");
-      }
 
       const [row] = await options.db
         .update(tasks)
@@ -604,38 +551,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
     async restore(id: string): Promise<Task | undefined> {
       const existing = await getTaskRow(id, { includeArchived: true });
-      const existingTemplate = existing
-        ? undefined
-        : await getTemplateRow(id, { includeArchived: true });
 
-      if (!existing && !existingTemplate) {
+      if (!existing) {
         return undefined;
       }
 
       const timestamp = now();
-
-      if (existingTemplate) {
-        const [row] = await options.db
-          .update(task_templates)
-          .set({
-            status: existingTemplate.enabled ? "enabled" : "disabled",
-            archived: false,
-            updated_at: timestamp,
-            archived_at: null,
-          })
-          .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
-          .returning();
-
-        if (!row) {
-          throw new Error("Failed to restore task template record.");
-        }
-
-        return mapTemplateAsTask(row);
-      }
-
-      if (!existing) {
-        throw new Error("Task row disappeared during restore.");
-      }
 
       const [row] = await options.db
         .update(tasks)

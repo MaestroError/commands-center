@@ -395,7 +395,16 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             },
           });
 
-          const run = await options.taskExecutionService.queue(parsed.taskId, {
+          const task = await options.taskService.createTaskFromTemplate(parsed.taskId, {
+            triggerSource: "template",
+            context: parsed.context,
+          });
+
+          if (!task) {
+            throw new Error("Task template not found.");
+          }
+
+          const run = await options.taskExecutionService.queue(task.id, {
             triggerSource: "template",
             context: parsed.context,
             metadata: parsed.metadata,

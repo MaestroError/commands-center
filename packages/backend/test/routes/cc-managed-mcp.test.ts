@@ -500,6 +500,33 @@ describe("cc-managed MCP routes", () => {
         { name: "queue_task", arguments: { taskId: task.id } },
         10,
       );
+      const appendedContextResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        {
+          name: "append_task_context",
+          arguments: { taskId: task.id, text: "Observed during task run." },
+        },
+        16,
+      );
+      const readContextResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "read_task_context", arguments: { taskId: task.id } },
+        17,
+      );
+      const updatedContextResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        {
+          name: "update_task_context",
+          arguments: { taskId: task.id, context: { text: "Replacement run context." } },
+        },
+        18,
+      );
 
       const triggerJson = parseSseJson(triggerResponse.body) as {
         result?: { structuredContent?: { id?: string } };
@@ -565,6 +592,20 @@ describe("cc-managed MCP routes", () => {
       });
       expect(parseSseJson(getTaskResponse.body)).toMatchObject({
         result: { structuredContent: { id: task.id, title: "Manual MCP task" } },
+      });
+      expect(parseSseJson(appendedContextResponse.body)).toMatchObject({
+        result: { structuredContent: { text: "Observed during task run.", attachments: [] } },
+      });
+      expect(parseSseJson(readContextResponse.body)).toMatchObject({
+        result: { structuredContent: { text: "Observed during task run.", attachments: [] } },
+      });
+      expect(parseSseJson(updatedContextResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            id: task.id,
+            context: { text: "Replacement run context.", attachments: [] },
+          },
+        },
       });
       expect(parseSseJson(listRunsResponse.body)).toMatchObject({
         result: { structuredContent: { runs: [expect.objectContaining({ id: runId })] } },

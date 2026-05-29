@@ -355,6 +355,32 @@ describe("TasksPage", () => {
     expect(screen.queryByRole("heading", { name: "Backlog" })).not.toBeInTheDocument();
   });
 
+  it("shows templates without user-visible status badges", async () => {
+    mockFetch({ templatesPayload: [{ ...taskTemplate, status: "archived", archived: true }] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
+
+    expect(await screen.findByText("Template")).toBeInTheDocument();
+    expect(screen.queryByText("Archived")).not.toBeInTheDocument();
+    expect(screen.queryByText("Enabled")).not.toBeInTheDocument();
+  });
+
+  it("deletes a template from the templates view", async () => {
+    const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Delete template" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/template-1",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
   it("runs a template immediately and opens the generated task", async () => {
     const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
 
@@ -455,6 +481,59 @@ describe("TasksPage", () => {
     expect(await screen.findByRole("heading", { name: "Generated tasks" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Weekly release notes" }).length).toBeGreaterThan(
       0,
+    );
+  });
+
+  it("deletes a template from the template detail panel", async () => {
+    const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates&template=template-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Delete template" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/template-1",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
+  it("links task context attachments to the workspace file manager", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        context: {
+          text: "Use release notes.",
+          attachments: [
+            {
+              id: "attachment-1",
+              filename: "notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+              storageKey: "ship-release-task-1/attachment-1.txt",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("tab", { name: "Context" }));
+
+    const link = await screen.findByRole("link", { name: "notes.txt" });
+    const params = new URLSearchParams(link.getAttribute("href")?.replace("/files?", ""));
+
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(params.get("root")).toBe("workspace");
+    expect(params.get("path")).toBe("task-context-attachments/ship-release-task-1");
+    expect(params.get("select")).toBe(
+      "task-context-attachments/ship-release-task-1/attachment-1.txt",
     );
   });
 
@@ -884,6 +963,63 @@ describe("TaskDetailPage", () => {
     expect(await screen.findByText("edit:task-2")).toBeInTheDocument();
   });
 
+  it("queues a task from the task detail page without run context", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Run now" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/queue",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ triggerSource: "manual" }),
+        }),
+      );
+    });
+  });
+
+  it("links full-page task context attachments to the workspace file manager", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        context: {
+          text: "Use release notes.",
+          attachments: [
+            {
+              id: "attachment-1",
+              filename: "notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+              storageKey: "ship-release-task-1/attachment-1.txt",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Context" }));
+
+    const link = await screen.findByRole("link", { name: "notes.txt" });
+    const params = new URLSearchParams(link.getAttribute("href")?.replace("/files?", ""));
+
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(params.get("root")).toBe("workspace");
+    expect(params.get("path")).toBe("task-context-attachments/ship-release-task-1");
+    expect(params.get("select")).toBe(
+      "task-context-attachments/ship-release-task-1/attachment-1.txt",
+    );
+  });
+
   it("does not show duplicate on task run pages", async () => {
     mockFetch();
 
@@ -1280,6 +1416,7 @@ function mockFetch(options: MockFetchOptions = {}) {
     }
     if (url === "/api/tasks/task-1/context") return Promise.resolve(jsonResponse(200, taskPayload));
     if (url === "/api/tasks/task-1") return Promise.resolve(jsonResponse(200, taskPayload));
+    if (url === "/api/tasks/template-1") return Promise.resolve(jsonResponse(204, null));
     if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, runsPayload));
     if (url === "/api/tasks/task-1/runs/run-1")
       return Promise.resolve(jsonResponse(200, sessionRun));
