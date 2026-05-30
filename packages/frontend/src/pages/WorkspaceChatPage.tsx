@@ -299,6 +299,20 @@ export function WorkspaceChatPage() {
               onToggleTerminal={() => setTerminalOpen((current) => !current)}
             />
 
+            {conv.conversation.taskId && conv.conversation.taskRunId ? (
+              <section className="border-b border-border bg-accent/10 px-4 py-3 text-sm text-text-primary">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p>This chat continues task run {conv.conversation.taskRunId}.</p>
+                  <a
+                    className="font-medium text-accent underline-offset-4 hover:underline"
+                    href={`/tasks/${encodeURIComponent(conv.conversation.taskId)}/runs/${encodeURIComponent(conv.conversation.taskRunId)}`}
+                  >
+                    Back to task run
+                  </a>
+                </div>
+              </section>
+            ) : null}
+
             <ChatSplitPaneLayout
               main={
                 <div className="flex h-full min-h-0 flex-col overflow-hidden">

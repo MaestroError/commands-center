@@ -11,6 +11,7 @@ import type {
   TaskFeedbackThread,
   TaskPermissionProfile,
   TaskRun,
+  TaskRunArtifact,
   TaskSubtask,
 } from "@cc/shared/schemas";
 
@@ -168,6 +169,8 @@ function TaskOverview(props: {
               <Metric label="Todos" value={formatTodoProgress(task)} />
             </aside>
           </section>
+
+          <TaskRunOutcomeSummary runs={runsQuery.data ?? []} />
         </>
       ) : null}
     </div>
@@ -177,6 +180,8 @@ function TaskOverview(props: {
 function RunHistory(props: {
   taskId: string;
   runs: TaskRun[];
+  agents?: Agent[];
+  subtasks?: TaskSubtask[];
   isLoading: boolean;
   error: unknown;
 }) {
@@ -202,13 +207,18 @@ function RunHistory(props: {
       ) : null}
       {props.runs.length > 0 ? (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[48rem] text-left text-sm">
+          <table className="w-full min-w-[72rem] text-left text-sm">
             <thead className="text-xs uppercase tracking-wide text-text-secondary">
               <tr className="border-b border-border">
                 <th className="py-3 pr-3">Status</th>
+                <th className="py-3 pr-3">Agent</th>
+                <th className="py-3 pr-3">Outcome</th>
                 <th className="py-3 pr-3">Trigger</th>
+                <th className="py-3 pr-3">Target</th>
                 <th className="py-3 pr-3">Started</th>
-                <th className="py-3 pr-3">Completed</th>
+                <th className="py-3 pr-3">Duration</th>
+                <th className="py-3 pr-3">Artifacts</th>
+                <th className="py-3 pr-3">Session</th>
                 <th className="py-3 pr-3">Summary</th>
                 <th className="py-3 pr-3">Action</th>
               </tr>
@@ -220,10 +230,23 @@ function RunHistory(props: {
                     <StatusBadge status={run.status} />
                   </td>
                   <td className="py-3 pr-3 text-text-secondary">
+                    {readAgentName(props.agents ?? [], run.agentId)}
+                  </td>
+                  <td className="py-3 pr-3 text-text-secondary">
+                    {run.outcome ? formatToken(run.outcome) : "-"}
+                  </td>
+                  <td className="py-3 pr-3 text-text-secondary">
                     {formatToken(run.triggerSource)}
                   </td>
+                  <td className="max-w-48 truncate py-3 pr-3 text-text-secondary">
+                    {formatRunTarget(run, props.subtasks ?? [])}
+                  </td>
                   <td className="py-3 pr-3 text-text-secondary">{formatDate(run.startedAt)}</td>
-                  <td className="py-3 pr-3 text-text-secondary">{formatDate(run.completedAt)}</td>
+                  <td className="py-3 pr-3 text-text-secondary">{formatRunDuration(run)}</td>
+                  <td className="py-3 pr-3 text-text-secondary">{run.artifacts.length}</td>
+                  <td className="py-3 pr-3 text-text-secondary">
+                    {run.opencodeSessionId ? "Recorded" : "Unavailable"}
+                  </td>
                   <td className="max-w-sm truncate py-3 pr-3 text-text-secondary">
                     {run.finalMessage ?? run.errorMessage ?? "No summary"}
                   </td>
@@ -260,6 +283,94 @@ function TaskDecisionSummary(props: { task: Task }) {
             ? "The latest run completed successfully and is ready for acceptance."
             : "This task needs feedback or a retry before it can move forward.")}
       </p>
+    </section>
+  );
+}
+
+function TaskRunOutcomeSummary(props: { runs: TaskRun[] }) {
+  const resultRuns = props.runs.filter(hasRunOutcomeSummary);
+  const artifacts = aggregateRunArtifacts(props.runs);
+
+  if (resultRuns.length === 0 && artifacts.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="cc-panel grid gap-5 p-5">
+      <div>
+        <h2 className="text-xl font-semibold text-text-primary">Task results and artifacts</h2>
+        <p className="mt-1 text-sm leading-6 text-text-secondary">
+          Review what happened across all task runs and open generated files from the workspace.
+        </p>
+      </div>
+
+      {resultRuns.length > 0 ? (
+        <div className="grid gap-3">
+          <h3 className="font-semibold text-text-primary">Results</h3>
+          {resultRuns.map((run) => (
+            <article className="rounded-lg border border-border bg-surface p-3" key={run.id}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+                  <StatusBadge status={run.status} />
+                  <span>{formatDate(run.completedAt ?? run.updatedAt)}</span>
+                  <span>{formatToken(run.triggerSource)}</span>
+                </div>
+                <Link
+                  className="font-medium text-accent underline-offset-4 hover:underline"
+                  to={`/tasks/${run.taskId}/runs/${run.id}`}
+                >
+                  Open run
+                </Link>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">
+                {run.finalMessage ?? run.resultText ?? run.errorMessage ?? "No result summary."}
+              </p>
+              {run.needsHumanReview ? (
+                <p className="mt-2 rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm leading-6 text-text-primary">
+                  {run.humanReviewReason ?? "Human review required."}
+                </p>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {artifacts.length > 0 ? (
+        <div className="grid gap-3">
+          <h3 className="font-semibold text-text-primary">Artifacts</h3>
+          <div className="grid gap-2">
+            {artifacts.map((artifact) => (
+              <article
+                className="rounded-lg border border-border bg-surface p-3"
+                key={artifact.key}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <a
+                      className="break-words font-medium text-accent underline-offset-4 hover:underline [overflow-wrap:anywhere]"
+                      href={artifact.href}
+                      rel="noreferrer"
+                      target={artifact.external ? "_blank" : undefined}
+                    >
+                      {artifact.path ?? artifact.title}
+                    </a>
+                    <p className="mt-1 text-sm leading-6 text-text-secondary">
+                      {artifact.description ?? artifact.title}
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-text-secondary">
+                    {artifact.runCount} run{artifact.runCount === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-text-secondary">
+                  Latest:{" "}
+                  {formatDate(artifact.latestRun.completedAt ?? artifact.latestRun.updatedAt)}
+                </p>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -343,8 +454,10 @@ function TaskDetailSectionContent(props: {
           </p>
         ) : null}
         <RunHistory
+          agents={props.agents}
           taskId={props.taskId}
           runs={props.runs}
+          subtasks={subtasksQuery.data ?? []}
           isLoading={props.isRunsLoading}
           error={props.runsError}
         />
@@ -687,7 +800,7 @@ function TaskRunDetail(props: { task?: Task; taskId?: string; runId?: string; ag
             </Link>
             {sessionQuery.data?.canOpenInChat && props.taskId && props.runId && agentSlug ? (
               <button className="cc-button" onClick={() => void openInChat()} type="button">
-                Open in chat
+                Continue in chat
               </button>
             ) : null}
           </>
@@ -743,6 +856,12 @@ function TaskRunDetail(props: { task?: Task; taskId?: string; runId?: string; ag
             <Metric label="Started" value={formatDate(run.startedAt)} />
             <Metric label="Completed" value={formatDate(run.completedAt)} />
             <Metric label="Session" value={run.opencodeSessionId ?? "No session"} />
+            {sessionQuery.data?.conversation?.convertedAt ? (
+              <Metric
+                label="Chat"
+                value={`Continued ${formatDate(sessionQuery.data.conversation.convertedAt)}`}
+              />
+            ) : null}
             {run.errorMessage ? <TextBlock label="Error" value={run.errorMessage} /> : null}
             <JsonBlock label="Error details" value={run.errorDetails} />
           </aside>
@@ -1078,6 +1197,66 @@ function readSubtaskReplyClassName(status: string): string {
   return `rounded-lg border p-3 ${emphasis}`;
 }
 
+type AggregatedRunArtifact = {
+  key: string;
+  title: string;
+  description?: string;
+  path?: string;
+  href: string;
+  external: boolean;
+  latestRun: TaskRun;
+  runCount: number;
+};
+
+function hasRunOutcomeSummary(run: TaskRun): boolean {
+  return Boolean(run.finalMessage || run.resultText || run.errorMessage || run.needsHumanReview);
+}
+
+function aggregateRunArtifacts(runs: TaskRun[]): AggregatedRunArtifact[] {
+  const byKey = new Map<
+    string,
+    { artifact: TaskRunArtifact; latestRun: TaskRun; runIds: Set<string> }
+  >();
+
+  for (const run of runs) {
+    for (const artifact of run.artifacts) {
+      const key = artifact.path ? `path:${artifact.path}` : `url:${artifact.url ?? artifact.title}`;
+      const existing = byKey.get(key);
+
+      if (!existing) {
+        byKey.set(key, { artifact, latestRun: run, runIds: new Set([run.id]) });
+        continue;
+      }
+
+      existing.runIds.add(run.id);
+      if (isRunNewer(run, existing.latestRun)) {
+        existing.latestRun = run;
+        existing.artifact = artifact;
+      }
+    }
+  }
+
+  return [...byKey.entries()].map(([key, entry]) => ({
+    key,
+    title: entry.artifact.title,
+    description: entry.artifact.description,
+    path: entry.artifact.path,
+    href: entry.artifact.path
+      ? buildFileManagerHref({ path: entry.artifact.path, openInEditor: true })
+      : (entry.artifact.url ?? "#"),
+    external: !entry.artifact.path,
+    latestRun: entry.latestRun,
+    runCount: entry.runIds.size,
+  }));
+}
+
+function isRunNewer(candidate: TaskRun, current: TaskRun): boolean {
+  return (
+    Date.parse(candidate.completedAt ?? candidate.updatedAt) >
+    Date.parse(current.completedAt ?? current.updatedAt)
+  );
+}
+
 function readAgentName(agents: Agent[], agentId: string): string {
   return agents.find((agent) => agent.id === agentId)?.name ?? agentId;
 }
@@ -1099,6 +1278,31 @@ function formatSchedule(task: Task): string {
   if (task.schedule.mode === "scheduled_once") return formatDate(task.schedule.runAt);
   if (task.schedule.mode === "recurring") return formatRepeatSummary(task.schedule.repeatRule);
   return "Manual only";
+}
+
+function formatRunTarget(run: TaskRun, subtasks: TaskSubtask[]): string {
+  if (!run.subtaskId) return "Parent task";
+
+  const subtask = subtasks.find((entry) => entry.id === run.subtaskId);
+  return subtask ? `Subtask: ${subtask.description}` : `Subtask: ${run.subtaskId}`;
+}
+
+function formatRunDuration(run: TaskRun): string {
+  if (!run.startedAt) return "-";
+
+  const end = run.completedAt ?? run.cancelledAt ?? run.updatedAt;
+  const durationMs = Date.parse(end) - Date.parse(run.startedAt);
+
+  if (!Number.isFinite(durationMs) || durationMs < 0) return "-";
+  if (durationMs < 1000) return "<1s";
+
+  const totalSeconds = Math.round(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes === 0) return `${seconds}s`;
+  if (seconds === 0) return `${minutes}m`;
+  return `${minutes}m ${seconds}s`;
 }
 
 function readError(error: unknown): string {

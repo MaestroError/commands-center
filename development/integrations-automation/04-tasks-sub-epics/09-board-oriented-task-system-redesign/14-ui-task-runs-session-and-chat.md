@@ -1,4 +1,4 @@
-# I4.9 UI Epic: Task Runs, Session Check, and Open In Chat
+# ✅ I4.9 UI Epic: Task Runs, Session Check, and Open In Chat
 
 ## Goal
 

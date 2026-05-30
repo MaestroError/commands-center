@@ -1285,6 +1285,42 @@ describe("TaskDetailPage", () => {
     expect(screen.getByText("Ready to publish.")).toBeInTheDocument();
   });
 
+  it("aggregates task results and distinct artifacts on the task detail page", async () => {
+    const resultTextRun: TaskRun = { ...run, finalMessage: undefined };
+    const updatedRun: TaskRun = {
+      ...run,
+      id: "run-2",
+      finalMessage: "Updated tool inventory.",
+      artifacts: [
+        {
+          title: "Tool list update",
+          path: "tools-23.md",
+          description: "Updated generated tool inventory.",
+        },
+        {
+          title: "Release report",
+          path: "reports/release.md",
+          description: "Generated release report.",
+        },
+      ],
+      completedAt: "2026-01-01T00:10:00.000Z",
+      updatedAt: "2026-01-01T00:10:00.000Z",
+    };
+    mockFetch({ runsPayload: [updatedRun, resultTextRun] });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    expect(await screen.findByText("Task results and artifacts")).toBeInTheDocument();
+    expect(screen.getByText("Updated tool inventory.")).toBeInTheDocument();
+    expect(screen.getByText("Saved all 24 available tools to `tools-23.md`.")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "tools-23.md" })).toHaveLength(1);
+    const artifactLink = screen.getByRole("link", { name: "reports/release.md" });
+    const params = new URLSearchParams(artifactLink.getAttribute("href")?.replace("/files?", ""));
+    expect(params.get("root")).toBe("workspace");
+    expect(params.get("path")).toBe("reports");
+    expect(params.get("select")).toBe("reports/release.md");
+  });
+
   it("renders a recurring task with an empty run history in overview mode", async () => {
     mockFetch({
       taskPayload: {
@@ -1308,6 +1344,38 @@ describe("TaskDetailPage", () => {
       expect(screen.queryByTestId("task-runs-loading")).not.toBeInTheDocument();
     });
     expect(screen.getByText("No runs yet")).toBeInTheDocument();
+  });
+
+  it("shows run history agent, outcome, target, artifacts, duration, and session availability", async () => {
+    mockFetch({
+      feedbackPayload: [feedbackThread],
+      runsPayload: [
+        {
+          ...run,
+          subtaskId: feedbackThread.subtasks[0]?.id,
+          outcome: "needs_human_review",
+          startedAt: "2026-01-01T00:00:00.000Z",
+          completedAt: "2026-01-01T00:01:30.000Z",
+        },
+      ],
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Runs" }));
+
+    expect(screen.getByText("Agent")).toBeInTheDocument();
+    expect(screen.getByText("Outcome")).toBeInTheDocument();
+    expect(screen.getByText("Target")).toBeInTheDocument();
+    expect(screen.getByText("Duration")).toBeInTheDocument();
+    expect(screen.getAllByText("Artifacts").length).toBeGreaterThan(0);
+    expect(screen.getByText("Session")).toBeInTheDocument();
+    expect(screen.getAllByText("Planner").length).toBeGreaterThan(0);
+    expect(screen.getByText("Needs Human Review")).toBeInTheDocument();
+    expect(screen.getByText("Subtask: Please retest the release flow.")).toBeInTheDocument();
+    expect(screen.getByText("1m 30s")).toBeInTheDocument();
+    expect(screen.getByText("Recorded")).toBeInTheDocument();
   });
 
   it("preserves tasks view context from full-page detail", async () => {
@@ -1433,7 +1501,7 @@ describe("TaskDetailPage", () => {
     expect(screen.getByText(/bash_/)).toBeInTheDocument();
   });
 
-  it("hides open in chat when the session cannot be opened in chat", async () => {
+  it("hides continue in chat when the session cannot be opened in chat", async () => {
     mockFetch({
       sessionPayload: {
         canOpenInChat: false,
@@ -1443,16 +1511,16 @@ describe("TaskDetailPage", () => {
     renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
 
     await screen.findByRole("tab", { name: "Session" });
-    expect(screen.queryByRole("button", { name: "Open in chat" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue in chat" })).not.toBeInTheDocument();
   });
 
-  it("hides open in chat when the agent slug cannot be resolved", async () => {
+  it("hides continue in chat when the agent slug cannot be resolved", async () => {
     mockFetch({ agentsPayload: [] });
 
     renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
 
     await screen.findByRole("tab", { name: "Session" });
-    expect(screen.queryByRole("button", { name: "Open in chat" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue in chat" })).not.toBeInTheDocument();
   });
 
   it("renders the session log without converting the run to chat", async () => {
@@ -1667,13 +1735,29 @@ describe("TaskDetailPage", () => {
     expect(screen.getByText(/session_sync_failed/)).toBeInTheDocument();
   });
 
+  it("shows when a task run has already continued in chat", async () => {
+    mockFetch({
+      sessionPayload: {
+        conversation: { ...conversation, source: "chat", convertedAt: "2026-01-01T00:05:00.000Z" },
+      },
+    });
+
+    renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
+
+    await screen.findByRole("tab", { name: "Session" });
+    expect(screen.getByText("Chat")).toBeInTheDocument();
+    expect(
+      screen.getByText(`Continued ${formatDate("2026-01-01T00:05:00.000Z")}`),
+    ).toBeInTheDocument();
+  });
+
   it("opens chat with the agent slug in the URL", async () => {
     mockFetch();
 
     renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Open in chat" }));
+    await user.click(await screen.findByRole("button", { name: "Continue in chat" }));
 
     await screen.findByText("planner/conv-1");
   });
