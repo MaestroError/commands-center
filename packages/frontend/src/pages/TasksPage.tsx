@@ -1717,10 +1717,10 @@ function TaskPanelArtifactSection(props: { runs: TaskRun[] }) {
                 >
                   {formatArtifactLinkLabel(artifact.path ?? artifact.title)}
                 </a>
-                <p className="mt-1 text-xs leading-5 text-text-secondary [overflow-wrap:anywhere]">
+                <p className="mt-1 text-xs leading-5 text-text-muted [overflow-wrap:anywhere]">
                   {artifact.path ?? artifact.href}
                 </p>
-                <p className="mt-1 text-sm leading-6 text-text-secondary">
+                <p className="mt-3 text-sm leading-6 text-text-secondary">
                   {artifact.description ?? artifact.title}
                 </p>
               </div>
@@ -2051,10 +2051,10 @@ function RunArtifactAttachments(props: { artifacts: TaskRunArtifact[] }) {
               >
                 {formatArtifactLinkLabel(artifact.path ?? artifact.title)}
               </a>
-              <span className="block text-xs text-text-secondary">
+              <span className="block text-xs text-text-muted [overflow-wrap:anywhere]">
                 {artifact.path ?? artifact.url ?? artifact.title}
               </span>
-              <span className="block text-xs text-text-secondary">
+              <span className="mt-2 block text-xs text-text-secondary">
                 {artifact.description ?? artifact.title}
               </span>
             </span>

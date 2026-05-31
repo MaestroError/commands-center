@@ -220,14 +220,14 @@ function TaskOverview(props: {
       {task ? (
         <>
           <TaskDecisionSummary latestRunResult={latestRunResult?.content} task={task} />
-          <section className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
-            <article className="cc-panel overflow-visible p-0">
+          <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
+            <article className="cc-panel min-w-0 overflow-hidden p-0">
               <TabBar
                 activeTabId={activeSectionId}
                 onTabChange={(tabId) => setSelectedSectionId(tabId as DetailSectionId)}
                 tabs={DETAIL_SECTION_TABS}
               />
-              <div className="p-5">
+              <div className="min-w-0 p-5">
                 <TaskDetailSectionContent
                   agent={props.agent}
                   agents={props.agents}
@@ -242,7 +242,7 @@ function TaskOverview(props: {
               </div>
             </article>
 
-            <aside className="cc-panel grid gap-4 p-5">
+            <aside className="cc-panel grid min-w-0 gap-4 p-5">
               <Metric label="Assigned agent" value={props.agent?.name ?? task.agentId} />
               <Metric label="Schedule" value={formatSchedule(task)} />
               <Metric label="Latest result" value={latestRunResult?.content ?? "No runs yet"} />
@@ -273,7 +273,7 @@ function RunHistory(props: {
   error: unknown;
 }) {
   return (
-    <section className="cc-panel p-5">
+    <section className="cc-panel min-w-0 p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-text-primary">Run history</h2>
@@ -293,7 +293,7 @@ function RunHistory(props: {
         />
       ) : null}
       {props.runs.length > 0 ? (
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-4 max-w-full overflow-x-auto">
           <table className="w-full min-w-[72rem] text-left text-sm">
             <thead className="text-xs uppercase tracking-wide text-text-secondary">
               <tr className="border-b border-border">
@@ -444,10 +444,10 @@ function TaskRunOutcomeSummary(props: { runs: TaskRun[] }) {
                     >
                       {formatArtifactLinkLabel(artifact.path ?? artifact.title)}
                     </a>
-                    <p className="mt-1 text-xs leading-5 text-text-secondary [overflow-wrap:anywhere]">
+                    <p className="mt-1 text-xs leading-5 text-text-muted [overflow-wrap:anywhere]">
                       {artifact.path ?? artifact.href}
                     </p>
-                    <p className="mt-1 text-sm leading-6 text-text-secondary">
+                    <p className="mt-3 text-sm leading-6 text-text-secondary">
                       {artifact.description ?? artifact.title}
                     </p>
                   </div>
@@ -817,10 +817,10 @@ function RunArtifactAttachments(props: { artifacts: TaskRunArtifact[] }) {
               >
                 {formatArtifactLinkLabel(artifact.path ?? artifact.title)}
               </a>
-              <span className="block text-xs text-text-secondary">
+              <span className="block text-xs text-text-muted [overflow-wrap:anywhere]">
                 {artifact.path ?? artifact.url ?? artifact.title}
               </span>
-              <span className="block text-xs text-text-secondary">
+              <span className="mt-2 block text-xs text-text-secondary">
                 {artifact.description ?? artifact.title}
               </span>
             </span>
