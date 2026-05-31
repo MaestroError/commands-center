@@ -407,10 +407,6 @@ function TaskDetailSectionContent(props: {
             </span>
           ) : null}
         </div>
-        <TextBlock
-          label="Description"
-          value={props.task.description || "No description provided."}
-        />
         <PermissionSummary profile={props.task.permissionProfile} />
         <TaskTodos task={props.task} />
       </div>

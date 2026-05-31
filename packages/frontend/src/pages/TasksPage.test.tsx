@@ -303,6 +303,7 @@ beforeAll(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  window.localStorage.clear();
 });
 
 describe("TasksPage", () => {
@@ -414,6 +415,7 @@ describe("TasksPage", () => {
     expect(screen.getByTestId("task-detail-backdrop")).toHaveClass("bg-black/40");
     expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Runs" })).toBeInTheDocument();
+    expect(screen.queryByText("Description")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open full page" })).toHaveAttribute(
       "href",
       "/tasks/task-1",
@@ -423,6 +425,58 @@ describe("TasksPage", () => {
     expect(
       screen.queryByRole("complementary", { name: "Task detail panel" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("updates the board panel task prompt from the summary description", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("button", { name: "Edit task prompt" }));
+
+    const promptInput = await screen.findByLabelText("Task prompt");
+    await user.clear(promptInput);
+    await user.type(promptInput, "Prepare release notes and publish the summary.");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({
+            description: "Prepare release notes and publish the summary.",
+          }),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
+    });
+  });
+
+  it("cancels board panel task prompt edits without saving", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("button", { name: "Edit task prompt" }));
+
+    const promptInput = await screen.findByLabelText("Task prompt");
+    await user.clear(promptInput);
+    await user.type(promptInput, "Do not save this prompt.");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
+    expect(screen.getByText("Prepare release notes.")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/tasks/task-1",
+      expect.objectContaining({ method: "PATCH" }),
+    );
   });
 
   it("closes task detail when clicking the backdrop", async () => {
@@ -563,7 +617,7 @@ describe("TasksPage", () => {
     });
   });
 
-  it("updates persistent task context from the context tab", async () => {
+  it("updates persistent task context from the collapsible context section", async () => {
     const fetchMock = mockFetch({
       taskPayload: { ...task, context: { text: "Old context", attachments: [] } },
     });
@@ -572,7 +626,9 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    await user.click(await screen.findByRole("tab", { name: "Context" }));
+    expect(screen.queryByLabelText(/Task context/i)).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: /^Context/i }));
+    await user.click(screen.getByRole("button", { name: "Edit task context" }));
     const contextInput = screen.getByLabelText(/Task context/i);
     await user.clear(contextInput);
     await user.type(contextInput, "Use the release checklist.");
@@ -587,6 +643,33 @@ describe("TasksPage", () => {
         }),
       );
     });
+  });
+
+  it("persists the board panel context expanded state per task", async () => {
+    mockFetch({
+      taskPayload: { ...task, context: { text: "Use release notes.", attachments: [] } },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const contextToggle = await screen.findByRole("button", { name: /^Context/i });
+    expect(contextToggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(contextToggle);
+    expect(contextToggle).toHaveAttribute("aria-expanded", "true");
+    expect(window.localStorage.getItem("cc-task-context-expanded:task-1")).toBe("true");
+
+    await user.click(screen.getByRole("button", { name: "Back to board" }));
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    expect(await screen.findByRole("button", { name: /^Context/i })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+
+    await user.click(screen.getByRole("button", { name: /^Context/i }));
+    expect(window.localStorage.getItem("cc-task-context-expanded:task-1")).toBe("false");
   });
 
   it("shows templates separately from the board", async () => {
@@ -912,7 +995,7 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    await user.click(await screen.findByRole("tab", { name: "Context" }));
+    await user.click(await screen.findByRole("button", { name: /^Context/i }));
 
     const link = await screen.findByRole("link", { name: "notes.txt" });
     const params = new URLSearchParams(link.getAttribute("href")?.replace("/files?", ""));
@@ -923,6 +1006,44 @@ describe("TasksPage", () => {
     expect(params.get("select")).toBe(
       "task-context-attachments/ship-release-task-1/attachment-1.txt",
     );
+  });
+
+  it("removes task context attachments from the board panel", async () => {
+    const fetchMock = mockFetch({
+      taskPayload: {
+        ...task,
+        context: {
+          text: "Use release notes.",
+          attachments: [
+            {
+              id: "attachment-1",
+              filename: "notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+              storageKey: "ship-release-task-1/attachment-1.txt",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("button", { name: /^Context/i }));
+    await user.click(await screen.findByRole("button", { name: "Remove notes.txt" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/context",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ text: "Use release notes.", attachments: [] }),
+        }),
+      );
+    });
   });
 
   it("shows archived tasks separately from the board", async () => {
@@ -1932,7 +2053,13 @@ function mockFetch(options: MockFetchOptions = {}) {
         }),
       );
     }
-    if (url === "/api/tasks/task-1/context") return Promise.resolve(jsonResponse(200, taskPayload));
+    if (url === "/api/tasks/task-1/context") {
+      const body =
+        typeof init?.body === "string" ? (JSON.parse(init.body) as Partial<Task["context"]>) : {};
+      return Promise.resolve(
+        jsonResponse(200, { ...taskPayload, context: { ...taskPayload.context, ...body } }),
+      );
+    }
     if (url === "/api/tasks/task-1/feedback") {
       const method = input instanceof Request ? input.method : init?.method;
       return Promise.resolve(
@@ -1957,7 +2084,15 @@ function mockFetch(options: MockFetchOptions = {}) {
         ),
       );
     }
-    if (url === "/api/tasks/task-1") return Promise.resolve(jsonResponse(200, taskPayload));
+    if (url === "/api/tasks/task-1") {
+      const method = input instanceof Request ? input.method : init?.method;
+      if (method === "PATCH") {
+        const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Partial<Task>) : {};
+        return Promise.resolve(jsonResponse(200, { ...taskPayload, ...body }));
+      }
+
+      return Promise.resolve(jsonResponse(200, taskPayload));
+    }
     if (url === "/api/tasks/template-1") return Promise.resolve(jsonResponse(204, null));
     if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, runsPayload));
     if (url === "/api/tasks/task-1/runs/run-1")

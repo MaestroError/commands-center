@@ -13,6 +13,8 @@ import {
   CalendarClock,
   Check,
   CheckCheck,
+  ChevronDown,
+  ChevronRight,
   Copy,
   ExternalLink,
   Flag,
@@ -22,6 +24,7 @@ import {
   Play,
   RotateCcw,
   Save,
+  Trash2,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
@@ -87,7 +90,7 @@ type TasksPageProps = {
   mode?: "list" | "create" | "edit";
 };
 
-type DetailSectionId = "overview" | "feedback" | "subtasks" | "runs" | "context" | "activity";
+type DetailSectionId = "overview" | "feedback" | "subtasks" | "runs" | "activity";
 
 const TASK_VIEWS = ["board", "templates", "archive"] as const;
 const DETAIL_SECTION_TABS = [
@@ -95,7 +98,6 @@ const DETAIL_SECTION_TABS = [
   { id: "feedback", label: "Feedback" },
   { id: "subtasks", label: "Subtasks" },
   { id: "runs", label: "Runs" },
-  { id: "context", label: "Context" },
   { id: "activity", label: "Activity" },
 ];
 const BOARD_COLUMNS = [
@@ -373,10 +375,10 @@ function TaskListPage() {
           onReopen={(task) =>
             void mutations.update.mutate({ id: task.id, input: { status: "backlog" } })
           }
-          onUpdateContext={(task, text) => {
+          onUpdateContext={(task, context) => {
             mutations.updateContext.mutate({
               id: task.id,
-              input: { text, attachments: task.context.attachments },
+              input: context,
             });
           }}
           onUploadContextAttachment={(task, file) => {
@@ -1040,7 +1042,7 @@ function TaskDetailPanel(props: {
   onQueue: (task: Task) => void;
   onRestore: (task: Task) => void;
   onReopen: (task: Task) => void;
-  onUpdateContext: (task: Task, text: string) => void;
+  onUpdateContext: (task: Task, context: Task["context"]) => void;
   onUploadContextAttachment: (task: Task, file: File) => void;
 }) {
   const taskQuery = useTaskQuery(props.taskId);
@@ -1048,9 +1050,21 @@ function TaskDetailPanel(props: {
   const mutations = useTaskMutations();
   const [selectedSectionId, setSelectedSectionId] = useState<DetailSectionId>();
   const [queuePreview, setQueuePreview] = useState<TaskQueuePreview>();
+  const [isPromptEditing, setIsPromptEditing] = useState(false);
+  const [promptDraft, setPromptDraft] = useState<TaskPromptValue>(() => createTaskPromptValue());
   const task = taskQuery.data;
   const agent = props.agents.find((entry) => entry.id === task?.agentId);
+  const catalogQuery = useAgentCatalogQuery();
+  const taskSkills = useTaskComposerSkills(agent, catalogQuery.data);
   const activeSectionId = selectedSectionId ?? getDefaultDetailSection(task);
+
+  useEffect(() => {
+    if (!task || isPromptEditing) {
+      return;
+    }
+
+    setPromptDraft(createTaskPromptValue(task.description));
+  }, [isPromptEditing, task]);
 
   return (
     <>
@@ -1106,9 +1120,62 @@ function TaskDetailPanel(props: {
                     </span>
                   ) : null}
                 </div>
-                <p className="min-w-0 break-words text-sm leading-6 text-text-secondary [overflow-wrap:anywhere]">
-                  {task.description || "No description provided."}
-                </p>
+                {isPromptEditing ? (
+                  <form
+                    className="grid gap-3"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      mutations.update.mutate(
+                        { id: task.id, input: { description: buildTaskPromptText(promptDraft) } },
+                        { onSuccess: () => setIsPromptEditing(false) },
+                      );
+                    }}
+                  >
+                    <TaskPromptComposer
+                      agentId={task.agentId}
+                      onChange={setPromptDraft}
+                      skills={taskSkills}
+                      value={promptDraft}
+                    />
+                    {mutations.update.error ? (
+                      <p className="text-sm text-danger">
+                        {readError(mutations.update.error) ?? "Task could not be saved."}
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="cc-button"
+                        disabled={mutations.update.isPending}
+                        type="submit"
+                      >
+                        {mutations.update.isPending ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        className="cc-button cc-button-secondary"
+                        disabled={mutations.update.isPending}
+                        onClick={() => {
+                          setPromptDraft(createTaskPromptValue(task.description));
+                          setIsPromptEditing(false);
+                        }}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <button
+                    aria-label="Edit task prompt"
+                    className="w-full min-w-0 break-words rounded-md border border-transparent p-3 text-left text-sm leading-6 text-text-secondary transition hover:border-border hover:bg-surface hover:text-text-primary focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 [overflow-wrap:anywhere]"
+                    onClick={() => {
+                      setPromptDraft(createTaskPromptValue(task.description));
+                      setIsPromptEditing(true);
+                    }}
+                    type="button"
+                  >
+                    {task.description || "No description provided."}
+                  </button>
+                )}
                 {task.latestFinalMessage ? (
                   <p className={readResultClassName(readBoardStatus(task))}>
                     {task.latestFinalMessage}
@@ -1145,6 +1212,13 @@ function TaskDetailPanel(props: {
                 {queuePreview ? <QueuePreviewSummary preview={queuePreview} /> : null}
               </div>
 
+              <TaskContextPanelSection
+                isSaving={mutations.updateContext.isPending}
+                onUpdate={(context) => props.onUpdateContext(task, context)}
+                onUpload={(file) => props.onUploadContextAttachment(task, file)}
+                task={task}
+              />
+
               <article className="cc-panel overflow-visible p-0">
                 <TabBar
                   activeTabId={activeSectionId}
@@ -1162,10 +1236,6 @@ function TaskDetailPanel(props: {
                     sectionId={activeSectionId}
                     task={task}
                     taskId={task.id}
-                    onUpdateContext={(text) => props.onUpdateContext(task, text)}
-                    onUploadContextAttachment={(file) =>
-                      props.onUploadContextAttachment(task, file)
-                    }
                   />
                 </div>
               </article>
@@ -1281,8 +1351,6 @@ function TaskDetailSectionContent(props: {
   runs: TaskRun[];
   isRunsLoading: boolean;
   runsError: unknown;
-  onUpdateContext: (text: string) => void;
-  onUploadContextAttachment: (file: File) => void;
 }) {
   const feedbackQuery = useTaskFeedbackQuery(props.taskId);
   const subtasksQuery = useTaskSubtasksQuery(props.taskId);
@@ -1295,10 +1363,6 @@ function TaskDetailSectionContent(props: {
   if (props.sectionId === "overview") {
     return (
       <div className="grid gap-4">
-        <TextBlock
-          label="Description"
-          value={props.task.description || "No description provided."}
-        />
         <div className="grid gap-3 sm:grid-cols-2">
           <Metric label="Status" value={formatToken(readBoardStatus(props.task))} />
           <Metric label="Agent" value={props.agent?.name ?? props.task.agentId} />
@@ -1347,16 +1411,6 @@ function TaskDetailSectionContent(props: {
         runs={props.runs}
         task={props.task}
         taskId={props.taskId}
-      />
-    );
-  }
-
-  if (props.sectionId === "context") {
-    return (
-      <TaskContextSection
-        onUpdate={props.onUpdateContext}
-        onUpload={props.onUploadContextAttachment}
-        task={props.task}
       />
     );
   }
@@ -1659,16 +1713,23 @@ function TaskRunsSection(props: {
   );
 }
 
-function TaskContextSection(props: {
+function TaskContextPanelSection(props: {
   task: Task;
-  onUpdate: (text: string) => void;
+  isSaving: boolean;
+  onUpdate: (context: Task["context"]) => void;
   onUpload: (file: File) => void;
 }) {
+  const [isOpen, setIsOpen] = usePersistentTaskContextOpen(props.task.id);
+  const [isEditingText, setIsEditingText] = useState(false);
   const [text, setText] = useState(props.task.context.text ?? "");
 
   useEffect(() => {
+    if (isEditingText) {
+      return;
+    }
+
     setText(props.task.context.text ?? "");
-  }, [props.task.context.text]);
+  }, [isEditingText, props.task.context.text]);
 
   function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -1679,57 +1740,145 @@ function TaskContextSection(props: {
     }
   }
 
+  function handleSaveText() {
+    props.onUpdate({ ...props.task.context, text });
+    setIsEditingText(false);
+  }
+
+  function handleCancelText() {
+    setText(props.task.context.text ?? "");
+    setIsEditingText(false);
+  }
+
+  function handleRemoveAttachment(attachmentId: string) {
+    props.onUpdate({
+      ...props.task.context,
+      attachments: props.task.context.attachments.filter(
+        (attachment) => attachment.id !== attachmentId,
+      ),
+    });
+  }
+
+  const contextSummary = formatTaskContextSummary(props.task);
+
   return (
-    <div className="grid gap-4">
-      <label className="grid gap-2 text-sm text-text-secondary">
-        Task context
-        <textarea
-          className="cc-input min-h-40 resize-y"
-          onChange={(event) => setText(event.target.value)}
-          placeholder="Optional persistent context for future task runs..."
-          value={text}
-        />
-      </label>
-      <div className="flex flex-wrap gap-2">
-        <button className="cc-button" onClick={() => props.onUpdate(text)} type="button">
-          Save context
-        </button>
-        <label className="cc-button cc-button-secondary cursor-pointer">
-          Add attachment
-          <input
-            accept=".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.gif"
-            className="sr-only"
-            onChange={handleUpload}
-            type="file"
-          />
-        </label>
-      </div>
-      {props.task.context.attachments.length > 0 ? (
-        <div className="grid gap-2">
-          <h3 className="font-semibold text-text-primary">Attachments</h3>
-          <ul className="grid gap-2">
-            {props.task.context.attachments.map((attachment) => (
-              <li
-                className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
-                key={attachment.id}
-              >
-                <a
-                  className="font-medium text-accent underline-offset-4 hover:underline"
-                  href={buildTaskContextAttachmentHref(attachment.storageKey)}
-                  rel="noreferrer"
-                  target="_blank"
+    <section className="cc-panel overflow-hidden p-0">
+      <button
+        aria-expanded={isOpen}
+        className="flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-surface"
+        onClick={() => setIsOpen((current) => !current)}
+        type="button"
+      >
+        <span className="min-w-0">
+          <span className="block font-semibold text-text-primary">Context</span>
+          <span className="mt-1 block truncate text-sm text-text-secondary">{contextSummary}</span>
+        </span>
+        {isOpen ? (
+          <ChevronDown aria-hidden="true" className="h-5 w-5 shrink-0 text-text-secondary" />
+        ) : (
+          <ChevronRight aria-hidden="true" className="h-5 w-5 shrink-0 text-text-secondary" />
+        )}
+      </button>
+
+      {isOpen ? (
+        <div className="grid gap-4 border-t border-border p-4">
+          {isEditingText ? (
+            <div className="grid gap-3">
+              <label className="grid gap-2 text-sm text-text-secondary">
+                Task context
+                <textarea
+                  className="cc-input min-h-32 resize-y"
+                  onChange={(event) => setText(event.target.value)}
+                  placeholder="Optional persistent context for future task runs..."
+                  value={text}
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="cc-button"
+                  disabled={props.isSaving}
+                  onClick={handleSaveText}
+                  type="button"
                 >
-                  {attachment.filename}
-                </a>{" "}
-                · {attachment.mimeType} · {formatBytes(attachment.sizeBytes)}
-              </li>
-            ))}
-          </ul>
+                  {props.isSaving ? "Saving..." : "Save context"}
+                </button>
+                <button
+                  className="cc-button cc-button-secondary"
+                  disabled={props.isSaving}
+                  onClick={handleCancelText}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              aria-label="Edit task context"
+              className="w-full min-w-0 break-words rounded-md border border-border bg-surface p-3 text-left text-sm leading-6 text-text-secondary transition hover:border-accent/40 hover:text-text-primary focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 [overflow-wrap:anywhere]"
+              onClick={() => {
+                setText(props.task.context.text ?? "");
+                setIsEditingText(true);
+              }}
+              type="button"
+            >
+              {props.task.context.text || "No context text yet."}
+            </button>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <label className="cc-button cc-button-secondary cursor-pointer">
+              Add attachment
+              <input
+                accept=".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.gif"
+                className="sr-only"
+                onChange={handleUpload}
+                type="file"
+              />
+            </label>
+          </div>
+
+          {props.task.context.attachments.length > 0 ? (
+            <div className="grid gap-2">
+              <h3 className="font-semibold text-text-primary">Attachments</h3>
+              <ul className="grid gap-2">
+                {props.task.context.attachments.map((attachment) => (
+                  <li
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
+                    key={attachment.id}
+                  >
+                    <span className="min-w-0">
+                      <a
+                        className="break-words font-medium text-accent underline-offset-4 hover:underline [overflow-wrap:anywhere]"
+                        href={buildTaskContextAttachmentHref(attachment.storageKey)}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {attachment.filename}
+                      </a>
+                      <span className="block text-xs text-text-secondary">
+                        {attachment.mimeType} · {formatBytes(attachment.sizeBytes)}
+                      </span>
+                    </span>
+                    <button
+                      aria-label={`Remove ${attachment.filename}`}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-secondary transition hover:bg-danger/10 hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={props.isSaving}
+                      onClick={() => handleRemoveAttachment(attachment.id)}
+                      type="button"
+                    >
+                      <Trash2 aria-hidden="true" className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-sm text-text-secondary">No context attachments yet.</p>
+          )}
         </div>
-      ) : (
-        <p className="text-sm text-text-secondary">No context attachments yet.</p>
-      )}
-    </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -1776,6 +1925,58 @@ function TaskTodos(props: { task: Task }) {
       </ul>
     </div>
   );
+}
+
+function usePersistentTaskContextOpen(
+  taskId: string,
+): readonly [boolean, (value: boolean | ((current: boolean) => boolean)) => void] {
+  const storageKey = `cc-task-context-expanded:${taskId}`;
+  const [isOpen, setIsOpen] = useState(() => readStoredTaskContextOpen(storageKey));
+
+  useEffect(() => {
+    setIsOpen(readStoredTaskContextOpen(storageKey));
+  }, [storageKey]);
+
+  function updateIsOpen(value: boolean | ((current: boolean) => boolean)) {
+    setIsOpen((current) => {
+      const nextValue = typeof value === "function" ? value(current) : value;
+
+      try {
+        localStorage.setItem(storageKey, nextValue ? "true" : "false");
+      } catch {
+        return nextValue;
+      }
+
+      return nextValue;
+    });
+  }
+
+  return [isOpen, updateIsOpen] as const;
+}
+
+function readStoredTaskContextOpen(storageKey: string): boolean {
+  try {
+    return localStorage.getItem(storageKey) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function formatTaskContextSummary(task: Task): string {
+  const text = task.context.text?.trim();
+  const attachmentCount = task.context.attachments.length;
+
+  if (!text && attachmentCount === 0) {
+    return "No persistent context.";
+  }
+
+  const textSummary = text ? (text.length > 90 ? `${text.slice(0, 90)}...` : text) : "No text";
+  const attachmentSummary =
+    attachmentCount === 0
+      ? "no attachments"
+      : `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`;
+
+  return `${textSummary} · ${attachmentSummary}`;
 }
 
 function ActivityItem(props: { label: string; value: string }) {
