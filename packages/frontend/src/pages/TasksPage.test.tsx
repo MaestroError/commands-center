@@ -416,6 +416,13 @@ describe("TasksPage", () => {
     expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Runs" })).toBeInTheDocument();
     expect(screen.queryByText("Description")).not.toBeInTheDocument();
+    const details = within(panel).getByRole("region", { name: "Overview details" });
+    expect(within(details).queryByRole("heading", { name: "Details" })).not.toBeInTheDocument();
+    expect(within(details).getByText("Status")).toBeInTheDocument();
+    expect(within(details).getByText("Backlog")).toBeInTheDocument();
+    expect(within(details).getByText("Agent")).toBeInTheDocument();
+    expect(within(details).getByText("Planner")).toBeInTheDocument();
+    expect(within(details).getByText("Latest run")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open full page" })).toHaveAttribute(
       "href",
       "/tasks/task-1",
@@ -425,6 +432,58 @@ describe("TasksPage", () => {
     expect(
       screen.queryByRole("complementary", { name: "Task detail panel" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders the latest run result as markdown in the board panel", async () => {
+    mockFetch({
+      taskPayload: { ...task, latestFinalMessage: "Stale cached result." },
+      runsPayload: [
+        {
+          ...run,
+          finalMessage: "## Latest run\n**Done**\nLine two",
+        },
+      ],
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    expect(within(panel).getByRole("heading", { name: "Latest run" })).toBeInTheDocument();
+    expect(
+      within(panel).getByText((_, element) => element?.textContent === "Done\nLine two"),
+    ).toBeInTheDocument();
+    expect(within(panel).queryByText("Stale cached result.")).not.toBeInTheDocument();
+  });
+
+  it("updates the board panel task title from inline edit mode", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("button", { name: "Edit task title" }));
+
+    const titleInput = await screen.findByLabelText("Task title");
+    await user.clear(titleInput);
+    await user.type(titleInput, "Updated release task");
+    await user.click(screen.getByRole("button", { name: "Save title" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ title: "Updated release task" }),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Task title")).not.toBeInTheDocument();
+    });
   });
 
   it("updates the board panel task prompt from the summary description", async () => {
@@ -477,6 +536,42 @@ describe("TasksPage", () => {
       "/api/tasks/task-1",
       expect.objectContaining({ method: "PATCH" }),
     );
+  });
+
+  it("updates board panel todos from textarea edit mode", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    await user.click(within(panel).getByRole("button", { name: "Edit todos" }));
+
+    const todosInput = await within(panel).findByLabelText("Todo items");
+    await user.clear(todosInput);
+    await user.type(todosInput, "Review changelog\nPublish release notes");
+    await user.click(within(panel).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({
+            todos: [
+              {
+                id: "todo-1",
+                content: "Review changelog",
+                status: "pending",
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+              { content: "Publish release notes", status: "pending" },
+            ],
+          }),
+        }),
+      );
+    });
   });
 
   it("closes task detail when clicking the backdrop", async () => {
@@ -670,6 +765,45 @@ describe("TasksPage", () => {
 
     await user.click(screen.getByRole("button", { name: /^Context/i }));
     expect(window.localStorage.getItem("cc-task-context-expanded:task-1")).toBe("false");
+  });
+
+  it("persists the board panel todos expanded state per task", async () => {
+    mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const todosToggle = await screen.findByRole("button", { name: /Todos\s+0\/1/i });
+    expect(todosToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("[ ] Read changelog")).toBeInTheDocument();
+
+    await user.click(todosToggle);
+    expect(todosToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("[ ] Read changelog")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("cc-task-todos-expanded:task-1")).toBe("false");
+
+    await user.click(screen.getByRole("button", { name: "Back to board" }));
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    expect(await screen.findByRole("button", { name: /Todos\s+0\/1/i })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("shows an editable board panel todos section when a task has no todos", async () => {
+    mockFetch({ taskPayload: { ...task, todos: [] } });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    expect(within(panel).getByRole("button", { name: /Todos\s+0\/0/i })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Edit todos" })).toBeInTheDocument();
   });
 
   it("shows templates separately from the board", async () => {
@@ -1457,7 +1591,58 @@ describe("TaskDetailPage", () => {
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
     await screen.findByText(`Scheduled ${formatDate(runAt)}`);
-    expect(screen.getByText("Ready to publish.")).toBeInTheDocument();
+    expect(screen.getAllByText("Done.").length).toBeGreaterThan(0);
+  });
+
+  it("renders the latest run result as markdown on the task detail page", async () => {
+    mockFetch({
+      taskPayload: { ...task, latestFinalMessage: "Stale cached result." },
+      runsPayload: [
+        {
+          ...run,
+          finalMessage: "## Latest run\n**Done**\nLine two",
+        },
+      ],
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Runs" }));
+
+    expect(await screen.findByRole("heading", { name: "Latest run" })).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => element?.textContent === "Done\nLine two"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Stale cached result.")).not.toBeInTheDocument();
+  });
+
+  it("updates the task detail page title from inline edit mode", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await screen.findByText("Ship release");
+    await user.click(screen.getByRole("button", { name: "Edit task title" }));
+
+    const titleInput = await screen.findByLabelText("Task title");
+    await user.clear(titleInput);
+    await user.type(titleInput, "Updated release task");
+    await user.click(screen.getByRole("button", { name: "Save title" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ title: "Updated release task" }),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Task title")).not.toBeInTheDocument();
+    });
   });
 
   it("aggregates task results and distinct artifacts on the task detail page", async () => {
@@ -1486,7 +1671,7 @@ describe("TaskDetailPage", () => {
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
     expect(await screen.findByText("Task results and artifacts")).toBeInTheDocument();
-    expect(screen.getByText("Updated tool inventory.")).toBeInTheDocument();
+    expect(screen.getAllByText("Updated tool inventory.").length).toBeGreaterThan(0);
     expect(screen.getByText("Saved all 24 available tools to `tools-23.md`.")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "tools-23.md" })).toHaveLength(1);
     const artifactLink = screen.getByRole("link", { name: "reports/release.md" });
@@ -1510,7 +1695,9 @@ describe("TaskDetailPage", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("task-runs-loading")).not.toBeInTheDocument();
     });
-    expect(screen.getByText("No runs yet")).toBeInTheDocument();
+    const runHistory = screen.getByRole("heading", { name: "Run history" }).closest("section");
+    expect(runHistory).not.toBeNull();
+    expect(within(runHistory as HTMLElement).getByText("No runs yet")).toBeInTheDocument();
   });
 
   it("shows run history agent, outcome, target, artifacts, duration, and session availability", async () => {

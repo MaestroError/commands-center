@@ -3,7 +3,7 @@ import { Children, useState } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 
-type MarkdownProps = { content: string };
+type MarkdownProps = { className?: string; content: string };
 
 const markdownSchema = {
   ...defaultSchema,
@@ -17,9 +17,11 @@ const markdownSchema = {
   },
 } satisfies typeof defaultSchema;
 
-export function Markdown({ content }: MarkdownProps) {
+export function Markdown({ className, content }: MarkdownProps) {
   return (
-    <div className="prose prose-sm max-w-none text-text-primary [&_img]:rounded-lg [&_img]:border [&_img]:border-border [&_img]:bg-surface [&_img]:p-1 [&_img]:shadow-sm [&_pre]:bg-surface [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:text-sm [&_code]:text-sm [&_code]:bg-surface [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_a]:text-accent [&_a]:underline [&_p]:leading-6 [&_li]:leading-6">
+    <div
+      className={`prose prose-sm max-w-none text-text-primary [&_img]:rounded-lg [&_img]:border [&_img]:border-border [&_img]:bg-surface [&_img]:p-1 [&_img]:shadow-sm [&_pre]:bg-surface [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:text-sm [&_code]:text-sm [&_code]:bg-surface [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_a]:text-accent [&_a]:underline [&_p]:leading-6 [&_li]:leading-6 ${className ?? ""}`}
+    >
       <ReactMarkdown
         components={{
           code: Code,

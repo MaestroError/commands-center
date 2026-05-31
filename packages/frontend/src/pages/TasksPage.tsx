@@ -25,6 +25,7 @@ import {
   RotateCcw,
   Save,
   Trash2,
+  X,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
@@ -52,6 +53,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageSt
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { Markdown } from "@/components/chat/Markdown";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
@@ -1050,6 +1052,8 @@ function TaskDetailPanel(props: {
   const mutations = useTaskMutations();
   const [selectedSectionId, setSelectedSectionId] = useState<DetailSectionId>();
   const [queuePreview, setQueuePreview] = useState<TaskQueuePreview>();
+  const [isTitleEditing, setIsTitleEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
   const [isPromptEditing, setIsPromptEditing] = useState(false);
   const [promptDraft, setPromptDraft] = useState<TaskPromptValue>(() => createTaskPromptValue());
   const task = taskQuery.data;
@@ -1057,6 +1061,7 @@ function TaskDetailPanel(props: {
   const catalogQuery = useAgentCatalogQuery();
   const taskSkills = useTaskComposerSkills(agent, catalogQuery.data);
   const activeSectionId = selectedSectionId ?? getDefaultDetailSection(task);
+  const latestRunResult = readLatestRunResult(runsQuery.data ?? []);
 
   useEffect(() => {
     if (!task || isPromptEditing) {
@@ -1065,6 +1070,14 @@ function TaskDetailPanel(props: {
 
     setPromptDraft(createTaskPromptValue(task.description));
   }, [isPromptEditing, task]);
+
+  useEffect(() => {
+    if (!task || isTitleEditing) {
+      return;
+    }
+
+    setTitleDraft(task.title);
+  }, [isTitleEditing, task]);
 
   return (
     <>
@@ -1079,11 +1092,70 @@ function TaskDetailPanel(props: {
         className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl min-w-0 flex-col overflow-hidden border-l border-border bg-surface-elevated shadow-2xl lg:top-0"
       >
         <div className="flex items-start justify-between gap-4 border-b border-border bg-surface-elevated p-4 sm:p-5">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="cc-eyebrow">Task Detail</p>
-            <h2 className="mt-2 text-2xl font-semibold text-text-primary">
-              {task?.title ?? "Task detail"}
-            </h2>
+            {task && isTitleEditing ? (
+              <form
+                className="mt-2 flex min-w-0 items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const title = titleDraft.trim();
+
+                  if (!title) {
+                    return;
+                  }
+
+                  mutations.update.mutate(
+                    { id: task.id, input: { title } },
+                    { onSuccess: () => setIsTitleEditing(false) },
+                  );
+                }}
+              >
+                <input
+                  aria-label="Task title"
+                  className="cc-input min-w-0 flex-1 text-3xl font-bold"
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  value={titleDraft}
+                />
+                <button
+                  aria-label="Save title"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={mutations.update.isPending || !titleDraft.trim()}
+                  type="submit"
+                >
+                  <Check aria-hidden="true" className="h-4 w-4" />
+                </button>
+                <button
+                  aria-label="Cancel title edit"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={mutations.update.isPending}
+                  onClick={() => {
+                    setTitleDraft(task.title);
+                    setIsTitleEditing(false);
+                  }}
+                  type="button"
+                >
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </form>
+            ) : (
+              <button
+                aria-label="Edit task title"
+                className="mt-2 min-w-0 break-words rounded-md border border-transparent p-1 text-left text-3xl font-bold text-text-primary transition hover:border-border hover:bg-surface focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 [overflow-wrap:anywhere]"
+                disabled={!task}
+                onClick={() => {
+                  if (!task) {
+                    return;
+                  }
+
+                  setTitleDraft(task.title);
+                  setIsTitleEditing(true);
+                }}
+                type="button"
+              >
+                {task?.title ?? "Task detail"}
+              </button>
+            )}
           </div>
           <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
             Close
@@ -1176,12 +1248,17 @@ function TaskDetailPanel(props: {
                     {task.description || "No description provided."}
                   </button>
                 )}
-                {task.latestFinalMessage ? (
-                  <p className={readResultClassName(readBoardStatus(task))}>
-                    {task.latestFinalMessage}
-                  </p>
+                {latestRunResult ? (
+                  <div className={readResultClassName(readBoardStatus(task))}>
+                    <Markdown
+                      className="text-inherit [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
+                      content={latestRunResult.content}
+                    />
+                  </div>
                 ) : null}
               </div>
+
+              <TaskTodosPanelSection task={task} />
 
               <div className="cc-panel grid gap-3 p-4">
                 <h3 className="font-semibold text-text-primary">Recommended action</h3>
@@ -1239,13 +1316,6 @@ function TaskDetailPanel(props: {
                   />
                 </div>
               </article>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Metric label="Todos" value={formatTodoProgress(task)} />
-                <Metric label="Updated" value={formatDate(task.updatedAt)} />
-                <Metric label="Schedule" value={formatSchedule(task)} />
-                <Metric label="Latest run" value={task.latestRunId ?? "No runs yet"} />
-              </div>
             </div>
           ) : null}
         </div>
@@ -1361,17 +1431,7 @@ function TaskDetailSectionContent(props: {
   const isSubtasksSection = props.sectionId === "subtasks";
 
   if (props.sectionId === "overview") {
-    return (
-      <div className="grid gap-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Metric label="Status" value={formatToken(readBoardStatus(props.task))} />
-          <Metric label="Agent" value={props.agent?.name ?? props.task.agentId} />
-          <Metric label="Schedule" value={formatSchedule(props.task)} />
-          <Metric label="Source" value={formatSourceTemplate(props.task)} />
-        </div>
-        <TaskTodos task={props.task} />
-      </div>
-    );
+    return <TaskOverviewDetails agent={props.agent} task={props.task} />;
   }
 
   if (isFeedbackSection) {
@@ -1683,6 +1743,35 @@ function FeedbackReplies(props: { agents: Agent[]; subtasks: TaskFeedbackThread[
   );
 }
 
+function TaskOverviewDetails(props: { task: Task; agent?: Agent }) {
+  const rows = [
+    { label: "Status", value: formatToken(readBoardStatus(props.task)) },
+    { label: "Agent", value: props.agent?.name ?? props.task.agentId },
+    { label: "Schedule", value: formatSchedule(props.task) },
+    { label: "Source", value: formatSourceTemplate(props.task) },
+    { label: "Todos", value: formatTodoProgress(props.task) },
+    { label: "Latest run", value: props.task.latestRunId ?? "No runs yet" },
+    { label: "Enabled", value: props.task.enabled ? "Yes" : "No" },
+    { label: "Created", value: formatDate(props.task.createdAt) },
+    { label: "Updated", value: formatDate(props.task.updatedAt) },
+  ];
+
+  return (
+    <section aria-label="Overview details" className="min-w-0">
+      <dl className="grid min-w-0 grid-cols-[8rem_minmax(0,1fr)] gap-x-4 gap-y-4 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]">
+        {rows.map((row) => (
+          <div className="contents" key={row.label}>
+            <dt className="font-medium text-text-secondary">{row.label}</dt>
+            <dd className="min-w-0 break-words text-text-primary [overflow-wrap:anywhere]">
+              {row.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 function TaskRunsSection(props: {
   task: Task;
   taskId: string;
@@ -1913,29 +2002,184 @@ function TaskTodos(props: { task: Task }) {
   return (
     <div>
       <h3 className="font-semibold text-text-primary">Todos</h3>
-      <ul className="mt-3 grid gap-2">
-        {props.task.todos.map((todo) => (
-          <li
-            className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
-            key={todo.id}
-          >
-            {todo.status === "completed" ? "[x]" : "[ ]"} {todo.content}
-          </li>
-        ))}
-      </ul>
+      <TaskTodoItems className="mt-3" task={props.task} />
     </div>
+  );
+}
+
+function TaskTodosPanelSection(props: { task: Task }) {
+  const [isOpen, setIsOpen] = usePersistentTaskSectionOpen(props.task.id, "todos", true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [todosText, setTodosText] = useState(() => formatTodoItemsText(props.task));
+  const mutations = useTaskMutations();
+
+  useEffect(() => {
+    if (isEditing) {
+      return;
+    }
+
+    setTodosText(formatTodoItemsText(props.task));
+  }, [isEditing, props.task]);
+
+  return (
+    <section className="cc-panel overflow-hidden p-0">
+      <button
+        aria-expanded={isOpen}
+        className="flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-surface"
+        onClick={() => setIsOpen((current) => !current)}
+        type="button"
+      >
+        <span className="min-w-0">
+          <span className="block font-semibold text-text-primary">Todos</span>
+          <span className="mt-1 block text-sm text-text-secondary">
+            {formatTodoProgress(props.task)}
+          </span>
+        </span>
+        {isOpen ? (
+          <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-text-secondary" />
+        ) : (
+          <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-text-secondary" />
+        )}
+      </button>
+      {isOpen ? (
+        <div className="border-t border-border p-4">
+          {isEditing ? (
+            <form
+              className="grid gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                mutations.update.mutate(
+                  {
+                    id: props.task.id,
+                    input: { todos: buildTaskTodoInputs(todosText, props.task) },
+                  },
+                  { onSuccess: () => setIsEditing(false) },
+                );
+              }}
+            >
+              <label className="grid gap-1 text-sm text-text-secondary">
+                Todo items, one per line
+                <textarea
+                  aria-label="Todo items"
+                  className="cc-input min-h-28 resize-y"
+                  value={todosText}
+                  onChange={(event) => setTodosText(event.target.value)}
+                />
+              </label>
+              {mutations.update.error ? (
+                <p className="text-sm text-danger">
+                  {readError(mutations.update.error) ?? "Task could not be saved."}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <button className="cc-button" disabled={mutations.update.isPending} type="submit">
+                  {mutations.update.isPending ? "Saving..." : "Save"}
+                </button>
+                <button
+                  className="cc-button cc-button-secondary"
+                  disabled={mutations.update.isPending}
+                  onClick={() => {
+                    setTodosText(formatTodoItemsText(props.task));
+                    setIsEditing(false);
+                  }}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              aria-label="Edit todos"
+              className="w-full rounded-md border border-transparent p-0 text-left transition hover:border-border hover:bg-surface focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+              onClick={() => setIsEditing(true)}
+              type="button"
+            >
+              {props.task.todos.length === 0 ? (
+                <span className="block p-3 text-sm text-text-secondary">No todo items.</span>
+              ) : (
+                <span className="grid gap-2">
+                  {props.task.todos.map((todo) => (
+                    <span
+                      className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
+                      key={todo.id}
+                    >
+                      {todo.status === "completed" ? "[x]" : "[ ]"} {todo.content}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function formatTodoItemsText(task: Task): string {
+  return task.todos.map((todo) => todo.content).join("\n");
+}
+
+function buildTaskTodoInputs(text: string, task: Task): NonNullable<UpdateTaskInput["todos"]> {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((content, index) => {
+      const existing = task.todos[index];
+
+      if (!existing) {
+        return { content };
+      }
+
+      const input: NonNullable<UpdateTaskInput["todos"]>[number] = {
+        id: existing.id,
+        content,
+        status: existing.status,
+        createdAt: existing.createdAt,
+      };
+
+      if (existing.completedAt) {
+        input.completedAt = existing.completedAt;
+      }
+
+      return input;
+    });
+}
+
+function TaskTodoItems(props: { task: Task; className?: string }) {
+  return (
+    <ul className={`grid gap-2 ${props.className ?? ""}`}>
+      {props.task.todos.map((todo) => (
+        <li
+          className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
+          key={todo.id}
+        >
+          {todo.status === "completed" ? "[x]" : "[ ]"} {todo.content}
+        </li>
+      ))}
+    </ul>
   );
 }
 
 function usePersistentTaskContextOpen(
   taskId: string,
 ): readonly [boolean, (value: boolean | ((current: boolean) => boolean)) => void] {
-  const storageKey = `cc-task-context-expanded:${taskId}`;
-  const [isOpen, setIsOpen] = useState(() => readStoredTaskContextOpen(storageKey));
+  return usePersistentTaskSectionOpen(taskId, "context", false);
+}
+
+function usePersistentTaskSectionOpen(
+  taskId: string,
+  section: "context" | "todos",
+  defaultOpen: boolean,
+): readonly [boolean, (value: boolean | ((current: boolean) => boolean)) => void] {
+  const storageKey = `cc-task-${section}-expanded:${taskId}`;
+  const [isOpen, setIsOpen] = useState(() => readStoredTaskSectionOpen(storageKey, defaultOpen));
 
   useEffect(() => {
-    setIsOpen(readStoredTaskContextOpen(storageKey));
-  }, [storageKey]);
+    setIsOpen(readStoredTaskSectionOpen(storageKey, defaultOpen));
+  }, [defaultOpen, storageKey]);
 
   function updateIsOpen(value: boolean | ((current: boolean) => boolean)) {
     setIsOpen((current) => {
@@ -1954,11 +2198,12 @@ function usePersistentTaskContextOpen(
   return [isOpen, updateIsOpen] as const;
 }
 
-function readStoredTaskContextOpen(storageKey: string): boolean {
+function readStoredTaskSectionOpen(storageKey: string, defaultOpen: boolean): boolean {
   try {
-    return localStorage.getItem(storageKey) === "true";
+    const storedValue = localStorage.getItem(storageKey);
+    return storedValue === null ? defaultOpen : storedValue === "true";
   } catch {
-    return false;
+    return defaultOpen;
   }
 }
 
@@ -3152,6 +3397,15 @@ function readResultClassName(status: BoardTaskStatus): string {
         : "border-border bg-background text-text-secondary";
 
   return `min-w-0 break-words [overflow-wrap:anywhere] rounded-lg border p-3 text-sm leading-6 ${emphasis}`;
+}
+
+function readLatestRunResult(runs: TaskRun[]): { content: string; run: TaskRun } | undefined {
+  const [latestRun] = runs;
+  const content = latestRun
+    ? (latestRun.finalMessage ?? latestRun.resultText ?? latestRun.errorMessage)
+    : undefined;
+
+  return latestRun && content ? { content, run: latestRun } : undefined;
 }
 
 function readSubtaskReplyClassName(status: string): string {

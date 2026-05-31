@@ -1,4 +1,5 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Check, X } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import type {
@@ -18,6 +19,7 @@ import type {
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
+import { Markdown } from "@/components/chat/Markdown";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import { formatDate, formatToken } from "@/components/tasks/task-format";
 import {
@@ -89,15 +91,97 @@ function TaskOverview(props: {
   const mutations = useTaskMutations();
   const runsQuery = useTaskRunsQuery(props.task?.id);
   const [selectedSectionId, setSelectedSectionId] = useState<DetailSectionId>();
+  const [isTitleEditing, setIsTitleEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
   const task = props.task;
   const activeSectionId = selectedSectionId ?? getDefaultDetailSection(task);
+  const latestRunResult = readLatestRunResult(runsQuery.data ?? []);
+
+  useEffect(() => {
+    if (!task || isTitleEditing) {
+      return;
+    }
+
+    setTitleDraft(task.title);
+  }, [isTitleEditing, task]);
 
   return (
     <div className="grid gap-4">
-      <PageHeader
-        actions={
-          task ? (
-            <>
+      <section className="cc-panel p-6">
+        <p className="cc-eyebrow">Tasks</p>
+        <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0 max-w-3xl">
+            {task && isTitleEditing ? (
+              <form
+                className="flex min-w-0 items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const title = titleDraft.trim();
+
+                  if (!title) {
+                    return;
+                  }
+
+                  mutations.update.mutate(
+                    { id: task.id, input: { title } },
+                    { onSuccess: () => setIsTitleEditing(false) },
+                  );
+                }}
+              >
+                <input
+                  aria-label="Task title"
+                  className="cc-input min-w-0 flex-1 text-3xl font-semibold tracking-tight"
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  value={titleDraft}
+                />
+                <button
+                  aria-label="Save title"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={mutations.update.isPending || !titleDraft.trim()}
+                  type="submit"
+                >
+                  <Check aria-hidden="true" className="h-4 w-4" />
+                </button>
+                <button
+                  aria-label="Cancel title edit"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={mutations.update.isPending}
+                  onClick={() => {
+                    setTitleDraft(task.title);
+                    setIsTitleEditing(false);
+                  }}
+                  type="button"
+                >
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </form>
+            ) : (
+              <h1 className="text-[33px] font-bold tracking-tight text-text-primary">
+                <button
+                  aria-label="Edit task title"
+                  className="min-w-0 break-words rounded-md border border-transparent p-1 text-left transition hover:border-border hover:bg-surface focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 [overflow-wrap:anywhere]"
+                  disabled={!task}
+                  onClick={() => {
+                    if (!task) {
+                      return;
+                    }
+
+                    setTitleDraft(task.title);
+                    setIsTitleEditing(true);
+                  }}
+                  type="button"
+                >
+                  {task?.title ?? "Task detail"}
+                </button>
+              </h1>
+            )}
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              Inspect task configuration, todos, permission summary, and every run created by this
+              task.
+            </p>
+          </div>
+          {task ? (
+            <div className="flex flex-wrap gap-2">
               <Link className="cc-button cc-button-secondary" to={`/tasks${location.search}`}>
                 All tasks
               </Link>
@@ -122,13 +206,10 @@ function TaskOverview(props: {
               >
                 Run now
               </button>
-            </>
-          ) : null
-        }
-        description="Inspect task configuration, todos, permission summary, and every run created by this task."
-        eyebrow="Tasks"
-        title={task?.title ?? "Task detail"}
-      />
+            </div>
+          ) : null}
+        </div>
+      </section>
 
       {props.isLoading ? <LoadingState testId="task-detail-loading" /> : null}
       {props.error ? (
@@ -140,7 +221,7 @@ function TaskOverview(props: {
 
       {task ? (
         <>
-          <TaskDecisionSummary task={task} />
+          <TaskDecisionSummary latestRunResult={latestRunResult?.content} task={task} />
           <section className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
             <article className="cc-panel overflow-visible p-0">
               <TabBar
@@ -158,6 +239,7 @@ function TaskOverview(props: {
                   sectionId={activeSectionId}
                   task={task}
                   taskId={task.id}
+                  latestRunResult={latestRunResult?.content}
                 />
               </div>
             </article>
@@ -165,7 +247,7 @@ function TaskOverview(props: {
             <aside className="cc-panel grid gap-4 p-5">
               <Metric label="Assigned agent" value={props.agent?.name ?? task.agentId} />
               <Metric label="Schedule" value={formatSchedule(task)} />
-              <Metric label="Latest result" value={task.latestFinalMessage ?? "No runs yet"} />
+              <Metric label="Latest result" value={latestRunResult?.content ?? "No runs yet"} />
               <Metric label="Todos" value={formatTodoProgress(task)} />
             </aside>
           </section>
@@ -268,21 +350,24 @@ function RunHistory(props: {
   );
 }
 
-function TaskDecisionSummary(props: { task: Task }) {
+function TaskDecisionSummary(props: { latestRunResult?: string; task: Task }) {
   const status = readBoardStatus(props.task);
   if (status !== "ready_to_check" && status !== "review") return null;
+  const content =
+    props.latestRunResult ??
+    (status === "ready_to_check"
+      ? "The latest run completed successfully and is ready for acceptance."
+      : "This task needs feedback or a retry before it can move forward.");
 
   return (
     <section className="cc-panel p-5">
       <h2 className="text-xl font-semibold text-text-primary">
         {status === "ready_to_check" ? "Ready to check" : "Review needed"}
       </h2>
-      <p className="mt-2 text-sm leading-6 text-text-secondary">
-        {props.task.latestFinalMessage ??
-          (status === "ready_to_check"
-            ? "The latest run completed successfully and is ready for acceptance."
-            : "This task needs feedback or a retry before it can move forward.")}
-      </p>
+      <Markdown
+        className="mt-2 text-text-secondary [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
+        content={content}
+      />
     </section>
   );
 }
@@ -379,6 +464,7 @@ function TaskDetailSectionContent(props: {
   sectionId: DetailSectionId;
   task: Task;
   taskId: string;
+  latestRunResult?: string;
   agent?: Agent;
   agents: Agent[];
   runs: TaskRun[];
@@ -444,10 +530,13 @@ function TaskDetailSectionContent(props: {
   if (props.sectionId === "runs") {
     return (
       <div className="grid gap-4">
-        {props.task.latestFinalMessage ? (
-          <p className="rounded-lg border border-border bg-surface p-3 text-sm leading-6 text-text-secondary">
-            {props.task.latestFinalMessage}
-          </p>
+        {props.latestRunResult ? (
+          <div className="rounded-lg border border-border bg-surface p-3 text-sm leading-6 text-text-secondary">
+            <Markdown
+              className="text-inherit [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
+              content={props.latestRunResult}
+            />
+          </div>
         ) : null}
         <RunHistory
           agents={props.agents}
@@ -1180,6 +1269,15 @@ function getDefaultDetailSection(task?: Task): DetailSectionId {
 
 function readBoardStatus(task: Task): string {
   return task.archived ? "archived" : task.status;
+}
+
+function readLatestRunResult(runs: TaskRun[]): { content: string; run: TaskRun } | undefined {
+  const [latestRun] = runs;
+  const content = latestRun
+    ? (latestRun.finalMessage ?? latestRun.resultText ?? latestRun.errorMessage)
+    : undefined;
+
+  return latestRun && content ? { content, run: latestRun } : undefined;
 }
 
 function readSubtaskReplyClassName(status: string): string {

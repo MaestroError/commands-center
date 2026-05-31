@@ -76,20 +76,6 @@ export const appRoutes = [
     element: <WorkspaceChatPage />,
   },
   {
-    path: "/files",
-    title: "File Manager",
-    navLabel: "File Manager",
-    navIcon: <FolderKanban className="h-4 w-4 shrink-0" />,
-    element: <FileManagerPage />,
-  },
-  {
-    path: "/terminal",
-    title: "Global Terminal",
-    navLabel: "Global Terminal",
-    navIcon: <Terminal className="h-4 w-4 shrink-0" />,
-    element: <LazyGlobalTerminalPage />,
-  },
-  {
     path: "/tasks",
     title: "Tasks",
     navLabel: "Tasks",
@@ -123,13 +109,6 @@ export const appRoutes = [
     element: <GenericPlaceholderPage title="Tasks" description="Automations are now Tasks." />,
   },
   {
-    path: "/tools",
-    title: "Custom Tools",
-    navLabel: "Custom Tools",
-    navIcon: <Wrench className="h-4 w-4 shrink-0" />,
-    element: <CustomToolsPage />,
-  },
-  {
     path: "/skills",
     title: "Skills Library",
     navLabel: "Skills",
@@ -142,6 +121,27 @@ export const appRoutes = [
     navLabel: "Integrations",
     navIcon: <PlugZap className="h-4 w-4 shrink-0" />,
     element: <IntegrationsPage />,
+  },
+  {
+    path: "/files",
+    title: "File Manager",
+    navLabel: "File Manager",
+    navIcon: <FolderKanban className="h-4 w-4 shrink-0" />,
+    element: <FileManagerPage />,
+  },
+  {
+    path: "/terminal",
+    title: "Global Terminal",
+    navLabel: "Global Terminal",
+    navIcon: <Terminal className="h-4 w-4 shrink-0" />,
+    element: <LazyGlobalTerminalPage />,
+  },
+  {
+    path: "/tools",
+    title: "Custom Tools",
+    navLabel: "Custom Tools",
+    navIcon: <Wrench className="h-4 w-4 shrink-0" />,
+    element: <CustomToolsPage />,
   },
   {
     path: "/providers",
