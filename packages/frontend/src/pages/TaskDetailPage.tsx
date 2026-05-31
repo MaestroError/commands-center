@@ -44,15 +44,13 @@ type TaskDetailPageProps = {
   mode?: "task" | "run";
 };
 
-type DetailSectionId = "overview" | "feedback" | "subtasks" | "runs" | "context" | "activity";
+type DetailSectionId = "overview" | "subtasks" | "runs" | "context";
 
 const DETAIL_SECTION_TABS = [
   { id: "overview", label: "Overview" },
-  { id: "feedback", label: "Feedback" },
   { id: "subtasks", label: "Subtasks" },
   { id: "runs", label: "Runs" },
   { id: "context", label: "Context" },
-  { id: "activity", label: "Activity" },
 ];
 
 export function TaskDetailPage(props: TaskDetailPageProps) {
@@ -94,7 +92,7 @@ function TaskOverview(props: {
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const task = props.task;
-  const activeSectionId = selectedSectionId ?? getDefaultDetailSection(task);
+  const activeSectionId = selectedSectionId ?? "overview";
   const latestRunResult = readLatestRunResult(runsQuery.data ?? []);
 
   useEffect(() => {
@@ -253,6 +251,13 @@ function TaskOverview(props: {
           </section>
 
           <TaskRunOutcomeSummary runs={runsQuery.data ?? []} />
+          <TaskFeedbackPanelSection
+            agent={props.agent}
+            agents={props.agents}
+            runs={runsQuery.data ?? []}
+            task={task}
+            taskId={task.id}
+          />
         </>
       ) : null}
     </div>
@@ -373,7 +378,7 @@ function TaskDecisionSummary(props: { latestRunResult?: string; task: Task }) {
 }
 
 function TaskRunOutcomeSummary(props: { runs: TaskRun[] }) {
-  const resultRuns = props.runs.filter(hasRunOutcomeSummary);
+  const resultRuns = props.runs.filter(hasTaskResultSummary);
   const artifacts = aggregateRunArtifacts(props.runs);
 
   if (resultRuns.length === 0 && artifacts.length === 0) {
@@ -437,8 +442,11 @@ function TaskRunOutcomeSummary(props: { runs: TaskRun[] }) {
                       rel="noreferrer"
                       target={artifact.external ? "_blank" : undefined}
                     >
-                      {artifact.path ?? artifact.title}
+                      {formatArtifactLinkLabel(artifact.path ?? artifact.title)}
                     </a>
+                    <p className="mt-1 text-xs leading-5 text-text-secondary [overflow-wrap:anywhere]">
+                      {artifact.path ?? artifact.href}
+                    </p>
                     <p className="mt-1 text-sm leading-6 text-text-secondary">
                       {artifact.description ?? artifact.title}
                     </p>
@@ -471,12 +479,7 @@ function TaskDetailSectionContent(props: {
   isRunsLoading: boolean;
   runsError: unknown;
 }) {
-  const feedbackQuery = useTaskFeedbackQuery(props.taskId);
   const subtasksQuery = useTaskSubtasksQuery(props.taskId);
-  const catalogQuery = useAgentCatalogQuery();
-  const mutations = useTaskMutations();
-  const feedbackSkills = useTaskComposerSkills(props.agent, catalogQuery.data);
-  const isFeedbackSection = props.sectionId === "feedback";
   const isSubtasksSection = props.sectionId === "subtasks";
 
   if (props.sectionId === "overview") {
@@ -496,21 +499,6 @@ function TaskDetailSectionContent(props: {
         <PermissionSummary profile={props.task.permissionProfile} />
         <TaskTodos task={props.task} />
       </div>
-    );
-  }
-
-  if (isFeedbackSection) {
-    return (
-      <TaskFeedbackSection
-        agents={props.agents}
-        error={feedbackQuery.error}
-        feedback={feedbackQuery.data ?? []}
-        isLoading={feedbackQuery.isLoading}
-        isSubmitting={mutations.createFeedback.isPending}
-        skills={feedbackSkills}
-        onSubmit={(input) => mutations.createFeedback.mutate({ id: props.taskId, input })}
-        task={props.task}
-      />
     );
   }
 
@@ -581,7 +569,47 @@ function TaskDetailSectionContent(props: {
     );
   }
 
-  return <TaskActivitySection runs={props.runs} task={props.task} />;
+  return null;
+}
+
+function TaskFeedbackPanelSection(props: {
+  task: Task;
+  taskId: string;
+  agent?: Agent;
+  agents: Agent[];
+  runs: TaskRun[];
+}) {
+  const feedbackQuery = useTaskFeedbackQuery(props.taskId);
+  const catalogQuery = useAgentCatalogQuery();
+  const mutations = useTaskMutations();
+  const feedbackSkills = useTaskComposerSkills(props.agent, catalogQuery.data);
+
+  return (
+    <section className="cc-panel grid gap-4 p-5" aria-label="Feedback comments">
+      <div>
+        <h2 className="text-xl font-semibold text-text-primary">Feedback</h2>
+        <p className="mt-1 text-sm text-text-secondary">
+          Comments, follow-up requests, and agent replies for this task.
+        </p>
+      </div>
+      <TaskFeedbackSection
+        agents={props.agents}
+        error={feedbackQuery.error}
+        feedback={feedbackQuery.data ?? []}
+        isLoading={feedbackQuery.isLoading}
+        isSubmitting={mutations.createFeedback.isPending}
+        onSubmit={(input, options) =>
+          mutations.createFeedback.mutate(
+            { id: props.taskId, input },
+            { onSuccess: options.onSuccess },
+          )
+        }
+        parentRuns={props.runs}
+        skills={feedbackSkills}
+        task={props.task}
+      />
+    </section>
+  );
 }
 
 function TaskFeedbackSection(props: {
@@ -589,12 +617,15 @@ function TaskFeedbackSection(props: {
   agents: Agent[];
   skills: { slug: string; description?: string }[];
   feedback: TaskFeedbackThread[];
+  parentRuns: TaskRun[];
   isLoading: boolean;
   error: unknown;
   isSubmitting: boolean;
-  onSubmit: (input: CreateTaskFeedbackInput) => void;
+  onSubmit: (input: CreateTaskFeedbackInput, options: { onSuccess: () => void }) => void;
 }) {
   const [prompt, setPrompt] = useState<TaskPromptValue>(() => createTaskPromptValue());
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const timelineItems = buildFeedbackTimelineItems(props.feedback, props.parentRuns);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -602,77 +633,201 @@ function TaskFeedbackSection(props: {
 
     if (!body) return;
 
-    props.onSubmit({
-      body,
-      mentionedAgentIds: prompt.mentionedAgents.map((agent) => agent.id),
-    });
-    setPrompt(createTaskPromptValue());
+    props.onSubmit(
+      {
+        body,
+        mentionedAgentIds: prompt.mentionedAgents.map((agent) => agent.id),
+      },
+      {
+        onSuccess: () => {
+          setPrompt(createTaskPromptValue());
+          setIsEditorOpen(false);
+        },
+      },
+    );
   }
 
   return (
     <div className="grid gap-4">
-      <form
-        className="grid gap-3 rounded-lg border border-border bg-surface p-3"
-        onSubmit={handleSubmit}
-      >
-        <section className="grid gap-2 text-sm text-text-secondary">
-          <div>
-            <h3 className="font-medium text-text-primary">Feedback</h3>
-            <p className="text-xs text-text-secondary">
-              Use # for files, / for skills, and @ to mention agents for subtasks.
-            </p>
-          </div>
-          <TaskPromptComposer
-            agentId={props.task.agentId}
-            agents={props.agents}
-            fileSearchAgentId={prompt.mentionedAgents[0]?.id ?? null}
-            label="Feedback"
-            onChange={setPrompt}
-            placeholder="Describe the follow-up work or correction needed."
-            skills={props.skills}
-            value={prompt}
-          />
-        </section>
-        <p className="text-xs text-text-secondary">
-          If no agent is mentioned, feedback creates one subtask for the task default agent.
-        </p>
-        <button className="cc-button w-fit" disabled={props.isSubmitting} type="submit">
-          {props.isSubmitting ? "Adding..." : "Add feedback"}
+      {isEditorOpen ? (
+        <form
+          className="grid gap-3 rounded-lg border border-border bg-surface p-3"
+          onSubmit={handleSubmit}
+        >
+          <section className="grid gap-2 text-sm text-text-secondary">
+            <div>
+              <p className="text-xs text-text-secondary">
+                Use # for files, / for skills, and @ to mention agents for subtasks.
+              </p>
+            </div>
+            <TaskPromptComposer
+              agentId={props.task.agentId}
+              agents={props.agents}
+              autoFocus
+              fileSearchAgentId={prompt.mentionedAgents[0]?.id ?? null}
+              label="Feedback"
+              onChange={setPrompt}
+              placeholder="Describe the follow-up work or correction needed."
+              skills={props.skills}
+              value={prompt}
+            />
+          </section>
+          <p className="text-xs text-text-secondary">
+            If no agent is mentioned, feedback creates one subtask for the task default agent.
+          </p>
+          <button className="cc-button w-fit" disabled={props.isSubmitting} type="submit">
+            {props.isSubmitting ? "Adding..." : "Add feedback"}
+          </button>
+        </form>
+      ) : (
+        <button
+          className="flex min-h-11 w-full items-center rounded-lg border border-border bg-surface px-3 text-left text-sm text-text-secondary transition hover:border-accent/40 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+          onClick={() => setIsEditorOpen(true)}
+          type="button"
+        >
+          Leave comment
         </button>
-      </form>
+      )}
 
       {props.isLoading ? <LoadingState testId="task-feedback-loading" /> : null}
       {props.error ? (
         <ErrorState description={readError(props.error)} title="Feedback could not be loaded." />
       ) : null}
-      {!props.isLoading && props.feedback.length === 0 ? (
+      {!props.isLoading &&
+      props.feedback.length === 0 &&
+      !hasParentRunComments(props.parentRuns) ? (
         <EmptyState
-          description="Feedback added here creates agent-assigned subtasks for the next queued run."
+          description="Feedback added here creates agent-assigned subtasks, and completed task runs appear as agent comments."
           title="No feedback yet"
         />
       ) : null}
-      {props.feedback.length > 0 ? (
-        <div className="grid gap-3">
-          {props.feedback.map((entry) => (
-            <article className="rounded-lg border border-border bg-surface p-3" key={entry.id}>
-              <p className="text-sm leading-6 text-text-primary">{entry.body}</p>
-              <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-secondary">
-                <span>{formatDate(entry.createdAt)}</span>
-                <span>
-                  {entry.subtasks.length} subtask{entry.subtasks.length === 1 ? "" : "s"}
-                </span>
-                {entry.targetAgentIds.map((agentId) => (
-                  <span className="rounded-full border border-border px-2 py-1" key={agentId}>
-                    {readAgentName(props.agents, agentId)}
-                  </span>
-                ))}
-              </div>
-              <FeedbackReplies agents={props.agents} subtasks={entry.subtasks} />
-            </article>
-          ))}
+      {timelineItems.length > 0 ? (
+        <div className="grid gap-4">
+          {timelineItems.map((item) => {
+            if (item.type === "feedback") {
+              const entry = item.feedback;
+              return (
+                <article className="grid gap-3" key={entry.id}>
+                  <FeedbackComment
+                    author="You"
+                    body={entry.body}
+                    meta={
+                      <>
+                        <span>{formatDate(entry.createdAt)}</span>
+                        {entry.targetAgentIds.map((agentId) => (
+                          <span
+                            className="rounded-full border border-border px-2 py-0.5"
+                            key={agentId}
+                          >
+                            @{readAgentName(props.agents, agentId)}
+                          </span>
+                        ))}
+                      </>
+                    }
+                    tone="operator"
+                  />
+                  <FeedbackReplies agents={props.agents} subtasks={entry.subtasks} />
+                </article>
+              );
+            }
+
+            const run = item.run;
+            return (
+              <FeedbackComment
+                author={`${readAgentName(props.agents, run.agentId)} commented`}
+                body={readRunCommentBody(run)}
+                key={run.id}
+                meta={
+                  <>
+                    <StatusBadge status={run.status} />
+                    <span>{formatDate(run.completedAt ?? run.updatedAt)}</span>
+                    <Link
+                      className="font-medium text-accent underline-offset-4 hover:underline"
+                      to={`/tasks/${props.task.id}/runs/${run.id}`}
+                    >
+                      Open run
+                    </Link>
+                  </>
+                }
+                artifacts={run.artifacts}
+                tone="agent"
+              />
+            );
+          })}
         </div>
       ) : null}
     </div>
+  );
+}
+
+function FeedbackComment(props: {
+  author: string;
+  body: string;
+  artifacts?: TaskRunArtifact[];
+  meta: ReactNode;
+  tone: "operator" | "agent";
+}) {
+  return (
+    <div className="flex gap-3 rounded-lg border border-border bg-surface-elevated p-3 shadow-sm">
+      <div
+        aria-hidden="true"
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+          props.tone === "agent" ? "bg-accent/15 text-accent" : "bg-surface-muted text-text-primary"
+        }`}
+      >
+        {props.author.slice(0, 2).toUpperCase()}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+          <span className="font-medium text-text-primary">{props.author}</span>
+          {props.meta}
+        </div>
+        <Markdown
+          className="mt-1 text-sm leading-6 text-text-secondary [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
+          content={props.body}
+        />
+        <RunArtifactAttachments artifacts={props.artifacts ?? []} />
+      </div>
+    </div>
+  );
+}
+
+function RunArtifactAttachments(props: { artifacts: TaskRunArtifact[] }) {
+  if (props.artifacts.length === 0) {
+    return null;
+  }
+
+  return (
+    <ul className="mt-3 grid gap-2" aria-label="Run artifacts">
+      {props.artifacts.map((artifact) => {
+        const href = artifact.path
+          ? buildFileManagerHref({ path: artifact.path, openInEditor: true })
+          : (artifact.url ?? "#");
+        return (
+          <li
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
+            key={`${artifact.path ?? artifact.url ?? artifact.title}:${artifact.title}`}
+          >
+            <span className="min-w-0">
+              <a
+                className="break-words font-medium text-accent underline-offset-4 hover:underline [overflow-wrap:anywhere]"
+                href={href}
+                rel="noreferrer"
+                target={artifact.path ? undefined : "_blank"}
+              >
+                {formatArtifactLinkLabel(artifact.path ?? artifact.title)}
+              </a>
+              <span className="block text-xs text-text-secondary">
+                {artifact.path ?? artifact.url ?? artifact.title}
+              </span>
+              <span className="block text-xs text-text-secondary">
+                {artifact.description ?? artifact.title}
+              </span>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -776,21 +931,21 @@ function FeedbackReplies(props: { agents: Agent[]; subtasks: TaskFeedbackThread[
   }
 
   return (
-    <div className="mt-4 grid gap-2">
+    <div className="ml-6 grid gap-3 border-l border-border pl-4">
       {replies.map((reply) => (
-        <div className={readSubtaskReplyClassName(reply.status)} key={reply.run.id}>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-            <span>{readAgentName(props.agents, reply.agentId)}</span>
-            <StatusBadge status={reply.status} />
-            <span>{formatDate(reply.run.completedAt ?? reply.run.updatedAt)}</span>
-          </div>
-          <p className="mt-2 text-sm leading-6 text-text-secondary">
-            {reply.run.finalMessage ??
-              reply.run.resultText ??
-              reply.run.errorMessage ??
-              "No result yet."}
-          </p>
-        </div>
+        <FeedbackComment
+          author={`${readAgentName(props.agents, reply.agentId)} replied`}
+          body={readRunCommentBody(reply.run)}
+          key={reply.run.id}
+          meta={
+            <>
+              <StatusBadge status={reply.status} />
+              <span>{formatDate(reply.run.completedAt ?? reply.run.updatedAt)}</span>
+            </>
+          }
+          artifacts={reply.run.artifacts}
+          tone="agent"
+        />
       ))}
     </div>
   );
@@ -821,37 +976,6 @@ function TaskTodos(props: { task: Task }) {
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function TaskActivitySection(props: { task: Task; runs: TaskRun[] }) {
-  const latestRun = props.runs[0];
-  return (
-    <div className="grid gap-3 text-sm text-text-secondary">
-      <ActivityItem label="Created" value={formatDate(props.task.createdAt)} />
-      <ActivityItem label="Updated" value={formatDate(props.task.updatedAt)} />
-      {props.task.doneAt ? (
-        <ActivityItem label="Accepted" value={formatDate(props.task.doneAt)} />
-      ) : null}
-      {props.task.archivedAt ? (
-        <ActivityItem label="Archived" value={formatDate(props.task.archivedAt)} />
-      ) : null}
-      {props.task.sourceOccurrenceAt ? (
-        <ActivityItem label="Generated" value={formatDate(props.task.sourceOccurrenceAt)} />
-      ) : null}
-      {latestRun ? (
-        <ActivityItem label="Latest run" value={latestRun.finalMessage ?? latestRun.status} />
-      ) : null}
-    </div>
-  );
-}
-
-function ActivityItem(props: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-surface p-3">
-      <p className="text-xs uppercase tracking-wide text-text-secondary">{props.label}</p>
-      <p className="mt-1 text-text-primary">{props.value}</p>
     </div>
   );
 }
@@ -1257,16 +1381,6 @@ function Metric(props: { label: string; value: string }) {
   );
 }
 
-function getDefaultDetailSection(task?: Task): DetailSectionId {
-  if (!task) return "overview";
-  const status = readBoardStatus(task);
-
-  if (status === "queued" || status === "ready_to_check") return "runs";
-  if (status === "review") return "feedback";
-  if (status === "done") return "activity";
-  return "overview";
-}
-
 function readBoardStatus(task: Task): string {
   return task.archived ? "archived" : task.status;
 }
@@ -1278,17 +1392,6 @@ function readLatestRunResult(runs: TaskRun[]): { content: string; run: TaskRun }
     : undefined;
 
   return latestRun && content ? { content, run: latestRun } : undefined;
-}
-
-function readSubtaskReplyClassName(status: string): string {
-  const emphasis =
-    status === "review"
-      ? "border-amber-400/30 bg-amber-400/10"
-      : status === "done" || status === "ready_to_check"
-        ? "border-accent/30 bg-accent/10"
-        : "border-border bg-surface";
-
-  return `rounded-lg border p-3 ${emphasis}`;
 }
 
 type AggregatedRunArtifact = {
@@ -1303,6 +1406,47 @@ type AggregatedRunArtifact = {
 };
 
 function hasRunOutcomeSummary(run: TaskRun): boolean {
+  return Boolean(!run.subtaskId && (run.finalMessage || run.resultText || run.errorMessage));
+}
+
+function hasParentRunComments(runs: TaskRun[]): boolean {
+  return runs.some(hasRunOutcomeSummary);
+}
+
+type FeedbackTimelineItem =
+  | { type: "feedback"; id: string; timestamp: string; feedback: TaskFeedbackThread }
+  | { type: "run"; id: string; timestamp: string; run: TaskRun };
+
+function buildFeedbackTimelineItems(
+  feedback: TaskFeedbackThread[],
+  runs: TaskRun[],
+): FeedbackTimelineItem[] {
+  return [
+    ...feedback.map((entry) => ({
+      type: "feedback" as const,
+      id: entry.id,
+      timestamp: entry.createdAt,
+      feedback: entry,
+    })),
+    ...runs.filter(hasRunOutcomeSummary).map((run) => ({
+      type: "run" as const,
+      id: run.id,
+      timestamp: run.completedAt ?? run.updatedAt,
+      run,
+    })),
+  ].sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
+}
+
+function readRunCommentBody(run: TaskRun): string {
+  return run.finalMessage ?? run.resultText ?? run.errorMessage ?? "No result yet.";
+}
+
+function formatArtifactLinkLabel(value: string): string {
+  const normalized = value.replace(/\\/g, "/");
+  return normalized.split("/").filter(Boolean).pop() ?? value;
+}
+
+function hasTaskResultSummary(run: TaskRun): boolean {
   return Boolean(run.finalMessage || run.resultText || run.errorMessage || run.needsHumanReview);
 }
 

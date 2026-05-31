@@ -376,6 +376,24 @@ describe("TasksPage", () => {
     expect(screen.queryByRole("link", { name: "Ship release" })).not.toBeInTheDocument();
   });
 
+  it("clears the task filter when the filter panel is hidden", async () => {
+    mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    const toggle = await screen.findByRole("button", { name: "Toggle task filter" });
+    await user.click(toggle);
+    await user.type(screen.getByLabelText("Filter tasks"), "missing keyword");
+
+    expect(screen.queryByRole("link", { name: "Ship release" })).not.toBeInTheDocument();
+
+    await user.click(toggle);
+
+    expect(screen.queryByLabelText("Filter tasks")).not.toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Ship release" })).toBeInTheDocument();
+  });
+
   it("lists board tasks and supports queueing", async () => {
     const fetchMock = mockFetch();
 
@@ -446,6 +464,7 @@ describe("TasksPage", () => {
     expect(screen.getByTestId("task-detail-backdrop")).toHaveClass("bg-black/40");
     expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Runs" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Activity" })).not.toBeInTheDocument();
     expect(screen.queryByText("Description")).not.toBeInTheDocument();
     const details = within(panel).getByRole("region", { name: "Overview details" });
     expect(within(details).queryByRole("heading", { name: "Details" })).not.toBeInTheDocument();
@@ -483,11 +502,79 @@ describe("TasksPage", () => {
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
 
     const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
-    expect(within(panel).getByRole("heading", { name: "Latest run" })).toBeInTheDocument();
+    expect(within(panel).getAllByRole("heading", { name: "Latest run" }).length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Latest update:").length).toBeGreaterThan(0);
     expect(
-      within(panel).getByText((_, element) => element?.textContent === "Done\nLine two"),
-    ).toBeInTheDocument();
+      within(panel).getAllByText((_, element) => element?.textContent === "Done\nLine two").length,
+    ).toBeGreaterThan(0);
     expect(within(panel).queryByText("Stale cached result.")).not.toBeInTheDocument();
+  });
+
+  it("keeps overview selected by default for review tasks in the board panel", async () => {
+    mockFetch({ taskPayload: { ...task, status: "review" } });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    expect(
+      within(panel).getByRole("tab", { name: "Overview", selected: true }),
+    ).toBeInTheDocument();
+    expect(within(panel).queryByRole("tab", { name: "Activity" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("region", { name: "Overview details" })).toBeInTheDocument();
+  });
+
+  it("shows aggregated artifacts after the latest result in the board panel", async () => {
+    const olderRun: TaskRun = {
+      ...run,
+      id: "run-older",
+      completedAt: "2026-01-01T00:05:00.000Z",
+      updatedAt: "2026-01-01T00:05:00.000Z",
+    };
+    const newerRun: TaskRun = {
+      ...run,
+      id: "run-newer",
+      finalMessage: "Published release artifacts.",
+      artifacts: [
+        {
+          title: "Tool list update",
+          path: "tools-23.md",
+          description: "Updated generated tool inventory.",
+        },
+        {
+          title: "Release report",
+          path: "reports/release.md",
+          description: "Generated release report.",
+        },
+      ],
+      completedAt: "2026-01-01T00:10:00.000Z",
+      updatedAt: "2026-01-01T00:10:00.000Z",
+    };
+    mockFetch({ runsPayload: [newerRun, olderRun] });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    const artifacts = within(panel).getByRole("region", { name: "Task artifacts" });
+    expect(within(artifacts).getByRole("heading", { name: "Artifacts" })).toBeInTheDocument();
+    expect(within(artifacts).getAllByRole("link", { name: "tools-23.md" })).toHaveLength(1);
+    expect(within(artifacts).getByText("reports/release.md")).toBeInTheDocument();
+    const artifactLink = within(artifacts).getByRole("link", { name: "release.md" });
+    const params = new URLSearchParams(artifactLink.getAttribute("href")?.replace("/files?", ""));
+    expect(params.get("root")).toBe("workspace");
+    expect(params.get("path")).toBe("reports");
+    expect(params.get("select")).toBe("reports/release.md");
+    expect(within(artifacts).getByText("2 runs")).toBeInTheDocument();
+    expect(
+      within(panel)
+        .getAllByText("Published release artifacts.")[0]
+        ?.compareDocumentPosition(artifacts),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it("updates the board panel task title from inline edit mode", async () => {
@@ -655,26 +742,48 @@ describe("TasksPage", () => {
     expect(await screen.findByText("Next run context preview")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Show" }));
     expect(screen.getByText("Preview prompt for Ship release")).toBeInTheDocument();
-    expect(screen.getByText(/Please retest the release flow/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Please retest the release flow/).length).toBeGreaterThan(0);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/tasks/task-1/queue/preview",
       expect.objectContaining({ method: "POST" }),
     );
   });
 
-  it("renders feedback replies as comments without subtask run actions", async () => {
-    mockFetch({ feedbackPayload: [feedbackThread] });
+  it("renders feedback as standalone comments after the detail tabs", async () => {
+    const newerFeedbackThread: TaskFeedbackThread = {
+      ...feedbackThread,
+      id: "feedback-2",
+      body: "Newest feedback comment.",
+      subtasks: [],
+      createdAt: "2026-01-01T00:20:00.000Z",
+    };
+    mockFetch({ feedbackPayload: [feedbackThread, newerFeedbackThread], runsPayload: [run] });
 
     renderWithRouter(<TasksPage />, "/tasks");
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    await user.click(await screen.findByRole("tab", { name: "Feedback" }));
 
-    expect(await screen.findByText("Please retest the release flow.")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Feedback" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Feedback comments" })).toBeInTheDocument();
+    expect(screen.getByText("Please retest the release flow.")).toBeInTheDocument();
     expect(screen.getByText("Tests failed.")).toBeInTheDocument();
+    expect(screen.getByText("Planner replied")).toBeInTheDocument();
+    expect(screen.getByText("Planner commented")).toBeInTheDocument();
+    expect(screen.getAllByText("Done.").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Retry subtask" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Inspect run" })).not.toBeInTheDocument();
+
+    const comments = screen.getByRole("region", { name: "Feedback comments" });
+    expect(within(comments).queryByText("Latest update:")).not.toBeInTheDocument();
+    expect(within(comments).getAllByRole("list", { name: "Run artifacts" })).toHaveLength(2);
+    expect(within(comments).getAllByRole("link", { name: "tools-23.md" })).toHaveLength(2);
+    expect(within(comments).getAllByText("tools-23.md").length).toBeGreaterThanOrEqual(2);
+    expect(within(comments).getAllByText("Generated tool inventory.")).toHaveLength(2);
+    expect(
+      within(comments)
+        .getByText("Newest feedback comment.")
+        .compareDocumentPosition(within(comments).getByText("Done.")),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it("opens subtask runs from the subtask tab", async () => {
@@ -691,7 +800,9 @@ describe("TasksPage", () => {
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
     await user.click(await screen.findByRole("tab", { name: "Subtasks" }));
 
-    expect(await screen.findByText("Please retest the release flow.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Please retest the release flow.")).length).toBeGreaterThan(
+      0,
+    );
     expect(screen.getByRole("link", { name: "Open run" })).toHaveAttribute(
       "href",
       "/tasks/task-1/runs/run-subtask-1",
@@ -714,7 +825,7 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    await user.click(await screen.findByRole("tab", { name: "Feedback" }));
+    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
 
     const feedbackInput = await screen.findByLabelText("Feedback");
     await user.type(feedbackInput, "/screen");
@@ -744,6 +855,56 @@ describe("TasksPage", () => {
     });
   });
 
+  it("renders newly submitted feedback immediately as a comment", async () => {
+    mockFetch({ agentsPayload: [agent, reviewerAgent] });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
+
+    const feedbackInput = await screen.findByLabelText("Feedback");
+    await user.type(feedbackInput, "Please coordinate with @review");
+    await user.click(await screen.findByRole("button", { name: "@Reviewer" }));
+    await user.click(screen.getByRole("button", { name: "Add feedback" }));
+
+    const comments = await screen.findByRole("region", { name: "Feedback comments" });
+    expect(within(comments).getByText("Please retest the release flow.")).toBeInTheDocument();
+    expect(within(comments).getByText("@Planner")).toBeInTheDocument();
+  });
+
+  it("opens and focuses the feedback editor from leave comment", async () => {
+    mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    expect(screen.queryByLabelText("Feedback")).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
+
+    expect(await screen.findByLabelText("Feedback")).toHaveFocus();
+  });
+
+  it("hides the feedback editor after feedback is added", async () => {
+    mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
+    await user.type(await screen.findByLabelText("Feedback"), "Follow up please");
+    await user.click(screen.getByRole("button", { name: "Add feedback" }));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Feedback")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Leave comment" })).toBeInTheDocument();
+  });
+
   it("searches mentioned agent files after feedback is delegated", async () => {
     const fetchMock = mockFetch({ agentsPayload: [agent, reviewerAgent] });
 
@@ -751,7 +912,7 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
-    await user.click(await screen.findByRole("tab", { name: "Feedback" }));
+    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
 
     const feedbackInput = await screen.findByLabelText("Feedback");
     await user.type(feedbackInput, "Delegate to @review");
@@ -1553,7 +1714,9 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("link", { name: "Ship release" }));
-    expect(await screen.findByRole("tab", { name: "Runs", selected: true })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("tab", { name: "Overview", selected: true }),
+    ).toBeInTheDocument();
 
     await user.click(
       within(screen.getByRole("complementary", { name: "Task detail panel" })).getByRole("button", {
@@ -1877,11 +2040,31 @@ describe("TaskDetailPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("tab", { name: "Runs" }));
 
-    expect(await screen.findByRole("heading", { name: "Latest run" })).toBeInTheDocument();
+    expect((await screen.findAllByRole("heading", { name: "Latest run" })).length).toBeGreaterThan(
+      0,
+    );
     expect(
-      screen.getByText((_, element) => element?.textContent === "Done\nLine two"),
-    ).toBeInTheDocument();
+      screen.getAllByText((_, element) => element?.textContent === "Done\nLine two").length,
+    ).toBeGreaterThan(0);
     expect(screen.queryByText("Stale cached result.")).not.toBeInTheDocument();
+  });
+
+  it("renders task detail feedback as standalone comments", async () => {
+    mockFetch({ feedbackPayload: [feedbackThread], runsPayload: [run] });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    expect(screen.queryByRole("tab", { name: "Feedback" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Feedback comments" })).toBeInTheDocument();
+    expect(screen.getByText("Please retest the release flow.")).toBeInTheDocument();
+    expect(screen.getByText("Planner replied")).toBeInTheDocument();
+    expect(screen.getByText("Tests failed.")).toBeInTheDocument();
+    expect(screen.getByText("Planner commented")).toBeInTheDocument();
+    expect(screen.getAllByText("Done.").length).toBeGreaterThan(0);
+    const comments = screen.getByRole("region", { name: "Feedback comments" });
+    expect(within(comments).queryByText("Latest update:")).not.toBeInTheDocument();
+    expect(within(comments).getAllByRole("list", { name: "Run artifacts" })).toHaveLength(2);
+    expect(within(comments).getAllByRole("link", { name: "tools-23.md" })).toHaveLength(2);
   });
 
   it("updates the task detail page title from inline edit mode", async () => {
@@ -1937,11 +2120,21 @@ describe("TaskDetailPage", () => {
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
-    expect(await screen.findByText("Task results and artifacts")).toBeInTheDocument();
+    const outcomeSummary = (await screen.findByText("Task results and artifacts")).closest(
+      "section",
+    );
+    expect(outcomeSummary).not.toBeNull();
     expect(screen.getAllByText("Updated tool inventory.").length).toBeGreaterThan(0);
     expect(screen.getByText("Saved all 24 available tools to `tools-23.md`.")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "tools-23.md" })).toHaveLength(1);
-    const artifactLink = screen.getByRole("link", { name: "reports/release.md" });
+    expect(
+      within(outcomeSummary as HTMLElement).getAllByRole("link", { name: "tools-23.md" }),
+    ).toHaveLength(1);
+    const artifactLink = within(outcomeSummary as HTMLElement).getByRole("link", {
+      name: "release.md",
+    });
+    expect(
+      within(outcomeSummary as HTMLElement).getByText("reports/release.md"),
+    ).toBeInTheDocument();
     const params = new URLSearchParams(artifactLink.getAttribute("href")?.replace("/files?", ""));
     expect(params.get("root")).toBe("workspace");
     expect(params.get("path")).toBe("reports");

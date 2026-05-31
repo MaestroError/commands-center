@@ -8,6 +8,7 @@ import type {
   ListTasksQuery,
   QueueTaskInput,
   Task,
+  TaskFeedbackThread,
   TaskTemplateRunNowInput,
   UpdateTaskContextInput,
   UpdateTaskInput,
@@ -249,8 +250,15 @@ export function useTaskMutations() {
       mutationFn: ({ id, input }: { id: string; input: CreateTaskFeedbackInput }) =>
         createTaskFeedback(id, input),
       onSuccess: async (feedback, variables) => {
+        queryClient.setQueryData<TaskFeedbackThread[]>(
+          queryKeys.taskFeedback(variables.id),
+          (current = []) => {
+            const withoutDuplicate = current.filter((entry) => entry.id !== feedback.id);
+            return [...withoutDuplicate, feedback];
+          },
+        );
+
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.taskFeedback(variables.id) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.taskSubtasks(variables.id) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(feedback.taskId) }),
           queryClient.invalidateQueries({ queryKey: ["task-subtask-progress"] }),

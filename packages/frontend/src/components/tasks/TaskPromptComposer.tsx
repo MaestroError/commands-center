@@ -13,6 +13,7 @@ type TaskPromptComposerProps = {
   agents?: { id: string; name: string }[];
   skills?: { slug: string; description?: string }[];
   disabled?: boolean;
+  autoFocus?: boolean;
   label?: string;
   placeholder?: string;
 };
@@ -29,6 +30,14 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
   useEffect(() => {
     valueRef.current = value;
   }, [value]);
+
+  useEffect(() => {
+    if (!props.autoFocus || disabled) {
+      return;
+    }
+
+    textareaRef.current?.focus();
+  }, [disabled, props.autoFocus]);
 
   useEffect(() => {
     const cursorPosition = textareaRef.current?.selectionStart ?? value.text.length;
