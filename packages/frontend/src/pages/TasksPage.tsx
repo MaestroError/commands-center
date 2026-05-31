@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   Archive,
+  Calendar,
   CalendarClock,
   Check,
   CheckCheck,
@@ -661,11 +662,7 @@ function TaskBoardCard(props: {
         {props.activeRun?.status === "running" ? (
           <StatusBadge status={props.activeRun.status} />
         ) : null}
-        {(task.scheduledAt ?? task.scheduledFor ?? task.dueAt) ? (
-          <span className="rounded-full border border-border bg-background px-3 py-1 text-xs text-text-secondary">
-            {formatTimingBadge(task)}
-          </span>
-        ) : null}
+        <TaskTimingBadges task={task} surface="background" />
         {task.sourceTemplateId ? (
           <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent">
             Generated{task.sourceOccurrenceAt ? ` ${formatDate(task.sourceOccurrenceAt)}` : ""}
@@ -695,6 +692,30 @@ function TaskBoardCard(props: {
         />
       </div>
     </article>
+  );
+}
+
+function TaskTimingBadges(props: { task: Task; surface: "background" | "surface" }) {
+  const scheduledAt = props.task.scheduledAt ?? props.task.scheduledFor;
+  const surfaceClassName = props.surface === "background" ? "bg-background" : "bg-surface";
+
+  return (
+    <>
+      {scheduledAt ? (
+        <span
+          aria-label={`Scheduled: ${formatDate(scheduledAt)}`}
+          className={`inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs text-text-secondary ${surfaceClassName}`}
+        >
+          <Calendar aria-hidden="true" className="h-3.5 w-3.5 text-accent" />
+          <span>{`Scheduled ${formatDate(scheduledAt)}`}</span>
+        </span>
+      ) : null}
+      {props.task.dueAt && isDueSoon(props.task.dueAt) ? (
+        <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 text-xs text-amber-700 dark:text-amber-300">
+          {`Due: ${formatDateOnly(props.task.dueAt)}`}
+        </span>
+      ) : null}
+    </>
   );
 }
 
@@ -1032,148 +1053,154 @@ function TaskDetailPanel(props: {
   const activeSectionId = selectedSectionId ?? getDefaultDetailSection(task);
 
   return (
-    <aside
-      aria-label="Task detail panel"
-      className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl min-w-0 flex-col overflow-hidden border-l border-border bg-surface-elevated shadow-2xl lg:top-0"
-    >
-      <div className="flex items-start justify-between gap-4 border-b border-border bg-surface-elevated p-4 sm:p-5">
-        <div className="min-w-0">
-          <p className="cc-eyebrow">Task Detail</p>
-          <h2 className="mt-2 text-2xl font-semibold text-text-primary">
-            {task?.title ?? "Task detail"}
-          </h2>
-        </div>
-        <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
-          Close
-        </button>
-      </div>
-
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-surface-elevated p-4 sm:p-5">
-        {taskQuery.isLoading ? <LoadingState testId="task-panel-loading" /> : null}
-        {taskQuery.error ? (
-          <ErrorState
-            description={readError(taskQuery.error) ?? "Unknown error"}
-            title="Task could not be loaded."
-          />
-        ) : null}
-        {!taskQuery.isLoading && !task ? (
-          <EmptyState description="This task no longer exists." title="Task not found" />
-        ) : null}
-        {task ? (
-          <div className="grid min-w-0 gap-4">
-            <div className="cc-panel grid min-w-0 gap-4 overflow-hidden p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge status={task.status} />
-                {props.activeRun?.status === "running" ? (
-                  <StatusBadge status={props.activeRun.status} />
-                ) : null}
-                <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
-                  {agent?.name ?? task.agentId}
-                </span>
-                {(task.scheduledAt ?? task.scheduledFor ?? task.dueAt) ? (
-                  <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
-                    {formatTimingBadge(task)}
-                  </span>
-                ) : null}
-                {task.sourceTemplateId ? (
-                  <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent">
-                    Generated
-                    {task.sourceOccurrenceAt ? ` ${formatDate(task.sourceOccurrenceAt)}` : ""}
-                  </span>
-                ) : null}
-              </div>
-              <p className="min-w-0 break-words text-sm leading-6 text-text-secondary [overflow-wrap:anywhere]">
-                {task.description || "No description provided."}
-              </p>
-              {task.latestFinalMessage ? (
-                <p className={readResultClassName(readBoardStatus(task))}>
-                  {task.latestFinalMessage}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="cc-panel grid gap-3 p-4">
-              <h3 className="font-semibold text-text-primary">Recommended action</h3>
-              <div className="flex flex-wrap gap-2">
-                <TaskPanelPrimaryActions
-                  activeRun={props.activeRun}
-                  currentSearch={props.currentSearch}
-                  onAccept={() => props.onAccept(task)}
-                  onArchive={() => props.onArchive(task)}
-                  onQueue={() => props.onQueue(task)}
-                  onRestore={() => props.onRestore(task)}
-                  onReopen={() => props.onReopen(task)}
-                  task={task}
-                />
-                <button
-                  className="cc-button cc-button-secondary"
-                  onClick={() => {
-                    mutations.previewQueue.mutate(
-                      { id: task.id },
-                      { onSuccess: (preview) => setQueuePreview(preview) },
-                    );
-                  }}
-                  type="button"
-                >
-                  Preview context
-                </button>
-              </div>
-              {queuePreview ? <QueuePreviewSummary preview={queuePreview} /> : null}
-            </div>
-
-            <article className="cc-panel overflow-visible p-0">
-              <TabBar
-                activeTabId={activeSectionId}
-                onTabChange={(tabId) => setSelectedSectionId(tabId as DetailSectionId)}
-                tabs={DETAIL_SECTION_TABS}
-              />
-              <div className="p-4">
-                <TaskDetailSectionContent
-                  activeRun={props.activeRun}
-                  agent={agent}
-                  agents={props.agents}
-                  isRunsLoading={runsQuery.isLoading}
-                  runs={runsQuery.data ?? []}
-                  runsError={runsQuery.error}
-                  sectionId={activeSectionId}
-                  task={task}
-                  taskId={task.id}
-                  onUpdateContext={(text) => props.onUpdateContext(task, text)}
-                  onUploadContextAttachment={(file) => props.onUploadContextAttachment(task, file)}
-                />
-              </div>
-            </article>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Metric label="Todos" value={formatTodoProgress(task)} />
-              <Metric label="Updated" value={formatDate(task.updatedAt)} />
-              <Metric label="Schedule" value={formatSchedule(task)} />
-              <Metric label="Latest run" value={task.latestRunId ?? "No runs yet"} />
-            </div>
+    <>
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 z-40 bg-black/40"
+        data-testid="task-detail-backdrop"
+        onClick={props.onClose}
+      />
+      <aside
+        aria-label="Task detail panel"
+        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl min-w-0 flex-col overflow-hidden border-l border-border bg-surface-elevated shadow-2xl lg:top-0"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-border bg-surface-elevated p-4 sm:p-5">
+          <div className="min-w-0">
+            <p className="cc-eyebrow">Task Detail</p>
+            <h2 className="mt-2 text-2xl font-semibold text-text-primary">
+              {task?.title ?? "Task detail"}
+            </h2>
           </div>
-        ) : null}
-      </div>
-
-      {task ? (
-        <div className="flex flex-wrap gap-2 border-t border-border bg-surface-elevated p-4 sm:p-5">
-          <Link
-            className="cc-button"
-            to={`/tasks/${task.id}${buildFullPageSearch(props.currentSearch)}`}
-          >
-            Open full page
-          </Link>
-          <Link
-            className="cc-button cc-button-secondary"
-            to={`/tasks/${task.id}/edit${buildFullPageSearch(props.currentSearch)}`}
-          >
-            Edit
-          </Link>
           <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
-            Back to board
+            Close
           </button>
         </div>
-      ) : null}
-    </aside>
+
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-surface-elevated p-4 sm:p-5">
+          {taskQuery.isLoading ? <LoadingState testId="task-panel-loading" /> : null}
+          {taskQuery.error ? (
+            <ErrorState
+              description={readError(taskQuery.error) ?? "Unknown error"}
+              title="Task could not be loaded."
+            />
+          ) : null}
+          {!taskQuery.isLoading && !task ? (
+            <EmptyState description="This task no longer exists." title="Task not found" />
+          ) : null}
+          {task ? (
+            <div className="grid min-w-0 gap-4">
+              <div className="cc-panel grid min-w-0 gap-4 overflow-hidden p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={task.status} />
+                  {props.activeRun?.status === "running" ? (
+                    <StatusBadge status={props.activeRun.status} />
+                  ) : null}
+                  <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
+                    {agent?.name ?? task.agentId}
+                  </span>
+                  <TaskTimingBadges task={task} surface="surface" />
+                  {task.sourceTemplateId ? (
+                    <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent">
+                      Generated
+                      {task.sourceOccurrenceAt ? ` ${formatDate(task.sourceOccurrenceAt)}` : ""}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="min-w-0 break-words text-sm leading-6 text-text-secondary [overflow-wrap:anywhere]">
+                  {task.description || "No description provided."}
+                </p>
+                {task.latestFinalMessage ? (
+                  <p className={readResultClassName(readBoardStatus(task))}>
+                    {task.latestFinalMessage}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="cc-panel grid gap-3 p-4">
+                <h3 className="font-semibold text-text-primary">Recommended action</h3>
+                <div className="flex flex-wrap gap-2">
+                  <TaskPanelPrimaryActions
+                    activeRun={props.activeRun}
+                    currentSearch={props.currentSearch}
+                    onAccept={() => props.onAccept(task)}
+                    onArchive={() => props.onArchive(task)}
+                    onQueue={() => props.onQueue(task)}
+                    onRestore={() => props.onRestore(task)}
+                    onReopen={() => props.onReopen(task)}
+                    task={task}
+                  />
+                  <button
+                    className="cc-button cc-button-secondary"
+                    onClick={() => {
+                      mutations.previewQueue.mutate(
+                        { id: task.id },
+                        { onSuccess: (preview) => setQueuePreview(preview) },
+                      );
+                    }}
+                    type="button"
+                  >
+                    Preview context
+                  </button>
+                </div>
+                {queuePreview ? <QueuePreviewSummary preview={queuePreview} /> : null}
+              </div>
+
+              <article className="cc-panel overflow-visible p-0">
+                <TabBar
+                  activeTabId={activeSectionId}
+                  onTabChange={(tabId) => setSelectedSectionId(tabId as DetailSectionId)}
+                  tabs={DETAIL_SECTION_TABS}
+                />
+                <div className="p-4">
+                  <TaskDetailSectionContent
+                    activeRun={props.activeRun}
+                    agent={agent}
+                    agents={props.agents}
+                    isRunsLoading={runsQuery.isLoading}
+                    runs={runsQuery.data ?? []}
+                    runsError={runsQuery.error}
+                    sectionId={activeSectionId}
+                    task={task}
+                    taskId={task.id}
+                    onUpdateContext={(text) => props.onUpdateContext(task, text)}
+                    onUploadContextAttachment={(file) =>
+                      props.onUploadContextAttachment(task, file)
+                    }
+                  />
+                </div>
+              </article>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Metric label="Todos" value={formatTodoProgress(task)} />
+                <Metric label="Updated" value={formatDate(task.updatedAt)} />
+                <Metric label="Schedule" value={formatSchedule(task)} />
+                <Metric label="Latest run" value={task.latestRunId ?? "No runs yet"} />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {task ? (
+          <div className="flex flex-wrap gap-2 border-t border-border bg-surface-elevated p-4 sm:p-5">
+            <Link
+              className="cc-button"
+              to={`/tasks/${task.id}${buildFullPageSearch(props.currentSearch)}`}
+            >
+              Open full page
+            </Link>
+            <Link
+              className="cc-button cc-button-secondary"
+              to={`/tasks/${task.id}/edit${buildFullPageSearch(props.currentSearch)}`}
+            >
+              Edit
+            </Link>
+            <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+              Back to board
+            </button>
+          </div>
+        ) : null}
+      </aside>
+    </>
   );
 }
 
@@ -2352,9 +2379,6 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                 label: "Files",
                 content: selectedAgent ? (
                   <div className="flex h-full flex-col">
-                    <p className="px-3 pt-3 text-sm text-text-secondary">
-                      Browse workspace files and drag relevant files into the task prompt.
-                    </p>
                     <WorkspaceFilesTab agentId={selectedAgent.id} agentSlug={selectedAgent.slug} />
                   </div>
                 ) : (
@@ -2376,7 +2400,6 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                   Title
                   <input
                     className="cc-input"
-                    required
                     value={form.title}
                     onChange={(event) => updateForm({ title: event.target.value })}
                   />
@@ -2509,8 +2532,8 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
     const input = formToTaskInput(form);
 
     if (props.mode === "create") {
-      const created = await mutations.create.mutateAsync(input as CreateTaskInput);
-      void navigate(`/tasks/${created.id}`);
+      await mutations.create.mutateAsync(input as CreateTaskInput);
+      void navigate("/tasks");
       return;
     }
 
@@ -2574,10 +2597,11 @@ function getTaskCreationPrefill(state: unknown): TaskCreationPrefill | undefined
 }
 
 function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {
+  const description = buildTaskPromptText(form.prompt);
   const input: CreateTaskInput | UpdateTaskInput = {
     agentId: form.agentId,
-    title: form.title,
-    description: buildTaskPromptText(form.prompt),
+    title: readTaskTitle(form.title, description),
+    description,
     todos: form.todosText
       .split("\n")
       .map((line) => line.trim())
@@ -2595,6 +2619,14 @@ function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {
   }
 
   return input;
+}
+
+function readTaskTitle(title: string, description: string): string {
+  const trimmedTitle = title.trim();
+  if (trimmedTitle) return trimmedTitle;
+
+  const promptTitle = description.trim().slice(0, 50).trim();
+  return promptTitle ? `${promptTitle}...` : "Untitled task";
 }
 
 function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
@@ -2932,11 +2964,14 @@ function readSubtaskReplyClassName(status: string): string {
   return `rounded-lg border p-3 ${emphasis}`;
 }
 
-function formatTimingBadge(task: Task): string {
-  if (task.scheduledAt) return `Scheduled ${formatDate(task.scheduledAt)}`;
-  if (task.scheduledFor) return `Scheduled ${formatDate(task.scheduledFor)}`;
-  if (task.dueAt) return `Due ${formatDate(task.dueAt)}`;
-  return "Not scheduled";
+const DUE_SOON_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isDueSoon(value: string): boolean {
+  return new Date(value).getTime() - Date.now() < DUE_SOON_WINDOW_MS;
+}
+
+function formatDateOnly(value: string): string {
+  return new Date(value).toLocaleDateString();
 }
 
 function formatTodoProgress(task: Task): string {

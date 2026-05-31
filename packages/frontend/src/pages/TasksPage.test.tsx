@@ -411,6 +411,7 @@ describe("TasksPage", () => {
     const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
     expect(panel).toBeInTheDocument();
     expect(panel).toHaveClass("bg-surface-elevated");
+    expect(screen.getByTestId("task-detail-backdrop")).toHaveClass("bg-black/40");
     expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Runs" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open full page" })).toHaveAttribute(
@@ -419,6 +420,23 @@ describe("TasksPage", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Back to board" }));
+    expect(
+      screen.queryByRole("complementary", { name: "Task detail panel" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("closes task detail when clicking the backdrop", async () => {
+    mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    expect(
+      await screen.findByRole("complementary", { name: "Task detail panel" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByTestId("task-detail-backdrop"));
     expect(
       screen.queryByRole("complementary", { name: "Task detail panel" }),
     ).not.toBeInTheDocument();
@@ -929,8 +947,35 @@ describe("TasksPage", () => {
 
     expect(await screen.findByRole("button", { name: "Queue now" })).toBeInTheDocument();
     expect(screen.getAllByText(/Scheduled/).length).toBeGreaterThan(0);
+    expect(
+      screen.getByLabelText(`Scheduled: ${formatDate("2026-01-02T12:00:00.000Z")}`),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Todos: 0/1")).toBeInTheDocument();
     expect(screen.queryByText("Updated:")).not.toBeInTheDocument();
+  });
+
+  it("shows a date-only due warning for cards due within seven days", async () => {
+    const dueAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+
+    mockFetch({ taskPayload: { ...task, dueAt } });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(
+      await screen.findByText(`Due: ${new Date(dueAt).toLocaleDateString()}`),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Due: .*:/)).not.toBeInTheDocument();
+  });
+
+  it("hides the due warning for cards due after seven days", async () => {
+    const dueAt = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
+
+    mockFetch({ taskPayload: { ...task, dueAt } });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    await screen.findByRole("link", { name: "Ship release" });
+    expect(screen.queryByText(/Due:/)).not.toBeInTheDocument();
   });
 
   it("shows active run actions for queued cards", async () => {
@@ -1083,17 +1128,25 @@ describe("TasksPage", () => {
     renderWithRouter(<TasksPage mode="create" />, "/tasks/new");
 
     const user = userEvent.setup();
+    const prompt = "Draft nightly release notes for the platform launch and summarize blockers";
     await screen.findByRole("combobox", { name: /Assigned agent/i });
-    await user.type(screen.getByLabelText(/Title/i), "Nightly review");
     await user.selectOptions(screen.getByLabelText(/Assigned agent/i), "agent-1");
+    expect(
+      screen.queryByText("Browse workspace files and drag relevant files into the task prompt."),
+    ).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/Task prompt/i), prompt);
     await user.click(screen.getByRole("button", { name: "Create task" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/tasks",
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining(`"title":"${prompt.slice(0, 50)}..."`),
+        }),
       );
     });
+    expect(await screen.findByRole("heading", { name: "Backlog" })).toBeInTheDocument();
   });
 
   it("creates a task prompt with selected file and skill mentions", async () => {
@@ -1763,7 +1816,7 @@ function renderWithRouter(element: React.ReactElement, initialPath: string, stat
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[state ? { pathname: initialPath, state } : initialPath]}>
         <Routes>
-          <Route element={element} path="/tasks" />
+          <Route element={<TasksPage />} path="/tasks" />
           <Route element={element} path="/tasks/new" />
           <Route element={<EditRouteProbe />} path="/tasks/:id/edit" />
           <Route element={element} path="/tasks/:id" />
