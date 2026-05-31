@@ -88,6 +88,7 @@ import {
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
   updateTaskContextInputSchema,
+  updateTaskTemplateInputSchema,
   terminalListResponseSchema,
   terminalResizeInputSchema,
   terminalSessionSchema,
@@ -178,6 +179,7 @@ import {
   type UpdateMcpServerInput,
   type UpdateTaskInput,
   type UpdateTaskContextInput,
+  type UpdateTaskTemplateInput,
   type UpdateSystemUpdatePreferencesInput,
   type UpdateWorkspaceSkillCategoryInput,
   type WorkspaceWatchEvent,
@@ -699,6 +701,20 @@ export async function createTaskTemplate(input: CreateTaskTemplateInput): Promis
     method: "POST",
     body: createTaskTemplateInputSchema.parse(input),
   });
+}
+
+export async function updateTaskTemplate(
+  id: string,
+  input: UpdateTaskTemplateInput,
+): Promise<TaskTemplate> {
+  return requestJson<TaskTemplate>(
+    `/api/tasks/templates/${encodeURIComponent(id)}`,
+    taskTemplateSchema,
+    {
+      method: "PATCH",
+      body: updateTaskTemplateInputSchema.parse(input),
+    },
+  );
 }
 
 export async function createTaskFromTemplate(id: string): Promise<Task> {

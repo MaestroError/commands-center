@@ -80,7 +80,13 @@ export const appRoutes = [
     title: "Tasks",
     navLabel: "Tasks",
     navIcon: <Clock3 className="h-4 w-4 shrink-0" />,
-    navigationMatch: ["/tasks/new", "/tasks/:id", "/tasks/:id/edit", "/tasks/:id/runs/:runId"],
+    navigationMatch: [
+      "/tasks/new",
+      "/tasks/:id",
+      "/tasks/:id/edit",
+      "/tasks/:id/runs/:runId",
+      "/tasks/templates/:id/edit",
+    ],
     element: <TasksPage />,
   },
   {
@@ -102,6 +108,11 @@ export const appRoutes = [
     path: "/tasks/:id/runs/:runId",
     title: "Task Run",
     element: <TaskDetailPage mode="run" />,
+  },
+  {
+    path: "/tasks/templates/:id/edit",
+    title: "Edit Task Template",
+    element: <TasksPage mode="template-edit" />,
   },
   {
     path: "/automations",

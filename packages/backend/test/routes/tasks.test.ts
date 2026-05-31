@@ -361,6 +361,15 @@ describe("task routes", () => {
         method: "GET",
         url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}`,
       });
+      const updatedTemplate = await server.inject({
+        method: "PATCH",
+        url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}`,
+        payload: {
+          title: "Updated daily template",
+          description: "Updated prompt.",
+          recurrence: null,
+        },
+      });
       const createdFromTemplate = await server.inject({
         method: "POST",
         url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}/tasks`,
@@ -445,6 +454,12 @@ describe("task routes", () => {
       expect(templates.json()).toHaveLength(1);
       expect(templateDetail.statusCode).toBe(200);
       expect(templateDetail.json().id).toBe(template.json<{ id: string }>().id);
+      expect(updatedTemplate.statusCode).toBe(200);
+      expect(updatedTemplate.json()).toMatchObject({
+        title: "Updated daily template",
+        description: "Updated prompt.",
+      });
+      expect(updatedTemplate.json()).not.toHaveProperty("recurrence");
       expect(createdFromTemplate.statusCode).toBe(201);
       expect(createdFromTemplate.json().sourceTemplateId).toBe(template.json<{ id: string }>().id);
       expect(templateTasks.statusCode).toBe(200);

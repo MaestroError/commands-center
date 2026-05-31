@@ -39,6 +39,7 @@ import {
   sendCommand,
   setSecret,
   summarizeConversation,
+  updateTaskTemplate,
   uploadWorkspaceSkill,
   type WorkspaceSkillUploadRenameError,
 } from "./api";
@@ -323,6 +324,32 @@ describe("task actions", () => {
     await expect(getTaskTemplate("template-1")).resolves.toMatchObject({ id: "template-1" });
 
     expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/templates/template-1", { method: "GET" });
+  });
+
+  it("updates a task template", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        makeJsonResponse(
+          makeTaskTemplatePayload({ title: "Updated template", description: "Updated prompt." }),
+        ),
+      );
+
+    const result = await updateTaskTemplate("template-1", {
+      title: "Updated template",
+      description: "Updated prompt.",
+    });
+
+    expect(result.title).toBe("Updated template");
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/templates/template-1", {
+      method: "PATCH",
+      body: JSON.stringify({
+        title: "Updated template",
+        description: "Updated prompt.",
+        todos: [],
+      }),
+      headers: { "content-type": "application/json" },
+    });
   });
 
   it("loads subtask progress for board cards", async () => {

@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
+  Filter,
   Flag,
   Info,
   MessageSquareText,
@@ -44,6 +45,7 @@ import type {
   TaskRun,
   TaskSubtaskProgress,
   TaskSubtask,
+  TaskSchedulerState,
   TaskTemplate,
   TaskRepeatRule,
   UpdateTaskInput,
@@ -77,6 +79,7 @@ import {
   useTaskMutations,
   useTaskFeedbackQuery,
   useTaskQuery,
+  useTaskSchedulerStateQuery,
   useTaskTemplateQuery,
   useTaskTemplateTasksQuery,
   useTaskRunsQuery,
@@ -89,7 +92,7 @@ import { buildFileManagerHref } from "@/lib/file-manager-href";
 import { isTaskCreationPrefill, type TaskCreationPrefill } from "@/services/task-prefill-service";
 
 type TasksPageProps = {
-  mode?: "list" | "create" | "edit";
+  mode?: "list" | "create" | "edit" | "template-edit";
 };
 
 type DetailSectionId = "overview" | "feedback" | "subtasks" | "runs" | "activity";
@@ -145,6 +148,19 @@ const BOARD_COLUMNS = [
   description: string;
   empty: string;
 }>;
+const FILTER_SUGGESTIONS = [
+  "backlog",
+  "scheduled",
+  "queued",
+  "review",
+  "ready to check",
+  "done",
+  "archived",
+  "template",
+  "manual template",
+  "repeating",
+  "generated",
+] as const;
 const REPEAT_PRESETS = [
   "hourly",
   "daily",
@@ -168,6 +184,7 @@ const WEEKDAYS = [
 export function TasksPage(props: TasksPageProps) {
   if (props.mode === "create") return <TaskFormPage mode="create" />;
   if (props.mode === "edit") return <TaskFormPage mode="edit" />;
+  if (props.mode === "template-edit") return <TaskTemplateFormPage />;
   return <TaskListPage />;
 }
 
@@ -185,16 +202,26 @@ function TaskListPage() {
     { includeArchived: false },
     { refetchInterval: activeRuns.length > 0 ? 3_000 : false },
   );
+  const schedulerStateQuery = useTaskSchedulerStateQuery();
   const templatesQuery = useTaskTemplatesQuery();
   const archiveQuery = useArchivedTasksQuery();
   const agentsQuery = useAgentsQuery();
   const mutations = useTaskMutations();
   const [runTemplate, setRunTemplate] = useState<TaskTemplate>();
+  const [scheduleDropTask, setScheduleDropTask] = useState<Task>();
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filterText, setFilterText] = useState("");
   const agents = agentsQuery.data ?? [];
   const boardTasks = tasksQuery.data ?? [];
+  const schedulerStateByTaskId = new Map(
+    (schedulerStateQuery.data ?? []).map((state) => [state.taskId, state]),
+  );
   const templates = templatesQuery.data ?? [];
   const archivedTasks = archiveQuery.data ?? [];
+  const filteredBoardTasks = filterTasks(boardTasks, agents, filterText);
+  const filteredTemplates = filterTemplates(templates, agents, filterText);
+  const filteredArchivedTasks = filterTasks(archivedTasks, agents, filterText);
   const activeQuery =
     view === "templates" ? templatesQuery : view === "archive" ? archiveQuery : tasksQuery;
   const error = readError(activeQuery.error ?? agentsQuery.error);
@@ -228,7 +255,21 @@ function TaskListPage() {
         title="Workspace tasks"
       />
 
-      <TaskViewNav searchParams={searchParams} setSearchParams={setSearchParams} view={view} />
+      <TaskViewNav
+        isFilterOpen={isFilterOpen}
+        searchParams={searchParams}
+        setSearchParams={setSearchParams}
+        view={view}
+        onToggleFilter={() => setIsFilterOpen((current) => !current)}
+      />
+
+      {isFilterOpen ? (
+        <TaskFilterPanel
+          filterText={filterText}
+          onChange={setFilterText}
+          onClear={() => setFilterText("")}
+        />
+      ) : null}
 
       {isLoading ? <LoadingState testId="tasks-loading" /> : null}
       {error ? (
@@ -304,7 +345,8 @@ function TaskListPage() {
             void mutations.update.mutate({ id: task.id, input: { status: "backlog" } })
           }
           onSelect={(task) => setSelectedTask(searchParams, setSearchParams, task.id)}
-          tasks={boardTasks}
+          schedulerStateByTaskId={schedulerStateByTaskId}
+          tasks={filteredBoardTasks}
         />
       ) : null}
 
@@ -330,9 +372,12 @@ function TaskListPage() {
               onSuccess: (task) => selectGeneratedTask(searchParams, setSearchParams, task.id),
             });
           }}
+          onEdit={(template) =>
+            void navigate(`/tasks/templates/${template.id}/edit${currentSearch}`)
+          }
           onSelect={(template) => setSelectedTemplate(searchParams, setSearchParams, template.id)}
           onStartCreate={() => setIsCreatingTemplate(true)}
-          templates={templates}
+          templates={filteredTemplates}
         />
       ) : null}
 
@@ -342,7 +387,7 @@ function TaskListPage() {
           currentSearch={currentSearch}
           onDelete={(task) => void mutations.remove.mutate(task.id)}
           onRestore={(task) => void mutations.restore.mutate(task.id)}
-          tasks={archivedTasks}
+          tasks={filteredArchivedTasks}
         />
       ) : null}
       {runTemplate ? (
@@ -360,6 +405,22 @@ function TaskListPage() {
                   selectGeneratedTask(searchParams, setSearchParams, run.taskId);
                 },
               },
+            );
+          }}
+        />
+      ) : null}
+      {scheduleDropTask ? (
+        <TaskScheduleDropDialog
+          busy={mutations.update.isPending}
+          task={scheduleDropTask}
+          onCancel={() => setScheduleDropTask(undefined)}
+          onSubmit={(scheduledAt) => {
+            mutations.update.mutate(
+              {
+                id: scheduleDropTask.id,
+                input: { status: "scheduled", scheduledAt },
+              },
+              { onSuccess: () => setScheduleDropTask(undefined) },
             );
           }}
         />
@@ -412,6 +473,9 @@ function TaskListPage() {
               onSuccess: (task) => selectGeneratedTask(searchParams, setSearchParams, task.id),
             });
           }}
+          onEdit={(template) =>
+            void navigate(`/tasks/templates/${template.id}/edit${currentSearch}`)
+          }
           onRunNow={setRunTemplate}
           onDelete={(template) => {
             mutations.remove.mutate(template.id, {
@@ -443,33 +507,96 @@ function TaskListPage() {
       return;
     }
 
+    if (status === "scheduled") {
+      const schedulerState = schedulerStateByTaskId.get(task.id);
+
+      if (!hasUsableScheduledAt(task, schedulerState)) {
+        setScheduleDropTask(task);
+        return;
+      }
+    }
+
     mutations.update.mutate({ id: task.id, input: { status } });
   }
 }
 
 function TaskViewNav(props: {
   view: TaskView;
+  isFilterOpen: boolean;
   searchParams: URLSearchParams;
   setSearchParams: (params: URLSearchParams) => void;
+  onToggleFilter: () => void;
 }) {
   return (
-    <nav aria-label="Tasks views" className="cc-panel flex flex-wrap gap-2 p-2">
-      {TASK_VIEWS.map((view) => (
-        <button
-          aria-current={props.view === view ? "page" : undefined}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-            props.view === view
-              ? "bg-accent text-accent-contrast"
-              : "text-text-secondary hover:bg-surface hover:text-text-primary"
-          }`}
-          key={view}
-          onClick={() => setTaskView(props.searchParams, props.setSearchParams, view)}
-          type="button"
-        >
-          {formatTaskView(view)}
-        </button>
-      ))}
+    <nav aria-label="Tasks views" className="cc-panel flex flex-wrap items-center gap-2 p-2">
+      <div className="flex flex-wrap gap-2">
+        {TASK_VIEWS.map((view) => (
+          <button
+            aria-current={props.view === view ? "page" : undefined}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+              props.view === view
+                ? "bg-accent text-accent-contrast"
+                : "text-text-secondary hover:bg-surface hover:text-text-primary"
+            }`}
+            key={view}
+            onClick={() => setTaskView(props.searchParams, props.setSearchParams, view)}
+            type="button"
+          >
+            {formatTaskView(view)}
+          </button>
+        ))}
+      </div>
+      <button
+        aria-pressed={props.isFilterOpen}
+        className="ml-auto inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface text-text-secondary transition hover:border-accent/50 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+        onClick={props.onToggleFilter}
+        type="button"
+        aria-label="Toggle task filter"
+      >
+        <Filter aria-hidden="true" className="h-4 w-4" />
+      </button>
     </nav>
+  );
+}
+
+function TaskFilterPanel(props: {
+  filterText: string;
+  onChange: (value: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <section aria-label="Task filter" className="cc-panel grid gap-3 p-4">
+      <label className="grid gap-1 text-sm text-text-secondary">
+        Filter tasks
+        <input
+          className="cc-input"
+          placeholder="Search titles, descriptions, statuses, badges, agents..."
+          value={props.filterText}
+          onChange={(event) => props.onChange(event.target.value)}
+        />
+      </label>
+      <div className="flex flex-wrap gap-2">
+        {FILTER_SUGGESTIONS.map((suggestion) => (
+          <button
+            className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary transition hover:border-accent/40 hover:text-accent"
+            key={suggestion}
+            onClick={() => props.onChange(suggestion)}
+            type="button"
+          >
+            {suggestion}
+          </button>
+        ))}
+        {props.filterText ? (
+          <button
+            className="cc-button cc-button-secondary h-8 px-3 text-xs"
+            onClick={props.onClear}
+            type="button"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -488,6 +615,7 @@ function TaskBoard(props: {
   onReview: (task: Task) => void;
   onReopen: (task: Task) => void;
   onSelect: (task: Task) => void;
+  schedulerStateByTaskId: Map<string, TaskSchedulerState>;
 }) {
   const [draggedTaskId, setDraggedTaskId] = useState<string>();
   const [dragOverStatus, setDragOverStatus] = useState<BoardTaskStatus>();
@@ -598,6 +726,7 @@ function TaskBoard(props: {
                     onReopen={() => props.onReopen(task)}
                     onSelect={() => props.onSelect(task)}
                     progress={progressByTaskId.get(task.id)}
+                    schedulerState={props.schedulerStateByTaskId.get(task.id)}
                     task={task}
                   />
                 ))}
@@ -615,6 +744,7 @@ function TaskBoardCard(props: {
   agent?: Agent;
   activeRun?: TaskRun;
   progress?: TaskSubtaskProgress;
+  schedulerState?: TaskSchedulerState;
   currentSearch: string;
   onDragEnd: () => void;
   onDragStart: (event: DragEvent<HTMLElement>) => void;
@@ -666,7 +796,12 @@ function TaskBoardCard(props: {
         {props.activeRun?.status === "running" ? (
           <StatusBadge status={props.activeRun.status} />
         ) : null}
-        <TaskTimingBadges task={task} surface="background" />
+        <TaskTimingBadges
+          hideStaleScheduled
+          schedulerState={props.schedulerState}
+          task={task}
+          surface="background"
+        />
         {task.sourceTemplateId ? (
           <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent">
             Generated{task.sourceOccurrenceAt ? ` ${formatDate(task.sourceOccurrenceAt)}` : ""}
@@ -699,19 +834,27 @@ function TaskBoardCard(props: {
   );
 }
 
-function TaskTimingBadges(props: { task: Task; surface: "background" | "surface" }) {
+function TaskTimingBadges(props: {
+  task: Task;
+  surface: "background" | "surface";
+  schedulerState?: TaskSchedulerState;
+  hideStaleScheduled?: boolean;
+}) {
   const scheduledAt = props.task.scheduledAt ?? props.task.scheduledFor;
+  const showScheduledAt =
+    scheduledAt &&
+    (!props.hideStaleScheduled || !isConsumedScheduledAt(scheduledAt, props.schedulerState));
   const surfaceClassName = props.surface === "background" ? "bg-background" : "bg-surface";
 
   return (
     <>
-      {scheduledAt ? (
+      {showScheduledAt ? (
         <span
           aria-label={`Scheduled: ${formatDate(scheduledAt)}`}
           className={`inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs text-text-secondary ${surfaceClassName}`}
         >
           <Calendar aria-hidden="true" className="h-3.5 w-3.5 text-accent" />
-          <span>{`Scheduled ${formatDate(scheduledAt)}`}</span>
+          <span>{`${formatDate(scheduledAt)}`}</span>
         </span>
       ) : null}
       {props.task.dueAt && isDueSoon(props.task.dueAt) ? (
@@ -720,6 +863,65 @@ function TaskTimingBadges(props: { task: Task; surface: "background" | "surface"
         </span>
       ) : null}
     </>
+  );
+}
+
+function TaskScheduleDropDialog(props: {
+  task: Task;
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (scheduledAt: string) => void;
+}) {
+  const [scheduledAtLocal, setScheduledAtLocal] = useState("");
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+      <form
+        aria-label="Schedule task"
+        className="cc-panel grid w-full max-w-md gap-4 bg-surface-elevated p-5 shadow-2xl"
+        onSubmit={(event) => {
+          event.preventDefault();
+
+          if (!scheduledAtLocal) {
+            return;
+          }
+
+          props.onSubmit(new Date(scheduledAtLocal).toISOString());
+        }}
+      >
+        <div>
+          <p className="cc-eyebrow">Schedule Task</p>
+          <h2 className="mt-1 text-xl font-semibold text-text-primary">{props.task.title}</h2>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            Pick when this task should enter automatic execution.
+          </p>
+        </div>
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Schedule for
+          <input
+            autoFocus
+            className="cc-input"
+            required
+            type="datetime-local"
+            value={scheduledAtLocal}
+            onChange={(event) => setScheduledAtLocal(event.target.value)}
+          />
+        </label>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            className="cc-button cc-button-secondary"
+            disabled={props.busy}
+            onClick={props.onCancel}
+            type="button"
+          >
+            Cancel
+          </button>
+          <button className="cc-button" disabled={props.busy || !scheduledAtLocal} type="submit">
+            Schedule task
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -1328,6 +1530,14 @@ function TaskDetailPanel(props: {
             >
               Open full page
             </Link>
+            <button
+              className="cc-button cc-button-secondary"
+              disabled={mutations.update.isPending}
+              onClick={() => mutations.update.mutate({ id: task.id, input: { status: "backlog" } })}
+              type="button"
+            >
+              Back to Backlog
+            </button>
             <Link
               className="cc-button cc-button-secondary"
               to={`/tasks/${task.id}/edit${buildFullPageSearch(props.currentSearch)}`}
@@ -2021,6 +2231,10 @@ function TaskTodosPanelSection(props: { task: Task }) {
     setTodosText(formatTodoItemsText(props.task));
   }, [isEditing, props.task]);
 
+  if (props.task.todos.length === 0) {
+    return null;
+  }
+
   return (
     <section className="cc-panel overflow-hidden p-0">
       <button
@@ -2242,6 +2456,7 @@ function TaskTemplatesView(props: {
   onCancelCreate: () => void;
   onCreate: (input: CreateTaskTemplateInput) => void;
   onCreateTask: (template: TaskTemplate) => void;
+  onEdit: (template: TaskTemplate) => void;
   onRunNow: (template: TaskTemplate) => void;
   onDelete: (template: TaskTemplate) => void;
   onSelect: (template: TaskTemplate) => void;
@@ -2320,20 +2535,6 @@ function TaskTemplatesView(props: {
                 >
                   Create task
                 </button>
-                <button
-                  className="cc-button"
-                  onClick={() => props.onRunNow(template)}
-                  type="button"
-                >
-                  Run now
-                </button>
-                <button
-                  className="cc-button cc-button-secondary"
-                  onClick={() => props.onSelect(template)}
-                  type="button"
-                >
-                  View details
-                </button>
                 {template.latestTaskId ? (
                   <Link
                     className="cc-button cc-button-secondary"
@@ -2342,13 +2543,28 @@ function TaskTemplatesView(props: {
                     Open latest task
                   </Link>
                 ) : null}
-                <button
-                  className="cc-button cc-button-secondary"
+                <TaskCardIconButton
+                  icon={Play}
+                  label="Run now"
+                  onClick={() => props.onRunNow(template)}
+                  variant="success"
+                />
+                <TaskCardIconButton
+                  icon={Pencil}
+                  label="Edit template"
+                  onClick={() => props.onEdit(template)}
+                />
+                <TaskCardIconButton
+                  icon={Info}
+                  label="View details"
+                  onClick={() => props.onSelect(template)}
+                />
+                <TaskCardIconButton
+                  icon={Trash2}
+                  label="Delete template"
                   onClick={() => props.onDelete(template)}
-                  type="button"
-                >
-                  Delete template
-                </button>
+                  variant="danger"
+                />
               </div>
             </article>
           );
@@ -2364,21 +2580,36 @@ function TaskTemplateCreateForm(props: {
   onCancel: () => void;
   onSubmit: (input: CreateTaskTemplateInput) => void;
 }) {
-  const [form, setForm] = useState<FormState>(() => ({
-    agentId: "",
-    title: "",
-    prompt: createTaskPromptValue(),
-    scheduledAtLocal: "",
-    dueAtLocal: "",
-    anchorAtLocal: toLocalDateTime(new Date().toISOString()),
-    timezone: readLocalTimezone(),
-    repeatPreset: "weekly",
-    repeatFrequency: "week",
-    repeatInterval: "1",
-    repeatWeekdays: [1],
-    repeatEnabled: false,
-    todosText: "",
-  }));
+  return (
+    <TaskTemplateForm
+      agents={props.agents}
+      cancelLabel="Cancel"
+      isBusy={props.isBusy}
+      submitLabel="Create template"
+      title="Create task template"
+      onCancel={props.onCancel}
+      onSubmit={props.onSubmit}
+    />
+  );
+}
+
+function TaskTemplateForm(props: {
+  agents: Agent[];
+  cancelLabel: string;
+  initialTemplate?: TaskTemplate;
+  isBusy: boolean;
+  submitLabel: string;
+  title: string;
+  onCancel: () => void;
+  onSubmit: (input: CreateTaskTemplateInput) => void;
+}) {
+  const [form, setForm] = useState<FormState>(() => templateToForm(props.initialTemplate));
+
+  useEffect(() => {
+    if (props.initialTemplate) {
+      setForm(templateToForm(props.initialTemplate));
+    }
+  }, [props.initialTemplate]);
 
   return (
     <form
@@ -2389,7 +2620,7 @@ function TaskTemplateCreateForm(props: {
       }}
     >
       <div>
-        <h2 className="text-xl font-semibold text-text-primary">Create task template</h2>
+        <h2 className="text-xl font-semibold text-text-primary">{props.title}</h2>
         <p className="mt-1 text-sm text-text-secondary">
           Templates store reusable task setup. Create a task from a template manually, run it
           immediately, or enable repeating.
@@ -2525,10 +2756,10 @@ function TaskTemplateCreateForm(props: {
       </label>
       <div className="flex flex-wrap gap-2">
         <button className="cc-button" disabled={props.isBusy} type="submit">
-          Create template
+          {props.submitLabel}
         </button>
         <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
-          Cancel
+          {props.cancelLabel}
         </button>
       </div>
     </form>
@@ -2539,12 +2770,65 @@ function TaskTemplateCreateForm(props: {
   }
 }
 
+function TaskTemplateFormPage() {
+  const navigate = useNavigate();
+  const params = useParams();
+  const templateQuery = useTaskTemplateQuery(params["id"]);
+  const agentsQuery = useAgentsQuery();
+  const mutations = useTaskMutations();
+  const template = templateQuery.data;
+  const agents = agentsQuery.data ?? [];
+  const isLoading = templateQuery.isLoading || agentsQuery.isLoading;
+  const error = readError(
+    templateQuery.error ?? agentsQuery.error ?? mutations.updateTemplate.error,
+  );
+
+  return (
+    <div className="grid gap-4">
+      <PageHeader
+        actions={
+          <Link className="cc-button cc-button-secondary" to="/tasks?view=templates">
+            Cancel
+          </Link>
+        }
+        description="Update the template setup used for future generated tasks. Existing generated tasks keep their copied content."
+        eyebrow="Task Templates"
+        title="Edit task template"
+      />
+
+      {isLoading ? <LoadingState testId="task-template-form-loading" /> : null}
+      {error ? <ErrorState description={error} title="Template could not be saved." /> : null}
+      {!isLoading && template ? (
+        <TaskTemplateForm
+          agents={agents}
+          cancelLabel="Cancel"
+          initialTemplate={template}
+          isBusy={mutations.updateTemplate.isPending}
+          submitLabel="Save template"
+          title="Edit task template"
+          onCancel={() => void navigate(`/tasks?view=templates&template=${template.id}`)}
+          onSubmit={(input) => {
+            mutations.updateTemplate.mutate(
+              { id: template.id, input },
+              {
+                onSuccess: (updated) =>
+                  void navigate(`/tasks?view=templates&template=${updated.id}`),
+              },
+            );
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function TaskTemplateDetailPanel(props: {
   templateId: string;
   agents: Agent[];
   currentSearch: string;
   onClose: () => void;
   onCreateTask: (template: TaskTemplate) => void;
+  onEdit: (template: TaskTemplate) => void;
   onOpenTask: (taskId: string) => void;
   onRunNow: (template: TaskTemplate) => void;
   onDelete: (template: TaskTemplate) => void;
@@ -2605,9 +2889,17 @@ function TaskTemplateDetailPanel(props: {
               >
                 Create task
               </button>
-              <button className="cc-button" onClick={() => props.onRunNow(template)} type="button">
-                Run now
-              </button>
+              <TaskCardIconButton
+                icon={Pencil}
+                label="Edit template"
+                onClick={() => props.onEdit(template)}
+              />
+              <TaskCardIconButton
+                icon={Play}
+                label="Run now"
+                onClick={() => props.onRunNow(template)}
+                variant="success"
+              />
               {template.latestTaskId ? (
                 <button
                   className="cc-button cc-button-secondary"
@@ -2617,13 +2909,12 @@ function TaskTemplateDetailPanel(props: {
                   Open latest task
                 </button>
               ) : null}
-              <button
-                className="cc-button cc-button-secondary"
+              <TaskCardIconButton
+                icon={Trash2}
+                label="Delete template"
                 onClick={() => props.onDelete(template)}
-                type="button"
-              >
-                Delete template
-              </button>
+                variant="danger"
+              />
             </div>
             <GeneratedTaskHistory
               currentSearch={props.currentSearch}
@@ -3033,6 +3324,45 @@ function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormState {
   };
 }
 
+function templateToForm(template?: TaskTemplate): FormState {
+  const repeatRule = template?.recurrence?.repeatRule;
+  const repeatFrequency = repeatRule?.frequency ?? "week";
+
+  return {
+    agentId: template?.defaultAgentId ?? "",
+    title: template?.title ?? "",
+    prompt: createTaskPromptValue(template?.description ?? ""),
+    scheduledAtLocal: "",
+    dueAtLocal: "",
+    anchorAtLocal: template?.recurrence?.anchorAt
+      ? toLocalDateTime(template.recurrence.anchorAt)
+      : toLocalDateTime(new Date().toISOString()),
+    timezone: template?.recurrence?.timezone ?? readLocalTimezone(),
+    repeatPreset: readRepeatPreset(repeatRule),
+    repeatFrequency,
+    repeatInterval: String(repeatRule?.interval ?? 1),
+    repeatWeekdays: repeatRule?.weekdays ?? (repeatFrequency === "week" ? [1] : []),
+    repeatEnabled: Boolean(template?.recurrence),
+    todosText: template?.todos.map((todo) => todo.content).join("\n") ?? "",
+  };
+}
+
+function readRepeatPreset(repeatRule?: TaskRepeatRule): RepeatPreset {
+  if (!repeatRule) return "weekly";
+  if (repeatRule.frequency === "hour" && repeatRule.interval === 1) return "hourly";
+  if (repeatRule.frequency === "day" && repeatRule.interval === 1) return "daily";
+  if (repeatRule.frequency === "month" && repeatRule.interval === 1) return "monthly";
+  if (repeatRule.frequency === "year" && repeatRule.interval === 1) return "yearly";
+
+  if (repeatRule.frequency === "week" && repeatRule.interval === 1) {
+    const weekdays = repeatRule.weekdays ?? [];
+    if (weekdays.join(",") === "1,2,3,4,5") return "weekday";
+    return "weekly";
+  }
+
+  return "custom";
+}
+
 function getTaskCreationPrefill(state: unknown): TaskCreationPrefill | undefined {
   if (!state || typeof state !== "object" || !("taskPrefill" in state)) {
     return undefined;
@@ -3286,6 +3616,73 @@ function readBoardStatus(task: Task): BoardTaskStatus {
     : "backlog";
 }
 
+function filterTasks(tasks: Task[], agents: Agent[], filterText: string): Task[] {
+  const query = normalizeFilterText(filterText);
+
+  if (!query) {
+    return tasks;
+  }
+
+  return tasks.filter((task) => buildTaskFilterText(task, agents).includes(query));
+}
+
+function filterTemplates(
+  templates: TaskTemplate[],
+  agents: Agent[],
+  filterText: string,
+): TaskTemplate[] {
+  const query = normalizeFilterText(filterText);
+
+  if (!query) {
+    return templates;
+  }
+
+  return templates.filter((template) => buildTemplateFilterText(template, agents).includes(query));
+}
+
+function buildTaskFilterText(task: Task, agents: Agent[]): string {
+  const status = readBoardStatus(task);
+  const agent = agents.find((entry) => entry.id === task.agentId);
+  const values = [
+    task.title,
+    task.description,
+    task.agentId,
+    agent?.name,
+    status,
+    formatToken(status),
+    task.archived ? "archived" : undefined,
+    task.sourceTemplateId ? "generated template" : undefined,
+    task.scheduledAt || task.scheduledFor ? "scheduled" : undefined,
+    task.dueAt ? "due" : undefined,
+    task.latestFinalMessage,
+    ...task.todos.map((todo) => todo.content),
+  ];
+
+  return normalizeFilterText(values.filter(Boolean).join(" "));
+}
+
+function buildTemplateFilterText(template: TaskTemplate, agents: Agent[]): string {
+  const agent = agents.find((entry) => entry.id === template.defaultAgentId);
+  const values = [
+    template.title,
+    template.description,
+    template.defaultAgentId,
+    agent?.name,
+    "template",
+    template.recurrence ? "repeating recurring scheduled" : "manual template",
+    formatTemplateRepeat(template),
+    template.enabled ? "enabled" : "disabled",
+    template.latestTaskId ? "generated latest task" : undefined,
+    ...template.todos.map((todo) => todo.content),
+  ];
+
+  return normalizeFilterText(values.filter(Boolean).join(" "));
+}
+
+function normalizeFilterText(value: string): string {
+  return value.trim().toLowerCase().replace(/_/g, " ");
+}
+
 function readAgentName(agents: Agent[], agentId: string): string {
   return agents.find((agent) => agent.id === agentId)?.name ?? agentId;
 }
@@ -3348,6 +3745,19 @@ function canDropTaskOnStatus(task: Task, status: BoardTaskStatus, activeRuns: Ta
   if (activeRuns.some((run) => run.taskId === task.id) || currentStatus === "queued") return false;
   if (status === "done") return currentStatus === "ready_to_check" || currentStatus === "review";
   return status !== "archived";
+}
+
+function hasUsableScheduledAt(task: Task, schedulerState?: TaskSchedulerState): boolean {
+  const scheduledAt = task.scheduledAt ?? task.scheduledFor;
+
+  return Boolean(scheduledAt && !isConsumedScheduledAt(scheduledAt, schedulerState));
+}
+
+function isConsumedScheduledAt(scheduledAt: string, schedulerState?: TaskSchedulerState): boolean {
+  return Boolean(
+    schedulerState?.lastScheduledAt &&
+    new Date(scheduledAt).getTime() <= new Date(schedulerState.lastScheduledAt).getTime(),
+  );
 }
 
 function readTaskCardIconActionClassName(variant: TaskCardIconActionVariant = "normal"): string {

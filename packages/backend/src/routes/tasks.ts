@@ -29,6 +29,7 @@ import {
   taskTemplateSchema,
   updateTaskContextInputSchema,
   updateTaskInputSchema,
+  updateTaskTemplateInputSchema,
   updateTaskSubtaskInputSchema,
   uploadTaskContextAttachmentInputSchema,
   uploadTaskContextAttachmentResponseSchema,
@@ -194,6 +195,28 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     },
     async (request) => {
       const template = await service.getTemplate(request.params.id);
+
+      if (!template) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      return template;
+    },
+  );
+
+  app.patch(
+    "/api/tasks/templates/:id",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: updateTaskTemplateInputSchema,
+        response: {
+          200: taskTemplateSchema,
+        },
+      },
+    },
+    async (request) => {
+      const template = await service.updateTemplate(request.params.id, request.body);
 
       if (!template) {
         throw new NotFoundError("Task template not found.");

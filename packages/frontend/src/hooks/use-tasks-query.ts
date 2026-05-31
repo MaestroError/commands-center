@@ -11,6 +11,7 @@ import type {
   TaskTemplateRunNowInput,
   UpdateTaskContextInput,
   UpdateTaskInput,
+  UpdateTaskTemplateInput,
   UploadTaskContextAttachmentInput,
 } from "@cc/shared/schemas";
 
@@ -33,6 +34,7 @@ import {
   listArchivedTasks,
   listActiveTaskRuns,
   listTaskTemplateTasks,
+  listTaskSchedulerState,
   listTaskTemplates,
   listTaskRuns,
   listTaskFeedback,
@@ -46,6 +48,7 @@ import {
   runTaskTemplateNow,
   updateTask,
   updateTaskContext,
+  updateTaskTemplate,
   uploadTaskContextAttachment,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
@@ -155,6 +158,13 @@ export function useActiveTaskRunsQuery() {
   });
 }
 
+export function useTaskSchedulerStateQuery() {
+  return useQuery({
+    queryKey: queryKeys.taskSchedulerState,
+    queryFn: listTaskSchedulerState,
+  });
+}
+
 export function useTaskMutations() {
   const queryClient = useQueryClient();
   const invalidateTasks = async (task?: Task) => {
@@ -163,6 +173,7 @@ export function useTaskMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.taskArchive }),
       queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplates }),
       queryClient.invalidateQueries({ queryKey: queryKeys.activeTaskRuns }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.taskSchedulerState }),
       task ? queryClient.invalidateQueries({ queryKey: queryKeys.task(task.id) }) : undefined,
       task ? queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(task.id) }) : undefined,
     ]);
@@ -181,6 +192,17 @@ export function useTaskMutations() {
       onSuccess: async (template) => {
         queryClient.setQueryData(queryKeys.taskTemplate(template.id), template);
         await queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplates });
+      },
+    }),
+    updateTemplate: useMutation({
+      mutationFn: ({ id, input }: { id: string; input: UpdateTaskTemplateInput }) =>
+        updateTaskTemplate(id, input),
+      onSuccess: async (template) => {
+        queryClient.setQueryData(queryKeys.taskTemplate(template.id), template);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplates }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplate(template.id) }),
+        ]);
       },
     }),
     createFromTemplate: useMutation({
@@ -265,6 +287,7 @@ export function useTaskMutations() {
           queryClient.invalidateQueries({ queryKey: queryKeys.task(run.taskId) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(run.taskId) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.activeTaskRuns }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskSchedulerState }),
           queryClient.invalidateQueries({ queryKey: ["task-subtask-progress"] }),
           queryClient.invalidateQueries({ queryKey: ["tasks"] }),
         ]);

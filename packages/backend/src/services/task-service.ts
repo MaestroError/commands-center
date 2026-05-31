@@ -33,6 +33,7 @@ import {
   taskTodoInputSchema,
   taskTodoSchema,
   updateTaskInputSchema,
+  updateTaskTemplateInputSchema,
   updateTaskRunInputSchema,
   updateTaskSubtaskInputSchema,
   type AppendTaskContextInput,
@@ -53,6 +54,7 @@ import {
   type TaskTemplate,
   type TaskStatus,
   type TaskTodo,
+  type UpdateTaskTemplateInput,
   type UpdateTaskRunInput,
   type UpdateTaskSubtaskInput,
 } from "@cc/shared/schemas";
@@ -176,6 +178,67 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
       if (!row) {
         throw new Error("Failed to create task template record.");
+      }
+
+      return mapTaskTemplate(row);
+    },
+
+    async updateTemplate(
+      id: string,
+      input: UpdateTaskTemplateInput,
+    ): Promise<TaskTemplate | undefined> {
+      const parsed = updateTaskTemplateInputSchema.parse(input);
+      const existing = await getTemplateRow(id);
+
+      if (!existing) {
+        return undefined;
+      }
+
+      if (parsed.defaultAgentId) {
+        await requireActiveAgent(parsed.defaultAgentId);
+      }
+
+      const timestamp = now();
+      const todos = parsed.todos
+        ? normalizeTodos(parsed.todos, timestamp)
+        : parseTaskTodos(existing.todos_json);
+      const recurrence = parsed.recurrence ?? null;
+      const nextOccurrenceAt =
+        parsed.recurrence === undefined
+          ? existing.next_occurrence_at
+          : recurrence
+            ? new Date(recurrence.anchorAt)
+            : null;
+      const enabled = parsed.enabled ?? existing.enabled;
+
+      const [row] = await options.db
+        .update(task_templates)
+        .set({
+          agent_id: parsed.defaultAgentId ?? existing.agent_id,
+          default_agent_id: parsed.defaultAgentId ?? existing.default_agent_id,
+          title: parsed.title ?? existing.title,
+          description: parsed.description ?? existing.description,
+          todos_json: JSON.stringify(todos),
+          status: enabled ? "enabled" : "disabled",
+          recurrence_json:
+            parsed.recurrence === undefined
+              ? existing.recurrence_json
+              : recurrence
+                ? JSON.stringify(recurrence)
+                : null,
+          permission_profile_json:
+            parsed.permissionProfile === undefined
+              ? existing.permission_profile_json
+              : stringifyOptional(parsed.permissionProfile),
+          enabled,
+          next_occurrence_at: nextOccurrenceAt,
+          updated_at: timestamp,
+        })
+        .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to update task template record.");
       }
 
       return mapTaskTemplate(row);

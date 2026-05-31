@@ -329,6 +329,10 @@ export const createTaskTemplateInputSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+export const updateTaskTemplateInputSchema = createTaskTemplateInputSchema.partial().extend({
+  recurrence: recurringTaskScheduleSchema.nullish(),
+});
+
 export const createTaskRunInputSchema = z.object({
   id: z.string().trim().min(1).optional(),
   taskId: z.string().trim().min(1),
@@ -496,6 +500,7 @@ export const taskRunSessionInspectionSchema = z.object({
 
 export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
 export type CreateTaskTemplateInput = z.input<typeof createTaskTemplateInputSchema>;
+export type UpdateTaskTemplateInput = z.input<typeof updateTaskTemplateInputSchema>;
 export type TaskTemplateRunNowInput = z.input<typeof taskTemplateRunNowInputSchema>;
 export type CreateTaskRunInput = z.input<typeof createTaskRunInputSchema>;
 export type AddTaskRunArtifactInput = z.input<typeof addTaskRunArtifactInputSchema>;

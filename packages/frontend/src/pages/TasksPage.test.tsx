@@ -11,6 +11,7 @@ import type {
   Task,
   TaskFeedbackThread,
   TaskRun,
+  TaskSchedulerState,
   TaskSubtaskProgress,
   TaskTemplate,
 } from "@cc/shared/schemas";
@@ -290,6 +291,7 @@ type MockFetchOptions = {
   catalogPayload?: AgentCatalog;
   runsPayload?: TaskRun[];
   activeRunsPayload?: TaskRun[];
+  schedulerStatePayload?: TaskSchedulerState[];
   archivedTasksPayload?: Task[];
   templatesPayload?: TaskTemplate[];
   templateTasksPayload?: Task[];
@@ -343,6 +345,35 @@ describe("TasksPage", () => {
       "Ready to Check",
       "Done",
     ]);
+  });
+
+  it("filters board cards by status suggestions", async () => {
+    mockFetch({
+      taskPayload: { ...task, status: "scheduled", scheduledAt: "2026-01-02T12:00:00.000Z" },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Toggle task filter" }));
+    await user.click(screen.getByRole("button", { name: "queued" }));
+
+    expect(screen.queryByRole("link", { name: "Ship release" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "scheduled" }));
+    expect(await screen.findByRole("link", { name: "Ship release" })).toBeInTheDocument();
+  });
+
+  it("filters board cards by free-text keywords", async () => {
+    mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Toggle task filter" }));
+    await user.type(screen.getByLabelText("Filter tasks"), "missing keyword");
+
+    expect(screen.queryByRole("link", { name: "Ship release" })).not.toBeInTheDocument();
   });
 
   it("lists board tasks and supports queueing", async () => {
@@ -427,6 +458,7 @@ describe("TasksPage", () => {
       "href",
       "/tasks/task-1",
     );
+    expect(screen.getByRole("button", { name: "Back to Backlog" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Back to board" }));
     expect(
@@ -569,6 +601,26 @@ describe("TasksPage", () => {
               { content: "Publish release notes", status: "pending" },
             ],
           }),
+        }),
+      );
+    });
+  });
+
+  it("moves a task back to backlog from the board panel footer", async () => {
+    const fetchMock = mockFetch({ taskPayload: { ...task, status: "scheduled" } });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("button", { name: "Back to Backlog" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ status: "backlog" }),
         }),
       );
     });
@@ -793,7 +845,7 @@ describe("TasksPage", () => {
     );
   });
 
-  it("shows an editable board panel todos section when a task has no todos", async () => {
+  it("hides the board panel todos section when a task has no todos", async () => {
     mockFetch({ taskPayload: { ...task, todos: [] } });
 
     renderWithRouter(<TasksPage />, "/tasks");
@@ -802,8 +854,9 @@ describe("TasksPage", () => {
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
 
     const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
-    expect(within(panel).getByRole("button", { name: /Todos\s+0\/0/i })).toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: "Edit todos" })).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: /Todos\s+0\/0/i })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Edit todos" })).not.toBeInTheDocument();
+    expect(within(panel).queryByText("No todo items.")).not.toBeInTheDocument();
   });
 
   it("shows templates separately from the board", async () => {
@@ -813,6 +866,76 @@ describe("TasksPage", () => {
 
     expect(await screen.findByRole("button", { name: "Weekly release notes" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Backlog" })).not.toBeInTheDocument();
+  });
+
+  it("filters templates by suggestion text", async () => {
+    mockFetch({ templatesPayload: [manualTaskTemplate] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Toggle task filter" }));
+    await user.click(screen.getByRole("button", { name: "repeating" }));
+
+    expect(
+      screen.queryByRole("button", { name: "Reusable release checklist" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "manual template" }));
+    expect(
+      await screen.findByRole("button", { name: "Reusable release checklist" }),
+    ).toBeInTheDocument();
+  });
+
+  it("filters archived tasks by archived badge text", async () => {
+    mockFetch({ archivedTasksPayload: [archivedTask] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=archive");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Toggle task filter" }));
+    await user.click(screen.getByRole("button", { name: "scheduled" }));
+
+    expect(screen.queryByRole("link", { name: "Archived release" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "archived" }));
+    expect(await screen.findByRole("link", { name: "Archived release" })).toBeInTheDocument();
+  });
+
+  it("opens template edit from the templates view", async () => {
+    mockFetch({ templatesPayload: [taskTemplate] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit template" }));
+
+    expect(
+      (await screen.findAllByRole("heading", { name: "Edit task template" })).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByDisplayValue("Weekly release notes")).toBeInTheDocument();
+  });
+
+  it("updates a template from the edit form", async () => {
+    const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
+
+    renderWithRouter(<TasksPage />, "/tasks/templates/template-1/edit");
+
+    const user = userEvent.setup();
+    const title = await screen.findByLabelText("Title");
+    await user.clear(title);
+    await user.type(title, "Updated template");
+    await user.click(screen.getByRole("button", { name: "Save template" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/templates/template-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining('"title":"Updated template"'),
+        }),
+      );
+    });
   });
 
   it("shows templates without user-visible status badges", async () => {
@@ -896,6 +1019,65 @@ describe("TasksPage", () => {
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({ triggerSource: "manual" }),
+        }),
+      );
+    });
+  });
+
+  it("opens scheduling UI when an unscheduled task is dropped into scheduled", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const card = (await screen.findByRole("link", { name: "Ship release" })).closest("article");
+    const scheduledColumn = screen.getByRole("heading", { name: "Scheduled" }).closest(".cc-panel");
+    expect(card).not.toBeNull();
+    expect(scheduledColumn).not.toBeNull();
+
+    if (!card || !scheduledColumn) {
+      throw new Error("Expected board card and scheduled column.");
+    }
+
+    fireDragEvent(card, "dragStart");
+    fireDragEvent(scheduledColumn, "dragOver");
+    fireDragEvent(scheduledColumn, "drop");
+
+    expect(await screen.findByRole("form", { name: "Schedule task" })).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/tasks/task-1",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "scheduled" }) }),
+    );
+  });
+
+  it("schedules a task from the scheduled drop dialog", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const card = (await screen.findByRole("link", { name: "Ship release" })).closest("article");
+    const scheduledColumn = screen.getByRole("heading", { name: "Scheduled" }).closest(".cc-panel");
+
+    if (!card || !scheduledColumn) {
+      throw new Error("Expected board card and scheduled column.");
+    }
+
+    fireDragEvent(card, "dragStart");
+    fireDragEvent(scheduledColumn, "drop");
+
+    fireEvent.change(await screen.findByLabelText("Schedule for"), {
+      target: { value: "2026-01-02T12:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Schedule task" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({
+            status: "scheduled",
+            scheduledAt: new Date("2026-01-02T12:00").toISOString(),
+          }),
         }),
       );
     });
@@ -1207,6 +1389,91 @@ describe("TasksPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Todos: 0/1")).toBeInTheDocument();
     expect(screen.queryByText("Updated:")).not.toBeInTheDocument();
+  });
+
+  it("hides stale scheduled timing on board cards", async () => {
+    mockFetch({
+      schedulerStatePayload: [
+        {
+          taskId: "task-1",
+          lastScheduledAt: "2026-01-02T12:00:00.000Z",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-02T12:00:00.000Z",
+        },
+      ],
+      taskPayload: {
+        ...task,
+        status: "scheduled",
+        scheduledAt: "2026-01-02T12:00:00.000Z",
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(await screen.findByRole("link", { name: "Ship release" })).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(`Scheduled: ${formatDate("2026-01-02T12:00:00.000Z")}`),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps stale schedule details visible in the task detail panel", async () => {
+    mockFetch({
+      schedulerStatePayload: [
+        {
+          taskId: "task-1",
+          lastScheduledAt: "2026-01-02T12:00:00.000Z",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-02T12:00:00.000Z",
+        },
+      ],
+      taskPayload: {
+        ...task,
+        status: "scheduled",
+        scheduledAt: "2026-01-02T12:00:00.000Z",
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks?task=task-1");
+
+    expect(
+      await screen.findByLabelText(`Scheduled: ${formatDate("2026-01-02T12:00:00.000Z")}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(`Scheduled ${formatDate("2026-01-02T12:00:00.000Z")}`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("opens scheduling UI with a blank value for consumed scheduled tasks", async () => {
+    mockFetch({
+      schedulerStatePayload: [
+        {
+          taskId: "task-1",
+          lastScheduledAt: "2026-01-02T12:00:00.000Z",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-02T12:00:00.000Z",
+        },
+      ],
+      taskPayload: {
+        ...task,
+        status: "backlog",
+        scheduledAt: "2026-01-02T12:00:00.000Z",
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const card = (await screen.findByRole("link", { name: "Ship release" })).closest("article");
+    const scheduledColumn = screen.getByRole("heading", { name: "Scheduled" }).closest(".cc-panel");
+
+    if (!card || !scheduledColumn) {
+      throw new Error("Expected board card and scheduled column.");
+    }
+
+    fireDragEvent(card, "dragStart");
+    fireDragEvent(scheduledColumn, "drop");
+
+    expect(await screen.findByRole("form", { name: "Schedule task" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Schedule for")).toHaveValue("");
   });
 
   it("shows a date-only due warning for cards due within seven days", async () => {
@@ -2126,6 +2393,7 @@ function renderWithRouter(element: React.ReactElement, initialPath: string, stat
         <Routes>
           <Route element={<TasksPage />} path="/tasks" />
           <Route element={element} path="/tasks/new" />
+          <Route element={<TasksPage mode="template-edit" />} path="/tasks/templates/:id/edit" />
           <Route element={<EditRouteProbe />} path="/tasks/:id/edit" />
           <Route element={element} path="/tasks/:id" />
           <Route element={element} path="/tasks/:id/runs/:runId" />
@@ -2161,6 +2429,7 @@ function mockFetch(options: MockFetchOptions = {}) {
   const catalogPayload = options.catalogPayload ?? catalog;
   const runsPayload = options.runsPayload ?? [sessionRun];
   const activeRunsPayload = options.activeRunsPayload ?? [];
+  const schedulerStatePayload = options.schedulerStatePayload ?? [];
   const archivedTasksPayload = options.archivedTasksPayload ?? [];
   const templatesPayload = options.templatesPayload ?? [];
   const templateTasksPayload = options.templateTasksPayload ?? [generatedTask];
@@ -2196,8 +2465,14 @@ function mockFetch(options: MockFetchOptions = {}) {
         method === "POST" ? jsonResponse(201, taskTemplate) : jsonResponse(200, templatesPayload),
       );
     }
-    if (url === "/api/tasks/templates/template-1")
-      return Promise.resolve(jsonResponse(200, taskTemplate));
+    if (url === "/api/tasks/templates/template-1") {
+      const method = input instanceof Request ? input.method : init?.method;
+      const body =
+        typeof init?.body === "string" ? (JSON.parse(init.body) as Partial<TaskTemplate>) : {};
+      return Promise.resolve(
+        jsonResponse(200, method === "PATCH" ? { ...taskTemplate, ...body } : taskTemplate),
+      );
+    }
     if (url === "/api/tasks/templates/template-1/tasks") {
       const method = input instanceof Request ? input.method : init?.method;
       return Promise.resolve(
@@ -2216,6 +2491,9 @@ function mockFetch(options: MockFetchOptions = {}) {
     }
     if (url === "/api/tasks/runs/active")
       return Promise.resolve(jsonResponse(200, activeRunsPayload));
+    if (url === "/api/tasks/scheduler/state") {
+      return Promise.resolve(jsonResponse(200, schedulerStatePayload));
+    }
     if (url.startsWith("/api/tasks/subtask-progress")) {
       return Promise.resolve(jsonResponse(200, subtaskProgressPayload));
     }
