@@ -320,12 +320,11 @@ describe("cc-managed MCP routes", () => {
 
       expect(createTaskResponse.statusCode).toBe(200);
       const createTaskJson = parseSseJson(createTaskResponse.body) as {
-        result?: { structuredContent?: { id?: string; title?: string; triggerMode?: string } };
+        result?: { structuredContent?: { id?: string; title?: string } };
       };
 
       expect(createTaskJson.result?.structuredContent).toMatchObject({
         title: "Draft weekly report",
-        triggerMode: "manual",
       });
 
       const listed = await taskService.list({ agentId: agent.id });
@@ -362,7 +361,6 @@ describe("cc-managed MCP routes", () => {
         title: "Run smoke checks",
         description: "Check critical path.",
         todos: [],
-        triggerMode: "manual",
       });
       const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_tasks_management");
       const queueResponse = await callMcpToolRoute(
@@ -418,14 +416,12 @@ describe("cc-managed MCP routes", () => {
         agentId: agent.id,
         title: "Manual MCP task",
         description: "Run from MCP.",
-        triggerMode: "manual",
       });
-      const recurring = await taskService.create({
-        agentId: agent.id,
+      const recurring = await taskService.createTemplate({
+        defaultAgentId: agent.id,
         title: "Recurring MCP task",
         description: "Keep history.",
-        triggerMode: "recurring",
-        schedule: {
+        recurrence: {
           mode: "recurring",
           anchorAt: "2026-06-01T09:00:00.000Z",
           timezone: "UTC",
@@ -636,7 +632,6 @@ describe("cc-managed MCP routes", () => {
         agentId: agent.id,
         title: "Outcome task",
         description: "Capture results.",
-        triggerMode: "manual",
       });
       const run = await taskService.createRun({
         taskId: task.id,

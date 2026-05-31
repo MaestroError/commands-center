@@ -665,7 +665,6 @@ export async function listTasks(query: Partial<ListTasksQuery> = {}): Promise<Ta
   const params = new URLSearchParams();
 
   if (parsed.status) params.set("status", parsed.status);
-  if (parsed.triggerMode) params.set("triggerMode", parsed.triggerMode);
   if (parsed.agentId) params.set("agentId", parsed.agentId);
   if (parsed.includeArchived) params.set("includeArchived", "true");
 

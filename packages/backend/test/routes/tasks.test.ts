@@ -62,7 +62,6 @@ describe("task routes", () => {
           title: "Ship release",
           description: "Prepare the release.",
           todos: [{ content: "Read changelog" }],
-          triggerMode: "manual",
         },
       });
 
@@ -253,12 +252,12 @@ describe("task routes", () => {
       const first = await server.inject({
         method: "POST",
         url: "/api/tasks",
-        payload: { agentId: agent.id, title: "First", triggerMode: "manual" },
+        payload: { agentId: agent.id, title: "First" },
       });
       const second = await server.inject({
         method: "POST",
         url: "/api/tasks",
-        payload: { agentId: agent.id, title: "Second", triggerMode: "manual" },
+        payload: { agentId: agent.id, title: "Second" },
       });
 
       expect(invalid.statusCode).toBe(400);
@@ -308,7 +307,7 @@ describe("task routes", () => {
       const created = await server.inject({
         method: "POST",
         url: "/api/tasks",
-        payload: { agentId: agent.id, title: "Board task", triggerMode: "manual" },
+        payload: { agentId: agent.id, title: "Board task" },
       });
       const task = created.json<{ id: string }>();
       const feedback = await server.inject({

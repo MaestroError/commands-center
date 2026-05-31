@@ -90,8 +90,8 @@ export function createTaskRunContextService(options: { db?: AppDb }) {
           description: input.task.description,
           context: input.task.context,
           status: input.task.status,
-          schedule: input.task.schedule,
           todos: input.task.todos,
+          scheduledAt: input.task.scheduledAt,
           scheduledFor: input.task.scheduledFor,
           dueAt: input.task.dueAt,
         },
@@ -124,7 +124,9 @@ export function createTaskRunContextService(options: { db?: AppDb }) {
         triggerSource: input.trigger.triggerSource,
         runContext: input.trigger.context,
         triggerMetadata: input.trigger.metadata,
-        schedule: input.task.schedule,
+        scheduledAt: input.task.scheduledAt,
+        scheduledFor: input.task.scheduledFor,
+        dueAt: input.task.dueAt,
         todos: input.task.todos,
       } satisfies Record<string, unknown>;
 

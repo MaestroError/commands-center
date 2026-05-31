@@ -19,7 +19,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageSt
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
-import { formatDate, formatRepeatSummary, formatToken } from "@/components/tasks/task-format";
+import { formatDate, formatToken } from "@/components/tasks/task-format";
 import {
   buildTaskPromptText,
   createTaskPromptValue,
@@ -1275,9 +1275,10 @@ function formatSourceTemplate(task: Task): string {
 }
 
 function formatSchedule(task: Task): string {
-  if (task.schedule.mode === "scheduled_once") return formatDate(task.schedule.runAt);
-  if (task.schedule.mode === "recurring") return formatRepeatSummary(task.schedule.repeatRule);
-  return "Manual only";
+  if (task.scheduledAt) return `Scheduled ${formatDate(task.scheduledAt)}`;
+  if (task.scheduledFor) return `Scheduled ${formatDate(task.scheduledFor)}`;
+  if (task.dueAt) return `Due ${formatDate(task.dueAt)}`;
+  return "Not scheduled";
 }
 
 function formatRunTarget(run: TaskRun, subtasks: TaskSubtask[]): string {

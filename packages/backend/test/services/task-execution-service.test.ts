@@ -30,7 +30,6 @@ describe("createTaskExecutionService", () => {
         agentId: agent.id,
         title: "Manual task",
         description: "Review #PRD.md.",
-        triggerMode: "manual",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
@@ -67,7 +66,6 @@ describe("createTaskExecutionService", () => {
         agentId: agent.id,
         title: "Session task",
         description: "Use OpenCode.",
-        triggerMode: "manual",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
@@ -98,7 +96,6 @@ describe("createTaskExecutionService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Contextual task",
-        triggerMode: "manual",
       });
 
       const run = await executionService.trigger(task.id, {
@@ -306,12 +303,11 @@ describe("createTaskExecutionService", () => {
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      const template = await taskService.create({
-        agentId: agent.id,
+      const template = await taskService.createTemplate({
+        defaultAgentId: agent.id,
         title: "Scheduled template",
         description: "Original prompt.",
-        triggerMode: "recurring",
-        schedule: {
+        recurrence: {
           mode: "recurring",
           anchorAt: "2026-06-01T09:00:00.000Z",
           timezone: "UTC",
@@ -362,7 +358,6 @@ describe("createTaskExecutionService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Unstartable task",
-        triggerMode: "manual",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
@@ -394,7 +389,6 @@ describe("createTaskExecutionService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Reopenable session task",
-        triggerMode: "manual",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
@@ -441,7 +435,6 @@ describe("createTaskExecutionService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Permissioned session task",
-        triggerMode: "manual",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
@@ -601,7 +594,6 @@ describe("createTaskExecutionService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Disabled task",
-        triggerMode: "manual",
         enabled: false,
       });
 
@@ -613,35 +605,29 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("records skipped runs for disabled scheduled templates", async () => {
+  it("records skipped runs for disabled scheduled tasks", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const executionService = createTaskExecutionService({ taskService });
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      const template = await taskService.create({
+      const task = await taskService.create({
         agentId: agent.id,
-        title: "Disabled scheduled template",
-        triggerMode: "recurring",
+        title: "Disabled scheduled task",
         enabled: false,
-        schedule: {
-          mode: "recurring",
-          anchorAt: "2026-06-01T09:00:00.000Z",
-          timezone: "UTC",
-          repeatRule: { frequency: "day", interval: 1 },
-        },
+        scheduledAt: "2026-06-01T09:00:00.000Z",
       });
 
       await expect(
-        executionService.trigger(template.id, { triggerSource: "scheduled" }),
+        executionService.trigger(task.id, { triggerSource: "scheduled" }),
       ).rejects.toThrow("Task is not enabled and was skipped.");
 
-      const runs = await taskService.listRuns(template.id);
+      const runs = await taskService.listRuns(task.id);
 
       expect(runs).toHaveLength(1);
       expect(runs[0]?.status).toBe("skipped");
-      expect(runs[0]?.taskId).toBe(template.id);
+      expect(runs[0]?.taskId).toBe(task.id);
     } finally {
       await testDb.cleanup();
     }

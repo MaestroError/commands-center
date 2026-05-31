@@ -23,7 +23,6 @@ import {
   taskRunArtifactSchema,
   taskRunListSchema,
   taskRunSchema,
-  taskScheduleSchema,
   taskSchema,
   taskSubtaskInputSchema,
   taskSubtaskListSchema,
@@ -36,7 +35,6 @@ import {
   updateTaskInputSchema,
   updateTaskRunInputSchema,
   updateTaskSubtaskInputSchema,
-  type CreateTaskInput,
   type AppendTaskContextInput,
   type CreateTaskTemplateInput,
   type CreateTaskRunInput,
@@ -49,14 +47,12 @@ import {
   type TaskFeedbackThread,
   type TaskRun,
   type TaskRunStatus,
-  type TaskSchedule,
   type TaskSubtask,
   type TaskSubtaskDerivedStatus,
   type TaskSubtaskProgress,
   type TaskTemplate,
   type TaskStatus,
   type TaskTodo,
-  type UpdateTaskInput,
   type UpdateTaskRunInput,
   type UpdateTaskSubtaskInput,
 } from "@cc/shared/schemas";
@@ -106,10 +102,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
             filters.push(operators.eq(table.status, parsed.status));
           }
 
-          if (parsed.triggerMode) {
-            filters.push(operators.eq(table.trigger_mode, parsed.triggerMode));
-          }
-
           if (parsed.agentId) {
             filters.push(operators.eq(table.agent_id, parsed.agentId));
           }
@@ -157,7 +149,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const timestamp = now();
       const todos = normalizeTodos(parsed.todos, timestamp);
       const enabled = parsed.enabled ?? true;
-      const schedule = parsed.recurrence ?? { mode: "manual" };
       const [row] = await options.db
         .insert(task_templates)
         .values({
@@ -168,8 +159,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           description: parsed.description,
           todos_json: JSON.stringify(todos),
           status: enabled ? "enabled" : "disabled",
-          trigger_mode: parsed.recurrence ? "recurring" : "manual",
-          schedule_json: JSON.stringify(schedule),
           recurrence_json: parsed.recurrence ? JSON.stringify(parsed.recurrence) : null,
           permission_profile_json: stringifyOptional(parsed.permissionProfile),
           enabled,
@@ -192,20 +181,19 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return mapTaskTemplate(row);
     },
 
-    async create(input: CreateTaskInput): Promise<Task> {
+    async create(input: unknown): Promise<Task> {
       const parsed = createTaskInputSchema.parse(input);
       await requireActiveAgent(parsed.agentId);
       await enforceTaskLimit();
 
       const timestamp = now();
-      const triggerMode = parsed.triggerMode;
-      const schedule = normalizeSchedule(triggerMode, parsed.schedule);
       const enabled = parsed.enabled ?? parsed.status !== "draft";
       const archived = parsed.status === "archived";
       const status = normalizeTaskStatus({
         requestedStatus: parsed.status,
         enabled,
         archived,
+        scheduledAt: parsed.scheduledAt ? new Date(parsed.scheduledAt) : undefined,
       });
       const defaultAgentId = parsed.defaultAgentId ?? parsed.agentId;
       const todos = normalizeTodos(parsed.todos, timestamp);
@@ -213,69 +201,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
       if (parsed.defaultAgentId) {
         await requireActiveAgent(parsed.defaultAgentId);
-      }
-
-      if (triggerMode !== "manual") {
-        const id = createId();
-        const [row] = await options.db
-          .insert(task_templates)
-          .values({
-            id,
-            agent_id: parsed.agentId,
-            default_agent_id: defaultAgentId,
-            title: parsed.title,
-            description: parsed.description,
-            todos_json: JSON.stringify(todos),
-            status,
-            trigger_mode: triggerMode,
-            schedule_json: JSON.stringify(schedule),
-            permission_profile_json: stringifyOptional(parsed.permissionProfile),
-            enabled,
-            archived,
-            latest_final_message: null,
-            latest_task_id: null,
-            next_occurrence_at: schedule.mode === "recurring" ? new Date(schedule.anchorAt) : null,
-            created_at: timestamp,
-            updated_at: timestamp,
-            archived_at: archived ? timestamp : null,
-            deleted_at: null,
-          })
-          .returning();
-
-        if (!row) {
-          throw new Error("Failed to create task template record.");
-        }
-
-        await options.db.insert(tasks).values({
-          id,
-          template_id: id,
-          agent_id: parsed.agentId,
-          default_agent_id: defaultAgentId,
-          title: parsed.title,
-          description: parsed.description,
-          context: JSON.stringify(context),
-          todos_json: JSON.stringify(todos),
-          status,
-          trigger_mode: triggerMode,
-          trigger_source: null,
-          schedule_json: JSON.stringify(schedule),
-          permission_profile_json: stringifyOptional(parsed.permissionProfile),
-          enabled,
-          archived,
-          latest_final_message: null,
-          source_template_id: null,
-          source_occurrence_at: null,
-          scheduled_at: parsed.scheduledAt ? new Date(parsed.scheduledAt) : null,
-          scheduled_for: null,
-          due_at: parsed.dueAt ? new Date(parsed.dueAt) : null,
-          done_at: null,
-          created_at: timestamp,
-          updated_at: timestamp,
-          archived_at: archived ? timestamp : null,
-          deleted_at: null,
-        });
-
-        return mapTemplateAsTask(row);
       }
 
       const [row] = await options.db
@@ -290,9 +215,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           context: JSON.stringify(context),
           todos_json: JSON.stringify(todos),
           status,
-          trigger_mode: triggerMode,
           trigger_source: "manual",
-          schedule_json: JSON.stringify(schedule),
           permission_profile_json: stringifyOptional(parsed.permissionProfile),
           enabled,
           archived,
@@ -336,14 +259,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         description: task.description,
         context: task.context,
         todos: task.todos.map((todo) => ({ content: todo.content, status: todo.status })),
-        triggerMode: task.triggerMode,
-        schedule: task.schedule,
         permissionProfile: task.permissionProfile,
         enabled: false,
       });
     },
 
-    async update(id: string, input: UpdateTaskInput): Promise<Task | undefined> {
+    async update(id: string, input: unknown): Promise<Task | undefined> {
       const parsed = updateTaskInputSchema.parse(input);
       const existing = await getTaskRow(id);
 
@@ -360,11 +281,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       }
 
       const timestamp = now();
-      const triggerMode = parsed.triggerMode ?? existing.trigger_mode;
-      const schedule = normalizeSchedule(
-        triggerMode,
-        parsed.schedule ?? parseTaskSchedule(existing.schedule_json),
-      );
       const archived = parsed.status === "archived" ? true : existing.archived;
       const enabled =
         parsed.enabled ??
@@ -378,6 +294,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         enabled,
         archived,
         fallbackStatus: existing.status as TaskStatus,
+        scheduledAt:
+          parsed.scheduledAt === undefined
+            ? existing.scheduled_at
+            : parsed.scheduledAt
+              ? new Date(parsed.scheduledAt)
+              : null,
       });
       const todos = parsed.todos
         ? normalizeTodos(parsed.todos, timestamp)
@@ -396,16 +318,24 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
               : JSON.stringify(normalizeTaskContext(parsed.context)),
           todos_json: JSON.stringify(todos),
           status,
-          trigger_mode: triggerMode,
-          schedule_json: JSON.stringify(schedule),
           permission_profile_json:
             parsed.permissionProfile === undefined
               ? existing.permission_profile_json
               : stringifyOptional(parsed.permissionProfile),
           enabled,
           archived,
-          scheduled_at: parsed.scheduledAt ? new Date(parsed.scheduledAt) : existing.scheduled_at,
-          due_at: parsed.dueAt ? new Date(parsed.dueAt) : existing.due_at,
+          scheduled_at:
+            parsed.scheduledAt === undefined
+              ? existing.scheduled_at
+              : parsed.scheduledAt
+                ? new Date(parsed.scheduledAt)
+                : null,
+          due_at:
+            parsed.dueAt === undefined
+              ? existing.due_at
+              : parsed.dueAt
+                ? new Date(parsed.dueAt)
+                : null,
           updated_at: timestamp,
           archived_at: archived ? (existing.archived_at ?? timestamp) : null,
         })
@@ -488,7 +418,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const [row] = await options.db
         .update(tasks)
         .set({
-          status: existing.enabled ? "enabled" : "disabled",
+          status: existing.enabled ? (existing.scheduled_at ? "scheduled" : "backlog") : "disabled",
           archived: false,
           updated_at: timestamp,
           archived_at: null,
@@ -869,9 +799,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           context: JSON.stringify(normalizeTaskContext(input.context)),
           todos_json: template.todos_json,
           status: scheduledFor ? "scheduled" : "backlog",
-          trigger_mode: "manual",
           trigger_source: input.triggerSource ?? "scheduled",
-          schedule_json: JSON.stringify({ mode: "manual" }),
           permission_profile_json: template.permission_profile_json,
           enabled: true,
           archived: false,
@@ -927,7 +855,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           operators.and(
             operators.eq(table.enabled, true),
             operators.eq(table.archived, false),
-            operators.eq(table.trigger_mode, "recurring"),
+            operators.isNotNull(table.recurrence_json),
             operators.isNull(table.deleted_at),
           ),
         orderBy: (table, operators) => [operators.asc(table.created_at)],
@@ -1506,11 +1434,22 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return mapTemplateAsTask(row);
     }
 
+    if (!existing) {
+      return undefined;
+    }
+
     const [row] = await options.db
       .update(tasks)
       .set({
         enabled,
-        status: enabled ? "enabled" : "disabled",
+        status: enabled
+          ? normalizeTaskStatus({
+              enabled,
+              archived: existing.archived,
+              fallbackStatus: existing.status as TaskStatus,
+              scheduledAt: existing.scheduled_at,
+            })
+          : "disabled",
         updated_at: timestamp,
       })
       .where(and(eq(tasks.id, id), isNull(tasks.deleted_at)))
@@ -1631,29 +1570,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
   }
 }
 
-function normalizeSchedule(triggerMode: string, schedule?: TaskSchedule): TaskSchedule {
-  if (!schedule) {
-    if (triggerMode === "manual") {
-      return { mode: "manual" };
-    }
-
-    throw new BadRequestError("Scheduled tasks require a schedule definition.");
-  }
-
-  const parsed = taskScheduleSchema.parse(schedule);
-
-  if (parsed.mode !== triggerMode) {
-    throw new BadRequestError("Task trigger mode must match schedule mode.");
-  }
-
-  return parsed;
-}
-
 function normalizeTaskStatus(input: {
   requestedStatus?: TaskStatus;
   enabled: boolean;
   archived: boolean;
   fallbackStatus?: TaskStatus;
+  scheduledAt?: Date | null;
 }): TaskStatus {
   if (input.archived) {
     return "archived";
@@ -1674,11 +1596,19 @@ function normalizeTaskStatus(input: {
     return "disabled";
   }
 
+  if (input.scheduledAt) {
+    return "scheduled";
+  }
+
+  if (input.scheduledAt === null && input.fallbackStatus === "scheduled") {
+    return "backlog";
+  }
+
   if (input.fallbackStatus && !["archived", "disabled", "draft"].includes(input.fallbackStatus)) {
     return input.fallbackStatus;
   }
 
-  return "enabled";
+  return "backlog";
 }
 
 function normalizeTodos(input: unknown[], timestamp: Date): TaskTodo[] {
@@ -1750,8 +1680,6 @@ function mapTask(row: typeof tasks.$inferSelect): Task {
     context: parseTaskContext(row.context),
     todos: parseTaskTodos(row.todos_json),
     status: row.status,
-    triggerMode: row.trigger_mode,
-    schedule: parseTaskSchedule(row.schedule_json),
     permissionProfile: parseOptional(row.permission_profile_json, taskPermissionProfileSchema),
     enabled: row.enabled,
     archived: row.archived,
@@ -1780,8 +1708,6 @@ function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task {
     context: normalizeTaskContext(),
     todos: parseTaskTodos(row.todos_json),
     status: row.status,
-    triggerMode: row.trigger_mode,
-    schedule: parseTaskSchedule(row.schedule_json),
     permissionProfile: parseOptional(row.permission_profile_json, taskPermissionProfileSchema),
     enabled: row.enabled,
     archived: row.archived,
@@ -1900,10 +1826,6 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   });
-}
-
-function parseTaskSchedule(value: string): TaskSchedule {
-  return taskScheduleSchema.parse(JSON.parse(value));
 }
 
 function parseTaskTodos(value: string): TaskTodo[] {

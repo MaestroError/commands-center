@@ -18,7 +18,6 @@ describe("createTaskRunContextService", () => {
         agentId: agent.id,
         title: "Context task",
         description: "Use release notes.",
-        triggerMode: "manual",
         context: {
           text: "Use the stored task notes.",
           attachments: [
@@ -113,7 +112,6 @@ describe("createTaskRunContextService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Retry task",
-        triggerMode: "manual",
       });
 
       await taskService.createRun({
@@ -175,7 +173,6 @@ describe("createTaskRunContextService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "History task",
-        triggerMode: "manual",
       });
 
       await taskService.createRun({
@@ -247,7 +244,6 @@ describe("createTaskRunContextService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Feedback task",
-        triggerMode: "manual",
       });
       const feedback = await taskService.createFeedback(task.id, {
         body: "Use the latest metrics.",
@@ -285,7 +281,6 @@ describe("createTaskRunContextService", () => {
         agentId: agent.id,
         title: "Feedback prompt task",
         description: "Original task description.",
-        triggerMode: "manual",
       });
       await taskService.createRun({
         id: "previous-run",
@@ -341,7 +336,6 @@ describe("createTaskRunContextService", () => {
         agentId: agent.id,
         title: "Normal prompt task",
         description: "Do the original task.",
-        triggerMode: "manual",
       });
 
       const built = await contextService.build({
@@ -374,7 +368,6 @@ describe("createTaskRunContextService", () => {
       const task = await taskService.create({
         agentId: defaultAgent.id,
         title: "Reassigned task",
-        triggerMode: "manual",
       });
 
       const built = await contextService.build({
@@ -405,7 +398,6 @@ describe("createTaskRunContextService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Parent task",
-        triggerMode: "manual",
       });
       const timestamp = new Date();
 

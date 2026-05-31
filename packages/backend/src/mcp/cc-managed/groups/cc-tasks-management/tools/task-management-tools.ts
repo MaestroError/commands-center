@@ -61,11 +61,9 @@ const getTaskRunInputSchema = taskIdInputSchema.extend({
   runId: z.string().trim().min(1),
 });
 
-const createManagedTaskInputSchema = createTaskInputSchema
-  .omit({ agentId: true, triggerMode: true, schedule: true })
-  .extend({
-    agentId: z.string().trim().min(1).optional(),
-  });
+const createManagedTaskInputSchema = createTaskInputSchema.omit({ agentId: true }).extend({
+  agentId: z.string().trim().min(1).optional(),
+});
 
 const createManagedTaskTemplateInputSchema = createTaskTemplateInputSchema.extend({
   defaultAgentId: z.string().trim().min(1).optional(),
@@ -169,13 +167,13 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
           const parsed = createManagedTaskInputSchema.parse(args);
           const agentId =
             parsed.agentId ?? (await requireCallingAgentId(options.db, context.agentSlug));
-          const input = createTaskInputSchema.parse({ ...parsed, agentId, triggerMode: "manual" });
+          const input = createTaskInputSchema.parse({ ...parsed, agentId });
 
           await confirmMutation(options, {
             agentId,
             title: "Create task",
             description: `Create task '${input.title}' for this workspace.`,
-            metadata: { taskTitle: input.title, triggerMode: input.triggerMode },
+            metadata: { taskTitle: input.title },
           });
 
           const task = await options.taskService.create(input);

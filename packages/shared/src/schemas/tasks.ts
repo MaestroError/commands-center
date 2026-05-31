@@ -41,8 +41,6 @@ export const taskRunStatusSchema = z.enum([
   "skipped",
 ]);
 
-export const taskTriggerModeSchema = z.enum(["manual", "scheduled_once", "recurring"]);
-
 export const taskRunOutcomeSchema = z.enum(["success", "needs_human_review", "failed"]);
 
 export const taskSubtaskDerivedStatusSchema = z.enum([
@@ -142,6 +140,8 @@ export const taskScheduleSchema = z.discriminatedUnion("mode", [
   recurringTaskScheduleSchema,
 ]);
 
+const nullableDateTimeSchema = z.union([z.string().datetime(), z.null()]);
+
 export const taskPermissionProfileSchema = z.object({
   customTools: z.array(z.string().min(1)).optional(),
   mcpServers: z.array(agentMcpServerSchema).optional(),
@@ -198,8 +198,6 @@ export const createTaskInputSchema = z.object({
   description: z.string().trim().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
   status: taskStatusSchema.optional(),
-  triggerMode: taskTriggerModeSchema.default("manual"),
-  schedule: taskScheduleSchema.optional(),
   scheduledAt: z.string().datetime().optional(),
   dueAt: z.string().datetime().optional(),
   context: taskContextInputSchema.optional(),
@@ -214,10 +212,8 @@ export const updateTaskInputSchema = z.object({
   description: z.string().trim().optional(),
   todos: z.array(taskTodoInputSchema).optional(),
   status: taskStatusSchema.optional(),
-  triggerMode: taskTriggerModeSchema.optional(),
-  schedule: taskScheduleSchema.optional(),
-  scheduledAt: z.string().datetime().optional(),
-  dueAt: z.string().datetime().optional(),
+  scheduledAt: nullableDateTimeSchema.optional(),
+  dueAt: nullableDateTimeSchema.optional(),
   context: taskContextInputSchema.optional(),
   permissionProfile: taskPermissionProfileSchema.optional(),
   enabled: z.boolean().optional(),
@@ -225,7 +221,6 @@ export const updateTaskInputSchema = z.object({
 
 export const listTasksQuerySchema = z.object({
   status: taskStatusSchema.optional(),
-  triggerMode: taskTriggerModeSchema.optional(),
   agentId: z.string().trim().min(1).optional(),
   includeArchived: z.coerce.boolean().optional().default(false),
 });
@@ -281,8 +276,6 @@ export const taskSchema = z.object({
   context: taskContextSchema.default({ attachments: [] }),
   todos: z.array(taskTodoSchema),
   status: taskStatusSchema,
-  triggerMode: taskTriggerModeSchema,
-  schedule: taskScheduleSchema,
   permissionProfile: taskPermissionProfileSchema.optional(),
   enabled: z.boolean(),
   archived: z.boolean(),
@@ -535,7 +528,6 @@ export type TaskSubtaskDerivedStatus = z.infer<typeof taskSubtaskDerivedStatusSc
 export type TaskSubtaskProgress = z.infer<typeof taskSubtaskProgressSchema>;
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 export type TaskTodo = z.infer<typeof taskTodoSchema>;
-export type TaskTriggerMode = z.infer<typeof taskTriggerModeSchema>;
 export type TaskRepeatRule = z.infer<typeof taskRepeatRuleSchema>;
 export type TriggerTaskInput = z.input<typeof triggerTaskInputSchema>;
 export type UpdateTaskContextInput = z.input<typeof updateTaskContextInputSchema>;

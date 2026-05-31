@@ -63,8 +63,6 @@ const task: Task = {
     },
   ],
   status: "backlog",
-  triggerMode: "manual",
-  schedule: { mode: "manual" },
   enabled: true,
   archived: false,
   latestFinalMessage: "Ready to publish.",
@@ -1238,24 +1236,27 @@ describe("TasksPage", () => {
     });
   });
 
-  it("creates a custom hourly recurring task from the form", async () => {
-    const fetchMock = mockFetch();
+  it("creates a custom hourly recurring template from the template form", async () => {
+    const fetchMock = mockFetch({ templatesPayload: [] });
 
-    renderWithRouter(<TasksPage mode="create" />, "/tasks/new");
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
 
     const user = userEvent.setup();
-    await screen.findByRole("combobox", { name: /Assigned agent/i });
-    await user.type(screen.getByLabelText(/Title/i), "Hourly review");
-    await user.selectOptions(screen.getByLabelText(/Assigned agent/i), "agent-1");
-    await user.selectOptions(screen.getByLabelText(/Trigger mode/i), "recurring");
-    await user.selectOptions(screen.getByLabelText(/Repeat/i), "custom");
+    await user.click(await screen.findByRole("button", { name: "Create template" }));
+    await user.type(screen.getByLabelText("Title"), "Hourly review");
+    await user.selectOptions(screen.getByLabelText("Default agent"), "agent-1");
+    await user.click(screen.getByLabelText(/Repeat on a schedule/i));
+    await user.selectOptions(screen.getByLabelText(/^Repeat$/i), "custom");
+    await user.selectOptions(screen.getByLabelText(/Unit/i), "hour");
     await user.clear(screen.getByLabelText(/Every/i));
     await user.type(screen.getByLabelText(/Every/i), "4");
-    await user.click(screen.getByRole("button", { name: "Create task" }));
+    const createButtons = screen.getAllByRole("button", { name: "Create template" });
+    expect(createButtons[1]).toBeDefined();
+    await user.click(createButtons[1] as HTMLElement);
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks",
+        "/api/tasks/templates",
         expect.objectContaining({
           method: "POST",
           body: expect.stringContaining('"frequency":"hour"'),
@@ -1263,25 +1264,25 @@ describe("TasksPage", () => {
       );
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/tasks",
+      "/api/tasks/templates",
       expect.objectContaining({ body: expect.stringContaining('"interval":4') }),
     );
   });
 });
 
 describe("TaskDetailPage", () => {
-  it("renders a scheduled-once task in overview mode", async () => {
+  it("renders a scheduled task in overview mode", async () => {
     const runAt = "2026-02-14T12:30:00.000Z";
     mockFetch({
       taskPayload: {
         ...task,
-        schedule: { mode: "scheduled_once", runAt },
+        scheduledAt: runAt,
       },
     });
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
-    await screen.findByText(formatDate(runAt));
+    await screen.findByText(`Scheduled ${formatDate(runAt)}`);
     expect(screen.getByText("Ready to publish.")).toBeInTheDocument();
   });
 
@@ -1321,23 +1322,15 @@ describe("TaskDetailPage", () => {
     expect(params.get("select")).toBe("reports/release.md");
   });
 
-  it("renders a recurring task with an empty run history in overview mode", async () => {
+  it("renders an unscheduled task with an empty run history in overview mode", async () => {
     mockFetch({
-      taskPayload: {
-        ...task,
-        schedule: {
-          mode: "recurring",
-          anchorAt: "2026-06-01T09:00:00.000Z",
-          timezone: "UTC",
-          repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
-        },
-      },
+      taskPayload: task,
       runsPayload: [],
     });
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
-    await screen.findByText("Every 1 week on Mon");
+    await screen.findByText("Not scheduled");
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Runs" }));
     await waitFor(() => {
