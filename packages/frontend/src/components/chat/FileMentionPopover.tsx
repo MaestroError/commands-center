@@ -4,7 +4,7 @@ import * as api from "../../lib/api";
 import { isMentionableWorkspacePath } from "./file-mention";
 
 interface FileMentionPopoverProps {
-  agentId: string;
+  agentId?: string;
   query: string;
   onSelect: (path: string) => void;
   onClose: () => void;
@@ -36,7 +36,11 @@ export function FileMentionPopover({
           return [];
         }
         try {
-          const files = await api.searchAgentWorkspaceFiles(agentId, q);
+          const files = agentId
+            ? await api.searchAgentWorkspaceFiles(agentId, q)
+            : await api
+                .searchWorkspaceFiles(q)
+                .then((result) => result.nameMatches.map((match) => match.path));
           return files.filter(isMentionableWorkspacePath).map((path) => ({ path, display: path }));
         } catch {
           return [];
@@ -77,9 +81,7 @@ export function FileMentionPopover({
     <div
       className="absolute z-[100] max-h-64 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-lg"
       style={
-        position
-          ? { top: position.top, left: position.left }
-          : { bottom: "calc(100% + 4px)", left: 0 }
+        position ? { top: position.top, left: position.left } : { top: "calc(100% + 4px)", left: 0 }
       }
       onKeyDown={handleKeyDown}
     >

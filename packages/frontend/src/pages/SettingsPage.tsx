@@ -62,7 +62,8 @@ function SystemTab() {
   const activeRunsQuery = useActiveTaskRunsQuery();
   const version = versionQuery.data;
   const preferences = preferencesQuery.data;
-  const activeRunCount = activeRunsQuery.data?.length ?? 0;
+  const activeRunCount =
+    activeRunsQuery.data?.filter((run) => run.status === "running").length ?? 0;
   const error =
     versionQuery.error instanceof Error
       ? versionQuery.error.message

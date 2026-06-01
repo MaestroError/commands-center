@@ -10,6 +10,7 @@ import { createConversationService } from "../services/conversation-service.js";
 import { createCustomToolActionService } from "../services/custom-tool-action-service.js";
 import { createCustomToolService } from "../services/custom-tool-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
+import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskService } from "../services/task-service.js";
 
 const paramsSchema = z.object({
@@ -46,9 +47,19 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
   });
   const taskService =
     context.taskService ?? createTaskService({ db: context.database.db, config: context.config });
+  const taskContextAttachmentService = createTaskContextAttachmentService({
+    config: context.config,
+    taskService,
+  });
   const taskExecutionService =
     context.taskExecutionService ??
-    createTaskExecutionService({ taskService, conversationService, logger: context.logger });
+    createTaskExecutionService({
+      db: context.database.db,
+      taskService,
+      conversationService,
+      taskContextAttachmentService,
+      logger: context.logger,
+    });
   const customToolActionService = createCustomToolActionService({
     customToolService,
     agentService,

@@ -52,7 +52,6 @@ describe("createTaskPermissionService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Permissioned task",
-        triggerMode: "manual",
       });
 
       const effective = await permissionService.compute(task);
@@ -96,7 +95,6 @@ describe("createTaskPermissionService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Restricted outcome task",
-        triggerMode: "manual",
       });
 
       const effective = await permissionService.compute(task);

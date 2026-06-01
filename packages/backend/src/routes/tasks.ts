@@ -4,17 +4,35 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import {
   activeTaskRunListSchema,
   cancelTaskRunInputSchema,
+  createTaskTemplateInputSchema,
   createTaskInputSchema,
+  createTaskFeedbackInputSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
+  queueTaskInputSchema,
+  taskQueuePreviewInputSchema,
+  taskQueuePreviewSchema,
+  taskFeedbackThreadListSchema,
+  taskFeedbackThreadSchema,
   taskListSchema,
   taskRunListSchema,
   taskRunSchema,
   taskRunSessionInspectionSchema,
   taskSchedulerStateListSchema,
   taskSchema,
-  triggerTaskInputSchema,
+  taskSubtaskInputSchema,
+  taskSubtaskListSchema,
+  taskSubtaskProgressListSchema,
+  taskSubtaskSchema,
+  taskTemplateListSchema,
+  taskTemplateRunNowInputSchema,
+  taskTemplateSchema,
+  updateTaskContextInputSchema,
   updateTaskInputSchema,
+  updateTaskTemplateInputSchema,
+  updateTaskSubtaskInputSchema,
+  uploadTaskContextAttachmentInputSchema,
+  uploadTaskContextAttachmentResponseSchema,
 } from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
@@ -22,6 +40,7 @@ import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { NotFoundError } from "../lib/api-error.js";
 import { createConversationService } from "../services/conversation-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
+import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
 import { createTaskService } from "../services/task-service.js";
 
@@ -31,6 +50,10 @@ const taskIdParamsSchema = z.object({
 
 const taskRunParamsSchema = taskIdParamsSchema.extend({
   runId: z.string().min(1),
+});
+
+const taskSubtaskParamsSchema = taskIdParamsSchema.extend({
+  subtaskId: z.string().min(1),
 });
 
 export function registerTaskRoutes(server: AppServer, context: RuntimeContext): void {
@@ -44,14 +67,20 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     config: context.config,
     opencodeService: context.opencodeService,
   });
+  const taskContextAttachmentService = createTaskContextAttachmentService({
+    config: context.config,
+    taskService: service,
+  });
   const fallbackTaskSchedulerServiceRef: {
     current?: ReturnType<typeof createTaskSchedulerService>;
   } = {};
   const executionService =
     context.taskExecutionService ??
     createTaskExecutionService({
+      db: context.database.db,
       taskService: service,
       conversationService,
+      taskContextAttachmentService,
       logger: context.logger,
       onRunTerminal: (run) => fallbackTaskSchedulerServiceRef.current?.handleRunTerminal(run),
     });
@@ -114,6 +143,169 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     async (request) => service.list(request.query),
   );
 
+  app.get(
+    "/api/tasks/archive",
+    {
+      schema: {
+        response: {
+          200: taskListSchema,
+        },
+      },
+    },
+    async () => service.listArchived(),
+  );
+
+  app.get(
+    "/api/tasks/templates",
+    {
+      schema: {
+        response: {
+          200: taskTemplateListSchema,
+        },
+      },
+    },
+    async () => service.listTemplates(),
+  );
+
+  app.post(
+    "/api/tasks/templates",
+    {
+      schema: {
+        body: createTaskTemplateInputSchema,
+        response: {
+          201: taskTemplateSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      reply.code(201);
+      return service.createTemplate(request.body);
+    },
+  );
+
+  app.get(
+    "/api/tasks/templates/:id",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskTemplateSchema,
+        },
+      },
+    },
+    async (request) => {
+      const template = await service.getTemplate(request.params.id);
+
+      if (!template) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      return template;
+    },
+  );
+
+  app.patch(
+    "/api/tasks/templates/:id",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: updateTaskTemplateInputSchema,
+        response: {
+          200: taskTemplateSchema,
+        },
+      },
+    },
+    async (request) => {
+      const template = await service.updateTemplate(request.params.id, request.body);
+
+      if (!template) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      return template;
+    },
+  );
+
+  app.get(
+    "/api/tasks/templates/:id/tasks",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskListSchema,
+        },
+      },
+    },
+    async (request) => service.listTemplateTasks(request.params.id),
+  );
+
+  app.post(
+    "/api/tasks/templates/:id/tasks",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          201: taskSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const task = await service.createTaskFromTemplate(request.params.id, {
+        triggerSource: "template",
+      });
+
+      if (!task) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      reply.code(201);
+      return task;
+    },
+  );
+
+  app.post(
+    "/api/tasks/templates/:id/run-now",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: taskTemplateRunNowInputSchema,
+        response: {
+          200: taskRunSchema,
+        },
+      },
+    },
+    async (request) => {
+      let task = await service.createTaskFromTemplate(request.params.id, {
+        triggerSource: "template",
+        context: request.body.context,
+      });
+
+      if (!task) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      const createdTask = task;
+      if (request.body.contextAttachmentUploads.length > 0) {
+        const attachments = await Promise.all(
+          request.body.contextAttachmentUploads.map((upload) =>
+            taskContextAttachmentService.storeForTask(createdTask.id, upload),
+          ),
+        );
+        task =
+          (await service.updateContext(task.id, {
+            ...task.context,
+            attachments: [...task.context.attachments, ...attachments],
+          })) ?? task;
+      }
+
+      return executionService.queue(task.id, {
+        triggerSource: "template",
+        context: request.body.context,
+        metadata: request.body.metadata,
+      });
+    },
+  );
+
   app.post(
     "/api/tasks",
     {
@@ -174,6 +366,46 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   );
 
   app.post(
+    "/api/tasks/:id/context/attachments",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: uploadTaskContextAttachmentInputSchema,
+        response: {
+          201: uploadTaskContextAttachmentResponseSchema,
+        },
+      },
+      bodyLimit: 14 * 1024 * 1024,
+    },
+    async (request, reply) => {
+      reply.code(201);
+      return taskContextAttachmentService.upload(request.params.id, request.body);
+    },
+  );
+
+  app.patch(
+    "/api/tasks/:id/context",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: updateTaskContextInputSchema,
+        response: {
+          200: taskSchema,
+        },
+      },
+    },
+    async (request) => {
+      const task = await service.updateContext(request.params.id, request.body);
+
+      if (!task) {
+        throw new NotFoundError("Task not found.");
+      }
+
+      return task;
+    },
+  );
+
+  app.post(
     "/api/tasks/:id/duplicate",
     {
       schema: {
@@ -217,6 +449,27 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   );
 
   app.post(
+    "/api/tasks/:id/accept",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskSchema,
+        },
+      },
+    },
+    async (request) => {
+      const task = await service.acceptTask(request.params.id);
+
+      if (!task) {
+        throw new NotFoundError("Task not found.");
+      }
+
+      return task;
+    },
+  );
+
+  app.post(
     "/api/tasks/:id/restore",
     {
       schema: {
@@ -234,6 +487,92 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       }
 
       return task;
+    },
+  );
+
+  app.get(
+    "/api/tasks/:id/feedback",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskFeedbackThreadListSchema,
+        },
+      },
+    },
+    async (request) => service.listFeedback(request.params.id),
+  );
+
+  app.post(
+    "/api/tasks/:id/feedback",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: createTaskFeedbackInputSchema,
+        response: {
+          201: taskFeedbackThreadSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      reply.code(201);
+      return service.createFeedback(request.params.id, request.body);
+    },
+  );
+
+  app.get(
+    "/api/tasks/:id/subtasks",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskSubtaskListSchema,
+        },
+      },
+    },
+    async (request) => service.listSubtasks(request.params.id),
+  );
+
+  app.post(
+    "/api/tasks/:id/subtasks",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: taskSubtaskInputSchema,
+        response: {
+          201: taskSubtaskSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      reply.code(201);
+      return service.createSubtask(request.params.id, request.body);
+    },
+  );
+
+  app.patch(
+    "/api/tasks/:id/subtasks/:subtaskId",
+    {
+      schema: {
+        params: taskSubtaskParamsSchema,
+        body: updateTaskSubtaskInputSchema,
+        response: {
+          200: taskSubtaskSchema,
+        },
+      },
+    },
+    async (request) => {
+      const subtask = await service.updateSubtask(
+        request.params.id,
+        request.params.subtaskId,
+        request.body,
+      );
+
+      if (!subtask) {
+        throw new NotFoundError("Task subtask not found.");
+      }
+
+      return subtask;
     },
   );
 
@@ -287,14 +626,38 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       },
     },
     async (request, reply) => {
+      const task = await service.get(request.params.id, { includeArchived: true });
       const deleted = await service.delete(request.params.id);
 
       if (!deleted) {
         throw new NotFoundError("Task not found.");
       }
 
+      if (task && task.templateId !== task.id) {
+        await taskContextAttachmentService.removeForTask(task);
+      }
+
       reply.code(204);
     },
+  );
+
+  app.get(
+    "/api/tasks/subtask-progress",
+    {
+      schema: {
+        querystring: z.object({ taskIds: z.string().optional().default("") }),
+        response: {
+          200: taskSubtaskProgressListSchema,
+        },
+      },
+    },
+    async (request) =>
+      service.listSubtaskProgress(
+        request.query.taskIds
+          .split(",")
+          .map((taskId) => taskId.trim())
+          .filter(Boolean),
+      ),
   );
 
   app.get(
@@ -312,17 +675,31 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   );
 
   app.post(
-    "/api/tasks/:id/trigger",
+    "/api/tasks/:id/queue/preview",
     {
       schema: {
         params: taskIdParamsSchema,
-        body: triggerTaskInputSchema,
+        body: taskQueuePreviewInputSchema,
+        response: {
+          200: taskQueuePreviewSchema,
+        },
+      },
+    },
+    async (request) => executionService.preview(request.params.id, request.body),
+  );
+
+  app.post(
+    "/api/tasks/:id/queue",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: queueTaskInputSchema.omit({ taskId: true }),
         response: {
           200: taskRunSchema,
         },
       },
     },
-    async (request) => executionService.trigger(request.params.id, request.body),
+    async (request) => executionService.queue(request.params.id, request.body),
   );
 
   app.get(

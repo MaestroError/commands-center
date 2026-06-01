@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   abortConversation,
+  acceptTask,
+  cancelTaskRun,
   cancelLiveRequest,
   changeOwnerPassword,
   claimWorkspace,
@@ -11,6 +13,8 @@ import {
   connectTerminalWebSocket,
   connectConversationEvents,
   connectWorkspaceEvents,
+  createTaskFromTemplate,
+  createTaskTemplate,
   deleteConversation,
   deleteAgentCustomTool,
   deleteCustomTool,
@@ -18,17 +22,24 @@ import {
   deleteTask,
   deleteWorkspaceSkill,
   type FileSaveConflictError,
+  getTaskTemplate,
   getWorkspaceTree,
+  listTaskSubtaskProgress,
+  listTaskTemplateTasks,
+  loginOwner,
   listTerminalSessions,
   logoutOwner,
   readApiError,
+  previewTaskQueue,
   removeMcpAuth,
   resizeTerminalSession,
+  runTaskTemplateNow,
   saveFileManagerFileContent,
   searchWorkspaceFiles,
   sendCommand,
   setSecret,
   summarizeConversation,
+  updateTaskTemplate,
   uploadWorkspaceSkill,
   type WorkspaceSkillUploadRenameError,
 } from "./api";
@@ -163,6 +174,238 @@ describe("deleteConversation", () => {
   });
 });
 
+describe("task actions", () => {
+  it("accepts a task through the task accept endpoint", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse(makeTaskPayload({ status: "done" })));
+
+    await expect(acceptTask("task-1")).resolves.toMatchObject({ id: "task-1", status: "done" });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/accept", { method: "POST" });
+  });
+
+  it("cancels a task run with a reason", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse(makeTaskRunPayload({ status: "cancelled" })));
+
+    await expect(cancelTaskRun("task-1", "run-1", { reason: "Stop" })).resolves.toMatchObject({
+      id: "run-1",
+      status: "cancelled",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: "Stop" }),
+    });
+  });
+
+  it("creates a recurring task template", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse(makeTaskTemplatePayload()));
+
+    await expect(
+      createTaskTemplate({
+        defaultAgentId: "agent-1",
+        title: "Weekly release notes",
+        description: "Draft notes.",
+        todos: [{ content: "Read changelog" }],
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-01-01T00:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
+        },
+        enabled: true,
+      }),
+    ).resolves.toMatchObject({ id: "template-1", title: "Weekly release notes" });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/templates", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        defaultAgentId: "agent-1",
+        title: "Weekly release notes",
+        description: "Draft notes.",
+        todos: [{ content: "Read changelog", status: "pending" }],
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-01-01T00:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
+        },
+        enabled: true,
+      }),
+    });
+  });
+
+  it("loads generated tasks for a template", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        makeJsonResponse([makeTaskPayload({ sourceTemplateId: "template-1" })]),
+      );
+
+    await expect(listTaskTemplateTasks("template-1")).resolves.toHaveLength(1);
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/templates/template-1/tasks", {
+      method: "GET",
+    });
+  });
+
+  it("creates a normal task from a template", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse(makeTaskPayload({ sourceTemplateId: "template-1" })));
+
+    await expect(createTaskFromTemplate("template-1")).resolves.toMatchObject({
+      id: "task-1",
+      sourceTemplateId: "template-1",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/templates/template-1/tasks", {
+      method: "POST",
+    });
+  });
+
+  it("creates a non-repeating task template", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse(makeTaskTemplatePayload({ recurrence: undefined })));
+
+    await expect(
+      createTaskTemplate({
+        defaultAgentId: "agent-1",
+        title: "Reusable release notes",
+        description: "Draft notes.",
+        todos: [],
+        enabled: true,
+      }),
+    ).resolves.toMatchObject({ id: "template-1" });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/templates", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        defaultAgentId: "agent-1",
+        title: "Reusable release notes",
+        description: "Draft notes.",
+        todos: [],
+        enabled: true,
+      }),
+    });
+  });
+
+  it("runs a template immediately", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse(makeTaskRunPayload({ triggerSource: "template" })));
+
+    await expect(runTaskTemplateNow("template-1")).resolves.toMatchObject({
+      id: "run-1",
+      taskId: "task-1",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/templates/template-1/run-now", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contextAttachmentUploads: [] }),
+    });
+  });
+
+  it("loads a task template by id", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse(makeTaskTemplatePayload()));
+
+    await expect(getTaskTemplate("template-1")).resolves.toMatchObject({ id: "template-1" });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/templates/template-1", { method: "GET" });
+  });
+
+  it("updates a task template", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        makeJsonResponse(
+          makeTaskTemplatePayload({ title: "Updated template", description: "Updated prompt." }),
+        ),
+      );
+
+    const result = await updateTaskTemplate("template-1", {
+      title: "Updated template",
+      description: "Updated prompt.",
+    });
+
+    expect(result.title).toBe("Updated template");
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/templates/template-1", {
+      method: "PATCH",
+      body: JSON.stringify({
+        title: "Updated template",
+        description: "Updated prompt.",
+        todos: [],
+      }),
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  it("loads subtask progress for board cards", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse([
+        {
+          taskId: "task-1",
+          total: 2,
+          completed: 1,
+          active: 1,
+          review: 0,
+          subtasks: [{ id: "subtask-1", description: "Check docs.", status: "done" }],
+        },
+      ]),
+    );
+
+    await expect(listTaskSubtaskProgress(["task-1", "task-2"])).resolves.toEqual([
+      {
+        taskId: "task-1",
+        total: 2,
+        completed: 1,
+        active: 1,
+        review: 0,
+        subtasks: [{ id: "subtask-1", description: "Check docs.", status: "done" }],
+      },
+    ]);
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/subtask-progress?taskIds=task-1%2Ctask-2", {
+      method: "GET",
+    });
+  });
+
+  it("previews a task queue request with a subtask", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse({
+        taskId: "task-1",
+        runAgentId: "agent-2",
+        subtask: makeTaskSubtaskPayload({ agentId: "agent-2" }),
+        renderedPrompt: "Task prompt",
+        renderedContext: { feedback: { body: "Retest" } },
+      }),
+    );
+
+    await expect(previewTaskQueue("task-1", { subtaskId: "subtask-1" })).resolves.toMatchObject({
+      taskId: "task-1",
+      runAgentId: "agent-2",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/queue/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ subtaskId: "subtask-1", triggerSource: "manual" }),
+    });
+  });
+});
+
 describe("sendCommand", () => {
   it("sends arguments as an empty string when args is undefined", async () => {
     const fetchSpy = vi
@@ -248,6 +491,21 @@ describe("readApiError", () => {
 
   it("falls back to status text when message is missing", () => {
     expect(readApiError({ error: {} }, 500, "Server Error")).toBe("Server Error");
+  });
+});
+
+describe("JSON response handling", () => {
+  it("throws a helpful error when login receives the app shell HTML", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response('<!doctype html><html><body><div id="root"></div></body></html>', {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+    );
+
+    await expect(loginOwner({ password: "owner-password", rememberBrowser: true })).rejects.toThrow(
+      "Unexpected HTML response from /api/auth/login. The app shell was returned instead of the API response.",
+    );
   });
 });
 
@@ -631,3 +889,68 @@ describe("additional request wrapper coverage", () => {
     );
   });
 });
+
+function makeTaskPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "task-1",
+    agentId: "agent-1",
+    title: "Ship release",
+    description: "Prepare release notes.",
+    todos: [],
+    status: "backlog",
+    enabled: true,
+    archived: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeTaskRunPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "run-1",
+    taskId: "task-1",
+    agentId: "agent-1",
+    status: "running",
+    triggerSource: "manual",
+    renderedPrompt: "Task: Ship release",
+    artifacts: [],
+    needsHumanReview: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeTaskSubtaskPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "subtask-1",
+    taskId: "task-1",
+    feedbackId: "feedback-1",
+    agentId: "agent-1",
+    description: "Retest the release flow.",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeTaskTemplatePayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "template-1",
+    defaultAgentId: "agent-1",
+    title: "Weekly release notes",
+    description: "Draft notes.",
+    todos: [],
+    recurrence: {
+      mode: "recurring",
+      anchorAt: "2026-01-01T00:00:00.000Z",
+      timezone: "UTC",
+      repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
+    },
+    enabled: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}

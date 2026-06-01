@@ -3,45 +3,90 @@ import { z } from "zod";
 
 import {
   createTaskInputSchema,
+  appendTaskContextInputSchema,
+  createTaskTemplateInputSchema,
   createTaskRunInputSchema,
   addTaskRunArtifactInputSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
   markTaskRunNeedsReviewInputSchema,
+  queueTaskInputSchema,
+  recurringTaskScheduleSchema,
   setTaskRunResultInputSchema,
+  createTaskFeedbackInputSchema,
+  taskFeedbackThreadListSchema,
+  taskFeedbackThreadSchema,
+  taskContextInputSchema,
+  taskContextSchema,
   taskListSchema,
   taskPermissionProfileSchema,
   taskRunArtifactSchema,
   taskRunListSchema,
   taskRunSchema,
-  taskScheduleSchema,
   taskSchema,
+  taskSubtaskInputSchema,
+  taskSubtaskListSchema,
+  taskSubtaskProgressListSchema,
+  taskSubtaskSchema,
+  taskTemplateListSchema,
+  taskTemplateSchema,
   taskTodoInputSchema,
   taskTodoSchema,
   updateTaskInputSchema,
+  updateTaskTemplateInputSchema,
   updateTaskRunInputSchema,
-  type CreateTaskInput,
+  updateTaskSubtaskInputSchema,
+  type AppendTaskContextInput,
+  type CreateTaskTemplateInput,
   type CreateTaskRunInput,
   type TaskRunArtifact,
   type ListTaskRunsQuery,
   type ListTasksQuery,
+  type QueueTaskInput,
   type Task,
+  type TaskContext,
+  type TaskFeedbackThread,
   type TaskRun,
   type TaskRunStatus,
-  type TaskSchedule,
+  type TaskSubtask,
+  type TaskSubtaskDerivedStatus,
+  type TaskSubtaskProgress,
+  type TaskTemplate,
   type TaskStatus,
   type TaskTodo,
-  type UpdateTaskInput,
+  type UpdateTaskTemplateInput,
   type UpdateTaskRunInput,
+  type UpdateTaskSubtaskInput,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../db/client.js";
 import { createId, now } from "../db/ids.js";
-import { task_runs, task_templates, tasks } from "../db/schema/index.js";
+import {
+  task_feedback,
+  task_runs,
+  task_subtasks,
+  task_templates,
+  tasks,
+} from "../db/schema/index.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 
 export type TaskService = ReturnType<typeof createTaskService>;
+
+type QueueTaskOptions = QueueTaskInput & {
+  id?: string;
+  context?: TaskContext;
+  renderedPrompt?: string;
+  renderedContext?: Record<string, unknown>;
+  effectivePermissions?: CreateTaskRunInput["effectivePermissions"];
+};
+
+type CreateTaskFromTemplateInput = {
+  occurrenceAt?: string;
+  scheduledFor?: string;
+  triggerSource?: TaskRun["triggerSource"];
+  context?: TaskContext;
+};
 
 export function createTaskService(options: { db: AppDb; config: RuntimeConfig }) {
   return {
@@ -59,10 +104,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
             filters.push(operators.eq(table.status, parsed.status));
           }
 
-          if (parsed.triggerMode) {
-            filters.push(operators.eq(table.trigger_mode, parsed.triggerMode));
-          }
-
           if (parsed.agentId) {
             filters.push(operators.eq(table.agent_id, parsed.agentId));
           }
@@ -71,119 +112,158 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         },
         orderBy: (table, operators) => [operators.desc(table.updated_at)],
       });
-      const templateRows = await options.db.query.task_templates.findMany({
-        where: (table, operators) => {
-          const filters = [operators.isNull(table.deleted_at)];
-
-          if (!parsed.includeArchived) {
-            filters.push(operators.eq(table.archived, false));
-          }
-
-          if (parsed.status) {
-            filters.push(operators.eq(table.status, parsed.status));
-          }
-
-          if (parsed.triggerMode) {
-            filters.push(operators.eq(table.trigger_mode, parsed.triggerMode));
-          }
-
-          if (parsed.agentId) {
-            filters.push(operators.eq(table.agent_id, parsed.agentId));
-          }
-
-          return operators.and(...filters);
-        },
-        orderBy: (table, operators) => [operators.desc(table.updated_at)],
-      });
-
-      return taskListSchema.parse(
-        [...rows.map(mapTask), ...templateRows.map(mapTemplateAsTask)].sort(
-          (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
-        ),
-      );
+      return taskListSchema.parse(rows.map(mapTask));
     },
 
-    async get(id: string): Promise<Task | undefined> {
-      const row = await getTaskRow(id);
+    async get(id: string, getOptions?: { includeArchived?: boolean }): Promise<Task | undefined> {
+      const row = await getTaskRow(id, getOptions);
       if (row) {
         return mapTask(row);
       }
 
-      const template = await getTemplateRow(id);
+      const template = await getTemplateRow(id, getOptions);
       return template ? mapTemplateAsTask(template) : undefined;
     },
 
-    async create(input: CreateTaskInput): Promise<Task> {
+    async listArchived(): Promise<Task[]> {
+      return this.list({ includeArchived: true, status: "archived" });
+    },
+
+    async listTemplates(): Promise<TaskTemplate[]> {
+      const rows = await options.db.query.task_templates.findMany({
+        where: (table, operators) => operators.isNull(table.deleted_at),
+        orderBy: (table, operators) => [operators.desc(table.updated_at)],
+      });
+
+      return taskTemplateListSchema.parse(rows.map(mapTaskTemplate));
+    },
+
+    async getTemplate(id: string): Promise<TaskTemplate | undefined> {
+      const row = await getTemplateRow(id);
+      return row ? mapTaskTemplate(row) : undefined;
+    },
+
+    async createTemplate(input: CreateTaskTemplateInput): Promise<TaskTemplate> {
+      const parsed = createTaskTemplateInputSchema.parse(input);
+      await requireActiveAgent(parsed.defaultAgentId);
+      await enforceTaskLimit();
+
+      const timestamp = now();
+      const todos = normalizeTodos(parsed.todos, timestamp);
+      const enabled = parsed.enabled ?? true;
+      const [row] = await options.db
+        .insert(task_templates)
+        .values({
+          id: createId(),
+          agent_id: parsed.defaultAgentId,
+          default_agent_id: parsed.defaultAgentId,
+          title: parsed.title,
+          description: parsed.description,
+          todos_json: JSON.stringify(todos),
+          status: enabled ? "enabled" : "disabled",
+          recurrence_json: parsed.recurrence ? JSON.stringify(parsed.recurrence) : null,
+          permission_profile_json: stringifyOptional(parsed.permissionProfile),
+          enabled,
+          archived: false,
+          latest_final_message: null,
+          latest_task_id: null,
+          next_occurrence_at: parsed.recurrence ? new Date(parsed.recurrence.anchorAt) : null,
+          last_generated_occurrence_at: null,
+          created_at: timestamp,
+          updated_at: timestamp,
+          archived_at: null,
+          deleted_at: null,
+        })
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to create task template record.");
+      }
+
+      return mapTaskTemplate(row);
+    },
+
+    async updateTemplate(
+      id: string,
+      input: UpdateTaskTemplateInput,
+    ): Promise<TaskTemplate | undefined> {
+      const parsed = updateTaskTemplateInputSchema.parse(input);
+      const existing = await getTemplateRow(id);
+
+      if (!existing) {
+        return undefined;
+      }
+
+      if (parsed.defaultAgentId) {
+        await requireActiveAgent(parsed.defaultAgentId);
+      }
+
+      const timestamp = now();
+      const todos = parsed.todos
+        ? normalizeTodos(parsed.todos, timestamp)
+        : parseTaskTodos(existing.todos_json);
+      const recurrence = parsed.recurrence ?? null;
+      const nextOccurrenceAt =
+        parsed.recurrence === undefined
+          ? existing.next_occurrence_at
+          : recurrence
+            ? new Date(recurrence.anchorAt)
+            : null;
+      const enabled = parsed.enabled ?? existing.enabled;
+
+      const [row] = await options.db
+        .update(task_templates)
+        .set({
+          agent_id: parsed.defaultAgentId ?? existing.agent_id,
+          default_agent_id: parsed.defaultAgentId ?? existing.default_agent_id,
+          title: parsed.title ?? existing.title,
+          description: parsed.description ?? existing.description,
+          todos_json: JSON.stringify(todos),
+          status: enabled ? "enabled" : "disabled",
+          recurrence_json:
+            parsed.recurrence === undefined
+              ? existing.recurrence_json
+              : recurrence
+                ? JSON.stringify(recurrence)
+                : null,
+          permission_profile_json:
+            parsed.permissionProfile === undefined
+              ? existing.permission_profile_json
+              : stringifyOptional(parsed.permissionProfile),
+          enabled,
+          next_occurrence_at: nextOccurrenceAt,
+          updated_at: timestamp,
+        })
+        .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to update task template record.");
+      }
+
+      return mapTaskTemplate(row);
+    },
+
+    async create(input: unknown): Promise<Task> {
       const parsed = createTaskInputSchema.parse(input);
       await requireActiveAgent(parsed.agentId);
       await enforceTaskLimit();
 
       const timestamp = now();
-      const triggerMode = parsed.triggerMode;
-      const schedule = normalizeSchedule(triggerMode, parsed.schedule);
       const enabled = parsed.enabled ?? parsed.status !== "draft";
       const archived = parsed.status === "archived";
       const status = normalizeTaskStatus({
         requestedStatus: parsed.status,
         enabled,
         archived,
+        scheduledAt: parsed.scheduledAt ? new Date(parsed.scheduledAt) : undefined,
       });
+      const defaultAgentId = parsed.defaultAgentId ?? parsed.agentId;
       const todos = normalizeTodos(parsed.todos, timestamp);
+      const context = normalizeTaskContext(parsed.context);
 
-      if (triggerMode !== "manual") {
-        const id = createId();
-        const [row] = await options.db
-          .insert(task_templates)
-          .values({
-            id,
-            agent_id: parsed.agentId,
-            title: parsed.title,
-            description: parsed.description,
-            todos_json: JSON.stringify(todos),
-            status,
-            trigger_mode: triggerMode,
-            schedule_json: JSON.stringify(schedule),
-            permission_profile_json: stringifyOptional(parsed.permissionProfile),
-            enabled,
-            archived,
-            latest_final_message: null,
-            latest_task_id: null,
-            created_at: timestamp,
-            updated_at: timestamp,
-            archived_at: archived ? timestamp : null,
-            deleted_at: null,
-          })
-          .returning();
-
-        if (!row) {
-          throw new Error("Failed to create task template record.");
-        }
-
-        await options.db.insert(tasks).values({
-          id,
-          template_id: id,
-          agent_id: parsed.agentId,
-          title: parsed.title,
-          description: parsed.description,
-          context: "",
-          todos_json: JSON.stringify(todos),
-          status,
-          trigger_mode: triggerMode,
-          trigger_source: null,
-          schedule_json: JSON.stringify(schedule),
-          permission_profile_json: stringifyOptional(parsed.permissionProfile),
-          enabled,
-          archived,
-          latest_final_message: null,
-          scheduled_for: null,
-          due_at: null,
-          created_at: timestamp,
-          updated_at: timestamp,
-          archived_at: archived ? timestamp : null,
-          deleted_at: null,
-        });
-
-        return mapTemplateAsTask(row);
+      if (parsed.defaultAgentId) {
+        await requireActiveAgent(parsed.defaultAgentId);
       }
 
       const [row] = await options.db
@@ -192,20 +272,24 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           id: createId(),
           template_id: null,
           agent_id: parsed.agentId,
+          default_agent_id: defaultAgentId,
           title: parsed.title,
           description: parsed.description,
-          context: "",
+          context: JSON.stringify(context),
           todos_json: JSON.stringify(todos),
           status,
-          trigger_mode: triggerMode,
           trigger_source: "manual",
-          schedule_json: JSON.stringify(schedule),
           permission_profile_json: stringifyOptional(parsed.permissionProfile),
           enabled,
           archived,
           latest_final_message: null,
+          latest_run_id: null,
+          source_template_id: null,
+          source_occurrence_at: null,
+          scheduled_at: parsed.scheduledAt ? new Date(parsed.scheduledAt) : null,
           scheduled_for: null,
-          due_at: null,
+          due_at: parsed.dueAt ? new Date(parsed.dueAt) : null,
+          done_at: null,
           created_at: timestamp,
           updated_at: timestamp,
           archived_at: archived ? timestamp : null,
@@ -236,20 +320,18 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         agentId: task.agentId,
         title: `${task.title} copy`,
         description: task.description,
+        context: task.context,
         todos: task.todos.map((todo) => ({ content: todo.content, status: todo.status })),
-        triggerMode: task.triggerMode,
-        schedule: task.schedule,
         permissionProfile: task.permissionProfile,
         enabled: false,
       });
     },
 
-    async update(id: string, input: UpdateTaskInput): Promise<Task | undefined> {
+    async update(id: string, input: unknown): Promise<Task | undefined> {
       const parsed = updateTaskInputSchema.parse(input);
       const existing = await getTaskRow(id);
-      const existingTemplate = existing ? undefined : await getTemplateRow(id);
 
-      if (!existing && !existingTemplate) {
+      if (!existing) {
         return undefined;
       }
 
@@ -257,111 +339,66 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         await requireActiveAgent(parsed.agentId);
       }
 
+      if (parsed.defaultAgentId) {
+        await requireActiveAgent(parsed.defaultAgentId);
+      }
+
       const timestamp = now();
-      const source = existing ?? existingTemplate!;
-      const triggerMode = parsed.triggerMode ?? source.trigger_mode;
-      const schedule = normalizeSchedule(
-        triggerMode,
-        parsed.schedule ?? parseTaskSchedule(source.schedule_json),
-      );
-      const archived = parsed.status === "archived" ? true : source.archived;
+      const archived = parsed.status === "archived" ? true : existing.archived;
       const enabled =
-        parsed.enabled ?? (parsed.status ? parsed.status === "enabled" : source.enabled);
+        parsed.enabled ??
+        (parsed.status === "enabled"
+          ? true
+          : parsed.status === "disabled" || parsed.status === "draft"
+            ? false
+            : existing.enabled);
       const status = normalizeTaskStatus({
         requestedStatus: parsed.status,
         enabled,
         archived,
-        fallbackStatus: source.status as TaskStatus,
+        fallbackStatus: existing.status as TaskStatus,
+        scheduledAt:
+          parsed.scheduledAt === undefined
+            ? existing.scheduled_at
+            : parsed.scheduledAt
+              ? new Date(parsed.scheduledAt)
+              : null,
       });
       const todos = parsed.todos
         ? normalizeTodos(parsed.todos, timestamp)
-        : parseTaskTodos(source.todos_json);
-
-      if (existingTemplate) {
-        const nextAgentId = parsed.agentId ?? existingTemplate.agent_id;
-        const nextTitle = parsed.title ?? existingTemplate.title;
-        const nextDescription = parsed.description ?? existingTemplate.description;
-        const nextPermissionProfileJson =
-          parsed.permissionProfile === undefined
-            ? existingTemplate.permission_profile_json
-            : stringifyOptional(parsed.permissionProfile);
-        const nextArchivedAt = archived ? (existingTemplate.archived_at ?? timestamp) : null;
-
-        return Promise.resolve(
-          options.db.transaction((tx) => {
-            const row = tx
-              .update(task_templates)
-              .set({
-                agent_id: nextAgentId,
-                title: nextTitle,
-                description: nextDescription,
-                todos_json: JSON.stringify(todos),
-                status,
-                trigger_mode: triggerMode,
-                schedule_json: JSON.stringify(schedule),
-                permission_profile_json: nextPermissionProfileJson,
-                enabled,
-                archived,
-                updated_at: timestamp,
-                archived_at: nextArchivedAt,
-              })
-              .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
-              .returning()
-              .get();
-
-            if (!row) {
-              throw new Error("Failed to update task template record.");
-            }
-
-            const proxy = tx
-              .update(tasks)
-              .set({
-                agent_id: nextAgentId,
-                title: nextTitle,
-                description: nextDescription,
-                todos_json: JSON.stringify(todos),
-                status,
-                trigger_mode: triggerMode,
-                schedule_json: JSON.stringify(schedule),
-                permission_profile_json: nextPermissionProfileJson,
-                enabled,
-                archived,
-                updated_at: timestamp,
-                archived_at: nextArchivedAt,
-              })
-              .where(and(eq(tasks.id, id), eq(tasks.template_id, id), isNull(tasks.deleted_at)))
-              .returning()
-              .get();
-
-            if (!proxy) {
-              throw new Error("Failed to update task template proxy record.");
-            }
-
-            return mapTemplateAsTask(row);
-          }),
-        );
-      }
-
-      if (!existing) {
-        throw new Error("Task row disappeared during update.");
-      }
+        : parseTaskTodos(existing.todos_json);
 
       const [row] = await options.db
         .update(tasks)
         .set({
           agent_id: parsed.agentId ?? existing.agent_id,
+          default_agent_id: parsed.defaultAgentId ?? existing.default_agent_id,
           title: parsed.title ?? existing.title,
           description: parsed.description ?? existing.description,
+          context:
+            parsed.context === undefined
+              ? existing.context
+              : JSON.stringify(normalizeTaskContext(parsed.context)),
           todos_json: JSON.stringify(todos),
           status,
-          trigger_mode: triggerMode,
-          schedule_json: JSON.stringify(schedule),
           permission_profile_json:
             parsed.permissionProfile === undefined
               ? existing.permission_profile_json
               : stringifyOptional(parsed.permissionProfile),
           enabled,
           archived,
+          scheduled_at:
+            parsed.scheduledAt === undefined
+              ? existing.scheduled_at
+              : parsed.scheduledAt
+                ? new Date(parsed.scheduledAt)
+                : null,
+          due_at:
+            parsed.dueAt === undefined
+              ? existing.due_at
+              : parsed.dueAt
+                ? new Date(parsed.dueAt)
+                : null,
           updated_at: timestamp,
           archived_at: archived ? (existing.archived_at ?? timestamp) : null,
         })
@@ -375,38 +412,40 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return mapTask(row);
     },
 
+    async updateContext(id: string, input: TaskContext): Promise<Task | undefined> {
+      const context = normalizeTaskContext(input);
+      const [row] = await options.db
+        .update(tasks)
+        .set({
+          context: JSON.stringify(context),
+          updated_at: now(),
+        })
+        .where(and(eq(tasks.id, id), isNull(tasks.deleted_at), isNull(tasks.template_id)))
+        .returning();
+
+      return row ? mapTask(row) : undefined;
+    },
+
+    async appendContext(id: string, input: AppendTaskContextInput): Promise<Task | undefined> {
+      const parsed = appendTaskContextInputSchema.parse(input);
+      const task = await this.get(id);
+
+      if (!task || task.templateId === task.id) {
+        return undefined;
+      }
+
+      const text = [task.context.text, parsed.text].filter(Boolean).join("\n\n");
+      return this.updateContext(id, { ...task.context, text });
+    },
+
     async archive(id: string): Promise<Task | undefined> {
       const existing = await getTaskRow(id);
-      const existingTemplate = existing ? undefined : await getTemplateRow(id);
 
-      if (!existing && !existingTemplate) {
+      if (!existing) {
         return undefined;
       }
 
       const timestamp = now();
-
-      if (existingTemplate) {
-        const [row] = await options.db
-          .update(task_templates)
-          .set({
-            status: "archived",
-            archived: true,
-            updated_at: timestamp,
-            archived_at: existingTemplate.archived_at ?? timestamp,
-          })
-          .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
-          .returning();
-
-        if (!row) {
-          throw new Error("Failed to archive task template record.");
-        }
-
-        return mapTemplateAsTask(row);
-      }
-
-      if (!existing) {
-        throw new Error("Task row disappeared during archive.");
-      }
 
       const [row] = await options.db
         .update(tasks)
@@ -426,45 +465,23 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return mapTask(row);
     },
 
+    archiveTask(id: string): Promise<Task | undefined> {
+      return this.archive(id);
+    },
+
     async restore(id: string): Promise<Task | undefined> {
       const existing = await getTaskRow(id, { includeArchived: true });
-      const existingTemplate = existing
-        ? undefined
-        : await getTemplateRow(id, { includeArchived: true });
 
-      if (!existing && !existingTemplate) {
+      if (!existing) {
         return undefined;
       }
 
       const timestamp = now();
 
-      if (existingTemplate) {
-        const [row] = await options.db
-          .update(task_templates)
-          .set({
-            status: existingTemplate.enabled ? "enabled" : "disabled",
-            archived: false,
-            updated_at: timestamp,
-            archived_at: null,
-          })
-          .where(and(eq(task_templates.id, id), isNull(task_templates.deleted_at)))
-          .returning();
-
-        if (!row) {
-          throw new Error("Failed to restore task template record.");
-        }
-
-        return mapTemplateAsTask(row);
-      }
-
-      if (!existing) {
-        throw new Error("Task row disappeared during restore.");
-      }
-
       const [row] = await options.db
         .update(tasks)
         .set({
-          status: existing.enabled ? "enabled" : "disabled",
+          status: existing.enabled ? (existing.scheduled_at ? "scheduled" : "backlog") : "disabled",
           archived: false,
           updated_at: timestamp,
           archived_at: null,
@@ -477,6 +494,266 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       }
 
       return mapTask(row);
+    },
+
+    restoreTask(id: string): Promise<Task | undefined> {
+      return this.restore(id);
+    },
+
+    async acceptTask(id: string): Promise<Task | undefined> {
+      const existing = await getTaskRow(id);
+
+      if (!existing) {
+        return undefined;
+      }
+
+      if (existing.archived) {
+        throw new BadRequestError("Archived tasks cannot be accepted.");
+      }
+
+      const timestamp = now();
+      const [row] = await options.db
+        .update(tasks)
+        .set({
+          status: "done",
+          done_at: timestamp,
+          updated_at: timestamp,
+        })
+        .where(and(eq(tasks.id, id), isNull(tasks.deleted_at)))
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to accept task record.");
+      }
+
+      return mapTask(row);
+    },
+
+    async listFeedback(taskId: string): Promise<TaskFeedbackThread[]> {
+      await requireTask(taskId, { includeArchived: true });
+      const rows = await options.db.query.task_feedback.findMany({
+        where: (table, operators) =>
+          operators.and(operators.eq(table.task_id, taskId), operators.isNull(table.deleted_at)),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+      const subtasks = await this.listSubtasks(taskId);
+      const runs = await this.listRuns(taskId);
+
+      return taskFeedbackThreadListSchema.parse(
+        rows.map((row) =>
+          taskFeedbackThreadSchema.parse({
+            id: row.id,
+            taskId: row.task_id,
+            body: row.body,
+            targetAgentIds: subtasks
+              .filter((subtask) => subtask.feedbackId === row.id)
+              .map((subtask) => subtask.agentId),
+            subtasks: subtasks
+              .filter((subtask) => subtask.feedbackId === row.id)
+              .map((subtask) => mapSubtaskDetail(subtask, runs)),
+            createdAt: row.created_at.toISOString(),
+          }),
+        ),
+      );
+    },
+
+    async createFeedback(taskId: string, input: unknown): Promise<TaskFeedbackThread> {
+      const task = await requireTask(taskId, { includeArchived: true });
+      const parsed = createTaskFeedbackInputSchema.parse(input);
+      const targetAgentIds =
+        parsed.mentionedAgentIds.length > 0
+          ? parsed.mentionedAgentIds
+          : [task.default_agent_id ?? task.agent_id];
+
+      await Promise.all(targetAgentIds.map((agentId) => requireActiveAgent(agentId)));
+
+      const timestamp = now();
+      const feedbackId = createId();
+      const rows = options.db.transaction((tx) => {
+        const feedback = tx
+          .insert(task_feedback)
+          .values({
+            id: feedbackId,
+            task_id: task.id,
+            body: parsed.body,
+            created_at: timestamp,
+            updated_at: timestamp,
+            deleted_at: null,
+          })
+          .returning()
+          .get();
+
+        if (!feedback) {
+          throw new Error("Failed to create task feedback record.");
+        }
+
+        return targetAgentIds.map((agentId) => {
+          const subtask = tx
+            .insert(task_subtasks)
+            .values({
+              id: createId(),
+              task_id: task.id,
+              feedback_id: feedback.id,
+              agent_id: agentId,
+              description: parsed.body,
+              created_at: timestamp,
+              updated_at: timestamp,
+              deleted_at: null,
+            })
+            .returning()
+            .get();
+
+          if (!subtask) {
+            throw new Error("Failed to create task subtask record.");
+          }
+
+          return subtask;
+        });
+      });
+
+      return taskFeedbackThreadSchema.parse({
+        id: feedbackId,
+        taskId: task.id,
+        body: parsed.body,
+        targetAgentIds,
+        subtasks: rows.map((row) => mapSubtaskDetail(mapTaskSubtask(row), [])),
+        createdAt: timestamp.toISOString(),
+      });
+    },
+
+    async listSubtasks(taskId: string): Promise<TaskSubtask[]> {
+      await requireTask(taskId, { includeArchived: true });
+      const rows = await options.db.query.task_subtasks.findMany({
+        where: (table, operators) =>
+          operators.and(operators.eq(table.task_id, taskId), operators.isNull(table.deleted_at)),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+
+      return taskSubtaskListSchema.parse(rows.map(mapTaskSubtask));
+    },
+
+    async listSubtaskProgress(taskIds: string[]): Promise<TaskSubtaskProgress[]> {
+      const uniqueTaskIds = Array.from(new Set(taskIds.filter(Boolean)));
+
+      if (uniqueTaskIds.length === 0) {
+        return [];
+      }
+
+      const [subtaskRows, runRows] = await Promise.all([
+        options.db.query.task_subtasks.findMany({
+          where: (table, operators) =>
+            operators.and(
+              operators.inArray(table.task_id, uniqueTaskIds),
+              operators.isNull(table.deleted_at),
+            ),
+          orderBy: (table, operators) => [operators.asc(table.created_at)],
+        }),
+        options.db.query.task_runs.findMany({
+          where: (table, operators) => operators.inArray(table.task_id, uniqueTaskIds),
+          orderBy: (table, operators) => [operators.desc(table.created_at)],
+        }),
+      ]);
+      const runs = runRows.map(mapTaskRun);
+
+      return taskSubtaskProgressListSchema.parse(
+        uniqueTaskIds.map((taskId) => {
+          const taskSubtasks = subtaskRows
+            .filter((subtask) => subtask.task_id === taskId)
+            .map(mapTaskSubtask);
+          const subtasks = taskSubtasks.map((subtask) => ({
+            id: subtask.id,
+            description: subtask.description,
+            status: deriveSubtaskStatus(subtask, runs),
+          }));
+          const statuses = subtasks.map((subtask) => subtask.status);
+
+          return {
+            taskId,
+            total: taskSubtasks.length,
+            completed: statuses.filter((status) => status === "done").length,
+            active: statuses.filter((status) => status === "queued" || status === "running").length,
+            review: statuses.filter((status) => status === "review").length,
+            subtasks,
+          };
+        }),
+      );
+    },
+
+    async createSubtask(taskId: string, input: unknown): Promise<TaskSubtask> {
+      await requireTask(taskId, { includeArchived: true });
+      const parsed = taskSubtaskInputSchema.parse(input);
+
+      await requireActiveAgent(parsed.agentId);
+
+      const timestamp = now();
+      const [row] = await options.db
+        .insert(task_subtasks)
+        .values({
+          id: createId(),
+          task_id: taskId,
+          feedback_id: null,
+          agent_id: parsed.agentId,
+          description: parsed.description,
+          created_at: timestamp,
+          updated_at: timestamp,
+          deleted_at: null,
+        })
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to create task subtask record.");
+      }
+
+      return mapTaskSubtask(row);
+    },
+
+    async updateSubtask(
+      taskId: string,
+      subtaskId: string,
+      input: UpdateTaskSubtaskInput,
+    ): Promise<TaskSubtask | undefined> {
+      await requireTask(taskId, { includeArchived: true });
+      const parsed = updateTaskSubtaskInputSchema.parse(input);
+
+      if (parsed.agentId) {
+        await requireActiveAgent(parsed.agentId);
+      }
+
+      const existing = await options.db.query.task_subtasks.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.id, subtaskId),
+            operators.eq(table.task_id, taskId),
+            operators.isNull(table.deleted_at),
+          ),
+      });
+
+      if (!existing) {
+        return undefined;
+      }
+
+      const timestamp = now();
+      const [row] = await options.db
+        .update(task_subtasks)
+        .set({
+          description: parsed.description ?? existing.description,
+          agent_id: parsed.agentId ?? existing.agent_id,
+          updated_at: timestamp,
+        })
+        .where(
+          and(
+            eq(task_subtasks.id, subtaskId),
+            eq(task_subtasks.task_id, taskId),
+            isNull(task_subtasks.deleted_at),
+          ),
+        )
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to update task subtask record.");
+      }
+
+      return mapTaskSubtask(row);
     },
 
     async enable(id: string): Promise<Task | undefined> {
@@ -517,8 +794,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
               return false;
             }
 
-            const proxy = tx
-              .update(tasks)
+            tx.update(tasks)
               .set({
                 enabled: false,
                 updated_at: timestamp,
@@ -527,10 +803,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
               .where(and(eq(tasks.id, id), eq(tasks.template_id, id), isNull(tasks.deleted_at)))
               .returning({ id: tasks.id })
               .get();
-
-            if (!proxy) {
-              throw new Error("Failed to delete task template proxy record.");
-            }
 
             return true;
           }),
@@ -552,7 +824,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
     async createTaskFromTemplate(
       templateId: string,
-      input: { scheduledFor?: string; triggerSource?: TaskRun["triggerSource"] } = {},
+      input: CreateTaskFromTemplateInput = {},
     ): Promise<Task | undefined> {
       const template = await getTemplateRow(templateId);
 
@@ -562,26 +834,46 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
       const timestamp = now();
       const scheduledFor = input.scheduledFor ? new Date(input.scheduledFor) : null;
+      const occurrenceAt = input.occurrenceAt
+        ? new Date(input.occurrenceAt)
+        : (scheduledFor ?? timestamp);
+      const existing = await options.db.query.tasks.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.source_template_id, template.id),
+            operators.eq(table.source_occurrence_at, occurrenceAt),
+            operators.isNull(table.deleted_at),
+          ),
+      });
+
+      if (existing) {
+        return mapTask(existing);
+      }
+
       const [row] = await options.db
         .insert(tasks)
         .values({
           id: createId(),
-          template_id: template.id,
+          template_id: null,
           agent_id: template.agent_id,
+          default_agent_id: template.default_agent_id,
           title: template.title,
           description: template.description,
-          context: "",
+          context: JSON.stringify(normalizeTaskContext(input.context)),
           todos_json: template.todos_json,
-          status: "enabled",
-          trigger_mode: "manual",
+          status: scheduledFor ? "scheduled" : "backlog",
           trigger_source: input.triggerSource ?? "scheduled",
-          schedule_json: JSON.stringify({ mode: "manual" }),
           permission_profile_json: template.permission_profile_json,
           enabled: true,
           archived: false,
           latest_final_message: null,
+          latest_run_id: null,
+          source_template_id: template.id,
+          source_occurrence_at: occurrenceAt,
+          scheduled_at: scheduledFor,
           scheduled_for: scheduledFor,
           due_at: scheduledFor,
+          done_at: null,
           created_at: timestamp,
           updated_at: timestamp,
           archived_at: null,
@@ -595,10 +887,58 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
       await options.db
         .update(task_templates)
-        .set({ latest_task_id: row.id, updated_at: timestamp })
+        .set({
+          latest_task_id: row.id,
+          last_generated_occurrence_at: occurrenceAt,
+          updated_at: timestamp,
+        })
         .where(eq(task_templates.id, template.id));
 
       return mapTask(row);
+    },
+
+    async listDueScheduledTasks(at: Date): Promise<Task[]> {
+      const rows = await options.db.query.tasks.findMany({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.status, "scheduled"),
+            operators.lte(table.scheduled_at, at),
+            operators.eq(table.archived, false),
+            operators.isNull(table.deleted_at),
+          ),
+        orderBy: (table, operators) => [operators.asc(table.scheduled_at)],
+      });
+
+      return taskListSchema.parse(rows.map(mapTask));
+    },
+
+    async listRecurringTemplates(): Promise<Task[]> {
+      const rows = await options.db.query.task_templates.findMany({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.enabled, true),
+            operators.eq(table.archived, false),
+            operators.isNotNull(table.recurrence_json),
+            operators.isNull(table.deleted_at),
+          ),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+
+      return taskListSchema.parse(rows.map(mapTemplateAsTask));
+    },
+
+    async listDoneTasksReadyToArchive(before: Date): Promise<Task[]> {
+      const rows = await options.db.query.tasks.findMany({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.status, "done"),
+            operators.eq(table.archived, false),
+            operators.lte(table.done_at, before),
+            operators.isNull(table.deleted_at),
+          ),
+      });
+
+      return taskListSchema.parse(rows.map(mapTask));
     },
 
     async listTemplateTasks(templateId: string): Promise<Task[]> {
@@ -606,8 +946,13 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const rows = await options.db.query.tasks.findMany({
         where: (table, operators) =>
           operators.and(
-            operators.eq(table.template_id, templateId),
-            operators.ne(table.id, templateId),
+            operators.or(
+              operators.and(
+                operators.eq(table.template_id, templateId),
+                operators.ne(table.id, templateId),
+              ),
+              operators.eq(table.source_template_id, templateId),
+            ),
             operators.isNull(table.deleted_at),
           ),
         orderBy: (table, operators) => [operators.desc(table.created_at)],
@@ -690,11 +1035,14 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return taskRunListSchema.parse(rows.map(mapTaskRun));
     },
 
-    async getActiveRunForTask(taskId: string): Promise<TaskRun | undefined> {
+    async getActiveRunForTask(taskId: string, subtaskId?: string): Promise<TaskRun | undefined> {
       const row = await options.db.query.task_runs.findFirst({
         where: (table, operators) =>
           operators.and(
             operators.eq(table.task_id, taskId),
+            subtaskId
+              ? operators.eq(table.subtask_id, subtaskId)
+              : operators.isNull(table.subtask_id),
             operators.inArray(table.status, ["queued", "running"]),
           ),
         orderBy: (table, operators) => [operators.desc(table.created_at)],
@@ -703,16 +1051,139 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return row ? mapTaskRun(row) : undefined;
     },
 
+    async getRunningRunForAgent(agentId: string): Promise<TaskRun | undefined> {
+      const row = await options.db.query.task_runs.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.agent_id, agentId),
+            operators.eq(table.status, "running"),
+          ),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+
+      return row ? mapTaskRun(row) : undefined;
+    },
+
+    async getNextQueuedRunForAgent(agentId: string): Promise<TaskRun | undefined> {
+      const row = await options.db.query.task_runs.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.agent_id, agentId),
+            operators.eq(table.status, "queued"),
+          ),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+
+      return row ? mapTaskRun(row) : undefined;
+    },
+
+    async tryStartQueuedRun(
+      id: string,
+      input: Omit<UpdateTaskRunInput, "status"> = {},
+    ): Promise<TaskRun | undefined> {
+      const existing = await options.db.query.task_runs.findFirst({
+        where: (table, operators) => operators.eq(table.id, id),
+      });
+
+      if (!existing || existing.status !== "queued") {
+        return undefined;
+      }
+
+      const running = await this.getRunningRunForAgent(existing.agent_id);
+
+      if (running) {
+        return undefined;
+      }
+
+      try {
+        const [row] = await options.db
+          .update(task_runs)
+          .set({
+            status: "running",
+            started_at: input.startedAt ? new Date(input.startedAt) : existing.started_at,
+            updated_at: now(),
+          })
+          .where(and(eq(task_runs.id, id), eq(task_runs.status, "queued")))
+          .returning();
+
+        return row ? mapTaskRun(row) : undefined;
+      } catch (error) {
+        if (isRunningAgentConstraintError(error)) {
+          return undefined;
+        }
+
+        throw error;
+      }
+    },
+
+    async queueTask(input: QueueTaskOptions): Promise<TaskRun> {
+      const parsed = queueTaskInputSchema.parse(input);
+      const task = await requireTask(parsed.taskId, { includeArchived: true });
+
+      if (task.archived) {
+        throw new BadRequestError("Archived tasks cannot be queued.");
+      }
+
+      if (!task.enabled || task.status === "disabled" || task.status === "draft") {
+        throw new BadRequestError("Task must be enabled before it can be queued.");
+      }
+
+      const activeRun = await this.getActiveRunForTask(task.id, parsed.subtaskId);
+
+      if (activeRun) {
+        throw new ConflictError("Task already has an active run.", { runId: activeRun.id });
+      }
+
+      const subtask = parsed.subtaskId
+        ? await options.db.query.task_subtasks.findFirst({
+            where: (table, operators) =>
+              operators.and(
+                operators.eq(table.id, parsed.subtaskId ?? ""),
+                operators.eq(table.task_id, task.id),
+                operators.isNull(table.deleted_at),
+              ),
+          })
+        : undefined;
+
+      if (parsed.subtaskId && !subtask) {
+        throw new NotFoundError("Task subtask not found.");
+      }
+
+      const run = await this.createRun({
+        id: input.id,
+        taskId: task.id,
+        subtaskId: parsed.subtaskId,
+        agentId: parsed.agentId ?? subtask?.agent_id ?? task.default_agent_id ?? task.agent_id,
+        status: "queued",
+        triggerSource: parsed.triggerSource,
+        context: input.context,
+        triggerMetadata: parsed.metadata,
+        renderedPrompt: input.renderedPrompt ?? "",
+        renderedContext: input.renderedContext,
+        effectivePermissions: input.effectivePermissions,
+      });
+      const timestamp = now();
+
+      await options.db
+        .update(tasks)
+        .set({
+          status: "queued",
+          latest_run_id: run.id,
+          updated_at: timestamp,
+        })
+        .where(and(eq(tasks.id, task.id), isNull(tasks.deleted_at)));
+
+      return run;
+    },
+
     async createRun(input: CreateTaskRunInput): Promise<TaskRun> {
       const parsed = createTaskRunInputSchema.parse(input);
-      const task = await requireTask(parsed.taskId, {
+      await requireTask(parsed.taskId, {
         includeArchived: true,
         includeTemplateProxy: true,
       });
 
-      if (task.agent_id !== parsed.agentId) {
-        throw new BadRequestError("Task run agent must match the task agent.");
-      }
+      await requireActiveAgent(parsed.agentId);
 
       const timestamp = now();
       const [row] = await options.db
@@ -720,11 +1191,14 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         .values({
           id: parsed.id ?? createId(),
           task_id: parsed.taskId,
+          subtask_id: parsed.subtaskId ?? null,
           agent_id: parsed.agentId,
           opencode_session_id: parsed.opencodeSessionId ?? null,
           status: parsed.status,
           trigger_source: parsed.triggerSource,
+          outcome: parsed.outcome ?? null,
           context_json: stringifyOptional(parsed.context),
+          trigger_metadata_json: stringifyOptional(parsed.triggerMetadata),
           rendered_prompt: parsed.renderedPrompt,
           rendered_context_json: stringifyOptional(parsed.renderedContext),
           effective_permissions_json: stringifyOptional(parsed.effectivePermissions),
@@ -766,11 +1240,17 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         .update(task_runs)
         .set({
           opencode_session_id: parsed.opencodeSessionId ?? existing.opencode_session_id,
+          subtask_id: parsed.subtaskId ?? existing.subtask_id,
           status: parsed.status ?? existing.status,
+          outcome: parsed.outcome ?? existing.outcome,
           context_json:
             parsed.context === undefined
               ? existing.context_json
               : stringifyOptional(parsed.context),
+          trigger_metadata_json:
+            parsed.triggerMetadata === undefined
+              ? existing.trigger_metadata_json
+              : stringifyOptional(parsed.triggerMetadata),
           rendered_prompt: parsed.renderedPrompt ?? existing.rendered_prompt,
           rendered_context_json:
             parsed.renderedContext === undefined
@@ -816,7 +1296,13 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       status: TaskRunStatus,
       input: Omit<UpdateTaskRunInput, "status"> = {},
     ): Promise<TaskRun | undefined> {
-      return this.updateRun(id, { ...input, status });
+      const run = await this.updateRun(id, { ...input, status });
+
+      if (run) {
+        await applyTaskStatusForTerminalRun(run);
+      }
+
+      return run;
     },
 
     async setRunResultText(
@@ -917,6 +1403,68 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
     return mapTaskRun(run);
   }
 
+  async function applyTaskStatusForTerminalRun(run: TaskRun): Promise<void> {
+    const status = run.subtaskId
+      ? await getTaskStatusAfterTerminalSubtaskRun(run)
+      : getTaskStatusAfterTerminalRun(run);
+
+    if (!status) {
+      return;
+    }
+
+    const timestamp = now();
+
+    await options.db
+      .update(tasks)
+      .set({
+        status,
+        latest_run_id: run.id,
+        ...(run.finalMessage === undefined ? {} : { latest_final_message: run.finalMessage }),
+        updated_at: timestamp,
+      })
+      .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)));
+  }
+
+  async function getTaskStatusAfterTerminalSubtaskRun(
+    run: TaskRun,
+  ): Promise<TaskStatus | undefined> {
+    const status = getTaskStatusAfterTerminalRun(run);
+
+    if (!status) {
+      return undefined;
+    }
+
+    const subtaskRows = await options.db.query.task_subtasks.findMany({
+      where: (table, operators) =>
+        operators.and(
+          operators.eq(table.task_id, run.taskId),
+          operators.isNotNull(table.feedback_id),
+          operators.isNull(table.deleted_at),
+        ),
+      orderBy: (table, operators) => [operators.asc(table.created_at)],
+    });
+
+    if (subtaskRows.length === 0) {
+      return status;
+    }
+
+    const runRows = await options.db.query.task_runs.findMany({
+      where: (table, operators) => operators.eq(table.task_id, run.taskId),
+      orderBy: (table, operators) => [operators.desc(table.created_at)],
+    });
+    const runs = runRows.map(mapTaskRun);
+    const subtaskIds = subtaskRows.map((subtask) => subtask.id);
+    const hasPending = subtaskIds.some((subtaskId) => !hasTerminalSubtaskRun(subtaskId, runs));
+
+    if (hasPending) {
+      return "queued";
+    }
+
+    return subtaskIds.some((subtaskId) => hasFailedSubtaskRun(subtaskId, runs))
+      ? "review"
+      : "ready_to_check";
+  }
+
   async function setEnabled(id: string, enabled: boolean): Promise<Task | undefined> {
     const existing = await getTaskRow(id);
     const existingTemplate = existing ? undefined : await getTemplateRow(id);
@@ -949,11 +1497,22 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return mapTemplateAsTask(row);
     }
 
+    if (!existing) {
+      return undefined;
+    }
+
     const [row] = await options.db
       .update(tasks)
       .set({
         enabled,
-        status: enabled ? "enabled" : "disabled",
+        status: enabled
+          ? normalizeTaskStatus({
+              enabled,
+              archived: existing.archived,
+              fallbackStatus: existing.status as TaskStatus,
+              scheduledAt: existing.scheduled_at,
+            })
+          : "disabled",
         updated_at: timestamp,
       })
       .where(and(eq(tasks.id, id), isNull(tasks.deleted_at)))
@@ -1049,18 +1608,11 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
   async function getTemplateRow(
     id: string,
-    getOptions?: { includeArchived?: boolean },
+    _getOptions?: { includeArchived?: boolean },
   ): Promise<typeof task_templates.$inferSelect | undefined> {
     return options.db.query.task_templates.findFirst({
-      where: (table, operators) => {
-        const filters = [operators.eq(table.id, id), operators.isNull(table.deleted_at)];
-
-        if (!getOptions?.includeArchived) {
-          filters.push(operators.eq(table.archived, false));
-        }
-
-        return operators.and(...filters);
-      },
+      where: (table, operators) =>
+        operators.and(operators.eq(table.id, id), operators.isNull(table.deleted_at)),
     });
   }
 
@@ -1068,7 +1620,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
     const rows = await options.db.query.tasks.findMany({
       where: (table, operators) =>
         operators.and(
-          operators.eq(table.template_id, templateId),
+          operators.or(
+            operators.eq(table.template_id, templateId),
+            operators.eq(table.source_template_id, templateId),
+          ),
           operators.isNull(table.deleted_at),
         ),
       columns: { id: true },
@@ -1078,29 +1633,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
   }
 }
 
-function normalizeSchedule(triggerMode: string, schedule?: TaskSchedule): TaskSchedule {
-  if (!schedule) {
-    if (triggerMode === "manual") {
-      return { mode: "manual" };
-    }
-
-    throw new BadRequestError("Scheduled tasks require a schedule definition.");
-  }
-
-  const parsed = taskScheduleSchema.parse(schedule);
-
-  if (parsed.mode !== triggerMode) {
-    throw new BadRequestError("Task trigger mode must match schedule mode.");
-  }
-
-  return parsed;
-}
-
 function normalizeTaskStatus(input: {
   requestedStatus?: TaskStatus;
   enabled: boolean;
   archived: boolean;
   fallbackStatus?: TaskStatus;
+  scheduledAt?: Date | null;
 }): TaskStatus {
   if (input.archived) {
     return "archived";
@@ -1121,11 +1659,19 @@ function normalizeTaskStatus(input: {
     return "disabled";
   }
 
+  if (input.scheduledAt) {
+    return "scheduled";
+  }
+
+  if (input.scheduledAt === null && input.fallbackStatus === "scheduled") {
+    return "backlog";
+  }
+
   if (input.fallbackStatus && !["archived", "disabled", "draft"].includes(input.fallbackStatus)) {
     return input.fallbackStatus;
   }
 
-  return "enabled";
+  return "backlog";
 }
 
 function normalizeTodos(input: unknown[], timestamp: Date): TaskTodo[] {
@@ -1144,23 +1690,70 @@ function normalizeTodos(input: unknown[], timestamp: Date): TaskTodo[] {
   });
 }
 
+function getTaskStatusAfterTerminalRun(run: TaskRun): TaskStatus | undefined {
+  if (run.status === "failed" || run.status === "cancelled") {
+    return "review";
+  }
+
+  if (run.status !== "completed") {
+    return undefined;
+  }
+
+  if (run.outcome === "failed" || run.outcome === "needs_human_review" || run.needsHumanReview) {
+    return "review";
+  }
+
+  return "ready_to_check";
+}
+
+function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
+  return runs.some(
+    (run) => run.subtaskId === subtaskId && run.status !== "queued" && run.status !== "running",
+  );
+}
+
+function hasFailedSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
+  return runs.some(
+    (run) =>
+      run.subtaskId === subtaskId &&
+      (run.status === "failed" ||
+        run.status === "cancelled" ||
+        run.outcome === "failed" ||
+        run.outcome === "needs_human_review" ||
+        run.needsHumanReview),
+  );
+}
+
+function isRunningAgentConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message.includes("task_runs_agent_running_unique_idx") ||
+      error.message.includes("UNIQUE constraint failed: task_runs.agent_id"))
+  );
+}
+
 function mapTask(row: typeof tasks.$inferSelect): Task {
   return taskSchema.parse({
     id: row.id,
     templateId: row.template_id ?? undefined,
     agentId: row.agent_id,
+    defaultAgentId: row.default_agent_id ?? undefined,
     title: row.title,
     description: row.description,
+    context: parseTaskContext(row.context),
     todos: parseTaskTodos(row.todos_json),
     status: row.status,
-    triggerMode: row.trigger_mode,
-    schedule: parseTaskSchedule(row.schedule_json),
     permissionProfile: parseOptional(row.permission_profile_json, taskPermissionProfileSchema),
     enabled: row.enabled,
     archived: row.archived,
     latestFinalMessage: row.latest_final_message ?? undefined,
+    latestRunId: row.latest_run_id ?? undefined,
+    sourceTemplateId: row.source_template_id ?? undefined,
+    sourceOccurrenceAt: row.source_occurrence_at?.toISOString(),
+    scheduledAt: row.scheduled_at?.toISOString(),
     scheduledFor: row.scheduled_for?.toISOString(),
     dueAt: row.due_at?.toISOString(),
+    doneAt: row.done_at?.toISOString(),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     archivedAt: row.archived_at?.toISOString(),
@@ -1172,12 +1765,12 @@ function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task {
     id: row.id,
     templateId: row.id,
     agentId: row.agent_id,
+    defaultAgentId: row.default_agent_id ?? undefined,
     title: row.title,
     description: row.description,
+    context: normalizeTaskContext(),
     todos: parseTaskTodos(row.todos_json),
     status: row.status,
-    triggerMode: row.trigger_mode,
-    schedule: parseTaskSchedule(row.schedule_json),
     permissionProfile: parseOptional(row.permission_profile_json, taskPermissionProfileSchema),
     enabled: row.enabled,
     archived: row.archived,
@@ -1188,16 +1781,94 @@ function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task {
   });
 }
 
+function mapTaskTemplate(row: typeof task_templates.$inferSelect): TaskTemplate {
+  return taskTemplateSchema.parse({
+    id: row.id,
+    defaultAgentId: row.default_agent_id ?? row.agent_id,
+    title: row.title,
+    description: row.description,
+    todos: parseTaskTodos(row.todos_json),
+    recurrence: row.recurrence_json
+      ? recurringTaskScheduleSchema.parse(JSON.parse(row.recurrence_json))
+      : undefined,
+    permissionProfile: parseOptional(row.permission_profile_json, taskPermissionProfileSchema),
+    enabled: row.enabled,
+    latestFinalMessage: row.latest_final_message ?? undefined,
+    latestTaskId: row.latest_task_id ?? undefined,
+    nextOccurrenceAt: row.next_occurrence_at?.toISOString(),
+    lastGeneratedOccurrenceAt: row.last_generated_occurrence_at?.toISOString(),
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  });
+}
+
+function mapTaskSubtask(row: typeof task_subtasks.$inferSelect): TaskSubtask {
+  return taskSubtaskSchema.parse({
+    id: row.id,
+    taskId: row.task_id,
+    feedbackId: row.feedback_id ?? undefined,
+    agentId: row.agent_id,
+    description: row.description,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  });
+}
+
+function mapSubtaskDetail(subtask: TaskSubtask, runs: TaskRun[]) {
+  const subtaskRuns = runs.filter((run) => run.subtaskId === subtask.id);
+  const replies = [...subtaskRuns]
+    .reverse()
+    .map((run) => ({ run, status: deriveRunSubtaskStatus(run) }));
+
+  return {
+    ...subtask,
+    status: deriveSubtaskStatus(subtask, runs),
+    latestRun: subtaskRuns[0],
+    replies,
+  };
+}
+
+function deriveSubtaskStatus(subtask: TaskSubtask, runs: TaskRun[]): TaskSubtaskDerivedStatus {
+  const latestRun = runs.find((run) => run.subtaskId === subtask.id);
+
+  return latestRun ? deriveRunSubtaskStatus(latestRun) : "backlog";
+}
+
+function deriveRunSubtaskStatus(run: TaskRun): TaskSubtaskDerivedStatus {
+  if (run.status === "queued" || run.status === "running") {
+    return run.status;
+  }
+
+  if (
+    run.status === "failed" ||
+    run.status === "cancelled" ||
+    run.outcome === "failed" ||
+    run.outcome === "needs_human_review" ||
+    run.needsHumanReview
+  ) {
+    return "review";
+  }
+
+  if (run.status === "completed") {
+    return "done";
+  }
+
+  return "backlog";
+}
+
 function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
   return taskRunSchema.parse({
     id: row.id,
     taskId: row.task_id,
+    subtaskId: row.subtask_id ?? undefined,
     agentId: row.agent_id,
     opencodeSessionId: row.opencode_session_id ?? undefined,
     status: row.status,
     triggerSource: row.trigger_source,
+    outcome: row.outcome ?? undefined,
     renderedPrompt: row.rendered_prompt,
     context: parseJsonRecord(row.context_json),
+    triggerMetadata: parseJsonRecord(row.trigger_metadata_json),
     renderedContext: parseJsonRecord(row.rendered_context_json),
     effectivePermissions: parseOptional(
       row.effective_permissions_json,
@@ -1220,12 +1891,25 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
   });
 }
 
-function parseTaskSchedule(value: string): TaskSchedule {
-  return taskScheduleSchema.parse(JSON.parse(value));
-}
-
 function parseTaskTodos(value: string): TaskTodo[] {
   return taskTodoSchema.array().parse(JSON.parse(value));
+}
+
+function normalizeTaskContext(input?: unknown): TaskContext {
+  const context = taskContextInputSchema.parse(input ?? {});
+
+  return taskContextSchema.parse({
+    text: context.text?.trim() || undefined,
+    attachments: context.attachments ?? [],
+  });
+}
+
+function parseTaskContext(value: string): TaskContext {
+  if (!value.trim()) {
+    return normalizeTaskContext();
+  }
+
+  return normalizeTaskContext(JSON.parse(value));
 }
 
 function stringifyOptional(value: unknown): string | null {

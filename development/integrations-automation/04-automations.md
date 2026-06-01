@@ -76,6 +76,67 @@ This is a full product feature with its own task model, scheduler, execution lif
 - Run detail shows status timeline, rendered prompt/context, result, error details, and linked OpenCode session
 - Manual trigger is available from list and detail views when the task is enabled and not already running, subject to scheduler/execution constraints
 
+## Board-Oriented Task Management User Story
+
+As a user, I want CommandsCenter tasks to feel like Jira-style work items where AI agents are the assignees instead of people. I want to add rough work items to a backlog, refine them until they are ready, send them for execution, inspect the AI output, give feedback, retry with the same or another agent, and keep the full execution history as part of the task context.
+
+### Backlog and Execution Readiness
+
+- I can quickly add work items to a backlog without deciding immediately when or how they should run.
+- When I am sure a task is ready for execution, I can send it to the execution queue by moving it to a queued status or clicking a simple action.
+- When a task is queued, it means the system should run it; there is no extra confirmation step before creating or starting the task run.
+- If the task should not run now, but I know exactly when it should run, I can schedule a date and time for it to move into execution automatically.
+- Scheduled one-time work is still a normal task, not a recurring template.
+- The UI should make scheduled tasks easy to find, either with a separate Scheduled column when there is at least one scheduled task or with a one-click Scheduled filter.
+
+### After a Successful Run
+
+- When AI execution completes successfully, the task should move to a Ready to Check column, not directly to Done.
+- I can open the task, inspect the result, view artifacts, and decide whether the output is acceptable.
+- If I like the result, I can manually move the task to Done.
+- If I do not like the result, I can add one or more feedback comments to the task.
+- When I am sure my feedback is complete, I can move the task back to queued so the AI agent can read the task, my comments, and the previous run history before attempting it again.
+- The second run should be a separate task run/session, but it should belong to the same task and have access to the previous results, artifacts, and user feedback.
+- When the second run completes, the task should return to Ready to Check so I can review it again.
+
+### Review and Failure Handling
+
+- If a task run fails, the task should move to Review.
+- If the AI agent marks the run as needing human review, the task should move to Review.
+- Review is for tasks that need user attention before another run or before acceptance.
+- A running task does not need its own board column; the task can stay in queued while the UI shows a loading/running indicator based on the active task run.
+
+### Feedback Loop and Reassignment
+
+- I can add feedback as task comments after reviewing a run.
+- Open/unhandled comments become the current run's actionable feedback when the task is queued again.
+- I can reassign a task to another AI agent before retrying, so a different agent can continue from the same task context.
+- Past runs must preserve the actual agent that executed them, even if the task is reassigned later.
+- The task card and detail view should show all past runs and a general task context that includes the description, feedback comments, results, artifacts, review notes, and failure history.
+
+### Subtasks
+
+- I can add subtasks inside a task and assign those subtasks to different AI agents.
+- Subtasks are simple objects with a title, description, optional default agent, and lightweight status.
+- Subtasks are not separate board cards by default.
+- A subtask run should still be recorded as part of the parent task's run history and context.
+- The prompt for a subtask run should be built differently from a whole-task run, focusing the agent on the subtask while still providing parent task context.
+
+### Done and Archive Lifecycle
+
+- When I move a task to Done, it should remain visible in Done for a configurable period.
+- The default Done retention period is one week.
+- After the retention period, the task should automatically move to Archived.
+- Archived tasks are not part of the board; they appear on a separate archive page as a simple list.
+- The Done-to-Archive retention period should be configurable in settings.
+
+### Run Context Requirements
+
+- Every task run should receive the task's current description, relevant comments, unhandled feedback comments, target subtask when applicable, previous run results, previous run review/failure notes, and previous artifacts.
+- Artifacts in run context should include full paths or URLs so the agent can reference them accurately.
+- The run should store the exact context snapshot it received, so future inspection is reproducible even if the task changes later.
+- The UI can present run history and task context as one unified task timeline, while storage should keep task data, comments, subtasks, and runs separately enough to preserve history.
+
 ## Acceptance Criteria
 
 - Behavior matches the Tasks screen requirements and updates/replaces `design/screens/automations/acceptance_criteria.md` with Tasks terminology
@@ -98,8 +159,7 @@ This is a full product feature with its own task model, scheduler, execution lif
 ## Non-Goals
 
 - Group chat orchestration
-- Kanban task execution
-- Multi-user task assignment
+- Multi-user Jira-style collaboration
 - External distributed worker fleet management
 - Bare-metal cron integration outside the CommandsCenter scheduler
 
@@ -140,3 +200,8 @@ This epic should be split into sub-epics. It is now too broad for one safe PR be
 8. **I4.8 TickTick-Style Recurring Tasks** — `development/integrations-automation/04-tasks-sub-epics/08-ticktick-style-recurring-tasks.md`
    - Replace user-facing cron recurrence with structured repeat rules
    - Schedule one concrete run at a time and calculate the next run after completion
+
+9. **I4.9 Board-Oriented Task System Redesign** — `development/integrations-automation/04-tasks-sub-epics/09-board-oriented-task-system-redesign.md`
+   - Separate recurring task templates from normal board tasks
+   - Replace task trigger modes with board statuses, queueing, scheduled queueing, comments, subtasks, and task-run context snapshots
+   - Keep UI behavior in the parent epic while this sub-epic focuses on schemas, services, lifecycle rules, and prompt context composition

@@ -1,4 +1,5 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 import { agents } from "./agents.js";
 
@@ -9,17 +10,21 @@ export const task_templates = sqliteTable(
     agent_id: text("agent_id")
       .notNull()
       .references(() => agents.id),
+    default_agent_id: text("default_agent_id").references(() => agents.id),
     title: text("title").notNull(),
     description: text("description").notNull(),
     todos_json: text("todos_json").notNull(),
     status: text("status").notNull(),
-    trigger_mode: text("trigger_mode").notNull(),
-    schedule_json: text("schedule_json").notNull(),
+    recurrence_json: text("recurrence_json"),
     permission_profile_json: text("permission_profile_json"),
     enabled: integer("enabled", { mode: "boolean" }).notNull(),
     archived: integer("archived", { mode: "boolean" }).notNull(),
     latest_final_message: text("latest_final_message"),
     latest_task_id: text("latest_task_id"),
+    next_occurrence_at: integer("next_occurrence_at", { mode: "timestamp_ms" }),
+    last_generated_occurrence_at: integer("last_generated_occurrence_at", {
+      mode: "timestamp_ms",
+    }),
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     archived_at: integer("archived_at", { mode: "timestamp_ms" }),
@@ -27,8 +32,9 @@ export const task_templates = sqliteTable(
   },
   (table) => [
     index("task_templates_agent_id_idx").on(table.agent_id),
+    index("task_templates_default_agent_id_idx").on(table.default_agent_id),
     index("task_templates_status_idx").on(table.status),
-    index("task_templates_trigger_mode_idx").on(table.trigger_mode),
+    index("task_templates_next_occurrence_at_idx").on(table.next_occurrence_at),
     index("task_templates_archived_idx").on(table.archived),
     index("task_templates_deleted_at_idx").on(table.deleted_at),
   ],
@@ -42,20 +48,24 @@ export const tasks = sqliteTable(
     agent_id: text("agent_id")
       .notNull()
       .references(() => agents.id),
+    default_agent_id: text("default_agent_id").references(() => agents.id),
     title: text("title").notNull(),
     description: text("description").notNull(),
     context: text("context").notNull(),
     todos_json: text("todos_json").notNull(),
     status: text("status").notNull(),
-    trigger_mode: text("trigger_mode").notNull(),
     trigger_source: text("trigger_source"),
-    schedule_json: text("schedule_json").notNull(),
     permission_profile_json: text("permission_profile_json"),
     enabled: integer("enabled", { mode: "boolean" }).notNull(),
     archived: integer("archived", { mode: "boolean" }).notNull(),
     latest_final_message: text("latest_final_message"),
+    latest_run_id: text("latest_run_id"),
+    source_template_id: text("source_template_id").references(() => task_templates.id),
+    source_occurrence_at: integer("source_occurrence_at", { mode: "timestamp_ms" }),
+    scheduled_at: integer("scheduled_at", { mode: "timestamp_ms" }),
     scheduled_for: integer("scheduled_for", { mode: "timestamp_ms" }),
     due_at: integer("due_at", { mode: "timestamp_ms" }),
+    done_at: integer("done_at", { mode: "timestamp_ms" }),
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     archived_at: integer("archived_at", { mode: "timestamp_ms" }),
@@ -64,10 +74,59 @@ export const tasks = sqliteTable(
   (table) => [
     index("tasks_template_id_idx").on(table.template_id),
     index("tasks_agent_id_idx").on(table.agent_id),
+    index("tasks_default_agent_id_idx").on(table.default_agent_id),
     index("tasks_status_idx").on(table.status),
-    index("tasks_trigger_mode_idx").on(table.trigger_mode),
+    index("tasks_source_template_id_idx").on(table.source_template_id),
+    uniqueIndex("tasks_source_template_occurrence_unique_idx").on(
+      table.source_template_id,
+      table.source_occurrence_at,
+    ),
+    index("tasks_scheduled_at_idx").on(table.scheduled_at),
+    index("tasks_done_at_idx").on(table.done_at),
     index("tasks_archived_idx").on(table.archived),
     index("tasks_deleted_at_idx").on(table.deleted_at),
+  ],
+);
+
+export const task_feedback = sqliteTable(
+  "task_feedback",
+  {
+    id: text("id").primaryKey(),
+    task_id: text("task_id")
+      .notNull()
+      .references(() => tasks.id),
+    body: text("body").notNull(),
+    created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    deleted_at: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("task_feedback_task_id_idx").on(table.task_id),
+    index("task_feedback_deleted_at_idx").on(table.deleted_at),
+  ],
+);
+
+export const task_subtasks = sqliteTable(
+  "task_subtasks",
+  {
+    id: text("id").primaryKey(),
+    task_id: text("task_id")
+      .notNull()
+      .references(() => tasks.id),
+    feedback_id: text("feedback_id").references(() => task_feedback.id),
+    agent_id: text("agent_id")
+      .notNull()
+      .references(() => agents.id),
+    description: text("description").notNull(),
+    created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    deleted_at: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("task_subtasks_task_id_idx").on(table.task_id),
+    index("task_subtasks_feedback_id_idx").on(table.feedback_id),
+    index("task_subtasks_agent_id_idx").on(table.agent_id),
+    index("task_subtasks_deleted_at_idx").on(table.deleted_at),
   ],
 );
 
@@ -78,13 +137,16 @@ export const task_runs = sqliteTable(
     task_id: text("task_id")
       .notNull()
       .references(() => tasks.id),
+    subtask_id: text("subtask_id").references(() => task_subtasks.id),
     agent_id: text("agent_id")
       .notNull()
       .references(() => agents.id),
     opencode_session_id: text("opencode_session_id"),
     status: text("status").notNull(),
     trigger_source: text("trigger_source").notNull(),
+    outcome: text("outcome"),
     context_json: text("context_json"),
+    trigger_metadata_json: text("trigger_metadata_json"),
     rendered_prompt: text("rendered_prompt").notNull(),
     rendered_context_json: text("rendered_context_json"),
     effective_permissions_json: text("effective_permissions_json"),
@@ -105,8 +167,13 @@ export const task_runs = sqliteTable(
   },
   (table) => [
     index("task_runs_task_id_idx").on(table.task_id),
+    index("task_runs_subtask_id_idx").on(table.subtask_id),
     index("task_runs_agent_id_idx").on(table.agent_id),
     index("task_runs_status_idx").on(table.status),
+    uniqueIndex("task_runs_agent_running_unique_idx")
+      .on(table.agent_id)
+      .where(sql`${table.status} = 'running'`),
+    index("task_runs_outcome_idx").on(table.outcome),
     index("task_runs_created_at_idx").on(table.created_at),
   ],
 );
@@ -114,9 +181,7 @@ export const task_runs = sqliteTable(
 export const task_scheduler_state = sqliteTable(
   "task_scheduler_state",
   {
-    task_id: text("task_id")
-      .primaryKey()
-      .references(() => tasks.id),
+    task_id: text("task_id").primaryKey(),
     next_run_at: integer("next_run_at", { mode: "timestamp_ms" }),
     last_scheduled_at: integer("last_scheduled_at", { mode: "timestamp_ms" }),
     last_error: text("last_error"),

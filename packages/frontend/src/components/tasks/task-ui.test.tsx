@@ -16,11 +16,14 @@ describe("StatusBadge", () => {
     const { rerender } = render(<StatusBadge status="running" />);
     expect(screen.getByText("Running")).toHaveClass("text-amber-300");
 
-    rerender(<StatusBadge status="queued" />);
-    expect(screen.getByText("Queued")).toHaveClass("text-amber-300");
-
     rerender(<StatusBadge status="in_progress" />);
     expect(screen.getByText("In Progress")).toHaveClass("text-amber-300");
+  });
+
+  it("uses the queued tone for queued statuses", () => {
+    render(<StatusBadge status="queued" />);
+
+    expect(screen.getByText("Queued")).toHaveClass("text-accent");
   });
 
   it("uses the accent tone for completed-style statuses", () => {

@@ -354,7 +354,10 @@ describe("SettingsPage", () => {
 
   it("disables applying updates while active task runs are in progress", () => {
     vi.mocked(useActiveTaskRunsQuery).mockReturnValue({
-      data: [{ id: "run-1" }, { id: "run-2" }],
+      data: [
+        { id: "run-1", status: "running" },
+        { id: "run-2", status: "running" },
+      ],
       isLoading: false,
       error: null,
     } as never);

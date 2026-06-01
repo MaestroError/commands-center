@@ -5,10 +5,10 @@ import { eq } from "drizzle-orm";
 import type { AppDb } from "../../src/db/client";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
-import { agents, task_runs } from "../../src/db/schema/index";
+import { agents, task_runs, task_templates } from "../../src/db/schema/index";
 
 describe("createTaskService", () => {
-  it("creates manual, one-time, and recurring tasks", async () => {
+  it("creates backlog and scheduled tasks", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
 
@@ -19,49 +19,40 @@ describe("createTaskService", () => {
         title: "Manual release notes",
         description: "Draft release notes.",
         todos: [{ content: "Collect merged PRs" }],
-        triggerMode: "manual",
       });
-      const scheduledOnce = await service.create({
+      const scheduled = await service.create({
         agentId: agent.id,
         title: "One-time reminder",
-        triggerMode: "scheduled_once",
-        schedule: { mode: "scheduled_once", runAt: "2026-06-01T12:00:00.000Z" },
-      });
-      const recurring = await service.create({
-        agentId: agent.id,
-        title: "Weekly status",
-        triggerMode: "recurring",
-        schedule: {
-          mode: "recurring",
-          anchorAt: "2026-06-01T09:00:00.000Z",
-          timezone: "UTC",
-          repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
-        },
-        status: "in_progress",
+        scheduledAt: "2026-06-01T12:00:00.000Z",
+        dueAt: "2026-06-01T18:00:00.000Z",
       });
 
-      expect(manual.schedule).toEqual({ mode: "manual" });
+      expect(manual.status).toBe("backlog");
       expect(manual.todos[0]?.id).toBeDefined();
-      expect(scheduledOnce.schedule.mode).toBe("scheduled_once");
-      expect(recurring.status).toBe("in_progress");
+      expect(scheduled.status).toBe("scheduled");
+      expect(scheduled.scheduledAt).toBe("2026-06-01T12:00:00.000Z");
+      expect(scheduled.dueAt).toBe("2026-06-01T18:00:00.000Z");
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("rejects scheduled tasks without matching schedule definitions", async () => {
+  it("clears a scheduled task back to backlog", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      await expect(
-        service.create({
-          agentId: agent.id,
-          title: "Missing schedule",
-          triggerMode: "scheduled_once",
-        }),
-      ).rejects.toThrow("Scheduled tasks require a schedule definition");
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Scheduled task",
+        scheduledAt: "2026-06-01T12:00:00.000Z",
+      });
+
+      const updated = await service.update(task.id, { scheduledAt: null });
+
+      expect(updated?.status).toBe("backlog");
+      expect(updated?.scheduledAt).toBeUndefined();
     } finally {
       await testDb.cleanup();
     }
@@ -72,16 +63,15 @@ describe("createTaskService", () => {
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
 
     try {
-      await expect(
-        service.create({ agentId: "missing", title: "Invalid agent", triggerMode: "manual" }),
-      ).rejects.toThrow("Task agent must exist and be active");
+      await expect(service.create({ agentId: "missing", title: "Invalid agent" })).rejects.toThrow(
+        "Task agent must exist and be active",
+      );
 
       const archivedAgent = await insertAgent(testDb.client.db, { status: "archived" });
       await expect(
         service.create({
           agentId: archivedAgent.id,
           title: "Archived agent task",
-          triggerMode: "manual",
         }),
       ).rejects.toThrow("Task agent must exist and be active");
     } finally {
@@ -98,7 +88,6 @@ describe("createTaskService", () => {
       const created = await service.create({
         agentId: agent.id,
         title: "Triage issues",
-        triggerMode: "manual",
       });
       const updated = await service.update(created.id, {
         title: "Triage support issues",
@@ -112,7 +101,7 @@ describe("createTaskService", () => {
       const enabled = await service.enable(created.id);
       const archived = await service.archive(created.id);
       const restored = await service.restore(created.id);
-      const listed = await service.list({ status: "enabled" });
+      const listed = await service.list({ status: "backlog" });
       const deleted = await service.delete(created.id);
       const afterDelete = await service.get(created.id);
 
@@ -120,7 +109,7 @@ describe("createTaskService", () => {
       expect(updated?.todos[0]?.completedAt).toBeDefined();
       expect(updated?.permissionProfile?.approvalPolicy).toBe("auto_approve");
       expect(disabled?.status).toBe("disabled");
-      expect(enabled?.status).toBe("enabled");
+      expect(enabled?.status).toBe("backlog");
       expect(archived?.status).toBe("archived");
       expect(restored?.archived).toBe(false);
       expect(listed.map((task) => task.id)).toContain(created.id);
@@ -142,25 +131,11 @@ describe("createTaskService", () => {
         title: "Weekly status",
         description: "Summarize #status.md.",
         todos: [{ content: "Read updates", status: "completed" }],
-        triggerMode: "recurring",
-        schedule: {
-          mode: "recurring",
-          anchorAt: "2026-06-01T09:00:00.000Z",
-          timezone: "UTC",
-          repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
-        },
         permissionProfile: { approvalPolicy: "auto_approve" },
       });
-      const occurrence = await service.createTaskFromTemplate(created.id, {
-        triggerSource: "manual",
-      });
-
-      if (!occurrence) {
-        throw new Error("Expected task occurrence to be created.");
-      }
 
       await service.createRun({
-        taskId: occurrence.id,
+        taskId: created.id,
         agentId: agent.id,
         triggerSource: "manual",
         renderedPrompt: "Do the task.",
@@ -171,7 +146,6 @@ describe("createTaskService", () => {
       expect(duplicated?.id).not.toBe(created.id);
       expect(duplicated?.title).toBe("Weekly status copy");
       expect(duplicated?.description).toBe("Summarize #status.md.");
-      expect(duplicated?.schedule).toEqual(created.schedule);
       expect(duplicated?.permissionProfile?.approvalPolicy).toBe("auto_approve");
       expect(duplicated?.enabled).toBe(false);
       expect(duplicated?.status).toBe("disabled");
@@ -207,12 +181,11 @@ describe("createTaskService", () => {
       const first = await service.create({
         agentId: agent.id,
         title: "First",
-        triggerMode: "manual",
       });
 
-      await expect(
-        service.create({ agentId: agent.id, title: "Second", triggerMode: "manual" }),
-      ).rejects.toThrow("Maximum task limit reached");
+      await expect(service.create({ agentId: agent.id, title: "Second" })).rejects.toThrow(
+        "Maximum task limit reached",
+      );
       await expect(service.duplicate(first.id)).rejects.toThrow("Maximum task limit reached");
     } finally {
       await testDb.cleanup();
@@ -228,11 +201,10 @@ describe("createTaskService", () => {
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      const template = await service.create({
-        agentId: agent.id,
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
         title: "Weekly report",
-        triggerMode: "recurring",
-        schedule: {
+        recurrence: {
           mode: "recurring",
           anchorAt: "2026-06-01T09:00:00.000Z",
           timezone: "UTC",
@@ -242,8 +214,124 @@ describe("createTaskService", () => {
 
       await service.delete(template.id);
       await expect(
-        service.create({ agentId: agent.id, title: "Replacement", triggerMode: "manual" }),
+        service.create({ agentId: agent.id, title: "Replacement" }),
       ).resolves.toMatchObject({ title: "Replacement" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("excludes task templates from task and archive lists", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Weekly report",
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Manual task",
+      });
+
+      await service.archive(task.id);
+      const listed = await service.list({ includeArchived: true });
+      const archived = await service.listArchived();
+
+      expect(listed.map((entry) => entry.id)).not.toContain(template.id);
+      expect(archived.map((entry) => entry.id)).toEqual([task.id]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not archive or restore task templates", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Weekly report",
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+
+      const archived = await service.archive(template.id);
+      const restored = await service.restore(template.id);
+      const storedTemplate = await service.getTemplate(template.id);
+
+      expect(archived).toBeUndefined();
+      expect(restored).toBeUndefined();
+      expect(storedTemplate?.id).toBe(template.id);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("ignores legacy archived flags on active task templates", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Legacy archived template",
+        description: "Should still be runnable.",
+        enabled: true,
+      });
+
+      await testDb.client.db
+        .update(task_templates)
+        .set({ archived: true, archived_at: new Date("2026-06-01T12:00:00.000Z") })
+        .where(eq(task_templates.id, template.id));
+
+      const listed = await service.listTemplates();
+      const storedTemplate = await service.getTemplate(template.id);
+      const generatedTask = await service.createTaskFromTemplate(template.id, {
+        triggerSource: "template",
+      });
+
+      expect(listed.map((entry) => entry.id)).toContain(template.id);
+      expect(storedTemplate?.id).toBe(template.id);
+      expect(generatedTask?.sourceTemplateId).toBe(template.id);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("deletes task templates that do not have proxy task rows", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Reusable report",
+        description: "Summarize recent changes.",
+        enabled: true,
+      });
+
+      const deleted = await service.delete(template.id);
+      const storedTemplate = await service.getTemplate(template.id);
+
+      expect(deleted).toBe(true);
+      expect(storedTemplate).toBeUndefined();
     } finally {
       await testDb.cleanup();
     }
@@ -258,7 +346,6 @@ describe("createTaskService", () => {
       const task = await service.create({
         agentId: agent.id,
         title: "Run me",
-        triggerMode: "manual",
       });
       const run = await service.createRun({
         taskId: task.id,
@@ -299,7 +386,6 @@ describe("createTaskService", () => {
       const task = await service.create({
         agentId: agent.id,
         title: "Legacy run",
-        triggerMode: "manual",
       });
       const run = await service.createRun({
         taskId: task.id,
@@ -350,7 +436,6 @@ describe("createTaskService", () => {
       const task = await service.create({
         agentId: agent.id,
         title: "Run me",
-        triggerMode: "manual",
       });
       const run = await service.createRun({
         taskId: task.id,
@@ -389,7 +474,6 @@ describe("createTaskService", () => {
       const task = await service.create({
         agentId: agent.id,
         title: "Collect artifacts",
-        triggerMode: "manual",
       });
       const run = await service.createRun({
         taskId: task.id,
@@ -431,7 +515,6 @@ describe("createTaskService", () => {
       const task = await service.create({
         agentId: agent.id,
         title: "Run me",
-        triggerMode: "manual",
       });
       const run = await service.createRun({
         taskId: task.id,
@@ -460,13 +543,12 @@ describe("createTaskService", () => {
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      const template = await service.create({
-        agentId: agent.id,
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
         title: "Weekly report",
         description: "Use the old prompt.",
         todos: [{ content: "Read metrics" }],
-        triggerMode: "recurring",
-        schedule: {
+        recurrence: {
           mode: "recurring",
           anchorAt: "2026-06-01T09:00:00.000Z",
           timezone: "UTC",
@@ -483,7 +565,9 @@ describe("createTaskService", () => {
       const storedOccurrence = occurrence ? await service.get(occurrence.id) : undefined;
       const occurrences = await service.listTemplateTasks(template.id);
 
-      expect(storedOccurrence?.templateId).toBe(template.id);
+      expect(storedOccurrence?.templateId).toBeUndefined();
+      expect(storedOccurrence?.sourceTemplateId).toBe(template.id);
+      expect(storedOccurrence?.sourceOccurrenceAt).toBe("2026-06-08T09:00:00.000Z");
       expect(storedOccurrence?.description).toBe("Use the old prompt.");
       expect(storedOccurrence?.scheduledFor).toBe("2026-06-08T09:00:00.000Z");
       expect(occurrences.map((task) => task.id)).toEqual([occurrence?.id]);
@@ -492,41 +576,59 @@ describe("createTaskService", () => {
     }
   });
 
-  it("syncs the template proxy row when updating a task template", async () => {
+  it("returns the existing generated task for duplicate template occurrences", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
 
     try {
-      const firstAgent = await insertAgent(testDb.client.db);
-      const secondAgent = await insertAgent(testDb.client.db, {
-        id: "agent-second",
-        slug: "second-agent",
-        name: "Second Agent",
-      });
-      const template = await service.create({
-        agentId: firstAgent.id,
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
         title: "Weekly report",
-        triggerMode: "recurring",
-        schedule: {
+        recurrence: {
           mode: "recurring",
           anchorAt: "2026-06-01T09:00:00.000Z",
           timezone: "UTC",
           repeatRule: { frequency: "week", interval: 1 },
         },
       });
-
-      await service.update(template.id, {
-        agentId: secondAgent.id,
-        title: "Updated weekly report",
+      const first = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-08T09:00:00.000Z",
+        triggerSource: "template",
       });
-      const run = await service.createRun({
-        taskId: template.id,
-        agentId: secondAgent.id,
-        triggerSource: "manual",
-        renderedPrompt: "Run the updated template.",
+      const second = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-08T09:00:00.000Z",
+        triggerSource: "template",
       });
+      const occurrences = await service.listTemplateTasks(template.id);
 
-      expect(run.agentId).toBe(secondAgent.id);
+      expect(second?.id).toBe(first?.id);
+      expect(occurrences).toHaveLength(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("creates task occurrences with the template default agent", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Weekly report",
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+      const occurrence = await service.createTaskFromTemplate(template.id);
+
+      expect(occurrence?.agentId).toBe(agent.id);
+      expect(occurrence?.defaultAgentId).toBe(agent.id);
     } finally {
       await testDb.cleanup();
     }
@@ -541,7 +643,6 @@ describe("createTaskService", () => {
       const task = await service.create({
         agentId: agent.id,
         title: "Reviewable task",
-        triggerMode: "manual",
       });
 
       const first = await service.createRun({
@@ -560,6 +661,419 @@ describe("createTaskService", () => {
 
       expect(runs.map((run) => run.id).sort()).toEqual([first.id, second.id].sort());
       expect(new Set(runs.map((run) => run.taskId))).toEqual(new Set([task.id]));
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("queues a backlog task and records run metadata", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Queue me",
+        status: "backlog",
+      });
+      const run = await service.queueTask({
+        taskId: task.id,
+        triggerSource: "api",
+        metadata: { requestedBy: "test" },
+        renderedPrompt: "Do the queued task.",
+      });
+      const queued = await service.get(task.id);
+
+      expect(run.status).toBe("queued");
+      expect(run.triggerMetadata).toEqual({ requestedBy: "test" });
+      expect(queued?.status).toBe("queued");
+      expect(queued?.latestRunId).toBe(run.id);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("creates feedback subtasks for the default agent when no agent is mentioned", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const defaultAgent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        defaultAgentId: defaultAgent.id,
+        title: "Review copy",
+      });
+
+      const feedback = await service.createFeedback(task.id, { body: "Check the landing copy." });
+      const refreshed = await service.get(task.id);
+
+      expect(feedback.targetAgentIds).toEqual([defaultAgent.id]);
+      expect(feedback.subtasks).toEqual([
+        expect.objectContaining({
+          agentId: defaultAgent.id,
+          description: "Check the landing copy.",
+          status: "backlog",
+          replies: [],
+        }),
+      ]);
+      expect(refreshed?.status).toBe(task.status);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("creates one feedback subtask for the mentioned agent", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const mentionedAgent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Check integrations" });
+
+      const feedback = await service.createFeedback(task.id, {
+        body: "Please verify the integration contract.",
+        mentionedAgentIds: [mentionedAgent.id],
+      });
+
+      expect(feedback.targetAgentIds).toEqual([mentionedAgent.id]);
+      expect(feedback.subtasks.map((subtask) => subtask.agentId)).toEqual([mentionedAgent.id]);
+      expect(new Set(feedback.subtasks.map((subtask) => subtask.feedbackId))).toEqual(
+        new Set([feedback.id]),
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("lists feedback with subtask run replies and derived status", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Check feedback" });
+      const feedback = await service.createFeedback(task.id, { body: "Retest the fix." });
+      const subtaskId = feedback.subtasks[0]?.id;
+
+      if (!subtaskId) throw new Error("Expected feedback subtask.");
+
+      const firstRun = await service.queueTask({
+        taskId: task.id,
+        subtaskId,
+        triggerSource: "manual",
+        renderedPrompt: "Retest once.",
+      });
+      await service.setRunStatus(firstRun.id, "completed", { outcome: "needs_human_review" });
+      const secondRun = await service.queueTask({
+        taskId: task.id,
+        subtaskId,
+        triggerSource: "manual",
+        renderedPrompt: "Retest again.",
+      });
+      await service.setRunStatus(secondRun.id, "completed", { finalMessage: "Looks good." });
+
+      const [thread] = await service.listFeedback(task.id);
+
+      expect(thread?.subtasks[0]).toMatchObject({
+        id: subtaskId,
+        status: "done",
+        latestRun: { id: secondRun.id },
+      });
+      expect(thread?.subtasks[0]?.replies).toEqual([
+        expect.objectContaining({
+          run: expect.objectContaining({ id: firstRun.id }),
+          status: "review",
+        }),
+        expect.objectContaining({
+          run: expect.objectContaining({ id: secondRun.id }),
+          status: "done",
+        }),
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("summarizes subtask progress across tasks", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Measure progress" });
+      const backlogSubtask = await service.createSubtask(task.id, {
+        agentId: agent.id,
+        description: "Still pending.",
+      });
+      const completedSubtask = await service.createSubtask(task.id, {
+        agentId: agent.id,
+        description: "Completed.",
+      });
+      const activeSubtask = await service.createSubtask(task.id, {
+        agentId: agent.id,
+        description: "Running.",
+      });
+      const reviewSubtask = await service.createSubtask(task.id, {
+        agentId: agent.id,
+        description: "Needs review.",
+      });
+      await service.createRun({
+        taskId: task.id,
+        subtaskId: completedSubtask.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+      });
+      await service.createRun({
+        taskId: task.id,
+        subtaskId: activeSubtask.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+      });
+      await service.createRun({
+        taskId: task.id,
+        subtaskId: reviewSubtask.id,
+        agentId: agent.id,
+        status: "failed",
+        triggerSource: "manual",
+      });
+
+      const progress = await service.listSubtaskProgress([task.id, task.id]);
+
+      expect(progress).toEqual([
+        {
+          taskId: task.id,
+          total: 4,
+          completed: 1,
+          active: 1,
+          review: 1,
+          subtasks: [
+            expect.objectContaining({ id: backlogSubtask.id, status: "backlog" }),
+            expect.objectContaining({ id: completedSubtask.id, status: "done" }),
+            expect.objectContaining({ id: activeSubtask.id, status: "running" }),
+            expect.objectContaining({ id: reviewSubtask.id, status: "review" }),
+          ],
+        },
+      ]);
+      expect(backlogSubtask.id).toBeDefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects duplicate active runs for the same task", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Queue once",
+        status: "backlog",
+      });
+
+      await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+      await expect(service.queueTask({ taskId: task.id, triggerSource: "manual" })).rejects.toThrow(
+        "Task already has an active run.",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("allows retry after a terminal run", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Retry me",
+        status: "backlog",
+      });
+      const first = await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+
+      await service.setRunStatus(first.id, "completed");
+      const second = await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+      const runs = await service.listRuns(task.id);
+
+      expect(second.id).not.toBe(first.id);
+      expect(runs.map((run) => run.id).sort()).toEqual([first.id, second.id].sort());
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("moves successful runs to ready to check", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Review success",
+        status: "backlog",
+      });
+      const run = await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+
+      await service.setRunStatus(run.id, "completed", { finalMessage: "Finished." });
+      const updated = await service.get(task.id);
+
+      expect(updated?.status).toBe("ready_to_check");
+      expect(updated?.latestFinalMessage).toBe("Finished.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps parent task queued while feedback subtasks remain pending", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const parentAgent = await insertAgent(testDb.client.db);
+      const firstSubtaskAgent = await insertAgent(testDb.client.db);
+      const secondSubtaskAgent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: parentAgent.id,
+        title: "Queued parent",
+        status: "backlog",
+      });
+      const firstFeedback = await service.createFeedback(task.id, {
+        body: "Handle both feedback items.",
+        mentionedAgentIds: [firstSubtaskAgent.id],
+      });
+      await service.createFeedback(task.id, {
+        body: "Handle the second feedback item.",
+        mentionedAgentIds: [secondSubtaskAgent.id],
+      });
+      const firstRun = await service.queueTask({
+        taskId: task.id,
+        subtaskId: firstFeedback.subtasks[0]?.id,
+        triggerSource: "manual",
+      });
+
+      await service.setRunStatus(firstRun.id, "completed", { finalMessage: "First done." });
+
+      const updated = await service.get(task.id);
+
+      expect(updated?.status).toBe("queued");
+      expect(updated?.latestFinalMessage).toBe("First done.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps parent task in review when any feedback subtask fails", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const parentAgent = await insertAgent(testDb.client.db);
+      const firstSubtaskAgent = await insertAgent(testDb.client.db);
+      const secondSubtaskAgent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: parentAgent.id,
+        title: "Review parent",
+        status: "backlog",
+      });
+      const firstFeedback = await service.createFeedback(task.id, {
+        body: "Handle review feedback.",
+        mentionedAgentIds: [firstSubtaskAgent.id],
+      });
+      const secondFeedback = await service.createFeedback(task.id, {
+        body: "Handle second review feedback.",
+        mentionedAgentIds: [secondSubtaskAgent.id],
+      });
+      const firstRun = await service.queueTask({
+        taskId: task.id,
+        subtaskId: firstFeedback.subtasks[0]?.id,
+        triggerSource: "manual",
+      });
+      const secondRun = await service.queueTask({
+        taskId: task.id,
+        subtaskId: secondFeedback.subtasks[0]?.id,
+        triggerSource: "manual",
+      });
+
+      await service.setRunStatus(firstRun.id, "failed", { errorMessage: "Failed." });
+      await service.setRunStatus(secondRun.id, "completed", { finalMessage: "Second done." });
+
+      const updated = await service.get(task.id);
+
+      expect(updated?.status).toBe("review");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("moves failed runs to review", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Review failure",
+        status: "backlog",
+      });
+      const run = await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+
+      await service.setRunStatus(run.id, "failed", { errorMessage: "Could not finish." });
+      const updated = await service.get(task.id);
+
+      expect(updated?.status).toBe("review");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("moves human-review outcomes to review", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Needs user",
+        status: "backlog",
+      });
+      const run = await service.queueTask({ taskId: task.id, triggerSource: "manual" });
+
+      await service.setRunStatus(run.id, "completed", { outcome: "needs_human_review" });
+      const updated = await service.get(task.id);
+
+      expect(updated?.status).toBe("review");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("accepts reviewed tasks as done", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Accept me",
+        status: "ready_to_check",
+      });
+      const accepted = await service.acceptTask(task.id);
+
+      expect(accepted?.status).toBe("done");
+      expect(accepted?.doneAt).toBeDefined();
     } finally {
       await testDb.cleanup();
     }

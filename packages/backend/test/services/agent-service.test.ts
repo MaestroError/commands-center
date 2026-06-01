@@ -292,15 +292,13 @@ describe("createAgentService", () => {
               context: "chat",
             },
             {
-              name: "trigger_task",
-              description:
-                "Manually trigger an existing CommandsCenter task after operator confirmation.",
+              name: "queue_task",
+              description: "Queue an existing CommandsCenter task after operator confirmation.",
               context: "chat",
             },
             {
-              name: "schedule_one_time_task",
-              description:
-                "Create a one-time scheduled CommandsCenter task after operator confirmation.",
+              name: "schedule_task",
+              description: "Schedule an existing CommandsCenter task for later execution.",
               context: "chat",
             },
             {
@@ -314,9 +312,31 @@ describe("createAgentService", () => {
               context: "chat",
             },
             {
-              name: "list_recurring_task_history",
-              description: "Inspect recent run history for a recurring CommandsCenter task.",
+              name: "create_task_template",
+              description:
+                "Create a recurring CommandsCenter task template after operator confirmation.",
               context: "chat",
+            },
+            {
+              name: "run_task_template_now",
+              description:
+                "Generate and queue a run from a recurring CommandsCenter task template.",
+              context: "chat",
+            },
+            {
+              name: "read_task_context",
+              description: "Read persistent context for the current CommandsCenter task.",
+              context: "task_run",
+            },
+            {
+              name: "append_task_context",
+              description: "Append text to persistent context for the current CommandsCenter task.",
+              context: "task_run",
+            },
+            {
+              name: "update_task_context",
+              description: "Update persistent context for the current CommandsCenter task.",
+              context: "task_run",
             },
           ],
         },

@@ -30,6 +30,37 @@ describe("TaskPromptComposer", () => {
 
     expect(await screen.findByRole("button", { name: /\/components/i })).toBeInTheDocument();
   });
+
+  it("adds and removes the delegated agent mention from the prompt", async () => {
+    const user = userEvent.setup();
+
+    renderComposer();
+
+    await user.type(screen.getByLabelText("Task prompt"), "Ask @review");
+    await user.click(await screen.findByRole("button", { name: "@Reviewer" }));
+
+    expect(screen.getByText("@Reviewer")).toBeInTheDocument();
+    expect(screen.getByLabelText("Task prompt")).toHaveValue("Ask ");
+
+    await user.click(screen.getByRole("button", { name: "x" }));
+
+    expect(screen.queryByText("@Reviewer")).not.toBeInTheDocument();
+  });
+
+  it("replaces the delegated agent mention when another agent is selected", async () => {
+    const user = userEvent.setup();
+
+    renderComposer();
+
+    await user.type(screen.getByLabelText("Task prompt"), "Ask @review");
+    await user.click(await screen.findByRole("button", { name: "@Reviewer" }));
+    await user.type(screen.getByLabelText("Task prompt"), " then @special");
+    await user.click(await screen.findByRole("button", { name: "@Specialist" }));
+
+    expect(screen.queryByText("@Reviewer")).not.toBeInTheDocument();
+    expect(screen.getByText("@Specialist")).toBeInTheDocument();
+    expect(screen.getByLabelText("Task prompt")).toHaveValue("Ask  then ");
+  });
 });
 
 function renderComposer() {
@@ -39,6 +70,10 @@ function renderComposer() {
     return (
       <TaskPromptComposer
         agentId="agent-1"
+        agents={[
+          { id: "agent-2", name: "Reviewer" },
+          { id: "agent-3", name: "Specialist" },
+        ]}
         onChange={setValue}
         skills={[{ slug: "components", description: "Work with components" }]}
         value={value}

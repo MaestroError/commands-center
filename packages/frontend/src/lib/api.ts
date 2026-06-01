@@ -1,5 +1,6 @@
 import {
   agentCatalogSchema,
+  cancelTaskRunInputSchema,
   copyCustomToolToAgentsInputSchema,
   customToolAgentCopyListSchema,
   customToolBulkCopyResultSchema,
@@ -15,7 +16,9 @@ import {
   createAgentInputSchema,
   createCustomToolInputSchema,
   createMcpServerInputSchema,
+  createTaskFeedbackInputSchema,
   createTaskInputSchema,
+  createTaskTemplateInputSchema,
   engineStatusSchema,
   fileManagerCreateEntryInputSchema,
   fileManagerCreateEntryResponseSchema,
@@ -70,11 +73,22 @@ import {
   systemUpdatePreferencesSchema,
   systemVersionSchema,
   taskListSchema,
+  taskFeedbackThreadListSchema,
+  taskFeedbackThreadSchema,
+  taskQueuePreviewInputSchema,
+  taskQueuePreviewSchema,
   taskRunListSchema,
   taskRunSchema,
   taskRunSessionInspectionSchema,
   taskSchedulerStateListSchema,
   taskSchema,
+  taskSubtaskListSchema,
+  taskSubtaskProgressListSchema,
+  taskTemplateListSchema,
+  taskTemplateRunNowInputSchema,
+  taskTemplateSchema,
+  updateTaskContextInputSchema,
+  updateTaskTemplateInputSchema,
   terminalListResponseSchema,
   terminalResizeInputSchema,
   terminalSessionSchema,
@@ -82,8 +96,11 @@ import {
   workspaceSkillListSchema,
   workspaceSkillMutationResultSchema,
   workspaceSkillUploadInputSchema,
+  uploadTaskContextAttachmentInputSchema,
+  uploadTaskContextAttachmentResponseSchema,
   type Agent,
   type AgentCatalog,
+  type CancelTaskRunInput,
   type CopyCustomToolToAgentsInput,
   type CreateCustomToolInput,
   type CustomTool,
@@ -93,7 +110,9 @@ import {
   type ChatEvent,
   type CreateAgentInput,
   type CreateMcpServerInput,
+  type CreateTaskFeedbackInput,
   type CreateTaskInput,
+  type CreateTaskTemplateInput,
   type ConversationDetail,
   type ConversationSnapshot,
   type ConversationSummary,
@@ -136,6 +155,7 @@ import {
   type ProviderOauthAuthorization,
   type ProviderOauthCompleteResult,
   type ProviderStatus,
+  type QueueTaskInput,
   type SecretMeta,
   type SessionMediaItem,
   type SendConversationPromptInput,
@@ -143,26 +163,34 @@ import {
   type SystemUpdatePreferences,
   type SystemVersion,
   type Task,
+  type TaskFeedbackThread,
+  type TaskQueuePreview,
+  type TaskTemplate,
+  type TaskTemplateRunNowInput,
   type TaskRun,
   type TaskRunSessionInspection,
   type TaskSchedulerState,
+  type TaskSubtask,
+  type TaskSubtaskProgress,
   type TerminalCreateInput,
   type TerminalSession,
   type TerminalResizeInput,
   type UpdateAgentInput,
   type UpdateMcpServerInput,
   type UpdateTaskInput,
+  type UpdateTaskContextInput,
+  type UpdateTaskTemplateInput,
   type UpdateSystemUpdatePreferencesInput,
   type UpdateWorkspaceSkillCategoryInput,
   type WorkspaceWatchEvent,
   type WorkspaceSkill,
   type WorkspaceSkillMutationResult,
   type WorkspaceSkillUploadInput,
+  type UploadTaskContextAttachmentInput,
+  type UploadTaskContextAttachmentResponse,
   updateAgentInputSchema,
   updateMcpServerInputSchema,
   updateTaskInputSchema,
-  triggerTaskInputSchema,
-  type TriggerTaskInput,
   updateSystemUpdatePreferencesInputSchema,
 } from "@cc/shared/schemas";
 
@@ -180,6 +208,8 @@ type ApiFetchOptions = {
   body?: BodyInit;
   signal?: AbortSignal;
 };
+
+const JSON_CONTENT_TYPE = "application/json";
 
 export async function getAuthStatus(): Promise<OwnerAuthStatusResult> {
   return requestJson<OwnerAuthStatusResult>("/api/auth/status", ownerAuthStatusResultSchema);
@@ -637,12 +667,74 @@ export async function listTasks(query: Partial<ListTasksQuery> = {}): Promise<Ta
   const params = new URLSearchParams();
 
   if (parsed.status) params.set("status", parsed.status);
-  if (parsed.triggerMode) params.set("triggerMode", parsed.triggerMode);
   if (parsed.agentId) params.set("agentId", parsed.agentId);
   if (parsed.includeArchived) params.set("includeArchived", "true");
 
   const suffix = params.toString() ? `?${params.toString()}` : "";
   return requestJson<Task[]>(`/api/tasks${suffix}`, taskListSchema);
+}
+
+export async function listArchivedTasks(): Promise<Task[]> {
+  return requestJson<Task[]>("/api/tasks/archive", taskListSchema);
+}
+
+export async function listTaskTemplates(): Promise<TaskTemplate[]> {
+  return requestJson<TaskTemplate[]>("/api/tasks/templates", taskTemplateListSchema);
+}
+
+export async function getTaskTemplate(id: string): Promise<TaskTemplate> {
+  return requestJson<TaskTemplate>(
+    `/api/tasks/templates/${encodeURIComponent(id)}`,
+    taskTemplateSchema,
+  );
+}
+
+export async function listTaskTemplateTasks(id: string): Promise<Task[]> {
+  return requestJson<Task[]>(
+    `/api/tasks/templates/${encodeURIComponent(id)}/tasks`,
+    taskListSchema,
+  );
+}
+
+export async function createTaskTemplate(input: CreateTaskTemplateInput): Promise<TaskTemplate> {
+  return requestJson<TaskTemplate>("/api/tasks/templates", taskTemplateSchema, {
+    method: "POST",
+    body: createTaskTemplateInputSchema.parse(input),
+  });
+}
+
+export async function updateTaskTemplate(
+  id: string,
+  input: UpdateTaskTemplateInput,
+): Promise<TaskTemplate> {
+  return requestJson<TaskTemplate>(
+    `/api/tasks/templates/${encodeURIComponent(id)}`,
+    taskTemplateSchema,
+    {
+      method: "PATCH",
+      body: updateTaskTemplateInputSchema.parse(input),
+    },
+  );
+}
+
+export async function createTaskFromTemplate(id: string): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/templates/${encodeURIComponent(id)}/tasks`, taskSchema, {
+    method: "POST",
+  });
+}
+
+export async function runTaskTemplateNow(
+  id: string,
+  input: TaskTemplateRunNowInput = {},
+): Promise<TaskRun> {
+  return requestJson<TaskRun>(
+    `/api/tasks/templates/${encodeURIComponent(id)}/run-now`,
+    taskRunSchema,
+    {
+      method: "POST",
+      body: taskTemplateRunNowInputSchema.parse(input),
+    },
+  );
 }
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {
@@ -663,6 +755,78 @@ export async function updateTask(id: string, input: UpdateTaskInput): Promise<Ta
   });
 }
 
+export async function updateTaskContext(id: string, input: UpdateTaskContextInput): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/context`, taskSchema, {
+    method: "PATCH",
+    body: updateTaskContextInputSchema.parse(input),
+  });
+}
+
+export async function uploadTaskContextAttachment(
+  id: string,
+  input: UploadTaskContextAttachmentInput,
+): Promise<UploadTaskContextAttachmentResponse> {
+  return requestJson<UploadTaskContextAttachmentResponse>(
+    `/api/tasks/${encodeURIComponent(id)}/context/attachments`,
+    uploadTaskContextAttachmentResponseSchema,
+    {
+      method: "POST",
+      body: uploadTaskContextAttachmentInputSchema.parse(input),
+    },
+  );
+}
+
+export async function listTaskFeedback(taskId: string): Promise<TaskFeedbackThread[]> {
+  return requestJson<TaskFeedbackThread[]>(
+    `/api/tasks/${encodeURIComponent(taskId)}/feedback`,
+    taskFeedbackThreadListSchema,
+  );
+}
+
+export async function createTaskFeedback(
+  taskId: string,
+  input: CreateTaskFeedbackInput,
+): Promise<TaskFeedbackThread> {
+  return requestJson<TaskFeedbackThread>(
+    `/api/tasks/${encodeURIComponent(taskId)}/feedback`,
+    taskFeedbackThreadSchema,
+    {
+      method: "POST",
+      body: createTaskFeedbackInputSchema.parse(input),
+    },
+  );
+}
+
+export async function listTaskSubtasks(taskId: string): Promise<TaskSubtask[]> {
+  return requestJson<TaskSubtask[]>(
+    `/api/tasks/${encodeURIComponent(taskId)}/subtasks`,
+    taskSubtaskListSchema,
+  );
+}
+
+export async function listTaskSubtaskProgress(taskIds: string[]): Promise<TaskSubtaskProgress[]> {
+  const params = new URLSearchParams();
+  params.set("taskIds", taskIds.join(","));
+  return requestJson<TaskSubtaskProgress[]>(
+    `/api/tasks/subtask-progress?${params.toString()}`,
+    taskSubtaskProgressListSchema,
+  );
+}
+
+export async function previewTaskQueue(
+  id: string,
+  input: Partial<Omit<QueueTaskInput, "taskId">> = { triggerSource: "manual" },
+): Promise<TaskQueuePreview> {
+  return requestJson<TaskQueuePreview>(
+    `/api/tasks/${encodeURIComponent(id)}/queue/preview`,
+    taskQueuePreviewSchema,
+    {
+      method: "POST",
+      body: taskQueuePreviewInputSchema.parse(input),
+    },
+  );
+}
+
 export async function duplicateTask(id: string): Promise<Task> {
   return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/duplicate`, taskSchema, {
     method: "POST",
@@ -671,6 +835,12 @@ export async function duplicateTask(id: string): Promise<Task> {
 
 export async function archiveTask(id: string): Promise<Task> {
   return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/archive`, taskSchema, {
+    method: "POST",
+  });
+}
+
+export async function acceptTask(id: string): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${encodeURIComponent(id)}/accept`, taskSchema, {
     method: "POST",
   });
 }
@@ -734,14 +904,29 @@ export async function openTaskRunInChat(
   );
 }
 
-export async function triggerTask(
+export async function queueTask(
   id: string,
-  input: Partial<TriggerTaskInput> = { triggerSource: "manual" },
+  input: Partial<Omit<QueueTaskInput, "taskId">> = { triggerSource: "manual" },
 ): Promise<TaskRun> {
-  return requestJson<TaskRun>(`/api/tasks/${encodeURIComponent(id)}/trigger`, taskRunSchema, {
+  return requestJson<TaskRun>(`/api/tasks/${encodeURIComponent(id)}/queue`, taskRunSchema, {
     method: "POST",
-    body: triggerTaskInputSchema.parse(input),
+    body: input,
   });
+}
+
+export async function cancelTaskRun(
+  taskId: string,
+  runId: string,
+  input: CancelTaskRunInput = {},
+): Promise<TaskRun> {
+  return requestJson<TaskRun>(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/cancel`,
+    taskRunSchema,
+    {
+      method: "POST",
+      body: cancelTaskRunInputSchema.parse(input),
+    },
+  );
 }
 
 export async function listActiveTaskRuns(): Promise<TaskRun[]> {
@@ -972,13 +1157,37 @@ async function requestJson<T>(
     body: options?.body ? JSON.stringify(options.body) : undefined,
   });
 
-  const payload = (await response.json().catch(() => undefined)) as unknown;
+  const payload = await readJsonPayload(url, response);
 
   if (!response.ok) {
     throw new Error(readApiError(payload, response.status, response.statusText));
   }
 
   return schema.parse(payload);
+}
+
+async function readJsonPayload(url: string, response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+
+  if (!contentType.includes(JSON_CONTENT_TYPE)) {
+    const body = await response.text().catch(() => "");
+    throw new Error(describeUnexpectedJsonResponse(url, contentType, body));
+  }
+
+  const payload = (await response.json().catch(() => undefined)) as unknown;
+  if (payload === undefined) {
+    throw new Error(`Received an invalid JSON response from ${url}.`);
+  }
+
+  return payload;
+}
+
+function describeUnexpectedJsonResponse(url: string, contentType: string, body: string): string {
+  if (contentType.includes("text/html") || body.includes("<!doctype html")) {
+    return `Unexpected HTML response from ${url}. The app shell was returned instead of the API response.`;
+  }
+
+  return `Unexpected non-JSON response from ${url}.`;
 }
 
 async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Response> {

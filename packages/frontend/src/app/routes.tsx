@@ -76,25 +76,17 @@ export const appRoutes = [
     element: <WorkspaceChatPage />,
   },
   {
-    path: "/files",
-    title: "File Manager",
-    navLabel: "File Manager",
-    navIcon: <FolderKanban className="h-4 w-4 shrink-0" />,
-    element: <FileManagerPage />,
-  },
-  {
-    path: "/terminal",
-    title: "Global Terminal",
-    navLabel: "Global Terminal",
-    navIcon: <Terminal className="h-4 w-4 shrink-0" />,
-    element: <LazyGlobalTerminalPage />,
-  },
-  {
     path: "/tasks",
     title: "Tasks",
     navLabel: "Tasks",
     navIcon: <Clock3 className="h-4 w-4 shrink-0" />,
-    navigationMatch: ["/tasks/new", "/tasks/:id", "/tasks/:id/edit", "/tasks/:id/runs/:runId"],
+    navigationMatch: [
+      "/tasks/new",
+      "/tasks/:id",
+      "/tasks/:id/edit",
+      "/tasks/:id/runs/:runId",
+      "/tasks/templates/:id/edit",
+    ],
     element: <TasksPage />,
   },
   {
@@ -118,16 +110,14 @@ export const appRoutes = [
     element: <TaskDetailPage mode="run" />,
   },
   {
+    path: "/tasks/templates/:id/edit",
+    title: "Edit Task Template",
+    element: <TasksPage mode="template-edit" />,
+  },
+  {
     path: "/automations",
     title: "Tasks",
     element: <GenericPlaceholderPage title="Tasks" description="Automations are now Tasks." />,
-  },
-  {
-    path: "/tools",
-    title: "Custom Tools",
-    navLabel: "Custom Tools",
-    navIcon: <Wrench className="h-4 w-4 shrink-0" />,
-    element: <CustomToolsPage />,
   },
   {
     path: "/skills",
@@ -142,6 +132,27 @@ export const appRoutes = [
     navLabel: "Integrations",
     navIcon: <PlugZap className="h-4 w-4 shrink-0" />,
     element: <IntegrationsPage />,
+  },
+  {
+    path: "/files",
+    title: "File Manager",
+    navLabel: "File Manager",
+    navIcon: <FolderKanban className="h-4 w-4 shrink-0" />,
+    element: <FileManagerPage />,
+  },
+  {
+    path: "/terminal",
+    title: "Global Terminal",
+    navLabel: "Global Terminal",
+    navIcon: <Terminal className="h-4 w-4 shrink-0" />,
+    element: <LazyGlobalTerminalPage />,
+  },
+  {
+    path: "/tools",
+    title: "Custom Tools",
+    navLabel: "Custom Tools",
+    navIcon: <Wrench className="h-4 w-4 shrink-0" />,
+    element: <CustomToolsPage />,
   },
   {
     path: "/providers",

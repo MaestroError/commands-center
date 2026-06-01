@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
@@ -7,21 +7,28 @@ import {
   taskSchedulerStateSchema,
   type SchedulerStatus,
   type Task,
+  type TaskTemplate,
   type TaskRun,
   type TaskSchedulerState,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../db/client.js";
+import { getSetting } from "../db/helpers.js";
 import { now } from "../db/ids.js";
 import { task_scheduler_state } from "../db/schema/index.js";
 import type { TaskExecutionService } from "./task-execution-service.js";
 import type { TaskService } from "./task-service.js";
 
 const DEFAULT_TICK_MS = 30_000;
+const DEFAULT_DONE_AUTO_ARCHIVE_WEEKS = 1;
 const MAX_RECURRING_SEARCH_DAYS = 3660;
+const TASK_DONE_AUTO_ARCHIVE_WEEKS_SETTING = "taskDoneAutoArchiveWeeks";
 const zonedFormatters = new Map<string, Intl.DateTimeFormat>();
 
-type RecurringTaskSchedule = Extract<Task["schedule"], { mode: "recurring" }>;
+type RecurringTaskSchedule = NonNullable<TaskTemplate["recurrence"]>;
+type ScheduledEntry =
+  | { kind: "task"; task: Task }
+  | { kind: "template"; template: TaskTemplate; task: Task };
 
 type ZonedDateTimeParts = {
   year: number;
@@ -81,12 +88,21 @@ export function createTaskSchedulerService(options: {
     },
 
     async reconcile(from = now()): Promise<TaskSchedulerState[]> {
-      const scheduledTasks = await options.taskService.list({ includeArchived: false });
-      const states = await Promise.all(
-        scheduledTasks
-          .filter((task) => task.triggerMode !== "manual")
-          .map((task) => reconcileTaskState(task, from)),
-      );
+      const [scheduledTasks, recurringTemplates] = await Promise.all([
+        options.taskService.list({ status: "scheduled", includeArchived: false }),
+        options.taskService.listTemplates(),
+      ]);
+      const entries: ScheduledEntry[] = [
+        ...scheduledTasks.map((task) => ({ kind: "task" as const, task })),
+        ...recurringTemplates
+          .filter((template) => template.enabled && template.recurrence)
+          .map((template) => ({
+            kind: "template" as const,
+            template,
+            task: templateSchedulerTask(template),
+          })),
+      ];
+      const states = await Promise.all(entries.map((entry) => reconcileTaskState(entry, from)));
 
       return taskSchedulerStateListSchema.parse(states);
     },
@@ -106,6 +122,7 @@ export function createTaskSchedulerService(options: {
 
       try {
         await this.reconcile(at);
+        await archiveDoneTasks(at);
         const dueRows = await options.db.query.task_scheduler_state.findMany({
           where: (table, operators) =>
             operators.and(
@@ -138,19 +155,19 @@ export function createTaskSchedulerService(options: {
       const task = await options.taskService.get(run.taskId);
       const scheduledAt = readScheduledAt(run);
 
-      if (!task?.templateId || !scheduledAt) {
+      if (!task?.sourceTemplateId || !scheduledAt) {
         return;
       }
 
-      const template = await options.taskService.get(task.templateId);
+      const template = await options.taskService.getTemplate(task.sourceTemplateId);
 
       if (!template) {
         return;
       }
 
       await upsertState(
-        template,
-        computeNextRunAtAfter(template, scheduledAt, now()),
+        templateSchedulerTask(template),
+        computeTemplateNextRunAtAfter(template, scheduledAt, now()),
         undefined,
         scheduledAt,
       );
@@ -160,22 +177,39 @@ export function createTaskSchedulerService(options: {
   async function runDueTask(taskId: string, dueAt: Date, at: Date): Promise<void> {
     const task = await options.taskService.get(taskId);
 
-    if (
-      !task ||
-      task.archived ||
-      !task.enabled ||
-      task.status === "disabled" ||
-      task.status === "draft"
-    ) {
+    if (task && task.templateId === task.id) {
+      const template = await options.taskService.getTemplate(task.id);
+
+      if (!template) {
+        await deleteState(taskId);
+        return;
+      }
+
+      await runDueTemplate(template, dueAt, at);
+      return;
+    }
+
+    if (!task) {
+      const template = await options.taskService.getTemplate(taskId);
+
+      if (!template) {
+        await deleteState(taskId);
+        return;
+      }
+
+      await runDueTemplate(template, dueAt, at);
+      return;
+    }
+
+    if (task.archived || !task.enabled || task.status === "disabled" || task.status === "draft") {
       await upsertState(task, undefined, "Task is disabled, archived, missing, or draft.");
       return;
     }
 
-    let scheduledAt = dueAt;
+    const scheduledAt = dueAt;
 
     try {
-      scheduledAt = computeCatchUpOccurrence(task, dueAt, at);
-      await options.executionService.trigger(task.id, {
+      await options.executionService.queue(task.id, {
         triggerSource: "scheduled",
         metadata: { scheduledAt: scheduledAt.toISOString() },
       });
@@ -184,8 +218,57 @@ export function createTaskSchedulerService(options: {
       await createFailedScheduledRun(task, scheduledAt, error);
       await upsertState(
         task,
-        computeNextRunAtAfter(task, scheduledAt, at),
+        computeNextRunAtAfter(task, at),
         error instanceof Error ? error.message : "Scheduled task run failed.",
+        scheduledAt,
+      );
+    }
+  }
+
+  async function runDueTemplate(template: TaskTemplate, dueAt: Date, at: Date): Promise<void> {
+    if (!template.enabled || !template.recurrence) {
+      await upsertState(
+        templateSchedulerTask(template),
+        undefined,
+        "Template is disabled or missing recurrence.",
+      );
+      return;
+    }
+
+    const scheduledAt = computeCatchUpOccurrence(template.recurrence, dueAt, at);
+    const schedulerTask = templateSchedulerTask(template);
+
+    try {
+      const generatedTask = await options.taskService.createTaskFromTemplate(template.id, {
+        occurrenceAt: scheduledAt.toISOString(),
+        triggerSource: "template",
+      });
+
+      if (!generatedTask) {
+        throw new Error("Task template not found.");
+      }
+
+      const activeRun = await options.taskService.getActiveRunForTask(generatedTask.id);
+
+      if (!activeRun && generatedTask.status !== "queued") {
+        await options.executionService.queue(generatedTask.id, {
+          triggerSource: "template",
+          metadata: { scheduledAt: scheduledAt.toISOString(), templateId: template.id },
+        });
+      }
+
+      await upsertState(
+        schedulerTask,
+        computeTemplateNextRunAtAfter(template, scheduledAt, at),
+        undefined,
+        scheduledAt,
+      );
+    } catch (error) {
+      await createFailedScheduledRunForTemplate(template, scheduledAt, error);
+      await upsertState(
+        schedulerTask,
+        computeTemplateNextRunAtAfter(template, scheduledAt, at),
+        error instanceof Error ? error.message : "Scheduled template run failed.",
         scheduledAt,
       );
     }
@@ -196,34 +279,24 @@ export function createTaskSchedulerService(options: {
     scheduledAt: Date,
     error: unknown,
   ): Promise<void> {
-    const occurrence =
-      task.templateId === task.id
-        ? await options.taskService.createTaskFromTemplate(task.id, {
-            scheduledFor: scheduledAt.toISOString(),
-            triggerSource: "scheduled",
-          })
-        : task;
-
-    if (!occurrence) {
-      return;
-    }
-
     await options.taskService.createRun({
-      taskId: occurrence.id,
-      agentId: occurrence.agentId,
+      taskId: task.id,
+      agentId: task.agentId,
       status: "failed",
       triggerSource: "scheduled",
       renderedPrompt: "",
       renderedContext: {
-        taskId: occurrence.id,
-        templateId: task.id,
-        taskTitle: occurrence.title,
-        taskDescription: occurrence.description,
-        assignedAgentId: occurrence.agentId,
+        taskId: task.id,
+        templateId: task.sourceTemplateId ?? task.templateId,
+        taskTitle: task.title,
+        taskDescription: task.description,
+        assignedAgentId: task.agentId,
         triggerSource: "scheduled",
         triggerMetadata: { scheduledAt: scheduledAt.toISOString() },
-        schedule: task.schedule,
-        todos: occurrence.todos,
+        scheduledAt: task.scheduledAt,
+        scheduledFor: task.scheduledFor,
+        dueAt: task.dueAt,
+        todos: task.todos,
       },
       errorMessage: error instanceof Error ? error.message : "Scheduled task run failed.",
       errorDetails: {
@@ -234,7 +307,47 @@ export function createTaskSchedulerService(options: {
     });
   }
 
-  async function reconcileTaskState(task: Task, from: Date): Promise<TaskSchedulerState> {
+  async function archiveDoneTasks(at: Date): Promise<void> {
+    const retentionWeeks = await getDoneAutoArchiveWeeks();
+    const archiveBefore = new Date(at.getTime() - retentionWeeks * 7 * 24 * 60 * 60 * 1000);
+    const tasks = await options.taskService.listDoneTasksReadyToArchive(archiveBefore);
+
+    for (const task of tasks) {
+      await options.taskService.archiveTask(task.id);
+    }
+  }
+
+  async function getDoneAutoArchiveWeeks(): Promise<number> {
+    const setting = await getSetting<unknown>(options.db, TASK_DONE_AUTO_ARCHIVE_WEEKS_SETTING);
+
+    return typeof setting === "number" && Number.isFinite(setting) && setting >= 0
+      ? setting
+      : DEFAULT_DONE_AUTO_ARCHIVE_WEEKS;
+  }
+
+  async function createFailedScheduledRunForTemplate(
+    template: TaskTemplate,
+    scheduledAt: Date,
+    error: unknown,
+  ): Promise<void> {
+    const generatedTask = await options.taskService.createTaskFromTemplate(template.id, {
+      occurrenceAt: scheduledAt.toISOString(),
+      scheduledFor: scheduledAt.toISOString(),
+      triggerSource: "scheduled",
+    });
+
+    if (!generatedTask) {
+      return;
+    }
+
+    await createFailedScheduledRun(generatedTask, scheduledAt, error);
+  }
+
+  async function reconcileTaskState(
+    entry: ScheduledEntry,
+    from: Date,
+  ): Promise<TaskSchedulerState> {
+    const task = entry.task;
     const existing = await options.db.query.task_scheduler_state.findFirst({
       where: (table, operators) => operators.eq(table.task_id, task.id),
     });
@@ -242,6 +355,25 @@ export function createTaskSchedulerService(options: {
 
     if (existingNextRunAt && existingNextRunAt <= from) {
       return mapSchedulerState(existing);
+    }
+
+    if (task.status === "scheduled" && task.scheduledAt && !existing?.last_scheduled_at) {
+      return upsertState(task, new Date(task.scheduledAt));
+    }
+
+    if (entry.kind === "template") {
+      if (!existing) {
+        return upsertState(task, new Date(entry.template.recurrence!.anchorAt));
+      }
+
+      return upsertState(
+        task,
+        computeTemplateNextRunAtAfter(
+          entry.template,
+          getScheduleBaseTime(task, existing, from),
+          from,
+        ),
+      );
     }
 
     return upsertState(task, computeNextRunAt(task, getScheduleBaseTime(task, existing, from)));
@@ -274,29 +406,6 @@ export function createTaskSchedulerService(options: {
     }
 
     const timestamp = now();
-    const existing = await options.db.query.task_scheduler_state.findFirst({
-      where: (table, operators) => operators.eq(table.task_id, task.id),
-    });
-
-    if (existing) {
-      const [row] = await options.db
-        .update(task_scheduler_state)
-        .set({
-          next_run_at: nextRunAt ?? null,
-          last_scheduled_at: lastScheduledAt ?? existing.last_scheduled_at,
-          last_error: error ?? null,
-          updated_at: timestamp,
-        })
-        .where(eq(task_scheduler_state.task_id, task.id))
-        .returning();
-
-      if (!row) {
-        throw new Error("Failed to update task scheduler state.");
-      }
-
-      return mapSchedulerState(row);
-    }
-
     const [row] = await options.db
       .insert(task_scheduler_state)
       .values({
@@ -307,35 +416,77 @@ export function createTaskSchedulerService(options: {
         created_at: timestamp,
         updated_at: timestamp,
       })
+      .onConflictDoUpdate({
+        target: task_scheduler_state.task_id,
+        set: {
+          next_run_at: nextRunAt ?? null,
+          last_scheduled_at: lastScheduledAt ?? sql`${task_scheduler_state.last_scheduled_at}`,
+          last_error: error ?? null,
+          updated_at: timestamp,
+        },
+      })
       .returning();
 
     if (!row) {
-      throw new Error("Failed to create task scheduler state.");
+      throw new Error("Failed to upsert task scheduler state.");
     }
 
     return mapSchedulerState(row);
   }
+
+  async function deleteState(taskId: string): Promise<void> {
+    await options.db
+      .delete(task_scheduler_state)
+      .where(sql`${task_scheduler_state.task_id} = ${taskId}`);
+  }
 }
 
 export function computeNextRunAt(task: Task, from: Date): Date | undefined {
-  return computeNextRunAtAfter(task, from, from);
+  return computeNextRunAtAfter(task, from);
 }
 
-function computeNextRunAtAfter(task: Task, from: Date, after: Date): Date | undefined {
+function computeNextRunAtAfter(task: Task, after: Date): Date | undefined {
   if (!task.enabled || task.archived || task.status === "disabled" || task.status === "draft") {
     return undefined;
   }
 
-  if (task.schedule.mode === "scheduled_once") {
-    const runAt = new Date(task.schedule.runAt);
-    return runAt > from && runAt > after ? runAt : undefined;
-  }
-
-  if (task.schedule.mode === "recurring") {
-    return computeNextRecurringRun(task.schedule, from, after);
+  if (task.status === "scheduled" && task.scheduledAt) {
+    const scheduledAt = new Date(task.scheduledAt);
+    return scheduledAt > after ? scheduledAt : undefined;
   }
 
   return undefined;
+}
+
+function computeTemplateNextRunAtAfter(
+  template: TaskTemplate,
+  from: Date,
+  after: Date,
+): Date | undefined {
+  if (!template.enabled || !template.recurrence) {
+    return undefined;
+  }
+
+  return computeNextRecurringRun(template.recurrence, from, after);
+}
+
+function templateSchedulerTask(template: TaskTemplate): Task {
+  return {
+    id: template.id,
+    agentId: template.defaultAgentId,
+    defaultAgentId: template.defaultAgentId,
+    title: template.title,
+    description: template.description,
+    context: { attachments: [] },
+    todos: template.todos,
+    status: "backlog",
+    enabled: template.enabled,
+    archived: false,
+    latestFinalMessage: template.latestFinalMessage,
+    latestRunId: undefined,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+  };
 }
 
 export function computeNextRecurringRun(
@@ -364,12 +515,12 @@ export function computeNextRecurringRun(
   throw new Error("Could not compute next recurring task run within ten years.");
 }
 
-function computeCatchUpOccurrence(task: Task, firstDueAt: Date, at: Date): Date {
-  if (task.schedule.mode !== "recurring") {
-    return firstDueAt;
-  }
-
-  const direct = computeDirectRecurringRun(task.schedule, firstDueAt, at, "latest");
+function computeCatchUpOccurrence(
+  schedule: RecurringTaskSchedule,
+  firstDueAt: Date,
+  at: Date,
+): Date {
+  const direct = computeDirectRecurringRun(schedule, firstDueAt, at, "latest");
 
   if (direct) {
     return direct;
@@ -378,7 +529,7 @@ function computeCatchUpOccurrence(task: Task, firstDueAt: Date, at: Date): Date 
   let latest = firstDueAt;
 
   for (let attempts = 0; attempts < MAX_RECURRING_SEARCH_DAYS; attempts += 1) {
-    const next = computeNextRecurringRun(task.schedule, latest);
+    const next = computeNextRecurringRun(schedule, latest);
 
     if (next > at) {
       return latest;
@@ -484,7 +635,7 @@ function advanceRecurringCandidate(
   anchor: Date,
   current: Date,
   timezone: string,
-  rule: Extract<Task["schedule"], { mode: "recurring" }>["repeatRule"],
+  rule: RecurringTaskSchedule["repeatRule"],
 ): Date {
   const anchorParts = readZonedDateTimeParts(anchor, timezone);
   const currentParts = readZonedDateTimeParts(current, timezone);

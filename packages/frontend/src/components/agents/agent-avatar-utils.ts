@@ -91,6 +91,11 @@ export function parseAgentAvatar(name: string, iconPath?: string): ParsedAgentAv
 
 export function readInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
+
+  if (parts.length === 1) {
+    return parts[0]?.slice(0, 2).toUpperCase() || "A";
+  }
+
   return (
     parts
       .slice(0, 2)

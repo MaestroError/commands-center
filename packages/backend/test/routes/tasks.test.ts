@@ -1,9 +1,13 @@
+import { access } from "node:fs/promises";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { agents } from "../../src/db/schema/index";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createTaskContextAttachmentService } from "../../src/services/task-context-attachment-service";
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskSchedulerService } from "../../src/services/task-scheduler-service";
 import { createTaskService } from "../../src/services/task-service";
@@ -19,7 +23,7 @@ import type {
 import { createTestDatabase } from "../helpers/db";
 
 describe("task routes", () => {
-  it("supports task lifecycle and run history endpoints", async () => {
+  it("supports board task lifecycle and run history endpoints", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const opencodeService = createMockOpenCodeService();
@@ -58,7 +62,6 @@ describe("task routes", () => {
           title: "Ship release",
           description: "Prepare the release.",
           todos: [{ content: "Read changelog" }],
-          triggerMode: "manual",
         },
       });
 
@@ -70,7 +73,7 @@ describe("task routes", () => {
       const updated = await server.inject({
         method: "PATCH",
         url: `/api/tasks/${task.id}`,
-        payload: { title: "Ship stable release", status: "completed" },
+        payload: { title: "Ship stable release", status: "ready_to_check" },
       });
       const duplicated = await server.inject({
         method: "POST",
@@ -89,13 +92,38 @@ describe("task routes", () => {
         method: "POST",
         url: `/api/tasks/${task.id}/restore`,
       });
-      const triggered = await server.inject({
+      const contextUpdated = await server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/context`,
+        payload: { text: "Use current changelog." },
+      });
+      const uploadedContext = await server.inject({
         method: "POST",
-        url: `/api/tasks/${task.id}/trigger`,
-        payload: { triggerSource: "manual", context: { text: "Use current changelog." } },
+        url: `/api/tasks/${task.id}/context/attachments`,
+        payload: {
+          filename: "notes.txt",
+          mimeType: "text/plain",
+          sizeBytes: 5,
+          dataUrl: "data:text/plain;base64,aGVsbG8=",
+        },
+      });
+      const rejectedContext = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/context/attachments`,
+        payload: {
+          filename: "run.sh",
+          mimeType: "text/plain",
+          sizeBytes: 5,
+          dataUrl: "data:text/plain;base64,aGVsbG8=",
+        },
+      });
+      const queued = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/queue`,
+        payload: { triggerSource: "manual" },
       });
       const runs = await server.inject({ method: "GET", url: `/api/tasks/${task.id}/runs` });
-      const runId = triggered.json<{ id: string }>().id;
+      const runId = queued.json<{ id: string }>().id;
       const schedulerState = await server.inject({
         method: "GET",
         url: "/api/tasks/scheduler/state",
@@ -105,7 +133,7 @@ describe("task routes", () => {
       expect(listed.json()).toHaveLength(1);
       expect(fetched.statusCode).toBe(200);
       expect(updated.statusCode).toBe(200);
-      expect(updated.json().status).toBe("completed");
+      expect(updated.json().status).toBe("ready_to_check");
       expect(duplicated.statusCode).toBe(201);
       expect(duplicated.json().id).not.toBe(task.id);
       expect(duplicated.json().title).toBe("Ship stable release copy");
@@ -117,11 +145,31 @@ describe("task routes", () => {
       expect(archived.json().status).toBe("archived");
       expect(restored.statusCode).toBe(200);
       expect(restored.json().archived).toBe(false);
+      expect(contextUpdated.statusCode).toBe(200);
+      expect(contextUpdated.json().context).toEqual({
+        text: "Use current changelog.",
+        attachments: [],
+      });
+      expect(uploadedContext.statusCode).toBe(201);
+      expect(uploadedContext.json().attachment).toMatchObject({
+        filename: "notes.txt",
+        mimeType: "text/plain",
+        sizeBytes: 5,
+      });
+      const attachmentDirectory = String(
+        uploadedContext.json<{ attachment: { storageKey: string } }>().attachment.storageKey,
+      ).split("/")[0];
+      if (!attachmentDirectory) {
+        throw new Error("Expected task context attachment storage directory.");
+      }
+      expect(attachmentDirectory).toContain("ship-stable-release");
+      expect(attachmentDirectory).toContain(task.id);
+      expect(rejectedContext.statusCode).toBe(400);
       expect(runs.statusCode).toBe(200);
       expect(runs.json()).toHaveLength(1);
-      expect(triggered.statusCode).toBe(200);
-      expect(triggered.json().status).toBe("queued");
-      expect(triggered.json().context).toEqual({ text: "Use current changelog." });
+      expect(queued.statusCode).toBe(200);
+      expect(queued.json().status).toBe("queued");
+      expect(queued.json().context).toBeUndefined();
       await expect
         .poll(async () => {
           const response = await server.inject({
@@ -140,18 +188,29 @@ describe("task routes", () => {
         url: `/api/tasks/${task.id}/runs/${String(runId)}/open-in-chat`,
       });
       const activeRuns = await server.inject({ method: "GET", url: "/api/tasks/runs/active" });
+      const accepted = await server.inject({ method: "POST", url: `/api/tasks/${task.id}/accept` });
+      const archiveList = await server.inject({ method: "GET", url: "/api/tasks/archive" });
       expect(session.statusCode).toBe(200);
       expect(session.json().conversation.source).toBe("task_run");
       expect(openInChat.statusCode).toBe(200);
       expect(openInChat.json().current.source).toBe("chat");
       expect(activeRuns.statusCode).toBe(200);
       expect(activeRuns.json()).toEqual([]);
+      expect(accepted.statusCode).toBe(200);
+      expect(accepted.json().status).toBe("done");
+      expect(archiveList.statusCode).toBe(200);
+      expect(archiveList.json()).toEqual([]);
       expect(schedulerState.statusCode).toBe(200);
       const deleted = await server.inject({ method: "DELETE", url: `/api/tasks/${task.id}` });
       const afterDelete = await server.inject({ method: "GET", url: `/api/tasks/${task.id}` });
 
       expect(deleted.statusCode).toBe(204);
       expect(afterDelete.statusCode).toBe(404);
+      await expect(
+        access(
+          join(testDb.config.paths.subdirectories.taskContextAttachments, attachmentDirectory),
+        ),
+      ).rejects.toThrow();
     } finally {
       taskSchedulerService.stop();
       await server.close();
@@ -193,18 +252,239 @@ describe("task routes", () => {
       const first = await server.inject({
         method: "POST",
         url: "/api/tasks",
-        payload: { agentId: agent.id, title: "First", triggerMode: "manual" },
+        payload: { agentId: agent.id, title: "First" },
       });
       const second = await server.inject({
         method: "POST",
         url: "/api/tasks",
-        payload: { agentId: agent.id, title: "Second", triggerMode: "manual" },
+        payload: { agentId: agent.id, title: "Second" },
       });
 
       expect(invalid.statusCode).toBe(400);
       expect(first.statusCode).toBe(201);
       expect(second.statusCode).toBe(409);
       expect(second.json().error.message).toBe("Maximum task limit reached.");
+    } finally {
+      taskSchedulerService.stop();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("supports feedback, subtasks, and recurring template endpoints", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskContextAttachmentService = createTaskContextAttachmentService({
+      config: testDb.config,
+      taskService,
+    });
+    const taskExecutionService = createTaskExecutionService({
+      taskService,
+      taskContextAttachmentService,
+    });
+    const taskSchedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService: taskExecutionService,
+    });
+    const server = createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService({ delegate: taskSchedulerService }),
+      taskService,
+      taskExecutionService,
+      taskSchedulerService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const mentionedAgent = await insertAgent(testDb.client.db);
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/tasks",
+        payload: { agentId: agent.id, title: "Board task" },
+      });
+      const task = created.json<{ id: string }>();
+      const feedback = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/feedback`,
+        payload: { body: "Please verify docs.", mentionedAgentIds: [mentionedAgent.id] },
+      });
+      const feedbackList = await server.inject({
+        method: "GET",
+        url: `/api/tasks/${task.id}/feedback`,
+      });
+      const progress = await server.inject({
+        method: "GET",
+        url: `/api/tasks/subtask-progress?taskIds=${task.id}`,
+      });
+      const preview = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/queue/preview`,
+        payload: { triggerSource: "manual" },
+      });
+      const subtask = await server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/subtasks`,
+        payload: { description: "Docs check", agentId: agent.id },
+      });
+      const updatedSubtask = await server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/subtasks/${String(subtask.json<{ id: string }>().id)}`,
+        payload: { description: "Docs check updated" },
+      });
+      const subtasks = await server.inject({
+        method: "GET",
+        url: `/api/tasks/${task.id}/subtasks`,
+      });
+      const template = await server.inject({
+        method: "POST",
+        url: "/api/tasks/templates",
+        payload: {
+          defaultAgentId: agent.id,
+          title: "Daily template",
+          recurrence: {
+            mode: "recurring",
+            anchorAt: "2026-06-01T09:00:00.000Z",
+            timezone: "UTC",
+            repeatRule: { frequency: "day", interval: 1 },
+          },
+        },
+      });
+      const templates = await server.inject({ method: "GET", url: "/api/tasks/templates" });
+      const templateDetail = await server.inject({
+        method: "GET",
+        url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}`,
+      });
+      const updatedTemplate = await server.inject({
+        method: "PATCH",
+        url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}`,
+        payload: {
+          title: "Updated daily template",
+          description: "Updated prompt.",
+          recurrence: null,
+        },
+      });
+      const createdFromTemplate = await server.inject({
+        method: "POST",
+        url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}/tasks`,
+      });
+      const templateTasks = await server.inject({
+        method: "GET",
+        url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}/tasks`,
+      });
+      const runNow = await server.inject({
+        method: "POST",
+        url: `/api/tasks/templates/${String(template.json<{ id: string }>().id)}/run-now`,
+        payload: {
+          context: { text: "manual check" },
+          contextAttachmentUploads: [
+            {
+              filename: "template-notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+              dataUrl: "data:text/plain;base64,aGVsbG8=",
+            },
+          ],
+        },
+      });
+
+      expect(feedback.statusCode).toBe(201);
+      expect(feedback.json()).toMatchObject({
+        body: "Please verify docs.",
+        targetAgentIds: [mentionedAgent.id],
+      });
+      expect(
+        feedback.json<{ subtasks: Array<{ agentId: string; description: string }> }>().subtasks,
+      ).toEqual([
+        expect.objectContaining({ agentId: mentionedAgent.id, description: "Please verify docs." }),
+      ]);
+      expect(feedbackList.statusCode).toBe(200);
+      expect(feedbackList.json()).toHaveLength(1);
+      expect(feedbackList.json()[0].subtasks[0]).toMatchObject({
+        agentId: mentionedAgent.id,
+        status: "backlog",
+        replies: [],
+      });
+      expect(progress.statusCode).toBe(200);
+      expect(progress.json()).toEqual([
+        {
+          taskId: task.id,
+          total: 1,
+          completed: 0,
+          active: 0,
+          review: 0,
+          subtasks: [
+            expect.objectContaining({
+              description: "Please verify docs.",
+              status: "backlog",
+            }),
+          ],
+        },
+      ]);
+      expect(preview.statusCode).toBe(200);
+      expect(preview.json()).toMatchObject({
+        taskId: task.id,
+        runAgentId: mentionedAgent.id,
+        subtask: { agentId: mentionedAgent.id, description: "Please verify docs." },
+        feedback: { id: feedback.json<{ id: string }>().id },
+      });
+      expect(preview.json<{ renderedPrompt: string }>().renderedPrompt).toContain(
+        `<AssignedAgentId>\n${mentionedAgent.id}\n</AssignedAgentId>`,
+      );
+      expect(subtask.statusCode).toBe(201);
+      expect(updatedSubtask.statusCode).toBe(200);
+      expect(updatedSubtask.json()).toMatchObject({
+        agentId: agent.id,
+        description: "Docs check updated",
+      });
+      expect(subtasks.statusCode).toBe(200);
+      expect(subtasks.json()).toHaveLength(2);
+      expect(template.statusCode).toBe(201);
+      expect(template.json().defaultAgentId).toBe(agent.id);
+      expect(template.json()).not.toHaveProperty("archived");
+      expect(template.json()).not.toHaveProperty("archivedAt");
+      expect(template.json()).not.toHaveProperty("status");
+      expect(templates.statusCode).toBe(200);
+      expect(templates.json()).toHaveLength(1);
+      expect(templateDetail.statusCode).toBe(200);
+      expect(templateDetail.json().id).toBe(template.json<{ id: string }>().id);
+      expect(updatedTemplate.statusCode).toBe(200);
+      expect(updatedTemplate.json()).toMatchObject({
+        title: "Updated daily template",
+        description: "Updated prompt.",
+      });
+      expect(updatedTemplate.json()).not.toHaveProperty("recurrence");
+      expect(createdFromTemplate.statusCode).toBe(201);
+      expect(createdFromTemplate.json().sourceTemplateId).toBe(template.json<{ id: string }>().id);
+      expect(templateTasks.statusCode).toBe(200);
+      expect(templateTasks.json().length).toBeGreaterThan(0);
+      expect(runNow.statusCode).toBe(200);
+      expect(runNow.json().status).toBe("queued");
+      expect(runNow.json().triggerSource).toBe("template");
+      expect(runNow.json().context).toEqual({ text: "manual check", attachments: [] });
+      const runNowTask = await taskService.get(runNow.json<{ taskId: string }>().taskId);
+      expect(runNowTask).toMatchObject({
+        context: {
+          text: "manual check",
+          attachments: [
+            {
+              filename: "template-notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+            },
+          ],
+        },
+      });
+      const runNowAttachmentDirectory =
+        runNowTask?.context.attachments[0]?.storageKey.split("/")[0];
+      expect(runNowAttachmentDirectory).toContain("daily-template");
+      expect(runNowAttachmentDirectory).toContain(runNow.json<{ taskId: string }>().taskId);
     } finally {
       taskSchedulerService.stop();
       await server.close();

@@ -130,6 +130,38 @@ describe("App", () => {
     expect(event.returnValue).toBe(false);
   });
 
+  it("shows queued tasks separately from active task runs", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
+      }
+
+      if (input === "/api/opencode") {
+        return Promise.resolve(jsonResponse(200, { state: "healthy" }));
+      }
+
+      if (input === "/api/tasks/runs/active") {
+        return Promise.resolve(
+          jsonResponse(200, [
+            activeRunPayload({ id: "run-1", status: "queued" }),
+            activeRunPayload({ id: "run-2", taskId: "task-2", status: "queued" }),
+          ]),
+        );
+      }
+
+      if (input === "/api/system/version") {
+        return Promise.resolve(jsonResponse(200, systemVersionPayload()));
+      }
+
+      return Promise.reject(new Error("Unexpected fetch URL."));
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("link", { name: "2 queued tasks" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /active task/ })).not.toBeInTheDocument();
+  });
+
   it("collapses the sidebar to icon-only navigation on desktop", async () => {
     render(<App />);
 
@@ -252,11 +284,11 @@ describe("App", () => {
       "href",
       "/chat/planner",
     );
-    expect(screen.getByRole("link", { name: "R Reviewer Reviews" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "RE Reviewer Reviews" })).toHaveAttribute(
       "href",
       "/chat/reviewer",
     );
-    expect(screen.getByRole("link", { name: "B Builder Builds" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "BU Builder Builds" })).toHaveAttribute(
       "href",
       "/chat/builder",
     );
@@ -423,6 +455,39 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "Agents" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/agents");
+  });
+
+  it("shows a helpful login error when the API returns the app shell HTML", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/status") {
+        return Promise.resolve(jsonResponse(200, { status: "claimed-unauthenticated" }));
+      }
+
+      if (input === "/api/auth/login") {
+        return Promise.resolve(
+          new Response('<!doctype html><html><body><div id="root"></div></body></html>', {
+            status: 200,
+            headers: { "content-type": "text/html; charset=utf-8" },
+          }),
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
+    });
+
+    window.history.replaceState({}, "", "/agents");
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Password"), "owner-password");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(
+      await screen.findByText(
+        "Unexpected HTML response from /api/auth/login. The app shell was returned instead of the API response.",
+      ),
+    ).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/login");
   });
 
   it("claims the workspace and returns to the requested protected route", async () => {
@@ -817,6 +882,24 @@ function setDesktopMatchMedia(matches: boolean) {
         removeListener: vi.fn(),
       }) as MediaQueryList,
   );
+}
+
+function activeRunPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "run-1",
+    taskId: "task-1",
+    agentId: "agent-1",
+    status: "running",
+    triggerSource: "manual",
+    renderedPrompt: "Run task",
+    renderedContext: {},
+    effectivePermissions: {},
+    artifacts: [],
+    needsHumanReview: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
 }
 
 function jsonResponse(status: number, body: unknown): Response {

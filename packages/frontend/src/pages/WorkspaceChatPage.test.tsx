@@ -362,6 +362,29 @@ describe("WorkspaceChatPage", () => {
     expect(screen.getByTestId("chat-composer")).toBeInTheDocument();
   });
 
+  it("shows a task run return banner for continued task chats", () => {
+    mockParams = { agentId: "planner", conversationId: "conv-1" };
+    useConversationMock.mockReturnValue(
+      makeConversation({
+        conversation: {
+          id: "conv-1",
+          messages: [],
+          taskId: "task-1",
+          taskRunId: "run-1",
+        },
+      }),
+    );
+    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+
+    render(<WorkspaceChatPage />);
+
+    expect(screen.getByText("This chat continues task run run-1.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to task run" })).toHaveAttribute(
+      "href",
+      "/tasks/task-1/runs/run-1",
+    );
+  });
+
   it("wires Files, Media, and Settings tabs into the context pane", () => {
     mockParams = { agentId: "planner", conversationId: "conv-1" };
     useConversationMock.mockReturnValue(
@@ -453,6 +476,7 @@ describe("WorkspaceChatPage", () => {
           prompt: {
             text: "Check this",
             mentionedFiles: [{ path: "README.md", filename: "README.md" }],
+            mentionedAgents: [],
             selectedSkill: { slug: "review", description: "Review code" },
           },
         },
@@ -510,6 +534,7 @@ describe("WorkspaceChatPage", () => {
           prompt: {
             text: "Check this",
             mentionedFiles: [],
+            mentionedAgents: [],
             selectedSkill: { slug: "review", description: undefined },
           },
         },
@@ -559,7 +584,12 @@ describe("WorkspaceChatPage", () => {
       state: {
         taskPrefill: {
           agentId: "agent-1",
-          prompt: { text: "Create follow-up task", mentionedFiles: [], selectedSkill: null },
+          prompt: {
+            text: "Create follow-up task",
+            mentionedFiles: [],
+            mentionedAgents: [],
+            selectedSkill: null,
+          },
         },
       },
     });

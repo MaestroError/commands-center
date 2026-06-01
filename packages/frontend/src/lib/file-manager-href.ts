@@ -2,6 +2,7 @@ import { makeTabKey, parseTabsParam, serializeTabsParam } from "@/hooks/use-edit
 
 type BuildFileManagerHrefOptions = {
   path: string;
+  root?: "workspace" | "all-agents" | "host-filesystem";
   currentPathname?: string;
   currentSearch?: string;
   openInEditor?: boolean;
@@ -12,20 +13,21 @@ export function buildFileManagerHref(options: BuildFileManagerHrefOptions): stri
     options.currentPathname === "/files" ? (options.currentSearch ?? "") : "",
   );
 
-  params.set("root", "workspace");
+  const root = options.root ?? "workspace";
+  params.set("root", root);
   params.set("path", dirname(options.path));
   params.set("select", options.path);
 
   if (options.openInEditor) {
     const existingTabs = parseTabsParam(params.get("tabs"));
-    const key = makeTabKey("workspace", options.path);
+    const key = makeTabKey(root, options.path);
     const nextTabs = existingTabs.some((tab) => tab.key === key)
       ? existingTabs
       : [
           ...existingTabs,
           {
             key,
-            root: "workspace" as const,
+            root,
             path: options.path,
             name: basename(options.path),
             loading: false,

@@ -6,6 +6,7 @@ import * as api from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
   searchAgentWorkspaceFiles: vi.fn(),
+  searchWorkspaceFiles: vi.fn(),
 }));
 
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
@@ -45,6 +46,22 @@ describe("FileMentionPopover", () => {
     expect(await screen.findByRole("button", { name: /README\.md/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /src\/index\.ts/i })).toBeInTheDocument();
     expect(api.searchAgentWorkspaceFiles).toHaveBeenCalledWith("agent-1", "read");
+  });
+
+  it("loads file-name search results from the full workspace without an agent", async () => {
+    vi.mocked(api.searchWorkspaceFiles).mockResolvedValueOnce({
+      nameMatches: [{ path: "README.md" }, { path: "src/index.ts" }],
+      contentMatches: [],
+    });
+
+    render(
+      <FileMentionPopover query="read" onSelect={vi.fn()} onClose={vi.fn()} onKeyDown={vi.fn()} />,
+    );
+
+    expect(await screen.findByRole("button", { name: /README\.md/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /src\/index\.ts/i })).toBeInTheDocument();
+    expect(api.searchWorkspaceFiles).toHaveBeenCalledWith("read");
+    expect(api.searchAgentWorkspaceFiles).not.toHaveBeenCalled();
   });
 
   it("filters node_modules results from file mentions", async () => {
