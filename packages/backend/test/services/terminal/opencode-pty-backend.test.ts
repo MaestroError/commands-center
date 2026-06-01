@@ -52,7 +52,7 @@ describe("OpenCodePtyBackend", () => {
 
     vi.stubGlobal(
       "WebSocket",
-      vi.fn().mockImplementation(() => {
+      vi.fn().mockImplementation(function () {
         wsInstance = {
           onopen: null,
           onerror: null,

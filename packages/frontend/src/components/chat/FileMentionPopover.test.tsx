@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FileMentionPopover } from "./FileMentionPopover";
 import * as api from "../../lib/api";
@@ -16,6 +16,10 @@ beforeAll(() => {
     value: vi.fn(),
     configurable: true,
   });
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
 });
 
 afterEach(() => {
