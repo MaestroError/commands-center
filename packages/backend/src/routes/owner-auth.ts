@@ -4,6 +4,7 @@ import {
   ownerAuthStatusResultSchema,
   ownerClaimInputSchema,
   ownerClaimResultSchema,
+  ownerCsrfRefreshResultSchema,
   ownerLoginInputSchema,
   ownerLoginResultSchema,
   ownerLogoutResultSchema,
@@ -50,6 +51,25 @@ export function registerOwnerAuthRoutes(server: AppServer, context: RuntimeConte
     async (request) => ({
       status: await service.getBrowserAuthStatus(readSessionCookie(request.headers.cookie)),
     }),
+  );
+
+  app.get(
+    "/api/auth/csrf",
+    {
+      schema: {
+        response: {
+          200: ownerCsrfRefreshResultSchema,
+        },
+      },
+    },
+    async (_request, reply) => {
+      reply.header(
+        "set-cookie",
+        createCsrfCookie({ config: context.config, token: createCsrfToken() }),
+      );
+
+      return { status: "refreshed" as const };
+    },
   );
 
   app.post(

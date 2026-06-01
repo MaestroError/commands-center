@@ -1191,6 +1191,21 @@ function describeUnexpectedJsonResponse(url: string, contentType: string, body: 
 }
 
 async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Response> {
+  const response = await fetch(url, buildApiFetchInit(options));
+
+  if (!(await shouldRetryWithFreshCsrf(response))) {
+    return response;
+  }
+
+  const refreshed = await refreshCsrfToken();
+  if (!refreshed) {
+    return response;
+  }
+
+  return fetch(url, buildApiFetchInit(options));
+}
+
+function buildApiFetchInit(options: ApiFetchOptions = {}): RequestInit {
   const method = options.method ?? "GET";
   const headers = options.headers ? { ...options.headers } : undefined;
   const csrfToken = shouldAttachCsrfToken(method) ? readCookie(CSRF_COOKIE_NAME) : undefined;
@@ -1215,7 +1230,40 @@ async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Res
     init.signal = options.signal;
   }
 
-  return fetch(url, init);
+  return init;
+}
+
+async function shouldRetryWithFreshCsrf(response: Response): Promise<boolean> {
+  if (response.status !== 403) {
+    return false;
+  }
+
+  const payload = (await response
+    .clone()
+    .json()
+    .catch(() => undefined)) as unknown;
+  return isInvalidCsrfPayload(payload);
+}
+
+function isInvalidCsrfPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || !("error" in payload)) {
+    return false;
+  }
+
+  const error = payload.error;
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  return (
+    ("code" in error && error.code === "csrf_invalid") ||
+    ("message" in error && error.message === "CSRF token is invalid.")
+  );
+}
+
+async function refreshCsrfToken(): Promise<boolean> {
+  const response = await fetch("/api/auth/csrf", { method: "GET" }).catch(() => undefined);
+  return response?.ok ?? false;
 }
 
 function shouldAttachCsrfToken(method: string): boolean {

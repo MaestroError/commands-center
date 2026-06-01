@@ -679,6 +679,40 @@ describe("additional request wrapper coverage", () => {
     });
   });
 
+  it("refreshes the CSRF token and retries invalid CSRF responses once", async () => {
+    document.cookie = "cc_csrf_token=stale-token; path=/";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (input === "/api/auth/csrf") {
+        document.cookie = "cc_csrf_token=fresh-token; path=/";
+        return Promise.resolve(makeJsonResponse({ status: "refreshed" }));
+      }
+
+      const calls = fetchSpy.mock.calls.filter(([callInput]) => callInput === "/api/auth/logout");
+      if (calls.length === 1) {
+        return Promise.resolve(
+          makeJsonResponse(
+            { error: { code: "csrf_invalid", message: "CSRF token is invalid." } },
+            { status: 403 },
+          ),
+        );
+      }
+
+      return Promise.resolve(makeJsonResponse({ status: "claimed-unauthenticated" }));
+    });
+
+    await logoutOwner();
+
+    expect(fetchSpy).toHaveBeenNthCalledWith(1, "/api/auth/logout", {
+      method: "POST",
+      headers: { "x-csrf-token": "stale-token" },
+    });
+    expect(fetchSpy).toHaveBeenNthCalledWith(2, "/api/auth/csrf", { method: "GET" });
+    expect(fetchSpy).toHaveBeenNthCalledWith(3, "/api/auth/logout", {
+      method: "POST",
+      headers: { "x-csrf-token": "fresh-token" },
+    });
+  });
+
   it("decodes the CSRF token cookie before sending it as a header", async () => {
     document.cookie = "cc_csrf_token=csrf-token%2Fwith%2Bsymbols; path=/";
     const fetchSpy = vi

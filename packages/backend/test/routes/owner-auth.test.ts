@@ -63,6 +63,40 @@ describe("owner auth routes", () => {
     }
   });
 
+  it("refreshes the CSRF cookie without changing auth status", async () => {
+    const testDb = await createTestDatabase();
+    const ownerAccessService = createOwnerAccessService({ config: testDb.config });
+    const server = await createAuthServer(testDb, ownerAccessService);
+
+    try {
+      await claimWorkspace(ownerAccessService);
+      const login = await server.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { password: STRONG_PASSWORD },
+      });
+      const currentCookie = readCookieHeader(login);
+      const refreshed = await server.inject({
+        method: "GET",
+        url: "/api/auth/csrf",
+        headers: { cookie: currentCookie },
+      });
+      const status = await server.inject({
+        method: "GET",
+        url: "/api/auth/status",
+        headers: { cookie: currentCookie },
+      });
+
+      expect(refreshed.statusCode).toBe(200);
+      expect(refreshed.json()).toEqual({ status: "refreshed" });
+      expect(readSetCookie(refreshed)).toContain("cc_csrf_token=");
+      expect(status.json()).toEqual({ status: "claimed-authenticated" });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("rejects invalid claim codes with a typed error", async () => {
     const testDb = await createTestDatabase();
     const ownerAccessService = createOwnerAccessService({ config: testDb.config });

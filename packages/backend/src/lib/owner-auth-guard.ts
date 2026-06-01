@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-import { ForbiddenError, UnauthorizedError } from "./api-error.js";
+import { CsrfError, ForbiddenError, UnauthorizedError } from "./api-error.js";
 import { CSRF_HEADER_NAME, isCsrfTokenValid } from "./csrf.js";
 import { isOriginAllowed } from "./origin-check.js";
 import { readOwnerSessionCookie } from "./owner-session-cookie.js";
@@ -49,7 +49,7 @@ export function registerOwnerAuthGuard(
         headerValue: request.headers[CSRF_HEADER_NAME],
       })
     ) {
-      throw new ForbiddenError("CSRF token is invalid.");
+      throw new CsrfError("CSRF token is invalid.");
     }
   };
 }
