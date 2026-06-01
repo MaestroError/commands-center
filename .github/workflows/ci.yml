@@ -162,6 +162,8 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'pnpm-lock.yaml', 'packages/frontend/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-chromium-
 
       - name: Install Playwright browsers
         timeout-minutes: 15
@@ -169,7 +171,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "${{ steps.playwright-browsers.outputs.cache-hit }}" == "true" ]]; then
+          if compgen -G "$HOME/.cache/ms-playwright/*" > /dev/null; then
             pnpm exec playwright install chromium
           else
             pnpm exec playwright install --with-deps chromium
