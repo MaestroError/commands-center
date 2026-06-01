@@ -23,6 +23,7 @@ describe("owner auth guard", () => {
     expect(PUBLIC_ROUTES).toEqual([
       { method: "GET", path: "/api/health" },
       { method: "GET", path: "/api/auth/status" },
+      { method: "GET", path: "/api/auth/csrf" },
       { method: "POST", path: "/api/auth/claim" },
       { method: "POST", path: "/api/auth/login" },
       { method: "POST", path: "/api/auth/logout" },
@@ -71,7 +72,7 @@ describe("owner auth guard", () => {
 
       expect(response.statusCode).toBe(403);
       expect(response.json()).toEqual({
-        error: { code: "forbidden", message: "CSRF token is invalid." },
+        error: { code: "csrf_invalid", message: "CSRF token is invalid." },
       });
     } finally {
       await server.close();

@@ -9,6 +9,10 @@ import type { OpenCodeEventService } from "../../src/services/opencode-event-ser
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
 
+type MockOrchestrator = Omit<OpenCodeOrchestrator, "restart"> & {
+  restart: ReturnType<typeof vi.fn<OpenCodeOrchestrator["restart"]>>;
+};
+
 describe("secret routes", () => {
   it("lists secret metadata", async () => {
     const testDb = await createTestDatabase();
@@ -109,7 +113,7 @@ describe("secret routes", () => {
 
 async function createRouteServer(options: {
   testDb: Awaited<ReturnType<typeof createTestDatabase>>;
-  orchestrator: ReturnType<typeof createMockOrchestrator>;
+  orchestrator: MockOrchestrator;
   secretService: ReturnType<typeof createSecretService>;
 }) {
   return createServer({
@@ -124,7 +128,7 @@ async function createRouteServer(options: {
   });
 }
 
-function createMockOrchestrator(): OpenCodeOrchestrator & { restart: ReturnType<typeof vi.fn> } {
+function createMockOrchestrator(): MockOrchestrator {
   return {
     getStatus: () => ({
       state: "healthy",
@@ -136,7 +140,7 @@ function createMockOrchestrator(): OpenCodeOrchestrator & { restart: ReturnType<
     }),
     start: vi.fn(),
     stop: vi.fn(),
-    restart: vi.fn(),
+    restart: vi.fn<OpenCodeOrchestrator["restart"]>().mockResolvedValue(undefined),
     refreshHealth: vi.fn().mockResolvedValue(true),
   };
 }

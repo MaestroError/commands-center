@@ -297,6 +297,7 @@ type MockFetchOptions = {
   templateTasksPayload?: Task[];
   feedbackPayload?: TaskFeedbackThread[];
   subtaskProgressPayload?: TaskSubtaskProgress[];
+  duplicateResponse?: Response;
 };
 
 beforeAll(() => {
@@ -1807,6 +1808,22 @@ describe("TasksPage", () => {
     expect(await screen.findByText("edit:task-2")).toBeInTheDocument();
   });
 
+  it("shows duplicate failures from the task list", async () => {
+    mockFetch({
+      duplicateResponse: jsonResponse(403, {
+        error: { code: "csrf_invalid", message: "CSRF token is invalid." },
+      }),
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Duplicate" }));
+
+    expect(await screen.findByText("Task action failed.")).toBeInTheDocument();
+    expect(screen.getByText("CSRF token is invalid.")).toBeInTheDocument();
+  });
+
   it("creates a task from the form", async () => {
     const fetchMock = mockFetch();
 
@@ -2218,6 +2235,22 @@ describe("TaskDetailPage", () => {
       );
     });
     expect(await screen.findByText("edit:task-2")).toBeInTheDocument();
+  });
+
+  it("shows duplicate failures from the task detail page", async () => {
+    mockFetch({
+      duplicateResponse: jsonResponse(403, {
+        error: { code: "csrf_invalid", message: "CSRF token is invalid." },
+      }),
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Duplicate" }));
+
+    expect(await screen.findByText("Task action failed.")).toBeInTheDocument();
+    expect(screen.getByText("CSRF token is invalid.")).toBeInTheDocument();
   });
 
   it("queues a task from the task detail page without run context", async () => {
@@ -2700,6 +2733,10 @@ function mockFetch(options: MockFetchOptions = {}) {
     }
     if (url.startsWith("/api/tasks?")) return Promise.resolve(jsonResponse(200, [taskPayload]));
     if (url === "/api/tasks/task-1/duplicate") {
+      if (options.duplicateResponse) {
+        return Promise.resolve(options.duplicateResponse);
+      }
+
       return Promise.resolve(
         jsonResponse(201, {
           ...taskPayload,

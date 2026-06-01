@@ -47,6 +47,12 @@ export class ForbiddenError extends ApiError {
   }
 }
 
+export class CsrfError extends ApiError {
+  constructor(message: string, details?: unknown) {
+    super({ code: "csrf_invalid", message, statusCode: 403, details });
+  }
+}
+
 export class UnauthorizedError extends ApiError {
   constructor(message: string, details?: unknown) {
     super({ code: "unauthorized", message, statusCode: 401, details });

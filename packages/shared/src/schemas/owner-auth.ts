@@ -27,6 +27,10 @@ export const ownerAuthStatusResultSchema = z.object({
   status: ownerAuthStatusSchema,
 });
 
+export const ownerCsrfRefreshResultSchema = z.object({
+  status: z.literal("refreshed"),
+});
+
 export const ownerLoginInputSchema = z.object({
   password: ownerPasswordNonEmptySchema,
   rememberBrowser: z.boolean().optional().default(false),
@@ -64,6 +68,7 @@ export const ownerReclaimResultSchema = z.object({
 
 export type OwnerAuthStatus = z.infer<typeof ownerAuthStatusSchema>;
 export type OwnerAuthStatusResult = z.infer<typeof ownerAuthStatusResultSchema>;
+export type OwnerCsrfRefreshResult = z.infer<typeof ownerCsrfRefreshResultSchema>;
 export type OwnerClaimInput = z.infer<typeof ownerClaimInputSchema>;
 export type OwnerClaimResult = z.infer<typeof ownerClaimResultSchema>;
 export type OwnerLoginInput = z.infer<typeof ownerLoginInputSchema>;

@@ -131,6 +131,7 @@ describe("createTaskPermissionService", () => {
     });
 
     expect(rules).toEqual([
+      { permission: "question", pattern: "*", action: "deny" },
       { permission: "github_*", pattern: "*", action: "allow" },
       { permission: "bash_*", pattern: "*", action: "deny" },
       { permission: "cc_app_add_secret", pattern: "*", action: "deny" },

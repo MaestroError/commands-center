@@ -122,6 +122,7 @@ export function buildOpenCodeSessionPermissions(
   permissions: TaskPermissionProfile,
 ): OpenCodePermissionRule[] {
   return [
+    { permission: "question", pattern: "*", action: "deny" },
     ...(permissions.mcpServers ?? [])
       .filter((server) => server.enabled !== false)
       .map((server) => ({

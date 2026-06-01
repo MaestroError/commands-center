@@ -91,6 +91,7 @@ function TaskOverview(props: {
   const [selectedSectionId, setSelectedSectionId] = useState<DetailSectionId>();
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const [actionError, setActionError] = useState<string>();
   const task = props.task;
   const activeSectionId = selectedSectionId ?? "overview";
   const latestRunResult = readLatestRunResult(runsQuery.data ?? []);
@@ -102,6 +103,17 @@ function TaskOverview(props: {
 
     setTitleDraft(task.title);
   }, [isTitleEditing, task]);
+
+  async function handleDuplicateTask(task: Task): Promise<void> {
+    setActionError(undefined);
+
+    try {
+      const duplicated = await mutations.duplicate.mutateAsync(task.id);
+      void navigate(`/tasks/${duplicated.id}/edit`);
+    } catch (error) {
+      setActionError(readError(error));
+    }
+  }
 
   return (
     <div className="grid gap-4">
@@ -188,11 +200,7 @@ function TaskOverview(props: {
               </Link>
               <button
                 className="cc-button cc-button-secondary"
-                onClick={() => {
-                  mutations.duplicate.mutate(task.id, {
-                    onSuccess: (duplicated) => void navigate(`/tasks/${duplicated.id}/edit`),
-                  });
-                }}
+                onClick={() => void handleDuplicateTask(task)}
                 type="button"
               >
                 Duplicate
@@ -213,6 +221,7 @@ function TaskOverview(props: {
       {props.error ? (
         <ErrorState description={readError(props.error)} title="Task could not be loaded." />
       ) : null}
+      {actionError ? <ErrorState description={actionError} title="Task action failed." /> : null}
       {!props.isLoading && !task ? (
         <EmptyState description="This task no longer exists." title="Task not found" />
       ) : null}

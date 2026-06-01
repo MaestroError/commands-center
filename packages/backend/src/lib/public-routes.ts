@@ -6,6 +6,7 @@ export type PublicRoute = {
 export const PUBLIC_ROUTES: PublicRoute[] = [
   { method: "GET", path: "/api/health" },
   { method: "GET", path: "/api/auth/status" },
+  { method: "GET", path: "/api/auth/csrf" },
   { method: "POST", path: "/api/auth/claim" },
   { method: "POST", path: "/api/auth/login" },
   { method: "POST", path: "/api/auth/logout" },

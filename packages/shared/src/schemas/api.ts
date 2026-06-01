@@ -7,6 +7,7 @@ export const apiErrorCodeSchema = z.enum([
   "conflict",
   "unauthorized",
   "forbidden",
+  "csrf_invalid",
   "rate_limited",
   "internal_error",
 ]);

@@ -212,6 +212,7 @@ function TaskListPage() {
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filterText, setFilterText] = useState("");
+  const [actionError, setActionError] = useState<string>();
   const agents = agentsQuery.data ?? [];
   const boardTasks = tasksQuery.data ?? [];
   const schedulerStateByTaskId = new Map(
@@ -235,6 +236,17 @@ function TaskListPage() {
 
     previousActiveRunCountRef.current = activeRuns.length;
   }, [activeRuns.length, refetchTasks]);
+
+  async function handleDuplicateTask(task: Task): Promise<void> {
+    setActionError(undefined);
+
+    try {
+      const duplicated = await mutations.duplicate.mutateAsync(task.id);
+      void navigate(`/tasks/${duplicated.id}/edit${currentSearch}`);
+    } catch (error) {
+      setActionError(readError(error) ?? "Task could not be duplicated.");
+    }
+  }
 
   return (
     <div className="grid gap-4">
@@ -295,6 +307,7 @@ function TaskListPage() {
           title="Tasks could not be loaded."
         />
       ) : null}
+      {actionError ? <ErrorState description={actionError} title="Task action failed." /> : null}
       {!isLoading && !error && view === "board" && boardTasks.length === 0 ? (
         <EmptyState
           action={
@@ -321,12 +334,7 @@ function TaskListPage() {
               input: { reason: "Cancelled from task board." },
             })
           }
-          onDuplicate={(task) => {
-            mutations.duplicate.mutate(task.id, {
-              onSuccess: (duplicated) =>
-                void navigate(`/tasks/${duplicated.id}/edit${currentSearch}`),
-            });
-          }}
+          onDuplicate={(task) => void handleDuplicateTask(task)}
           onSaveAsTemplate={(task) => {
             mutations.createTemplate.mutate(
               {

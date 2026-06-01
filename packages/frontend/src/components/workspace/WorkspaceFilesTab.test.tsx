@@ -31,6 +31,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.mocked(api.connectWorkspaceEvents).mockImplementation(async function* () {});
   vi.mocked(api.createFileManagerEntry).mockResolvedValue({ path: "new-folder" });
   vi.mocked(api.deleteFileManagerEntry).mockResolvedValue();
