@@ -56,6 +56,7 @@ describe("agent and provider schemas", () => {
     expect(updateAgentInputSchema.parse({ role: "  reviewer  " })).toEqual({
       role: "reviewer",
       customToolOverwriteSlugs: [],
+      rewriteAgentsMd: false,
     });
   });
 
