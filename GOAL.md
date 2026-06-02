@@ -36,7 +36,7 @@ npm install -g commandscenter
 
 > **Single-User Application** — This is a single-operator tool. There is no user registration, login, or multi-tenancy. The person who installs and runs the app is the sole user with full access to all agents, workspaces, terminals, and the host filesystem. Authentication may be added in a future phase, but the MVP assumes a trusted, single-user environment.
 
-> **MUST: Portable Workspace Rule** — The workspace filesystem is the source of truth for portable configuration and assets. SQLite is the current runtime database and may contain disposable cache/runtime state. If a user copies or moves the workspace directory to another machine and runs `cc`, the portable configured state must be recoverable from workspace files. Runtime history, provider auth state, scheduler state, and secret values may need to be recreated or re-entered.
+> **MUST: Portable Workspace Rule** — The workspace directory (`CC_WORKSPACE_DIR`) is the source of truth for portable configuration and assets. SQLite (`CC_DATA_DIR/cc.db`) is a disposable derived cache — delete it and the app boots as a fully configured instance with all agents, MCP servers, settings, task templates, and expected secret keys restored from workspace files. Runtime history, provider auth state, scheduler state, and secret _values_ are intentionally not portable and must be re-entered on a new machine.
 
 ## Features
 
@@ -316,7 +316,7 @@ We should adhere to following principles while development and maintenance of th
 - **Separation of Concerns:** Clear boundaries between layers — transport (routes/controllers), business logic (services), data access (repositories), and presentation (React components).
 - **Dependency Injection:** Services receive their dependencies explicitly, making them testable and swappable.
 - **Configuration via Environment:** All environment-specific values come from `.env` / environment variables, validated at startup with a schema (Zod). Fail fast on misconfiguration.
-- **Portable Workspace (MUST):** Portable configuration and assets are recoverable from workspace files. SQLite stores runtime/cache state and may be rebuilt or recreated as later filesystem-source-of-truth phases land.
+- **Portable Workspace (MUST):** Portable configuration and assets live in the workspace directory (`CC_WORKSPACE_DIR`) and are fully recovered from files on boot. SQLite (`CC_DATA_DIR/cc.db`) is a disposable derived cache — deleting it and restarting restores all agents, MCP servers, settings, secret key list, and task templates from workspace files. Secret values and runtime history are intentionally not recovered.
 - **Error Handling Strategy:**
   - Domain errors are typed and intentional (custom error classes or result types).
   - Unhandled exceptions trigger structured logging and graceful degradation — never crash silently.
@@ -413,7 +413,7 @@ cc/
 | **ORM**        | Drizzle ORM               | SQL-first, zero-dependency, TypeScript type-safe SQLite access through `drizzle-orm/better-sqlite3` |
 | **IDs**        | ULID                      | Lexicographically sortable, collision-safe identifiers                                              |
 
-> **Portable Workspace Sync:** The current runtime is SQLite-only. Later filesystem-source-of-truth phases make portable config and assets authoritative in workspace files while keeping SQLite rebuildable.
+> **Portable Workspace:** Workspace files are the source of truth for portable configuration and assets. SQLite (`CC_DATA_DIR/cc.db`) is a rebuildable derived cache. The boot reconciler restores all derived rows from workspace files on startup.
 
 ## Background Jobs & Scheduling
 

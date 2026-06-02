@@ -1,6 +1,6 @@
 # Filesystem as Source of Truth
 
-**Status:** Planning · **Date:** 2026-06-01
+**Status:** Implemented · **Date:** 2026-06-01 · **Completed:** 2026-06-02
 
 ## Goal
 
@@ -20,6 +20,20 @@ Two sub-goals:
 
 This inverts the old "Portable Workspace Rule" (Postgres primary + dual-write to
 SQLite). New model: **files are truth, SQLite is a rebuildable cache.**
+
+---
+
+## Implementation Summary (all phases complete)
+
+| Phase | What shipped                                                                                                                                                                                                                                                                                                                                                          |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | Removed stale Postgres stub and legacy Automations tables/schema/routes                                                                                                                                                                                                                                                                                               |
+| 1     | Moved DB to `CC_DATA_DIR/cc.db`; added `CC_DATA_DIR` env var and `paths.dataDir` to `RuntimeConfig`                                                                                                                                                                                                                                                                   |
+| 2     | `configuration/` directory; file-manager guard; `readConfigFile`/`writeConfigFileAtomic` helpers; `WorkspaceReconciler` interface + `runBootReconcile`; boot hook in `start-server-runtime.ts`                                                                                                                                                                        |
+| 3a    | `configuration/settings.json`, `configuration/mcp.json`, `configuration/secrets.json` (manifest only) — file-first writes + boot reconcilers                                                                                                                                                                                                                          |
+| 3b    | `configuration/task-templates/<id>.json` — per-record file-first writes + boot reconciler                                                                                                                                                                                                                                                                             |
+| 3c    | `agents/<slug>/agent.json` sidecar — write-through on create/update/archive; layout-precedence scanner (CC-native → OpenCode-style → Claude-style → plain folder); `agentReconciler` before `taskTemplateReconciler` (FK ordering); `rewriteAgentsMd` flag (default `false`) preserves hand-edited `AGENTS.md` on update; "Rewrite AGENTS.md" toggle in the editor UI |
+| 4     | Rebuild-guarantee integration tests (`test/e2e/rebuild-guarantee.test.ts`): Scenario A (delete cc.db + reconcile) and Scenario B (fresh data dir on same workspace); doc finalization                                                                                                                                                                                 |
 
 ---
 
