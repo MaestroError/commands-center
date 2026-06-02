@@ -137,6 +137,12 @@ export async function writeOpenCodeWorkspace(options: {
   input: OpenCodeWorkspaceInput;
   skillRoot: string;
   workspaceSkillRoot: string;
+  /**
+   * Whether to (re)write the AGENTS.md rules file. Defaults to true. Set to
+   * false to preserve an existing AGENTS.md — used on agent update so that
+   * hand-edited rules are not clobbered unless the caller opts in.
+   */
+  writeRules?: boolean;
 }): Promise<void> {
   const paths = getOpenCodeWorkspacePaths(options.workspacePath);
   const rendered = renderOpenCodeWorkspace(options.input);
@@ -155,7 +161,10 @@ export async function writeOpenCodeWorkspace(options: {
     await copySkill(options.workspaceSkillRoot, paths.skillsDir, skill);
   }
 
-  await writeFile(paths.rulesFile, rendered.rulesMarkdown, "utf8");
+  if (options.writeRules !== false) {
+    await writeFile(paths.rulesFile, rendered.rulesMarkdown, "utf8");
+  }
+
   await writeFile(paths.configFile, rendered.configJsonc, "utf8");
 }
 

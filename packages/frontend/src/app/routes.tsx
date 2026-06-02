@@ -16,7 +16,6 @@ import type { RouteObject } from "react-router-dom";
 
 import { DashboardPage } from "@/pages/DashboardPage";
 import { FileManagerPage } from "@/pages/FileManagerPage";
-import { GenericPlaceholderPage } from "@/pages/GenericPlaceholderPage";
 import { AgentEditorPage } from "@/pages/AgentEditorPage";
 import { AgentsPage } from "@/pages/AgentsPage";
 import { BuiltInSkillsPage } from "@/pages/BuiltInSkillsPage";
@@ -113,11 +112,6 @@ export const appRoutes = [
     path: "/tasks/templates/:id/edit",
     title: "Edit Task Template",
     element: <TasksPage mode="template-edit" />,
-  },
-  {
-    path: "/automations",
-    title: "Tasks",
-    element: <GenericPlaceholderPage title="Tasks" description="Automations are now Tasks." />,
   },
   {
     path: "/skills",

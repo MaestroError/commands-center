@@ -1,17 +1,58 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { resolve } from "node:path";
 
 import { asc, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
 
 import { createId, now } from "../db/ids.js";
 import { secrets } from "../db/schema/index.js";
+import { readConfigFile, writeConfigFileAtomic } from "../lib/config-file.js";
+import type { RuntimeConfig } from "../lib/runtime-config.js";
+import type { WorkspaceReconciler } from "../lib/workspace-reconciler.js";
 
 import type { SecretMeta } from "@cc/shared/schemas";
 
 import type { AppDb } from "../db/client.js";
-import type { RuntimeConfig } from "../lib/runtime-config.js";
 
 const CIPHER_ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
+
+// ---------------------------------------------------------------------------
+// Secrets manifest file schema
+// ---------------------------------------------------------------------------
+
+const secretsManifestSchema = z.object({
+  version: z.literal(1),
+  keys: z.array(
+    z.object({
+      key: z.string(),
+      createdAt: z.string().datetime(),
+      updatedAt: z.string().datetime(),
+    }),
+  ),
+});
+
+function manifestFilePath(config: RuntimeConfig): string {
+  return resolve(config.paths.subdirectories.configuration, "secrets.json");
+}
+
+async function writeSecretsManifest(
+  config: RuntimeConfig,
+  rows: Array<{ key: string; created_at: Date; updated_at: Date }>,
+): Promise<void> {
+  await writeConfigFileAtomic(manifestFilePath(config), {
+    version: 1,
+    keys: rows.map((row) => ({
+      key: row.key,
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
+    })),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
 
 export type SecretService = ReturnType<typeof createSecretService>;
 
@@ -42,19 +83,20 @@ export function createSecretService(options: { db: AppDb; config: RuntimeConfig 
       const timestamp = now();
       const missingKeys = uniqueKeys.filter((key) => !existingKeys.has(key));
 
-      if (missingKeys.length === 0) {
-        return;
+      if (missingKeys.length > 0) {
+        await options.db.insert(secrets).values(
+          missingKeys.map((key) => ({
+            id: createId(),
+            key,
+            encrypted_value: null,
+            created_at: timestamp,
+            updated_at: timestamp,
+          })),
+        );
       }
 
-      await options.db.insert(secrets).values(
-        missingKeys.map((key) => ({
-          id: createId(),
-          key,
-          encrypted_value: null,
-          created_at: timestamp,
-          updated_at: timestamp,
-        })),
-      );
+      const allRows = await options.db.select().from(secrets).orderBy(asc(secrets.key));
+      await writeSecretsManifest(options.config, allRows);
     },
 
     async set(key: string, plainValue: string): Promise<void> {
@@ -67,21 +109,26 @@ export function createSecretService(options: { db: AppDb; config: RuntimeConfig 
           .update(secrets)
           .set({ encrypted_value: encryptedValue, updated_at: now() })
           .where(eq(secrets.id, existing.id));
-        return;
+      } else {
+        const timestamp = now();
+        await options.db.insert(secrets).values({
+          id: createId(),
+          key: normalizedKey,
+          encrypted_value: encryptedValue,
+          created_at: timestamp,
+          updated_at: timestamp,
+        });
       }
 
-      const timestamp = now();
-      await options.db.insert(secrets).values({
-        id: createId(),
-        key: normalizedKey,
-        encrypted_value: encryptedValue,
-        created_at: timestamp,
-        updated_at: timestamp,
-      });
+      const allRows = await options.db.select().from(secrets).orderBy(asc(secrets.key));
+      await writeSecretsManifest(options.config, allRows);
     },
 
     async delete(key: string): Promise<void> {
       await options.db.delete(secrets).where(eq(secrets.key, key.trim()));
+
+      const allRows = await options.db.select().from(secrets).orderBy(asc(secrets.key));
+      await writeSecretsManifest(options.config, allRows);
     },
 
     async buildEnvMap(): Promise<Record<string, string>> {
@@ -120,6 +167,46 @@ export function createSecretService(options: { db: AppDb; config: RuntimeConfig 
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Secrets manifest — boot reconciler
+// ---------------------------------------------------------------------------
+
+export const secretsManifestReconciler: WorkspaceReconciler = {
+  name: "secrets-manifest",
+
+  async reconcile({ config, db, logger }) {
+    const data = await readConfigFile(manifestFilePath(config), secretsManifestSchema, logger);
+    if (!data || data.keys.length === 0) return;
+
+    // Seed DB rows for known keys (null encrypted_value = "missing, re-enter").
+    // Values are never recoverable from the manifest — by design.
+    const allKeys = data.keys.map((k) => k.key);
+    const existing = await db
+      .select({ key: secrets.key })
+      .from(secrets)
+      .where(inArray(secrets.key, allKeys));
+    const existingKeys = new Set(existing.map((r) => r.key));
+
+    const timestamp = now();
+    const missing = data.keys.filter((k) => !existingKeys.has(k.key));
+    if (missing.length > 0) {
+      await db.insert(secrets).values(
+        missing.map((k) => ({
+          id: createId(),
+          key: k.key,
+          encrypted_value: null,
+          created_at: timestamp,
+          updated_at: timestamp,
+        })),
+      );
+    }
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Crypto helpers
+// ---------------------------------------------------------------------------
 
 async function findByKey(db: AppDb, key: string) {
   const [row] = await db.select().from(secrets).where(eq(secrets.key, key)).limit(1);

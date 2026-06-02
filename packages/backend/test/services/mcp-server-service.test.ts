@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createAgentService } from "../../src/services/agent-service";
-import { createMcpServerService } from "../../src/services/mcp-server-service";
+import { createMcpServerService, mcpServerReconciler } from "../../src/services/mcp-server-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { ConflictError, NotFoundError } from "../../src/lib/api-error";
 import type { OpenCodeService } from "../../src/services/opencode-service";
@@ -759,6 +759,211 @@ describe("mcp-server-service", () => {
         await testDb.cleanup();
       }
     });
+  });
+});
+
+describe("mcp-server file persistence", () => {
+  it("create writes configuration/mcp.json before inserting the DB row", async () => {
+    const testDb = await createTestDatabase();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+
+    try {
+      const created = await service.create({
+        name: "github",
+        enabled: true,
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "none",
+          headers: [],
+        },
+      });
+
+      const filePath = join(testDb.config.paths.subdirectories.configuration, "mcp.json");
+      const file = JSON.parse(await readFile(filePath, "utf8")) as {
+        version: number;
+        servers: Array<{ id: string; name: string; enabled: boolean }>;
+      };
+
+      expect(file.version).toBe(1);
+      expect(file.servers).toHaveLength(1);
+      expect(file.servers[0]).toMatchObject({ id: created.id, name: "github", enabled: true });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("remove deletes the entry from configuration/mcp.json", async () => {
+    const testDb = await createTestDatabase();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+
+    try {
+      const created = await service.create({
+        name: "linear",
+        enabled: true,
+        config: {
+          url: "https://linear.example.com/mcp",
+          transport: "sse",
+          authMethod: "none",
+          headers: [],
+        },
+      });
+
+      await service.remove(created.id);
+
+      const filePath = join(testDb.config.paths.subdirectories.configuration, "mcp.json");
+      const file = JSON.parse(await readFile(filePath, "utf8")) as { servers: unknown[] };
+      expect(file.servers).toHaveLength(0);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("setEnabled updates the enabled flag in configuration/mcp.json", async () => {
+    const testDb = await createTestDatabase();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+
+    try {
+      const created = await service.create({
+        name: "notion",
+        enabled: true,
+        config: {
+          url: "https://notion.example.com/mcp",
+          transport: "sse",
+          authMethod: "none",
+          headers: [],
+        },
+      });
+
+      await service.setEnabled(created.id, false);
+
+      const filePath = join(testDb.config.paths.subdirectories.configuration, "mcp.json");
+      const file = JSON.parse(await readFile(filePath, "utf8")) as {
+        servers: Array<{ id: string; enabled: boolean }>;
+      };
+      expect(file.servers[0]?.enabled).toBe(false);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+});
+
+describe("mcpServerReconciler", () => {
+  it("restores DB rows from configuration/mcp.json and regenerates opencode.jsonc", async () => {
+    const testDb = await createTestDatabase();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+
+    try {
+      await service.create({
+        name: "github",
+        enabled: true,
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "none",
+          headers: [],
+        },
+      });
+
+      // Simulate fresh DB by clearing the table
+      const { mcp_servers } = await import("../../src/db/schema/index.js");
+      await testDb.client.db.delete(mcp_servers);
+
+      expect(await service.list()).toHaveLength(0);
+
+      const logger = { debug: () => {}, error: () => {} } as never;
+      await mcpServerReconciler.reconcile({
+        config: testDb.config,
+        db: testDb.client.db,
+        logger,
+      });
+
+      expect(await service.list()).toHaveLength(1);
+
+      // opencode.jsonc should be regenerated
+      const rendered = JSON.parse(
+        await readFile(join(testDb.config.paths.workspaceDir, "opencode.jsonc"), "utf8"),
+      ) as { mcp: Record<string, unknown> };
+      expect(rendered.mcp["github"]).toBeDefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("deletes orphaned DB rows not present in configuration/mcp.json", async () => {
+    const testDb = await createTestDatabase();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+
+    try {
+      const created = await service.create({
+        name: "github",
+        enabled: true,
+        config: {
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "none",
+          headers: [],
+        },
+      });
+
+      // Remove from file but leave in DB (orphan)
+      await service.remove(created.id);
+
+      // Re-insert directly into DB to simulate orphan
+      const { mcp_servers } = await import("../../src/db/schema/index.js");
+      await testDb.client.db.insert(mcp_servers).values({
+        id: created.id,
+        name: "github",
+        transport: "streamable-http",
+        enabled: true,
+        config_json: JSON.stringify({
+          url: "https://example.com/mcp",
+          transport: "streamable-http",
+          authMethod: "none",
+          headers: [],
+        }),
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+
+      expect(await service.list()).toHaveLength(1);
+
+      const logger = { debug: () => {}, error: () => {} } as never;
+      await mcpServerReconciler.reconcile({
+        config: testDb.config,
+        db: testDb.client.db,
+        logger,
+      });
+
+      expect(await service.list()).toHaveLength(0);
+    } finally {
+      await testDb.cleanup();
+    }
   });
 });
 

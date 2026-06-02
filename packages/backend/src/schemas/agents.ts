@@ -103,6 +103,9 @@ export const updateAgentInputSchema = createAgentInputSchema.partial().extend({
   instructions: z.string().trim().min(1).optional(),
   defaultModel: z.string().trim().min(1).optional(),
   capabilities: agentCapabilitySelectionSchema.optional(),
+  // When false (default), AGENTS.md is preserved on update so hand-edited rules
+  // survive. opencode.jsonc and skills always re-render from capabilities.
+  rewriteAgentsMd: z.boolean().default(false),
 });
 
 export const agentStatusSchema = z.enum(["active", "archived"]);

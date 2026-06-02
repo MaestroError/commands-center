@@ -98,7 +98,7 @@ For self-hosting users who prioritize absolute environment freedom over containe
 
 ## Database Architecture and Dual-Engine Persistence
 
-The platform necessitates a robust database layer to persist agent configurations, conversation histories, custom tool schemas, and complex automation schedules. The architecture must elegantly support both a lightweight, local installation using SQLite and a highly scalable, distributed cloud deployment using PostgreSQL, without resulting in fragmented or duplicated codebases.
+The platform uses a local SQLite database for runtime state, derived indexes, and disposable history. Portable configuration and assets are moving toward filesystem-backed sources of truth so a workspace can be rebuilt without relying on a host-specific database.
 
 ### Object-Relational Mapping: Drizzle
 
@@ -106,15 +106,15 @@ While Prisma has historically dominated the Node.js ecosystem, Drizzle ORM is th
 
 Prisma relies on a proprietary schema language and a heavy, auto-generated Rust query engine that operates as a sidecar process. This level of abstraction frequently generates suboptimal, overly complex SQL execution plans behind the scenes, hindering performance debugging. Conversely, Drizzle ORM is a lightweight, SQL-first framework written entirely in TypeScript. It provides absolute type safety from the initial schema definition down to the final query execution, entirely bypassing the memory and startup overhead associated with background engines.
 
-Crucially, Drizzle solves the dual-database requirement elegantly. Maintaining separate schema files for SQLite and PostgreSQL is an architectural anti-pattern that guarantees divergence. Drizzle's design allows developers to define a single, unified source of truth in TypeScript. The application then programmatically switches between the `drizzle-orm/node-postgres` and `drizzle-orm/better-sqlite3` drivers based on the `DATABASE_URL` environment variable during the initial client instantiation. Furthermore, because Drizzle has zero external dependencies and requires no Rust binaries to compile during the installation phase, it significantly accelerates continuous integration pipelines, reduces Docker build times, and minimizes the final container image footprint.
+Drizzle fits this runtime because it keeps schema definitions close to SQL while preserving strong TypeScript inference. CommandsCenter currently uses `drizzle-orm/better-sqlite3`; PostgreSQL primary mode and dual-driver switching are not implemented runtime surfaces.
 
 ### Schema Design and Data Integrity
 
-The database schema design adheres to strict immutability principles. Critical tables, such as conversation histories and system audit logs, are structured as append-only ledgers to preserve cryptographic integrity and simplify debugging. Primary keys across all distributed entities utilize Universally Unique Lexicographically Sortable Identifiers (ULIDs) rather than standard auto-incrementing integers. This prevents primary key collisions in distributed cloud deployments and supports the Portable Workspace Rule: the app maintains a continuous dual-write strategy — every write to PostgreSQL is also written to `.cc/local.db` (SQLite) inside the workspace directory. On startup, if no PostgreSQL connection is available, the app seamlessly falls back to this local SQLite DB. This guarantees full portability — move the folder to another machine, run `cc`, and the app resumes with identical state, zero external dependencies on the originating host.
+The database schema design uses ULIDs rather than auto-incrementing integers so derived rows and runtime records remain stable across rebuilds and imports. Runtime tables such as conversations, task runs, scheduler state, provider connection rows, and encrypted secret values are disposable for the filesystem-source-of-truth model; portable configuration and assets must be recoverable from workspace files.
 
-## Background Jobs and Automation Schedulers
+## Background Jobs and Task Schedulers
 
-The platform features an automations interface where users define scheduled prompts dispatched to specific agents. This functionality demands a highly reliable, persistent job scheduling architecture capable of handling concurrency and rate limiting.
+The platform features Tasks and recurring task templates, where scheduled prompts are dispatched to specific agents. This functionality demands a reliable scheduler that can survive application restarts and preserve enough SQLite state to avoid silently missed work.
 
 ### The Persistence Imperative
 
@@ -122,24 +122,13 @@ Relying on simple, in-memory schedulers such as `node-cron` or `node-schedule` c
 
 ### Environment-Specific Scheduler Selection
 
-Because the application supports both local and cloud deployments, the architecture abstracts the underlying queueing logic behind a common interface, keeping the implementation straightforward.
+The current runtime uses the local SQLite scheduler path.
 
-| **Deployment Environment** | **Scheduler Technology**       | **Implementation Details** |
-| -------------------------- | ------------------------------ | -------------------------- |
-| **Cloud (PostgreSQL)**     | `pg-boss` or `graphile-worker` |
+| **Deployment Environment** | **Scheduler Technology**          | **Implementation Details**                                  |
+| -------------------------- | --------------------------------- | ----------------------------------------------------------- |
+| **Local (SQLite)**         | `bree` with SQLite state tracking | Cron parsing plus persistent local scheduler state tracking |
 
-Leverages native PostgreSQL `SKIP LOCKED` semantics for highly performant, distributed, exactly-once job execution without requiring Redis.
-
-|
-| **Local (SQLite)** | `bree` with SQLite state tracking |
-
-`pg-boss` is incompatible with SQLite. The system uses `bree` for cron syntax parsing and worker threads, coupled with local SQLite tables to track job states and prevent missed executions.
-
-|
-
-The `pg-boss` library is particularly suited for the PostgreSQL environment as it offers built-in support for cron scheduling, priority queues, and advanced rate limiting. This aligns perfectly with the requirement to control the total volume of automations executed per schedule based on global `.env` restrictions.
-
-When an automation job triggers, it must operate in absolute isolation to prevent state contamination with active user sessions. The background worker reads the target agent and the specified prompt from the job payload, gathers the necessary context from the virtual workspace, injects a unique correlation identifier for tracing, and spawns a transient, headless interaction with the `opencode serve` API. The input parameters and the agent's final response are then recorded directly into a dedicated database ledger for future auditing and user review.
+When a task job triggers, it must operate in isolation to prevent state contamination with active user sessions. The background worker reads the target agent and prompt from the task payload, gathers the necessary context from the workspace, injects a correlation identifier for tracing, and spawns a transient interaction with the `opencode serve` API. The inputs and outcomes are recorded as task run history.
 
 ## AI Agent Orchestration and Tool Integration
 
@@ -191,7 +180,7 @@ The CI/CD pipeline acts as an impenetrable gatekeeper for the `main` branch. A c
 
 4.  **Coverage Gate:** The workflow utilizes a custom automated action to parse the resulting `json-summary` output. If the global statement, branch, or function coverage drops below the mandated 95% threshold, the action immediately exits with a non-zero status code, failing the build and actively blocking the merge operation.
 
-5.  **End-to-End Simulation:** Execution of the Playwright suites against a fully containerized, ephemeral instance of the application and its PostgreSQL database.
+5.  **End-to-End Simulation:** Execution of the Playwright suites against a fully built ephemeral instance of the application and its SQLite database.
 
 ## System Security and Observability
 
@@ -219,8 +208,8 @@ The Node.js orchestrator implements explicit handlers for `SIGTERM` and `SIGINT`
 | **Code Editor**           | Monaco Editor (`@monaco-editor/react`)  | Delivers native VS Code functionality, a virtual URI system for accurate undo states, and extensive syntax support.                                |
 | **Terminal Emulator**     | `xterm.js` + WebSockets                 | Achieves high-performance WebGL rendering with native add-ons for dynamic resizing and raw stream attachment.                                      |
 | **Backend Framework**     | Node.js, Fastify                        | Provides superior routing performance, native HTTP/2 support, and strict JSON schema validation at the transport layer.                            |
-| **Database & ORM**        | PostgreSQL / SQLite + Drizzle ORM       | Zero-dependency, SQL-first execution model with continuous dual-write (PostgreSQL → SQLite) for portable workspaces.                               |
-| **Cron & Scheduling**     | `pg-boss` (Cloud) / `bree` (Local)      | Ensures persistent, transaction-safe background execution utilizing `SKIP LOCKED` semantics for horizontal scalability.                            |
+| **Database & ORM**        | SQLite + Drizzle ORM                    | Zero-dependency, SQL-first execution model with a local rebuildable runtime database.                                                              |
+| **Cron & Scheduling**     | `bree` + SQLite state tracking          | Provides local recurring task execution with persistent scheduler state.                                                                           |
 | **AI & Tool Integration** | `opencode-ai` (npm), Composio, MCP SDK  | Single persistent daemon with workspace switching, managed OAuth flows, two MCP servers for dynamic tool registration via a standardized protocol. |
 | **Testing & CI Pipeline** | Vitest (V8), Playwright, GitHub Actions | Delivers AST-based high-speed coverage mapping, strict Pull Request gating, and automated full-stack workflow simulation.                          |
 

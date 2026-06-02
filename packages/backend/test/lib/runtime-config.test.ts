@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { getStartupLogContext, loadRuntimeConfig } from "../../src/lib/runtime-config";
 
 describe("loadRuntimeConfig", () => {
-  it("uses portable workspace defaults under the app data directory", () => {
+  it("uses portable workspace and disposable data defaults under the app directory", () => {
     const config = loadRuntimeConfig({
       cwd: "/tmp/project",
       env: {
@@ -15,9 +15,9 @@ describe("loadRuntimeConfig", () => {
 
     expect(config.server.port).toBe(3000);
     expect(config.server.host).toBe("0.0.0.0");
+    expect(config.paths.dataDir).toBe("/tmp/project/.cc/data");
     expect(config.paths.workspaceDir).toBe("/tmp/project/.cc/workspace");
-    expect(config.paths.subdirectories.database).toBe("/tmp/project/.cc/workspace/database");
-    expect(config.paths.databaseFile).toBe("/tmp/project/.cc/workspace/database/local.db");
+    expect(config.database.sqlitePath).toBe("/tmp/project/.cc/data/cc.db");
   });
 
   it("fails fast with actionable validation errors", () => {
@@ -57,12 +57,11 @@ describe("loadRuntimeConfig", () => {
         baseUrl: "http://127.0.0.1:4100",
       },
       paths: {
+        dataDir: "/tmp/project/.cc/data",
         workspaceDir: "/tmp/project/.cc/workspace",
-        databaseFile: "/tmp/project/.cc/workspace/database/local.db",
       },
       database: {
-        hasDatabaseUrl: false,
-        sqlitePath: "/tmp/project/.cc/workspace/database/local.db",
+        sqlitePath: "/tmp/project/.cc/data/cc.db",
       },
       timeouts: {
         opencodeRequestMs: 30000,
@@ -179,6 +178,17 @@ describe("loadRuntimeConfig", () => {
     }
   });
 
+  it("resolves configuration subdirectory inside the workspace", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test" },
+    });
+
+    expect(config.paths.subdirectories.configuration).toBe(
+      "/tmp/project/.cc/workspace/configuration",
+    );
+  });
+
   it("allows overriding the workspace root with an absolute CC_WORKSPACE_DIR path", () => {
     const config = loadRuntimeConfig({
       env: {
@@ -189,7 +199,37 @@ describe("loadRuntimeConfig", () => {
     });
 
     expect(config.paths.workspaceDir).toBe("/srv/commandscenter-workspace");
+    expect(config.paths.dataDir).toBe("/tmp/workspace-root/.cc/data");
     expect(config.paths.subdirectories.agents).toBe("/srv/commandscenter-workspace/agents");
-    expect(config.database.sqlitePath).toBe("/srv/commandscenter-workspace/database/local.db");
+    expect(config.paths.subdirectories.configuration).toBe(
+      "/srv/commandscenter-workspace/configuration",
+    );
+    expect(config.database.sqlitePath).toBe("/tmp/workspace-root/.cc/data/cc.db");
+  });
+
+  it("allows overriding the data root with an absolute CC_DATA_DIR path", () => {
+    const config = loadRuntimeConfig({
+      env: {
+        NODE_ENV: "test",
+        INIT_CWD: "/tmp/workspace-root",
+        CC_DATA_DIR: "/srv/commandscenter-data",
+      },
+    });
+
+    expect(config.paths.dataDir).toBe("/srv/commandscenter-data");
+    expect(config.database.sqlitePath).toBe("/srv/commandscenter-data/cc.db");
+  });
+
+  it("resolves relative CC_DATA_DIR paths against cwd", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: {
+        NODE_ENV: "test",
+        CC_DATA_DIR: "runtime-data",
+      },
+    });
+
+    expect(config.paths.dataDir).toBe("/tmp/project/runtime-data");
+    expect(config.database.sqlitePath).toBe("/tmp/project/runtime-data/cc.db");
   });
 });

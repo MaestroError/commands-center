@@ -10,7 +10,7 @@ No auth, no multi-tenancy. You install it, you run it, you own it.
 | -------- | --------------------------------------------------- |
 | Frontend | React 19, Vite, Tailwind CSS v4, Shadcn/UI          |
 | Backend  | Fastify, Drizzle ORM, Zod 4, Pino                   |
-| Database | PostgreSQL (cloud) / SQLite (local)                 |
+| Database | SQLite via `better-sqlite3`                         |
 | AI       | OpenCode engine, MCP SDK, Composio                  |
 | Testing  | Vitest, Playwright                                  |
 | Tooling  | pnpm workspaces, ESLint, Prettier, Husky, GitHub CI |
@@ -71,10 +71,11 @@ NODE_ENV=production
 CC_HOST=0.0.0.0
 CC_PORT=3000
 CC_WORKSPACE_DIR=/home/commandscenter/.cc/workspace
+CC_DATA_DIR=/home/commandscenter/.cc/data
 CC_SECRET_KEY=replace-with-a-long-random-secret
 ```
 
-SQLite is used by default at `$CC_WORKSPACE_DIR/database/local.db`. Set `DATABASE_URL` only when you want PostgreSQL as the primary database.
+SQLite is stored at `$CC_DATA_DIR/cc.db` (default: `~/.cc/data/cc.db`). Set `CC_DATA_DIR` to move disposable runtime data to a different location. PostgreSQL primary mode is not part of the current runtime.
 
 ### Global NPM Install
 
@@ -223,6 +224,7 @@ WorkingDirectory=/opt/commandscenter
 Environment=CC_HOST=127.0.0.1
 Environment=CC_PORT=3000
 Environment=CC_WORKSPACE_DIR=/opt/commandscenter/workspace
+Environment=CC_DATA_DIR=/opt/commandscenter/data
 ExecStart=/usr/bin/env ccenter start --host 127.0.0.1 --port 3000 --cc-env-file /opt/commandscenter/.env
 Restart=on-failure
 RestartSec=5
@@ -290,6 +292,7 @@ services:
       CC_HOST: 0.0.0.0
       CC_PORT: "3000"
       CC_WORKSPACE_DIR: /workspace/.cc/workspace
+      CC_DATA_DIR: /workspace/.cc/data
     restart: unless-stopped
 ```
 

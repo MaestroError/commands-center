@@ -18,7 +18,7 @@
 
 This is the single most important architectural constraint. Every feature must comply:
 
-> The entire workspace directory is the single source of truth. All application state (agents, configs, cron jobs, credentials, DB) MUST be stored within the active workspace folder (`.cc/workspace`). Even when PostgreSQL is the primary database, the app MUST silently sync all data in the background to a local in-folder SQLite DB (`.cc/local.db`). If a user copies the directory to another machine and runs installation command, they MUST get the exact same application state — zero external dependencies on the originating host.
+> The workspace filesystem is the source of truth for portable configuration and assets. SQLite is the current runtime database and may contain disposable cache/runtime state. If a user copies the workspace directory to another machine and runs the installation command, the portable configured state must be recoverable from workspace files; runtime history, provider auth state, scheduler state, and secret values may need to be recreated or re-entered.
 
 Before implementing any feature that persists state, ask yourself: "If I copy this entire folder to a fresh machine, does everything still work?" If no, redesign.
 
@@ -50,7 +50,7 @@ These are the chosen technologies. Do not introduce alternatives without explici
 | Framework    | Fastify with `fastify-type-provider-zod`                       |
 | Validation   | Zod 4 (all system boundaries)                                  |
 | ORM          | Drizzle ORM (SQL-first, zero-dependency)                       |
-| Database     | PostgreSQL (cloud) / SQLite via `better-sqlite3` (local)       |
+| Database     | SQLite via `better-sqlite3`                                    |
 | WebSockets   | `ws` (terminal streams, real-time events)                      |
 | PTY          | `node-pty` (pseudo-terminal for shells)                        |
 | Logging      | Pino (structured JSON, correlation IDs)                        |
@@ -60,10 +60,9 @@ These are the chosen technologies. Do not introduce alternatives without explici
 
 ### Scheduling
 
-| Environment        | Technology                            |
-| ------------------ | ------------------------------------- |
-| Cloud (PostgreSQL) | `pg-boss` (persistent, `SKIP LOCKED`) |
-| Local (SQLite)     | `bree` + SQLite state tracking        |
+| Environment    | Technology                     |
+| -------------- | ------------------------------ |
+| Local (SQLite) | `bree` + SQLite state tracking |
 
 ### CLI Distribution
 
@@ -147,7 +146,7 @@ The CLI bundles backend + frontend into `packages/cli/dist/`. The backend expose
 | Database columns      | `snake_case`                  | `created_at`         |
 | Zod schemas           | `camelCase` + `Schema` suffix | `agentConfigSchema`  |
 | Route paths           | `kebab-case`                  | `/api/agent-configs` |
-| Environment variables | `SCREAMING_SNAKE`             | `DATABASE_URL`       |
+| Environment variables | `SCREAMING_SNAKE`             | `CC_WORKSPACE_DIR`   |
 
 ### File Organization
 
@@ -193,7 +192,6 @@ db/
 ├── schema/
 │   ├── agents.ts          # Agent table definition
 │   ├── conversations.ts   # Conversation + message tables
-│   ├── automations.ts     # Automation schedules and runs
 │   ├── tools.ts           # Custom tool definitions
 │   ├── providers.ts       # Provider connections
 │   ├── settings.ts        # User preferences
@@ -201,14 +199,14 @@ db/
 ├── migrations/            # Generated SQL migration files
 │   ├── 0001_initial.sql
 │   └── meta/
-├── client.ts              # DB client factory (PG or SQLite based on DATABASE_URL)
+├── client.ts              # SQLite DB client factory
 └── seed.ts                # Development seed data
 ```
 
 ### Rules
 
 - One schema file per domain entity
-- Use Drizzle's unified schema definition — write once, run on both PostgreSQL and SQLite
+- Use Drizzle's SQLite schema definitions
 - All tables use ULIDs as primary keys (not auto-increment) for portability
 - Critical tables (conversations, audit logs) are append-only
 - Every schema change produces a migration via `drizzle-kit generate`
@@ -217,16 +215,13 @@ db/
 - For Drizzle rename prompts, choose rename only when the same persisted data moved to a new column name; otherwise choose create/drop
 - Migrations are committed to version control
 - Never modify a migration that has been applied — create a new one
-- The `client.ts` must switch drivers based on `DATABASE_URL`:
-  - Starts with `postgres://` → use `drizzle-orm/node-postgres`
-  - Otherwise → use `drizzle-orm/better-sqlite3` with `.cc/local.db`
-- When PostgreSQL is active, implement dual-write: every write also syncs to `.cc/local.db`
+- `client.ts` uses `drizzle-orm/better-sqlite3` and the configured local SQLite path
 
 ### Drizzle Conventions
 
 ```typescript
 // Use snake_case for table and column names
-export const agents = pgTable("agents", {
+export const agents = sqliteTable("agents", {
   id: text("id").primaryKey(), // ULID
   name: text("name").notNull(),
   role: text("role").notNull(),
@@ -408,7 +403,7 @@ Two reference repositories are cloned in `examples/` (gitignored). Use these for
 3. Review the generated migration SQL
 4. Check that the generated migration does not repeat old migration changes; repeated changes mean Drizzle metadata snapshots are stale
 5. If a manual migration is required, update the matching Drizzle snapshot metadata and `_journal.json` in the same change
-6. Test the migration against both PostgreSQL and SQLite
+6. Test the migration against SQLite
 7. Commit the schema change, migration SQL, and migration metadata together
 8. Never edit a migration that has been applied to any environment
 

@@ -64,9 +64,9 @@ type CriticalAgentPathRule = {
 
 const CRITICAL_WORKSPACE_PATH_RULES: CriticalWorkspacePathRule[] = [
   {
-    resolvePath: (config) => config.paths.subdirectories.database,
+    resolvePath: (config) => config.paths.subdirectories.configuration,
     recursive: true,
-    reason: "This path contains CommandsCenter database state required by the app.",
+    reason: "This path contains CommandsCenter configuration managed by the app.",
   },
   {
     resolvePath: (config) => config.paths.subdirectories.preferences,
@@ -87,11 +87,6 @@ const CRITICAL_WORKSPACE_PATH_RULES: CriticalWorkspacePathRule[] = [
     resolvePath: (config) => config.paths.subdirectories.sessions,
     recursive: true,
     reason: "This path contains CommandsCenter session state managed by the app.",
-  },
-  {
-    resolvePath: (config) => config.paths.subdirectories.automations,
-    recursive: true,
-    reason: "This path contains CommandsCenter automation state managed by the app.",
   },
   {
     resolvePath: (config) => config.paths.subdirectories.tools,

@@ -14,7 +14,7 @@ import type { Logger } from "pino";
 import { z } from "zod";
 
 import type { AppDb } from "../db/client.js";
-import { getSetting, upsertSetting } from "../db/helpers.js";
+import { getSetting, upsertSettingFilefirst } from "../db/helpers.js";
 import type { DrainController } from "../lib/drain-protocol.js";
 import type { PackageInfo } from "../lib/package-info.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
@@ -167,7 +167,12 @@ export function createSystemVersionService(options: {
         return preferences;
       }
 
-      await upsertSetting(options.db, AUTO_UPDATE_SETTING_KEY, input.autoUpdateEnabled);
+      await upsertSettingFilefirst(
+        options.db,
+        options.config,
+        AUTO_UPDATE_SETTING_KEY,
+        input.autoUpdateEnabled,
+      );
       const preferences = await readUpdatePreferences();
       cached = applyUpdatePreferences(cached, preferences);
       return preferences;

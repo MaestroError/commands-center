@@ -34,7 +34,7 @@ export const databaseStatusSchema = z.object({
 export const schedulerStatusSchema = z.object({
   state: z.enum(["inactive", "starting", "running", "stopping", "error"]),
   healthy: z.boolean(),
-  driver: z.enum(["none", "local", "bree", "pg-boss"]),
+  driver: z.enum(["none", "local", "bree"]),
   lastError: z.string().min(1).optional(),
 });
 

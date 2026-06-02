@@ -1,5 +1,11 @@
+import { readdir, unlink } from "node:fs/promises";
+import { resolve } from "node:path";
+
 import { and, count, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
+
+import { readConfigFile, writeConfigFileAtomic } from "../lib/config-file.js";
+import type { WorkspaceReconciler } from "../lib/workspace-reconciler.js";
 
 import {
   createTaskInputSchema,
@@ -70,6 +76,125 @@ import {
 } from "../db/schema/index.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
+
+// ---------------------------------------------------------------------------
+// Task template file schema  (configuration/task-templates/<id>.json)
+// ---------------------------------------------------------------------------
+
+const taskTemplateFileSchema = z.object({
+  version: z.literal(1),
+  id: z.string(),
+  defaultAgentId: z.string(),
+  title: z.string(),
+  description: z.string(),
+  todos: z.array(taskTodoSchema),
+  recurrence: recurringTaskScheduleSchema.nullable(),
+  permissionProfile: taskPermissionProfileSchema.nullable(),
+  enabled: z.boolean(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+type TemplateFileContent = z.infer<typeof taskTemplateFileSchema>;
+
+function templateFilePath(config: RuntimeConfig, id: string): string {
+  return resolve(config.paths.subdirectories.configuration, "task-templates", `${id}.json`);
+}
+
+async function writeTemplateFile(
+  config: RuntimeConfig,
+  content: Omit<TemplateFileContent, "version">,
+): Promise<void> {
+  await writeConfigFileAtomic(templateFilePath(config, content.id), { version: 1, ...content });
+}
+
+async function deleteTemplateFile(config: RuntimeConfig, id: string): Promise<void> {
+  try {
+    await unlink(templateFilePath(config, id));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Task template boot reconciler
+// ---------------------------------------------------------------------------
+
+export const taskTemplateReconciler: WorkspaceReconciler = {
+  name: "task-templates",
+
+  async reconcile({ config, db, logger }) {
+    const dir = resolve(config.paths.subdirectories.configuration, "task-templates");
+
+    let filenames: string[];
+    try {
+      filenames = await readdir(dir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw err;
+    }
+
+    const fileIds = new Set<string>();
+
+    for (const filename of filenames.filter((f) => f.endsWith(".json"))) {
+      const path = resolve(dir, filename);
+      const data = await readConfigFile(path, taskTemplateFileSchema, logger);
+      if (!data) continue;
+
+      fileIds.add(data.id);
+
+      const payload = {
+        agent_id: data.defaultAgentId,
+        default_agent_id: data.defaultAgentId,
+        title: data.title,
+        description: data.description,
+        todos_json: JSON.stringify(data.todos),
+        status: data.enabled ? ("enabled" as const) : ("disabled" as const),
+        recurrence_json: data.recurrence ? JSON.stringify(data.recurrence) : null,
+        permission_profile_json: data.permissionProfile
+          ? JSON.stringify(data.permissionProfile)
+          : null,
+        enabled: data.enabled,
+        archived: false,
+        // Scheduler picks up next_occurrence_at from recurrence on first run.
+        next_occurrence_at: data.recurrence ? new Date(data.recurrence.anchorAt) : null,
+        updated_at: new Date(data.updatedAt),
+      };
+
+      const existing = await db.query.task_templates.findFirst({
+        where: (t, { eq }) => eq(t.id, data.id),
+      });
+
+      if (existing) {
+        await db.update(task_templates).set(payload).where(eq(task_templates.id, data.id));
+      } else {
+        await db.insert(task_templates).values({
+          id: data.id,
+          ...payload,
+          latest_final_message: null,
+          latest_task_id: null,
+          last_generated_occurrence_at: null,
+          created_at: new Date(data.createdAt),
+          archived_at: null,
+          deleted_at: null,
+        });
+      }
+    }
+
+    // Delete DB rows with no corresponding file (orphans and soft-deleted rows
+    // whose files were already removed).
+    const rows = await db
+      .select({ id: task_templates.id })
+      .from(task_templates)
+      .where(isNull(task_templates.deleted_at));
+
+    for (const row of rows) {
+      if (!fileIds.has(row.id)) {
+        await db.delete(task_templates).where(eq(task_templates.id, row.id));
+      }
+    }
+  },
+};
 
 export type TaskService = ReturnType<typeof createTaskService>;
 
@@ -148,13 +273,29 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       await requireActiveAgent(parsed.defaultAgentId);
       await enforceTaskLimit();
 
+      const id = createId();
       const timestamp = now();
       const todos = normalizeTodos(parsed.todos, timestamp);
       const enabled = parsed.enabled ?? true;
+
+      // File-first: persist to configuration/task-templates/<id>.json.
+      await writeTemplateFile(options.config, {
+        id,
+        defaultAgentId: parsed.defaultAgentId,
+        title: parsed.title,
+        description: parsed.description,
+        todos,
+        recurrence: parsed.recurrence ?? null,
+        permissionProfile: parsed.permissionProfile ?? null,
+        enabled,
+        createdAt: timestamp.toISOString(),
+        updatedAt: timestamp.toISOString(),
+      });
+
       const [row] = await options.db
         .insert(task_templates)
         .values({
-          id: createId(),
+          id,
           agent_id: parsed.defaultAgentId,
           default_agent_id: parsed.defaultAgentId,
           title: parsed.title,
@@ -202,7 +343,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const todos = parsed.todos
         ? normalizeTodos(parsed.todos, timestamp)
         : parseTaskTodos(existing.todos_json);
-      const recurrence = parsed.recurrence ?? null;
+      const recurrence =
+        parsed.recurrence === undefined
+          ? existing.recurrence_json
+            ? recurringTaskScheduleSchema.parse(JSON.parse(existing.recurrence_json))
+            : null
+          : (parsed.recurrence ?? null);
       const nextOccurrenceAt =
         parsed.recurrence === undefined
           ? existing.next_occurrence_at
@@ -210,22 +356,36 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
             ? new Date(recurrence.anchorAt)
             : null;
       const enabled = parsed.enabled ?? existing.enabled;
+      const defaultAgentId =
+        parsed.defaultAgentId ?? existing.default_agent_id ?? existing.agent_id;
+
+      // File-first: update configuration/task-templates/<id>.json.
+      await writeTemplateFile(options.config, {
+        id,
+        defaultAgentId,
+        title: parsed.title ?? existing.title,
+        description: parsed.description ?? existing.description,
+        todos,
+        recurrence,
+        permissionProfile:
+          parsed.permissionProfile === undefined
+            ? (parseOptional(existing.permission_profile_json, taskPermissionProfileSchema) ?? null)
+            : (parsed.permissionProfile ?? null),
+        enabled,
+        createdAt: existing.created_at.toISOString(),
+        updatedAt: timestamp.toISOString(),
+      });
 
       const [row] = await options.db
         .update(task_templates)
         .set({
-          agent_id: parsed.defaultAgentId ?? existing.agent_id,
-          default_agent_id: parsed.defaultAgentId ?? existing.default_agent_id,
+          agent_id: defaultAgentId,
+          default_agent_id: defaultAgentId,
           title: parsed.title ?? existing.title,
           description: parsed.description ?? existing.description,
           todos_json: JSON.stringify(todos),
           status: enabled ? "enabled" : "disabled",
-          recurrence_json:
-            parsed.recurrence === undefined
-              ? existing.recurrence_json
-              : recurrence
-                ? JSON.stringify(recurrence)
-                : null,
+          recurrence_json: recurrence ? JSON.stringify(recurrence) : null,
           permission_profile_json:
             parsed.permissionProfile === undefined
               ? existing.permission_profile_json
@@ -777,6 +937,9 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const timestamp = now();
 
       if (existingTemplate) {
+        // File-first: remove configuration/task-templates/<id>.json before soft-delete.
+        await deleteTemplateFile(options.config, id);
+
         return Promise.resolve(
           options.db.transaction((tx) => {
             const row = tx
@@ -1480,6 +1643,24 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
     const timestamp = now();
 
     if (existingTemplate) {
+      // File-first: update enabled flag in configuration/task-templates/<id>.json.
+      await writeTemplateFile(options.config, {
+        id,
+        defaultAgentId: existingTemplate.default_agent_id ?? existingTemplate.agent_id,
+        title: existingTemplate.title,
+        description: existingTemplate.description,
+        todos: parseTaskTodos(existingTemplate.todos_json),
+        recurrence: existingTemplate.recurrence_json
+          ? recurringTaskScheduleSchema.parse(JSON.parse(existingTemplate.recurrence_json))
+          : null,
+        permissionProfile:
+          parseOptional(existingTemplate.permission_profile_json, taskPermissionProfileSchema) ??
+          null,
+        enabled,
+        createdAt: existingTemplate.created_at.toISOString(),
+        updatedAt: timestamp.toISOString(),
+      });
+
       const [row] = await options.db
         .update(task_templates)
         .set({

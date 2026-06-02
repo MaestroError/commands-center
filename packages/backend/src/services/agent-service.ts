@@ -43,6 +43,7 @@ import {
   prepareWorkspace,
   resolveAgentWorkspacePath,
 } from "./agent-workspace.js";
+import { writeAgentFile } from "./agent-file.js";
 
 export type AgentService = ReturnType<typeof createAgentService>;
 
@@ -142,6 +143,19 @@ export function createAgentService(options: {
         overwriteSlugs: parsed.customToolOverwriteSlugs,
       });
 
+      // File-first: agent.json is the source of record for the derived row.
+      await writeAgentFile(options.config, slug, "active", {
+        id,
+        name: parsed.name,
+        role: parsed.role,
+        instructions: parsed.instructions,
+        defaultModel: parsed.defaultModel,
+        iconPath: parsed.iconPath,
+        capabilities,
+        createdAt: timestamp.toISOString(),
+        updatedAt: timestamp.toISOString(),
+      });
+
       const [row] = await options.db
         .insert(agents)
         .values({
@@ -207,6 +221,9 @@ export function createAgentService(options: {
         input: workspaceInput,
         skillRoot,
         workspaceSkillRoot,
+        // AGENTS.md is preserved on update unless the caller opts in; opencode.jsonc
+        // and skills always re-render so capability changes take effect.
+        writeRules: parsed.rewriteAgentsMd,
       });
 
       await customToolService.syncAgentAssignments({
@@ -217,6 +234,22 @@ export function createAgentService(options: {
 
       await options.opencodeService.dispose(nextWorkspacePath).catch(() => {});
 
+      const updatedAt = now();
+      const nextIconPath = parsed.iconPath ?? existing.icon_path;
+
+      // File-first: agent.json is the source of record for the derived row.
+      await writeAgentFile(options.config, nextSlug, "active", {
+        id,
+        name: workspaceInput.name,
+        role: workspaceInput.role,
+        instructions: workspaceInput.instructions,
+        defaultModel: workspaceInput.defaultModel,
+        iconPath: nextIconPath ?? undefined,
+        capabilities: normalizedCapabilities,
+        createdAt: existing.created_at.toISOString(),
+        updatedAt: updatedAt.toISOString(),
+      });
+
       const [row] = await options.db
         .update(agents)
         .set({
@@ -225,9 +258,9 @@ export function createAgentService(options: {
           role: workspaceInput.role,
           instructions: workspaceInput.instructions,
           default_model: workspaceInput.defaultModel,
-          icon_path: parsed.iconPath ?? existing.icon_path,
+          icon_path: nextIconPath,
           capabilities_json: JSON.stringify(normalizedCapabilities),
-          updated_at: now(),
+          updated_at: updatedAt,
         })
         .where(eq(agents.id, id))
         .returning();

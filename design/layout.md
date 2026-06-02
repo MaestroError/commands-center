@@ -20,7 +20,7 @@ The left sidebar contains two regions: primary navigation links and an agents sh
 
 ### Navigation Links
 
-- Links to each main screen: Dashboard, Agents, File Manager, Global Terminal, Automations, Custom Tools, Built-in Skills, Integrations, Provider Connections, Settings.
+- Links to each main screen: Dashboard, Agents, File Manager, Global Terminal, Tasks, Custom Tools, Built-in Skills, Integrations, Provider Connections, Settings.
 - The active screen link is visually highlighted.
 
 ### Agents Section

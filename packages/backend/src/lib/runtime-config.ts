@@ -5,6 +5,7 @@ import { z } from "zod";
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_WORKSPACE_DIR = ".cc/workspace";
+const DEFAULT_DATA_DIR = ".cc/data";
 const DEFAULT_OPENCODE_TIMEOUT_MS = 30_000;
 const DEFAULT_OPENCODE_STARTUP_TIMEOUT_MS = 30_000;
 const DEFAULT_OPENCODE_SHUTDOWN_TIMEOUT_MS = 15_000;
@@ -101,7 +102,7 @@ const envSchema = z.object({
   CC_PORT: positiveInteger("CC_PORT", DEFAULT_PORT),
   CC_HOST: z.string().trim().optional().default(DEFAULT_HOST),
   CC_WORKSPACE_DIR: z.string().trim().optional(),
-  DATABASE_URL: z.string().trim().optional(),
+  CC_DATA_DIR: z.string().trim().optional(),
   CC_OPENCODE_TIMEOUT_MS: positiveInteger("CC_OPENCODE_TIMEOUT_MS", DEFAULT_OPENCODE_TIMEOUT_MS),
   CC_OPENCODE_STARTUP_TIMEOUT_MS: positiveInteger(
     "CC_OPENCODE_STARTUP_TIMEOUT_MS",
@@ -150,12 +151,12 @@ export type RuntimeConfig = {
   };
   paths: {
     cwd: string;
+    dataDir: string;
     workspaceDir: string;
     subdirectories: {
       agents: string;
       auth: string;
-      automations: string;
-      database: string;
+      configuration: string;
       mcp: string;
       preferences: string;
       sessions: string;
@@ -164,10 +165,8 @@ export type RuntimeConfig = {
       taskContextAttachments: string;
       tmp: string;
     };
-    databaseFile: string;
   };
   database: {
-    databaseUrl?: string;
     sqlitePath: string;
   };
   timeouts: {
@@ -236,6 +235,11 @@ export function loadRuntimeConfig(options?: {
       ? parsedEnv.data.CC_WORKSPACE_DIR
       : resolve(cwd, parsedEnv.data.CC_WORKSPACE_DIR)
     : resolve(cwd, DEFAULT_WORKSPACE_DIR);
+  const dataDir = parsedEnv.data.CC_DATA_DIR
+    ? isAbsolute(parsedEnv.data.CC_DATA_DIR)
+      ? parsedEnv.data.CC_DATA_DIR
+      : resolve(cwd, parsedEnv.data.CC_DATA_DIR)
+    : resolve(cwd, DEFAULT_DATA_DIR);
 
   return {
     nodeEnv: parsedEnv.data.NODE_ENV,
@@ -245,12 +249,12 @@ export function loadRuntimeConfig(options?: {
     },
     paths: {
       cwd,
+      dataDir,
       workspaceDir,
       subdirectories: {
         agents: resolve(workspaceDir, "agents"),
         auth: resolve(workspaceDir, "auth"),
-        automations: resolve(workspaceDir, "automations"),
-        database: resolve(workspaceDir, "database"),
+        configuration: resolve(workspaceDir, "configuration"),
         mcp: resolve(workspaceDir, "mcp"),
         preferences: resolve(workspaceDir, "preferences"),
         sessions: resolve(workspaceDir, "sessions"),
@@ -259,11 +263,9 @@ export function loadRuntimeConfig(options?: {
         tools: resolve(workspaceDir, "custom-tools"),
         tmp: resolve(workspaceDir, "tmp"),
       },
-      databaseFile: resolve(workspaceDir, "database", "local.db"),
     },
     database: {
-      databaseUrl: parsedEnv.data.DATABASE_URL || undefined,
-      sqlitePath: resolve(workspaceDir, "database", "local.db"),
+      sqlitePath: resolve(dataDir, "cc.db"),
     },
     timeouts: {
       opencodeRequestMs: parsedEnv.data.CC_OPENCODE_TIMEOUT_MS,
@@ -322,11 +324,10 @@ export function getStartupLogContext(config: RuntimeConfig): Record<string, unkn
     server: config.server,
     opencode: config.opencode,
     paths: {
+      dataDir: config.paths.dataDir,
       workspaceDir: config.paths.workspaceDir,
-      databaseFile: config.paths.databaseFile,
     },
     database: {
-      hasDatabaseUrl: config.database.databaseUrl !== undefined,
       sqlitePath: config.database.sqlitePath,
     },
     timeouts: config.timeouts,

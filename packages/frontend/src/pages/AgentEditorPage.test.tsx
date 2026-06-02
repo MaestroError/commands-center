@@ -224,8 +224,27 @@ describe("AgentEditorPage", () => {
             appMcpServers: [],
             appToolPermissions: [],
           },
+          rewriteAgentsMd: false,
         },
       });
+    });
+  });
+
+  it("sends rewriteAgentsMd true only when the Rewrite AGENTS.md switch is enabled", async () => {
+    updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
+
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Rewrite AGENTS.md on save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(updateMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "agent-1",
+          input: expect.objectContaining({ rewriteAgentsMd: true }),
+        }),
+      );
     });
   });
 
@@ -256,6 +275,7 @@ describe("AgentEditorPage", () => {
             appMcpServers: [],
             appToolPermissions: [],
           },
+          rewriteAgentsMd: false,
         },
       });
     });

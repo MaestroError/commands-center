@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,7 +19,6 @@ describe("migrateDatabase", () => {
   it("creates board task schema objects on a fresh sqlite database", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "cc-migrate-db-"));
     const config = loadRuntimeConfig({ cwd, env: { NODE_ENV: "test" } });
-    await mkdir(config.paths.subdirectories.database, { recursive: true });
 
     const client = createDatabaseClient(config);
     const sqlite = (client.db as typeof client.db & { $client: SqliteClient }).$client;
@@ -38,6 +37,8 @@ describe("migrateDatabase", () => {
       expect(columnExists(sqlite, "task_runs", "outcome")).toBe(true);
       expect(indexExists(sqlite, "tasks_default_agent_id_idx")).toBe(true);
       expect(indexExists(sqlite, "task_runs_subtask_id_idx")).toBe(true);
+      expect(tableExists(sqlite, "automations")).toBe(false);
+      expect(tableExists(sqlite, "automation_runs")).toBe(false);
     } finally {
       client.close();
       await rm(cwd, { recursive: true, force: true });

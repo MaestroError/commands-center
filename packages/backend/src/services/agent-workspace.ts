@@ -47,12 +47,15 @@ export async function prepareWorkspace(options: {
   input: AgentWorkspaceInput;
   skillRoot?: string;
   workspaceSkillRoot?: string;
+  /** Whether to (re)write AGENTS.md. Defaults to true. */
+  writeRules?: boolean;
 }): Promise<void> {
   await writeOpenCodeWorkspace({
     workspacePath: options.workspacePath,
     input: options.input,
     skillRoot: options.skillRoot ?? getBuiltInSkillRoot(options.config),
     workspaceSkillRoot: options.workspaceSkillRoot ?? getWorkspaceSkillRoot(options.config),
+    writeRules: options.writeRules,
   });
 }
 

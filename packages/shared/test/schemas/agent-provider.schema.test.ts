@@ -56,6 +56,7 @@ describe("agent and provider schemas", () => {
     expect(updateAgentInputSchema.parse({ role: "  reviewer  " })).toEqual({
       role: "reviewer",
       customToolOverwriteSlugs: [],
+      rewriteAgentsMd: false,
     });
   });
 
@@ -182,7 +183,7 @@ describe("agent and provider schemas", () => {
         workspaceDir: "/workspace/.cc/workspace",
         database: {
           dialect: "sqlite",
-          sqlitePath: "/workspace/.cc/local.db",
+          sqlitePath: "/workspace/.cc/data/cc.db",
         },
         opencode: {
           state: "healthy",
