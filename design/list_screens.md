@@ -30,10 +30,10 @@
 - Description: Standalone terminal for host-level commands, installs, and machine-wide operations outside a single agent workspace.
 - Decision: Keep separate from the agent terminal because scope and risk are different.
 
-## 7. Automations
+## 7. Tasks
 
-- Description: Screen for listing, creating, editing, enabling/disabling, archiving, deleting, and reviewing scheduled prompt automations. Each run creates a separate agent session, and run history shows the final enriched prompt.
-- Decision: One module can cover list + form + basic run history instead of splitting into many MVP screens.
+- Description: Screen for listing, creating, editing, enabling/disabling, archiving, deleting, and reviewing tasks and recurring task templates. Each run is recorded as a separate execution attempt, and run history shows the final enriched prompt.
+- Decision: One module can cover board, templates, forms, and run history instead of splitting into many MVP screens.
 
 ## 8. Custom Tools
 

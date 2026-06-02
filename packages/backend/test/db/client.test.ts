@@ -21,18 +21,4 @@ describe("createDatabaseClient", () => {
       client.close();
     }
   });
-
-  it("rejects postgres primary mode until dual-write is implemented", () => {
-    const config = loadRuntimeConfig({
-      cwd: "/tmp/project",
-      env: {
-        NODE_ENV: "test",
-        DATABASE_URL: "postgres://user:pass@localhost:5432/cc",
-      },
-    });
-
-    expect(() => createDatabaseClient(config)).toThrow(
-      "PostgreSQL primary mode is not implemented yet. Remove DATABASE_URL to use the portable SQLite database.",
-    );
-  });
 });

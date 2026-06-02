@@ -61,7 +61,6 @@ describe("loadRuntimeConfig", () => {
         databaseFile: "/tmp/project/.cc/workspace/database/local.db",
       },
       database: {
-        hasDatabaseUrl: false,
         sqlitePath: "/tmp/project/.cc/workspace/database/local.db",
       },
       timeouts: {

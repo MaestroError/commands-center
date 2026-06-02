@@ -8,7 +8,7 @@ CommandsCenter (`cc`)
 
 Operators who work with multiple AI coding agents need one place to configure them, talk to them, manage their workspaces, and control the surrounding tools those agents depend on. Today that workflow is fragmented across local folders, terminals, provider dashboards, external integrations, and agent-specific configuration files. This creates operational friction, inconsistent agent setup, poor visibility into ongoing work, and weak portability when moving environments between machines.
 
-The product should solve this by giving a single operator one workspace-centric application where agents, conversations, files, tools, credentials, and automations are managed together and remain portable with the workspace directory.
+The product should solve this by giving a single operator one workspace-centric application where agents, conversations, files, tools, credentials, and tasks are managed together and remain portable with the workspace directory.
 
 ## Product Goal
 
@@ -65,12 +65,12 @@ Phase 1 covers direct messaging only. Group chat and Kanban orchestration are ou
 - The application must provide agent-specific terminal access for work inside an agent workspace.
 - Terminal access must support interactive command execution.
 
-### 7. Automations
+### 7. Tasks
 
-- The user must be able to create, edit, enable, disable, and review scheduled automations.
-- Each automation must target a selected agent and send a prompt on a defined schedule.
-- Each automation run must be recorded as its own session for later review.
-- Limits on automation usage may be controlled by application configuration.
+- The user must be able to create, edit, enable, disable, and review tasks and recurring task templates.
+- Each scheduled task or template run must target a selected agent and send a prompt on a defined schedule.
+- Each task run must be recorded as its own execution attempt for later review.
+- Limits on task usage may be controlled by application configuration.
 
 ### 8. Custom Tools
 
@@ -99,7 +99,7 @@ Phase 1 covers direct messaging only. Group chat and Kanban orchestration are ou
 ### 12. Dashboard and Navigation
 
 - The application must provide a dashboard with recent agents, recent chats, and system status relevant to the operator.
-- The application must provide clear navigation to agents, chat, file manager, terminal, automations, tools, connections, settings, and profile.
+- The application must provide clear navigation to agents, chat, file manager, terminal, tasks, tools, connections, settings, and profile.
 - The sidebar should prioritize quick access to recent agent conversations.
 
 ## Non-Goals for MVP

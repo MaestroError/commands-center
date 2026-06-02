@@ -122,14 +122,14 @@ export function DevDebugPanel({ injectEvent, messageId, sessionId }: DevDebugPan
         input: {
           questions: [
             {
-              question: "Which database should we use?",
-              options: [{ label: "PostgreSQL" }, { label: "SQLite" }],
+              question: "Use the local SQLite database?",
+              options: [{ label: "Yes" }, { label: "No" }],
             },
             { question: "Include migrations?", options: [{ label: "Yes" }, { label: "No" }] },
           ],
         },
         metadata: {
-          answers: [["PostgreSQL"], ["Yes"]],
+          answers: [["Yes"], ["Yes"]],
         },
       },
     });

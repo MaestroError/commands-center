@@ -18,12 +18,6 @@ export type DatabaseClient = {
 };
 
 export function createDatabaseClient(config: RuntimeConfig): DatabaseClient {
-  if (config.database.databaseUrl?.startsWith("postgres://")) {
-    throw new Error(
-      "PostgreSQL primary mode is not implemented yet. Remove DATABASE_URL to use the portable SQLite database.",
-    );
-  }
-
   mkdirSync(dirname(config.database.sqlitePath), { recursive: true });
 
   const sqlite = new Database(config.database.sqlitePath);

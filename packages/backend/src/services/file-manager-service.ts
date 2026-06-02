@@ -89,11 +89,6 @@ const CRITICAL_WORKSPACE_PATH_RULES: CriticalWorkspacePathRule[] = [
     reason: "This path contains CommandsCenter session state managed by the app.",
   },
   {
-    resolvePath: (config) => config.paths.subdirectories.automations,
-    recursive: true,
-    reason: "This path contains CommandsCenter automation state managed by the app.",
-  },
-  {
     resolvePath: (config) => config.paths.subdirectories.tools,
     recursive: true,
     reason: "This path contains CommandsCenter-managed reusable tools.",

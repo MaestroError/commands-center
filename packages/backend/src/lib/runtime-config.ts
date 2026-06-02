@@ -101,7 +101,6 @@ const envSchema = z.object({
   CC_PORT: positiveInteger("CC_PORT", DEFAULT_PORT),
   CC_HOST: z.string().trim().optional().default(DEFAULT_HOST),
   CC_WORKSPACE_DIR: z.string().trim().optional(),
-  DATABASE_URL: z.string().trim().optional(),
   CC_OPENCODE_TIMEOUT_MS: positiveInteger("CC_OPENCODE_TIMEOUT_MS", DEFAULT_OPENCODE_TIMEOUT_MS),
   CC_OPENCODE_STARTUP_TIMEOUT_MS: positiveInteger(
     "CC_OPENCODE_STARTUP_TIMEOUT_MS",
@@ -154,7 +153,6 @@ export type RuntimeConfig = {
     subdirectories: {
       agents: string;
       auth: string;
-      automations: string;
       database: string;
       mcp: string;
       preferences: string;
@@ -167,7 +165,6 @@ export type RuntimeConfig = {
     databaseFile: string;
   };
   database: {
-    databaseUrl?: string;
     sqlitePath: string;
   };
   timeouts: {
@@ -249,7 +246,6 @@ export function loadRuntimeConfig(options?: {
       subdirectories: {
         agents: resolve(workspaceDir, "agents"),
         auth: resolve(workspaceDir, "auth"),
-        automations: resolve(workspaceDir, "automations"),
         database: resolve(workspaceDir, "database"),
         mcp: resolve(workspaceDir, "mcp"),
         preferences: resolve(workspaceDir, "preferences"),
@@ -262,7 +258,6 @@ export function loadRuntimeConfig(options?: {
       databaseFile: resolve(workspaceDir, "database", "local.db"),
     },
     database: {
-      databaseUrl: parsedEnv.data.DATABASE_URL || undefined,
       sqlitePath: resolve(workspaceDir, "database", "local.db"),
     },
     timeouts: {
@@ -326,7 +321,6 @@ export function getStartupLogContext(config: RuntimeConfig): Record<string, unkn
       databaseFile: config.paths.databaseFile,
     },
     database: {
-      hasDatabaseUrl: config.database.databaseUrl !== undefined,
       sqlitePath: config.database.sqlitePath,
     },
     timeouts: config.timeouts,

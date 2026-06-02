@@ -10,7 +10,7 @@ No auth, no multi-tenancy. You install it, you run it, you own it.
 | -------- | --------------------------------------------------- |
 | Frontend | React 19, Vite, Tailwind CSS v4, Shadcn/UI          |
 | Backend  | Fastify, Drizzle ORM, Zod 4, Pino                   |
-| Database | PostgreSQL (cloud) / SQLite (local)                 |
+| Database | SQLite via `better-sqlite3`                         |
 | AI       | OpenCode engine, MCP SDK, Composio                  |
 | Testing  | Vitest, Playwright                                  |
 | Tooling  | pnpm workspaces, ESLint, Prettier, Husky, GitHub CI |
@@ -74,7 +74,7 @@ CC_WORKSPACE_DIR=/home/commandscenter/.cc/workspace
 CC_SECRET_KEY=replace-with-a-long-random-secret
 ```
 
-SQLite is used by default at `$CC_WORKSPACE_DIR/database/local.db`. Set `DATABASE_URL` only when you want PostgreSQL as the primary database.
+SQLite is stored at `$CC_WORKSPACE_DIR/database/local.db`. PostgreSQL primary mode is not part of the current runtime.
 
 ### Global NPM Install
 

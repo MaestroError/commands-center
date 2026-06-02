@@ -36,7 +36,7 @@ npm install -g commandscenter
 
 > **Single-User Application** — This is a single-operator tool. There is no user registration, login, or multi-tenancy. The person who installs and runs the app is the sole user with full access to all agents, workspaces, terminals, and the host filesystem. Authentication may be added in a future phase, but the MVP assumes a trusted, single-user environment.
 
-> **MUST: Portable Workspace Rule** — The entire workspace directory is the single source of truth. All application state (agents, configs, chat history, cron jobs, credentials, DB) MUST be stored within the active workspace folder. Even when PostgreSQL is the primary database, the app MUST silently sync all data in the background to a local in-folder SQLite DB (`.cc/local.db`). If a user copies or moves the entire directory to another machine and runs `cc`, they MUST get the exact same application state — zero external dependencies on the originating host. This rule applies to every feature and subsystem without exception.
+> **MUST: Portable Workspace Rule** — The workspace filesystem is the source of truth for portable configuration and assets. SQLite is the current runtime database and may contain disposable cache/runtime state. If a user copies or moves the workspace directory to another machine and runs `cc`, the portable configured state must be recoverable from workspace files. Runtime history, provider auth state, scheduler state, and secret values may need to be recreated or re-entered.
 
 ## Features
 
@@ -64,11 +64,11 @@ At the MVP stage we focus on Direct Messaging only. Let's focus on that.
 
 The product has three planned feature pillars. We build them sequentially:
 
-| Phase             | Feature             | Scope                                                                                                                                              |
-| ----------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Phase 1 (MVP)** | **Direct Messages** | Agent CRUD, 1-on-1 chat with each agent via OpenCode SDK, file manager, terminal, cron automations, custom tools, MCP/provider auth, self-updating |
-| **Phase 2**       | **Group Chat**      | Multi-agent conversations with shared context (documents, images, chat history)                                                                    |
-| **Phase 3**       | **Kanban Board**    | Task-based orchestration — agents assigned to cards/columns with shared project context                                                            |
+| Phase             | Feature             | Scope                                                                                                                                             |
+| ----------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Phase 1 (MVP)** | **Direct Messages** | Agent CRUD, 1-on-1 chat with each agent via OpenCode SDK, file manager, terminal, tasks/templates, custom tools, MCP/provider auth, self-updating |
+| **Phase 2**       | **Group Chat**      | Multi-agent conversations with shared context (documents, images, chat history)                                                                   |
+| **Phase 3**       | **Kanban Board**    | Task-based orchestration — agents assigned to cards/columns with shared project context                                                           |
 
 **Current focus: Phase 1 — Direct Messages.** All subsequent sections in this document describe Phase 1 scope unless explicitly noted otherwise.
 
@@ -98,10 +98,9 @@ Additionally, each agent's chat page should have a terminal provided by OpenCode
 
 Terminal can be based on openCode's socket endpoint specifically created for terminal commands (OpenCode web uses the same)
 
-### Cron (Automations)
+### Tasks and Templates
 
-The user should be able to open up automations page and add some amount of automations (controlled from .env, 0 for unlimited) per day / hour or any custom schedule. Each automation has it's own title, description, status (can be disabled) and prompts. In prompt, user chooses agent and writes prompt that goes to Agent.
-The system enhances this prompt with needed context, including the description of cron job and passes to agent when cron invoked. each cron invokation is different session and should be saved as for future reference / checking
+The user should be able to open the Tasks page and manage board tasks plus reusable task templates. A template may run manually or on a schedule. Each run targets an agent with a prompt, and the system enriches that prompt with needed context before invoking the agent. Each invocation is recorded as task run history for later review.
 
 ### Direct chat
 
@@ -317,7 +316,7 @@ We should adhere to following principles while development and maintenance of th
 - **Separation of Concerns:** Clear boundaries between layers — transport (routes/controllers), business logic (services), data access (repositories), and presentation (React components).
 - **Dependency Injection:** Services receive their dependencies explicitly, making them testable and swappable.
 - **Configuration via Environment:** All environment-specific values come from `.env` / environment variables, validated at startup with a schema (Zod). Fail fast on misconfiguration.
-- **Portable Workspace (MUST):** All application state lives inside the workspace directory. Even with PostgreSQL as the primary DB, the app silently syncs to an in-folder SQLite DB. Moving the directory to another device and running `cc` must produce the exact same application — no external host dependencies.
+- **Portable Workspace (MUST):** Portable configuration and assets are recoverable from workspace files. SQLite stores runtime/cache state and may be rebuilt or recreated as later filesystem-source-of-truth phases land.
 - **Error Handling Strategy:**
   - Domain errors are typed and intentional (custom error classes or result types).
   - Unhandled exceptions trigger structured logging and graceful degradation — never crash silently.
@@ -408,21 +407,19 @@ cc/
 
 ## Database
 
-| Category     | Technology                | Notes                                                                                                                              |
-| ------------ | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| **Cloud DB** | PostgreSQL                | Scalable, distributed deployments                                                                                                  |
-| **Local DB** | SQLite (`better-sqlite3`) | Lightweight local installations **and** mandatory local sync target (see Portable Workspace Rule)                                  |
-| **ORM**      | Drizzle ORM               | SQL-first, zero-dependency, TypeScript type-safe, dual-driver support (`drizzle-orm/node-postgres` + `drizzle-orm/better-sqlite3`) |
-| **IDs**      | ULID                      | Lexicographically sortable, collision-safe for distributed systems                                                                 |
+| Category       | Technology                | Notes                                                                                               |
+| -------------- | ------------------------- | --------------------------------------------------------------------------------------------------- |
+| **Runtime DB** | SQLite (`better-sqlite3`) | Lightweight local runtime database for disposable state and derived caches                          |
+| **ORM**        | Drizzle ORM               | SQL-first, zero-dependency, TypeScript type-safe SQLite access through `drizzle-orm/better-sqlite3` |
+| **IDs**        | ULID                      | Lexicographically sortable, collision-safe identifiers                                              |
 
-> **Portable Workspace Sync:** Regardless of the active DB driver, the app maintains a **dual-write** strategy — every write to PostgreSQL is also written to `.cc/local.db` (SQLite) inside the workspace directory. Drizzle migrations run against both databases to ensure schema parity. On startup, if no PostgreSQL connection is available, the app seamlessly falls back to this local SQLite DB. This guarantees full portability — move the folder, run on a new machine, and the app resumes with identical state.
+> **Portable Workspace Sync:** The current runtime is SQLite-only. Later filesystem-source-of-truth phases make portable config and assets authoritative in workspace files while keeping SQLite rebuildable.
 
 ## Background Jobs & Scheduling
 
-| Environment            | Technology                     | Notes                                                                   |
-| ---------------------- | ------------------------------ | ----------------------------------------------------------------------- |
-| **Cloud (PostgreSQL)** | `pg-boss` or `graphile-worker` | Persistent, database-backed scheduling with `SKIP LOCKED` semantics     |
-| **Local (SQLite)**     | `bree`                         | Cron syntax parsing + worker threads, paired with SQLite state tracking |
+| Environment        | Technology | Notes                                                                   |
+| ------------------ | ---------- | ----------------------------------------------------------------------- |
+| **Local (SQLite)** | `bree`     | Cron syntax parsing + worker threads, paired with SQLite state tracking |
 
 ## AI & Integrations
 
@@ -502,13 +499,6 @@ All runtime configuration is managed through environment variables. Validated at
 | `CC_HOST`      | `0.0.0.0`     | No       | Bind address. Use `127.0.0.1` to restrict to localhost             |
 | `CC_LOG_LEVEL` | `info`        | No       | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 
-## Database
-
-| Variable         | Default                 | Required | Description                                                                                                           |
-| ---------------- | ----------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`   | `sqlite://.cc/local.db` | No       | Primary DB connection string. PostgreSQL URI for cloud, SQLite path for local. Drives the Drizzle dual-driver switch  |
-| `CC_SQLITE_SYNC` | `true`                  | No       | Enable background sync from PostgreSQL to local SQLite (Portable Workspace Rule). No effect when primary DB is SQLite |
-
 ## Security & Auth
 
 | Variable                  | Default               | Required       | Description                                                                         |
@@ -535,11 +525,11 @@ All runtime configuration is managed through environment variables. Validated at
 | ------------------ | --------------- | -------- | ------------------------------------------------------------------------------------------------- |
 | `CC_WORKSPACE_DIR` | `.cc/workspace` | No       | Portable workspace directory (DB, configs, agent state). Relative paths are resolved against cwd. |
 
-## Automations (Cron)
+## Tasks
 
 | Variable              | Default | Required | Description                                                                                      |
 | --------------------- | ------- | -------- | ------------------------------------------------------------------------------------------------ |
-| `CC_MAX_CRONS`        | `0`     | No       | Max automation jobs per user. `0` = unlimited                                                    |
+| `CC_MAX_TASKS`        | `0`     | No       | Max active tasks. `0` = unlimited                                                                |
 | `CC_CRON_CONCURRENCY` | `1`     | No       | Max cron jobs executing simultaneously (prevents resource exhaustion from parallel agent spawns) |
 
 ## Integrations
@@ -581,7 +571,7 @@ All runtime configuration is managed through environment variables. Validated at
 | npm or pnpm | Latest   | Package manager                                                  |
 | Git         | Any      | Required for bare-metal updates and agent workflows              |
 
-PostgreSQL is **optional**. Without it, the app runs entirely on SQLite — zero additional infrastructure needed.
+The app runs on SQLite — zero additional database infrastructure needed.
 
 ---
 
@@ -608,7 +598,7 @@ The app launches at `http://localhost:3000`. All state lives inside the current 
 
 1. Creates `.cc/` data directory
 2. Generates `.env` with documented defaults (edit as needed)
-3. Initializes SQLite database at `.cc/local.db`
+3. Initializes SQLite database at `.cc/workspace/database/local.db`
 4. Creates `workspaces/` directory for agent folders
 5. Starts the server
 
@@ -641,11 +631,6 @@ For self-hosting on a Linux server with full system access. The app runs directl
 # Install Node.js 24+ (via nvm or NodeSource)
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt-get install -y nodejs git build-essential
-
-# (Optional) Install PostgreSQL for cloud-grade persistence
-sudo apt-get install -y postgresql
-sudo -u postgres createuser cc
-sudo -u postgres createdb cc -O cc
 ```
 
 ### Installation
@@ -674,9 +659,6 @@ CC_PORT=3000
 CC_HOST=0.0.0.0
 CC_SECRET=<generate-a-strong-random-secret>
 CC_CORS_ORIGINS=https://yourdomain.com
-
-# Only if using PostgreSQL (otherwise SQLite is used automatically)
-DATABASE_URL=postgresql://cc:password@localhost:5432/cc
 ```
 
 ### Process Management (systemd)
@@ -685,7 +667,7 @@ DATABASE_URL=postgresql://cc:password@localhost:5432/cc
 # /etc/systemd/system/cc.service
 [Unit]
 Description=CommandsCenter Orchestrator
-After=network.target postgresql.service
+After=network.target
 
 [Service]
 Type=simple
@@ -782,32 +764,10 @@ services:
       - CC_PORT=3000
       - CC_SECRET=${CC_SECRET}
       - CC_CORS_ORIGINS=https://yourdomain.com
-      # Omit DATABASE_URL to use SQLite (default), or:
-      - DATABASE_URL=postgresql://cc:password@db:5432/cc
-    depends_on:
-      db:
-        condition: service_healthy
     restart: unless-stopped
-
-  db:
-    image: postgres:16-alpine
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_USER=cc
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=cc
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cc"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  pgdata:
 ```
 
-### Minimal (SQLite only, no PostgreSQL)
+### Minimal SQLite Runtime
 
 ```yaml
 services:

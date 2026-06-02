@@ -85,11 +85,10 @@ export function useTerminalSessions(
   initialActiveId?: string,
 ): UseTerminalSessions {
   const sourceSessions = initialSessions ?? EMPTY_TERMINAL_SESSIONS;
-  const sourceSessionSignature = buildSessionSignature(sourceSessions);
   const persistedState = useMemo(() => readPersistedTerminalState(), []);
   const hydratedSessions = useMemo(
     () => hydratePersistedSessions(sourceSessions, persistedState),
-    [persistedState, sourceSessionSignature],
+    [persistedState, sourceSessions],
   );
   const hydratedActiveId =
     initialActiveId ?? selectPersistedActiveId(hydratedSessions, persistedState);
@@ -237,12 +236,6 @@ function hydratePersistedSessions(
     }
     return right.createdAt - left.createdAt;
   });
-}
-
-function buildSessionSignature(sessions: TerminalSession[]): string {
-  return sessions
-    .map((session) => `${session.id}:${session.backend}:${session.cwd}:${session.createdAt}`)
-    .join("|");
 }
 
 function selectPersistedActiveId(

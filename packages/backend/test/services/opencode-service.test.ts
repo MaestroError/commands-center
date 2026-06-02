@@ -166,12 +166,10 @@ describe("opencode-service", () => {
 
     it("coalesces concurrent calls into a single in-flight request", async () => {
       let resolveFetch: (value: Response) => void = () => {};
-      fetchMock.mockImplementation(
-        () =>
-          new Promise<Response>((resolve) => {
-            resolveFetch = resolve;
-          }),
-      );
+      const pendingFetch = new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      });
+      fetchMock.mockReturnValue(pendingFetch);
       const service = createOpenCodeService({
         client: FAKE_CLIENT,
         config: createConfig(),

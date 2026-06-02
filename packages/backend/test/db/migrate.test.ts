@@ -38,6 +38,8 @@ describe("migrateDatabase", () => {
       expect(columnExists(sqlite, "task_runs", "outcome")).toBe(true);
       expect(indexExists(sqlite, "tasks_default_agent_id_idx")).toBe(true);
       expect(indexExists(sqlite, "task_runs_subtask_id_idx")).toBe(true);
+      expect(tableExists(sqlite, "automations")).toBe(false);
+      expect(tableExists(sqlite, "automation_runs")).toBe(false);
     } finally {
       client.close();
       await rm(cwd, { recursive: true, force: true });
