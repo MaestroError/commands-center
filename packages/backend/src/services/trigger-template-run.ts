@@ -60,19 +60,11 @@ export async function triggerTemplateRun(
     return { kind: "not_found" };
   }
 
-  const createdTask = task;
-  const uploads = input.contextAttachmentUploads ?? [];
-
-  if (uploads.length > 0) {
-    const attachments = await Promise.all(
-      uploads.map((upload) => taskContextAttachmentService.storeForTask(createdTask.id, upload)),
-    );
-    task =
-      (await taskService.updateContext(task.id, {
-        ...task.context,
-        attachments: [...task.context.attachments, ...attachments],
-      })) ?? task;
-  }
+  task = await applyContextAttachments(
+    { taskService, taskContextAttachmentService },
+    task,
+    input.contextAttachmentUploads,
+  );
 
   if (input.scheduledFor) {
     return { kind: "scheduled", task };
@@ -85,4 +77,30 @@ export async function triggerTemplateRun(
   });
 
   return { kind: "queued", task, run };
+}
+
+/**
+ * Store base64 context-attachment uploads against an existing task and fold them
+ * into its context. The single attachment code path shared by template triggers
+ * (this file) and direct public task creation. No-op when there are no uploads.
+ */
+export async function applyContextAttachments(
+  services: Pick<TriggerTemplateRunServices, "taskService" | "taskContextAttachmentService">,
+  task: Task,
+  uploads: UploadTaskContextAttachmentInput[] | undefined,
+): Promise<Task> {
+  if (!uploads || uploads.length === 0) {
+    return task;
+  }
+
+  const stored = await Promise.all(
+    uploads.map((upload) => services.taskContextAttachmentService.storeForTask(task.id, upload)),
+  );
+
+  return (
+    (await services.taskService.updateContext(task.id, {
+      ...task.context,
+      attachments: [...task.context.attachments, ...stored],
+    })) ?? task
+  );
 }

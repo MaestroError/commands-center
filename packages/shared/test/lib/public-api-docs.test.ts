@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildTaskApiDocs,
   buildTemplateEndpointDocs,
   PUBLIC_API_TOKEN_PLACEHOLDER,
 } from "../../src/lib/public-api-docs";
@@ -53,5 +54,36 @@ describe("buildTemplateEndpointDocs", () => {
       baseUrl: "https://example.test",
     });
     expect(minimal.agentInstructions).toContain("_No description provided._");
+  });
+});
+
+describe("buildTaskApiDocs", () => {
+  const docs = buildTaskApiDocs("https://example.test/");
+
+  it("derives the versioned base URL and targets the task endpoints", () => {
+    expect(docs.apiBaseUrl).toBe("https://example.test/api/public/v1");
+    expect(docs.agentsCurl).toContain("/api/public/v1/agents");
+    expect(docs.createCurl).toContain("POST 'https://example.test/api/public/v1/tasks'");
+    expect(docs.listByStatusCurl).toContain("/tasks?status=ready_to_check");
+    expect(docs.listByTemplateCurl).toContain("templateId=<TEMPLATE_ID>&status=queued");
+    expect(docs.getExpandCurl).toContain("?expand=runs,feedback");
+    expect(docs.triggerCurl).toContain("/tasks/<TASK_ID>/trigger");
+    expect(docs.scheduleCurl).toContain("/tasks/<TASK_ID>/schedule");
+    expect(docs.runDetailCurl).toContain("/tasks/<TASK_ID>/runs/<RUN_ID>");
+    expect(docs.feedbackCurl).toContain("/tasks/<TASK_ID>/feedback");
+  });
+
+  it("only uses the token placeholder, never a real token", () => {
+    for (const snippet of Object.values(docs) as string[]) {
+      if (snippet.startsWith("http")) {
+        continue;
+      }
+      expect(snippet).toContain(PUBLIC_API_TOKEN_PLACEHOLDER);
+      expect(snippet).not.toMatch(/cc_[A-Za-z0-9_-]{10,}/);
+    }
+  });
+
+  it("is deterministic for a given base URL", () => {
+    expect(buildTaskApiDocs("https://example.test/")).toEqual(docs);
   });
 });

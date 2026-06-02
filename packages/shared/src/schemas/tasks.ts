@@ -198,6 +198,7 @@ export const createTaskInputSchema = z.object({
   description: z.string().trim().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
   status: taskStatusSchema.optional(),
+  triggerSource: taskRunTriggerSourceSchema.optional(),
   scheduledAt: z.string().datetime().optional(),
   dueAt: z.string().datetime().optional(),
   context: taskContextInputSchema.optional(),
@@ -222,6 +223,7 @@ export const updateTaskInputSchema = z.object({
 export const listTasksQuerySchema = z.object({
   status: taskStatusSchema.optional(),
   agentId: z.string().trim().min(1).optional(),
+  sourceTemplateId: z.string().trim().min(1).optional(),
   includeArchived: z.coerce.boolean().optional().default(false),
 });
 

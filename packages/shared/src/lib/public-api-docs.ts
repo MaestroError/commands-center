@@ -98,6 +98,81 @@ export function buildTemplateEndpointDocs(
   return { apiBaseUrl, triggerCurl, triggerJs, scheduleCurl, pollCurl, agentInstructions };
 }
 
+export interface TaskApiDocs {
+  apiBaseUrl: string;
+  agentsCurl: string;
+  createCurl: string;
+  listByStatusCurl: string;
+  listByTemplateCurl: string;
+  getCurl: string;
+  getExpandCurl: string;
+  triggerCurl: string;
+  scheduleCurl: string;
+  runsCurl: string;
+  runDetailCurl: string;
+  feedbackCurl: string;
+}
+
+/**
+ * Curl snippets for the Epic 09 direct-task endpoints (the `tasks` scope).
+ * Origin-relative only — not tied to a specific task — so the Endpoints tab can
+ * document the task surface without a concrete task id. Deterministic for a
+ * given `baseUrl` (snapshot-testable).
+ */
+export function buildTaskApiDocs(baseUrl: string): TaskApiDocs {
+  const apiBaseUrl = `${trimTrailingSlash(baseUrl)}/api/public/v1`;
+  const auth = `-H 'Authorization: Bearer ${PUBLIC_API_TOKEN_PLACEHOLDER}'`;
+  const json = `-H 'Content-Type: application/json'`;
+
+  const createBody = {
+    agentId: "<AGENT_ID>",
+    title: "Audit the staging logs",
+    description: "Look for 5xx spikes in the last 24h.",
+    todos: [{ content: "Pull logs" }, { content: "Summarise anomalies" }],
+    context: { text: "Staging only." },
+  };
+
+  return {
+    apiBaseUrl,
+    agentsCurl: [`curl '${apiBaseUrl}/agents' \\`, `  ${auth}`].join("\n"),
+    createCurl: [
+      `curl -X POST '${apiBaseUrl}/tasks' \\`,
+      `  ${auth} \\`,
+      `  ${json} \\`,
+      `  -d '${JSON.stringify(createBody)}'`,
+    ].join("\n"),
+    listByStatusCurl: [`curl '${apiBaseUrl}/tasks?status=ready_to_check' \\`, `  ${auth}`].join(
+      "\n",
+    ),
+    listByTemplateCurl: [
+      `curl '${apiBaseUrl}/tasks?templateId=<TEMPLATE_ID>&status=queued' \\`,
+      `  ${auth}`,
+    ].join("\n"),
+    getCurl: [`curl '${apiBaseUrl}/tasks/<TASK_ID>' \\`, `  ${auth}`].join("\n"),
+    getExpandCurl: [
+      `curl '${apiBaseUrl}/tasks/<TASK_ID>?expand=runs,feedback' \\`,
+      `  ${auth}`,
+    ].join("\n"),
+    triggerCurl: [
+      `curl -X POST '${apiBaseUrl}/tasks/<TASK_ID>/trigger' \\`,
+      `  ${auth} \\`,
+      `  ${json} \\`,
+      `  -d '${JSON.stringify({ metadata: { source: "my-agent" } })}'`,
+    ].join("\n"),
+    scheduleCurl: [
+      `curl -X POST '${apiBaseUrl}/tasks/<TASK_ID>/schedule' \\`,
+      `  ${auth} \\`,
+      `  ${json} \\`,
+      `  -d '${JSON.stringify({ runAt: "2026-06-10T09:00:00Z", timezone: "Europe/Berlin" })}'`,
+    ].join("\n"),
+    runsCurl: [`curl '${apiBaseUrl}/tasks/<TASK_ID>/runs' \\`, `  ${auth}`].join("\n"),
+    runDetailCurl: [`curl '${apiBaseUrl}/tasks/<TASK_ID>/runs/<RUN_ID>' \\`, `  ${auth}`].join(
+      "\n",
+    ),
+    feedbackCurl: [`curl '${apiBaseUrl}/tasks/<TASK_ID>/feedback' \\`, `  ${auth}`].join("\n"),
+  };
+}
+
 function buildAgentInstructions(input: {
   title: string;
   description: string;

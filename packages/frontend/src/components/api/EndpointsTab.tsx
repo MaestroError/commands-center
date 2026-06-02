@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import { Check, Clipboard } from "lucide-react";
 
-import { buildTemplateEndpointDocs, PUBLIC_API_TOKEN_PLACEHOLDER } from "@cc/shared/lib";
+import {
+  buildTaskApiDocs,
+  buildTemplateEndpointDocs,
+  PUBLIC_API_TOKEN_PLACEHOLDER,
+} from "@cc/shared/lib";
 
 const TEMPLATE_ID_PLACEHOLDER = "<TEMPLATE_ID>";
 
@@ -19,6 +23,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       }),
     [baseUrl],
   );
+  const taskDocs = useMemo(() => buildTaskApiDocs(baseUrl), [baseUrl]);
 
   const listCurl = [
     `curl '${docs.apiBaseUrl}/task-templates' \\`,
@@ -54,6 +59,11 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
           in the snippets below. Base URL: <code className="font-mono">{docs.apiBaseUrl}</code>
         </p>
       </div>
+
+      <SectionHeading
+        title="Templates"
+        subtitle="Trigger and poll reusable task templates. Requires the Task Templates scope (the list endpoint also accepts the Tasks scope)."
+      />
 
       <EndpointBlock
         method="GET"
@@ -97,6 +107,125 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
           completedAt: "2026-06-02T10:02:30Z",
         }}
       />
+
+      <SectionHeading
+        title="Tasks"
+        subtitle="Create, trigger, schedule, and inspect workspace tasks directly. All endpoints in this section require the Tasks scope."
+      />
+
+      <EndpointBlock
+        method="GET"
+        path="/api/public/v1/agents"
+        scope="Tasks"
+        description="Discover agent IDs so you can create a task against a specific agent."
+        snippets={[{ label: "curl", code: taskDocs.agentsCurl }]}
+        responseExample={{ agents: [{ id: "01J…", name: "Researcher", slug: "researcher" }] }}
+      />
+
+      <EndpointBlock
+        method="POST"
+        path="/api/public/v1/tasks"
+        scope="Tasks"
+        description="Create a task against an agent. Include scheduledAt to create it in the scheduled state; attachments are inline base64 data URLs (≤10 MB each)."
+        snippets={[{ label: "curl", code: taskDocs.createCurl }]}
+        responseExample={{
+          id: "01J…",
+          title: "Audit the staging logs",
+          status: "backlog",
+          agentId: "01J…",
+          todos: [],
+          scheduledAt: null,
+          dueAt: null,
+          doneAt: null,
+          latestRunId: null,
+          latestFinalMessage: null,
+          sourceTemplateId: null,
+          createdAt: "2026-06-02T10:00:00Z",
+          updatedAt: "2026-06-02T10:00:00Z",
+        }}
+      />
+
+      <EndpointBlock
+        method="GET"
+        path="/api/public/v1/tasks?status=&templateId="
+        scope="Tasks"
+        description="List tasks by board status (backlog | queued | ready_to_check | review), and/or filter by the source template they were generated from."
+        snippets={[
+          { label: "curl (by status)", code: taskDocs.listByStatusCurl },
+          { label: "curl (by template)", code: taskDocs.listByTemplateCurl },
+        ]}
+        responseExample={{
+          tasks: [{ id: "01J…", title: "Audit the staging logs", status: "ready_to_check" }],
+        }}
+      />
+
+      <EndpointBlock
+        method="GET"
+        path="/api/public/v1/tasks/:id"
+        scope="Tasks"
+        description="Get one task. Use ?expand=runs,feedback to embed its runs and feedback threads in a single fetch."
+        snippets={[
+          { label: "curl", code: taskDocs.getCurl },
+          { label: "curl (expanded)", code: taskDocs.getExpandCurl },
+        ]}
+        responseExample={{ id: "01J…", title: "Audit the staging logs", status: "queued" }}
+      />
+
+      <EndpointBlock
+        method="POST"
+        path="/api/public/v1/tasks/:id/trigger"
+        scope="Tasks"
+        description="Run a task now."
+        snippets={[{ label: "curl", code: taskDocs.triggerCurl }]}
+        responseExample={{ taskId: "01J…", runId: "01J…", status: "queued" }}
+      />
+
+      <EndpointBlock
+        method="POST"
+        path="/api/public/v1/tasks/:id/schedule"
+        scope="Tasks"
+        description="Schedule or reschedule a task for a future time. Send runAt: null to clear the schedule."
+        snippets={[{ label: "curl", code: taskDocs.scheduleCurl }]}
+        responseExample={{ id: "01J…", status: "scheduled", scheduledAt: "2026-06-10T09:00:00Z" }}
+      />
+
+      <EndpointBlock
+        method="GET"
+        path="/api/public/v1/tasks/:id/runs"
+        scope="Tasks"
+        description="List the runs of a task."
+        snippets={[{ label: "curl", code: taskDocs.runsCurl }]}
+        responseExample={{ runs: [{ id: "01J…", taskId: "01J…", status: "completed" }] }}
+      />
+
+      <EndpointBlock
+        method="GET"
+        path="/api/public/v1/tasks/:id/runs/:runId"
+        scope="Tasks"
+        description="Get a single run of a task."
+        snippets={[{ label: "curl", code: taskDocs.runDetailCurl }]}
+        responseExample={{ id: "01J…", taskId: "01J…", status: "completed", outcome: "success" }}
+      />
+
+      <EndpointBlock
+        method="GET"
+        path="/api/public/v1/tasks/:id/feedback"
+        scope="Tasks"
+        description="Read the feedback threads on a task, including their subtasks and per-subtask run replies."
+        snippets={[{ label: "curl", code: taskDocs.feedbackCurl }]}
+        responseExample={{
+          feedback: [{ id: "01J…", taskId: "01J…", body: "Please verify docs.", subtasks: [] }],
+        }}
+      />
+    </div>
+  );
+}
+
+function SectionHeading(props: { title: string; subtitle: string }) {
+  return (
+    <div className="border-b border-border pb-2">
+      <h3 className="text-lg font-semibold text-text-primary">{props.title}</h3>
+      <p className="mt-1 text-sm leading-6 text-text-secondary">{props.subtitle}</p>
     </div>
   );
 }

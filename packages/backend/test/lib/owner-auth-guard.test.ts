@@ -110,10 +110,10 @@ describe("owner auth guard", () => {
     const apiTokenService = createApiTokenService({ db: testDb.client.db });
     const server = await createAuthServer(testDb, ownerAccessService);
 
-    server.get("/api/public/v1/tasks", () => ({ tasks: [] }));
-
     try {
       const token = apiTokenService.createToken("Template consumer", ["templates"]);
+      // The real `/api/public/v1/tasks` route requires the `tasks` scope; a
+      // templates-only token is rejected by the guard before reaching it.
       const response = await server.inject({
         method: "GET",
         url: "/api/public/v1/tasks",

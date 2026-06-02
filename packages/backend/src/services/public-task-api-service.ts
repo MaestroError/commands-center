@@ -1,14 +1,29 @@
 import type {
+  Agent,
+  ListPublicTasksQuery,
+  PublicAgentSummary,
+  PublicCreateTaskBody,
+  PublicFeedbackThread,
+  PublicScheduleTaskBody,
+  PublicTask,
+  PublicTaskRun,
   PublicTaskRunStatus,
   PublicTaskTemplateSummary,
+  PublicTriggerTaskBody,
+  PublicTriggerTaskResponse,
   PublicTriggerTemplateBody,
   PublicTriggerTemplateResponse,
+  Task,
+  TaskFeedbackThread,
+  TaskRun,
+  TaskSubtaskDetail,
 } from "@cc/shared/schemas";
 
+import type { AgentService } from "./agent-service.js";
 import type { TaskContextAttachmentService } from "./task-context-attachment-service.js";
 import type { TaskExecutionService } from "./task-execution-service.js";
 import type { TaskService } from "./task-service.js";
-import { triggerTemplateRun } from "./trigger-template-run.js";
+import { applyContextAttachments, triggerTemplateRun } from "./trigger-template-run.js";
 
 export type PublicTaskApiService = ReturnType<typeof createPublicTaskApiService>;
 
@@ -28,8 +43,9 @@ export function createPublicTaskApiService(deps: {
   taskService: TaskService;
   executionService: TaskExecutionService;
   taskContextAttachmentService: TaskContextAttachmentService;
+  agentService: AgentService;
 }) {
-  const { taskService, executionService, taskContextAttachmentService } = deps;
+  const { taskService, executionService, taskContextAttachmentService, agentService } = deps;
 
   return {
     async listTriggerableTemplates(): Promise<PublicTaskTemplateSummary[]> {
@@ -105,5 +121,176 @@ export function createPublicTaskApiService(deps: {
         completedAt: run.completedAt ?? null,
       };
     },
+
+    // --- Epic 09: direct task operations -----------------------------------
+
+    async createTask(body: PublicCreateTaskBody): Promise<PublicTask> {
+      const task = await taskService.create({
+        agentId: body.agentId,
+        title: body.title,
+        description: body.description,
+        todos: body.todos,
+        triggerSource: "api",
+        scheduledAt: body.scheduledAt,
+        dueAt: body.dueAt,
+        context: body.context?.text ? { text: body.context.text, attachments: [] } : undefined,
+      });
+
+      const withAttachments = await applyContextAttachments(
+        { taskService, taskContextAttachmentService },
+        task,
+        body.attachments,
+      );
+
+      return toPublicTask(withAttachments);
+    },
+
+    async triggerTask(
+      taskId: string,
+      body: PublicTriggerTaskBody,
+    ): Promise<PublicTriggerTaskResponse | undefined> {
+      const task = await taskService.get(taskId);
+
+      if (!task) {
+        return undefined;
+      }
+
+      const run = await executionService.queue(taskId, {
+        triggerSource: "api",
+        metadata: body.metadata,
+      });
+
+      return { taskId: run.taskId, runId: run.id, status: run.status };
+    },
+
+    async scheduleTask(
+      taskId: string,
+      body: PublicScheduleTaskBody,
+    ): Promise<PublicTask | undefined> {
+      const updated = await taskService.update(taskId, { scheduledAt: body.runAt });
+      return updated ? toPublicTask(updated) : undefined;
+    },
+
+    async listTasks(query: ListPublicTasksQuery): Promise<PublicTask[]> {
+      const tasks = await taskService.list({
+        status: query.status,
+        agentId: query.agentId,
+        sourceTemplateId: query.templateId,
+        includeArchived: false,
+      });
+
+      return tasks.map(toPublicTask);
+    },
+
+    async getTask(
+      taskId: string,
+      expand: Set<string> = new Set(),
+    ): Promise<PublicTask | undefined> {
+      const task = await taskService.get(taskId);
+
+      if (!task) {
+        return undefined;
+      }
+
+      const projection = toPublicTask(task);
+
+      if (expand.has("runs")) {
+        const runs = await taskService.listRuns(taskId);
+        projection.runs = runs.map(toPublicRun);
+      }
+
+      if (expand.has("feedback")) {
+        const feedback = await taskService.listFeedback(taskId);
+        projection.feedback = feedback.map(toPublicFeedbackThread);
+      }
+
+      return projection;
+    },
+
+    async listRuns(taskId: string): Promise<PublicTaskRun[] | undefined> {
+      const task = await taskService.get(taskId);
+
+      if (!task) {
+        return undefined;
+      }
+
+      const runs = await taskService.listRuns(taskId);
+      return runs.map(toPublicRun);
+    },
+
+    async getRun(taskId: string, runId: string): Promise<PublicTaskRun | undefined> {
+      const run = await taskService.getRun(taskId, runId);
+      return run ? toPublicRun(run) : undefined;
+    },
+
+    async listFeedback(taskId: string): Promise<PublicFeedbackThread[] | undefined> {
+      const task = await taskService.get(taskId);
+
+      if (!task) {
+        return undefined;
+      }
+
+      const feedback = await taskService.listFeedback(taskId);
+      return feedback.map(toPublicFeedbackThread);
+    },
+
+    async listAgents(): Promise<PublicAgentSummary[]> {
+      const agents = await agentService.list();
+      return agents.map((agent: Agent) => ({ id: agent.id, name: agent.name, slug: agent.slug }));
+    },
+  };
+}
+
+function toPublicTask(task: Task): PublicTask {
+  return {
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    status: task.status,
+    agentId: task.agentId,
+    todos: task.todos.map((todo) => ({ id: todo.id, content: todo.content, status: todo.status })),
+    scheduledAt: task.scheduledAt ?? null,
+    dueAt: task.dueAt ?? null,
+    doneAt: task.doneAt ?? null,
+    latestRunId: task.latestRunId ?? null,
+    latestFinalMessage: task.latestFinalMessage ?? null,
+    sourceTemplateId: task.sourceTemplateId ?? null,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+  };
+}
+
+function toPublicRun(run: TaskRun): PublicTaskRun {
+  return {
+    id: run.id,
+    taskId: run.taskId,
+    status: run.status,
+    triggerSource: run.triggerSource,
+    outcome: run.outcome ?? null,
+    finalMessage: run.finalMessage ?? null,
+    resultText: run.resultText ?? null,
+    needsHumanReview: run.needsHumanReview,
+    humanReviewReason: run.humanReviewReason ?? null,
+    errorMessage: run.errorMessage ?? null,
+    startedAt: run.startedAt ?? null,
+    completedAt: run.completedAt ?? null,
+    cancelledAt: run.cancelledAt ?? null,
+    createdAt: run.createdAt,
+  };
+}
+
+function toPublicFeedbackThread(thread: TaskFeedbackThread): PublicFeedbackThread {
+  return {
+    id: thread.id,
+    taskId: thread.taskId,
+    body: thread.body,
+    createdAt: thread.createdAt,
+    subtasks: thread.subtasks.map((subtask: TaskSubtaskDetail) => ({
+      id: subtask.id,
+      description: subtask.description,
+      status: subtask.status,
+      latestRun: subtask.latestRun ? toPublicRun(subtask.latestRun) : null,
+      replies: subtask.replies.map((reply) => toPublicRun(reply.run)),
+    })),
   };
 }

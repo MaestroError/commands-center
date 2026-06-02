@@ -2,8 +2,20 @@ import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
+  listPublicTasksQuerySchema,
+  publicAgentListResponseSchema,
+  publicCreateTaskBodySchema,
+  publicFeedbackListResponseSchema,
+  publicGetTaskQuerySchema,
+  publicScheduleTaskBodySchema,
+  publicTaskListResponseSchema,
+  publicTaskRunListResponseSchema,
+  publicTaskRunSchema,
   publicTaskRunStatusSchema,
+  publicTaskSchema,
   publicTaskTemplateListResponseSchema,
+  publicTriggerTaskBodySchema,
+  publicTriggerTaskResponseSchema,
   publicTriggerTemplateBodySchema,
   publicTriggerTemplateResponseSchema,
 } from "@cc/shared/schemas";
@@ -11,6 +23,7 @@ import {
 import { NotFoundError } from "../lib/api-error.js";
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
+import { createAgentService } from "../services/agent-service.js";
 import { createConversationService } from "../services/conversation-service.js";
 import { createPublicTaskApiService } from "../services/public-task-api-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
@@ -24,6 +37,24 @@ const templateIdParamsSchema = z.object({
 const runIdParamsSchema = z.object({
   runId: z.string().min(1),
 });
+
+const taskIdParamsSchema = z.object({
+  id: z.string().min(1),
+});
+
+const taskRunParamsSchema = z.object({
+  id: z.string().min(1),
+  runId: z.string().min(1),
+});
+
+function parseExpand(expand: string | undefined): Set<string> {
+  return new Set(
+    (expand ?? "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean),
+  );
+}
 
 /**
  * Public, bearer-authenticated API under `/api/public/v1/`.
@@ -62,11 +93,17 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
       taskContextAttachmentService,
       logger: context.logger,
     });
+  const agentService = createAgentService({
+    db: context.database.db,
+    config: context.config,
+    opencodeService: context.opencodeService,
+  });
 
   const service = createPublicTaskApiService({
     taskService,
     executionService,
     taskContextAttachmentService,
+    agentService,
   });
 
   app.get(
@@ -124,6 +161,180 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
       }
 
       return run;
+    },
+  );
+
+  // --- Epic 09: direct task operations (tasks scope) -----------------------
+
+  app.get(
+    "/api/public/v1/agents",
+    {
+      schema: {
+        response: {
+          200: publicAgentListResponseSchema,
+        },
+      },
+    },
+    async () => ({ agents: await service.listAgents() }),
+  );
+
+  app.post(
+    "/api/public/v1/tasks",
+    {
+      schema: {
+        body: publicCreateTaskBodySchema,
+        response: {
+          201: publicTaskSchema,
+        },
+      },
+      bodyLimit: 14 * 1024 * 1024,
+    },
+    async (request, reply) => {
+      const task = await service.createTask(request.body);
+      reply.code(201);
+      return task;
+    },
+  );
+
+  app.get(
+    "/api/public/v1/tasks",
+    {
+      schema: {
+        querystring: listPublicTasksQuerySchema,
+        response: {
+          200: publicTaskListResponseSchema,
+        },
+      },
+    },
+    async (request) => ({ tasks: await service.listTasks(request.query) }),
+  );
+
+  app.get(
+    "/api/public/v1/tasks/:id",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        querystring: publicGetTaskQuerySchema,
+        response: {
+          200: publicTaskSchema,
+        },
+      },
+    },
+    async (request) => {
+      const task = await service.getTask(request.params.id, parseExpand(request.query.expand));
+
+      if (!task) {
+        throw new NotFoundError("Task not found.");
+      }
+
+      return task;
+    },
+  );
+
+  app.post(
+    "/api/public/v1/tasks/:id/trigger",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: publicTriggerTaskBodySchema,
+        response: {
+          200: publicTriggerTaskResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const response = await service.triggerTask(request.params.id, request.body);
+
+      if (!response) {
+        throw new NotFoundError("Task not found.");
+      }
+
+      return response;
+    },
+  );
+
+  app.post(
+    "/api/public/v1/tasks/:id/schedule",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        body: publicScheduleTaskBodySchema,
+        response: {
+          200: publicTaskSchema,
+        },
+      },
+    },
+    async (request) => {
+      const task = await service.scheduleTask(request.params.id, request.body);
+
+      if (!task) {
+        throw new NotFoundError("Task not found.");
+      }
+
+      return task;
+    },
+  );
+
+  app.get(
+    "/api/public/v1/tasks/:id/runs",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: publicTaskRunListResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const runs = await service.listRuns(request.params.id);
+
+      if (!runs) {
+        throw new NotFoundError("Task not found.");
+      }
+
+      return { runs };
+    },
+  );
+
+  app.get(
+    "/api/public/v1/tasks/:id/runs/:runId",
+    {
+      schema: {
+        params: taskRunParamsSchema,
+        response: {
+          200: publicTaskRunSchema,
+        },
+      },
+    },
+    async (request) => {
+      const run = await service.getRun(request.params.id, request.params.runId);
+
+      if (!run) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      return run;
+    },
+  );
+
+  app.get(
+    "/api/public/v1/tasks/:id/feedback",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: publicFeedbackListResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const feedback = await service.listFeedback(request.params.id);
+
+      if (!feedback) {
+        throw new NotFoundError("Task not found.");
+      }
+
+      return { feedback };
     },
   );
 }

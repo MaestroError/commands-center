@@ -206,6 +206,176 @@ describe("public task API", () => {
       await testDb.cleanup();
     }
   });
+
+  it("rejects the task endpoints for a templates-only token", async () => {
+    const { testDb, server, apiTokenService, taskSchedulerService } = await setup();
+
+    try {
+      const templatesOnly = apiTokenService.createToken("Templates only", ["templates"]).token;
+      const auth = { authorization: `Bearer ${templatesOnly}` };
+
+      const createForbidden = await server.inject({
+        method: "POST",
+        url: "/api/public/v1/tasks",
+        headers: auth,
+        payload: { agentId: "x", title: "y" },
+      });
+      const listForbidden = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/tasks",
+        headers: auth,
+      });
+      const agentsForbidden = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/agents",
+        headers: auth,
+      });
+
+      expect(createForbidden.statusCode).toBe(403);
+      expect(listForbidden.statusCode).toBe(403);
+      expect(agentsForbidden.statusCode).toBe(403);
+    } finally {
+      taskSchedulerService.stop();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("creates, triggers, schedules, lists, and inspects tasks with a tasks-scoped token", async () => {
+    const { testDb, server, apiTokenService, taskSchedulerService } = await setup();
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const token = apiTokenService.createToken("Tasks", ["tasks"]).token;
+      const auth = { authorization: `Bearer ${token}` };
+
+      // Discover agents.
+      const agentsResponse = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/agents",
+        headers: auth,
+      });
+      expect(agentsResponse.statusCode).toBe(200);
+      expect(agentsResponse.json()).toEqual({
+        agents: [{ id: agent.id, name: agent.name, slug: agent.slug }],
+      });
+
+      // Create a task (public projection, no internal fields).
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/public/v1/tasks",
+        headers: auth,
+        payload: {
+          agentId: agent.id,
+          title: "Audit logs",
+          description: "Look for spikes.",
+          todos: [{ content: "Pull logs" }],
+          context: { text: "Staging only." },
+        },
+      });
+      expect(created.statusCode).toBe(201);
+      const task = created.json<{ id: string; status: string }>();
+      expect(task.status).toBe("backlog");
+      const createdBody = created.json<Record<string, unknown>>();
+      expect(createdBody).not.toHaveProperty("permissionProfile");
+      expect(createdBody).not.toHaveProperty("context");
+      expect(createdBody).not.toHaveProperty("triggerSource");
+
+      // List by status.
+      const backlog = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/tasks?status=backlog",
+        headers: auth,
+      });
+      expect(backlog.statusCode).toBe(200);
+      expect(backlog.json<{ tasks: Array<{ id: string }> }>().tasks).toHaveLength(1);
+
+      // Trigger now.
+      const triggered = await server.inject({
+        method: "POST",
+        url: `/api/public/v1/tasks/${task.id}/trigger`,
+        headers: auth,
+        payload: { metadata: { source: "test" } },
+      });
+      expect(triggered.statusCode).toBe(200);
+      const triggerBody = triggered.json<{ taskId: string; runId: string; status: string }>();
+      expect(triggerBody.taskId).toBe(task.id);
+      expect(triggerBody.runId).toMatch(/.+/);
+
+      // The run is tagged as an API run and exposes no artifacts.
+      await expect
+        .poll(async () => {
+          const response = await server.inject({
+            method: "GET",
+            url: `/api/public/v1/tasks/${task.id}/runs/${triggerBody.runId}`,
+            headers: auth,
+          });
+          return response.json<{ status?: string }>().status;
+        })
+        .toBe("completed");
+      const runDetail = await server.inject({
+        method: "GET",
+        url: `/api/public/v1/tasks/${task.id}/runs/${triggerBody.runId}`,
+        headers: auth,
+      });
+      const runBody = runDetail.json<Record<string, unknown>>();
+      expect(runBody["triggerSource"]).toBe("api");
+      expect(runBody).not.toHaveProperty("artifacts");
+      expect(runBody).not.toHaveProperty("renderedPrompt");
+      expect(runBody).not.toHaveProperty("effectivePermissions");
+
+      // Expand runs + feedback in a single fetch.
+      const expanded = await server.inject({
+        method: "GET",
+        url: `/api/public/v1/tasks/${task.id}?expand=runs,feedback`,
+        headers: auth,
+      });
+      expect(expanded.statusCode).toBe(200);
+      const expandedBody = expanded.json<{ runs: unknown[]; feedback: unknown[] }>();
+      expect(expandedBody.runs.length).toBeGreaterThan(0);
+      expect(Array.isArray(expandedBody.feedback)).toBe(true);
+
+      // Schedule for the future.
+      const scheduled = await server.inject({
+        method: "POST",
+        url: `/api/public/v1/tasks/${task.id}/schedule`,
+        headers: auth,
+        payload: { runAt: "2999-01-01T00:00:00.000Z" },
+      });
+      expect(scheduled.statusCode).toBe(200);
+      expect(scheduled.json()).toMatchObject({
+        status: "scheduled",
+        scheduledAt: "2999-01-01T00:00:00.000Z",
+      });
+
+      // Past runAt rejected; unknown task 404.
+      const pastSchedule = await server.inject({
+        method: "POST",
+        url: `/api/public/v1/tasks/${task.id}/schedule`,
+        headers: auth,
+        payload: { runAt: "2000-01-01T00:00:00.000Z" },
+      });
+      const missingTask = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/tasks/does-not-exist",
+        headers: auth,
+      });
+      expect(pastSchedule.statusCode).toBe(400);
+      expect(missingTask.statusCode).toBe(404);
+
+      // Filter by source template (none → empty).
+      const byTemplate = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/tasks?templateId=nope",
+        headers: auth,
+      });
+      expect(byTemplate.json()).toEqual({ tasks: [] });
+    } finally {
+      taskSchedulerService.stop();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 async function insertAgent(db: AppDb): Promise<typeof agents.$inferSelect> {
