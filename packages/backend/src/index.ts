@@ -6,7 +6,14 @@ export {
   type DatabaseClient,
 } from "./db/client.js";
 export { createId, now } from "./db/ids.js";
-export { createAgentRecord, getSetting, listAgents, upsertSetting } from "./db/helpers.js";
+export {
+  createAgentRecord,
+  getSetting,
+  listAgents,
+  settingsReconciler,
+  upsertSetting,
+  upsertSettingFilefirst,
+} from "./db/helpers.js";
 export { getMigrationFolder, migrateDatabase } from "./db/migrate.js";
 export {
   getOpenCodeWorkspacePaths,

@@ -1,8 +1,31 @@
-import { eq } from "drizzle-orm";
+import { resolve } from "node:path";
 
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+
+import { readConfigFile, writeConfigFileAtomic } from "../lib/config-file.js";
+import type { RuntimeConfig } from "../lib/runtime-config.js";
+import type { WorkspaceReconciler } from "../lib/workspace-reconciler.js";
 import type { AppDb } from "./client.js";
 import { createId, now } from "./ids.js";
 import { agents, settings } from "./schema/index.js";
+
+// ---------------------------------------------------------------------------
+// Settings file schema
+// ---------------------------------------------------------------------------
+
+const settingsFileSchema = z.object({
+  version: z.literal(1),
+  settings: z.record(z.string(), z.unknown()),
+});
+
+function settingsFilePath(config: RuntimeConfig): string {
+  return resolve(config.paths.subdirectories.configuration, "settings.json");
+}
+
+// ---------------------------------------------------------------------------
+// Settings — DB helpers (pure, no file I/O)
+// ---------------------------------------------------------------------------
 
 export async function upsertSetting(db: AppDb, key: string, value: unknown): Promise<void> {
   const existing = await db.query.settings.findFirst({
@@ -42,6 +65,66 @@ export async function getSetting<T>(db: AppDb, key: string): Promise<T | undefin
 
   return JSON.parse(record.value_json) as T;
 }
+
+// ---------------------------------------------------------------------------
+// Settings — file-first write
+// ---------------------------------------------------------------------------
+
+/**
+ * File-first variant of upsertSetting.  Merges the key into
+ * configuration/settings.json first, then upserts the DB row.  Use this
+ * wherever settings are written through an API handler; use the plain
+ * upsertSetting only for boot-reconcile DB writes.
+ */
+export async function upsertSettingFilefirst(
+  db: AppDb,
+  config: RuntimeConfig,
+  key: string,
+  value: unknown,
+): Promise<void> {
+  const path = settingsFilePath(config);
+  const current = (await readConfigFile(path, settingsFileSchema)) ?? {
+    version: 1 as const,
+    settings: {} as Record<string, unknown>,
+  };
+
+  await writeConfigFileAtomic(path, {
+    ...current,
+    settings: { ...current.settings, [key]: value },
+  });
+
+  await upsertSetting(db, key, value);
+}
+
+// ---------------------------------------------------------------------------
+// Settings — boot reconciler
+// ---------------------------------------------------------------------------
+
+export const settingsReconciler: WorkspaceReconciler = {
+  name: "settings",
+
+  async reconcile({ config, db }) {
+    const data = await readConfigFile(settingsFilePath(config), settingsFileSchema);
+    if (!data) return;
+
+    const fileKeys = new Set(Object.keys(data.settings));
+
+    for (const [key, value] of Object.entries(data.settings)) {
+      await upsertSetting(db, key, value);
+    }
+
+    const existing = await db.select().from(settings);
+    for (const row of existing) {
+      if (!fileKeys.has(row.key)) {
+        await db.delete(settings).where(eq(settings.id, row.id));
+      }
+    }
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Agent helpers (unchanged)
+// ---------------------------------------------------------------------------
 
 export async function createAgentRecord(
   db: AppDb,

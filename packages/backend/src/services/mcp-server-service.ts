@@ -1,12 +1,15 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 
 import { createId, now } from "../db/ids.js";
 import { mcp_servers } from "../db/schema/index.js";
+import { readConfigFile, writeConfigFileAtomic } from "../lib/config-file.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
+import type { WorkspaceReconciler } from "../lib/workspace-reconciler.js";
 import {
   createMcpServerInputSchema,
   mcpAuthRemoveResultSchema,
@@ -34,6 +37,110 @@ import {
 } from "./agent-capability-sync.js";
 
 const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
+
+// ---------------------------------------------------------------------------
+// MCP configuration file schema  (configuration/mcp.json)
+// ---------------------------------------------------------------------------
+
+const mcpFileEntrySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  enabled: z.boolean(),
+  transport: z.string(),
+  config: mcpServerConfigSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+const mcpFileSchema = z.object({
+  version: z.literal(1),
+  servers: z.array(mcpFileEntrySchema),
+});
+
+type McpFileEntry = z.infer<typeof mcpFileEntrySchema>;
+
+function mcpConfigFilePath(config: RuntimeConfig): string {
+  return resolve(config.paths.subdirectories.configuration, "mcp.json");
+}
+
+async function readMcpConfigFile(config: RuntimeConfig): Promise<McpFileEntry[]> {
+  const data = await readConfigFile(mcpConfigFilePath(config), mcpFileSchema);
+  return data?.servers ?? [];
+}
+
+async function writeMcpConfigFile(config: RuntimeConfig, servers: McpFileEntry[]): Promise<void> {
+  await writeConfigFileAtomic(mcpConfigFilePath(config), { version: 1, servers });
+}
+
+// ---------------------------------------------------------------------------
+// Standalone opencode.jsonc sync (used by service and boot reconciler)
+// ---------------------------------------------------------------------------
+
+export async function syncGlobalMcpConfig(db: AppDb, config: RuntimeConfig): Promise<void> {
+  const rows = await db.query.mcp_servers.findMany({
+    orderBy: (table, operators) => [operators.asc(table.name)],
+  });
+
+  const configFilePath = join(config.paths.workspaceDir, "opencode.jsonc");
+  const current = await readGlobalConfig(configFilePath);
+  const next = {
+    ...current,
+    $schema: OPENCODE_CONFIG_SCHEMA_URL,
+    mcp: Object.fromEntries(rows.map((row) => [row.name, renderConfigEntry(row)])),
+  };
+
+  await mkdir(config.paths.workspaceDir, { recursive: true });
+  await writeFile(configFilePath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+}
+
+// ---------------------------------------------------------------------------
+// MCP server — boot reconciler
+// ---------------------------------------------------------------------------
+
+export const mcpServerReconciler: WorkspaceReconciler = {
+  name: "mcp-servers",
+
+  async reconcile({ config, db }) {
+    const data = await readConfigFile(mcpConfigFilePath(config), mcpFileSchema);
+    if (!data) return; // file missing — nothing to reconcile
+
+    const servers = data.servers;
+    const fileIds = new Set(servers.map((s) => s.id));
+
+    for (const entry of servers) {
+      const existing = await db.query.mcp_servers.findFirst({
+        where: (t, { eq }) => eq(t.id, entry.id),
+      });
+
+      const payload = {
+        name: entry.name,
+        transport: entry.transport,
+        enabled: entry.enabled,
+        config_json: JSON.stringify(entry.config),
+        updated_at: new Date(entry.updatedAt),
+      };
+
+      if (existing) {
+        await db.update(mcp_servers).set(payload).where(eq(mcp_servers.id, entry.id));
+      } else {
+        await db.insert(mcp_servers).values({
+          id: entry.id,
+          ...payload,
+          created_at: new Date(entry.createdAt),
+        });
+      }
+    }
+
+    const existing = await db.select({ id: mcp_servers.id }).from(mcp_servers);
+    for (const row of existing) {
+      if (!fileIds.has(row.id)) {
+        await db.delete(mcp_servers).where(eq(mcp_servers.id, row.id));
+      }
+    }
+
+    await syncGlobalMcpConfig(db, config);
+  },
+};
 
 export type McpServerService = ReturnType<typeof createMcpServerService>;
 
@@ -66,16 +173,34 @@ export function createMcpServerService(options: {
         secretService: options.secretService,
       });
 
+      const id = createId();
+      const timestamp = now();
+
+      // File-first: persist to configuration/mcp.json before DB insert.
+      const existingEntries = await readMcpConfigFile(options.config);
+      await writeMcpConfigFile(options.config, [
+        ...existingEntries,
+        {
+          id,
+          name: parsed.name,
+          enabled: parsed.enabled,
+          transport: normalizedConfig.transport,
+          config: normalizedConfig,
+          createdAt: timestamp.toISOString(),
+          updatedAt: timestamp.toISOString(),
+        },
+      ]);
+
       const [row] = await options.db
         .insert(mcp_servers)
         .values({
-          id: createId(),
+          id,
           name: parsed.name,
           transport: normalizedConfig.transport,
           enabled: parsed.enabled,
           config_json: JSON.stringify(normalizedConfig),
-          created_at: now(),
-          updated_at: now(),
+          created_at: timestamp,
+          updated_at: timestamp,
         })
         .returning();
 
@@ -105,13 +230,32 @@ export function createMcpServerService(options: {
         secretService: options.secretService,
       });
 
+      const updatedAt = now();
+
+      // File-first: update the entry in configuration/mcp.json.
+      const entries = await readMcpConfigFile(options.config);
+      await writeMcpConfigFile(
+        options.config,
+        entries.map((e) =>
+          e.id === id
+            ? {
+                ...e,
+                name: parsed.name,
+                transport: normalizedConfig.transport,
+                config: normalizedConfig,
+                updatedAt: updatedAt.toISOString(),
+              }
+            : e,
+        ),
+      );
+
       const [row] = await options.db
         .update(mcp_servers)
         .set({
           name: parsed.name,
           transport: normalizedConfig.transport,
           config_json: JSON.stringify(normalizedConfig),
-          updated_at: now(),
+          updated_at: updatedAt,
         })
         .where(eq(mcp_servers.id, id))
         .returning();
@@ -141,9 +285,20 @@ export function createMcpServerService(options: {
         throw new NotFoundError("MCP server not found.");
       }
 
+      const updatedAt = now();
+
+      // File-first: flip enabled flag in configuration/mcp.json.
+      const entries = await readMcpConfigFile(options.config);
+      await writeMcpConfigFile(
+        options.config,
+        entries.map((e) =>
+          e.id === id ? { ...e, enabled, updatedAt: updatedAt.toISOString() } : e,
+        ),
+      );
+
       const [row] = await options.db
         .update(mcp_servers)
-        .set({ enabled, updated_at: now() })
+        .set({ enabled, updated_at: updatedAt })
         .where(eq(mcp_servers.id, id))
         .returning();
 
@@ -230,6 +385,13 @@ export function createMcpServerService(options: {
         throw new NotFoundError("MCP server not found.");
       }
 
+      // File-first: remove entry from configuration/mcp.json before DB delete.
+      const entries = await readMcpConfigFile(options.config);
+      await writeMcpConfigFile(
+        options.config,
+        entries.filter((e) => e.id !== id),
+      );
+
       await options.db.delete(mcp_servers).where(eq(mcp_servers.id, id));
       await rewriteAgentsForMcpChange({
         db: options.db,
@@ -273,20 +435,7 @@ export function createMcpServerService(options: {
   }
 
   async function syncGlobalConfig(): Promise<void> {
-    const rows = await options.db.query.mcp_servers.findMany({
-      orderBy: (table, operators) => [operators.asc(table.name)],
-    });
-
-    const configFilePath = join(options.config.paths.workspaceDir, "opencode.jsonc");
-    const current = await readGlobalConfig(configFilePath);
-    const next = {
-      ...current,
-      $schema: OPENCODE_CONFIG_SCHEMA_URL,
-      mcp: Object.fromEntries(rows.map((row) => [row.name, renderConfigEntry(row)])),
-    };
-
-    await mkdir(options.config.paths.workspaceDir, { recursive: true });
-    await writeFile(configFilePath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+    await syncGlobalMcpConfig(options.db, options.config);
   }
 
   async function withRuntime(servers: McpServer[]): Promise<McpServer[]> {
