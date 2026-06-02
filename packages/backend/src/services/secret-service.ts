@@ -26,8 +26,8 @@ const secretsManifestSchema = z.object({
   keys: z.array(
     z.object({
       key: z.string(),
-      createdAt: z.string(),
-      updatedAt: z.string(),
+      createdAt: z.string().datetime(),
+      updatedAt: z.string().datetime(),
     }),
   ),
 });
@@ -175,8 +175,8 @@ export function createSecretService(options: { db: AppDb; config: RuntimeConfig 
 export const secretsManifestReconciler: WorkspaceReconciler = {
   name: "secrets-manifest",
 
-  async reconcile({ config, db }) {
-    const data = await readConfigFile(manifestFilePath(config), secretsManifestSchema);
+  async reconcile({ config, db, logger }) {
+    const data = await readConfigFile(manifestFilePath(config), secretsManifestSchema, logger);
     if (!data || data.keys.length === 0) return;
 
     // Seed DB rows for known keys (null encrypted_value = "missing, re-enter").
