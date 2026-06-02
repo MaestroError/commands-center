@@ -42,6 +42,7 @@ import { createTaskService, type TaskService } from "../services/task-service.js
 import { settingsReconciler } from "../db/helpers.js";
 import { mcpServerReconciler } from "../services/mcp-server-service.js";
 import { secretsManifestReconciler } from "../services/secret-service.js";
+import { taskTemplateReconciler } from "../services/task-service.js";
 import { bootstrapRuntimePaths } from "./runtime-paths.js";
 import { runBootReconcile } from "./workspace-reconciler.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
@@ -110,11 +111,10 @@ export async function startServerRuntime(
   logger.info(getStartupLogContext(config), "runtime configuration loaded");
   const database = createDatabaseClient(config);
   migrateDatabase(database.db);
-  await runBootReconcile([settingsReconciler, mcpServerReconciler, secretsManifestReconciler], {
-    config,
-    db: database.db,
-    logger,
-  });
+  await runBootReconcile(
+    [settingsReconciler, mcpServerReconciler, secretsManifestReconciler, taskTemplateReconciler],
+    { config, db: database.db, logger },
+  );
   const secretService = createSecretService({ db: database.db, config });
   const ownerAccessService = createOwnerAccessService({ config, logger });
   await ownerAccessService.initialize();
