@@ -103,8 +103,8 @@ export async function upsertSettingFilefirst(
 export const settingsReconciler: WorkspaceReconciler = {
   name: "settings",
 
-  async reconcile({ config, db }) {
-    const data = await readConfigFile(settingsFilePath(config), settingsFileSchema);
+  async reconcile({ config, db, logger }) {
+    const data = await readConfigFile(settingsFilePath(config), settingsFileSchema, logger);
     if (!data) return;
 
     const fileKeys = new Set(Object.keys(data.settings));

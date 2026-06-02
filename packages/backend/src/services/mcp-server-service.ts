@@ -48,8 +48,8 @@ const mcpFileEntrySchema = z.object({
   enabled: z.boolean(),
   transport: z.string(),
   config: mcpServerConfigSchema,
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
 });
 
 const mcpFileSchema = z.object({
@@ -127,8 +127,8 @@ export async function syncGlobalMcpConfig(db: AppDb, config: RuntimeConfig): Pro
 export const mcpServerReconciler: WorkspaceReconciler = {
   name: "mcp-servers",
 
-  async reconcile({ config, db }) {
-    const data = await readConfigFile(mcpConfigFilePath(config), mcpFileSchema);
+  async reconcile({ config, db, logger }) {
+    const data = await readConfigFile(mcpConfigFilePath(config), mcpFileSchema, logger);
     if (!data) return; // file missing — nothing to reconcile
 
     const servers = data.servers;
