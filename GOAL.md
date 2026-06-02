@@ -472,7 +472,7 @@ At startup, auto-detect deployment mode:
 1. Stop accepting new connections
 2. Cancel pending cron jobs
 3. SIGTERM the OpenCode engine process (10s grace → SIGKILL)
-4. Flush logs, close DB connections, sync final state to local SQLite
+4. Flush logs and close DB connections
 5. Exit 0 — process supervisor restarts
 
 ### Rollback & Safety
@@ -521,9 +521,10 @@ All runtime configuration is managed through environment variables. Validated at
 
 ## Workspace & Storage
 
-| Variable           | Default         | Required | Description                                                                                       |
-| ------------------ | --------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `CC_WORKSPACE_DIR` | `.cc/workspace` | No       | Portable workspace directory (DB, configs, agent state). Relative paths are resolved against cwd. |
+| Variable           | Default         | Required | Description                                                                                         |
+| ------------------ | --------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `CC_WORKSPACE_DIR` | `.cc/workspace` | No       | Portable workspace directory for configuration and assets. Relative paths are resolved against cwd. |
+| `CC_DATA_DIR`      | `.cc/data`      | No       | Disposable runtime data directory for SQLite and cache/state. Relative paths resolve from cwd.      |
 
 ## Tasks
 
@@ -598,7 +599,7 @@ The app launches at `http://localhost:3000`. All state lives inside the current 
 
 1. Creates `.cc/` data directory
 2. Generates `.env` with documented defaults (edit as needed)
-3. Initializes SQLite database at `.cc/workspace/database/local.db`
+3. Initializes SQLite database at `.cc/data/cc.db`
 4. Creates `workspaces/` directory for agent folders
 5. Starts the server
 
@@ -867,10 +868,10 @@ rsync -avz /opt/cc/workspace/ user@machine-b:/opt/cc/workspace/
 
 # On Machine B
 cd /opt/cc/workspace && cc start
-# → Exact same agents, chats, crons, configs — zero state loss
+# → Same portable configuration and assets; runtime history/auth state may need recreation
 ```
 
-This works because all state (SQLite DB, agent workspaces, configs, chat history) lives inside the workspace volume/directory.
+This works because portable configuration and assets live in the workspace volume/directory. SQLite runtime data lives in `CC_DATA_DIR` and is treated as disposable cache/runtime state.
 
 ---
 

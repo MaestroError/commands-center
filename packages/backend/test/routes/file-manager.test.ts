@@ -77,11 +77,6 @@ describe("file manager routes", () => {
             absolutePath: testDb.config.paths.subdirectories.agents,
           }),
           expect.objectContaining({
-            name: "database",
-            isCritical: true,
-            absolutePath: testDb.config.paths.subdirectories.database,
-          }),
-          expect.objectContaining({
             name: "opencode.jsonc",
             isCritical: true,
             absolutePath: join(testDb.config.paths.workspaceDir, "opencode.jsonc"),

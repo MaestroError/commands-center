@@ -210,6 +210,7 @@ function loadCliEnv(parsedArgs: CliArgs): void {
       process.env["CC_SECRET_KEY"] ??= createDefaultEnvFile(parsedArgs.envFile, {
         host: parsedArgs.host ?? process.env["CC_HOST"],
         port: parsedArgs.port?.toString() ?? process.env["CC_PORT"],
+        dataDir: process.env["CC_DATA_DIR"] ?? resolve(dirname(parsedArgs.envFile), "data"),
         workspaceDir:
           process.env["CC_WORKSPACE_DIR"] ?? resolve(dirname(parsedArgs.envFile), "workspace"),
       });
@@ -233,6 +234,7 @@ function loadCliEnv(parsedArgs: CliArgs): void {
     process.env["CC_SECRET_KEY"] ??= createDefaultEnvFile(defaultEnvFile, {
       host: parsedArgs.host ?? process.env["CC_HOST"],
       port: parsedArgs.port?.toString() ?? process.env["CC_PORT"],
+      dataDir: process.env["CC_DATA_DIR"] ?? resolve(homedir(), ".cc", "data"),
       workspaceDir: process.env["CC_WORKSPACE_DIR"] ?? resolve(homedir(), ".cc", "workspace"),
     });
     process.env["CC_FIRST_RUN_ENV_FILE_CREATED"] = "true";
@@ -255,12 +257,13 @@ function loadCliEnv(parsedArgs: CliArgs): void {
 
 function createDefaultEnvFile(
   path: string,
-  options: { host?: string; port?: string; workspaceDir: string },
+  options: { dataDir: string; host?: string; port?: string; workspaceDir: string },
 ): string {
   mkdirSync(dirname(path), { recursive: true });
   const secretKey = randomBytes(32).toString("hex");
   let content = readDefaultProdEnvExample()
     .replace(/^CC_WORKSPACE_DIR=.*$/m, `CC_WORKSPACE_DIR=${options.workspaceDir}`)
+    .replace(/^CC_DATA_DIR=.*$/m, `CC_DATA_DIR=${options.dataDir}`)
     .replace(/^CC_SECRET_KEY=.*$/m, `CC_SECRET_KEY=${secretKey}`);
 
   if (options.host) {

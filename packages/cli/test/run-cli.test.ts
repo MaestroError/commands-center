@@ -79,7 +79,7 @@ describe("runCli", () => {
     process.exitCode = undefined;
     existsSyncMock.mockReturnValue(false);
     readFileSyncMock.mockReturnValue(
-      "CC_HOST=0.0.0.0\nCC_PORT=3000\nCC_WORKSPACE_DIR=.cc/workspace\nCC_SECRET_KEY=\n",
+      "CC_HOST=0.0.0.0\nCC_PORT=3000\nCC_WORKSPACE_DIR=.cc/workspace\nCC_DATA_DIR=.cc/data\nCC_SECRET_KEY=\n",
     );
     readPackageInfoMock.mockReturnValue({
       version: "0.1.0",
@@ -148,6 +148,11 @@ describe("runCli", () => {
     );
     expect(writeFileSyncMock).toHaveBeenCalledWith(
       "/home/test/.cc/.env",
+      expect.stringContaining("CC_DATA_DIR=/home/test/.cc/data"),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    expect(writeFileSyncMock).toHaveBeenCalledWith(
+      "/home/test/.cc/.env",
       expect.stringMatching(/CC_SECRET_KEY=[a-f0-9]{64}/),
       { encoding: "utf8", mode: 0o600 },
     );
@@ -194,6 +199,11 @@ describe("runCli", () => {
     expect(writeFileSyncMock).toHaveBeenCalledWith(
       "/opt/commandscenter/.env",
       expect.stringContaining("CC_WORKSPACE_DIR=/srv/cc/workspace"),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    expect(writeFileSyncMock).toHaveBeenCalledWith(
+      "/opt/commandscenter/.env",
+      expect.stringContaining("CC_DATA_DIR=/opt/commandscenter/data"),
       { encoding: "utf8", mode: 0o600 },
     );
     expect(writeFileSyncMock).toHaveBeenCalledWith(

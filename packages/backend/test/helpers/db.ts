@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -21,10 +21,9 @@ export async function createTestDatabase(): Promise<{
     },
   });
 
-  await mkdir(config.paths.subdirectories.database, { recursive: true });
-
   const client = createDatabaseClient(config);
   migrateDatabase(client.db);
+  await mkdir(config.paths.workspaceDir, { recursive: true });
 
   return {
     client,

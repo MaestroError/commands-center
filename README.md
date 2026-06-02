@@ -71,10 +71,11 @@ NODE_ENV=production
 CC_HOST=0.0.0.0
 CC_PORT=3000
 CC_WORKSPACE_DIR=/home/commandscenter/.cc/workspace
+CC_DATA_DIR=/home/commandscenter/.cc/data
 CC_SECRET_KEY=replace-with-a-long-random-secret
 ```
 
-SQLite is stored at `$CC_WORKSPACE_DIR/database/local.db`. PostgreSQL primary mode is not part of the current runtime.
+SQLite is stored at `.cc/data/cc.db` by default. Set `CC_DATA_DIR` to move disposable runtime data outside the default app data directory. PostgreSQL primary mode is not part of the current runtime.
 
 ### Global NPM Install
 
@@ -223,6 +224,7 @@ WorkingDirectory=/opt/commandscenter
 Environment=CC_HOST=127.0.0.1
 Environment=CC_PORT=3000
 Environment=CC_WORKSPACE_DIR=/opt/commandscenter/workspace
+Environment=CC_DATA_DIR=/opt/commandscenter/data
 ExecStart=/usr/bin/env ccenter start --host 127.0.0.1 --port 3000 --cc-env-file /opt/commandscenter/.env
 Restart=on-failure
 RestartSec=5
@@ -290,6 +292,7 @@ services:
       CC_HOST: 0.0.0.0
       CC_PORT: "3000"
       CC_WORKSPACE_DIR: /workspace/.cc/workspace
+      CC_DATA_DIR: /workspace/.cc/data
     restart: unless-stopped
 ```
 

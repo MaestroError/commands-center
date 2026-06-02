@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,7 +19,6 @@ describe("migrateDatabase", () => {
   it("creates board task schema objects on a fresh sqlite database", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "cc-migrate-db-"));
     const config = loadRuntimeConfig({ cwd, env: { NODE_ENV: "test" } });
-    await mkdir(config.paths.subdirectories.database, { recursive: true });
 
     const client = createDatabaseClient(config);
     const sqlite = (client.db as typeof client.db & { $client: SqliteClient }).$client;

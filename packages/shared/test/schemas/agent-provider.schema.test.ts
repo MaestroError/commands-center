@@ -182,7 +182,7 @@ describe("agent and provider schemas", () => {
         workspaceDir: "/workspace/.cc/workspace",
         database: {
           dialect: "sqlite",
-          sqlitePath: "/workspace/.cc/workspace/database/local.db",
+          sqlitePath: "/workspace/.cc/data/cc.db",
         },
         opencode: {
           state: "healthy",

@@ -76,7 +76,7 @@ describe("createServer", () => {
     const server = await createServer({
       config,
       logger: createLogger(config),
-      database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
+      database: createDatabase("/tmp/project/.cc/data/cc.db"),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -96,7 +96,7 @@ describe("createServer", () => {
         workspaceDir: "/tmp/project/.cc/workspace",
         database: {
           dialect: "sqlite",
-          sqlitePath: "/tmp/project/.cc/workspace/database/local.db",
+          sqlitePath: "/tmp/project/.cc/data/cc.db",
         },
         scheduler: {
           state: "inactive",
@@ -136,7 +136,7 @@ describe("createServer", () => {
     const server = await createServer({
       config,
       logger: createLogger(config),
-      database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
+      database: createDatabase("/tmp/project/.cc/data/cc.db"),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -178,7 +178,7 @@ describe("createServer", () => {
     const server = await createServer({
       config,
       logger: createLogger(config),
-      database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
+      database: createDatabase("/tmp/project/.cc/data/cc.db"),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -225,7 +225,7 @@ describe("createServer", () => {
     const server = await createServer({
       config,
       logger: createLogger(config),
-      database: createDatabase("/tmp/project/.cc/workspace/database/local.db"),
+      database: createDatabase("/tmp/project/.cc/data/cc.db"),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
