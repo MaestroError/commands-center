@@ -40,7 +40,7 @@ const baseCreate = {
     appMcpServers: [],
     appToolPermissions: [],
   },
-} as const;
+};
 
 async function readAgentJson(testDb: Awaited<ReturnType<typeof createTestDatabase>>, slug: string) {
   return JSON.parse(await readFile(agentFilePath(testDb.config, slug, "active"), "utf8")) as {
