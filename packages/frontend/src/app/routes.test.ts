@@ -29,6 +29,10 @@ describe("getRouteTitle", () => {
     expect(getRouteTitle("/tasks")).toBe("Tasks");
   });
 
+  it('returns "API" for the developer API route', () => {
+    expect(getRouteTitle("/developer-api")).toBe("API");
+  });
+
   it('returns "Task Run" for task run details', () => {
     expect(getRouteTitle("/tasks/task-1/runs/run-1")).toBe("Task Run");
   });

@@ -1,6 +1,8 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-import { CsrfError, ForbiddenError, UnauthorizedError } from "./api-error.js";
+import type { ApiTokenRecord, ApiTokenScope } from "@cc/shared/schemas";
+
+import { CsrfError, ForbiddenError, NotFoundError, UnauthorizedError } from "./api-error.js";
 import { CSRF_HEADER_NAME, isCsrfTokenValid } from "./csrf.js";
 import { isOriginAllowed } from "./origin-check.js";
 import { readOwnerSessionCookie } from "./owner-session-cookie.js";
@@ -10,17 +12,31 @@ import type { RuntimeContext } from "./start-server-runtime.js";
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const STATIC_ASSET_PATTERN = /\.[a-zA-Z0-9]+$/;
 const CC_MANAGED_MCP_ROUTE_PATTERN = /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/;
+const PUBLIC_API_PREFIX = "/api/public/";
+
+type PublicApiScopeRequirement = ApiTokenScope | "either";
+
+declare module "fastify" {
+  interface FastifyRequest {
+    apiToken?: ApiTokenRecord;
+  }
+}
 
 export function registerOwnerAuthGuard(
   context: RuntimeContext,
 ): (request: FastifyRequest, reply: FastifyReply) => Promise<void> {
   return async (request, reply) => {
-    if (!context.ownerAccessService) {
+    const pathname = getPathname(request.url);
+    const method = request.method.toUpperCase();
+
+    if (pathname.startsWith(PUBLIC_API_PREFIX)) {
+      validatePublicApiBearer(context, request, method, pathname);
       return;
     }
 
-    const pathname = getPathname(request.url);
-    const method = request.method.toUpperCase();
+    if (!context.ownerAccessService) {
+      return;
+    }
 
     if (!pathname.startsWith("/api/")) {
       await handleBrowserNavigation({ context, request, reply, pathname });
@@ -52,6 +68,87 @@ export function registerOwnerAuthGuard(
       throw new CsrfError("CSRF token is invalid.");
     }
   };
+}
+
+function validatePublicApiBearer(
+  context: RuntimeContext,
+  request: FastifyRequest,
+  method: string,
+  pathname: string,
+): void {
+  const rawToken = readBearerToken(request.headers.authorization);
+  const tokenRecord = rawToken ? context.apiTokenService.validateToken(rawToken) : null;
+
+  if (!tokenRecord) {
+    throw new UnauthorizedError("Invalid or revoked API token.");
+  }
+
+  const requiredScope = scopeForPublicRoute(method, pathname);
+
+  if (!requiredScope) {
+    throw new NotFoundError("Public API route not found.");
+  }
+
+  if (!hasRequiredScope(tokenRecord.scopes, requiredScope)) {
+    throw new ForbiddenError("Token is missing the required scope.");
+  }
+
+  request.apiToken = tokenRecord;
+}
+
+function readBearerToken(value: string | string[] | undefined): string | undefined {
+  const header = readHeaderString(value);
+  const match = /^Bearer\s+(.+)$/i.exec(header ?? "");
+
+  return match?.[1]?.trim();
+}
+
+function scopeForPublicRoute(
+  method: string,
+  pathname: string,
+): PublicApiScopeRequirement | undefined {
+  const normalizedMethod = method.toUpperCase();
+
+  if (normalizedMethod === "GET" && pathname === "/api/public/v1/task-templates") {
+    return "either";
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    /^\/api\/public\/v1\/task-templates\/[^/]+\/trigger$/.test(pathname)
+  ) {
+    return "templates";
+  }
+
+  if (normalizedMethod === "GET" && /^\/api\/public\/v1\/task-runs\/[^/]+$/.test(pathname)) {
+    return "templates";
+  }
+
+  if (
+    normalizedMethod === "GET" &&
+    (pathname === "/api/public/v1/agents" || pathname === "/api/public/v1/tasks")
+  ) {
+    return "tasks";
+  }
+
+  if (
+    ["GET", "POST"].includes(normalizedMethod) &&
+    /^\/api\/public\/v1\/tasks(\/[^/]+(\/(trigger|schedule|runs|feedback))?(\/[^/]+)?)?$/.test(
+      pathname,
+    )
+  ) {
+    return "tasks";
+  }
+
+  return undefined;
+}
+
+function hasRequiredScope(scopes: ApiTokenScope[], requiredScope: PublicApiScopeRequirement) {
+  if (requiredScope === "either") {
+    return scopes.includes("templates") || scopes.includes("tasks");
+  }
+
+  return scopes.includes(requiredScope);
 }
 
 export function validateOriginForMutation(context: RuntimeContext, request: FastifyRequest): void {

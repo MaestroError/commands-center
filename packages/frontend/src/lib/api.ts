@@ -1,5 +1,6 @@
 import {
   agentCatalogSchema,
+  apiTokenListResponseSchema,
   cancelTaskRunInputSchema,
   copyCustomToolToAgentsInputSchema,
   customToolAgentCopyListSchema,
@@ -14,6 +15,8 @@ import {
   conversationListSchema,
   conversationSnapshotSchema,
   createAgentInputSchema,
+  createApiTokenInputSchema,
+  createApiTokenResponseSchema,
   createCustomToolInputSchema,
   createMcpServerInputSchema,
   createTaskFeedbackInputSchema,
@@ -100,6 +103,8 @@ import {
   uploadTaskContextAttachmentResponseSchema,
   type Agent,
   type AgentCatalog,
+  type ApiTokenListResponse,
+  type ApiTokenScope,
   type CancelTaskRunInput,
   type CopyCustomToolToAgentsInput,
   type CreateCustomToolInput,
@@ -109,6 +114,7 @@ import {
   type CreateWorkspaceSkillInput,
   type ChatEvent,
   type CreateAgentInput,
+  type CreateApiTokenResponse,
   type CreateMcpServerInput,
   type CreateTaskFeedbackInput,
   type CreateTaskInput,
@@ -381,6 +387,31 @@ export async function removeMcpAuth(id: string): Promise<McpAuthRemoveResult> {
 
 export async function listSecrets(): Promise<SecretMeta[]> {
   return requestJson<SecretMeta[]>("/api/secrets", secretMetaListSchema);
+}
+
+export async function listApiTokens(): Promise<ApiTokenListResponse> {
+  return requestJson<ApiTokenListResponse>("/api/api-tokens", apiTokenListResponseSchema);
+}
+
+export async function createApiToken(input: {
+  name: string;
+  scopes: ApiTokenScope[];
+}): Promise<CreateApiTokenResponse> {
+  return requestJson<CreateApiTokenResponse>("/api/api-tokens", createApiTokenResponseSchema, {
+    method: "POST",
+    body: createApiTokenInputSchema.parse(input),
+  });
+}
+
+export async function revokeApiToken(id: string): Promise<void> {
+  const response = await apiFetch(`/api/api-tokens/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
 }
 
 export async function setSecret(key: string, value: string): Promise<void> {

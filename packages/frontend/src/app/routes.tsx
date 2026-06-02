@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  Code2,
   Clock3,
   FolderKanban,
   Home,
@@ -15,6 +16,7 @@ import {
 import type { RouteObject } from "react-router-dom";
 
 import { DashboardPage } from "@/pages/DashboardPage";
+import { ApiPage } from "@/pages/ApiPage";
 import { FileManagerPage } from "@/pages/FileManagerPage";
 import { AgentEditorPage } from "@/pages/AgentEditorPage";
 import { AgentsPage } from "@/pages/AgentsPage";
@@ -154,6 +156,13 @@ export const appRoutes = [
     navLabel: "Provider Connections",
     navIcon: <KeyRound className="h-4 w-4 shrink-0" />,
     element: <ProviderConnectionsPage />,
+  },
+  {
+    path: "/developer-api",
+    title: "API",
+    navLabel: "API",
+    navIcon: <Code2 className="h-4 w-4 shrink-0" />,
+    element: <ApiPage />,
   },
   {
     path: "/settings",

@@ -14,6 +14,7 @@ import {
   connectConversationEvents,
   connectWorkspaceEvents,
   createTaskFromTemplate,
+  createApiToken,
   createTaskTemplate,
   deleteConversation,
   deleteAgentCustomTool,
@@ -24,6 +25,7 @@ import {
   type FileSaveConflictError,
   getTaskTemplate,
   getWorkspaceTree,
+  listApiTokens,
   listTaskSubtaskProgress,
   listTaskTemplateTasks,
   loginOwner,
@@ -32,6 +34,7 @@ import {
   readApiError,
   previewTaskQueue,
   removeMcpAuth,
+  revokeApiToken,
   resizeTerminalSession,
   runTaskTemplateNow,
   saveFileManagerFileContent,
@@ -580,6 +583,12 @@ describe("additional request wrapper coverage", () => {
       },
     },
     {
+      name: "revokeApiToken deletes the encoded token id",
+      run: () => revokeApiToken("token/1"),
+      expectedUrl: "/api/api-tokens/token%2F1",
+      expectedInit: { method: "DELETE" },
+    },
+    {
       name: "deleteSecret deletes the encoded secret key",
       run: () => deleteSecret("OPENAI KEY"),
       expectedUrl: "/api/secrets/OPENAI%20KEY",
@@ -638,6 +647,54 @@ describe("additional request wrapper coverage", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     await expect(setSecret("OPENAI_KEY", "secret-value")).resolves.toBeUndefined();
+  });
+
+  it("lists API tokens", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse({
+        tokens: [
+          {
+            id: "token-1",
+            name: "Release",
+            tokenPrefix: "cc_abc123456",
+            scopes: ["templates"],
+            createdAt: 1780000000000,
+            lastUsedAt: null,
+            revokedAt: null,
+          },
+        ],
+      }),
+    );
+
+    await expect(listApiTokens()).resolves.toMatchObject({
+      tokens: [{ id: "token-1", scopes: ["templates"] }],
+    });
+  });
+
+  it("creates API tokens with scoped JSON body", async () => {
+    document.cookie = "cc_csrf_token=csrf-token; path=/";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse({
+        token: "cc_raw",
+        record: {
+          id: "token-1",
+          name: "Release",
+          tokenPrefix: "cc_raw",
+          scopes: ["templates", "tasks"],
+          createdAt: 1780000000000,
+          lastUsedAt: null,
+          revokedAt: null,
+        },
+      }),
+    );
+
+    await createApiToken({ name: "Release", scopes: ["templates", "tasks"] });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/api-tokens", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf-token" },
+      body: JSON.stringify({ name: "Release", scopes: ["templates", "tasks"] }),
+    });
   });
 
   it("sends the CSRF token cookie on mutating JSON requests", async () => {
