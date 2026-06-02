@@ -40,6 +40,7 @@ import {
 import { createTaskPermissionService } from "../services/task-permission-service.js";
 import { createTaskService, type TaskService } from "../services/task-service.js";
 import { bootstrapRuntimePaths } from "./runtime-paths.js";
+import { runBootReconcile } from "./workspace-reconciler.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
 import { createLogger, flushLogger } from "./logger.js";
 import { readPackageInfo } from "./package-info.js";
@@ -106,6 +107,7 @@ export async function startServerRuntime(
   logger.info(getStartupLogContext(config), "runtime configuration loaded");
   const database = createDatabaseClient(config);
   migrateDatabase(database.db);
+  await runBootReconcile([], { config, db: database.db, logger });
   const secretService = createSecretService({ db: database.db, config });
   const ownerAccessService = createOwnerAccessService({ config, logger });
   await ownerAccessService.initialize();

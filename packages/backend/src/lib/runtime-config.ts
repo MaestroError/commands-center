@@ -156,6 +156,7 @@ export type RuntimeConfig = {
     subdirectories: {
       agents: string;
       auth: string;
+      configuration: string;
       mcp: string;
       preferences: string;
       sessions: string;
@@ -253,6 +254,7 @@ export function loadRuntimeConfig(options?: {
       subdirectories: {
         agents: resolve(workspaceDir, "agents"),
         auth: resolve(workspaceDir, "auth"),
+        configuration: resolve(workspaceDir, "configuration"),
         mcp: resolve(workspaceDir, "mcp"),
         preferences: resolve(workspaceDir, "preferences"),
         sessions: resolve(workspaceDir, "sessions"),

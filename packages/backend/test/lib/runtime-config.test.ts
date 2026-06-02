@@ -178,6 +178,17 @@ describe("loadRuntimeConfig", () => {
     }
   });
 
+  it("resolves configuration subdirectory inside the workspace", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test" },
+    });
+
+    expect(config.paths.subdirectories.configuration).toBe(
+      "/tmp/project/.cc/workspace/configuration",
+    );
+  });
+
   it("allows overriding the workspace root with an absolute CC_WORKSPACE_DIR path", () => {
     const config = loadRuntimeConfig({
       env: {
@@ -190,6 +201,9 @@ describe("loadRuntimeConfig", () => {
     expect(config.paths.workspaceDir).toBe("/srv/commandscenter-workspace");
     expect(config.paths.dataDir).toBe("/tmp/workspace-root/.cc/data");
     expect(config.paths.subdirectories.agents).toBe("/srv/commandscenter-workspace/agents");
+    expect(config.paths.subdirectories.configuration).toBe(
+      "/srv/commandscenter-workspace/configuration",
+    );
     expect(config.database.sqlitePath).toBe("/tmp/workspace-root/.cc/data/cc.db");
   });
 
