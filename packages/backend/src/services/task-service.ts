@@ -91,8 +91,8 @@ const taskTemplateFileSchema = z.object({
   recurrence: recurringTaskScheduleSchema.nullable(),
   permissionProfile: taskPermissionProfileSchema.nullable(),
   enabled: z.boolean(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
 });
 
 type TemplateFileContent = z.infer<typeof taskTemplateFileSchema>;
@@ -123,7 +123,7 @@ async function deleteTemplateFile(config: RuntimeConfig, id: string): Promise<vo
 export const taskTemplateReconciler: WorkspaceReconciler = {
   name: "task-templates",
 
-  async reconcile({ config, db }) {
+  async reconcile({ config, db, logger }) {
     const dir = resolve(config.paths.subdirectories.configuration, "task-templates");
 
     let filenames: string[];
@@ -138,7 +138,7 @@ export const taskTemplateReconciler: WorkspaceReconciler = {
 
     for (const filename of filenames.filter((f) => f.endsWith(".json"))) {
       const path = resolve(dir, filename);
-      const data = await readConfigFile(path, taskTemplateFileSchema);
+      const data = await readConfigFile(path, taskTemplateFileSchema, logger);
       if (!data) continue;
 
       fileIds.add(data.id);

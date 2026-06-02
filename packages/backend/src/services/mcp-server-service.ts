@@ -64,8 +64,35 @@ function mcpConfigFilePath(config: RuntimeConfig): string {
 }
 
 async function readMcpConfigFile(config: RuntimeConfig): Promise<McpFileEntry[]> {
-  const data = await readConfigFile(mcpConfigFilePath(config), mcpFileSchema);
-  return data?.servers ?? [];
+  const path = mcpConfigFilePath(config);
+
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
+  }
+
+  // File exists — parse strictly. A corrupt or schema-invalid file must abort
+  // the caller rather than return [] and silently overwrite the user's config.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `configuration/mcp.json contains invalid JSON — refusing write to avoid data loss. Fix or delete the file to continue.`,
+    );
+  }
+
+  const result = mcpFileSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(
+      `configuration/mcp.json failed schema validation — refusing write to avoid data loss. Fix or delete the file to continue.`,
+    );
+  }
+
+  return result.data.servers;
 }
 
 async function writeMcpConfigFile(config: RuntimeConfig, servers: McpFileEntry[]): Promise<void> {
