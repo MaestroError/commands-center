@@ -51,6 +51,9 @@ type AgentFormState = {
   iconPath: string;
   defaultModel: string;
   capabilities: AgentCapabilitySelection;
+  // Edit mode only: opt in to regenerating AGENTS.md from role/instructions.
+  // Off by default so hand-edited rules are preserved on save.
+  rewriteAgentsMd: boolean;
 };
 
 type FormErrors = Partial<
@@ -227,6 +230,24 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                 />
               </Field>
             </div>
+            {props.mode === "edit" ? (
+              <div className="lg:col-span-2">
+                <div className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle p-4">
+                  <div>
+                    <p className="font-medium text-text-primary">Rewrite AGENTS.md</p>
+                    <p className="mt-1 text-sm text-text-secondary">
+                      Off by default. When on, saving regenerates the agent&apos;s AGENTS.md from
+                      the role and instructions above, overwriting any manual edits.
+                    </p>
+                  </div>
+                  <Switch
+                    aria-label="Rewrite AGENTS.md on save"
+                    checked={form.rewriteAgentsMd}
+                    onChange={(checked) => updateField("rewriteAgentsMd", checked)}
+                  />
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <section className="cc-panel p-6">
@@ -717,6 +738,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
       iconPath: form.iconPath.trim() || undefined,
       customToolOverwriteSlugs: overwriteSlugs,
       capabilities: form.capabilities,
+      rewriteAgentsMd: form.rewriteAgentsMd,
     };
 
     try {
@@ -958,6 +980,7 @@ function createEmptyForm(): AgentFormState {
       appMcpServers: [],
       appToolPermissions: [],
     },
+    rewriteAgentsMd: false,
   };
 }
 
@@ -979,6 +1002,7 @@ function createInitialForm(catalog: AgentCatalog, agent?: Agent): AgentFormState
       appMcpServers: existingCapabilities.appMcpServers ?? [],
       appToolPermissions: existingCapabilities.appToolPermissions ?? [],
     },
+    rewriteAgentsMd: false,
   };
 }
 

@@ -42,11 +42,11 @@ describe("readConfigFile", () => {
       const path = join(dir, "bad.json");
       await writeFile(path, "{ not valid json", "utf8");
 
-      const logger = { error: vi.fn() } as never;
-      const result = await readConfigFile(path, testSchema, logger);
+      const error = vi.fn();
+      const result = await readConfigFile(path, testSchema, { error } as never);
 
       expect(result).toBeNull();
-      expect(logger.error).toHaveBeenCalledWith(
+      expect(error).toHaveBeenCalledWith(
         expect.objectContaining({ path }),
         expect.stringContaining("invalid JSON"),
       );
@@ -58,11 +58,11 @@ describe("readConfigFile", () => {
       const path = join(dir, "wrong-shape.json");
       await writeFile(path, JSON.stringify({ version: "not-a-number", name: 42 }), "utf8");
 
-      const logger = { error: vi.fn() } as never;
-      const result = await readConfigFile(path, testSchema, logger);
+      const error = vi.fn();
+      const result = await readConfigFile(path, testSchema, { error } as never);
 
       expect(result).toBeNull();
-      expect(logger.error).toHaveBeenCalledWith(
+      expect(error).toHaveBeenCalledWith(
         expect.objectContaining({ path, issues: expect.any(Array) }),
         expect.stringContaining("schema validation"),
       );

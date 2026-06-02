@@ -42,6 +42,7 @@ import { createTaskService, type TaskService } from "../services/task-service.js
 import { settingsReconciler } from "../db/helpers.js";
 import { mcpServerReconciler } from "../services/mcp-server-service.js";
 import { secretsManifestReconciler } from "../services/secret-service.js";
+import { agentReconciler } from "../services/agent-file.js";
 import { taskTemplateReconciler } from "../services/task-service.js";
 import { bootstrapRuntimePaths } from "./runtime-paths.js";
 import { runBootReconcile } from "./workspace-reconciler.js";
@@ -112,7 +113,15 @@ export async function startServerRuntime(
   const database = createDatabaseClient(config);
   migrateDatabase(database.db);
   await runBootReconcile(
-    [settingsReconciler, mcpServerReconciler, secretsManifestReconciler, taskTemplateReconciler],
+    [
+      settingsReconciler,
+      mcpServerReconciler,
+      secretsManifestReconciler,
+      // agents must reconcile before task_templates: task_templates.agent_id
+      // references agents.id, which must exist first on a fresh DB.
+      agentReconciler,
+      taskTemplateReconciler,
+    ],
     { config, db: database.db, logger },
   );
   const secretService = createSecretService({ db: database.db, config });

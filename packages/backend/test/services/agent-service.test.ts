@@ -110,6 +110,7 @@ describe("createAgentService", () => {
       const updated = await service.update(created.id, {
         name: "Planner",
         instructions: "Plan before editing.",
+        rewriteAgentsMd: true,
         capabilities: {
           builtInSkills: ["planner"],
           workspaceSkills: [],
@@ -460,6 +461,7 @@ describe("createAgentService", () => {
 
       const updated = await service.update(created.id, {
         instructions: "Still works with CC_WORKSPACE_DIR.",
+        rewriteAgentsMd: true,
       });
 
       expect(updated?.workspacePath).toBe(
