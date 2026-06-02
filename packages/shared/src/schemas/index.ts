@@ -344,6 +344,19 @@ export {
   type UploadTaskContextAttachmentResponse,
 } from "./tasks.js";
 export {
+  publicTaskTemplateSummarySchema,
+  publicTaskTemplateListResponseSchema,
+  publicTriggerScheduleSchema,
+  publicTriggerTemplateBodySchema,
+  publicTriggerTemplateResponseSchema,
+  publicTaskRunStatusSchema,
+  type PublicTaskTemplateSummary,
+  type PublicTaskTemplateListResponse,
+  type PublicTriggerTemplateBody,
+  type PublicTriggerTemplateResponse,
+  type PublicTaskRunStatus,
+} from "./public-api.js";
+export {
   chatEventSchema,
   replyPermissionInputSchema,
   replyQuestionInputSchema,

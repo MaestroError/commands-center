@@ -21,6 +21,7 @@ import {
   Filter,
   Flag,
   Info,
+  Link2,
   MessageSquareText,
   Pencil,
   Play,
@@ -56,7 +57,10 @@ import type {
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
+import { buildTemplateEndpointDocs } from "@cc/shared/lib";
+
 import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { CopyableCode } from "@/components/api/EndpointsTab";
 import { Markdown } from "@/components/chat/Markdown";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
@@ -1215,6 +1219,39 @@ function TaskCardIconButton(props: {
       <Icon aria-hidden="true" className="h-4 w-4" />
       <TaskCardIconActionTooltip label={props.label} />
     </button>
+  );
+}
+
+function CopyEndpointButton(props: { template: TaskTemplate }) {
+  const [copied, setCopied] = useState(false);
+  const clipboardAvailable = typeof navigator !== "undefined" && Boolean(navigator.clipboard);
+
+  async function copy(): Promise<void> {
+    if (!clipboardAvailable) {
+      return;
+    }
+
+    const docs = buildTemplateEndpointDocs({
+      template: {
+        id: props.template.id,
+        title: props.template.title,
+        description: props.template.description,
+      },
+      baseUrl: typeof window !== "undefined" ? window.location.origin : "",
+    });
+    await navigator.clipboard.writeText(docs.triggerCurl);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <TaskCardIconButton
+      icon={copied ? Check : Link2}
+      label={
+        clipboardAvailable ? (copied ? "Copied" : "Copy endpoint") : "Clipboard is unavailable"
+      }
+      onClick={() => void copy()}
+    />
   );
 }
 
@@ -2752,6 +2789,7 @@ function TaskTemplatesView(props: {
                   label="View details"
                   onClick={() => props.onSelect(template)}
                 />
+                <CopyEndpointButton template={template} />
                 <TaskCardIconButton
                   icon={Trash2}
                   label="Delete template"
@@ -3028,6 +3066,7 @@ function TaskTemplateDetailPanel(props: {
 }) {
   const templateQuery = useTaskTemplateQuery(props.templateId);
   const tasksQuery = useTaskTemplateTasksQuery(props.templateId);
+  const [detailTab, setDetailTab] = useState("details");
   const template = templateQuery.data;
   const agent = template
     ? props.agents.find((entry) => entry.id === template.defaultAgentId)
@@ -3055,71 +3094,137 @@ function TaskTemplateDetailPanel(props: {
         {error ? <ErrorState description={error} title="Template could not be loaded." /> : null}
         {template ? (
           <div className="grid gap-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-border bg-surface px-2 py-1 text-xs text-text-secondary">
-                {formatTemplateRepeat(template)}
-              </span>
-            </div>
-            <TextBlock
-              label="Description"
-              value={template.description || "No description provided."}
+            <TabBar
+              activeTabId={detailTab}
+              onTabChange={setDetailTab}
+              tabs={[
+                { id: "details", label: "Details" },
+                { id: "docs", label: "Docs" },
+              ]}
             />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Metric label="Default agent" value={agent?.name ?? template.defaultAgentId} />
-              <Metric label="Next occurrence" value={formatDate(template.nextOccurrenceAt)} />
-              <Metric
-                label="Previous occurrence"
-                value={formatDate(template.lastGeneratedOccurrenceAt)}
+            {detailTab === "docs" ? <TemplateDocsTab template={template} /> : null}
+            <div className={detailTab === "details" ? "grid gap-4" : "hidden"}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-border bg-surface px-2 py-1 text-xs text-text-secondary">
+                  {formatTemplateRepeat(template)}
+                </span>
+              </div>
+              <TextBlock
+                label="Description"
+                value={template.description || "No description provided."}
               />
-              <Metric label="Timezone" value={template.recurrence?.timezone ?? "Not repeating"} />
-            </div>
-            <TaskTodos task={templateAsTask(template)} />
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="cc-button cc-button-secondary"
-                onClick={() => props.onCreateTask(template)}
-                type="button"
-              >
-                Create task
-              </button>
-              <TaskCardIconButton
-                icon={Pencil}
-                label="Edit template"
-                onClick={() => props.onEdit(template)}
-              />
-              <TaskCardIconButton
-                icon={Play}
-                label="Run now"
-                onClick={() => props.onRunNow(template)}
-                variant="success"
-              />
-              {template.latestTaskId ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Metric label="Default agent" value={agent?.name ?? template.defaultAgentId} />
+                <Metric label="Next occurrence" value={formatDate(template.nextOccurrenceAt)} />
+                <Metric
+                  label="Previous occurrence"
+                  value={formatDate(template.lastGeneratedOccurrenceAt)}
+                />
+                <Metric label="Timezone" value={template.recurrence?.timezone ?? "Not repeating"} />
+              </div>
+              <TaskTodos task={templateAsTask(template)} />
+              <div className="flex flex-wrap gap-2">
                 <button
                   className="cc-button cc-button-secondary"
-                  onClick={() => props.onOpenTask(template.latestTaskId ?? "")}
+                  onClick={() => props.onCreateTask(template)}
                   type="button"
                 >
-                  Open latest task
+                  Create task
                 </button>
-              ) : null}
-              <TaskCardIconButton
-                icon={Trash2}
-                label="Delete template"
-                onClick={() => props.onDelete(template)}
-                variant="danger"
+                <TaskCardIconButton
+                  icon={Pencil}
+                  label="Edit template"
+                  onClick={() => props.onEdit(template)}
+                />
+                <TaskCardIconButton
+                  icon={Play}
+                  label="Run now"
+                  onClick={() => props.onRunNow(template)}
+                  variant="success"
+                />
+                {template.latestTaskId ? (
+                  <button
+                    className="cc-button cc-button-secondary"
+                    onClick={() => props.onOpenTask(template.latestTaskId ?? "")}
+                    type="button"
+                  >
+                    Open latest task
+                  </button>
+                ) : null}
+                <TaskCardIconButton
+                  icon={Trash2}
+                  label="Delete template"
+                  onClick={() => props.onDelete(template)}
+                  variant="danger"
+                />
+              </div>
+              <GeneratedTaskHistory
+                currentSearch={props.currentSearch}
+                error={tasksQuery.error}
+                isLoading={tasksQuery.isLoading}
+                onOpenTask={props.onOpenTask}
+                tasks={tasksQuery.data ?? []}
               />
             </div>
-            <GeneratedTaskHistory
-              currentSearch={props.currentSearch}
-              error={tasksQuery.error}
-              isLoading={tasksQuery.isLoading}
-              onOpenTask={props.onOpenTask}
-              tasks={tasksQuery.data ?? []}
-            />
           </div>
         ) : null}
       </div>
     </aside>
+  );
+}
+
+function TemplateDocsTab(props: { template: TaskTemplate }) {
+  const [copiedInstructions, setCopiedInstructions] = useState(false);
+  const clipboardAvailable = typeof navigator !== "undefined" && Boolean(navigator.clipboard);
+  const docs = buildTemplateEndpointDocs({
+    template: {
+      id: props.template.id,
+      title: props.template.title,
+      description: props.template.description,
+    },
+    baseUrl: typeof window !== "undefined" ? window.location.origin : "",
+  });
+
+  async function copyInstructions(): Promise<void> {
+    if (!clipboardAvailable) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(docs.agentInstructions);
+    setCopiedInstructions(true);
+    window.setTimeout(() => setCopiedInstructions(false), 1500);
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="font-semibold text-text-primary">Integration instructions</h3>
+            <p className="mt-1 text-sm text-text-secondary">
+              Self-contained guide you can hand straight to an AI agent. Tokens are never embedded —
+              replace the placeholder with one from the API page.
+            </p>
+          </div>
+          <button
+            className="cc-button inline-flex items-center gap-2"
+            disabled={!clipboardAvailable}
+            onClick={() => void copyInstructions()}
+            title={clipboardAvailable ? "Copy instructions" : "Clipboard is unavailable"}
+            type="button"
+          >
+            {copiedInstructions ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copiedInstructions ? "Copied" : "Copy integration instructions"}
+          </button>
+        </div>
+        <div className="rounded-lg border border-border bg-app-bg p-4 text-sm">
+          <Markdown content={docs.agentInstructions} />
+        </div>
+      </div>
+      <CopyableCode code={docs.triggerCurl} label="Trigger now (curl)" />
+      <CopyableCode code={docs.scheduleCurl} label="Schedule (curl)" />
+      <CopyableCode code={docs.pollCurl} label="Poll run status (curl)" />
+    </div>
   );
 }
 

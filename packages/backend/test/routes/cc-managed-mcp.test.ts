@@ -11,6 +11,7 @@ import { createServer } from "../../src/server";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createApiTokenService } from "../../src/services/api-token-service";
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskService } from "../../src/services/task-service";
 import { createCcManagedMcpAuthStateStore } from "../../src/mcp/cc-managed/auth-state-store";
@@ -28,6 +29,7 @@ describe("cc-managed MCP routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -180,6 +182,7 @@ describe("cc-managed MCP routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -217,6 +220,7 @@ describe("cc-managed MCP routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -285,6 +289,7 @@ describe("cc-managed MCP routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService,
       openCodeEventService: { subscribe: () => {} },
@@ -345,6 +350,7 @@ describe("cc-managed MCP routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -400,6 +406,7 @@ describe("cc-managed MCP routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -616,6 +623,7 @@ describe("cc-managed MCP routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -717,6 +725,7 @@ describe("cc-managed MCP routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -765,6 +774,7 @@ describe("cc-managed MCP routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -805,6 +815,7 @@ describe("cc-managed MCP routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },

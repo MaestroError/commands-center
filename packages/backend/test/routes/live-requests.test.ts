@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createLiveRequestService } from "../../src/services/live-request-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createApiTokenService } from "../../src/services/api-token-service";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
@@ -135,6 +136,7 @@ async function createRouteServer(options: {
     config: options.testDb.config,
     logger: createLogger(options.testDb.config),
     database: options.testDb.client,
+    apiTokenService: createApiTokenService({ db: options.testDb.client.db }),
     orchestrator: createMockOrchestrator(),
     opencodeService: createMockOpenCodeService(),
     openCodeEventService: createMockOpenCodeEventService(),

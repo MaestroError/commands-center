@@ -12,6 +12,7 @@ import { registerLiveRequestRoutes } from "./live-requests.js";
 import { registerMcpServerRoutes } from "./mcp-servers.js";
 import { registerOwnerAuthRoutes } from "./owner-auth.js";
 import { registerProviderRoutes } from "./providers.js";
+import { registerPublicApiRoutes } from "./public-api.js";
 import { registerSearchRoutes } from "./search.js";
 import { registerSecretRoutes } from "./secrets.js";
 import { registerTerminalRoutes } from "./terminal.js";
@@ -37,5 +38,6 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerSecretRoutes(server, context);
   registerSystemRoutes(server, context);
   registerTaskRoutes(server, context);
+  registerPublicApiRoutes(server, context);
   registerTerminalRoutes(server, context);
 }

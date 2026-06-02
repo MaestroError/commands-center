@@ -15,6 +15,10 @@
     "./constants": {
       "types": "./src/constants/index.ts",
       "default": "./src/constants/index.ts"
+    },
+    "./lib": {
+      "types": "./src/lib/index.ts",
+      "default": "./src/lib/index.ts"
     }
   },
   "scripts": {

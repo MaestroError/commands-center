@@ -5,6 +5,7 @@ import { createServer } from "../../src/server";
 import { createOwnerAccessService } from "../../src/services/owner-access-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createApiTokenService } from "../../src/services/api-token-service";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
@@ -402,6 +403,7 @@ async function createAuthServer(
     config: testDb.config,
     logger: createLogger(testDb.config),
     database: testDb.client,
+    apiTokenService: createApiTokenService({ db: testDb.client.db }),
     orchestrator: createOrchestrator(),
     opencodeService: createMockOpenCodeService(),
     openCodeEventService: { subscribe: () => {} },

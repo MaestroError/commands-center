@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAgentService } from "../../src/services/agent-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createApiTokenService } from "../../src/services/api-token-service";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
@@ -27,6 +28,7 @@ describe("conversation routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService,
       openCodeEventService: { subscribe: () => {} },

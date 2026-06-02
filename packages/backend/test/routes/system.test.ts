@@ -4,6 +4,7 @@ import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createApiTokenService } from "../../src/services/api-token-service";
 import { createTestDatabase } from "../helpers/db";
 
 describe("system routes", () => {
@@ -13,6 +14,7 @@ describe("system routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -70,6 +72,7 @@ describe("system routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -120,6 +123,7 @@ describe("system routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -161,6 +165,7 @@ describe("system routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -205,6 +210,7 @@ describe("system routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -253,6 +259,7 @@ describe("system routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },

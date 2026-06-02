@@ -6,6 +6,7 @@ import type { ApiTokenRecord, ApiTokenScope, CreateApiTokenResponse } from "@cc/
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
+import { EndpointsTab } from "@/components/api/EndpointsTab";
 import { useApiTokenMutations, useApiTokensQuery } from "@/hooks/use-api-tokens-query";
 
 const SCOPE_OPTIONS = [
@@ -23,7 +24,13 @@ const SCOPE_OPTIONS = [
 
 export function ApiPage() {
   const [activeTabId, setActiveTabId] = useState("tokens");
-  const tabs = useMemo(() => [{ id: "tokens", label: "Tokens" }], []);
+  const tabs = useMemo(
+    () => [
+      { id: "tokens", label: "Tokens" },
+      { id: "endpoints", label: "Endpoints" },
+    ],
+    [],
+  );
 
   return (
     <div className="grid gap-4">
@@ -35,6 +42,9 @@ export function ApiPage() {
       <section className="cc-panel p-6">
         <TabBar activeTabId={activeTabId} onTabChange={setActiveTabId} tabs={tabs} />
         {activeTabId === "tokens" ? <TokensTab /> : null}
+        {activeTabId === "endpoints" ? (
+          <EndpointsTab onGoToTokens={() => setActiveTabId("tokens")} />
+        ) : null}
       </section>
     </div>
   );

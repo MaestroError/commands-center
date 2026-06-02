@@ -43,6 +43,7 @@ import { createTaskExecutionService } from "../services/task-execution-service.j
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
 import { createTaskService } from "../services/task-service.js";
+import { triggerTemplateRun } from "../services/trigger-template-run.js";
 
 const taskIdParamsSchema = z.object({
   id: z.string().min(1),
@@ -275,34 +276,24 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       },
     },
     async (request) => {
-      let task = await service.createTaskFromTemplate(request.params.id, {
-        triggerSource: "template",
-        context: request.body.context,
-      });
+      const result = await triggerTemplateRun(
+        { taskService: service, executionService, taskContextAttachmentService },
+        {
+          templateId: request.params.id,
+          triggerSource: "template",
+          context: request.body.context,
+          contextAttachmentUploads: request.body.contextAttachmentUploads,
+          metadata: request.body.metadata,
+        },
+      );
 
-      if (!task) {
+      // run-now never schedules (no `scheduledFor`), so the result is always
+      // queued unless the template is missing.
+      if (result.kind !== "queued") {
         throw new NotFoundError("Task template not found.");
       }
 
-      const createdTask = task;
-      if (request.body.contextAttachmentUploads.length > 0) {
-        const attachments = await Promise.all(
-          request.body.contextAttachmentUploads.map((upload) =>
-            taskContextAttachmentService.storeForTask(createdTask.id, upload),
-          ),
-        );
-        task =
-          (await service.updateContext(task.id, {
-            ...task.context,
-            attachments: [...task.context.attachments, ...attachments],
-          })) ?? task;
-      }
-
-      return executionService.queue(task.id, {
-        triggerSource: "template",
-        context: request.body.context,
-        metadata: request.body.metadata,
-      });
+      return result.run;
     },
   );
 

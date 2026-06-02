@@ -86,10 +86,6 @@ describe("owner auth guard", () => {
     const apiTokenService = createApiTokenService({ db: testDb.client.db });
     const server = await createAuthServer(testDb, ownerAccessService);
 
-    server.get("/api/public/v1/task-templates", (request) => ({
-      tokenName: request.apiToken?.name,
-    }));
-
     try {
       const token = apiTokenService.createToken("Template consumer", ["templates"]);
       const response = await server.inject({
@@ -98,8 +94,10 @@ describe("owner auth guard", () => {
         headers: { authorization: `Bearer ${token.token}` },
       });
 
+      // The guard validates the bearer token and lets the request through to the
+      // real public route (which lists triggerable templates — none exist here).
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toEqual({ tokenName: "Template consumer" });
+      expect(response.json()).toEqual({ templates: [] });
     } finally {
       await server.close();
       await testDb.cleanup();

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createLogger } from "../../src/lib/logger";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createApiTokenService } from "../../src/services/api-token-service";
 import { createServer } from "../../src/server";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
@@ -15,6 +16,7 @@ describe("provider routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService,
       openCodeEventService: { subscribe: () => {} },

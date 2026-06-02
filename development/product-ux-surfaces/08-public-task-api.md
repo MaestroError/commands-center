@@ -1,5 +1,7 @@
 # Epic 08 — Public Task API (Trigger & Schedule Task Templates)
 
+> **Status:** ✅ Done — all 8 stories implemented and verified end-to-end (UI template + token creation, live curl trigger/schedule/poll, board reflects API-originated runs). Backend, shared, and frontend typecheck/lint/tests green.
+
 ## Overview
 
 Expose **task templates** as triggerable units over a public, bearer-authenticated HTTP API. External systems and AI agents can:
