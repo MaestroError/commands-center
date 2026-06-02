@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { eq } from "drizzle-orm";
@@ -83,10 +84,42 @@ export async function upsertSettingFilefirst(
   value: unknown,
 ): Promise<void> {
   const path = settingsFilePath(config);
-  const current = (await readConfigFile(path, settingsFileSchema)) ?? {
-    version: 1 as const,
-    settings: {} as Record<string, unknown>,
-  };
+
+  // Read the file explicitly so we can distinguish "missing" (safe to
+  // default to empty) from "corrupt/invalid" (must abort rather than
+  // silently discard all other settings).
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      raw = "";
+    } else {
+      throw err;
+    }
+  }
+
+  let current: { version: 1; settings: Record<string, unknown> };
+
+  if (raw === "") {
+    current = { version: 1, settings: {} };
+  } else {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error(
+        `configuration/settings.json contains invalid JSON — refusing write to avoid data loss. Fix or delete the file to continue.`,
+      );
+    }
+    const result = settingsFileSchema.safeParse(parsed);
+    if (!result.success) {
+      throw new Error(
+        `configuration/settings.json failed schema validation — refusing write to avoid data loss. Fix or delete the file to continue.`,
+      );
+    }
+    current = result.data;
+  }
 
   await writeConfigFileAtomic(path, {
     ...current,

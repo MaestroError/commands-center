@@ -75,7 +75,7 @@ CC_DATA_DIR=/home/commandscenter/.cc/data
 CC_SECRET_KEY=replace-with-a-long-random-secret
 ```
 
-SQLite is stored at `.cc/data/cc.db` by default. Set `CC_DATA_DIR` to move disposable runtime data outside the default app data directory. PostgreSQL primary mode is not part of the current runtime.
+SQLite is stored at `$CC_DATA_DIR/cc.db` (default: `~/.cc/data/cc.db`). Set `CC_DATA_DIR` to move disposable runtime data to a different location. PostgreSQL primary mode is not part of the current runtime.
 
 ### Global NPM Install
 
