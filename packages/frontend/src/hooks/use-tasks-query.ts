@@ -10,6 +10,7 @@ import type {
   Task,
   TaskFeedbackThread,
   TaskTemplateRunNowInput,
+  CreateTaskArtifactShareLinkInput,
   UpdateTaskContextInput,
   UpdateTaskInput,
   UpdateTaskTemplateInput,
@@ -20,6 +21,7 @@ import {
   acceptTask,
   archiveTask,
   cancelTaskRun,
+  createTaskArtifactShareLink,
   createTask,
   createTaskFeedback,
   createTaskFromTemplate,
@@ -32,6 +34,7 @@ import {
   getTaskTemplate,
   getTaskRun,
   inspectTaskRunSession,
+  listTaskRunArtifacts,
   listArchivedTasks,
   listActiveTaskRuns,
   listTaskTemplateTasks,
@@ -46,6 +49,7 @@ import {
   previewTaskQueue,
   queueTask,
   restoreTask,
+  revokeTaskArtifactShareLink,
   runTaskTemplateNow,
   updateTask,
   updateTaskContext,
@@ -147,6 +151,14 @@ export function useTaskRunSessionQuery(taskId?: string, runId?: string) {
   return useQuery({
     queryKey: queryKeys.taskRunSession(taskId ?? "missing", runId ?? "missing"),
     queryFn: () => inspectTaskRunSession(taskId ?? "", runId ?? ""),
+    enabled: Boolean(taskId && runId),
+  });
+}
+
+export function useTaskRunArtifactsQuery(taskId?: string, runId?: string) {
+  return useQuery({
+    queryKey: queryKeys.taskRunArtifacts(taskId ?? "missing", runId ?? "missing"),
+    queryFn: () => listTaskRunArtifacts(taskId ?? "", runId ?? ""),
     enabled: Boolean(taskId && runId),
   });
 }
@@ -356,6 +368,42 @@ export function useTaskMutations() {
             queryKey: queryKeys.taskRunSession(variables.taskId, variables.runId),
           }),
         ]);
+      },
+    }),
+    createArtifactShareLink: useMutation({
+      mutationFn: ({
+        taskId,
+        runId,
+        artifactId,
+        input,
+      }: {
+        taskId: string;
+        runId: string;
+        artifactId: string;
+        input?: CreateTaskArtifactShareLinkInput;
+      }) => createTaskArtifactShareLink(taskId, runId, artifactId, input),
+      onSuccess: async (_result, variables) => {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.taskRunArtifacts(variables.taskId, variables.runId),
+        });
+      },
+    }),
+    revokeArtifactShareLink: useMutation({
+      mutationFn: ({
+        taskId,
+        runId,
+        artifactId,
+        shareId,
+      }: {
+        taskId: string;
+        runId: string;
+        artifactId: string;
+        shareId: string;
+      }) => revokeTaskArtifactShareLink(taskId, runId, artifactId, shareId),
+      onSuccess: async (_result, variables) => {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.taskRunArtifacts(variables.taskId, variables.runId),
+        });
       },
     }),
   };

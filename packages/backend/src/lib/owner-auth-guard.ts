@@ -13,6 +13,8 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const STATIC_ASSET_PATTERN = /\.[a-zA-Z0-9]+$/;
 const CC_MANAGED_MCP_ROUTE_PATTERN = /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/;
 const PUBLIC_API_PREFIX = "/api/public/";
+const SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN =
+  /^\/api\/public\/v1\/task-artifacts\/download\/[^/]+$/;
 
 type PublicApiScopeRequirement = ApiTokenScope | "either";
 
@@ -28,6 +30,10 @@ export function registerOwnerAuthGuard(
   return async (request, reply) => {
     const pathname = getPathname(request.url);
     const method = request.method.toUpperCase();
+
+    if (method === "GET" && SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN.test(pathname)) {
+      return;
+    }
 
     if (pathname.startsWith(PUBLIC_API_PREFIX)) {
       validatePublicApiBearer(context, request, method, pathname);

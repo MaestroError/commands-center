@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 
-import { agents } from "../../src/db/schema/index";
+import { agents, task_runs } from "../../src/db/schema/index";
 import { createApiTokenService } from "../../src/services/api-token-service";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
@@ -313,6 +314,10 @@ describe("public task API", () => {
           return response.json<{ status?: string }>().status;
         })
         .toBe("completed");
+      await testDb.client.db
+        .update(task_runs)
+        .set({ artifacts_json: JSON.stringify([{ title: "Private report", path: "report.md" }]) })
+        .where(eq(task_runs.id, triggerBody.runId));
       const runDetail = await server.inject({
         method: "GET",
         url: `/api/public/v1/tasks/${task.id}/runs/${triggerBody.runId}`,

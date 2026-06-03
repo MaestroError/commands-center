@@ -178,6 +178,32 @@ export const task_runs = sqliteTable(
   ],
 );
 
+export const task_artifact_share_links = sqliteTable(
+  "task_artifact_share_links",
+  {
+    id: text("id").primaryKey(),
+    artifact_id: text("artifact_id").notNull(),
+    task_id: text("task_id")
+      .notNull()
+      .references(() => tasks.id),
+    run_id: text("run_id")
+      .notNull()
+      .references(() => task_runs.id),
+    token_hash: text("token_hash").notNull().unique(),
+    token_prefix: text("token_prefix").notNull(),
+    created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    expires_at: integer("expires_at", { mode: "timestamp_ms" }),
+    revoked_at: integer("revoked_at", { mode: "timestamp_ms" }),
+    last_used_at: integer("last_used_at", { mode: "timestamp_ms" }),
+    download_count: integer("download_count").notNull().default(0),
+  },
+  (table) => [
+    index("task_artifact_share_links_artifact_id_idx").on(table.artifact_id),
+    index("task_artifact_share_links_task_run_idx").on(table.task_id, table.run_id),
+    index("task_artifact_share_links_expires_at_idx").on(table.expires_at),
+  ],
+);
+
 export const task_scheduler_state = sqliteTable(
   "task_scheduler_state",
   {

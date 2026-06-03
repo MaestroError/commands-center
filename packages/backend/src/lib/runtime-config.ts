@@ -163,6 +163,7 @@ export type RuntimeConfig = {
       skills: string;
       tools: string;
       taskContextAttachments: string;
+      taskArtifacts: string;
       tmp: string;
     };
   };
@@ -260,6 +261,7 @@ export function loadRuntimeConfig(options?: {
         sessions: resolve(workspaceDir, "sessions"),
         skills: resolve(workspaceDir, "skills"),
         taskContextAttachments: resolve(workspaceDir, "task-context-attachments"),
+        taskArtifacts: resolve(workspaceDir, "task-artifacts"),
         tools: resolve(workspaceDir, "custom-tools"),
         tmp: resolve(workspaceDir, "tmp"),
       },

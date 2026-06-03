@@ -7,6 +7,7 @@ export { secrets } from "./secrets.js";
 export { settings } from "./settings.js";
 export {
   task_feedback,
+  task_artifact_share_links,
   task_runs,
   task_scheduler_state,
   task_subtasks,

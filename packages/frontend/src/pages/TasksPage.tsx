@@ -63,6 +63,7 @@ import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { CopyableCode } from "@/components/api/EndpointsTab";
 import { Markdown } from "@/components/chat/Markdown";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
+import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import {
@@ -2029,6 +2030,8 @@ function TaskFeedbackSection(props: {
                   </>
                 }
                 artifacts={run.artifacts}
+                taskId={props.task.id}
+                runId={run.id}
                 tone="agent"
               />
             );
@@ -2043,6 +2046,8 @@ function FeedbackComment(props: {
   author: string;
   body: string;
   artifacts?: TaskRunArtifact[];
+  taskId?: string;
+  runId?: string;
   meta: ReactNode;
   tone: "operator" | "agent";
 }) {
@@ -2065,13 +2070,21 @@ function FeedbackComment(props: {
           className="mt-1 text-sm leading-6 text-text-secondary [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
           content={props.body}
         />
-        <RunArtifactAttachments artifacts={props.artifacts ?? []} />
+        <RunArtifactAttachments
+          artifacts={props.artifacts ?? []}
+          taskId={props.taskId}
+          runId={props.runId}
+        />
       </div>
     </div>
   );
 }
 
-function RunArtifactAttachments(props: { artifacts: TaskRunArtifact[] }) {
+function RunArtifactAttachments(props: {
+  artifacts: TaskRunArtifact[];
+  taskId?: string;
+  runId?: string;
+}) {
   if (props.artifacts.length === 0) {
     return null;
   }
@@ -2102,6 +2115,13 @@ function RunArtifactAttachments(props: { artifacts: TaskRunArtifact[] }) {
               <span className="mt-2 block text-xs text-text-secondary">
                 {artifact.description ?? artifact.title}
               </span>
+              {props.taskId && props.runId ? (
+                <ArtifactShareControls
+                  artifact={artifact}
+                  taskId={props.taskId}
+                  runId={props.runId}
+                />
+              ) : null}
             </span>
           </li>
         );
@@ -2208,6 +2228,8 @@ function FeedbackReplies(props: { agents: Agent[]; subtasks: TaskFeedbackThread[
             </>
           }
           artifacts={reply.run.artifacts}
+          taskId={reply.run.taskId}
+          runId={reply.run.id}
           tone="agent"
         />
       ))}

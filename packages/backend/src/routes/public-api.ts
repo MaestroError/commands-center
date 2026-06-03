@@ -1,3 +1,7 @@
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { basename } from "node:path";
+
 import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
@@ -25,6 +29,8 @@ import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { createAgentService } from "../services/agent-service.js";
 import { createConversationService } from "../services/conversation-service.js";
+import { createTaskArtifactService } from "../services/task-artifact-service.js";
+import { createTaskArtifactShareLinkService } from "../services/task-artifact-share-link-service.js";
 import { createPublicTaskApiService } from "../services/public-task-api-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
@@ -47,6 +53,14 @@ const taskRunParamsSchema = z.object({
   runId: z.string().min(1),
 });
 
+const artifactDownloadParamsSchema = z.object({
+  shareId: z.string().min(1),
+});
+
+const artifactDownloadQuerySchema = z.object({
+  token: z.string().min(1),
+});
+
 function parseExpand(expand: string | undefined): Set<string> {
   return new Set(
     (expand ?? "")
@@ -54,6 +68,10 @@ function parseExpand(expand: string | undefined): Set<string> {
       .map((part) => part.trim())
       .filter(Boolean),
   );
+}
+
+function escapeHeaderFilename(filename: string): string {
+  return filename.replace(/["\\\r\n]/g, "_");
 }
 
 /**
@@ -98,6 +116,15 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
     config: context.config,
     opencodeService: context.opencodeService,
   });
+  const taskArtifactService = createTaskArtifactService({
+    config: context.config,
+    taskService,
+  });
+  const taskArtifactShareLinkService = createTaskArtifactShareLinkService({
+    db: context.database.db,
+    config: context.config,
+    artifactService: taskArtifactService,
+  });
 
   const service = createPublicTaskApiService({
     taskService,
@@ -105,6 +132,47 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
     taskContextAttachmentService,
     agentService,
   });
+
+  app.get(
+    "/api/public/v1/task-artifacts/download/:shareId",
+    {
+      schema: {
+        params: artifactDownloadParamsSchema,
+        querystring: artifactDownloadQuerySchema,
+      },
+    },
+    async (request, reply) => {
+      const artifact = await taskArtifactShareLinkService.validateDownload({
+        shareId: request.params.shareId,
+        token: request.query.token,
+      });
+
+      if (!artifact.storageKey) {
+        throw new NotFoundError("Task artifact share link not found.");
+      }
+
+      const path = taskArtifactService.resolveArtifactPath(artifact.storageKey);
+      const details = await stat(path).catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          throw new NotFoundError("Task artifact share link not found.");
+        }
+
+        throw error;
+      });
+      const filename = basename(artifact.originalFilename);
+
+      reply.header("Content-Type", artifact.mimeType);
+      reply.header("Content-Length", String(details.size));
+      reply.header(
+        "Content-Disposition",
+        `attachment; filename="${escapeHeaderFilename(filename)}"`,
+      );
+      reply.header("X-Content-Type-Options", "nosniff");
+      reply.header("Cache-Control", "no-store, max-age=0");
+
+      return reply.send(createReadStream(path));
+    },
+  );
 
   app.get(
     "/api/public/v1/task-templates",

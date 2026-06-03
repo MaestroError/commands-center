@@ -4,14 +4,19 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import {
   activeTaskRunListSchema,
   cancelTaskRunInputSchema,
+  createTaskArtifactShareLinkInputSchema,
+  createTaskArtifactShareLinkResponseSchema,
   createTaskTemplateInputSchema,
   createTaskInputSchema,
   createTaskFeedbackInputSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
   queueTaskInputSchema,
+  revokeTaskArtifactShareLinkResponseSchema,
   taskQueuePreviewInputSchema,
   taskQueuePreviewSchema,
+  taskArtifactListResponseSchema,
+  taskArtifactSharingPreferencesSchema,
   taskFeedbackThreadListSchema,
   taskFeedbackThreadSchema,
   taskListSchema,
@@ -27,6 +32,7 @@ import {
   taskTemplateListSchema,
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
+  updateTaskArtifactSharingPreferencesInputSchema,
   updateTaskContextInputSchema,
   updateTaskInputSchema,
   updateTaskTemplateInputSchema,
@@ -42,6 +48,8 @@ import { createConversationService } from "../services/conversation-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
+import { createTaskArtifactService } from "../services/task-artifact-service.js";
+import { createTaskArtifactShareLinkService } from "../services/task-artifact-share-link-service.js";
 import { createTaskService } from "../services/task-service.js";
 import { triggerTemplateRun } from "../services/trigger-template-run.js";
 
@@ -51,6 +59,14 @@ const taskIdParamsSchema = z.object({
 
 const taskRunParamsSchema = taskIdParamsSchema.extend({
   runId: z.string().min(1),
+});
+
+const taskRunArtifactParamsSchema = taskRunParamsSchema.extend({
+  artifactId: z.string().min(1),
+});
+
+const taskRunArtifactShareLinkParamsSchema = taskRunArtifactParamsSchema.extend({
+  shareId: z.string().min(1),
 });
 
 const taskSubtaskParamsSchema = taskIdParamsSchema.extend({
@@ -94,6 +110,15 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       logger: context.logger,
     });
   fallbackTaskSchedulerServiceRef.current = taskSchedulerService;
+  const taskArtifactService = createTaskArtifactService({
+    config: context.config,
+    taskService: service,
+  });
+  const taskArtifactShareLinkService = createTaskArtifactShareLinkService({
+    db: context.database.db,
+    config: context.config,
+    artifactService: taskArtifactService,
+  });
 
   app.get(
     "/api/tasks/runs/active",
@@ -129,6 +154,31 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       },
     },
     async () => taskSchedulerService.tick(),
+  );
+
+  app.get(
+    "/api/tasks/artifact-sharing/preferences",
+    {
+      schema: {
+        response: {
+          200: taskArtifactSharingPreferencesSchema,
+        },
+      },
+    },
+    async () => taskArtifactShareLinkService.getPreferences(),
+  );
+
+  app.put(
+    "/api/tasks/artifact-sharing/preferences",
+    {
+      schema: {
+        body: updateTaskArtifactSharingPreferencesInputSchema,
+        response: {
+          200: taskArtifactSharingPreferencesSchema,
+        },
+      },
+    },
+    async (request) => taskArtifactShareLinkService.setPreferences(request.body),
   );
 
   app.get(
@@ -715,6 +765,81 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
   );
 
   app.get(
+    "/api/tasks/:id/runs/:runId/artifacts",
+    {
+      schema: {
+        params: taskRunParamsSchema,
+        response: {
+          200: taskArtifactListResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const [artifacts, shareLinks] = await Promise.all([
+        taskArtifactService.listRunArtifacts(request.params.id, request.params.runId),
+        taskArtifactShareLinkService.listForRun(request.params.id, request.params.runId),
+      ]);
+
+      return {
+        artifacts: artifacts.map((artifact) => ({
+          ...artifact,
+          shareLinks: shareLinks.filter(
+            (link) => link.artifactId === artifact.id && link.revokedAt === null,
+          ),
+        })),
+      };
+    },
+  );
+
+  app.post(
+    "/api/tasks/:id/runs/:runId/artifacts/:artifactId/share-links",
+    {
+      schema: {
+        params: taskRunArtifactParamsSchema,
+        body: createTaskArtifactShareLinkInputSchema,
+        response: {
+          200: createTaskArtifactShareLinkResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const artifact = await taskArtifactService.publishRunArtifact(
+        request.params.id,
+        request.params.runId,
+        request.params.artifactId,
+      );
+
+      return taskArtifactShareLinkService.createLink({
+        artifact,
+        body: request.body,
+        baseUrl: getRequestBaseUrl(context, request),
+      });
+    },
+  );
+
+  app.delete(
+    "/api/tasks/:id/runs/:runId/artifacts/:artifactId/share-links/:shareId",
+    {
+      schema: {
+        params: taskRunArtifactShareLinkParamsSchema,
+        response: {
+          200: revokeTaskArtifactShareLinkResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      await taskArtifactShareLinkService.revokeLink({
+        taskId: request.params.id,
+        runId: request.params.runId,
+        artifactId: request.params.artifactId,
+        shareId: request.params.shareId,
+      });
+
+      return { revoked: true as const };
+    },
+  );
+
+  app.get(
     "/api/tasks/:id/runs/:runId/session",
     {
       schema: {
@@ -767,4 +892,18 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     },
     async (request) => executionService.cancel(request.params.runId, request.body),
   );
+}
+
+function getRequestBaseUrl(context: RuntimeContext, request: { headers: Record<string, unknown> }) {
+  if (context.config.security.publicOrigin) {
+    return context.config.security.publicOrigin;
+  }
+
+  const host = typeof request.headers["host"] === "string" ? request.headers["host"] : "localhost";
+  const proto =
+    typeof request.headers["x-forwarded-proto"] === "string"
+      ? request.headers["x-forwarded-proto"]
+      : "http";
+
+  return `${proto}://${host}`;
 }

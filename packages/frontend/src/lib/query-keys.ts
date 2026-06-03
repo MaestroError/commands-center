@@ -2,6 +2,7 @@ export const queryKeys = {
   engineStatus: ["engine-status"] as const,
   systemVersion: ["system-version"] as const,
   systemUpdatePreferences: ["system-update-preferences"] as const,
+  taskArtifactSharingPreferences: ["task-artifact-sharing-preferences"] as const,
   providers: ["providers"] as const,
   mcpServers: ["mcp-servers"] as const,
   secrets: ["secrets"] as const,
@@ -28,6 +29,8 @@ export const queryKeys = {
   taskSubtaskProgress: (taskIds: string[]) => ["task-subtask-progress", taskIds] as const,
   taskRuns: (taskId: string) => ["task-runs", taskId] as const,
   taskRun: (taskId: string, runId: string) => ["task-run", taskId, runId] as const,
+  taskRunArtifacts: (taskId: string, runId: string) =>
+    ["task-run-artifacts", taskId, runId] as const,
   taskRunSession: (taskId: string, runId: string) => ["task-run-session", taskId, runId] as const,
   activeTaskRuns: ["active-task-runs"] as const,
   taskSchedulerState: ["task-scheduler-state"] as const,

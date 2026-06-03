@@ -14,7 +14,12 @@ import {
   useSystemVersionQuery,
 } from "@/hooks/use-system-version-query";
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
-import { getFileManagerPreferences, updateFileManagerPreferences } from "@/lib/api";
+import {
+  getFileManagerPreferences,
+  getTaskArtifactSharingPreferences,
+  updateFileManagerPreferences,
+  updateTaskArtifactSharingPreferences,
+} from "@/lib/api";
 
 export function SettingsPage() {
   const [activeTabId, setActiveTabId] = useState("system");
@@ -32,6 +37,10 @@ export function SettingsPage() {
         id: "file-manager",
         label: "File Manager",
       },
+      {
+        id: "sharing",
+        label: "Sharing",
+      },
     ],
     [],
   );
@@ -48,6 +57,7 @@ export function SettingsPage() {
         {activeTabId === "system" ? <SystemTab /> : null}
         {activeTabId === "secrets" ? <SecretsTab /> : null}
         {activeTabId === "file-manager" ? <FileManagerTab /> : null}
+        {activeTabId === "sharing" ? <SharingTab /> : null}
       </section>
     </div>
   );
@@ -375,6 +385,89 @@ function FileManagerTab() {
           </span>
         </span>
       </label>
+    </div>
+  );
+}
+
+function SharingTab() {
+  const [expiresInMinutes, setExpiresInMinutes] = useState(1440);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    let cancelled = false;
+    void getTaskArtifactSharingPreferences()
+      .then((preferences) => {
+        if (cancelled) return;
+        setExpiresInMinutes(preferences.taskArtifactSignedUrlExpiresInMinutes);
+        setLoading(false);
+      })
+      .catch((nextError: unknown) => {
+        if (cancelled) return;
+        setError(nextError instanceof Error ? nextError.message : "Failed to load preferences.");
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function savePreferences() {
+    setSaving(true);
+    setError(undefined);
+    try {
+      const preferences = await updateTaskArtifactSharingPreferences({
+        taskArtifactSignedUrlExpiresInMinutes: expiresInMinutes,
+      });
+      setExpiresInMinutes(preferences.taskArtifactSignedUrlExpiresInMinutes);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to save preferences.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return <LoadingState testId="artifact-sharing-preferences-loading" />;
+  }
+
+  return (
+    <div className="mt-6 grid gap-4">
+      <div>
+        <h2 className="text-xl font-semibold text-text-primary">Artifact Sharing</h2>
+        <p className="mt-1 text-sm text-text-secondary">
+          Set the default lifetime for new signed task artifact download links.
+        </p>
+      </div>
+      {error ? (
+        <ErrorState description={error} title="Could not save sharing preferences." />
+      ) : null}
+      <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
+        <span className="font-medium">Default signed URL expiry (minutes)</span>
+        <input
+          className="cc-input"
+          disabled={saving}
+          max={10080}
+          min={0}
+          onChange={(event) => setExpiresInMinutes(Number(event.target.value))}
+          type="number"
+          value={expiresInMinutes}
+        />
+        <span className="text-text-secondary">
+          Use 0 for links that do not expire. Maximum: 10080 minutes.
+        </span>
+      </label>
+      <div className="flex justify-end">
+        <button
+          className="cc-button"
+          disabled={saving}
+          onClick={() => void savePreferences()}
+          type="button"
+        >
+          {saving ? "Saving..." : "Save sharing settings"}
+        </button>
+      </div>
     </div>
   );
 }
