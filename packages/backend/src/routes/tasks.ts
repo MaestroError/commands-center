@@ -900,10 +900,10 @@ function getRequestBaseUrl(context: RuntimeContext, request: { headers: Record<s
   }
 
   const host = typeof request.headers["host"] === "string" ? request.headers["host"] : "localhost";
-  const proto =
+  const forwardedProto =
     typeof request.headers["x-forwarded-proto"] === "string"
       ? request.headers["x-forwarded-proto"]
       : "http";
-
+  const proto = forwardedProto.split(",")[0]?.trim() || "http";
   return `${proto}://${host}`;
 }
