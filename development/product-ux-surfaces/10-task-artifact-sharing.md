@@ -85,12 +85,9 @@ Suggested setting key:
 }
 ```
 
-Rules:
-
 - Default: `1440` minutes (24 hours).
-- Minimum: `5` minutes.
+- Minimum: `0` minutes (0 means "never expires"; otherwise choose a positive value).
 - Maximum: `10080` minutes (7 days).
-- The setting is persisted through the existing workspace settings path, not only SQLite.
 - Changing the setting affects newly created signed URLs only; existing grants keep their original `expires_at`.
 
 ---
@@ -143,11 +140,7 @@ export const taskArtifactShareLinks = sqliteTable("task_artifact_share_links", {
   run_id: text("run_id").notNull(),
   token_hash: text("token_hash").notNull().unique(),
   token_prefix: text("token_prefix").notNull(),
-  created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-  expires_at: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-  revoked_at: integer("revoked_at", { mode: "timestamp_ms" }),
-  last_used_at: integer("last_used_at", { mode: "timestamp_ms" }),
-  download_count: integer("download_count").notNull().default(0),
+  expires_at: integer("expires_at", { mode: "timestamp_ms" }), // null means does not expire
 });
 ```
 

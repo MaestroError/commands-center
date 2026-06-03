@@ -45,8 +45,12 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
       artifactId: candidate.id,
     });
     setCreatedUrl(response.url);
-    await copyText(response.url);
-    setCopied(true);
+    try {
+      await copyText(response.url);
+      setCopied(Boolean(navigator.clipboard));
+    } catch {
+      setCopied(false);
+    }
   }
 
   async function revokeLink(shareId: string) {
@@ -77,8 +81,14 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
           <button
             className="cc-button cc-button-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs"
             onClick={() => {
-              void copyText(createdUrl);
-              setCopied(true);
+              void (async () => {
+                try {
+                  await copyText(createdUrl);
+                  setCopied(Boolean(navigator.clipboard));
+                } catch {
+                  setCopied(false);
+                }
+              })();
             }}
             type="button"
           >
