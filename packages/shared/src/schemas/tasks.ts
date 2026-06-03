@@ -198,6 +198,7 @@ export const createTaskInputSchema = z.object({
   description: z.string().trim().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
   status: taskStatusSchema.optional(),
+  triggerSource: taskRunTriggerSourceSchema.optional(),
   scheduledAt: z.string().datetime().optional(),
   dueAt: z.string().datetime().optional(),
   context: taskContextInputSchema.optional(),
@@ -222,6 +223,7 @@ export const updateTaskInputSchema = z.object({
 export const listTasksQuerySchema = z.object({
   status: taskStatusSchema.optional(),
   agentId: z.string().trim().min(1).optional(),
+  sourceTemplateId: z.string().trim().min(1).optional(),
   includeArchived: z.coerce.boolean().optional().default(false),
 });
 
@@ -260,6 +262,55 @@ export const addTaskRunArtifactInputSchema = z.object({
   taskRunId: z.string().trim().min(1),
   artifact: taskRunArtifactSchema,
 });
+
+export const taskArtifactShareLinkSchema = z.object({
+  id: z.string().min(1),
+  artifactId: z.string().min(1),
+  expiresAt: z.string().datetime().nullable(),
+  revokedAt: z.string().datetime().nullable(),
+  lastUsedAt: z.string().datetime().nullable(),
+  downloadCount: z.number().int().nonnegative(),
+  createdAt: z.string().datetime(),
+});
+
+export const taskRegisteredArtifactSchema = z.object({
+  id: z.string().min(1),
+  taskId: z.string().min(1),
+  runId: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  originalFilename: z.string().min(1),
+  mimeType: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+  checksum: z.string().min(1),
+  storageKey: z.string().min(1).nullable(),
+  createdAt: z.string().datetime(),
+  shareLinks: z.array(taskArtifactShareLinkSchema).default([]),
+});
+
+export const taskArtifactListResponseSchema = z.object({
+  artifacts: z.array(taskRegisteredArtifactSchema),
+});
+
+export const createTaskArtifactShareLinkInputSchema = z.object({
+  expiresInMinutes: z.number().int().min(0).max(10080).optional(),
+});
+
+export const createTaskArtifactShareLinkResponseSchema = z.object({
+  shareId: z.string().min(1),
+  url: z.string().url(),
+  expiresAt: z.string().datetime().nullable(),
+});
+
+export const revokeTaskArtifactShareLinkResponseSchema = z.object({
+  revoked: z.literal(true),
+});
+
+export const taskArtifactSharingPreferencesSchema = z.object({
+  taskArtifactSignedUrlExpiresInMinutes: z.number().int().min(0).max(10080),
+});
+
+export const updateTaskArtifactSharingPreferencesInputSchema = taskArtifactSharingPreferencesSchema;
 
 export const markTaskRunNeedsReviewInputSchema = z.object({
   taskRunId: z.string().trim().min(1),
@@ -504,12 +555,21 @@ export type UpdateTaskTemplateInput = z.input<typeof updateTaskTemplateInputSche
 export type TaskTemplateRunNowInput = z.input<typeof taskTemplateRunNowInputSchema>;
 export type CreateTaskRunInput = z.input<typeof createTaskRunInputSchema>;
 export type AddTaskRunArtifactInput = z.input<typeof addTaskRunArtifactInputSchema>;
+export type CreateTaskArtifactShareLinkInput = z.input<
+  typeof createTaskArtifactShareLinkInputSchema
+>;
+export type CreateTaskArtifactShareLinkResponse = z.infer<
+  typeof createTaskArtifactShareLinkResponseSchema
+>;
 export type CancelTaskRunInput = z.input<typeof cancelTaskRunInputSchema>;
 export type QueueTaskInput = z.input<typeof queueTaskInputSchema>;
 export type ListTaskRunsQuery = z.infer<typeof listTaskRunsQuerySchema>;
 export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;
 export type BoardTaskStatus = z.infer<typeof boardTaskStatusSchema>;
 export type Task = z.infer<typeof taskSchema>;
+export type TaskArtifactListResponse = z.infer<typeof taskArtifactListResponseSchema>;
+export type TaskArtifactShareLink = z.infer<typeof taskArtifactShareLinkSchema>;
+export type TaskArtifactSharingPreferences = z.infer<typeof taskArtifactSharingPreferencesSchema>;
 export type TaskContext = z.infer<typeof taskContextSchema>;
 export type TaskContextAttachment = z.infer<typeof taskContextAttachmentSchema>;
 export type AppendTaskContextInput = z.input<typeof appendTaskContextInputSchema>;
@@ -521,6 +581,7 @@ export type TaskRunArtifact = z.infer<typeof taskRunArtifactSchema>;
 export type TaskRun = z.infer<typeof taskRunSchema>;
 export type TaskRunOutcome = z.infer<typeof taskRunOutcomeSchema>;
 export type TaskQueuePreview = z.infer<typeof taskQueuePreviewSchema>;
+export type TaskRegisteredArtifact = z.infer<typeof taskRegisteredArtifactSchema>;
 export type TaskRunSessionDiagnostic = z.infer<typeof taskRunSessionDiagnosticSchema>;
 export type TaskRunSessionInspection = z.infer<typeof taskRunSessionInspectionSchema>;
 export type TaskRunStatus = z.infer<typeof taskRunStatusSchema>;
@@ -536,6 +597,9 @@ export type TaskTodo = z.infer<typeof taskTodoSchema>;
 export type TaskRepeatRule = z.infer<typeof taskRepeatRuleSchema>;
 export type TriggerTaskInput = z.input<typeof triggerTaskInputSchema>;
 export type UpdateTaskContextInput = z.input<typeof updateTaskContextInputSchema>;
+export type UpdateTaskArtifactSharingPreferencesInput = z.input<
+  typeof updateTaskArtifactSharingPreferencesInputSchema
+>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
 export type UpdateTaskRunInput = z.input<typeof updateTaskRunInputSchema>;
 export type UpdateTaskSubtaskInput = z.input<typeof updateTaskSubtaskInputSchema>;

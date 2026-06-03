@@ -1,7 +1,10 @@
 import {
   agentCatalogSchema,
+  apiTokenListResponseSchema,
   cancelTaskRunInputSchema,
   copyCustomToolToAgentsInputSchema,
+  createTaskArtifactShareLinkInputSchema,
+  createTaskArtifactShareLinkResponseSchema,
   customToolAgentCopyListSchema,
   customToolBulkCopyResultSchema,
   customToolListSchema,
@@ -14,6 +17,8 @@ import {
   conversationListSchema,
   conversationSnapshotSchema,
   createAgentInputSchema,
+  createApiTokenInputSchema,
+  createApiTokenResponseSchema,
   createCustomToolInputSchema,
   createMcpServerInputSchema,
   createTaskFeedbackInputSchema,
@@ -72,6 +77,8 @@ import {
   systemUpdateResultSchema,
   systemUpdatePreferencesSchema,
   systemVersionSchema,
+  taskArtifactListResponseSchema,
+  taskArtifactSharingPreferencesSchema,
   taskListSchema,
   taskFeedbackThreadListSchema,
   taskFeedbackThreadSchema,
@@ -88,6 +95,7 @@ import {
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
   updateTaskContextInputSchema,
+  updateTaskArtifactSharingPreferencesInputSchema,
   updateTaskTemplateInputSchema,
   terminalListResponseSchema,
   terminalResizeInputSchema,
@@ -100,6 +108,8 @@ import {
   uploadTaskContextAttachmentResponseSchema,
   type Agent,
   type AgentCatalog,
+  type ApiTokenListResponse,
+  type ApiTokenScope,
   type CancelTaskRunInput,
   type CopyCustomToolToAgentsInput,
   type CreateCustomToolInput,
@@ -109,8 +119,11 @@ import {
   type CreateWorkspaceSkillInput,
   type ChatEvent,
   type CreateAgentInput,
+  type CreateApiTokenResponse,
   type CreateMcpServerInput,
   type CreateTaskFeedbackInput,
+  type CreateTaskArtifactShareLinkInput,
+  type CreateTaskArtifactShareLinkResponse,
   type CreateTaskInput,
   type CreateTaskTemplateInput,
   type ConversationDetail,
@@ -163,6 +176,8 @@ import {
   type SystemUpdatePreferences,
   type SystemVersion,
   type Task,
+  type TaskArtifactListResponse,
+  type TaskArtifactSharingPreferences,
   type TaskFeedbackThread,
   type TaskQueuePreview,
   type TaskTemplate,
@@ -178,6 +193,7 @@ import {
   type UpdateAgentInput,
   type UpdateMcpServerInput,
   type UpdateTaskInput,
+  type UpdateTaskArtifactSharingPreferencesInput,
   type UpdateTaskContextInput,
   type UpdateTaskTemplateInput,
   type UpdateSystemUpdatePreferencesInput,
@@ -288,6 +304,26 @@ export async function updateSystemUpdatePreferences(
   );
 }
 
+export async function getTaskArtifactSharingPreferences(): Promise<TaskArtifactSharingPreferences> {
+  return requestJson<TaskArtifactSharingPreferences>(
+    "/api/tasks/artifact-sharing/preferences",
+    taskArtifactSharingPreferencesSchema,
+  );
+}
+
+export async function updateTaskArtifactSharingPreferences(
+  input: UpdateTaskArtifactSharingPreferencesInput,
+): Promise<TaskArtifactSharingPreferences> {
+  return requestJson<TaskArtifactSharingPreferences>(
+    "/api/tasks/artifact-sharing/preferences",
+    taskArtifactSharingPreferencesSchema,
+    {
+      method: "PUT",
+      body: updateTaskArtifactSharingPreferencesInputSchema.parse(input),
+    },
+  );
+}
+
 export async function listProviders(): Promise<ProviderStatus[]> {
   return requestJson<ProviderStatus[]>("/api/providers", providerStatusListSchema);
 }
@@ -381,6 +417,31 @@ export async function removeMcpAuth(id: string): Promise<McpAuthRemoveResult> {
 
 export async function listSecrets(): Promise<SecretMeta[]> {
   return requestJson<SecretMeta[]>("/api/secrets", secretMetaListSchema);
+}
+
+export async function listApiTokens(): Promise<ApiTokenListResponse> {
+  return requestJson<ApiTokenListResponse>("/api/api-tokens", apiTokenListResponseSchema);
+}
+
+export async function createApiToken(input: {
+  name: string;
+  scopes: ApiTokenScope[];
+}): Promise<CreateApiTokenResponse> {
+  return requestJson<CreateApiTokenResponse>("/api/api-tokens", createApiTokenResponseSchema, {
+    method: "POST",
+    body: createApiTokenInputSchema.parse(input),
+  });
+}
+
+export async function revokeApiToken(id: string): Promise<void> {
+  const response = await apiFetch(`/api/api-tokens/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
 }
 
 export async function setSecret(key: string, value: string): Promise<void> {
@@ -881,6 +942,49 @@ export async function getTaskRun(taskId: string, runId: string): Promise<TaskRun
     `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}`,
     taskRunSchema,
   );
+}
+
+export async function listTaskRunArtifacts(
+  taskId: string,
+  runId: string,
+): Promise<TaskArtifactListResponse> {
+  return requestJson<TaskArtifactListResponse>(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/artifacts`,
+    taskArtifactListResponseSchema,
+  );
+}
+
+export async function createTaskArtifactShareLink(
+  taskId: string,
+  runId: string,
+  artifactId: string,
+  input: CreateTaskArtifactShareLinkInput = {},
+): Promise<CreateTaskArtifactShareLinkResponse> {
+  return requestJson<CreateTaskArtifactShareLinkResponse>(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}/share-links`,
+    createTaskArtifactShareLinkResponseSchema,
+    {
+      method: "POST",
+      body: createTaskArtifactShareLinkInputSchema.parse(input),
+    },
+  );
+}
+
+export async function revokeTaskArtifactShareLink(
+  taskId: string,
+  runId: string,
+  artifactId: string,
+  shareId: string,
+): Promise<void> {
+  const response = await apiFetch(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}/share-links/${encodeURIComponent(shareId)}`,
+    { method: "DELETE" },
+  );
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
 }
 
 export async function inspectTaskRunSession(

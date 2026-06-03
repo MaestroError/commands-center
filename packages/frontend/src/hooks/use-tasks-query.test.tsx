@@ -12,6 +12,7 @@ vi.mock("@/lib/api", () => ({
   createTaskFeedback: vi.fn(),
   createTaskFromTemplate: vi.fn(),
   createTaskTemplate: vi.fn(),
+  createTaskArtifactShareLink: vi.fn(),
   deleteTask: vi.fn(),
   disableTask: vi.fn(),
   duplicateTask: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("@/lib/api", () => ({
   inspectTaskRunSession: vi.fn(),
   listActiveTaskRuns: vi.fn(),
   listArchivedTasks: vi.fn(),
+  listTaskRunArtifacts: vi.fn(),
   listTaskFeedback: vi.fn(),
   listTaskRuns: vi.fn(),
   listTaskSchedulerState: vi.fn(),
@@ -34,6 +36,7 @@ vi.mock("@/lib/api", () => ({
   previewTaskQueue: vi.fn(),
   queueTask: vi.fn(),
   restoreTask: vi.fn(),
+  revokeTaskArtifactShareLink: vi.fn(),
   runTaskTemplateNow: vi.fn(),
   updateTask: vi.fn(),
   updateTaskContext: vi.fn(),
@@ -49,6 +52,7 @@ import {
   createTaskFeedback,
   createTaskFromTemplate,
   createTaskTemplate,
+  createTaskArtifactShareLink,
   deleteTask,
   disableTask,
   duplicateTask,
@@ -59,6 +63,7 @@ import {
   inspectTaskRunSession,
   listActiveTaskRuns,
   listArchivedTasks,
+  listTaskRunArtifacts,
   listTaskFeedback,
   listTaskRuns,
   listTaskSchedulerState,
@@ -71,6 +76,7 @@ import {
   previewTaskQueue,
   queueTask,
   restoreTask,
+  revokeTaskArtifactShareLink,
   runTaskTemplateNow,
   updateTask,
   updateTaskContext,
@@ -86,6 +92,7 @@ import {
   useTaskMutations,
   useTaskQuery,
   useTaskRunQuery,
+  useTaskRunArtifactsQuery,
   useTaskRunSessionQuery,
   useTaskRunsQuery,
   useTaskSchedulerStateQuery,
@@ -317,6 +324,83 @@ describe("useTaskMutations", () => {
     expect(queryClient.getQueryData(queryKeys.task("updated"))).toEqual(updated);
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["tasks"] });
     expect(vi.mocked(deleteTask).mock.calls[0]?.[0]).toBe("task-1");
+  });
+
+  it("creates and revokes artifact share links, invalidating the artifacts query", async () => {
+    const queryClient = createQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    vi.mocked(createTaskArtifactShareLink).mockResolvedValue({
+      shareId: "share-1",
+      url: "https://example.com/share/abc",
+      expiresAt: null,
+    });
+    vi.mocked(revokeTaskArtifactShareLink).mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useTaskMutations(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.createArtifactShareLink.mutateAsync({
+        taskId: "task-1",
+        runId: "run-1",
+        artifactId: "art-1",
+        input: { expiresInMinutes: 60 },
+      });
+      await result.current.revokeArtifactShareLink.mutateAsync({
+        taskId: "task-1",
+        runId: "run-1",
+        artifactId: "art-1",
+        shareId: "share-1",
+      });
+    });
+
+    expect(createTaskArtifactShareLink).toHaveBeenCalledWith("task-1", "run-1", "art-1", {
+      expiresInMinutes: 60,
+    });
+    expect(revokeTaskArtifactShareLink).toHaveBeenCalledWith("task-1", "run-1", "art-1", "share-1");
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.taskRunArtifacts("task-1", "run-1"),
+    });
+  });
+
+  it("loads task run artifacts through useTaskRunArtifactsQuery", async () => {
+    const queryClient = createQueryClient();
+    vi.mocked(listTaskRunArtifacts).mockResolvedValue({
+      artifacts: [
+        {
+          id: "art-1",
+          taskId: "task-1",
+          runId: "run-1",
+          title: "Report",
+          originalFilename: "report.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 10,
+          checksum: "abc",
+          storageKey: "key",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          shareLinks: [],
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useTaskRunArtifactsQuery("task-1", "run-1"), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(listTaskRunArtifacts).toHaveBeenCalledWith("task-1", "run-1");
+    expect(result.current.data?.artifacts).toHaveLength(1);
+  });
+
+  it("disables the artifacts query when ids are missing", () => {
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useTaskRunArtifactsQuery(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(listTaskRunArtifacts).not.toHaveBeenCalled();
   });
 
   it("updates template, feedback, run, and attachment caches", async () => {

@@ -11,6 +11,8 @@ import {
   type OpenCodeService,
 } from "@cc/backend";
 
+import { createApiTokenService } from "../src/services/api-token-service";
+
 function createSecretServiceStub() {
   return {
     list: () => Promise.resolve([]),
@@ -77,6 +79,9 @@ describe("createServer", () => {
       config,
       logger: createLogger(config),
       database: createDatabase("/tmp/project/.cc/data/cc.db"),
+      apiTokenService: createApiTokenService({
+        db: createDatabase("/tmp/project/.cc/data/cc.db").db,
+      }),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -137,6 +142,9 @@ describe("createServer", () => {
       config,
       logger: createLogger(config),
       database: createDatabase("/tmp/project/.cc/data/cc.db"),
+      apiTokenService: createApiTokenService({
+        db: createDatabase("/tmp/project/.cc/data/cc.db").db,
+      }),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -179,6 +187,9 @@ describe("createServer", () => {
       config,
       logger: createLogger(config),
       database: createDatabase("/tmp/project/.cc/data/cc.db"),
+      apiTokenService: createApiTokenService({
+        db: createDatabase("/tmp/project/.cc/data/cc.db").db,
+      }),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -226,6 +237,9 @@ describe("createServer", () => {
       config,
       logger: createLogger(config),
       database: createDatabase("/tmp/project/.cc/data/cc.db"),
+      apiTokenService: createApiTokenService({
+        db: createDatabase("/tmp/project/.cc/data/cc.db").db,
+      }),
       orchestrator: engine,
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },

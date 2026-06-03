@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createApiTokenService } from "../../src/services/api-token-service";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
@@ -18,6 +19,7 @@ describe("file manager routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -222,6 +224,7 @@ describe("file manager routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService,
       openCodeEventService: { subscribe: () => {} },
@@ -321,6 +324,7 @@ describe("file manager content routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },

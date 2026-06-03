@@ -10,6 +10,7 @@ import { PUBLIC_ROUTES, isPublicRoute } from "../../src/lib/public-routes";
 import { loadRuntimeConfig, type RuntimeConfig } from "../../src/lib/runtime-config";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
 import { createServer } from "../../src/server";
+import { createApiTokenService } from "../../src/services/api-token-service";
 import { createOwnerAccessService } from "../../src/services/owner-access-service";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
@@ -50,6 +51,79 @@ describe("owner auth guard", () => {
         error: { code: "unauthorized", message: "Owner session is required." },
       });
       expect(response.headers["content-type"]).toContain("application/json");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects public API requests without a bearer token even with an owner session", async () => {
+    const testDb = await createTestDatabase();
+    const ownerAccessService = createOwnerAccessService({ config: testDb.config });
+    const server = await createAuthServer(testDb, ownerAccessService);
+
+    try {
+      const { cookie } = await createAuthenticatedCookie(testDb.config, ownerAccessService);
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/task-templates",
+        headers: { cookie },
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({
+        error: { code: "unauthorized", message: "Invalid or revoked API token." },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("allows public API requests with a bearer token carrying the required scope", async () => {
+    const testDb = await createTestDatabase();
+    const ownerAccessService = createOwnerAccessService({ config: testDb.config });
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await createAuthServer(testDb, ownerAccessService);
+
+    try {
+      const token = apiTokenService.createToken("Template consumer", ["templates"]);
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/task-templates",
+        headers: { authorization: `Bearer ${token.token}` },
+      });
+
+      // The guard validates the bearer token and lets the request through to the
+      // real public route (which lists triggerable templates — none exist here).
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ templates: [] });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects public API requests when the bearer token lacks the required scope", async () => {
+    const testDb = await createTestDatabase();
+    const ownerAccessService = createOwnerAccessService({ config: testDb.config });
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await createAuthServer(testDb, ownerAccessService);
+
+    try {
+      const token = apiTokenService.createToken("Template consumer", ["templates"]);
+      // The real `/api/public/v1/tasks` route requires the `tasks` scope; a
+      // templates-only token is rejected by the guard before reaching it.
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/tasks",
+        headers: { authorization: `Bearer ${token.token}` },
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({
+        error: { code: "forbidden", message: "Token is missing the required scope." },
+      });
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -340,6 +414,7 @@ async function createAuthServer(
     opencodeService: createMockOpenCodeService(),
     openCodeEventService: { subscribe: () => {} },
     secretService: createSecretService({ db: testDb.client.db, config }),
+    apiTokenService: createApiTokenService({ db: testDb.client.db }),
     ownerAccessService,
     scheduler: createSchedulerService(),
   });

@@ -7,6 +7,7 @@ import { agents } from "../../src/db/schema/index";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
+import { createApiTokenService } from "../../src/services/api-token-service";
 import { createTaskContextAttachmentService } from "../../src/services/task-context-attachment-service";
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskSchedulerService } from "../../src/services/task-scheduler-service";
@@ -42,6 +43,7 @@ describe("task routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService,
       openCodeEventService: { subscribe: () => {} },
@@ -232,6 +234,7 @@ describe("task routes", () => {
       config,
       logger: createLogger(config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },
@@ -291,6 +294,7 @@ describe("task routes", () => {
       config: testDb.config,
       logger: createLogger(testDb.config),
       database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
       orchestrator: createOrchestrator(),
       opencodeService: createMockOpenCodeService(),
       openCodeEventService: { subscribe: () => {} },

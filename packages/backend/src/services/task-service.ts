@@ -233,6 +233,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
             filters.push(operators.eq(table.agent_id, parsed.agentId));
           }
 
+          if (parsed.sourceTemplateId) {
+            filters.push(operators.eq(table.source_template_id, parsed.sourceTemplateId));
+          }
+
           return operators.and(...filters);
         },
         orderBy: (table, operators) => [operators.desc(table.updated_at)],
@@ -438,7 +442,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           context: JSON.stringify(context),
           todos_json: JSON.stringify(todos),
           status,
-          trigger_source: "manual",
+          trigger_source: parsed.triggerSource ?? "manual",
           permission_profile_json: stringifyOptional(parsed.permissionProfile),
           enabled,
           archived,

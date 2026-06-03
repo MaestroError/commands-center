@@ -15,7 +15,12 @@ import {
   useSystemVersionQuery,
 } from "@/hooks/use-system-version-query";
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
-import { getFileManagerPreferences, updateFileManagerPreferences } from "@/lib/api";
+import {
+  getFileManagerPreferences,
+  getTaskArtifactSharingPreferences,
+  updateFileManagerPreferences,
+  updateTaskArtifactSharingPreferences,
+} from "@/lib/api";
 import { queryClient } from "@/lib/query-client";
 
 vi.mock("@/hooks/use-secrets-query", () => ({
@@ -45,6 +50,8 @@ vi.mock("@/lib/api", async () => {
     ...actual,
     getFileManagerPreferences: vi.fn(),
     updateFileManagerPreferences: vi.fn(),
+    getTaskArtifactSharingPreferences: vi.fn(),
+    updateTaskArtifactSharingPreferences: vi.fn(),
   };
 });
 
@@ -138,6 +145,12 @@ beforeEach(() => {
     },
   });
   vi.mocked(updateFileManagerPreferences).mockImplementation((input) => Promise.resolve(input));
+  vi.mocked(getTaskArtifactSharingPreferences).mockResolvedValue({
+    taskArtifactSignedUrlExpiresInMinutes: 1440,
+  });
+  vi.mocked(updateTaskArtifactSharingPreferences).mockImplementation((input) =>
+    Promise.resolve(input),
+  );
 });
 
 describe("SettingsPage", () => {
@@ -482,6 +495,48 @@ describe("SettingsPage", () => {
     fireEvent.click(input);
 
     expect(await screen.findByText("save failed")).toBeInTheDocument();
+  });
+});
+
+describe("SettingsPage sharing tab", () => {
+  it("loads and saves artifact sharing preferences", async () => {
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Sharing" }));
+
+    // Loaded preference value is reflected in the input.
+    const input = await screen.findByRole("spinbutton");
+    expect(input).toHaveValue(1440);
+
+    fireEvent.change(input, { target: { value: "60" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save sharing settings" }));
+
+    await waitFor(() =>
+      expect(updateTaskArtifactSharingPreferences).toHaveBeenCalledWith({
+        taskArtifactSignedUrlExpiresInMinutes: 60,
+      }),
+    );
+  });
+
+  it("surfaces an error when saving sharing preferences fails", async () => {
+    vi.mocked(updateTaskArtifactSharingPreferences).mockRejectedValueOnce(new Error("save failed"));
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Sharing" }));
+    await screen.findByRole("spinbutton");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save sharing settings" }));
+
+    expect(await screen.findByText("save failed")).toBeInTheDocument();
+  });
+
+  it("surfaces an error when loading sharing preferences fails", async () => {
+    vi.mocked(getTaskArtifactSharingPreferences).mockRejectedValueOnce(new Error("load failed"));
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Sharing" }));
+
+    expect(await screen.findByText("load failed")).toBeInTheDocument();
   });
 });
 

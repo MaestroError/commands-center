@@ -1,6 +1,7 @@
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { registerAgentRoutes } from "./agents.js";
+import { registerApiTokenRoutes } from "./api-tokens.js";
 import { registerCcManagedMcpRoutes } from "./cc-managed-mcp.js";
 import { registerConversationEventRoutes } from "./conversation-events.js";
 import { registerConversationRoutes } from "./conversations.js";
@@ -11,6 +12,7 @@ import { registerLiveRequestRoutes } from "./live-requests.js";
 import { registerMcpServerRoutes } from "./mcp-servers.js";
 import { registerOwnerAuthRoutes } from "./owner-auth.js";
 import { registerProviderRoutes } from "./providers.js";
+import { registerPublicApiRoutes } from "./public-api.js";
 import { registerSearchRoutes } from "./search.js";
 import { registerSecretRoutes } from "./secrets.js";
 import { registerTerminalRoutes } from "./terminal.js";
@@ -21,6 +23,7 @@ import { registerWorkspaceSkillRoutes } from "./workspace-skills.js";
 export function registerApiRoutes(server: AppServer, context: RuntimeContext): void {
   registerHealthRoutes(server, context);
   registerOwnerAuthRoutes(server, context);
+  registerApiTokenRoutes(server, context);
   registerCcManagedMcpRoutes(server, context);
   registerAgentRoutes(server, context);
   registerConversationRoutes(server, context);
@@ -35,5 +38,6 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerSecretRoutes(server, context);
   registerSystemRoutes(server, context);
   registerTaskRoutes(server, context);
+  registerPublicApiRoutes(server, context);
   registerTerminalRoutes(server, context);
 }

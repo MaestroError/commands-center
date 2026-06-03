@@ -19,6 +19,7 @@ import {
   type WorkspaceWatchService,
 } from "../services/workspace-watch-service.js";
 import { createSecretService, type SecretService } from "../services/secret-service.js";
+import { createApiTokenService, type ApiTokenService } from "../services/api-token-service.js";
 import {
   createOwnerAccessService,
   type OwnerAccessService,
@@ -82,6 +83,7 @@ export type RuntimeContext = {
   openCodeEventService: OpenCodeEventService;
   workspaceWatchService?: WorkspaceWatchService;
   secretService: SecretService;
+  apiTokenService: ApiTokenService;
   ownerAccessService?: OwnerAccessService;
   liveRequestService?: LiveRequestService;
   scheduler: SchedulerService;
@@ -125,6 +127,7 @@ export async function startServerRuntime(
     { config, db: database.db, logger },
   );
   const secretService = createSecretService({ db: database.db, config });
+  const apiTokenService = createApiTokenService({ db: database.db });
   const ownerAccessService = createOwnerAccessService({ config, logger });
   await ownerAccessService.initialize();
   await logOwnerClaimStartupInstructions({
@@ -199,6 +202,7 @@ export async function startServerRuntime(
     openCodeEventService,
     workspaceWatchService,
     secretService,
+    apiTokenService,
     ownerAccessService,
     liveRequestService,
     scheduler,
