@@ -15,7 +15,9 @@ import {
   connectWorkspaceEvents,
   createTaskFromTemplate,
   createApiToken,
+  createTaskArtifactShareLink,
   createTaskTemplate,
+  getTaskArtifactSharingPreferences,
   deleteConversation,
   deleteAgentCustomTool,
   deleteCustomTool,
@@ -26,6 +28,7 @@ import {
   getTaskTemplate,
   getWorkspaceTree,
   listApiTokens,
+  listTaskRunArtifacts,
   listTaskSubtaskProgress,
   listTaskTemplateTasks,
   loginOwner,
@@ -35,7 +38,9 @@ import {
   previewTaskQueue,
   removeMcpAuth,
   revokeApiToken,
+  revokeTaskArtifactShareLink,
   resizeTerminalSession,
+  updateTaskArtifactSharingPreferences,
   runTaskTemplateNow,
   saveFileManagerFileContent,
   searchWorkspaceFiles,
@@ -695,6 +700,100 @@ describe("additional request wrapper coverage", () => {
       headers: { "content-type": "application/json", "x-csrf-token": "csrf-token" },
       body: JSON.stringify({ name: "Release", scopes: ["templates", "tasks"] }),
     });
+  });
+
+  it("reads artifact sharing preferences", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse({ taskArtifactSignedUrlExpiresInMinutes: 60 }),
+    );
+
+    await expect(getTaskArtifactSharingPreferences()).resolves.toEqual({
+      taskArtifactSignedUrlExpiresInMinutes: 60,
+    });
+  });
+
+  it("updates artifact sharing preferences with a validated body", async () => {
+    document.cookie = "cc_csrf_token=csrf-token; path=/";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse({ taskArtifactSignedUrlExpiresInMinutes: 120 }));
+
+    await expect(
+      updateTaskArtifactSharingPreferences({ taskArtifactSignedUrlExpiresInMinutes: 120 }),
+    ).resolves.toEqual({ taskArtifactSignedUrlExpiresInMinutes: 120 });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/tasks/artifact-sharing/preferences",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ taskArtifactSignedUrlExpiresInMinutes: 120 }),
+      }),
+    );
+  });
+
+  it("lists task run artifacts with encoded ids", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse({
+        artifacts: [
+          {
+            id: "art-1",
+            taskId: "task 1",
+            runId: "run 1",
+            title: "Report",
+            originalFilename: "report.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 10,
+            checksum: "abc",
+            storageKey: "key",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            shareLinks: [],
+          },
+        ],
+      }),
+    );
+
+    await expect(listTaskRunArtifacts("task 1", "run 1")).resolves.toMatchObject({
+      artifacts: [{ id: "art-1" }],
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/tasks/task%201/runs/run%201/artifacts",
+      expect.anything(),
+    );
+  });
+
+  it("creates an artifact share link", async () => {
+    document.cookie = "cc_csrf_token=csrf-token; path=/";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse({
+        shareId: "share-1",
+        url: "https://example.com/share/abc",
+        expiresAt: null,
+      }),
+    );
+
+    await expect(
+      createTaskArtifactShareLink("task-1", "run-1", "art-1", { expiresInMinutes: 60 }),
+    ).resolves.toMatchObject({ shareId: "share-1" });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/tasks/task-1/runs/run-1/artifacts/art-1/share-links",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ expiresInMinutes: 60 }),
+      }),
+    );
+  });
+
+  it("revokes an artifact share link and treats 204 as success", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(
+      revokeTaskArtifactShareLink("task-1", "run-1", "art-1", "share-1"),
+    ).resolves.toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/tasks/task-1/runs/run-1/artifacts/art-1/share-links/share-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 
   it("sends the CSRF token cookie on mutating JSON requests", async () => {
