@@ -885,7 +885,7 @@ This works because portable configuration and assets live in the workspace volum
 - **Patent grant:** Apache-2.0 includes an explicit patent grant, which is prudent for a non-trivial orchestration platform.
 - **Dependency compliance:** Apache-2.0 is fully compatible with the MIT-licensed `opencode` engine and the rest of the dependency tree.
 - **Monetization is operations, not restriction:** A future paid hosted offering does not require a restrictive license — the copyright holder can always offer their own code as a service. The hosted business sells convenience, uptime, and brand, not code restrictions.
-- **Optionality retained:** As the copyright holder, the project can tighten terms later (e.g. a source-available or dual-license model) if a concrete competitive threat emerges. Starting permissive does not foreclose that.
+- **Optionality retained:** The project can choose different terms for future versions, but previously released Apache-2.0 code cannot be retroactively relicensed; relicensing third‑party contributions requires the necessary rights (e.g., contributor agreement/assignment).
 
 ## Contributions
 
