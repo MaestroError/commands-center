@@ -214,8 +214,10 @@ describe("agent flows", () => {
     render(<App />);
 
     await screen.findAllByText("code-reviewer");
-    expect(screen.getAllByText("Create screen requirement documents.").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("design-docs").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Review code changes for bugs and style issues.").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("quality").length).toBeGreaterThan(0);
   });
 
   it("shows a duplicate identifier error before submit", async () => {
