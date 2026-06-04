@@ -1,8 +1,10 @@
 {
   "name": "commandscenter",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "description": "Single-user AI agent management — install, run, done.",
+  "license": "Apache-2.0",
+  "author": "maestroerror",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MaestroError/commands-center.git",

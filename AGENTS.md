@@ -91,7 +91,7 @@ The CLI bundles backend + frontend into `packages/cli/dist/`. The backend expose
 
 ### Hierarchy of Priorities
 
-1. **Correctness** — Does it work as specified in GOAL.md & PRD.md?
+1. **Correctness** — Does it work as specified in GOAL.md?
 2. **Portability** — Does it satisfy the Portable Workspace Rule?
 3. **Simplicity** — Is this the simplest solution that works?
 4. **Readability** — Can another agent (or human) understand this in 30 seconds?
@@ -300,7 +300,7 @@ describe("conversation routes", () => {
 
 ### E2E Tests (Playwright)
 
-- Cover every MVP screen's critical paths (see `design/screens/` for acceptance criteria)
+- Cover every MVP screen's critical paths
 - Test real user flows: create agent → open chat → send message → see response
 - Use `data-testid` attributes for stable selectors (not CSS classes or text content)
 - E2E tests run against a fully built app with a real database (SQLite for CI speed)
@@ -378,15 +378,14 @@ Two reference repositories are cloned in `examples/` (gitignored). Use these for
 
 ### Adding a New Feature
 
-1. Read the relevant `design/screens/` acceptance criteria
-2. Define the Zod schema in `@cc/shared` if data crosses the boundary
-3. Add or modify the Drizzle schema if persistence is needed → generate migration
-4. Implement the backend service and route
-5. Write backend tests (aim for the service layer, test routes via `inject()`)
-6. Implement the frontend page/component
-7. Write E2E test for the critical path
-8. Run `pnpm typecheck && pnpm test && pnpm test:e2e`
-9. Verify the Portable Workspace Rule is not violated
+1. Define the Zod schema in `@cc/shared` if data crosses the boundary
+2. Add or modify the Drizzle schema if persistence is needed → generate migration
+3. Implement the backend service and route
+4. Write backend tests (aim for the service layer, test routes via `inject()`)
+5. Implement the frontend page/component
+6. Write E2E test for the critical path
+7. Run `pnpm typecheck && pnpm test && pnpm test:e2e`
+8. Verify the Portable Workspace Rule is not violated
 
 ### Adding a New Dependency
 
@@ -445,9 +444,7 @@ When making changes that affect the developer experience, update the relevant do
 | Modify CLI build             | `packages/cli/build.ts`                                        |
 | Add an E2E test              | `packages/frontend/e2e/`                                       |
 | Add a unit test              | `packages/backend/test/` (mirroring `src/`)                    |
-| Check screen requirements    | `design/screens/<screen-name>/`                                |
-| Check product requirements   | `PRD.md`                                                       |
-| Check architecture decisions | `tech-research.md`                                             |
+| Check product vision & scope | `GOAL.md`                                                      |
 | Check dev setup & commands   | `CONTRIBUTING.md`                                              |
 
 # Important rules for writing code

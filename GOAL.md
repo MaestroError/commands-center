@@ -877,16 +877,18 @@ This works because portable configuration and assets live in the workspace volum
 
 # Licensing & Contribution Strategy
 
-**Decision:** The application will be released under the **AGPL-3.0 License**, with a mandatory **Contributor License Agreement (CLA)** enforced from day one, laying the groundwork for a future **Dual-License** model.
+**Decision:** The application is released under the **Apache License 2.0**.
 
 ## Rationale
 
-- **Core Protection (AGPL-3.0):** As a network-interactive orchestrator, AGPL prevents third parties from exploiting the "ASP loophole." Any entity that modifies and hosts the application as a service must open-source their modifications, protecting the platform from being silently absorbed into proprietary SaaS products.
-- **Dependency Compliance:** Wrapping the MIT-licensed `opencode` engine within an AGPL-3.0 application is fully legally compliant.
-- **Monetization Pathway (Dual License):** The platform remains 100% free and open-source for the self-hosting community and small teams. In the future, a commercial license will be offered to enterprise clients who require integrating the orchestrator into closed-source, proprietary environments.
+- **Adoption first:** The primary goal is reach, trust, and authority. A permissive license maximizes adoption — including inside companies that ban copyleft licenses — which is the foundation for any later commercial path.
+- **Patent grant:** Apache-2.0 includes an explicit patent grant, which is prudent for a non-trivial orchestration platform.
+- **Dependency compliance:** Apache-2.0 is fully compatible with the MIT-licensed `opencode` engine and the rest of the dependency tree.
+- **Monetization is operations, not restriction:** A future paid hosted offering does not require a restrictive license — the copyright holder can always offer their own code as a service. The hosted business sells convenience, uptime, and brand, not code restrictions.
+- **Optionality retained:** The project can choose different terms for future versions, but previously released Apache-2.0 code cannot be retroactively relicensed; relicensing third‑party contributions requires the necessary rights (e.g., contributor agreement/assignment).
 
-## The CLA Imperative
+## Contributions
 
-To legally execute the future dual-license pivot, an automated CLA bot (via GitHub Actions) will block PR merges until contributors sign a standard agreement. This ensures the project retains the right to re-license community code without administrative friction.
+No Contributor License Agreement (CLA) is required at launch. A lightweight **DCO** (Developer Certificate of Origin) sign-off may be adopted if/when external contributions arrive. A CLA would only become relevant if the project later pursues a dual-license model that requires relicensing third-party contributions.
 
 ---

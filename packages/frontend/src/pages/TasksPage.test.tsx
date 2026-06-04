@@ -263,12 +263,12 @@ const conversation: ConversationDetail = {
 const catalog: AgentCatalog = {
   builtInSkills: [
     {
-      name: "Screen requirements writing",
-      slug: "screen-requirements-writing",
-      description: "Write screen requirements",
-      category: "design",
+      name: "Code reviewer",
+      slug: "code-reviewer",
+      description: "Review code changes for bugs and style issues.",
+      category: "quality",
       metadata: {},
-      detailsMarkdown: "Write requirements.",
+      detailsMarkdown: "Review code changes.",
       files: [],
     },
   ],
@@ -816,7 +816,7 @@ describe("TasksPage", () => {
       agentsPayload: [
         {
           ...agent,
-          capabilities: { ...agent.capabilities, builtInSkills: ["screen-requirements-writing"] },
+          capabilities: { ...agent.capabilities, builtInSkills: ["code-reviewer"] },
         },
         reviewerAgent,
       ],
@@ -829,18 +829,18 @@ describe("TasksPage", () => {
     await user.click(await screen.findByRole("button", { name: "Leave comment" }));
 
     const feedbackInput = await screen.findByLabelText("Feedback");
-    await user.type(feedbackInput, "/screen");
-    await user.click(await screen.findByRole("button", { name: /\/screen-requirements-writing/i }));
-    await user.type(feedbackInput, "#PRD");
-    await user.click(await screen.findByRole("button", { name: /PRD\.md/i }));
+    await user.type(feedbackInput, "/code");
+    await user.click(await screen.findByRole("button", { name: /\/code-reviewer/i }));
+    await user.type(feedbackInput, "#GOAL");
+    await user.click(await screen.findByRole("button", { name: /GOAL\.md/i }));
     await user.type(feedbackInput, "Please coordinate with @review");
     await user.click(await screen.findByRole("button", { name: "@Reviewer" }));
     await user.click(screen.getByRole("button", { name: "Add feedback" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/search/files?query=PRD", { method: "GET" });
+      expect(fetchMock).toHaveBeenCalledWith("/api/search/files?query=GOAL", { method: "GET" });
       expect(fetchMock).not.toHaveBeenCalledWith(
-        "/api/agents/agent-1/workspace/find/file?query=PRD",
+        "/api/agents/agent-1/workspace/find/file?query=GOAL",
         { method: "GET" },
       );
       expect(fetchMock).toHaveBeenCalledWith(
@@ -848,7 +848,7 @@ describe("TasksPage", () => {
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({
-            body: 'Use skill "screen-requirements-writing". #PRD.md Please coordinate with',
+            body: 'Use skill "code-reviewer". #GOAL.md Please coordinate with',
             mentionedAgentIds: ["agent-2"],
           }),
         }),
@@ -1856,7 +1856,7 @@ describe("TasksPage", () => {
       ...agent,
       capabilities: {
         ...agent.capabilities,
-        builtInSkills: ["screen-requirements-writing"],
+        builtInSkills: ["code-reviewer"],
       },
     };
     const fetchMock = mockFetch({ agentsPayload: [skilledAgent] });
@@ -1867,10 +1867,10 @@ describe("TasksPage", () => {
     await screen.findByRole("combobox", { name: /Assigned agent/i });
     await user.type(screen.getByLabelText(/Title/i), "Requirements review");
     await user.selectOptions(screen.getByLabelText(/Assigned agent/i), "agent-1");
-    await user.type(screen.getByLabelText(/Task prompt/i), "#PRD");
-    await user.click(await screen.findByRole("button", { name: /PRD.md/i }));
-    await user.type(screen.getByLabelText(/Task prompt/i), "/screen");
-    await user.click(await screen.findByRole("button", { name: /screen-requirements-writing/i }));
+    await user.type(screen.getByLabelText(/Task prompt/i), "#GOAL");
+    await user.click(await screen.findByRole("button", { name: /GOAL.md/i }));
+    await user.type(screen.getByLabelText(/Task prompt/i), "/code");
+    await user.click(await screen.findByRole("button", { name: /code-reviewer/i }));
     await user.type(screen.getByLabelText(/Task prompt/i), "Update requirements");
     await user.click(screen.getByRole("button", { name: "Create task" }));
 
@@ -1880,7 +1880,7 @@ describe("TasksPage", () => {
         expect.objectContaining({
           method: "POST",
           body: expect.stringContaining(
-            '"description":"Use skill \\"screen-requirements-writing\\". #PRD.md Update requirements"',
+            '"description":"Use skill \\"code-reviewer\\". #GOAL.md Update requirements"',
           ),
         }),
       );
@@ -1892,7 +1892,7 @@ describe("TasksPage", () => {
       ...agent,
       capabilities: {
         ...agent.capabilities,
-        builtInSkills: ["screen-requirements-writing"],
+        builtInSkills: ["code-reviewer"],
       },
     };
     const fetchMock = mockFetch({ agentsPayload: [skilledAgent] });
@@ -1902,11 +1902,11 @@ describe("TasksPage", () => {
         agentId: "agent-1",
         prompt: {
           text: "Update requirements",
-          mentionedFiles: [{ path: "PRD.md", filename: "PRD.md" }],
+          mentionedFiles: [{ path: "GOAL.md", filename: "GOAL.md" }],
           mentionedAgents: [],
           selectedSkill: {
-            slug: "screen-requirements-writing",
-            description: "Write screen requirements",
+            slug: "code-reviewer",
+            description: "Review code changes",
           },
         },
       },
@@ -1917,8 +1917,8 @@ describe("TasksPage", () => {
 
     expect(screen.getByLabelText(/Assigned agent/i)).toHaveValue("agent-1");
     expect(screen.getByLabelText(/Task prompt/i)).toHaveValue("Update requirements");
-    expect(screen.getByText("/screen-requirements-writing")).toBeInTheDocument();
-    expect(screen.getByText("PRD.md")).toBeInTheDocument();
+    expect(screen.getByText("/code-reviewer")).toBeInTheDocument();
+    expect(screen.getByText("GOAL.md")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/Title/i), "Requirements review");
     await user.click(screen.getByRole("button", { name: "Create task" }));
@@ -1929,7 +1929,7 @@ describe("TasksPage", () => {
         expect.objectContaining({
           method: "POST",
           body: expect.stringContaining(
-            '"description":"Use skill \\"screen-requirements-writing\\". #PRD.md Update requirements"',
+            '"description":"Use skill \\"code-reviewer\\". #GOAL.md Update requirements"',
           ),
         }),
       );
@@ -1941,7 +1941,7 @@ describe("TasksPage", () => {
       ...agent,
       capabilities: {
         ...agent.capabilities,
-        builtInSkills: ["screen-requirements-writing"],
+        builtInSkills: ["code-reviewer"],
       },
     };
     const otherAgent: Agent = {
@@ -1958,11 +1958,11 @@ describe("TasksPage", () => {
         agentId: "agent-1",
         prompt: {
           text: "Update requirements",
-          mentionedFiles: [{ path: "PRD.md", filename: "PRD.md" }],
+          mentionedFiles: [{ path: "GOAL.md", filename: "GOAL.md" }],
           mentionedAgents: [],
           selectedSkill: {
-            slug: "screen-requirements-writing",
-            description: "Write screen requirements",
+            slug: "code-reviewer",
+            description: "Review code changes",
           },
         },
       },
@@ -1974,8 +1974,8 @@ describe("TasksPage", () => {
     await user.selectOptions(screen.getByLabelText(/Assigned agent/i), "agent-2");
 
     expect(screen.getByLabelText(/Task prompt/i)).toHaveValue("Update requirements");
-    expect(screen.queryByText("/screen-requirements-writing")).not.toBeInTheDocument();
-    expect(screen.queryByText("PRD.md")).not.toBeInTheDocument();
+    expect(screen.queryByText("/code-reviewer")).not.toBeInTheDocument();
+    expect(screen.queryByText("GOAL.md")).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/Title/i), "Requirements review");
     await user.click(screen.getByRole("button", { name: "Create task" }));
@@ -2669,18 +2669,18 @@ function mockFetch(options: MockFetchOptions = {}) {
     if (url === "/api/agents/catalog") return Promise.resolve(jsonResponse(200, catalogPayload));
     if (url.startsWith("/api/search/files")) {
       return Promise.resolve(
-        jsonResponse(200, { nameMatches: [{ path: "PRD.md" }], contentMatches: [] }),
+        jsonResponse(200, { nameMatches: [{ path: "GOAL.md" }], contentMatches: [] }),
       );
     }
     if (url.startsWith("/api/agents/agent-1/workspace/find/file")) {
-      return Promise.resolve(jsonResponse(200, ["PRD.md"]));
+      return Promise.resolve(jsonResponse(200, ["GOAL.md"]));
     }
     if (url.startsWith("/api/agents/agent-2/workspace/find/file")) {
       return Promise.resolve(jsonResponse(200, ["REVIEW.md"]));
     }
     if (url.startsWith("/api/agents/agent-1/workspace/file")) {
       return Promise.resolve(
-        jsonResponse(200, [{ name: "PRD.md", path: "PRD.md", type: "file", ignored: false }]),
+        jsonResponse(200, [{ name: "GOAL.md", path: "GOAL.md", type: "file", ignored: false }]),
       );
     }
     if (url === "/api/tasks/archive")

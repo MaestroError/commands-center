@@ -8,15 +8,15 @@ import { queryClient } from "@/lib/query-client";
 const catalog = {
   builtInSkills: [
     {
-      name: "screen-requirements-writing",
-      slug: "screen-requirements-writing",
-      description: "Create screen requirement documents.",
-      category: "design-docs",
+      name: "code-reviewer",
+      slug: "code-reviewer",
+      description: "Review code changes for bugs and style issues.",
+      category: "quality",
       version: "1.0.0",
-      license: "MIT",
+      license: "Apache-2.0",
       compatibility: "opencode",
-      metadata: { area: "design-docs", version: "1.0.0" },
-      detailsMarkdown: "## What I do\n- Create screen docs",
+      metadata: { area: "quality", version: "1.0.0" },
+      detailsMarkdown: "## What I do\n- Review code changes",
       files: ["SKILL.md"],
     },
   ],
@@ -40,7 +40,7 @@ const agents = [
     workspacePath: "/tmp/agents/writer",
     status: "active",
     capabilities: {
-      builtInSkills: ["screen-requirements-writing"],
+      builtInSkills: ["code-reviewer"],
       workspaceSkills: [],
       customTools: [],
       mcpServers: [],
@@ -128,7 +128,7 @@ describe("agent flows", () => {
             role: "plan work",
             instructions: "Plan before editing.",
             capabilities: {
-              builtInSkills: ["screen-requirements-writing"],
+              builtInSkills: ["code-reviewer"],
               workspaceSkills: [],
               customTools: [],
               mcpServers: [{ name: "github", enabled: true, action: "ask" }],
@@ -151,7 +151,7 @@ describe("agent flows", () => {
           role: "plan work",
           instructions: "Plan before editing.",
           capabilities: {
-            builtInSkills: ["screen-requirements-writing"],
+            builtInSkills: ["code-reviewer"],
             workspaceSkills: [],
             customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "ask" }],
@@ -171,7 +171,7 @@ describe("agent flows", () => {
           role: "plan work",
           instructions: "Plan before editing.",
           capabilities: {
-            builtInSkills: ["screen-requirements-writing"],
+            builtInSkills: ["code-reviewer"],
             workspaceSkills: [],
             customTools: [],
             mcpServers: [{ name: "github", enabled: true, action: "ask" }],
@@ -194,8 +194,8 @@ describe("agent flows", () => {
     await user.type(screen.getByLabelText(/Role/i), "plan work");
     await user.type(screen.getByLabelText(/Instructions/i), "Plan before editing.");
     await user.selectOptions(screen.getByLabelText(/^Model/i), "openai/gpt-4.1");
-    await user.type(screen.getByLabelText(/Search skills/i), "screen-requirements-writing");
-    await user.click(screen.getByText("screen-requirements-writing"));
+    await user.type(screen.getByLabelText(/Search skills/i), "code-reviewer");
+    await user.click(screen.getByText("code-reviewer"));
     await user.click(screen.getByRole("button", { name: "Create agent" }));
 
     await waitFor(() => {
@@ -213,9 +213,11 @@ describe("agent flows", () => {
     window.history.replaceState({}, "", "/skills");
     render(<App />);
 
-    await screen.findAllByText("screen-requirements-writing");
-    expect(screen.getAllByText("Create screen requirement documents.").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("design-docs").length).toBeGreaterThan(0);
+    await screen.findAllByText("code-reviewer");
+    expect(
+      screen.getAllByText("Review code changes for bugs and style issues.").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("quality").length).toBeGreaterThan(0);
   });
 
   it("shows a duplicate identifier error before submit", async () => {

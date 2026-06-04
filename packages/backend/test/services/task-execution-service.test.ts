@@ -29,7 +29,7 @@ describe("createTaskExecutionService", () => {
       const task = await taskService.create({
         agentId: agent.id,
         title: "Manual task",
-        description: "Review #PRD.md.",
+        description: "Review #GOAL.md.",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
@@ -39,7 +39,7 @@ describe("createTaskExecutionService", () => {
       expect(run.renderedPrompt).toContain("<Task>");
       expect(run.renderedPrompt).toContain(`<TaskRunId>\n${run.id}\n</TaskRunId>`);
       expect(run.renderedPrompt).toContain("<Title>\nManual task\n</Title>");
-      expect(run.renderedPrompt).toContain("<Goal>\nReview #PRD.md.\n</Goal>");
+      expect(run.renderedPrompt).toContain("<Goal>\nReview #GOAL.md.\n</Goal>");
       expect(run.renderedPrompt).not.toContain("<TriggerSource>");
       expect(run.renderedPrompt).not.toContain("<Schedule>");
       expect(history).toHaveLength(1);
