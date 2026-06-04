@@ -45,8 +45,8 @@ test("creates and edits an agent", async ({ page }) => {
   await page.getByLabel(/^Model/).selectOption("openai/gpt-4.1");
   await page.getByRole("button", { name: /^Emoji$/ }).click();
   await page.getByRole("textbox", { name: /^Emoji$/ }).fill("🤖");
-  await page.getByLabel(/Search skills/i).fill("screen-requirements-writing");
-  await page.getByRole("button", { name: /screen-requirements-writing/i }).click();
+  await page.getByLabel(/Search skills/i).fill("code");
+  await page.getByRole("button", { name: /code-reviewer/i }).click();
   await page.getByRole("button", { name: "Create agent" }).click();
 
   await expect(page).toHaveURL(/\/agents\/planner\/edit$/);
@@ -75,9 +75,9 @@ test("browses built-in skills and detail metadata", async ({ page }) => {
   await mockAgentApi(page, state);
 
   await page.goto("/skills");
-  await expect(page.getByRole("button", { name: /screen-requirements-writing/i })).toBeVisible();
-  await page.getByPlaceholder("Search skills").fill("screen");
-  await expect(page.getByText("design-docs").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /code-reviewer/i })).toBeVisible();
+  await page.getByPlaceholder("Search skills").fill("code");
+  await expect(page.getByText("quality").first()).toBeVisible();
   if (page.viewportSize()?.width && page.viewportSize()!.width < 1024) {
     await page.getByRole("button", { name: "Open context pane" }).click();
   }
@@ -216,7 +216,7 @@ function createAgentState() {
         workspacePath: "/tmp/agents/writer",
         status: "active" as const,
         capabilities: {
-          builtInSkills: ["screen-requirements-writing"],
+          builtInSkills: ["code-reviewer"],
           mcpServers: [],
           toolPermissions: [],
         },
@@ -240,15 +240,15 @@ function createAgentState() {
     catalog: {
       builtInSkills: [
         {
-          name: "screen-requirements-writing",
-          slug: "screen-requirements-writing",
-          description: "Create screen requirement documents.",
-          category: "design-docs",
+          name: "code-reviewer",
+          slug: "code-reviewer",
+          description: "Review code changes for bugs and style issues.",
+          category: "quality",
           version: "1.0.0",
-          license: "MIT",
+          license: "Apache-2.0",
           compatibility: "opencode",
-          metadata: { area: "design-docs", version: "1.0.0" },
-          detailsMarkdown: "## What I do\n- Create screen docs",
+          metadata: { area: "quality", version: "1.0.0" },
+          detailsMarkdown: "## What I do\n- Review code changes",
           files: ["SKILL.md"],
         },
       ],
