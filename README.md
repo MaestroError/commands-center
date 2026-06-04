@@ -385,20 +385,20 @@ cc/
 │   ├── backend/      # Fastify + Node.js server
 │   ├── cli/          # CLI binary (ccenter) — bundles backend + frontend
 │   └── shared/       # Shared Zod schemas, types, constants
-├── design/           # Screen specs, layout, themes
+├── docs/             # Setup and configuration guides
 ├── .cc/              # Runtime workspace data (portable)
 └── examples/         # Reference repositories (gitignored)
 ```
 
 ## Documentation
 
-| File                                 | Purpose                                   |
-| ------------------------------------ | ----------------------------------------- |
-| [GOAL.md](GOAL.md)                   | Product vision, features, phases          |
-| [AGENTS.md](AGENTS.md)               | Coding standards, tech stack, conventions |
-| [CONTRIBUTING.md](CONTRIBUTING.md)   | Dev setup, commands, workflow             |
-| [PRD.md](PRD.md)                     | Product requirements                      |
-| [tech-research.md](tech-research.md) | Architecture blueprint                    |
+| File                                                             | Purpose                                   |
+| ---------------------------------------------------------------- | ----------------------------------------- |
+| [GOAL.md](GOAL.md)                                               | Product vision, features, phases          |
+| [AGENTS.md](AGENTS.md)                                           | Coding standards, tech stack, conventions |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                               | Dev setup, commands, workflow             |
+| [docs/CLAIM.md](docs/CLAIM.md)                                   | Owner claiming and setup                  |
+| [docs/mcp-configuration-flow.md](docs/mcp-configuration-flow.md) | Per-workspace MCP configuration           |
 
 ## Releases
 

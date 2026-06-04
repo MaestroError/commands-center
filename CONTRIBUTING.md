@@ -13,8 +13,7 @@ npm install -g pnpm
 # 3. Install dependencies
 pnpm install
 
-# 4. Set up MCP secrets
-cp .env.mcp.example .env.mcp   # then fill in your API keys
+# 4. (Optional) Set up MCP secrets — see the "MCP Secrets" section below
 
 # 5. Start development servers
 pnpm dev
@@ -149,15 +148,6 @@ See [AGENTS.md](AGENTS.md) for the full coding style guide, including:
 - Database and migration rules
 - Testing requirements (90% coverage target)
 
-## Screen Specifications
-
-UI requirements and acceptance criteria live in `design/screens/<screen-name>/`:
-
-- `description.md` — what the screen does
-- `acceptance_criteria.md` — what must be true for it to be complete
-
-See [design/list_screens.md](design/list_screens.md) for the full screen inventory.
-
 ## MCP Secrets
 
 `.mcp.json` is tracked in git with empty keys. Each MCP server that needs auth has a `headersHelper` script (`scripts/mcp-headers-*.sh`) that reads secrets from files in `.secrets/` at connection time — no shell env setup required.
@@ -171,14 +161,13 @@ OpenCode uses the tracked `opencode.jsonc` project config and reads secret files
 
 ## Adding a New Feature
 
-1. Read the relevant `design/screens/` acceptance criteria
-2. Define Zod schemas in `@cc/shared` if data crosses the boundary
-3. Add or modify Drizzle schema if persistence is needed, then generate migration
-4. Implement backend service and route
-5. Write backend tests
-6. Implement frontend page/component
-7. Write E2E test for the critical path
-8. Run `pnpm typecheck && pnpm test && pnpm lint`
+1. Define Zod schemas in `@cc/shared` if data crosses the boundary
+2. Add or modify Drizzle schema if persistence is needed, then generate migration
+3. Implement backend service and route
+4. Write backend tests
+5. Implement frontend page/component
+6. Write E2E test for the critical path
+7. Run `pnpm typecheck && pnpm test && pnpm lint`
 
 ## Releasing
 
