@@ -426,4 +426,4 @@ Tool part buttons require at least one assistant message (they attach to the lat
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+Licensed under the Apache License 2.0. See [LICENSE](LICENSE) for the full text.
