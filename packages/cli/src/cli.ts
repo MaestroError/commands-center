@@ -172,7 +172,10 @@ export async function runCli(args: string[]): Promise<void> {
 
 async function runClaim(options: { yes: boolean; format: "text" | "json" }): Promise<void> {
   const config = loadRuntimeConfig();
-  const service = createOwnerAccessService({ config, logger: createLogger(config) });
+  const service = createOwnerAccessService({
+    config,
+    logger: createLogger(config, process.stderr),
+  });
 
   for (const line of await runClaimCodeCommand({
     config,

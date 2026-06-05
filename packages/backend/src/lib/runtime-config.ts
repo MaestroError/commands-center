@@ -134,7 +134,10 @@ const envSchema = z.object({
   CC_UPDATE_REGISTRY_URL: z.string().url().optional().default(DEFAULT_UPDATE_REGISTRY_URL),
   CC_DOCKER: booleanString(false),
   CC_LOG_LEVEL: logLevelSchema.optional().default(DEFAULT_LOG_LEVEL),
-  CC_PUBLIC_ORIGIN: z.string().url().optional(),
+  CC_PUBLIC_ORIGIN: z.preprocess(
+    (v) => (typeof v === "string" && !v.trim() ? undefined : v),
+    z.string().url().optional(),
+  ),
   CC_ALLOWED_ORIGINS: z.string().trim().optional(),
   CC_OPENCODE_PATH: z.string().trim().optional(),
   CC_SECRET_KEY: z.string().trim().optional().default(DEFAULT_SECRET_KEY),
