@@ -117,7 +117,7 @@ function TaskOverview(props: {
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4" data-testid="task-detail-page">
       <section className="cc-panel p-6">
         <p className="cc-eyebrow">Tasks</p>
         <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -236,6 +236,7 @@ function TaskOverview(props: {
                 activeTabId={activeSectionId}
                 onTabChange={(tabId) => setSelectedSectionId(tabId as DetailSectionId)}
                 tabs={DETAIL_SECTION_TABS}
+                testIdPrefix="task-detail-tab"
               />
               <div className="min-w-0 p-5">
                 <TaskDetailSectionContent
@@ -322,7 +323,11 @@ function RunHistory(props: {
             </thead>
             <tbody>
               {props.runs.map((run) => (
-                <tr className="border-b border-border/70" key={run.id}>
+                <tr
+                  className="border-b border-border/70"
+                  data-testid={`task-run-row-${run.id}`}
+                  key={run.id}
+                >
                   <td className="py-3 pr-3">
                     <StatusBadge status={run.status} />
                   </td>
@@ -595,7 +600,11 @@ function TaskFeedbackPanelSection(props: {
   const feedbackSkills = useTaskComposerSkills(props.agent, catalogQuery.data);
 
   return (
-    <section className="cc-panel grid gap-4 p-5" aria-label="Feedback comments">
+    <section
+      className="cc-panel grid gap-4 p-5"
+      aria-label="Feedback comments"
+      data-testid="task-feedback-section"
+    >
       <div>
         <h2 className="text-xl font-semibold text-text-primary">Feedback</h2>
         <p className="mt-1 text-sm text-text-secondary">
@@ -679,19 +688,26 @@ function TaskFeedbackSection(props: {
               onChange={setPrompt}
               placeholder="Describe the follow-up work or correction needed."
               skills={props.skills}
+              testId="task-feedback-input"
               value={prompt}
             />
           </section>
           <p className="text-xs text-text-secondary">
             If no agent is mentioned, feedback creates one subtask for the task default agent.
           </p>
-          <button className="cc-button w-fit" disabled={props.isSubmitting} type="submit">
+          <button
+            className="cc-button w-fit"
+            data-testid="task-feedback-submit"
+            disabled={props.isSubmitting}
+            type="submit"
+          >
             {props.isSubmitting ? "Adding..." : "Add feedback"}
           </button>
         </form>
       ) : (
         <button
           className="flex min-h-11 w-full items-center rounded-lg border border-border bg-surface px-3 text-left text-sm text-text-secondary transition hover:border-accent/40 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+          data-testid="task-feedback-open"
           onClick={() => setIsEditorOpen(true)}
           type="button"
         >
@@ -717,7 +733,11 @@ function TaskFeedbackSection(props: {
             if (item.type === "feedback") {
               const entry = item.feedback;
               return (
-                <article className="grid gap-3" key={entry.id}>
+                <article
+                  className="grid gap-3"
+                  data-testid={`task-feedback-comment-${entry.id}`}
+                  key={entry.id}
+                >
                   <FeedbackComment
                     author="You"
                     body={entry.body}
@@ -1024,7 +1044,7 @@ function TaskRunDetail(props: { task?: Task; taskId?: string; runId?: string; ag
   )?.slug;
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4" data-testid="task-run-inspector">
       <PageHeader
         actions={
           <>
@@ -1068,6 +1088,7 @@ function TaskRunDetail(props: { task?: Task; taskId?: string; runId?: string; ag
                 { id: "session", label: "Session" },
                 { id: "details", label: "Details" },
               ]}
+              testIdPrefix="task-run-tab"
             />
 
             <div className="p-5">
@@ -1166,6 +1187,7 @@ function TaskRunSessionTab(props: {
         <button
           aria-expanded={logOpen}
           className="flex w-full items-start justify-between gap-3 text-left"
+          data-testid="task-run-session-log"
           onClick={() => setLogOpen((current) => !current)}
           type="button"
         >

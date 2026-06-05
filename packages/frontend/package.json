@@ -13,6 +13,8 @@
     "test": "NODE_OPTIONS='--max-old-space-size=8192' vitest run --maxWorkers=1",
     "test:coverage": "NODE_OPTIONS='--max-old-space-size=8192' vitest run --coverage --maxWorkers=1",
     "test:e2e": "playwright test",
+    "test:e2e:tasks": "playwright test --grep @tasks --project=chromium",
+    "test:e2e:other": "playwright test --grep-invert @tasks",
     "clean": "rm -rf dist"
   },
   "dependencies": {

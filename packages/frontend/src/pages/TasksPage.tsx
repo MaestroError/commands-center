@@ -559,6 +559,7 @@ function TaskViewNav(props: {
                 ? "bg-accent text-accent-contrast"
                 : "text-text-secondary hover:bg-surface hover:text-text-primary"
             }`}
+            data-testid={`task-view-tab-${view}`}
             key={view}
             onClick={() => setTaskView(props.searchParams, props.setSearchParams, view)}
             type="button"
@@ -573,6 +574,7 @@ function TaskViewNav(props: {
         onClick={props.onToggleFilter}
         type="button"
         aria-label="Toggle task filter"
+        data-testid="task-filter-toggle"
       >
         <Filter aria-hidden="true" className="h-4 w-4" />
       </button>
@@ -591,6 +593,7 @@ function TaskFilterPanel(props: {
         Filter tasks
         <input
           className="cc-input"
+          data-testid="task-filter-input"
           placeholder="Search titles, descriptions, statuses, badges, agents..."
           value={props.filterText}
           onChange={(event) => props.onChange(event.target.value)}
@@ -665,6 +668,7 @@ function TaskBoard(props: {
                 dragOverStatus === column.status,
               )}
               data-board-status={column.status}
+              data-testid={`task-column-${column.status}`}
               data-drop-state={readColumnDropState(
                 draggedTask,
                 column.status,
@@ -710,7 +714,10 @@ function TaskBoard(props: {
                       description={column.description}
                     />
                   </div>
-                  <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary">
+                  <span
+                    className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary"
+                    data-testid={`task-column-count-${column.status}`}
+                  >
                     {columnTasks.length}
                   </span>
                 </div>
@@ -790,6 +797,7 @@ function TaskBoardCard(props: {
   return (
     <article
       className={readCardClassName(boardStatus, !props.activeRun)}
+      data-testid={`task-card-${task.id}`}
       draggable={!props.activeRun}
       onDragEnd={props.onDragEnd}
       onDragStart={props.onDragStart}
@@ -798,6 +806,7 @@ function TaskBoardCard(props: {
         <div className="flex min-w-0 items-start justify-between gap-3">
           <Link
             className="min-w-0 break-words [overflow-wrap:anywhere] font-semibold leading-6 text-text-primary transition hover:text-accent"
+            data-testid={`task-card-title-${task.id}`}
             to={`/tasks${buildPanelSearch(props.currentSearch, task.id)}`}
             onClick={props.onSelect}
           >
@@ -1214,6 +1223,7 @@ function TaskCardIconButton(props: {
     <button
       aria-label={props.label}
       className={readTaskCardIconActionClassName(props.variant)}
+      data-testid={taskCardActionTestId(props.label)}
       onClick={props.onClick}
       type="button"
     >
@@ -1221,6 +1231,14 @@ function TaskCardIconButton(props: {
       <TaskCardIconActionTooltip label={props.label} />
     </button>
   );
+}
+
+function taskCardActionTestId(label: string): string {
+  const slug = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `task-card-action-${slug}`;
 }
 
 function CopyEndpointButton(props: { template: TaskTemplate }) {
@@ -1269,6 +1287,7 @@ function TaskCardIconLink(props: {
     <Link
       aria-label={props.label}
       className={readTaskCardIconActionClassName(props.variant)}
+      data-testid={taskCardActionTestId(props.label)}
       onClick={props.onClick}
       to={props.to}
     >
@@ -1346,6 +1365,7 @@ function TaskDetailPanel(props: {
       <aside
         aria-label="Task detail panel"
         className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl min-w-0 flex-col overflow-hidden border-l border-border bg-surface-elevated shadow-2xl lg:top-0"
+        data-testid="task-detail-panel"
       >
         <div className="flex items-start justify-between gap-4 border-b border-border bg-surface-elevated p-4 sm:p-5">
           <div className="min-w-0 flex-1">
@@ -1370,12 +1390,14 @@ function TaskDetailPanel(props: {
                 <input
                   aria-label="Task title"
                   className="cc-input min-w-0 flex-1 text-3xl font-bold"
+                  data-testid="task-title-input"
                   onChange={(event) => setTitleDraft(event.target.value)}
                   value={titleDraft}
                 />
                 <button
                   aria-label="Save title"
                   className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  data-testid="task-title-save"
                   disabled={mutations.update.isPending || !titleDraft.trim()}
                   type="submit"
                 >
@@ -1384,6 +1406,7 @@ function TaskDetailPanel(props: {
                 <button
                   aria-label="Cancel title edit"
                   className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+                  data-testid="task-title-cancel"
                   disabled={mutations.update.isPending}
                   onClick={() => {
                     setTitleDraft(task.title);
@@ -1398,6 +1421,7 @@ function TaskDetailPanel(props: {
               <button
                 aria-label="Edit task title"
                 className="mt-2 min-w-0 break-words rounded-md border border-transparent p-1 text-left text-3xl font-bold text-text-primary transition hover:border-border hover:bg-surface focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 [overflow-wrap:anywhere]"
+                data-testid="task-title-edit"
                 disabled={!task}
                 onClick={() => {
                   if (!task) {
@@ -1463,6 +1487,7 @@ function TaskDetailPanel(props: {
                       agentId={task.agentId}
                       onChange={setPromptDraft}
                       skills={taskSkills}
+                      testId="task-prompt-input"
                       value={promptDraft}
                     />
                     {mutations.update.error ? (
@@ -1473,6 +1498,7 @@ function TaskDetailPanel(props: {
                     <div className="flex flex-wrap gap-2">
                       <button
                         className="cc-button"
+                        data-testid="task-prompt-save"
                         disabled={mutations.update.isPending}
                         type="submit"
                       >
@@ -1495,6 +1521,7 @@ function TaskDetailPanel(props: {
                   <button
                     aria-label="Edit task prompt"
                     className="w-full min-w-0 break-words rounded-md border border-transparent p-3 text-left text-sm leading-6 text-text-secondary transition hover:border-border hover:bg-surface hover:text-text-primary focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 [overflow-wrap:anywhere]"
+                    data-testid="task-prompt-edit"
                     onClick={() => {
                       setPromptDraft(createTaskPromptValue(task.description));
                       setIsPromptEditing(true);
@@ -1562,6 +1589,7 @@ function TaskDetailPanel(props: {
                   activeTabId={activeSectionId}
                   onTabChange={(tabId) => setSelectedSectionId(tabId as DetailSectionId)}
                   tabs={DETAIL_SECTION_TABS}
+                  testIdPrefix="task-detail-tab"
                 />
                 <div className="p-4">
                   <TaskDetailSectionContent
@@ -1797,7 +1825,11 @@ function TaskFeedbackPanelSection(props: {
   const feedbackSkills = useTaskComposerSkills(props.agent, catalogQuery.data);
 
   return (
-    <section className="cc-panel grid gap-4 p-4" aria-label="Feedback comments">
+    <section
+      className="cc-panel grid gap-4 p-4"
+      aria-label="Feedback comments"
+      data-testid="task-feedback-section"
+    >
       <div>
         <h3 className="font-semibold text-text-primary">Feedback</h3>
         <p className="mt-1 text-sm text-text-secondary">
@@ -1946,19 +1978,26 @@ function TaskFeedbackSection(props: {
               onChange={setPrompt}
               placeholder="Describe the follow-up work or correction needed."
               skills={props.skills}
+              testId="task-feedback-input"
               value={prompt}
             />
           </section>
           <p className="text-xs text-text-secondary italic">
             If no agent is mentioned, feedback creates one subtask for the task default agent.
           </p>
-          <button className="cc-button w-fit" disabled={props.isSubmitting} type="submit">
+          <button
+            className="cc-button w-fit"
+            data-testid="task-feedback-submit"
+            disabled={props.isSubmitting}
+            type="submit"
+          >
             {props.isSubmitting ? "Adding..." : "Add feedback"}
           </button>
         </form>
       ) : (
         <button
           className="flex min-h-11 w-full items-center rounded-lg border border-border bg-surface px-3 text-left text-sm text-text-secondary transition hover:border-accent/40 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+          data-testid="task-feedback-open"
           onClick={() => setIsEditorOpen(true)}
           type="button"
         >
@@ -1987,7 +2026,11 @@ function TaskFeedbackSection(props: {
             if (item.type === "feedback") {
               const entry = item.feedback;
               return (
-                <article className="grid gap-3" key={entry.id}>
+                <article
+                  className="grid gap-3"
+                  data-testid={`task-feedback-comment-${entry.id}`}
+                  key={entry.id}
+                >
                   <FeedbackComment
                     author="You"
                     body={entry.body}
@@ -2750,11 +2793,16 @@ function TaskTemplatesView(props: {
         {props.templates.map((template) => {
           const agent = props.agents.find((entry) => entry.id === template.defaultAgentId);
           return (
-            <article className="cc-panel grid gap-4 p-5" key={template.id}>
+            <article
+              className="cc-panel grid gap-4 p-5"
+              data-testid={`task-template-card-${template.id}`}
+              key={template.id}
+            >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <button
                     className="text-left text-xl font-semibold text-text-primary transition hover:text-accent"
+                    data-testid={`task-template-title-${template.id}`}
                     onClick={() => props.onSelect(template)}
                     type="button"
                   >
@@ -2782,6 +2830,7 @@ function TaskTemplatesView(props: {
               <div className="flex flex-wrap gap-2">
                 <button
                   className="cc-button cc-button-secondary"
+                  data-testid="task-template-create-task"
                   onClick={() => props.onCreateTask(template)}
                   type="button"
                 >
@@ -3008,7 +3057,12 @@ function TaskTemplateForm(props: {
         />
       </label>
       <div className="flex flex-wrap gap-2">
-        <button className="cc-button" disabled={props.isBusy} type="submit">
+        <button
+          className="cc-button"
+          data-testid="task-template-save"
+          disabled={props.isBusy}
+          type="submit"
+        >
           {props.submitLabel}
         </button>
         <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
@@ -3099,6 +3153,7 @@ function TaskTemplateDetailPanel(props: {
     <aside
       aria-label="Task template detail panel"
       className="fixed inset-y-0 right-0 z-40 grid w-full grid-rows-[auto_1fr] border-l border-border bg-surface-elevated shadow-2xl sm:max-w-2xl"
+      data-testid="task-template-detail-panel"
     >
       <header className="flex items-start justify-between gap-4 border-b border-border bg-surface-elevated p-4">
         <div>
@@ -3148,6 +3203,7 @@ function TaskTemplateDetailPanel(props: {
               <div className="flex flex-wrap gap-2">
                 <button
                   className="cc-button cc-button-secondary"
+                  data-testid="task-template-detail-create-task"
                   onClick={() => props.onCreateTask(template)}
                   type="button"
                 >
