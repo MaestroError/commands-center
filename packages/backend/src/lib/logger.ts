@@ -1,8 +1,8 @@
-import pino, { type Logger, type LoggerOptions } from "pino";
+import pino, { type DestinationStream, type Logger, type LoggerOptions } from "pino";
 
 import type { RuntimeConfig } from "./runtime-config.js";
 
-export function createLogger(config: RuntimeConfig): Logger {
+export function createLogger(config: RuntimeConfig, destination?: DestinationStream): Logger {
   const options: LoggerOptions = {
     level: config.logLevel,
     base: undefined,
@@ -18,7 +18,7 @@ export function createLogger(config: RuntimeConfig): Logger {
     };
   }
 
-  return pino(options);
+  return destination ? pino(options, destination) : pino(options);
 }
 
 export function flushLogger(logger: Logger): void {

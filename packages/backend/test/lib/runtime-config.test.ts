@@ -232,4 +232,22 @@ describe("loadRuntimeConfig", () => {
     expect(config.paths.dataDir).toBe("/tmp/project/runtime-data");
     expect(config.database.sqlitePath).toBe("/tmp/project/runtime-data/cc.db");
   });
+
+  it("treats an empty CC_PUBLIC_ORIGIN as unset instead of rejecting it", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test", CC_PUBLIC_ORIGIN: "" },
+    });
+
+    expect(config.security.publicOrigin).toBeUndefined();
+  });
+
+  it("accepts a valid URL for CC_PUBLIC_ORIGIN", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test", CC_PUBLIC_ORIGIN: "https://commands.example.com" },
+    });
+
+    expect(config.security.publicOrigin).toBe("https://commands.example.com");
+  });
 });
