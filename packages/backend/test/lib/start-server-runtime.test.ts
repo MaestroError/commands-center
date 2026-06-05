@@ -29,7 +29,7 @@ describe("startup owner claim instructions", () => {
       expect.objectContaining({
         authState: "unclaimed",
         claimCode: "claim-code",
-        claimUrl: "http://127.0.0.1:3000/claim",
+        claimUrl: "http://localhost:3000/claim",
       }),
       "workspace is unclaimed; open the claim URL and use this one-time claim code",
     );
