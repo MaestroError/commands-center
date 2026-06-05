@@ -198,7 +198,7 @@ export type RuntimeConfig = {
   };
   logLevel: z.infer<typeof logLevelSchema>;
   security: {
-    publicOrigin?: string;
+    publicOrigin: string;
     allowedOrigins: string[];
   };
   opencodePath?: string;
@@ -245,11 +245,16 @@ export function loadRuntimeConfig(options?: {
       : resolve(cwd, parsedEnv.data.CC_DATA_DIR)
     : resolve(cwd, DEFAULT_DATA_DIR);
 
+  const resolvedHost = options?.overrides?.host ?? parsedEnv.data.CC_HOST;
+  const resolvedPort = options?.overrides?.port ?? parsedEnv.data.CC_PORT;
+  const originHost = ["0.0.0.0", "::"].includes(resolvedHost) ? "localhost" : resolvedHost;
+  const derivedPublicOrigin = `http://${originHost}:${resolvedPort}`;
+
   return {
     nodeEnv: parsedEnv.data.NODE_ENV,
     server: {
-      host: options?.overrides?.host ?? parsedEnv.data.CC_HOST,
-      port: options?.overrides?.port ?? parsedEnv.data.CC_PORT,
+      host: resolvedHost,
+      port: resolvedPort,
     },
     paths: {
       cwd,
@@ -297,7 +302,7 @@ export function loadRuntimeConfig(options?: {
     },
     logLevel: parsedEnv.data.CC_LOG_LEVEL,
     security: {
-      publicOrigin: parsedEnv.data.CC_PUBLIC_ORIGIN,
+      publicOrigin: parsedEnv.data.CC_PUBLIC_ORIGIN ?? derivedPublicOrigin,
       allowedOrigins: parseAllowedOrigins(parsedEnv.data.CC_ALLOWED_ORIGINS),
     },
     opencodePath: parsedEnv.data.CC_OPENCODE_PATH || undefined,

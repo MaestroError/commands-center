@@ -349,7 +349,7 @@ export function logPublicBindingGuidance(config: RuntimeConfig, logger: Logger):
 }
 
 function getOperatorBaseUrl(config: RuntimeConfig): string {
-  return config.security.publicOrigin ?? `http://127.0.0.1:${config.server.port.toString()}`;
+  return config.security.publicOrigin;
 }
 
 function isExternalBinding(host: string): boolean {

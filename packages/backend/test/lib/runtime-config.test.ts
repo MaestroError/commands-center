@@ -233,13 +233,13 @@ describe("loadRuntimeConfig", () => {
     expect(config.database.sqlitePath).toBe("/tmp/project/runtime-data/cc.db");
   });
 
-  it("treats an empty CC_PUBLIC_ORIGIN as unset instead of rejecting it", () => {
+  it("treats an empty CC_PUBLIC_ORIGIN as unset and falls back to the derived local origin", () => {
     const config = loadRuntimeConfig({
       cwd: "/tmp/project",
       env: { NODE_ENV: "test", CC_PUBLIC_ORIGIN: "" },
     });
 
-    expect(config.security.publicOrigin).toBeUndefined();
+    expect(config.security.publicOrigin).toBe(`http://localhost:${config.server.port}`);
   });
 
   it("accepts a valid URL for CC_PUBLIC_ORIGIN", () => {
