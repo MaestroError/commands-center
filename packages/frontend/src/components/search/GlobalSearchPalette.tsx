@@ -1,11 +1,38 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bot, FilePenLine, FileSearch, FolderSearch, Pencil, Search } from "lucide-react";
+import {
+  Bot,
+  CalendarClock,
+  FileCode,
+  FilePenLine,
+  FileSearch,
+  FolderSearch,
+  Pencil,
+  Search,
+  Sparkles,
+  SquareCheckBig,
+  Wrench,
+} from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import type { Agent, GlobalSearchWorkspaceFilesResponse } from "@cc/shared/schemas";
+import type {
+  Agent,
+  BuiltInSkill,
+  CustomTool,
+  GlobalSearchWorkspaceFilesResponse,
+  Task,
+  TaskTemplate,
+} from "@cc/shared/schemas";
 
-import { listAgents, searchWorkspaceFiles } from "@/lib/api";
+import {
+  getAgentCatalog,
+  listAgents,
+  listArchivedTasks,
+  listCustomTools,
+  listTasks,
+  listTaskTemplates,
+  searchWorkspaceFiles,
+} from "@/lib/api";
 import { buildFileManagerHref } from "@/lib/file-manager-href";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -22,7 +49,7 @@ type ResultAction = {
 
 type PaletteResult = {
   id: string;
-  group: "Agents" | "Files";
+  group: "Agents" | "Tasks" | "Task Templates" | "Custom Tools" | "Skills" | "Files";
   title: string;
   subtitle?: string;
   markerIcon: React.ReactNode;
@@ -50,6 +77,36 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
     enabled: props.open,
   });
 
+  const tasksQuery = useQuery({
+    queryKey: queryKeys.tasks({ includeArchived: false }),
+    queryFn: () => listTasks({ includeArchived: false }),
+    enabled: props.open && deferredQuery.length > 0,
+  });
+
+  const archivedTasksQuery = useQuery({
+    queryKey: queryKeys.taskArchive,
+    queryFn: () => listArchivedTasks(),
+    enabled: props.open && deferredQuery.length > 0,
+  });
+
+  const taskTemplatesQuery = useQuery({
+    queryKey: queryKeys.taskTemplates,
+    queryFn: () => listTaskTemplates(),
+    enabled: props.open && deferredQuery.length > 0,
+  });
+
+  const customToolsQuery = useQuery({
+    queryKey: queryKeys.customTools,
+    queryFn: () => listCustomTools(),
+    enabled: props.open && deferredQuery.length > 0,
+  });
+
+  const catalogQuery = useQuery({
+    queryKey: queryKeys.agentCatalog,
+    queryFn: () => getAgentCatalog(),
+    enabled: props.open && deferredQuery.length > 0,
+  });
+
   const fileQuery = useQuery({
     queryKey: ["global-search-files", deferredQuery],
     queryFn: () => searchWorkspaceFiles(deferredQuery),
@@ -74,6 +131,73 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
       .map((agent) => buildAgentResult(agent, navigate, props.onClose));
   }, [agentsQuery.data, deferredQuery, navigate, props.onClose]);
 
+  const taskResults = useMemo(() => {
+    if (deferredQuery.length === 0) {
+      return [] satisfies PaletteResult[];
+    }
+
+    const agents = agentsQuery.data ?? [];
+    const tasks = [...(tasksQuery.data ?? []), ...(archivedTasksQuery.data ?? [])];
+
+    return tasks
+      .filter((task) => matchesTask(task, agents, deferredQuery))
+      .slice(0, 8)
+      .map((task) => buildTaskResult(task, agents, navigate, props.onClose));
+  }, [
+    agentsQuery.data,
+    archivedTasksQuery.data,
+    deferredQuery,
+    navigate,
+    props.onClose,
+    tasksQuery.data,
+  ]);
+
+  const taskTemplateResults = useMemo(() => {
+    if (deferredQuery.length === 0) {
+      return [] satisfies PaletteResult[];
+    }
+
+    const agents = agentsQuery.data ?? [];
+
+    return (taskTemplatesQuery.data ?? [])
+      .filter((template) => matchesTaskTemplate(template, agents, deferredQuery))
+      .slice(0, 8)
+      .map((template) => buildTaskTemplateResult(template, agents, navigate, props.onClose));
+  }, [agentsQuery.data, deferredQuery, navigate, props.onClose, taskTemplatesQuery.data]);
+
+  const customToolResults = useMemo(() => {
+    if (deferredQuery.length === 0) {
+      return [] satisfies PaletteResult[];
+    }
+
+    return (customToolsQuery.data ?? [])
+      .filter((tool) => matchesCustomTool(tool, deferredQuery))
+      .slice(0, 8)
+      .map((tool) => buildCustomToolResult(tool, navigate, props.onClose));
+  }, [customToolsQuery.data, deferredQuery, navigate, props.onClose]);
+
+  const skillResults = useMemo(() => {
+    if (deferredQuery.length === 0) {
+      return [] satisfies PaletteResult[];
+    }
+
+    const skills = [
+      ...(catalogQuery.data?.builtInSkills ?? []).map((skill) => ({
+        source: "built-in" as const,
+        skill,
+      })),
+      ...(catalogQuery.data?.workspaceSkills ?? []).map((skill) => ({
+        source: "workspace" as const,
+        skill,
+      })),
+    ];
+
+    return skills
+      .filter((entry) => matchesSkill(entry.skill, entry.source, deferredQuery))
+      .slice(0, 8)
+      .map((entry) => buildSkillResult(entry.skill, entry.source, navigate, props.onClose));
+  }, [catalogQuery.data, deferredQuery, navigate, props.onClose]);
+
   const fileResults = useMemo(() => {
     if (deferredQuery.length === 0 || !fileQuery.data) {
       return [] satisfies PaletteResult[];
@@ -89,8 +213,22 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
     });
   }, [deferredQuery, fileQuery.data, location.pathname, location.search, navigate, props.onClose]);
 
-  const results = [...agentResults, ...fileResults];
-  const isLoading = agentsQuery.isLoading || fileQuery.isLoading;
+  const results = [
+    ...agentResults,
+    ...taskResults,
+    ...taskTemplateResults,
+    ...customToolResults,
+    ...skillResults,
+    ...fileResults,
+  ];
+  const isLoading =
+    agentsQuery.isLoading ||
+    tasksQuery.isLoading ||
+    archivedTasksQuery.isLoading ||
+    taskTemplatesQuery.isLoading ||
+    customToolsQuery.isLoading ||
+    catalogQuery.isLoading ||
+    fileQuery.isLoading;
 
   if (!props.open) {
     return null;
@@ -121,7 +259,7 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
                   props.onClose();
                 }
               }}
-              placeholder="Search agents and files"
+              placeholder="Search workspace resources"
               type="text"
               value={query}
             />
@@ -132,11 +270,11 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
         </div>
         <div className="max-h-[70vh] overflow-y-auto">
           {deferredQuery.length === 0 ? (
-            <EmptyState message="Search agents by name or slug, and search workspace files by path or content." />
+            <EmptyState message="Search agents, tasks, custom tools, skills, and workspace files." />
           ) : isLoading ? (
             <EmptyState message="Searching resources..." />
           ) : results.length === 0 ? (
-            <EmptyState message="No matching agents or files." />
+            <EmptyState message="No matching resources." />
           ) : (
             <ResultGroups results={results} />
           )}
@@ -246,6 +384,151 @@ function buildAgentResult(
         icon: <Pencil className="h-4 w-4" />,
         onSelect: () => {
           void navigate(`/agents/${encodeURIComponent(agent.slug)}/edit`);
+          onClose();
+        },
+      },
+    ],
+  } satisfies PaletteResult;
+}
+
+function buildTaskResult(
+  task: Task,
+  agents: Agent[],
+  navigate: ReturnType<typeof useNavigate>,
+  onClose: () => void,
+) {
+  const agentName = readAgentName(agents, task.agentId);
+  const status = formatToken(task.status);
+  const openTask = () => {
+    void navigate(`/tasks/${encodeURIComponent(task.id)}`);
+    onClose();
+  };
+
+  return {
+    id: `task:${task.id}`,
+    group: "Tasks",
+    title: task.title,
+    subtitle: `${agentName} · ${status}${task.archived ? " · Archived" : ""}`,
+    markerIcon: <SquareCheckBig className="h-4 w-4" />,
+    markerLabel: task.archived ? "Archived task" : "Task",
+    primaryAction: openTask,
+    secondaryActions: [
+      {
+        label: "Edit task",
+        icon: <Pencil className="h-4 w-4" />,
+        onSelect: () => {
+          void navigate(`/tasks/${encodeURIComponent(task.id)}/edit`);
+          onClose();
+        },
+      },
+    ],
+  } satisfies PaletteResult;
+}
+
+function buildTaskTemplateResult(
+  template: TaskTemplate,
+  agents: Agent[],
+  navigate: ReturnType<typeof useNavigate>,
+  onClose: () => void,
+) {
+  const agentName = readAgentName(agents, template.defaultAgentId);
+
+  return {
+    id: `task-template:${template.id}`,
+    group: "Task Templates",
+    title: template.title,
+    subtitle: `${agentName} · ${template.recurrence ? "Recurring" : "Manual"} template`,
+    markerIcon: <CalendarClock className="h-4 w-4" />,
+    markerLabel: "Task template",
+    primaryAction: () => {
+      void navigate(`/tasks?view=templates&template=${encodeURIComponent(template.id)}`);
+      onClose();
+    },
+    secondaryActions: [
+      {
+        label: "Edit task template",
+        icon: <Pencil className="h-4 w-4" />,
+        onSelect: () => {
+          void navigate(`/tasks/templates/${encodeURIComponent(template.id)}/edit`);
+          onClose();
+        },
+      },
+    ],
+  } satisfies PaletteResult;
+}
+
+function buildCustomToolResult(
+  tool: CustomTool,
+  navigate: ReturnType<typeof useNavigate>,
+  onClose: () => void,
+) {
+  const openSource = () => {
+    const params = new URLSearchParams({
+      root: "workspace",
+      path: `custom-tools/${tool.slug}`,
+      select: `custom-tools/${tool.slug}/${tool.entryFile}`,
+    });
+    void navigate(`/files?${params.toString()}`);
+    onClose();
+  };
+
+  return {
+    id: `custom-tool:${tool.slug}`,
+    group: "Custom Tools",
+    title: tool.name,
+    subtitle: `${tool.slug} · ${tool.enabled ? "Enabled" : "Disabled"}`,
+    markerIcon: <Wrench className="h-4 w-4" />,
+    markerLabel: "Custom tool",
+    primaryAction: openSource,
+    secondaryActions: [
+      {
+        label: "Open tools page",
+        icon: <FileCode className="h-4 w-4" />,
+        onSelect: () => {
+          void navigate("/tools");
+          onClose();
+        },
+      },
+    ],
+  } satisfies PaletteResult;
+}
+
+function buildSkillResult(
+  skill: BuiltInSkill,
+  source: "built-in" | "workspace",
+  navigate: ReturnType<typeof useNavigate>,
+  onClose: () => void,
+) {
+  const openSkill = () => {
+    if (source === "workspace") {
+      const params = new URLSearchParams({
+        root: "workspace",
+        path: `skills/${skill.slug}`,
+        select: `skills/${skill.slug}/SKILL.md`,
+      });
+      void navigate(`/files?${params.toString()}`);
+    } else {
+      const params = new URLSearchParams({ skill: `${source}:${skill.slug}` });
+      void navigate(`/skills?${params.toString()}`);
+    }
+    onClose();
+  };
+
+  return {
+    id: `skill:${source}:${skill.slug}`,
+    group: "Skills",
+    title: skill.name,
+    subtitle: `${formatToken(source)} · ${skill.category}`,
+    markerIcon: <Sparkles className="h-4 w-4" />,
+    markerLabel: "Skill",
+    primaryAction: openSkill,
+    secondaryActions: [
+      {
+        label: "Open skills library",
+        icon: <FolderSearch className="h-4 w-4" />,
+        onSelect: () => {
+          const params = new URLSearchParams({ skill: `${source}:${skill.slug}` });
+          void navigate(`/skills?${params.toString()}`);
           onClose();
         },
       },
@@ -370,4 +653,82 @@ function highlightMatch(value: string, query: string): React.ReactNode {
       {after}
     </>
   );
+}
+
+function matchesTask(task: Task, agents: Agent[], query: string): boolean {
+  const agent = agents.find((entry) => entry.id === task.agentId);
+  const values = [
+    task.title,
+    task.description,
+    task.agentId,
+    agent?.name,
+    task.status,
+    formatToken(task.status),
+    task.archived ? "archived" : undefined,
+    task.sourceTemplateId ? "generated template" : undefined,
+    task.scheduledAt || task.scheduledFor ? "scheduled" : undefined,
+    task.dueAt ? "due" : undefined,
+    task.context.text,
+    task.latestFinalMessage,
+    ...task.todos.map((todo) => todo.content),
+  ];
+
+  return normalizeSearchText(values.filter(Boolean).join(" ")).includes(normalizeSearchText(query));
+}
+
+function matchesTaskTemplate(template: TaskTemplate, agents: Agent[], query: string): boolean {
+  const agent = agents.find((entry) => entry.id === template.defaultAgentId);
+  const values = [
+    template.title,
+    template.description,
+    template.defaultAgentId,
+    agent?.name,
+    "template",
+    template.recurrence ? "repeating recurring scheduled" : "manual template",
+    template.enabled ? "enabled" : "disabled",
+    template.latestTaskId ? "generated latest task" : undefined,
+    ...template.todos.map((todo) => todo.content),
+  ];
+
+  return normalizeSearchText(values.filter(Boolean).join(" ")).includes(normalizeSearchText(query));
+}
+
+function matchesCustomTool(tool: CustomTool, query: string): boolean {
+  const values = [tool.name, tool.slug, tool.description, tool.entryFile, tool.entryPath];
+
+  return normalizeSearchText(values.join(" ")).includes(normalizeSearchText(query));
+}
+
+function matchesSkill(
+  skill: BuiltInSkill,
+  source: "built-in" | "workspace",
+  query: string,
+): boolean {
+  const values = [
+    skill.name,
+    skill.slug,
+    skill.description,
+    skill.category,
+    source,
+    ...skill.files,
+    ...Object.values(skill.metadata),
+  ];
+
+  return normalizeSearchText(values.join(" ")).includes(normalizeSearchText(query));
+}
+
+function readAgentName(agents: Agent[], agentId: string): string {
+  return agents.find((agent) => agent.id === agentId)?.name ?? agentId;
+}
+
+function formatToken(value: string): string {
+  return value
+    .split(/[_-]/g)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function normalizeSearchText(value: string): string {
+  return value.trim().toLowerCase().replace(/[_-]/g, " ");
 }

@@ -204,6 +204,16 @@ describe("BuiltInSkillsPage", () => {
     expect(screen.getByText("No skills match this filter")).toBeInTheDocument();
   });
 
+  it("selects a skill from the route search parameter", async () => {
+    renderPage(["/skills?skill=workspace:workspace-helper"]);
+
+    const context = screen.getByTestId("workspace-context");
+
+    await waitFor(() => {
+      expect(within(context).getByDisplayValue("operations")).toBeInTheDocument();
+    });
+  });
+
   it("creates a workspace skill and redirects to its folder", async () => {
     createMutateAsync.mockResolvedValue({ skill: workspaceSkill });
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -344,9 +354,9 @@ describe("BuiltInSkillsPage", () => {
   });
 });
 
-function renderPage() {
+function renderPage(initialEntries: string[] = ["/skills"]) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <BuiltInSkillsPage />
     </MemoryRouter>,
   );
