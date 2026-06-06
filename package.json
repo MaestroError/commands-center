@@ -14,6 +14,8 @@
     "test": "pnpm --parallel --filter './packages/*' test",
     "test:coverage": "pnpm --parallel --filter './packages/*' test:coverage",
     "test:e2e": "pnpm --filter @cc/frontend test:e2e",
+    "test:e2e:tasks": "pnpm --filter @cc/frontend test:e2e:tasks",
+    "test:e2e:other": "pnpm --filter @cc/frontend test:e2e:other",
     "lint": "pnpm --parallel --filter './packages/*' lint",
     "lint:root": "eslint .",
     "format": "prettier --check .",

@@ -16,6 +16,8 @@ type TaskPromptComposerProps = {
   autoFocus?: boolean;
   label?: string;
   placeholder?: string;
+  /** Applied to the underlying textarea for e2e selection. */
+  testId?: string;
 };
 
 export function TaskPromptComposer(props: TaskPromptComposerProps) {
@@ -380,6 +382,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
         <textarea
           aria-label={props.label ?? "Task prompt"}
           className="max-h-52 min-h-32 w-full resize-y bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary disabled:cursor-not-allowed disabled:text-text-secondary disabled:placeholder:text-text-secondary/70"
+          data-testid={props.testId}
           disabled={disabled}
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}

@@ -12,9 +12,11 @@ type TabBarProps = {
   tabs: TabItem[];
   activeTabId?: string;
   onTabChange: (tabId: string) => void;
+  /** When set, each tab button receives `data-testid="${testIdPrefix}-${tab.id}"`. */
+  testIdPrefix?: string;
 };
 
-export function TabBar({ tabs, activeTabId, onTabChange }: TabBarProps) {
+export function TabBar({ tabs, activeTabId, onTabChange, testIdPrefix }: TabBarProps) {
   return (
     <div
       className="flex min-w-0 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -28,6 +30,7 @@ export function TabBar({ tabs, activeTabId, onTabChange }: TabBarProps) {
             role="tab"
             aria-label={tab.ariaLabel}
             aria-selected={isActive}
+            data-testid={testIdPrefix ? `${testIdPrefix}-${tab.id}` : undefined}
             type="button"
             onClick={() => onTabChange(tab.id)}
             className={[
