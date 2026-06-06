@@ -97,7 +97,13 @@ export function RunTaskContextDialog(props: Props) {
           >
             Cancel
           </button>
-          <button className="cc-button" disabled={props.busy} onClick={handleRun} type="button">
+          <button
+            className="cc-button"
+            data-testid="task-run-context-submit"
+            disabled={props.busy}
+            onClick={handleRun}
+            type="button"
+          >
             Run task
           </button>
         </div>

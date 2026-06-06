@@ -1,6 +1,6 @@
 # E2E Task-Domain Coverage — Implementation Plan
 
-Status: in progress. Covers e2e tests for the task domain (board, templates, runs,
+Status: implemented. Covers e2e tests for the task domain (board, templates, runs,
 feedback), driven by stable `data-testid` selectors, separated so the task suite can
 run exclusively and in parallel with the rest of the e2e suite in CI.
 
@@ -46,17 +46,17 @@ section tab bar, `LoadingState`); adding a `testId` prop there covers many rows 
 
 ### A1. Board view (`TasksPage.tsx`)
 
-| Element                                    | testid                                |
-| ------------------------------------------ | ------------------------------------- |
-| Board section                              | `tasks-board` (exists)                |
-| View nav buttons (Board/Templates/Archive) | `task-view-tab-${view}`               |
-| Filter toggle                              | `task-filter-toggle`                  |
-| Filter input                               | `task-filter-input`                   |
-| Column container                           | `task-column-${status}`               |
-| Column count badge                         | `task-column-count-${status}`         |
-| Board card                                 | `task-card-${task.id}`                |
-| Card title link                            | `task-card-title-${task.id}`          |
-| Card action buttons                        | `task-card-action-${slug}-${task.id}` |
+| Element                                    | testid                        |
+| ------------------------------------------ | ----------------------------- |
+| Board section                              | `tasks-board` (exists)        |
+| View nav buttons (Board/Templates/Archive) | `task-view-tab-${view}`       |
+| Filter toggle                              | `task-filter-toggle`          |
+| Filter input                               | `task-filter-input`           |
+| Column container                           | `task-column-${status}`       |
+| Column count badge                         | `task-column-count-${status}` |
+| Board card                                 | `task-card-${task.id}`        |
+| Card title link                            | `task-card-title-${task.id}`  |
+| Card action buttons                        | `task-card-action-${action}`  |
 
 ### A2. Detail slide-over panel (`TasksPage.tsx`)
 
@@ -66,25 +66,29 @@ section tab bar, `LoadingState`); adding a `testId` prop there covers many rows 
 | Tabs (overview/subtasks/runs)      | `task-detail-tab-${id}`                                                       |
 | Title edit / input / save / cancel | `task-title-edit`, `task-title-input`, `task-title-save`, `task-title-cancel` |
 | Prompt edit / textarea / save      | `task-prompt-edit`, `task-prompt-input`, `task-prompt-save`                   |
-| Footer status actions              | `task-detail-action-${slug}`                                                  |
 
 ### A3. Feedback (`TasksPage.tsx` panel + `TaskDetailPage.tsx`)
 
-| Element                 | testid                        |
-| ----------------------- | ----------------------------- |
-| Feedback section        | `task-feedback-section`       |
-| "Leave comment" trigger | `task-feedback-open`          |
-| Composer textarea       | `task-feedback-input`         |
-| Submit button           | `task-feedback-submit`        |
-| Rendered comment item   | `task-feedback-comment-${id}` |
+| Element                 | testid                                 |
+| ----------------------- | -------------------------------------- |
+| Feedback section        | `task-feedback-section`                |
+| "Leave comment" trigger | `task-feedback-open`                   |
+| Composer textarea       | `task-feedback-input`                  |
+| Submit button           | `task-feedback-submit`                 |
+| Rendered comment item   | `task-feedback-comment-${id}`          |
+| Agent mention option    | `task-agent-mention-option-${agentId}` |
+| Agent mention chip      | `task-agent-mention-chip-${agentId}`   |
 
 ### A4. Templates view (`TasksPage.tsx`, `TaskTemplatesView`)
 
-| Element                               | testid                               |
-| ------------------------------------- | ------------------------------------ |
-| Template card                         | `task-template-card-${id}`           |
-| Create-task / Run-now / Edit / Delete | `task-template-action-${slug}-${id}` |
-| Template edit form save               | `task-template-save`                 |
+| Element                    | testid                                                           |
+| -------------------------- | ---------------------------------------------------------------- |
+| Template card              | `task-template-card-${id}`                                       |
+| Create task                | `task-template-create-task` / `task-template-detail-create-task` |
+| Run-now / Edit / Delete    | shared `task-card-action-${action}` selectors scoped to the card |
+| Template edit form title   | `task-template-title-input`                                      |
+| Template edit form save    | `task-template-save`                                             |
+| Run context confirm button | `task-run-context-submit`                                        |
 
 ### A5. Runs / full-page detail (`TaskDetailPage.tsx`)
 
@@ -93,6 +97,7 @@ section tab bar, `LoadingState`); adding a `testId` prop there covers many rows 
 | Page root                | `task-detail-page`                         |
 | Section tabs             | `task-detail-tab-${id}` (shared component) |
 | Run-history row          | `task-run-row-${runId}`                    |
+| Run inspect link         | `task-run-inspect-${runId}`                |
 | Run inspection root      | `task-run-inspector`                       |
 | Session/Details sub-tabs | `task-run-tab-${id}`                       |
 | Session log container    | `task-run-session-log`                     |
@@ -257,9 +262,10 @@ Board / views (`TasksPage.tsx`):
 - `task-filter-toggle`, `task-filter-input`
 - `task-column-{status}`, `task-column-count-{status}` (also `data-board-status`/`data-drop-state` on columns)
 - `task-card-{id}`, `task-card-title-{id}`
-- `task-card-action-{label-slug}` (Queue→`queue`, Accept→`accept`, Review→`review`,
+- `task-card-action-{action}` (Queue→`queue`, Accept→`accept`, Review→`review`,
   Retry→`retry`, Reopen→`reopen`, Duplicate→`duplicate`, Archive→`archive`,
-  Save as template→`save-as-template`, Details→`details`, Edit→`edit`, etc.)
+  Save as template→`save-as-template`, Details→`details`, Edit/Reschedule→`edit`,
+  Copy endpoint/Copied→`copy-endpoint`, etc.)
 
 Detail slide-over (`TasksPage.tsx`):
 
@@ -272,33 +278,38 @@ Feedback (both `TasksPage.tsx` panel and `TaskDetailPage.tsx`):
 
 - `task-feedback-section`, `task-feedback-open`, `task-feedback-input`,
   `task-feedback-submit`, `task-feedback-comment-{id}`
+- `task-agent-mention-option-{agentId}`, `task-agent-mention-chip-{agentId}`
 
 Templates (`TasksPage.tsx`):
 
-- `task-template-card-{id}`, `task-template-title-{id}`
+- `task-template-card-{id}`, `task-template-title-{id}`, `task-template-title-input`
 - `task-template-create-task` (list), `task-template-detail-create-task` (panel)
 - `task-template-detail-panel`, `task-template-save`
 - Template action icons reuse `task-card-action-*` (Run now→`run-now`,
   Edit template→`edit-template`, Delete template→`delete-template`, View details→`view-details`)
+- `task-run-context-submit`
 
 Runs / full-page detail (`TaskDetailPage.tsx`):
 
 - `task-detail-page`, `task-detail-tab-{overview|subtasks|runs}`
-- `task-run-row-{runId}`
+- `task-run-row-{runId}`, `task-run-inspect-{runId}`
 - `task-run-inspector`, `task-run-tab-{session|details}`, `task-run-session-log`
 
 Shared component changes:
 
 - `TabBar` gained an optional `testIdPrefix` prop → emits `data-testid="{prefix}-{tab.id}"`.
 - `TaskPromptComposer` gained an optional `testId` prop applied to its textarea.
+- `TaskPromptComposer` exposes stable agent mention option/chip testids for e2e flows.
 
 ## Deviations from the original inventory
 
-- Card/template action testids are **label-derived and card-scoped** (no `-{taskId}`
-  suffix) because they route through shared components — cleaner and lower-touch than
-  threading the id through every button. Tests scope by `task-card-{id}` /
+- Card/template action testids are **card-scoped** (no `-{taskId}` suffix) because
+  they route through shared components. Stateful labels pass explicit stable ids;
+  stable labels fall back to the shared slug helper. Tests scope by `task-card-{id}` /
   `task-template-card-{id}`.
 - Two "Create task" buttons co-render (list + open detail panel), so they use distinct
   testids: `task-template-create-task` vs `task-template-detail-create-task`.
 - Extra convenience testids added beyond the original table: `task-card-title-{id}`,
-  `task-template-title-{id}`, `task-template-detail-panel`.
+  `task-template-title-{id}`, `task-template-title-input`, `task-template-detail-panel`,
+  `task-run-context-submit`, `task-run-inspect-{runId}`,
+  `task-agent-mention-option-{agentId}`, `task-agent-mention-chip-{agentId}`.

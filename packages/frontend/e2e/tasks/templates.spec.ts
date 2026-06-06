@@ -51,7 +51,7 @@ test.describe("task templates", { tag: "@tasks" }, () => {
         response.url().endsWith("/api/tasks/templates/template-1/run-now") &&
         response.request().method() === "POST",
     );
-    await page.getByRole("button", { name: "Run task" }).click();
+    await page.getByTestId("task-run-context-submit").click();
     await runNow;
 
     await expect(page).toHaveURL(/task=task-backlog/);
@@ -69,7 +69,7 @@ test.describe("task templates", { tag: "@tasks" }, () => {
       .click();
 
     await expect(page).toHaveURL(/\/tasks\/templates\/template-1\/edit/);
-    await page.getByLabel("Title").fill("Biweekly release notes");
+    await page.getByTestId("task-template-title-input").fill("Biweekly release notes");
 
     const patch = page.waitForResponse(
       (response) =>
