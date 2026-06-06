@@ -90,11 +90,15 @@ export function BuiltInSkillsPage() {
   }, []);
 
   useEffect(() => {
-    if (requestedSkillKey && skills.some((entry) => entry.key === requestedSkillKey)) {
+    if (
+      !selectedKey &&
+      requestedSkillKey &&
+      skills.some((entry) => entry.key === requestedSkillKey)
+    ) {
       setSourceFilter("all");
       setSelectedKey(requestedSkillKey);
     }
-  }, [requestedSkillKey, skills]);
+  }, [requestedSkillKey, selectedKey, skills]);
 
   useEffect(() => {
     if (requestedSkillKey && skills.some((entry) => entry.key === requestedSkillKey)) {
