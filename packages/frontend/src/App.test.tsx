@@ -183,7 +183,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "Integrations" })).toBeInTheDocument();
   });
 
-  it("opens global search from the keyboard shortcut and searches agents and files", async () => {
+  it("opens global search from the keyboard shortcut and searches workspace resources", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       if (typeof input !== "string") {
         return Promise.reject(new Error("Unexpected fetch input."));
@@ -225,6 +225,51 @@ describe("App", () => {
         );
       }
 
+      if (input === "/api/tasks") {
+        return Promise.resolve(
+          jsonResponse(200, [
+            {
+              id: "task-1",
+              agentId: "agent-1",
+              title: "Plan launch",
+              description: "Prepare launch plan.",
+              context: { attachments: [] },
+              todos: [],
+              status: "backlog",
+              enabled: true,
+              archived: false,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ]),
+        );
+      }
+
+      if (input === "/api/tasks/archive") {
+        return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/tasks/templates") {
+        return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/custom-tools") {
+        return Promise.resolve(jsonResponse(200, []));
+      }
+
+      if (input === "/api/agents/catalog") {
+        return Promise.resolve(
+          jsonResponse(200, {
+            builtInSkills: [],
+            workspaceSkills: [],
+            providerModels: [],
+            mcpServers: [],
+            appMcpServers: [],
+            customTools: [],
+          }),
+        );
+      }
+
       if (input === "/api/search/files?query=plan") {
         return Promise.resolve(
           jsonResponse(200, {
@@ -249,11 +294,13 @@ describe("App", () => {
     await user.type(input, "plan");
 
     await screen.findByText("Planner");
+    await screen.findByText("Plan launch");
     await screen.findByText((_, element) => element?.textContent === "docs/planning.md");
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/agents",
       expect.objectContaining({ method: "GET" }),
     );
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks", expect.objectContaining({ method: "GET" }));
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/search/files?query=plan",
       expect.objectContaining({ method: "GET" }),

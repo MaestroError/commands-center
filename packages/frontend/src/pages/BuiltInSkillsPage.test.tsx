@@ -204,6 +204,49 @@ describe("BuiltInSkillsPage", () => {
     expect(screen.getByText("No skills match this filter")).toBeInTheDocument();
   });
 
+  it("selects a skill from the route search parameter", async () => {
+    renderPage(["/skills?skill=workspace:workspace-helper"]);
+
+    const context = screen.getByTestId("workspace-context");
+
+    await waitFor(() => {
+      expect(within(context).getByDisplayValue("operations")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps a manual skill selection after route-selected skills refetch", async () => {
+    const view = renderPage(["/skills?skill=workspace:workspace-helper"]);
+    const context = screen.getByTestId("workspace-context");
+
+    await waitFor(() => {
+      expect(within(context).getByDisplayValue("operations")).toBeInTheDocument();
+    });
+
+    clickSkillCard("Code Review");
+    fireEvent.click(within(context).getByRole("button", { name: "Details" }));
+    expect(within(context).getByText("Built-in details")).toBeInTheDocument();
+
+    vi.mocked(useAgentCatalogQuery).mockReturnValue({
+      data: {
+        ...catalog,
+        builtInSkills: [...catalog.builtInSkills],
+        workspaceSkills: [...catalog.workspaceSkills],
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    view.rerender(
+      <MemoryRouter initialEntries={["/skills?skill=workspace:workspace-helper"]}>
+        <BuiltInSkillsPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      within(screen.getByTestId("workspace-context")).getByText("Built-in details"),
+    ).toBeInTheDocument();
+  });
+
   it("creates a workspace skill and redirects to its folder", async () => {
     createMutateAsync.mockResolvedValue({ skill: workspaceSkill });
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -344,9 +387,9 @@ describe("BuiltInSkillsPage", () => {
   });
 });
 
-function renderPage() {
+function renderPage(initialEntries: string[] = ["/skills"]) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <BuiltInSkillsPage />
     </MemoryRouter>,
   );

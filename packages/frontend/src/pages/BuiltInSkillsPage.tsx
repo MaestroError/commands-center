@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import type { Agent, BuiltInSkill } from "@cc/shared/schemas";
 
@@ -26,6 +26,7 @@ type UploadRenameDialogState = {
 };
 
 export function BuiltInSkillsPage() {
+  const [searchParams] = useSearchParams();
   const catalogQuery = useAgentCatalogQuery();
   const agentsQuery = useAgentsQuery();
   const agentMutations = useAgentMutations();
@@ -49,6 +50,7 @@ export function BuiltInSkillsPage() {
     const stored = window.sessionStorage.getItem(SKILLS_CONTEXT_TAB_STORAGE_KEY);
     return stored === "details" ? "details" : "actions";
   });
+  const requestedSkillKey = searchParams.get("skill") ?? undefined;
   const deferredSearch = useDeferredValue(search);
   const agents = agentsQuery.data ?? [];
   const skills = useMemo<SkillEntry[]>(() => {
@@ -88,10 +90,25 @@ export function BuiltInSkillsPage() {
   }, []);
 
   useEffect(() => {
+    if (
+      !selectedKey &&
+      requestedSkillKey &&
+      skills.some((entry) => entry.key === requestedSkillKey)
+    ) {
+      setSourceFilter("all");
+      setSelectedKey(requestedSkillKey);
+    }
+  }, [requestedSkillKey, selectedKey, skills]);
+
+  useEffect(() => {
+    if (requestedSkillKey && skills.some((entry) => entry.key === requestedSkillKey)) {
+      return;
+    }
+
     if (!filteredSkills.some((entry) => entry.key === selectedKey)) {
       setSelectedKey(filteredSkills[0]?.key);
     }
-  }, [filteredSkills, selectedKey]);
+  }, [filteredSkills, requestedSkillKey, selectedKey, skills]);
 
   const selectedEntry =
     filteredSkills.find((entry) => entry.key === selectedKey) ?? filteredSkills[0];
