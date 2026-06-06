@@ -332,6 +332,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
           {mentionedAgents.map((agent) => (
             <span
               className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-1 text-xs font-medium text-emerald-400"
+              data-testid={`task-agent-mention-chip-${agent.id}`}
               key={agent.id}
               title={agent.name}
             >
@@ -481,6 +482,7 @@ function AgentMentionPopover(props: {
               ? "bg-accent text-accent-contrast"
               : "text-text-primary hover:bg-surface"
           }`}
+          data-testid={`task-agent-mention-option-${agent.id}`}
           key={agent.id}
           onClick={() => props.onSelect(agent)}
           onMouseEnter={() => setActiveIndex(index)}

@@ -355,6 +355,7 @@ function RunHistory(props: {
                   <td className="py-3 pr-3">
                     <Link
                       className="cc-button cc-button-secondary"
+                      data-testid={`task-run-inspect-${run.id}`}
                       to={`/tasks/${props.taskId}/runs/${run.id}`}
                     >
                       Inspect

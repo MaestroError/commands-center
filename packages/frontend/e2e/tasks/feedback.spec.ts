@@ -37,8 +37,8 @@ test.describe("task feedback", { tag: "@tasks" }, () => {
     await panel.getByTestId("task-feedback-input").fill("Please retest @");
 
     // The "@" opens the agent mention popover; selecting an agent adds a chip.
-    await panel.getByRole("button", { name: "@Reviewer" }).click();
-    await expect(panel.getByText("@Reviewer")).toBeVisible();
+    await panel.getByTestId("task-agent-mention-option-agent-2").click();
+    await expect(panel.getByTestId("task-agent-mention-chip-agent-2")).toBeVisible();
 
     const create = page.waitForResponse(
       (response) =>

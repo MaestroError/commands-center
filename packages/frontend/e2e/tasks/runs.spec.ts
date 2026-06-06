@@ -18,7 +18,7 @@ test.describe("task runs", { tag: "@tasks" }, () => {
 
     await page.goto("/tasks/task-ready");
     await page.getByTestId("task-detail-tab-runs").click();
-    await page.getByTestId("task-run-row-run-1").getByRole("link", { name: "Inspect" }).click();
+    await page.getByTestId("task-run-inspect-run-1").click();
 
     await expect(page).toHaveURL(/\/tasks\/task-ready\/runs\/run-1/);
     await expect(page.getByTestId("task-run-inspector")).toBeVisible();

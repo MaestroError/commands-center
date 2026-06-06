@@ -1190,11 +1190,13 @@ function TaskCardActions(props: {
         icon={Play}
         label={props.boardStatus === "scheduled" ? "Queue now" : "Queue"}
         onClick={props.onQueue}
+        testId="task-card-action-queue"
         variant="success"
       />
       <TaskCardIconLink
         icon={props.boardStatus === "scheduled" ? CalendarClock : Pencil}
         label={props.boardStatus === "scheduled" ? "Reschedule" : "Edit"}
+        testId="task-card-action-edit"
         to={`/tasks/${props.task.id}/edit${props.currentSearch}`}
       />
       <TaskCardIconButton icon={Copy} label="Duplicate" onClick={props.onDuplicate} />
@@ -1215,6 +1217,7 @@ function TaskCardIconButton(props: {
   icon: LucideIcon;
   label: string;
   onClick: () => void;
+  testId?: string;
   variant?: TaskCardIconActionVariant;
 }) {
   const Icon = props.icon;
@@ -1223,7 +1226,7 @@ function TaskCardIconButton(props: {
     <button
       aria-label={props.label}
       className={readTaskCardIconActionClassName(props.variant)}
-      data-testid={taskCardActionTestId(props.label)}
+      data-testid={props.testId ?? taskCardActionTestId(props.label)}
       onClick={props.onClick}
       type="button"
     >
@@ -1270,6 +1273,7 @@ function CopyEndpointButton(props: { template: TaskTemplate }) {
         clipboardAvailable ? (copied ? "Copied" : "Copy endpoint") : "Clipboard is unavailable"
       }
       onClick={() => void copy()}
+      testId="task-card-action-copy-endpoint"
     />
   );
 }
@@ -1279,6 +1283,7 @@ function TaskCardIconLink(props: {
   label: string;
   to: string;
   onClick?: () => void;
+  testId?: string;
   variant?: TaskCardIconActionVariant;
 }) {
   const Icon = props.icon;
@@ -1287,7 +1292,7 @@ function TaskCardIconLink(props: {
     <Link
       aria-label={props.label}
       className={readTaskCardIconActionClassName(props.variant)}
-      data-testid={taskCardActionTestId(props.label)}
+      data-testid={props.testId ?? taskCardActionTestId(props.label)}
       onClick={props.onClick}
       to={props.to}
     >
@@ -2933,6 +2938,7 @@ function TaskTemplateForm(props: {
           Title
           <input
             className="cc-input"
+            data-testid="task-template-title-input"
             required
             value={form.title}
             onChange={(event) => updateForm({ title: event.target.value })}
