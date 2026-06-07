@@ -112,6 +112,42 @@ describe("opencode-event-service", () => {
     });
   });
 
+  it("drops invalid message error metadata with an empty name", async () => {
+    const onEvent = await collectEvents([
+      {
+        type: "message.updated",
+        properties: {
+          sessionID: "sess-1",
+          info: {
+            id: "msg-1",
+            sessionID: "sess-1",
+            role: "assistant",
+            error: {
+              name: " ",
+              data: { message: "Provider rejected the attachment." },
+            },
+            time: {
+              created: 1_700_000_000_000,
+              completed: 1_700_000_000_500,
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(onEvent).toHaveBeenCalledWith({
+      type: "message.updated",
+      properties: {
+        sessionID: "sess-1",
+        message: expect.objectContaining({
+          id: "msg-1",
+          role: "assistant",
+          error: undefined,
+        }),
+      },
+    });
+  });
+
   it("forwards session error events from async prompt failures", async () => {
     const onEvent = await collectEvents([
       {

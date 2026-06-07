@@ -308,6 +308,9 @@ describe("App", () => {
   });
 
   it("shows up to three recent agents in the expanded agents section", async () => {
+    const longPlannerRole =
+      "You are a research analyst, fact-checker, and evidence reviewer for long-running investigations";
+
     window.localStorage.setItem(
       RECENT_AGENTS_STORAGE_KEY,
       JSON.stringify([
@@ -315,7 +318,7 @@ describe("App", () => {
           id: "a1",
           slug: "planner",
           name: "Planner",
-          role: "Plans",
+          role: longPlannerRole,
           iconPath: "emoji:🤖",
           lastVisitedAt: "1",
         },
@@ -327,10 +330,10 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("link", { name: "🤖 Planner Plans" })).toHaveAttribute(
-      "href",
-      "/chat/planner",
-    );
+    expect(
+      await screen.findByRole("link", { name: `🤖 Planner ${longPlannerRole}` }),
+    ).toHaveAttribute("href", "/chat/planner");
+    expect(screen.getByText(longPlannerRole)).toHaveClass("max-w-full", "truncate");
     expect(screen.getByRole("link", { name: "RE Reviewer Reviews" })).toHaveAttribute(
       "href",
       "/chat/reviewer",

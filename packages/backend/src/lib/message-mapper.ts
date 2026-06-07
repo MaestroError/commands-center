@@ -125,6 +125,7 @@ export function sanitizeMessageError(error: unknown): ConversationMessageError |
     return undefined;
   }
 
+  const name = error["name"].trim();
   const data = isRecord(error["data"]) ? error["data"] : undefined;
   const message =
     typeof error["message"] === "string"
@@ -133,12 +134,12 @@ export function sanitizeMessageError(error: unknown): ConversationMessageError |
         ? data["message"]
         : undefined;
 
-  if (!message) {
+  if (!name || !message) {
     return undefined;
   }
 
   return {
-    name: error["name"],
+    name,
     message,
     data,
   };
