@@ -108,7 +108,6 @@ describe("LiveRequestReviewForm — agent create (compact field form)", () => {
         field("instructions", "Instructions", "Be helpful.", "textarea"),
         field("defaultModel", "Default model", "anthropic/claude-opus-4-8"),
         field("iconPath", "Icon path", ""),
-        field("capabilitiesJson", "Capabilities JSON", "{}", "textarea"),
       ],
       actions: reviewActions,
       metadata: {},
@@ -117,20 +116,29 @@ describe("LiveRequestReviewForm — agent create (compact field form)", () => {
     };
   }
 
-  it("renders a model dropdown and a capabilities JSON field (no full editor sections)", async () => {
+  it("renders a searchable model field that filters by keyword", async () => {
     renderForm(createRequest());
 
     expect(await screen.findByDisplayValue("Helper")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Claude Opus 4.8").tagName).toBe("SELECT");
-    expect(screen.getByDisplayValue("{}")).toBeInTheDocument();
+    const modelInput = screen.getByDisplayValue("Claude Opus 4.8");
+    expect(modelInput.tagName).toBe("INPUT");
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
+
+    fireEvent.focus(modelInput);
+    expect(screen.getByRole("option", { name: "Claude Sonnet 4.6" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Claude Opus 4.8" })).toBeInTheDocument();
+
+    fireEvent.change(modelInput, { target: { value: "sonnet" } });
+    expect(screen.getByRole("option", { name: "Claude Sonnet 4.6" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Claude Opus 4.8" })).not.toBeInTheDocument();
   });
 
-  it("submits the field values including the capabilities JSON", async () => {
+  it("submits the model picked from the searchable field", async () => {
     const { onResolve } = renderForm(createRequest());
 
-    const select = await screen.findByDisplayValue("Claude Opus 4.8");
-    fireEvent.change(select, { target: { value: "anthropic/claude-sonnet-4-6" } });
+    const modelInput = await screen.findByDisplayValue("Claude Opus 4.8");
+    fireEvent.focus(modelInput);
+    fireEvent.click(screen.getByRole("option", { name: "Claude Sonnet 4.6" }));
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
 
     await waitFor(() => {
@@ -140,7 +148,6 @@ describe("LiveRequestReviewForm — agent create (compact field form)", () => {
         expect.objectContaining({
           name: "Helper",
           defaultModel: "anthropic/claude-sonnet-4-6",
-          capabilitiesJson: "{}",
         }),
       );
     });

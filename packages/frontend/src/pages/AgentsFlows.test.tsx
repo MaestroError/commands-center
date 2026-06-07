@@ -193,7 +193,8 @@ describe("agent flows", () => {
     expect(screen.getByTestId("agent-slug-preview")).toHaveTextContent("Identifier: planner");
     await user.type(screen.getByLabelText(/Role/i), "plan work");
     await user.type(screen.getByLabelText(/Instructions/i), "Plan before editing.");
-    await user.selectOptions(screen.getByLabelText(/^Model/i), "openai/gpt-4.1");
+    await user.click(screen.getByLabelText(/^Model/i));
+    await user.click(screen.getByRole("option", { name: "openai/gpt-4.1" }));
     await user.type(screen.getByLabelText(/Search skills/i), "code-reviewer");
     await user.click(screen.getByText("code-reviewer"));
     await user.click(screen.getByRole("button", { name: "Create agent" }));

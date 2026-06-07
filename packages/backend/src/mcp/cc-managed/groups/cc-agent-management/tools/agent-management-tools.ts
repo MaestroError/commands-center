@@ -37,7 +37,13 @@ const listAgentsOutputSchema = z.object({
   agents: z.array(agentSchema),
 });
 
-const listModelsInputSchema = z.object({});
+const listModelsInputSchema = z.object({
+  search: z
+    .string()
+    .trim()
+    .optional()
+    .describe("Optional case-insensitive keyword to filter the returned model IDs."),
+});
 
 const listModelsOutputSchema = z.object({
   models: z.array(z.object({ id: z.string().min(1), label: z.string().min(1) })),
@@ -156,10 +162,16 @@ export function createListModelsToolDefinition(options: { agentService: AgentSer
     context: listModelsToolMetadata.context,
     inputSchema: listModelsInputSchema,
     outputSchema: listModelsOutputSchema,
-    execute: async () =>
+    execute: async (args: unknown) =>
       executeTool(async () => {
+        const parsed = listModelsInputSchema.parse(args);
+        const search = parsed.search?.toLowerCase();
         const catalog = await options.agentService.getCatalog();
-        const models = catalog.providerModels;
+        const models = search
+          ? catalog.providerModels.filter((model) =>
+              `${model.label} ${model.id}`.toLowerCase().includes(search),
+            )
+          : catalog.providerModels;
         const header = `Found ${String(models.length)} model${models.length === 1 ? "" : "s"} from connected providers.`;
         const lines = models.map((model) => `- ${model.id}`);
         const text = lines.length > 0 ? `${header}\n${lines.join("\n")}` : header;

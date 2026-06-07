@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Switch } from "@/components/common/Switch";
 import { AgentAvatarPicker } from "@/components/agents/AgentAvatarPicker";
 import { EmptyState, LoadingState } from "@/components/common/PageStates";
+import { SearchableSelect } from "@/components/common/SearchableSelect";
 import { useAgentCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
 import { useAgentCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
@@ -226,18 +227,13 @@ export function AgentForm(props: AgentFormProps) {
         {hasProviderModels ? (
           <div className="mt-5">
             <Field error={errors.defaultModel} label="Model" required>
-              <select
-                className="cc-input"
-                onChange={(event) => update("defaultModel", event.target.value)}
+              <SearchableSelect
+                ariaLabel="Model"
+                onChange={(next) => update("defaultModel", next)}
+                options={catalog?.providerModels ?? []}
+                placeholder="Search models..."
                 value={value.defaultModel}
-              >
-                <option value="">Select a model</option>
-                {catalog?.providerModels.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.label}
-                  </option>
-                ))}
-              </select>
+              />
             </Field>
           </div>
         ) : (

@@ -4,6 +4,7 @@ import type { LiveRequest, LiveRequestAction, LiveRequestFormField } from "@cc/s
 
 import { AgentAvatarPicker } from "@/components/agents/AgentAvatarPicker";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { SearchableSelect } from "@/components/common/SearchableSelect";
 import { useAgentCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
 
 import {
@@ -221,23 +222,20 @@ function renderField(args: {
   }
 
   if (MODEL_FIELD_NAMES.has(field.name)) {
+    const modelOptions =
+      value && !providerModels.some((model) => model.id === value)
+        ? [{ id: value, label: value }, ...providerModels]
+        : providerModels;
     return (
-      <select
+      <SearchableSelect
+        ariaLabel={field.label}
         className={inputClass}
         disabled={busy}
+        onChange={onChange}
+        options={modelOptions}
+        placeholder="Search models..."
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="">Select a model</option>
-        {value && !providerModels.some((model) => model.id === value) ? (
-          <option value={value}>{value}</option>
-        ) : null}
-        {providerModels.map((model) => (
-          <option key={model.id} value={model.id}>
-            {model.label}
-          </option>
-        ))}
-      </select>
+      />
     );
   }
 
