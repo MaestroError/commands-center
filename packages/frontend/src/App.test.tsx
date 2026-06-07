@@ -330,9 +330,11 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(
-      await screen.findByRole("link", { name: `🤖 Planner ${longPlannerRole}` }),
-    ).toHaveAttribute("href", "/chat/planner");
+    const plannerLink = await screen.findByRole("link", { name: `🤖 Planner ${longPlannerRole}` });
+
+    expect(plannerLink).toHaveAttribute("href", "/chat/planner");
+    expect(screen.getByTestId("recent-agents-section")).toHaveClass("min-w-0", "overflow-hidden");
+    expect(plannerLink).toHaveClass("block", "min-w-0", "overflow-hidden");
     expect(screen.getByText(longPlannerRole)).toHaveClass("max-w-full", "truncate");
     expect(screen.getByRole("link", { name: "RE Reviewer Reviews" })).toHaveAttribute(
       "href",
