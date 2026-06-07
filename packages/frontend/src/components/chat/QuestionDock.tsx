@@ -116,6 +116,7 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
               </div>
             ) : null}
             <textarea
+              aria-label={item.question}
               className="cc-input w-full resize-y min-h-[2.5rem]"
               rows={2}
               placeholder={
