@@ -37,20 +37,29 @@ const listAgentsOutputSchema = z.object({
   agents: z.array(agentSchema),
 });
 
-const createAgentToolInputSchema = createAgentInputSchema;
+const listModelsInputSchema = z.object({});
+
+const listModelsOutputSchema = z.object({
+  models: z.array(z.object({ id: z.string().min(1), label: z.string().min(1) })),
+});
+
+// `capabilities` (skills/custom tools/MCP selections) is intentionally omitted from the
+// MCP tools: the agent has no reliable way to discover valid slugs yet, so agents are
+// created with empty capabilities and configured later in the editor UI.
+const createAgentToolInputSchema = createAgentInputSchema.omit({ capabilities: true });
 
 const updateAgentToolInputSchema = z.object({
   id: z.string().trim().min(1),
-  input: updateAgentInputSchema,
+  input: updateAgentInputSchema.omit({ capabilities: true }),
 });
 
 // Draft tools accept partial input so the agent can pre-fill whatever it knows and
 // let the operator complete the rest in the form.
-const draftAgentToolInputSchema = createAgentInputSchema.partial();
+const draftAgentToolInputSchema = createAgentToolInputSchema.partial();
 
 const draftAgentUpdateToolInputSchema = z.object({
   id: z.string().trim().min(1),
-  input: updateAgentInputSchema.optional(),
+  input: updateAgentToolInputSchema.shape.input.optional(),
 });
 
 const removeAgentInputSchema = z.object({
@@ -70,6 +79,13 @@ const reviewDecisionSchema = z.object({
 export const listAgentsToolMetadata = {
   name: "list_agents",
   description: "List CommandsCenter agents available in this workspace.",
+  context: "both",
+} as const;
+
+export const listModelsToolMetadata = {
+  name: "list_models",
+  description:
+    "List the model IDs available from connected providers. Use one of these IDs as defaultModel when creating or updating an agent.",
   context: "both",
 } as const;
 
@@ -133,9 +149,32 @@ export function createListAgentsToolDefinition(options: { agentService: AgentSer
   };
 }
 
+export function createListModelsToolDefinition(options: { agentService: AgentService }) {
+  return {
+    name: listModelsToolMetadata.name,
+    description: listModelsToolMetadata.description,
+    context: listModelsToolMetadata.context,
+    inputSchema: listModelsInputSchema,
+    outputSchema: listModelsOutputSchema,
+    execute: async () =>
+      executeTool(async () => {
+        const catalog = await options.agentService.getCatalog();
+        const models = catalog.providerModels;
+        const header = `Found ${String(models.length)} model${models.length === 1 ? "" : "s"} from connected providers.`;
+        const lines = models.map((model) => `- ${model.id}`);
+        const text = lines.length > 0 ? `${header}\n${lines.join("\n")}` : header;
+
+        return success(text, {
+          models: listModelsOutputSchema.shape.models.parse(models),
+        });
+      }, "Failed to list models."),
+  };
+}
+
 export function createAgentManagementToolDefinitions(options: AgentManagementToolOptions) {
   return [
     createListAgentsToolDefinition({ agentService: options.agentService }),
+    createListModelsToolDefinition({ agentService: options.agentService }),
     {
       name: createAgentToolMetadata.name,
       description: createAgentToolMetadata.description,
@@ -145,7 +184,7 @@ export function createAgentManagementToolDefinitions(options: AgentManagementToo
       execute: async (args: unknown) =>
         executeTool(async () => {
           const input = createAgentToolInputSchema.parse(args);
-          const agent = await options.agentService.create(input);
+          const agent = await options.agentService.create({ ...input, capabilities: {} });
 
           return success("Agent created.", agentSchema.parse(agent));
         }, "Failed to create agent."),
@@ -195,12 +234,6 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
               textareaField("instructions", "Instructions", draft.instructions, true),
               textField("defaultModel", "Default model", draft.defaultModel, true),
               textField("iconPath", "Icon path", draft.iconPath),
-              textareaField(
-                "capabilitiesJson",
-                "Capabilities JSON",
-                stringifyJson(draft.capabilities),
-                true,
-              ),
             ],
             metadata: { agentName: draft.name, operation: "create_agent" },
           });
@@ -212,7 +245,7 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
               instructions: reviewed["instructions"],
               defaultModel: reviewed["defaultModel"],
               iconPath: emptyToUndefined(reviewed["iconPath"]),
-              capabilities: parseObjectJson(requireReviewedValue(reviewed, "capabilitiesJson")),
+              capabilities: {},
             }),
           );
 
@@ -274,16 +307,6 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
               textField("iconPath", "Icon path", suggested?.iconPath ?? current.iconPath),
             );
           }
-          if (includes("capabilities")) {
-            fields.push(
-              textareaField(
-                "capabilitiesJson",
-                "Capabilities JSON",
-                stringifyJson(suggested?.capabilities ?? current.capabilities),
-                true,
-              ),
-            );
-          }
 
           const reviewed = await reviewAgentMutation(options, {
             callingAgentSlug: context.agentSlug,
@@ -305,11 +328,6 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
           if ("instructions" in reviewed) update["instructions"] = reviewed["instructions"];
           if ("defaultModel" in reviewed) update["defaultModel"] = reviewed["defaultModel"];
           if ("iconPath" in reviewed) update["iconPath"] = emptyToUndefined(reviewed["iconPath"]);
-          if ("capabilitiesJson" in reviewed) {
-            update["capabilities"] = parseObjectJson(
-              requireReviewedValue(reviewed, "capabilitiesJson"),
-            );
-          }
 
           const agent = await options.agentService.update(
             parsed.id,
@@ -539,28 +557,4 @@ function textareaField(
 
 function emptyToUndefined(value: string | undefined): string | undefined {
   return value && value.trim().length > 0 ? value : undefined;
-}
-
-function stringifyJson(value: unknown): string | undefined {
-  return value === undefined ? undefined : JSON.stringify(value, null, 2);
-}
-
-function parseObjectJson(value: string): Record<string, unknown> {
-  const parsed = JSON.parse(value) as unknown;
-
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Expected JSON object.");
-  }
-
-  return parsed as Record<string, unknown>;
-}
-
-function requireReviewedValue(values: Record<string, string>, key: string): string {
-  const value = values[key];
-
-  if (value === undefined) {
-    throw new Error(`Missing reviewed value '${key}'.`);
-  }
-
-  return value;
 }

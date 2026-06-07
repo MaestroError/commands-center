@@ -310,6 +310,12 @@ describe("createAgentService", () => {
               context: "both",
             },
             {
+              name: "list_models",
+              description:
+                "List the model IDs available from connected providers. Use one of these IDs as defaultModel when creating or updating an agent.",
+              context: "both",
+            },
+            {
               name: "create_agent",
               description:
                 "Create a CommandsCenter agent directly, without an operator review form. In chat, prefer draft_agent so the operator can review and edit first.",

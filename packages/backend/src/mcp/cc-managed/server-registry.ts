@@ -59,6 +59,7 @@ import {
   draftAgentToolMetadata,
   draftAgentUpdateToolMetadata,
   listAgentsToolMetadata,
+  listModelsToolMetadata,
   removeAgentToolMetadata,
   updateAgentToolMetadata,
 } from "./groups/cc-agent-management/tools/agent-management-tools.js";
@@ -269,7 +270,12 @@ export function createCcManagedMcpServerRegistry(options: {
       routeSegment: "cc-agent-management",
       description: "CommandsCenter agent listing, creation, and update.",
       enabledByDefault: false,
-      catalogTools: [listAgentsToolMetadata, createAgentToolMetadata, updateAgentToolMetadata],
+      catalogTools: [
+        listAgentsToolMetadata,
+        listModelsToolMetadata,
+        createAgentToolMetadata,
+        updateAgentToolMetadata,
+      ],
       tools: agentManagementTools,
     },
     {
