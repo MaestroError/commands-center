@@ -1,9 +1,10 @@
 import type { LiveRequest, LiveRequestAction } from "@cc/shared/schemas";
 
 /**
- * Review live requests (agent/task create & update) render a richer form that reuses
- * the same inputs as the agent editor. Everything else (confirmations, add_secret,
- * custom-tool prompts) keeps the generic LiveRequestPane.
+ * True for any agent/task draft review live request — any kind ending in `_review` that
+ * starts with `agent_` or `task_` (create, update, queue, schedule, template, ...). These
+ * render the compact `LiveRequestReviewForm`; everything else (confirmations, add_secret,
+ * custom-tool prompts) keeps the generic `LiveRequestPane`.
  */
 export function isLiveRequestReviewKind(kind: string): boolean {
   return kind.endsWith("_review") && (kind.startsWith("agent_") || kind.startsWith("task_"));
