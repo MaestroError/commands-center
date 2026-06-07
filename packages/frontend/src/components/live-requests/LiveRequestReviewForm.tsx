@@ -264,6 +264,7 @@ function renderField(args: {
   if (DATETIME_FIELD_NAMES.has(field.name)) {
     return (
       <input
+        aria-label={field.label}
         className={inputClass}
         disabled={busy}
         type="datetime-local"
