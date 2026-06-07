@@ -242,6 +242,7 @@ function renderField(args: {
   if (AGENT_FIELD_NAMES.has(field.name)) {
     return (
       <select
+        aria-label={field.label}
         className={inputClass}
         disabled={busy}
         value={value}
