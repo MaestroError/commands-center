@@ -1,19 +1,19 @@
 import { z } from "zod";
 
 import {
-  createTaskTemplateInputSchema,
+  appendTaskContextInputSchema,
   createTaskInputSchema,
+  createTaskTemplateInputSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
-  appendTaskContextInputSchema,
   taskContextSchema,
   taskListSchema,
   taskRunListSchema,
   taskRunSchema,
   taskSchema,
-  taskTemplateSchema,
   taskTemplateRunNowInputSchema,
-  updateTaskContextInputSchema,
+  taskTemplateSchema,
+  updateTaskInputSchema,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../../../../../db/client.js";
@@ -36,6 +36,14 @@ type ToolResult = {
   isError?: boolean;
 };
 
+type ReviewField = {
+  type: "text" | "textarea";
+  name: string;
+  label: string;
+  required: boolean;
+  defaultValue?: string;
+};
+
 const taskIdInputSchema = z.object({
   taskId: z.string().trim().min(1),
 });
@@ -45,10 +53,6 @@ const queueTaskToolInputSchema = taskIdInputSchema.extend({
 });
 
 const runTaskTemplateNowToolInputSchema = taskIdInputSchema.merge(taskTemplateRunNowInputSchema);
-
-const updateTaskContextToolInputSchema = taskIdInputSchema.extend({
-  context: updateTaskContextInputSchema,
-});
 
 const appendTaskContextToolInputSchema = taskIdInputSchema.merge(appendTaskContextInputSchema);
 
@@ -65,8 +69,20 @@ const createManagedTaskInputSchema = createTaskInputSchema.omit({ agentId: true 
   agentId: z.string().trim().min(1).optional(),
 });
 
+const updateTaskToolInputSchema = taskIdInputSchema.extend({
+  input: updateTaskInputSchema,
+});
+
 const createManagedTaskTemplateInputSchema = createTaskTemplateInputSchema.extend({
   defaultAgentId: z.string().trim().min(1).optional(),
+});
+
+// Draft tools accept partial input so the agent can pre-fill what it knows and let
+// the operator complete the rest in the form.
+const draftTaskInputSchema = createManagedTaskInputSchema.partial();
+
+const draftTaskUpdateInputSchema = taskIdInputSchema.extend({
+  input: updateTaskInputSchema.optional(),
 });
 
 const listTasksOutputSchema = z.object({
@@ -77,69 +93,85 @@ const listTaskRunsOutputSchema = z.object({
   runs: taskRunListSchema,
 });
 
-const confirmationDecisionSchema = z.object({
-  action: z.literal("confirm"),
-  values: z.record(z.string(), z.unknown()).optional(),
+const reviewDecisionSchema = z.object({
+  action: z.literal("submit"),
+  values: z.record(z.string(), z.string()),
 });
 
 export const createTaskToolMetadata = {
   name: "create_task",
-  description: "Create a CommandsCenter task for the calling agent after operator confirmation.",
-  context: "chat",
+  description:
+    "Create a CommandsCenter task directly, without an operator review form. In chat, prefer draft_task so the operator can review and edit first.",
+  context: "both",
+} as const;
+
+export const updateTaskToolMetadata = {
+  name: "update_task",
+  description:
+    "Update an existing CommandsCenter task by id directly, without an operator review form. In chat, prefer draft_task_update.",
+  context: "both",
 } as const;
 
 export const listTasksToolMetadata = {
   name: "list_tasks",
   description: "List CommandsCenter tasks visible in this workspace.",
-  context: "chat",
+  context: "both",
 } as const;
 
 export const getTaskToolMetadata = {
   name: "get_task",
   description: "Read a CommandsCenter task by id.",
-  context: "chat",
+  context: "both",
 } as const;
 
 export const queueTaskToolMetadata = {
   name: "queue_task",
-  description: "Queue an existing CommandsCenter task after operator confirmation.",
-  context: "chat",
+  description: "Queue an existing CommandsCenter task.",
+  context: "both",
 } as const;
 
 export const scheduleTaskToolMetadata = {
   name: "schedule_task",
   description: "Schedule an existing CommandsCenter task for later execution.",
-  context: "chat",
+  context: "both",
 } as const;
 
 export const listTaskRunsToolMetadata = {
   name: "list_task_runs",
   description: "List recent runs for a CommandsCenter task.",
-  context: "chat",
+  context: "both",
 } as const;
 
 export const getTaskRunToolMetadata = {
   name: "get_task_run",
   description: "Read a CommandsCenter task run by task id and run id.",
-  context: "chat",
+  context: "both",
 } as const;
 
 export const createTaskTemplateToolMetadata = {
   name: "create_task_template",
-  description: "Create a recurring CommandsCenter task template after operator confirmation.",
-  context: "chat",
+  description: "Create a recurring CommandsCenter task template.",
+  context: "both",
 } as const;
 
 export const runTaskTemplateNowToolMetadata = {
   name: "run_task_template_now",
   description: "Generate and queue a run from a recurring CommandsCenter task template.",
+  context: "both",
+} as const;
+
+export const draftTaskToolMetadata = {
+  name: "draft_task",
+  description:
+    "Open a prefilled task form in chat for the operator to review, edit, and confirm before the task is created. Pass whatever details you know (all optional) to pre-fill the form. Chat only.",
   context: "chat",
 } as const;
 
-export const updateTaskContextToolMetadata = {
-  name: "update_task_context",
-  description: "Update persistent context for the current CommandsCenter task.",
-  context: "task_run",
+export const draftTaskUpdateToolMetadata = {
+  name: "draft_task_update",
+  description:
+    "Open a prefilled form in chat with an existing task's current details for the operator to review, edit, and confirm before the update is saved. Provide the task id and optionally any suggested changes to pre-fill. Chat only.",
+  context: "chat",
 } as const;
 
 export const readTaskContextToolMetadata = {
@@ -167,18 +199,30 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
           const parsed = createManagedTaskInputSchema.parse(args);
           const agentId =
             parsed.agentId ?? (await requireCallingAgentId(options.db, context.agentSlug));
-          const input = createTaskInputSchema.parse({ ...parsed, agentId });
+          const task = await options.taskService.create(
+            createTaskInputSchema.parse({ ...parsed, agentId }),
+          );
 
-          await confirmMutation(options, {
-            agentId,
-            title: "Create task",
-            description: `Create task '${input.title}' for this workspace.`,
-            metadata: { taskTitle: input.title },
-          });
-
-          const task = await options.taskService.create(input);
           return success("Task created.", taskSchema.parse(task));
         }, "Failed to create task."),
+    },
+    {
+      name: updateTaskToolMetadata.name,
+      description: updateTaskToolMetadata.description,
+      context: updateTaskToolMetadata.context,
+      inputSchema: updateTaskToolInputSchema,
+      outputSchema: taskSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const parsed = updateTaskToolInputSchema.parse(args);
+          const task = await options.taskService.update(parsed.taskId, parsed.input);
+
+          if (!task) {
+            throw new Error("Task not found.");
+          }
+
+          return success("Task updated.", taskSchema.parse(task));
+        }, "Failed to update task."),
     },
     {
       name: listTasksToolMetadata.name,
@@ -218,26 +262,14 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       context: queueTaskToolMetadata.context,
       inputSchema: queueTaskToolInputSchema,
       outputSchema: taskRunSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown) =>
         executeTool(async () => {
           const parsed = queueTaskToolInputSchema.parse(args);
-          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
-
-          await confirmMutation(options, {
-            agentId,
-            title: "Queue task",
-            description: `Queue task '${parsed.taskId}'.`,
-            metadata: {
-              taskId: parsed.taskId,
-              triggerSource: "manual",
-              runMetadata: parsed.metadata,
-            },
-          });
-
           const run = await options.taskExecutionService.queue(parsed.taskId, {
             triggerSource: "manual",
             metadata: parsed.metadata,
           });
+
           return success("Task queued.", taskRunSchema.parse(run));
         }, "Failed to queue task."),
     },
@@ -247,22 +279,9 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       context: scheduleTaskToolMetadata.context,
       inputSchema: scheduleTaskToolInputSchema,
       outputSchema: taskSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown) =>
         executeTool(async () => {
           const parsed = scheduleTaskToolInputSchema.parse(args);
-          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
-
-          await confirmMutation(options, {
-            agentId,
-            title: "Schedule task",
-            description: `Schedule task '${parsed.taskId}' for ${parsed.scheduledAt}.`,
-            metadata: {
-              taskId: parsed.taskId,
-              scheduledAt: parsed.scheduledAt,
-              dueAt: parsed.dueAt,
-            },
-          });
-
           const task = await options.taskService.update(parsed.taskId, {
             status: "scheduled",
             scheduledAt: parsed.scheduledAt,
@@ -324,15 +343,11 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
           const parsed = createManagedTaskTemplateInputSchema.parse(args);
           const defaultAgentId =
             parsed.defaultAgentId ?? (await requireCallingAgentId(options.db, context.agentSlug));
-
-          await confirmMutation(options, {
-            agentId: defaultAgentId,
-            title: "Create task template",
-            description: `Create recurring task template '${parsed.title}'.`,
-            metadata: { taskTitle: parsed.title, recurrence: parsed.recurrence },
+          const template = await options.taskService.createTemplate({
+            ...parsed,
+            defaultAgentId,
           });
 
-          const template = await options.taskService.createTemplate({ ...parsed, defaultAgentId });
           return success("Task template created.", taskTemplateSchema.parse(template));
         }, "Failed to create task template."),
     },
@@ -342,22 +357,9 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       context: runTaskTemplateNowToolMetadata.context,
       inputSchema: runTaskTemplateNowToolInputSchema,
       outputSchema: taskRunSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
+      execute: async (args: unknown) =>
         executeTool(async () => {
           const parsed = runTaskTemplateNowToolInputSchema.parse(args);
-          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
-
-          await confirmMutation(options, {
-            agentId,
-            title: "Run task template now",
-            description: `Run template '${parsed.taskId}' now.`,
-            metadata: {
-              taskId: parsed.taskId,
-              context: parsed.context,
-              runMetadata: parsed.metadata,
-            },
-          });
-
           const task = await options.taskService.createTaskFromTemplate(parsed.taskId, {
             triggerSource: "template",
             context: parsed.context,
@@ -372,9 +374,17 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             context: parsed.context,
             metadata: parsed.metadata,
           });
+
           return success("Task template queued.", taskRunSchema.parse(run));
         }, "Failed to run task template."),
     },
+  ] as const;
+}
+
+// Persistent task-context tools for the current task run. These live in the cc_default
+// group so every task-run agent gets them by default.
+export function createTaskContextToolDefinitions(options: { taskService: TaskService }) {
+  return [
     {
       name: readTaskContextToolMetadata.name,
       description: readTaskContextToolMetadata.description,
@@ -413,23 +423,155 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
           return success("Task context appended.", taskContextSchema.parse(task.context));
         }, "Failed to append task context."),
     },
+  ] as const;
+}
+
+// Operator-blocking tools (open a live request and wait). These live in the cc_app
+// group so only that MCP server needs the long client timeout.
+export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions) {
+  return [
     {
-      name: updateTaskContextToolMetadata.name,
-      description: updateTaskContextToolMetadata.description,
-      context: updateTaskContextToolMetadata.context,
-      inputSchema: updateTaskContextToolInputSchema,
+      name: draftTaskToolMetadata.name,
+      description: draftTaskToolMetadata.description,
+      context: draftTaskToolMetadata.context,
+      inputSchema: draftTaskInputSchema,
       outputSchema: taskSchema,
-      execute: async (args: unknown) =>
+      execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
-          const parsed = updateTaskContextToolInputSchema.parse(args);
-          const task = await options.taskService.updateContext(parsed.taskId, parsed.context);
+          const draft = draftTaskInputSchema.parse(args);
+          const callingAgentId = await requireCallingAgentId(options.db, context.agentSlug);
+          const reviewed = await reviewTaskMutation(options, {
+            agentId: callingAgentId,
+            kind: "task_create_review",
+            title: "Review task",
+            description: "Review and edit the task before CommandsCenter creates it.",
+            fields: [
+              textField("title", "Title", draft.title, true),
+              textareaField("description", "Description", draft.description),
+              textField("agentId", "Agent ID", draft.agentId ?? callingAgentId, true),
+              textField("defaultAgentId", "Default agent ID", draft.defaultAgentId),
+              textField("scheduledAt", "Scheduled at", draft.scheduledAt ?? undefined),
+              textField("dueAt", "Due at", draft.dueAt ?? undefined),
+              textareaField("contextText", "Context", draft.context?.text),
+            ],
+            metadata: { taskTitle: draft.title, operation: "create_task" },
+          });
+
+          const task = await options.taskService.create(
+            createTaskInputSchema.parse({
+              title: reviewed["title"],
+              description: emptyToUndefined(reviewed["description"]),
+              agentId: reviewed["agentId"],
+              defaultAgentId: emptyToUndefined(reviewed["defaultAgentId"]),
+              scheduledAt: emptyToUndefined(reviewed["scheduledAt"]),
+              dueAt: emptyToUndefined(reviewed["dueAt"]),
+              context:
+                reviewed["contextText"] === undefined
+                  ? undefined
+                  : applyContextText(undefined, reviewed["contextText"]),
+            }),
+          );
+
+          return success("Task created.", taskSchema.parse(task));
+        }, "Failed to draft task."),
+    },
+    {
+      name: draftTaskUpdateToolMetadata.name,
+      description: draftTaskUpdateToolMetadata.description,
+      context: draftTaskUpdateToolMetadata.context,
+      inputSchema: draftTaskUpdateInputSchema,
+      outputSchema: taskSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const parsed = draftTaskUpdateInputSchema.parse(args);
+          const current = await options.taskService.get(parsed.taskId);
+
+          if (!current) {
+            throw new Error("Task not found.");
+          }
+
+          const callingAgentId = await requireCallingAgentId(options.db, context.agentSlug);
+          // Only surface the fields the agent proposed to change; fall back to the
+          // full editable set when none were proposed.
+          const suggested = parsed.input;
+          const changed = suggested ? Object.keys(suggested) : [];
+          const showAll = changed.length === 0;
+          const includes = (key: string) => showAll || changed.includes(key);
+
+          const fields: ReviewField[] = [];
+          if (includes("title")) {
+            fields.push(textField("title", "Title", suggested?.title ?? current.title, true));
+          }
+          if (includes("description")) {
+            fields.push(
+              textareaField(
+                "description",
+                "Description",
+                suggested?.description ?? current.description,
+              ),
+            );
+          }
+          if (includes("agentId")) {
+            fields.push(
+              textField("agentId", "Agent ID", suggested?.agentId ?? current.agentId, true),
+            );
+          }
+          if (includes("scheduledAt")) {
+            fields.push(
+              textField(
+                "scheduledAt",
+                "Scheduled at",
+                suggested?.scheduledAt ?? current.scheduledAt ?? undefined,
+              ),
+            );
+          }
+          if (includes("dueAt")) {
+            fields.push(
+              textField("dueAt", "Due at", suggested?.dueAt ?? current.dueAt ?? undefined),
+            );
+          }
+          if (includes("context")) {
+            fields.push(
+              textareaField(
+                "contextText",
+                "Context",
+                suggested?.context?.text ?? current.context?.text,
+              ),
+            );
+          }
+
+          const reviewed = await reviewTaskMutation(options, {
+            agentId: callingAgentId,
+            kind: "task_update_review",
+            title: "Review task update",
+            description: "Review and edit the task update before CommandsCenter saves it.",
+            fields,
+            metadata: { taskId: parsed.taskId, taskTitle: current.title, operation: "update_task" },
+          });
+
+          const update: Record<string, unknown> = {};
+          if ("title" in reviewed) update["title"] = reviewed["title"];
+          if ("description" in reviewed)
+            update["description"] = emptyToUndefined(reviewed["description"]);
+          if ("agentId" in reviewed) update["agentId"] = reviewed["agentId"];
+          if ("scheduledAt" in reviewed)
+            update["scheduledAt"] = emptyToUndefined(reviewed["scheduledAt"]);
+          if ("dueAt" in reviewed) update["dueAt"] = emptyToUndefined(reviewed["dueAt"]);
+          if ("contextText" in reviewed) {
+            update["context"] = applyContextText(current.context, reviewed["contextText"]);
+          }
+
+          const task = await options.taskService.update(
+            parsed.taskId,
+            updateTaskInputSchema.parse(update),
+          );
 
           if (!task) {
             throw new Error("Task not found.");
           }
 
-          return success("Task context updated.", taskSchema.parse(task));
-        }, "Failed to update task context."),
+          return success("Task updated.", taskSchema.parse(task));
+        }, "Failed to draft task update."),
     },
   ] as const;
 }
@@ -471,26 +613,39 @@ async function requireCallingAgentId(db: AppDb, agentSlug: string): Promise<stri
   return row.id;
 }
 
-async function confirmMutation(
+async function reviewTaskMutation(
   options: Pick<TaskManagementToolOptions, "conversationService" | "liveRequestService">,
-  input: { agentId: string; title: string; description: string; metadata: Record<string, unknown> },
-): Promise<void> {
+  input: {
+    agentId: string;
+    kind: string;
+    title: string;
+    description: string;
+    fields: Array<{
+      type: "text" | "textarea";
+      name: string;
+      label: string;
+      required: boolean;
+      defaultValue?: string;
+    }>;
+    metadata: Record<string, unknown>;
+  },
+): Promise<Record<string, string>> {
   if (!options.conversationService || !options.liveRequestService) {
-    return;
+    throw new Error("Drafting a task requires chat live requests.");
   }
 
   const snapshot = await options.conversationService.resolveCurrent(input.agentId);
   const decision = await options.liveRequestService.create({
     conversationId: snapshot.current.id,
-    kind: "task_management_confirmation",
+    kind: input.kind,
     closable: false,
     presentation: {
       title: input.title,
       description: input.description,
-      submitLabel: "Confirm",
+      submitLabel: "Apply",
       cancelLabel: "Cancel",
     },
-    fields: [],
+    fields: input.fields,
     metadata: input.metadata,
     actions: [
       {
@@ -501,14 +656,57 @@ async function confirmMutation(
         disabledWhen: [],
       },
       {
-        id: "confirm",
-        label: "Confirm",
+        id: "submit",
+        label: "Apply",
         variant: "primary" as const,
         kind: "submit" as const,
-        disabledWhen: [],
+        disabledWhen: input.fields
+          .filter((field) => field.required)
+          .map((field) => ({ rule: "field_empty" as const, field: field.name })),
       },
     ],
   });
 
-  confirmationDecisionSchema.parse(decision);
+  return reviewDecisionSchema.parse(decision).values;
+}
+
+function textField(
+  name: string,
+  label: string,
+  defaultValue: string | undefined,
+  required = false,
+): {
+  type: "text";
+  name: string;
+  label: string;
+  required: boolean;
+  defaultValue?: string;
+} {
+  return { type: "text", name, label, required, defaultValue };
+}
+
+function textareaField(
+  name: string,
+  label: string,
+  defaultValue: string | undefined,
+  required = false,
+): {
+  type: "textarea";
+  name: string;
+  label: string;
+  required: boolean;
+  defaultValue?: string;
+} {
+  return { type: "textarea", name, label, required, defaultValue };
+}
+
+function emptyToUndefined(value: string | undefined): string | undefined {
+  return value && value.trim().length > 0 ? value : undefined;
+}
+
+function applyContextText(
+  context: { text?: string; attachments?: unknown[] } | undefined,
+  text: string,
+): z.infer<typeof taskContextSchema> {
+  return taskContextSchema.parse({ ...context, text: emptyToUndefined(text) });
 }

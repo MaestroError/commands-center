@@ -5,6 +5,7 @@ import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { ConversationService } from "../../services/conversation-service.js";
 import type { CustomToolActionService } from "../../services/custom-tool-action-service.js";
 import type { CustomToolService } from "../../services/custom-tool-service.js";
+import type { AgentService } from "../../services/agent-service.js";
 import type { LiveRequestService } from "../../services/live-request-service.js";
 import type { OpenCodeService } from "../../services/opencode-service.js";
 import type { SecretService } from "../../services/secret-service.js";
@@ -32,9 +33,13 @@ import {
   createCreateCustomToolDefinition,
 } from "./groups/cc-tool-management/tools/create-custom-tool.js";
 import {
+  createTaskContextToolDefinitions,
+  createTaskLiveToolDefinitions,
   createTaskToolMetadata,
   createTaskTemplateToolMetadata,
   createTasksManagementToolDefinitions,
+  draftTaskToolMetadata,
+  draftTaskUpdateToolMetadata,
   getTaskRunToolMetadata,
   getTaskToolMetadata,
   queueTaskToolMetadata,
@@ -42,10 +47,22 @@ import {
   readTaskContextToolMetadata,
   runTaskTemplateNowToolMetadata,
   scheduleTaskToolMetadata,
-  updateTaskContextToolMetadata,
+  updateTaskToolMetadata,
   listTaskRunsToolMetadata,
   listTasksToolMetadata,
 } from "./groups/cc-tasks-management/tools/task-management-tools.js";
+import {
+  createAgentLiveToolDefinitions,
+  createAgentManagementToolDefinitions,
+  createAgentToolMetadata,
+  createListAgentsToolDefinition,
+  draftAgentToolMetadata,
+  draftAgentUpdateToolMetadata,
+  listAgentsToolMetadata,
+  listModelsToolMetadata,
+  removeAgentToolMetadata,
+  updateAgentToolMetadata,
+} from "./groups/cc-agent-management/tools/agent-management-tools.js";
 
 export type CcManagedToolContext = {
   agentSlug: string;
@@ -87,6 +104,10 @@ export type CcManagedMcpServerDefinition = {
   description: string;
   enabledByDefault: boolean;
   systemManaged?: boolean;
+  // True when the group contains human-in-the-loop tools that block while waiting
+  // for the operator (secrets, file preview, draft reviews, confirmations). These
+  // need a much longer MCP client timeout than quick request/response tools.
+  interactive?: boolean;
   catalogTools: readonly CcManagedToolMetadata[];
   tools: readonly CcManagedToolDefinition[];
 };
@@ -95,6 +116,7 @@ export function createCcManagedMcpServerRegistry(options: {
   db?: AppDb;
   config?: RuntimeConfig;
   opencodeService?: OpenCodeService;
+  agentService?: AgentService;
   customToolService: CustomToolService;
   customToolActionService?: CustomToolActionService;
   conversationService?: ConversationService;
@@ -130,14 +152,42 @@ export function createCcManagedMcpServerRegistry(options: {
     }
   }
 
-  const toolManagementTools: CcManagedToolDefinition[] = [
+  // cc_app holds the operator-interactive tools (live requests) plus the custom-tool
+  // authoring helpers and a quick agent listing. Only cc_app needs the long timeout.
+  ccAppTools.push(
     createCreateCustomToolDefinition({ customToolService: options.customToolService }),
-  ];
+  );
+
+  if (options.agentService) {
+    ccAppTools.push(createListAgentsToolDefinition({ agentService: options.agentService }));
+  }
 
   if (options.customToolActionService) {
-    toolManagementTools.push(
+    ccAppTools.push(
       createCopyCustomToolToAgentDefinition({
         customToolActionService: options.customToolActionService,
+        conversationService: options.conversationService,
+        liveRequestService: options.liveRequestService,
+      }),
+    );
+  }
+
+  if (options.agentService) {
+    ccAppTools.push(
+      ...createAgentLiveToolDefinitions({
+        agentService: options.agentService,
+        conversationService: options.conversationService,
+        liveRequestService: options.liveRequestService,
+      }),
+    );
+  }
+
+  if (options.db && options.taskService && options.taskExecutionService) {
+    ccAppTools.push(
+      ...createTaskLiveToolDefinitions({
+        db: options.db,
+        taskService: options.taskService,
+        taskExecutionService: options.taskExecutionService,
         conversationService: options.conversationService,
         liveRequestService: options.liveRequestService,
       }),
@@ -154,8 +204,20 @@ export function createCcManagedMcpServerRegistry(options: {
             conversationService: options.conversationService,
             liveRequestService: options.liveRequestService,
           }),
+          ...(options.agentService
+            ? [createListAgentsToolDefinition({ agentService: options.agentService })]
+            : []),
         ]
       : [];
+  const agentManagementTools: CcManagedToolDefinition[] = options.agentService
+    ? [
+        ...createAgentManagementToolDefinitions({
+          agentService: options.agentService,
+          conversationService: options.conversationService,
+          liveRequestService: options.liveRequestService,
+        }),
+      ]
+    : [];
   const taskRunOutcomeTools: CcManagedToolDefinition[] =
     options.db && options.taskService
       ? [
@@ -163,6 +225,7 @@ export function createCcManagedMcpServerRegistry(options: {
             db: options.db,
             taskService: options.taskService,
           }),
+          ...createTaskContextToolDefinitions({ taskService: options.taskService }),
         ]
       : [];
 
@@ -177,24 +240,43 @@ export function createCcManagedMcpServerRegistry(options: {
         setTaskResultToolMetadata,
         addTaskArtifactToolMetadata,
         markNeedsHumanReviewToolMetadata,
+        readTaskContextToolMetadata,
+        appendTaskContextToolMetadata,
       ],
       tools: taskRunOutcomeTools,
     },
     {
       name: "cc_app",
       routeSegment: "cc-app",
-      description: "CommandsCenter app-managed capabilities for this agent.",
+      description: "CommandsCenter app-managed, operator-interactive capabilities for this agent.",
       enabledByDefault: false,
-      catalogTools: [addSecretToolMetadata, showFileToUserToolMetadata],
+      interactive: true,
+      catalogTools: [
+        addSecretToolMetadata,
+        showFileToUserToolMetadata,
+        createCustomToolMetadata,
+        listAgentsToolMetadata,
+        copyCustomToolToAgentMetadata,
+        draftAgentToolMetadata,
+        draftAgentUpdateToolMetadata,
+        removeAgentToolMetadata,
+        draftTaskToolMetadata,
+        draftTaskUpdateToolMetadata,
+      ],
       tools: ccAppTools,
     },
     {
-      name: "cc_tool_management",
-      routeSegment: "cc-tool-management",
-      description: "CommandsCenter-managed tool creation and library maintenance for this agent.",
+      name: "cc_agent_management",
+      routeSegment: "cc-agent-management",
+      description: "CommandsCenter agent listing, creation, and update.",
       enabledByDefault: false,
-      catalogTools: [createCustomToolMetadata, copyCustomToolToAgentMetadata],
-      tools: toolManagementTools,
+      catalogTools: [
+        listAgentsToolMetadata,
+        listModelsToolMetadata,
+        createAgentToolMetadata,
+        updateAgentToolMetadata,
+      ],
+      tools: agentManagementTools,
     },
     {
       name: "cc_tasks_management",
@@ -203,6 +285,7 @@ export function createCcManagedMcpServerRegistry(options: {
       enabledByDefault: false,
       catalogTools: [
         createTaskToolMetadata,
+        updateTaskToolMetadata,
         listTasksToolMetadata,
         getTaskToolMetadata,
         queueTaskToolMetadata,
@@ -211,9 +294,7 @@ export function createCcManagedMcpServerRegistry(options: {
         getTaskRunToolMetadata,
         createTaskTemplateToolMetadata,
         runTaskTemplateNowToolMetadata,
-        readTaskContextToolMetadata,
-        appendTaskContextToolMetadata,
-        updateTaskContextToolMetadata,
+        listAgentsToolMetadata,
       ],
       tools: taskManagementTools,
     },

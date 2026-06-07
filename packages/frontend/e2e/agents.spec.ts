@@ -42,7 +42,8 @@ test("creates and edits an agent", async ({ page }) => {
   await page.getByLabel(/^Name/).fill("Planner");
   await page.getByLabel(/^Role/).fill("plan work");
   await page.getByLabel(/^Instructions/).fill("Plan before editing.");
-  await page.getByLabel(/^Model/).selectOption("openai/gpt-4.1");
+  await page.getByLabel(/^Model/).click();
+  await page.getByRole("option", { name: "openai/gpt-4.1" }).click();
   await page.getByRole("button", { name: /^Emoji$/ }).click();
   await page.getByRole("textbox", { name: /^Emoji$/ }).fill("🤖");
   await page.getByLabel(/Search skills/i).fill("code");

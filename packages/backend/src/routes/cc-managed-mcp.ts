@@ -68,6 +68,7 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,
+    agentService,
     customToolService,
     customToolActionService,
     conversationService,

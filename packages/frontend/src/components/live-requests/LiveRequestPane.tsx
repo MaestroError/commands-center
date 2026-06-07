@@ -2,6 +2,13 @@ import { useEffect, useState } from "react";
 
 import type { LiveRequest, LiveRequestAction } from "@cc/shared/schemas";
 
+import {
+  getActionClassName,
+  getFallbackActions,
+  getInitialValues,
+  isActionDisabled,
+} from "./live-request-helpers";
+
 type Props = {
   request: LiveRequest;
   onResolve?: (requestId: string, action: string, values: Record<string, string>) => Promise<void>;
@@ -136,71 +143,4 @@ export function LiveRequestPane(props: Props) {
       </div>
     </div>
   );
-}
-
-function getInitialValues(request: LiveRequest): Record<string, string> {
-  return Object.fromEntries(
-    request.fields.map((field) => [
-      field.name,
-      "defaultValue" in field && typeof field.defaultValue === "string" ? field.defaultValue : "",
-    ]),
-  );
-}
-
-function getFallbackActions(request: LiveRequest): LiveRequestAction[] {
-  return [
-    {
-      id: "submit",
-      label: request.presentation.submitLabel ?? "Submit",
-      variant: "primary",
-      kind: "submit",
-      disabledWhen: [],
-    },
-    {
-      id: "cancel",
-      label: request.presentation.cancelLabel,
-      variant: "secondary",
-      kind: "cancel",
-      disabledWhen: [],
-    },
-  ];
-}
-
-function getActionClassName(action: LiveRequestAction): string {
-  if (action.variant === "primary") {
-    return "cc-button";
-  }
-
-  if (action.variant === "danger") {
-    return "cc-button border-destructive/40 text-destructive hover:bg-destructive/10";
-  }
-
-  return "cc-button cc-button-secondary";
-}
-
-function isActionDisabled(action: LiveRequestAction, values: Record<string, string>): boolean {
-  return action.disabledWhen.some((condition) => {
-    const value = values[condition.field] ?? "";
-
-    if (condition.rule === "field_empty") {
-      return value.trim().length === 0;
-    }
-
-    if (condition.rule === "field_slug_equals") {
-      return slugify(value) === slugify(condition.value);
-    }
-
-    return slugify(value) !== slugify(condition.value);
-  });
-}
-
-function slugify(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-
-  return slug || "tool";
 }

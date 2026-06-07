@@ -78,6 +78,52 @@ describe("QuestionDock", () => {
     expect(onReply).toHaveBeenCalledWith("question-1", [["Option B"], ["Alpha", "Beta"]]);
   });
 
+  it("renders a free-text input for a question without options", () => {
+    const onReply = vi.fn();
+    const question = {
+      id: "question-2",
+      sessionID: "session-1",
+      questions: [{ question: "Please provide more details:", options: [] }],
+    };
+    render(<QuestionDock question={question} onReply={onReply} onReject={vi.fn()} />);
+
+    const input = screen.getByPlaceholderText("Type your answer");
+    fireEvent.change(input, { target: { value: "here are the details" } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(onReply).toHaveBeenCalledWith("question-2", [["here are the details"]]);
+  });
+
+  it("appends a custom answer to selected options in multi-select mode", () => {
+    const onReply = vi.fn();
+    render(<QuestionDock question={makeQuestion()} onReply={onReply} onReject={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Option A" }));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+
+    const inputs = screen.getAllByPlaceholderText("Type your own answer (optional)");
+    fireEvent.change(inputs[1]!, { target: { value: "Gamma" } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(onReply).toHaveBeenCalledWith("question-1", [["Option A"], ["Alpha", "Gamma"]]);
+  });
+
+  it("custom answer replaces a single-select option", () => {
+    const onReply = vi.fn();
+    render(<QuestionDock question={makeQuestion()} onReply={onReply} onReject={vi.fn()} />);
+
+    const optionA = screen.getByRole("button", { name: "Option A" });
+    fireEvent.click(optionA);
+
+    const inputs = screen.getAllByPlaceholderText("Type your own answer (optional)");
+    fireEvent.change(inputs[0]!, { target: { value: "Something else" } });
+
+    expect(optionA.className).not.toContain("cc-tab-active");
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(onReply).toHaveBeenCalledWith("question-1", [["Something else"], []]);
+  });
+
   it("calls onReject with the request id on dismiss", () => {
     const onReject = vi.fn();
     render(<QuestionDock question={makeQuestion()} onReply={vi.fn()} onReject={onReject} />);

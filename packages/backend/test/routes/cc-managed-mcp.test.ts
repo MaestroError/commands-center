@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createLogger } from "../../src/lib/logger";
 import { agents } from "../../src/db/schema/index";
@@ -16,13 +16,14 @@ import { createTaskExecutionService } from "../../src/services/task-execution-se
 import { createTaskService } from "../../src/services/task-service";
 import { createCcManagedMcpAuthStateStore } from "../../src/mcp/cc-managed/auth-state-store";
 import { createCcManagedMcpAuthTokenService } from "../../src/mcp/cc-managed/auth-token-service";
+import type { CcManagedMcpTokenContextMode } from "../../src/mcp/cc-managed/auth-token-service";
 import { createTestDatabase } from "../helpers/db";
 
 type InjectServer = Awaited<ReturnType<typeof createServer>>;
 type TestConfig = Awaited<ReturnType<typeof createTestDatabase>>["config"];
 
 describe("cc-managed MCP routes", () => {
-  it("serves the cc_tool_management MCP endpoint with agent-scoped auth", async () => {
+  it("serves the cc_app MCP endpoint with agent-scoped auth", async () => {
     const testDb = await createTestDatabase();
     testDb.config.server.port = 43123;
     const server = await createServer({
@@ -52,7 +53,7 @@ describe("cc-managed MCP routes", () => {
             customTools: [],
             mcpServers: [],
             toolPermissions: [],
-            appMcpServers: [{ name: "cc_tool_management", enabled: true, action: "allow" }],
+            appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
             appToolPermissions: [],
           },
         },
@@ -65,25 +66,25 @@ describe("cc-managed MCP routes", () => {
       ) as {
         mcp: Record<string, { url: string; headers: Record<string, string> }>;
       };
-      const ccToolManagement = config.mcp["cc_tool_management"];
+      const ccToolManagement = config.mcp["cc_app"];
 
       expect(ccToolManagement).toBeDefined();
-      expect(ccToolManagement?.url).toContain("/api/mcp/cc/cc-tool-management/agents/writer");
+      expect(ccToolManagement?.url).toContain("/api/mcp/cc/cc-app/agents/writer");
       expect(ccToolManagement?.headers["Authorization"]).toContain("Bearer ");
 
       if (!ccToolManagement) {
-        throw new Error("Expected cc_tool_management config entry.");
+        throw new Error("Expected cc_app config entry.");
       }
 
       const authHeader = ccToolManagement.headers["Authorization"];
 
       if (!authHeader) {
-        throw new Error("Expected cc_tool_management authorization header.");
+        throw new Error("Expected cc_app authorization header.");
       }
 
       const initializeResponse = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-tool-management/agents/writer",
+        url: "/api/mcp/cc/cc-app/agents/writer",
         headers: {
           Authorization: authHeader,
           Accept: "application/json, text/event-stream",
@@ -106,12 +107,12 @@ describe("cc-managed MCP routes", () => {
       const initializeBody = initializeResponse.body;
 
       expect(initializeResponse.headers["mcp-session-id"]).toBeUndefined();
-      expect(initializeBody).toContain('"name":"cc_tool_management"');
+      expect(initializeBody).toContain('"name":"cc_app"');
       expect(initializeBody).toContain('"listChanged":true');
 
       const listToolsResponse = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-tool-management/agents/writer",
+        url: "/api/mcp/cc/cc-app/agents/writer",
         headers: {
           Authorization: authHeader,
           Accept: "application/json, text/event-stream",
@@ -132,7 +133,7 @@ describe("cc-managed MCP routes", () => {
 
       const callToolResponse = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-tool-management/agents/writer",
+        url: "/api/mcp/cc/cc-app/agents/writer",
         headers: {
           Authorization: authHeader,
           Accept: "application/json, text/event-stream",
@@ -176,7 +177,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("rejects missing bearer auth for cc_tool_management", async () => {
+  it("rejects missing bearer auth for cc_app", async () => {
     const testDb = await createTestDatabase();
     const server = await createServer({
       config: testDb.config,
@@ -193,7 +194,7 @@ describe("cc-managed MCP routes", () => {
     try {
       const response = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-tool-management/agents/writer",
+        url: "/api/mcp/cc/cc-app/agents/writer",
         payload: {
           jsonrpc: "2.0",
           id: 1,
@@ -243,7 +244,7 @@ describe("cc-managed MCP routes", () => {
             customTools: [],
             mcpServers: [],
             toolPermissions: [],
-            appMcpServers: [{ name: "cc_tool_management", enabled: true, action: "allow" }],
+            appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
             appToolPermissions: [],
           },
         },
@@ -253,11 +254,11 @@ describe("cc-managed MCP routes", () => {
       const tokenService = createCcManagedMcpAuthTokenService({
         authStateStore: createCcManagedMcpAuthStateStore(testDb.config),
       });
-      const authHeader = `Bearer ${await tokenService.issueToken("writer", "cc_tool_management")}`;
+      const authHeader = `Bearer ${await tokenService.issueToken("writer", "cc_app")}`;
 
       const response = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-tool-management/agents/writer",
+        url: "/api/mcp/cc/cc-app/agents/writer",
         headers: {
           Authorization: authHeader,
           Accept: "application/json, text/event-stream",
@@ -301,11 +302,17 @@ describe("cc-managed MCP routes", () => {
 
     try {
       const agent = await insertAgentWithTasksManagement(testDb.client.db);
-      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_tasks_management");
+      const authHeader = await issueAuthHeader(
+        testDb.config,
+        agent.slug,
+        "cc_tasks_management",
+        "task_run",
+      );
       const listToolsResponse = await callMcpToolRoute(server, authHeader, "tools/list", {}, 1);
 
       expect(listToolsResponse.statusCode).toBe(200);
       expect(listToolsResponse.body).toContain('"name":"create_task"');
+      expect(listToolsResponse.body).toContain('"name":"list_agents"');
       expect(listToolsResponse.body).toContain('"name":"queue_task"');
 
       const createTaskResponse = await callMcpToolRoute(
@@ -336,6 +343,87 @@ describe("cc-managed MCP routes", () => {
 
       expect(listed).toHaveLength(1);
       expect(listed[0]?.title).toBe("Draft weekly report");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("drafts task creation through draft_task", async () => {
+    const testDb = await createTestDatabase();
+    let reviewedTaskAgentId = "";
+    const liveRequestService = {
+      create: vi.fn(() =>
+        Promise.resolve({
+          action: "submit" as const,
+          values: {
+            title: "Reviewed weekly report",
+            description: "Reviewed task description.",
+            agentId: reviewedTaskAgentId,
+            defaultAgentId: "",
+            scheduledAt: "",
+            dueAt: "",
+            contextText: "Reviewed task context.",
+          },
+        }),
+      ),
+    };
+    const opencodeService = createMockOpenCodeService();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService,
+      openCodeEventService: { subscribe: () => {} },
+      liveRequestService: liveRequestService as never,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      reviewedTaskAgentId = agent.id;
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_app");
+      const createTaskResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-app",
+        authHeader,
+        "tools/call",
+        {
+          name: "draft_task",
+          arguments: {
+            title: "Draft weekly report",
+            description: "Summarize project activity.",
+          },
+        },
+        36,
+      );
+
+      expect(createTaskResponse.statusCode).toBe(200);
+      expect(parseSseJson(createTaskResponse.body)).toMatchObject({
+        result: { structuredContent: { title: "Reviewed weekly report" } },
+      });
+      expect(liveRequestService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "task_create_review",
+          metadata: expect.objectContaining({ operation: "create_task" }),
+        }),
+      );
+
+      const listed = await taskService.list({ agentId: agent.id });
+
+      expect(listed[0]).toMatchObject({
+        title: "Reviewed weekly report",
+        description: "Reviewed task description.",
+        context: { text: "Reviewed task context.", attachments: [] },
+      });
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -440,6 +528,7 @@ describe("cc-managed MCP routes", () => {
 
       for (const toolName of [
         "create_task",
+        "update_task",
         "list_tasks",
         "get_task",
         "queue_task",
@@ -448,11 +537,20 @@ describe("cc-managed MCP routes", () => {
         "get_task_run",
         "create_task_template",
         "run_task_template_now",
+        "list_agents",
+      ]) {
+        expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
+      }
+      // The draft_* tools and task-context tools live in other groups (cc_app and
+      // cc_default), and update_task_context no longer exists.
+      for (const toolName of [
+        "draft_task",
+        "draft_task_update",
         "read_task_context",
         "append_task_context",
         "update_task_context",
       ]) {
-        expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
+        expect(listToolsResponse.body).not.toContain(`"name":"${toolName}"`);
       }
 
       const scheduledResponse = await callMcpToolRoute(
@@ -488,33 +586,6 @@ describe("cc-managed MCP routes", () => {
         "tools/call",
         { name: "queue_task", arguments: { taskId: task.id } },
         10,
-      );
-      const appendedContextResponse = await callMcpToolRoute(
-        server,
-        authHeader,
-        "tools/call",
-        {
-          name: "append_task_context",
-          arguments: { taskId: task.id, text: "Observed during task run." },
-        },
-        16,
-      );
-      const readContextResponse = await callMcpToolRoute(
-        server,
-        authHeader,
-        "tools/call",
-        { name: "read_task_context", arguments: { taskId: task.id } },
-        17,
-      );
-      const updatedContextResponse = await callMcpToolRoute(
-        server,
-        authHeader,
-        "tools/call",
-        {
-          name: "update_task_context",
-          arguments: { taskId: task.id, context: { text: "Replacement run context." } },
-        },
-        18,
       );
 
       const triggerJson = parseSseJson(triggerResponse.body) as {
@@ -579,20 +650,6 @@ describe("cc-managed MCP routes", () => {
       expect(parseSseJson(getTaskResponse.body)).toMatchObject({
         result: { structuredContent: { id: task.id, title: "Manual MCP task" } },
       });
-      expect(parseSseJson(appendedContextResponse.body)).toMatchObject({
-        result: { structuredContent: { text: "Observed during task run.", attachments: [] } },
-      });
-      expect(parseSseJson(readContextResponse.body)).toMatchObject({
-        result: { structuredContent: { text: "Observed during task run.", attachments: [] } },
-      });
-      expect(parseSseJson(updatedContextResponse.body)).toMatchObject({
-        result: {
-          structuredContent: {
-            id: task.id,
-            context: { text: "Replacement run context.", attachments: [] },
-          },
-        },
-      });
       expect(parseSseJson(listRunsResponse.body)).toMatchObject({
         result: { structuredContent: { runs: [expect.objectContaining({ id: runId })] } },
       });
@@ -610,6 +667,611 @@ describe("cc-managed MCP routes", () => {
       expect(parseSseJson(runTemplateResponse.body)).toMatchObject({
         result: { structuredContent: { status: "queued", triggerSource: "template" } },
       });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("serves task context tools from the cc_default group", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Task-run context",
+        description: "Task-run tools can edit this context.",
+      });
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "task_run");
+      const listToolsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/list",
+        {},
+        31,
+      );
+
+      expect(listToolsResponse.statusCode).toBe(200);
+      for (const toolName of ["read_task_context", "append_task_context"]) {
+        expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
+      }
+      // update_task_context was removed entirely.
+      expect(listToolsResponse.body).not.toContain(`"name":"update_task_context"`);
+
+      const appendedContextResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        {
+          name: "append_task_context",
+          arguments: { taskId: task.id, text: "Observed during task run." },
+        },
+        32,
+      );
+      const readContextResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "read_task_context", arguments: { taskId: task.id } },
+        33,
+      );
+
+      expect(parseSseJson(appendedContextResponse.body)).toMatchObject({
+        result: { structuredContent: { text: "Observed during task run.", attachments: [] } },
+      });
+      expect(parseSseJson(readContextResponse.body)).toMatchObject({
+        result: { structuredContent: { text: "Observed during task run.", attachments: [] } },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("lists agents through the tool management MCP", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Tool Manager",
+          role: "manage tools",
+          instructions: "Maintain reusable tools.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+          },
+        },
+      });
+
+      expect(created.statusCode).toBe(201);
+      const agent = created.json<{ slug: string }>();
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_app");
+      const listToolsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-app",
+        authHeader,
+        "tools/list",
+        {},
+        25,
+      );
+      const listAgentsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-app",
+        authHeader,
+        "tools/call",
+        { name: "list_agents", arguments: {} },
+        26,
+      );
+
+      expect(listToolsResponse.statusCode).toBe(200);
+      expect(listToolsResponse.body).toContain('"name":"list_agents"');
+      expect(parseSseJson(listAgentsResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            agents: [expect.objectContaining({ slug: "tool-manager" })],
+          },
+        },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("creates and updates agents through the agent management MCP", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Agent Manager",
+          role: "manage agents",
+          instructions: "Maintain agent workspaces.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            appMcpServers: [{ name: "cc_agent_management", enabled: true, action: "allow" }],
+          },
+        },
+      });
+
+      expect(created.statusCode).toBe(201);
+      const manager = created.json<{ slug: string }>();
+      const authHeader = await issueAuthHeader(
+        testDb.config,
+        manager.slug,
+        "cc_agent_management",
+        "task_run",
+      );
+      const listToolsResponse = await callMcpToolRouteForServer(
+        server,
+        manager.slug,
+        "cc-agent-management",
+        authHeader,
+        "tools/list",
+        {},
+        27,
+      );
+      const createAgentResponse = await callMcpToolRouteForServer(
+        server,
+        manager.slug,
+        "cc-agent-management",
+        authHeader,
+        "tools/call",
+        {
+          name: "create_agent",
+          arguments: {
+            name: "Researcher",
+            role: "research context",
+            instructions: "Find relevant workspace information.",
+            defaultModel: "openai/gpt-4.1",
+            capabilities: {},
+          },
+        },
+        28,
+      );
+      const createJson = parseSseJson(createAgentResponse.body) as {
+        result?: { structuredContent?: { id?: string; slug?: string } };
+      };
+      const researcherId = createJson.result?.structuredContent?.id;
+
+      if (!researcherId) {
+        throw new Error("Expected create_agent to return an agent id.");
+      }
+
+      const updateAgentResponse = await callMcpToolRouteForServer(
+        server,
+        manager.slug,
+        "cc-agent-management",
+        authHeader,
+        "tools/call",
+        {
+          name: "update_agent",
+          arguments: {
+            id: researcherId,
+            input: { role: "research product context" },
+          },
+        },
+        29,
+      );
+
+      expect(listToolsResponse.statusCode).toBe(200);
+      expect(listToolsResponse.body).toContain('"name":"create_agent"');
+      expect(listToolsResponse.body).toContain('"name":"update_agent"');
+      expect(createJson.result?.structuredContent).toMatchObject({
+        slug: "researcher",
+      });
+      expect(parseSseJson(updateAgentResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            id: researcherId,
+            role: "research product context",
+          },
+        },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("exposes direct agent tools in task-run and hides draft + removal tools", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Task Run Manager",
+          role: "manage agents",
+          instructions: "Maintain agent workspaces.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            appMcpServers: [{ name: "cc_agent_management", enabled: true, action: "allow" }],
+          },
+        },
+      });
+
+      expect(created.statusCode).toBe(201);
+      const manager = created.json<{ slug: string }>();
+      const authHeader = await issueAuthHeader(
+        testDb.config,
+        manager.slug,
+        "cc_agent_management",
+        "task_run",
+      );
+      const listToolsResponse = await callMcpToolRouteForServer(
+        server,
+        manager.slug,
+        "cc-agent-management",
+        authHeader,
+        "tools/list",
+        {},
+        35,
+      );
+
+      expect(listToolsResponse.statusCode).toBe(200);
+      for (const toolName of ["list_agents", "create_agent", "update_agent"]) {
+        expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
+      }
+      for (const toolName of ["draft_agent", "draft_agent_update", "remove_agent"]) {
+        expect(listToolsResponse.body).not.toContain(`"name":"${toolName}"`);
+      }
+
+      const createResponse = await callMcpToolRouteForServer(
+        server,
+        manager.slug,
+        "cc-agent-management",
+        authHeader,
+        "tools/call",
+        {
+          name: "create_agent",
+          arguments: {
+            name: "Task Spawned Agent",
+            role: "spawned in a task",
+            instructions: "Do the work.",
+            defaultModel: "openai/gpt-4.1",
+            capabilities: {},
+          },
+        },
+        36,
+      );
+
+      expect(createResponse.statusCode).toBe(200);
+      expect(parseSseJson(createResponse.body)).toMatchObject({
+        result: { structuredContent: { slug: "task-spawned-agent" } },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("drafts agent creation through draft_agent", async () => {
+    const testDb = await createTestDatabase();
+    const liveRequestService = {
+      create: vi.fn(() =>
+        Promise.resolve({
+          action: "submit" as const,
+          values: {
+            name: "Reviewed Researcher",
+            role: "reviewed research role",
+            instructions: "Reviewed research instructions.",
+            defaultModel: "openai/gpt-4.1",
+            iconPath: "",
+            capabilitiesJson: "{}",
+          },
+        }),
+      ),
+    };
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      liveRequestService: liveRequestService as never,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Interactive Agent Manager",
+          role: "manage agents",
+          instructions: "Maintain agent workspaces.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+          },
+        },
+      });
+
+      expect(created.statusCode).toBe(201);
+      const manager = created.json<{ slug: string }>();
+      const authHeader = await issueAuthHeader(testDb.config, manager.slug, "cc_app");
+      const createAgentResponse = await callMcpToolRouteForServer(
+        server,
+        manager.slug,
+        "cc-app",
+        authHeader,
+        "tools/call",
+        {
+          name: "draft_agent",
+          arguments: {
+            name: "Draft Researcher",
+            role: "draft role",
+            instructions: "Draft instructions.",
+            defaultModel: "openai/gpt-4.1",
+            capabilities: {},
+          },
+        },
+        37,
+      );
+
+      expect(createAgentResponse.statusCode).toBe(200);
+      expect(parseSseJson(createAgentResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            slug: "reviewed-researcher",
+            role: "reviewed research role",
+          },
+        },
+      });
+      expect(liveRequestService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "agent_create_review",
+          metadata: expect.objectContaining({ operation: "create_agent" }),
+        }),
+      );
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("drafts agent updates through draft_agent_update", async () => {
+    const testDb = await createTestDatabase();
+    const liveRequestService = {
+      create: vi.fn(() =>
+        Promise.resolve({
+          action: "submit" as const,
+          values: {
+            name: "Reviewed Analyst",
+            role: "reviewed analyst role",
+            instructions: "Reviewed analyst instructions.",
+            defaultModel: "openai/gpt-4.1",
+            iconPath: "",
+            capabilitiesJson: "{}",
+          },
+        }),
+      ),
+    };
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      liveRequestService: liveRequestService as never,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const managerResponse = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Interactive Update Manager",
+          role: "manage agents",
+          instructions: "Maintain agent workspaces.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+          },
+        },
+      });
+      const targetResponse = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Draft Analyst",
+          role: "draft analyst role",
+          instructions: "Draft analyst instructions.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {},
+        },
+      });
+
+      expect(managerResponse.statusCode).toBe(201);
+      expect(targetResponse.statusCode).toBe(201);
+      const manager = managerResponse.json<{ slug: string }>();
+      const target = targetResponse.json<{ id: string }>();
+      const authHeader = await issueAuthHeader(testDb.config, manager.slug, "cc_app");
+      const updateAgentResponse = await callMcpToolRouteForServer(
+        server,
+        manager.slug,
+        "cc-app",
+        authHeader,
+        "tools/call",
+        {
+          name: "draft_agent_update",
+          arguments: {
+            id: target.id,
+            input: { role: "proposed analyst role" },
+          },
+        },
+        38,
+      );
+
+      expect(updateAgentResponse.statusCode).toBe(200);
+      expect(parseSseJson(updateAgentResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            id: target.id,
+            name: "Reviewed Analyst",
+            role: "reviewed analyst role",
+          },
+        },
+      });
+      expect(liveRequestService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "agent_update_review",
+          metadata: expect.objectContaining({ agentId: target.id, operation: "update_agent" }),
+        }),
+      );
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("requires confirmation before removing an agent through the agent management MCP", async () => {
+    const testDb = await createTestDatabase();
+    const liveRequestService = {
+      create: vi.fn(() => Promise.resolve({ action: "confirm" as const })),
+    };
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      liveRequestService: liveRequestService as never,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const managerResponse = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Agent Remover",
+          role: "remove agents",
+          instructions: "Archive agents after confirmation.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+          },
+        },
+      });
+      const targetResponse = await server.inject({
+        method: "POST",
+        url: "/api/agents",
+        payload: {
+          name: "Archive Target",
+          role: "temporary",
+          instructions: "Temporary agent.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {},
+        },
+      });
+
+      expect(managerResponse.statusCode).toBe(201);
+      expect(targetResponse.statusCode).toBe(201);
+      const manager = managerResponse.json<{ slug: string }>();
+      const target = targetResponse.json<{ id: string }>();
+      const authHeader = await issueAuthHeader(testDb.config, manager.slug, "cc_app");
+      const removeResponse = await callMcpToolRouteForServer(
+        server,
+        manager.slug,
+        "cc-app",
+        authHeader,
+        "tools/call",
+        { name: "remove_agent", arguments: { id: target.id } },
+        30,
+      );
+
+      expect(removeResponse.statusCode, removeResponse.body).toBe(200);
+      const removeJson = parseSseJson(removeResponse.body);
+
+      expect(removeJson, removeResponse.body).toMatchObject({
+        result: {
+          structuredContent: {
+            id: target.id,
+            status: "archived",
+          },
+        },
+      });
+      expect(liveRequestService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "agent_management_confirmation",
+          metadata: expect.objectContaining({ agentId: target.id }),
+        }),
+      );
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -635,7 +1297,7 @@ describe("cc-managed MCP routes", () => {
 
     try {
       const agent = await insertAgentWithTasksManagement(testDb.client.db);
-      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default");
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "task_run");
       const task = await taskService.create({
         agentId: agent.id,
         title: "Outcome task",
@@ -737,7 +1399,7 @@ describe("cc-managed MCP routes", () => {
 
     try {
       const agent = await insertAgentWithTasksManagement(testDb.client.db);
-      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default");
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "task_run");
       const response = await callMcpToolRouteForServer(
         server,
         agent.slug,
@@ -786,7 +1448,12 @@ describe("cc-managed MCP routes", () => {
 
     try {
       const agent = await insertAgentWithTasksManagement(testDb.client.db);
-      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_tasks_management");
+      const authHeader = await issueAuthHeader(
+        testDb.config,
+        agent.slug,
+        "cc_tasks_management",
+        "task_run",
+      );
       const response = await callMcpToolRoute(
         server,
         authHeader,
@@ -940,11 +1607,12 @@ async function issueAuthHeader(
   config: TestConfig,
   agentSlug: string,
   serverName: string,
+  contextMode?: CcManagedMcpTokenContextMode,
 ): Promise<string> {
   const tokenService = createCcManagedMcpAuthTokenService({
     authStateStore: createCcManagedMcpAuthStateStore(config),
   });
-  return `Bearer ${await tokenService.issueToken(agentSlug, serverName)}`;
+  return `Bearer ${await tokenService.issueToken(agentSlug, serverName, contextMode)}`;
 }
 
 async function insertAgentWithTasksManagement(db: AppDb) {
@@ -960,7 +1628,10 @@ async function insertAgentWithTasksManagement(db: AppDb) {
       icon_path: null,
       status: "active",
       capabilities_json: JSON.stringify({
-        appMcpServers: [{ name: "cc_tasks_management", enabled: true, action: "allow" }],
+        appMcpServers: [
+          { name: "cc_tasks_management", enabled: true, action: "allow" },
+          { name: "cc_app", enabled: true, action: "allow" },
+        ],
         appToolPermissions: [],
       }),
       created_at: new Date(),
@@ -994,9 +1665,24 @@ function createOrchestrator(): OpenCodeOrchestrator {
 }
 
 function createMockOpenCodeService(): OpenCodeService {
+  const now = Date.now();
+
   return {
     dispose: () => Promise.resolve(),
     disposeGlobal: () => Promise.resolve(),
+    createSession: () =>
+      Promise.resolve({
+        id: "session-1",
+        title: "Chat",
+        time: { created: now, updated: now },
+      }),
+    getSession: () =>
+      Promise.resolve({
+        id: "session-1",
+        title: "Chat",
+        time: { created: now, updated: now },
+      }),
+    listSessionMessages: () => Promise.resolve([]),
     listProviders: () => Promise.resolve({ all: [], default: {}, connected: [] }),
     listAuthMethods: () => Promise.resolve({}),
     setApiKey: () => Promise.resolve(true),

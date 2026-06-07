@@ -18,6 +18,7 @@ import {
 import {
   createCcManagedMcpAuthTokenService,
   type CcManagedMcpAuthTokenService,
+  type CcManagedMcpTokenContextMode,
 } from "./auth-token-service.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 
@@ -98,7 +99,7 @@ export function createCcManagedMcpService(options: {
 
     try {
       ensureDrainCompatibleSocket(context.rawRequest);
-      const session = await createSession(definition, context.routeAgentSlug);
+      const session = await createSession(definition, context.routeAgentSlug, auth.contextMode);
 
       await session.transport.handleRequest(
         context.rawRequest,
@@ -148,6 +149,7 @@ export function createCcManagedMcpService(options: {
   async function createSession(
     definition: CcManagedMcpServerDefinition,
     agentSlug: string,
+    contextMode: CcManagedMcpTokenContextMode,
   ): Promise<{ transport: StreamableHTTPServerTransport; server: McpServer }> {
     const agent = await loadAgent(agentSlug);
 
@@ -159,7 +161,7 @@ export function createCcManagedMcpService(options: {
       throw new Error(`MCP server '${definition.name}' is disabled for agent '${agentSlug}'.`);
     }
 
-    const tools = toolAccessService.listEnabledTools(agent.capabilities, definition);
+    const tools = toolAccessService.listEnabledTools(agent.capabilities, definition, contextMode);
     const server = new McpServer(
       {
         name: definition.name,
@@ -199,7 +201,10 @@ export function createCcManagedMcpService(options: {
     request: IncomingMessage,
     agentSlug: string,
     serverName: string,
-  ): Promise<{ ok: true } | { ok: false; statusCode: number; message: string }> {
+  ): Promise<
+    | { ok: true; contextMode: CcManagedMcpTokenContextMode }
+    | { ok: false; statusCode: number; message: string }
+  > {
     const token = readBearerToken(request.headers.authorization);
 
     if (!token) {
@@ -228,7 +233,7 @@ export function createCcManagedMcpService(options: {
       };
     }
 
-    return { ok: true };
+    return { ok: true, contextMode: verified.contextMode };
   }
 
   async function loadAgent(slug: string): Promise<
