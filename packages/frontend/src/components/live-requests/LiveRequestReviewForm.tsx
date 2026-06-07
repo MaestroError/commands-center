@@ -290,6 +290,7 @@ function renderField(args: {
 
   return (
     <input
+      aria-label={field.label}
       className={inputClass}
       disabled={busy}
       placeholder={field.placeholder}
