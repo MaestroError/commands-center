@@ -1,8 +1,15 @@
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { AgentCapabilitySelection } from "../../schemas/agents.js";
+import type { CcManagedMcpTokenContextMode } from "./auth-token-service.js";
 import type { CcManagedMcpAuthTokenService } from "./auth-token-service.js";
 import { listCcManagedMcpServers, type CcManagedMcpServerDefinition } from "./server-registry.js";
 import type { CcManagedMcpToolAccessService } from "./tool-access-service.js";
+
+// opencode's MCP remote client times out tool calls after 5s by default. The
+// CommandsCenter app tools include human-in-the-loop tools (add_secret, the
+// draft_* review tools) that intentionally block while waiting for the operator,
+// so we give the client a generous timeout that matches the live-request window.
+const CC_MANAGED_MCP_TIMEOUT_MS = 30 * 60 * 1000;
 
 export function createCcManagedMcpWorkspaceEntryService(options: {
   config: RuntimeConfig;
@@ -20,6 +27,7 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
           enabled: boolean;
           oauth: false;
           headers: Record<string, string>;
+          timeout?: number;
         }
       >
     > {
@@ -30,6 +38,7 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
       slug: string;
       capabilities: AgentCapabilitySelection;
       enabledServerNames?: readonly string[];
+      contextMode?: CcManagedMcpTokenContextMode;
     }): Promise<
       Record<
         string,
@@ -39,13 +48,18 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
           enabled: boolean;
           oauth: false;
           headers: Record<string, string>;
+          timeout?: number;
         }
       >
     > {
       const enabledServerNames = new Set(agent.enabledServerNames ?? []);
       const entries = await Promise.all(
         listCcManagedMcpServers(options.registry).map(async (server) => {
-          const token = await options.authTokenService.issueToken(agent.slug, server.name);
+          const token = await options.authTokenService.issueToken(
+            agent.slug,
+            server.name,
+            agent.contextMode ?? "chat",
+          );
 
           return [
             server.name,
@@ -59,6 +73,9 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
               headers: {
                 Authorization: `Bearer ${token}`,
               },
+              // Only the interactive groups (which block on operator input) need the
+              // long timeout; quick request/response groups keep opencode's default.
+              ...(server.interactive ? { timeout: CC_MANAGED_MCP_TIMEOUT_MS } : {}),
             },
           ] as const;
         }),

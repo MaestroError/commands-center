@@ -22,7 +22,7 @@ type CreateLiveRequestInput = Omit<LiveRequest, "id" | "createdAt" | "metadata" 
   timeoutMs?: number;
 };
 
-const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 
 export type LiveRequestService = ReturnType<typeof createLiveRequestService>;
 

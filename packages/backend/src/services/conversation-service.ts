@@ -695,6 +695,7 @@ export function createConversationService(options: {
       slug: agent.slug,
       capabilities,
       enabledServerNames,
+      contextMode: "task_run",
     });
 
     await writeOpenCodeWorkspace({

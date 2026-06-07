@@ -52,7 +52,7 @@ describe("createAgentService", () => {
           customTools: [],
           mcpServers: [{ name: "github", enabled: true, action: "allow" }],
           toolPermissions: [{ pattern: "custom_review", action: "ask" }],
-          appMcpServers: [{ name: "cc_tool_management", enabled: true, action: "allow" }],
+          appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
           appToolPermissions: [],
         },
       });
@@ -71,8 +71,8 @@ describe("createAgentService", () => {
       expect(config).toContain('"model": "openai/gpt-4.1"');
       expect(config).toContain('"github_*": "allow"');
       expect(config).toContain('"custom_review": "ask"');
-      expect(config).toContain('"cc_tool_management": {');
-      expect(config).not.toContain('"cc_tool_management_*"');
+      expect(config).toContain('"cc_app": {');
+      expect(config).not.toContain('"cc_app_*"');
       expect(dispose).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
@@ -235,7 +235,8 @@ describe("createAgentService", () => {
         {
           name: "cc_app",
           enabledByDefault: false,
-          description: "CommandsCenter app-managed capabilities for this agent.",
+          description:
+            "CommandsCenter app-managed, operator-interactive capabilities for this agent.",
           tools: [
             {
               name: "add_secret",
@@ -249,14 +250,6 @@ describe("createAgentService", () => {
                 "Open a file from this agent workspace in the CommandsCenter operator's preview tab while the agent waits. Accepts either an agent-relative path or an absolute path inside this agent workspace.",
               context: "chat",
             },
-          ],
-        },
-        {
-          name: "cc_tool_management",
-          enabledByDefault: false,
-          description:
-            "CommandsCenter-managed tool creation and library maintenance for this agent.",
-          tools: [
             {
               name: "create_custom_tool",
               description:
@@ -264,10 +257,69 @@ describe("createAgentService", () => {
               context: "chat",
             },
             {
+              name: "list_agents",
+              description: "List CommandsCenter agents available in this workspace.",
+              context: "both",
+            },
+            {
               name: "copy_custom_tool_to_agent",
               description:
                 "Copy a global CommandsCenter custom tool into an agent workspace, asking the operator when overwrite or rename is needed.",
               context: "chat",
+            },
+            {
+              name: "draft_agent",
+              description:
+                "Open a prefilled agent form in chat for the operator to review, edit, and confirm before the agent is created. Pass whatever details you know (all optional) to pre-fill the form. Chat only.",
+              context: "chat",
+            },
+            {
+              name: "draft_agent_update",
+              description:
+                "Open a prefilled form in chat with an existing agent's current details for the operator to review, edit, and confirm before the update is saved. Provide the agent id and optionally any suggested changes to pre-fill. Chat only.",
+              context: "chat",
+            },
+            {
+              name: "remove_agent",
+              description:
+                "Remove an agent from active use after operator confirmation by archiving its portable workspace state.",
+              context: "chat",
+            },
+            {
+              name: "draft_task",
+              description:
+                "Open a prefilled task form in chat for the operator to review, edit, and confirm before the task is created. Pass whatever details you know (all optional) to pre-fill the form. Chat only.",
+              context: "chat",
+            },
+            {
+              name: "draft_task_update",
+              description:
+                "Open a prefilled form in chat with an existing task's current details for the operator to review, edit, and confirm before the update is saved. Provide the task id and optionally any suggested changes to pre-fill. Chat only.",
+              context: "chat",
+            },
+          ],
+        },
+        {
+          name: "cc_agent_management",
+          enabledByDefault: false,
+          description: "CommandsCenter agent listing, creation, and update.",
+          tools: [
+            {
+              name: "list_agents",
+              description: "List CommandsCenter agents available in this workspace.",
+              context: "both",
+            },
+            {
+              name: "create_agent",
+              description:
+                "Create a CommandsCenter agent directly, without an operator review form. In chat, prefer draft_agent so the operator can review and edit first.",
+              context: "both",
+            },
+            {
+              name: "update_agent",
+              description:
+                "Update an existing CommandsCenter agent by id directly, without an operator review form. In chat, prefer draft_agent_update.",
+              context: "both",
             },
           ],
         },
@@ -279,65 +331,60 @@ describe("createAgentService", () => {
             {
               name: "create_task",
               description:
-                "Create a CommandsCenter task for the calling agent after operator confirmation.",
-              context: "chat",
+                "Create a CommandsCenter task directly, without an operator review form. In chat, prefer draft_task so the operator can review and edit first.",
+              context: "both",
+            },
+            {
+              name: "update_task",
+              description:
+                "Update an existing CommandsCenter task by id directly, without an operator review form. In chat, prefer draft_task_update.",
+              context: "both",
             },
             {
               name: "list_tasks",
               description: "List CommandsCenter tasks visible in this workspace.",
-              context: "chat",
+              context: "both",
             },
             {
               name: "get_task",
               description: "Read a CommandsCenter task by id.",
-              context: "chat",
+              context: "both",
             },
             {
               name: "queue_task",
-              description: "Queue an existing CommandsCenter task after operator confirmation.",
-              context: "chat",
+              description: "Queue an existing CommandsCenter task.",
+              context: "both",
             },
             {
               name: "schedule_task",
               description: "Schedule an existing CommandsCenter task for later execution.",
-              context: "chat",
+              context: "both",
             },
             {
               name: "list_task_runs",
               description: "List recent runs for a CommandsCenter task.",
-              context: "chat",
+              context: "both",
             },
             {
               name: "get_task_run",
               description: "Read a CommandsCenter task run by task id and run id.",
-              context: "chat",
+              context: "both",
             },
             {
               name: "create_task_template",
-              description:
-                "Create a recurring CommandsCenter task template after operator confirmation.",
-              context: "chat",
+              description: "Create a recurring CommandsCenter task template.",
+              context: "both",
             },
             {
               name: "run_task_template_now",
               description:
                 "Generate and queue a run from a recurring CommandsCenter task template.",
-              context: "chat",
+              context: "both",
             },
             {
-              name: "read_task_context",
-              description: "Read persistent context for the current CommandsCenter task.",
-              context: "task_run",
-            },
-            {
-              name: "append_task_context",
-              description: "Append text to persistent context for the current CommandsCenter task.",
-              context: "task_run",
-            },
-            {
-              name: "update_task_context",
-              description: "Update persistent context for the current CommandsCenter task.",
-              context: "task_run",
+              name: "list_agents",
+              description: "List CommandsCenter agents available in this workspace.",
+              context: "both",
             },
           ],
         },

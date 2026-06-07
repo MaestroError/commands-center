@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { File as FileIcon, Image as ImageIcon, KeyRound, X } from "lucide-react";
 
+import { isLiveRequestReviewKind } from "../live-requests/live-request-helpers";
 import { LiveRequestPane } from "../live-requests/LiveRequestPane";
+import { LiveRequestReviewForm } from "../live-requests/LiveRequestReviewForm";
 import { WorkspaceFileSurface } from "./WorkspaceFileSurface";
 
 import type { FileManagerFileRevision } from "@cc/shared/schemas";
@@ -87,6 +89,12 @@ export function QuickInspectorSurface(props: Props) {
           <ActiveFilePane controller={controller} tab={controller.activeTab} />
         ) : controller.activeTab.tabType === "media" ? (
           <MediaPane tab={controller.activeTab} />
+        ) : isLiveRequestReviewKind(controller.activeTab.request.kind) ? (
+          <LiveRequestReviewForm
+            request={controller.activeTab.request}
+            onCancel={props.onCancelLiveRequest}
+            onResolve={props.onResolveLiveRequest}
+          />
         ) : (
           <LiveRequestPane
             request={controller.activeTab.request}

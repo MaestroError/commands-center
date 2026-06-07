@@ -7,13 +7,16 @@ type AgentAvatarPickerProps = {
   name: string;
   value: string;
   onChange: (value: string) => void;
+  // When true, lay out as a single column (for narrow containers like the
+  // review pane) instead of relying on viewport-based breakpoints.
+  dense?: boolean;
 };
 
 export function AgentAvatarPicker(props: AgentAvatarPickerProps) {
   const selection = resolveSelection(props.value);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)]">
+    <div className={props.dense ? "grid gap-4" : "grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)]"}>
       <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-surface p-4">
         <AgentAvatar iconPath={props.value} name={props.name || "Agent"} size="xl" />
         <p className="text-xs text-text-secondary">Preview</p>
@@ -107,7 +110,9 @@ export function AgentAvatarPicker(props: AgentAvatarPickerProps) {
                 value={selection.iconValue}
               />
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            <div
+              className={props.dense ? "grid gap-2" : "grid gap-2 sm:grid-cols-2 xl:grid-cols-3"}
+            >
               {AGENT_ICON_OPTIONS.map((option) => {
                 const selected = props.value === option.value;
                 return (
