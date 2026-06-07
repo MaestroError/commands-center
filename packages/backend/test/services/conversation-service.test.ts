@@ -266,9 +266,75 @@ describe("createConversationService", () => {
       await testDb.cleanup();
     }
   });
+
+  it("persists assistant errors when re-syncing remote messages", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService({
+      promptAsyncAssistantError: {
+        name: "APIError",
+        data: {
+          message: "The image data you provided does not represent a valid image.",
+          statusCode: 400,
+        },
+      },
+    });
+    const agentService = createAgentService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const service = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "Errored Agent",
+        role: "surface failures",
+        instructions: "Report provider errors.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+
+      const opened = await service.resolveCurrent(agent.id);
+
+      await service.sendPromptAsync(opened.current.id, {
+        text: "Inspect this image",
+        attachments: [],
+      });
+
+      const reloaded = await service.get(agent.id, opened.current.id);
+
+      expect(reloaded.messages[1]).toMatchObject({
+        role: "assistant",
+        content: "",
+        parts: [],
+        error: {
+          name: "APIError",
+          message: "The image data you provided does not represent a valid image.",
+          data: {
+            message: "The image data you provided does not represent a valid image.",
+            statusCode: 400,
+          },
+        },
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
 });
 
-function createMockOpenCodeService(): OpenCodeService {
+function createMockOpenCodeService(
+  options: { promptAsyncAssistantError?: unknown } = {},
+): OpenCodeService {
   const sessions = new Map<string, OpenCodeSession>();
   const messages = new Map<string, OpenCodeSessionMessage[]>();
   let sessionCount = 0;
@@ -501,16 +567,19 @@ function createMockOpenCodeService(): OpenCodeService {
           sessionID,
           role: "assistant",
           time: { created: nextTime(), completed: nextTime() },
+          error: options.promptAsyncAssistantError,
         },
-        parts: [
-          {
-            id: `part-${assistantId}`,
-            sessionID,
-            messageID: assistantId,
-            type: "text",
-            text: `Reply to: ${text}`,
-          },
-        ],
+        parts: options.promptAsyncAssistantError
+          ? []
+          : [
+              {
+                id: `part-${assistantId}`,
+                sessionID,
+                messageID: assistantId,
+                type: "text",
+                text: `Reply to: ${text}`,
+              },
+            ],
       });
 
       session.title = session.title ?? text.slice(0, 40);

@@ -64,8 +64,7 @@ describe("opencode-event-service", () => {
           parentID: "user-1",
           error: {
             name: "APIError",
-            message: "Rate limit exceeded",
-            data: { retryAfter: 30 },
+            data: { message: "Rate limit exceeded", retryAfter: 30 },
           },
           time: {
             created: 1_700_000_000_000,
@@ -103,13 +102,40 @@ describe("opencode-event-service", () => {
             error: {
               name: "APIError",
               message: "Rate limit exceeded",
-              data: { retryAfter: 30 },
+              data: { message: "Rate limit exceeded", retryAfter: 30 },
             },
             createdAt: new Date(1_700_000_000_000).toISOString(),
             updatedAt: new Date(1_700_000_000_500).toISOString(),
           },
         },
       });
+    });
+  });
+
+  it("forwards session error events from async prompt failures", async () => {
+    const onEvent = await collectEvents([
+      {
+        type: "session.error",
+        properties: {
+          sessionID: "sess-1",
+          error: {
+            name: "APIError",
+            data: { message: "Provider rejected the attachment.", statusCode: 400 },
+          },
+        },
+      },
+    ]);
+
+    expect(onEvent).toHaveBeenCalledWith({
+      type: "session.error",
+      properties: {
+        sessionID: "sess-1",
+        error: {
+          name: "APIError",
+          message: "Provider rejected the attachment.",
+          data: { message: "Provider rejected the attachment.", statusCode: 400 },
+        },
+      },
     });
   });
 

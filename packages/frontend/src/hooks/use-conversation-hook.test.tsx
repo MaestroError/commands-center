@@ -243,6 +243,30 @@ describe("useConversation", () => {
     expect(result.current.sendError).toBeNull();
   });
 
+  it("shows session errors from async prompt event failures", async () => {
+    vi.mocked(connectConversationEvents).mockImplementation(() =>
+      oneEvent({
+        type: "session.error",
+        properties: {
+          sessionID: "sess-1",
+          error: {
+            name: "APIError",
+            message: "Provider rejected the attachment.",
+          },
+        },
+      }),
+    );
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useConversation("writer"), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(result.current.sendError).toBe("Provider rejected the attachment.");
+    });
+    expect(result.current.sessionStatus).toEqual({ type: "idle" });
+  });
+
   it("forwards conversation actions to the API layer", async () => {
     const queryClient = createQueryClient();
     const { result } = renderHook(() => useConversation("writer"), {

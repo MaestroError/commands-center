@@ -110,6 +110,26 @@ describe("conversation and event schemas", () => {
   });
 
   it("parses chat events for permission requests and live request openings", () => {
+    expect(
+      chatEventSchema.parse({
+        type: "session.error",
+        properties: {
+          sessionID: "sess_1",
+          error: {
+            name: "APIError",
+            message: "Provider rejected the request.",
+            data: { statusCode: 400 },
+          },
+        },
+      }),
+    ).toMatchObject({
+      type: "session.error",
+      properties: {
+        sessionID: "sess_1",
+        error: { name: "APIError", message: "Provider rejected the request." },
+      },
+    });
+
     const permissionAsked = chatEventSchema.parse({
       type: "permission.asked",
       properties: {

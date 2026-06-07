@@ -66,18 +66,18 @@ export function getMessageAttachments(
 }
 
 export function resolveAttachmentMimeType(file: File): string {
+  const extension = file.name.split(".").at(-1)?.toLowerCase();
+
+  if (extension && TEXT_ATTACHMENT_EXTENSIONS.has(extension)) {
+    return "text/plain";
+  }
+
   if (file.type.trim().length > 0) {
     return file.type;
   }
 
-  const extension = file.name.split(".").at(-1)?.toLowerCase();
-
   if (!extension) {
     return "application/octet-stream";
-  }
-
-  if (TEXT_ATTACHMENT_EXTENSIONS.has(extension)) {
-    return "text/plain";
   }
 
   return KNOWN_EXTENSION_MIME_TYPES[extension] ?? "application/octet-stream";

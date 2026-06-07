@@ -1,7 +1,7 @@
 import type { Logger } from "pino";
 
 import type { RuntimeConfig } from "../lib/runtime-config.js";
-import { sanitizePart } from "../lib/message-mapper.js";
+import { sanitizeMessageError, sanitizePart } from "../lib/message-mapper.js";
 
 type SseEvent = {
   type: string;
@@ -44,6 +44,7 @@ const SESSION_EVENTS = new Set([
   "question.asked",
   "question.replied",
   "question.rejected",
+  "session.error",
 ]);
 
 async function runSubscription(
@@ -318,6 +319,22 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
       };
     }
 
+    case "session.error": {
+      const error = sanitizeMessageError(props["error"]);
+
+      if (!error) {
+        return null;
+      }
+
+      return {
+        type: raw.type,
+        properties: {
+          sessionID,
+          error,
+        },
+      };
+    }
+
     case "permission.asked": {
       return {
         type: raw.type,
@@ -386,22 +403,6 @@ function sanitizeSessionStatus(status: unknown) {
   }
 
   return { type: "idle" as const };
-}
-
-function sanitizeMessageError(error: unknown) {
-  if (
-    !isRecord(error) ||
-    typeof error["name"] !== "string" ||
-    typeof error["message"] !== "string"
-  ) {
-    return undefined;
-  }
-
-  return {
-    name: error["name"],
-    message: error["message"],
-    data: isRecord(error["data"]) ? error["data"] : undefined,
-  };
 }
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {

@@ -596,6 +596,7 @@ export function createConversationService(options: {
         content: message.content,
         parts_json: JSON.stringify(message.parts),
         attachments_json: JSON.stringify(message.attachments),
+        error_json: message.error ? JSON.stringify(message.error) : null,
         created_at: new Date(message.createdAtMs),
         updated_at: new Date(message.updatedAtMs),
       })),
@@ -740,6 +741,7 @@ function mapConversationMessage(row: MessageRow): ConversationMessage {
     content: row.content,
     parts: parseJson(row.parts_json, []),
     attachments: parseJson(row.attachments_json, []),
+    error: parseJson(row.error_json, undefined),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   });

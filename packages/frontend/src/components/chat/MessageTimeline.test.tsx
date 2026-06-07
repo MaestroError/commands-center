@@ -346,4 +346,28 @@ describe("MessageTimeline", () => {
     expect(screen.getByText("Message failed to send")).toBeInTheDocument();
     expect(screen.getByText("Request failed with status 429.")).toBeInTheDocument();
   });
+
+  it("renders an empty assistant message when it has an error", () => {
+    render(
+      <MessageTimeline
+        messages={[
+          makeMessage({
+            id: "assistant-error",
+            role: "assistant",
+            content: "",
+            error: {
+              name: "APIError",
+              message: "The image data you provided does not represent a valid image.",
+            },
+          }),
+        ]}
+        parts={{}}
+        sessionStatus={{ type: "idle" }}
+      />,
+    );
+
+    expect(
+      screen.getByText("The image data you provided does not represent a valid image."),
+    ).toBeInTheDocument();
+  });
 });
