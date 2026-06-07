@@ -54,7 +54,9 @@ export function SearchableSelect(props: SearchableSelectProps) {
         setOpen(true);
         return;
       }
-      setHighlight((current) => Math.min(filtered.length - 1, current + 1));
+      setHighlight((current) =>
+        filtered.length === 0 ? 0 : Math.min(filtered.length - 1, current + 1),
+      );
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setHighlight((current) => Math.max(0, current - 1));
