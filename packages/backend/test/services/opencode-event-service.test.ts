@@ -64,8 +64,7 @@ describe("opencode-event-service", () => {
           parentID: "user-1",
           error: {
             name: "APIError",
-            message: "Rate limit exceeded",
-            data: { retryAfter: 30 },
+            data: { message: "Rate limit exceeded", retryAfter: 30 },
           },
           time: {
             created: 1_700_000_000_000,
@@ -103,13 +102,76 @@ describe("opencode-event-service", () => {
             error: {
               name: "APIError",
               message: "Rate limit exceeded",
-              data: { retryAfter: 30 },
+              data: { message: "Rate limit exceeded", retryAfter: 30 },
             },
             createdAt: new Date(1_700_000_000_000).toISOString(),
             updatedAt: new Date(1_700_000_000_500).toISOString(),
           },
         },
       });
+    });
+  });
+
+  it("drops invalid message error metadata with an empty name", async () => {
+    const onEvent = await collectEvents([
+      {
+        type: "message.updated",
+        properties: {
+          sessionID: "sess-1",
+          info: {
+            id: "msg-1",
+            sessionID: "sess-1",
+            role: "assistant",
+            error: {
+              name: " ",
+              data: { message: "Provider rejected the attachment." },
+            },
+            time: {
+              created: 1_700_000_000_000,
+              completed: 1_700_000_000_500,
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(onEvent).toHaveBeenCalledWith({
+      type: "message.updated",
+      properties: {
+        sessionID: "sess-1",
+        message: expect.objectContaining({
+          id: "msg-1",
+          role: "assistant",
+          error: undefined,
+        }),
+      },
+    });
+  });
+
+  it("forwards session error events from async prompt failures", async () => {
+    const onEvent = await collectEvents([
+      {
+        type: "session.error",
+        properties: {
+          sessionID: "sess-1",
+          error: {
+            name: "APIError",
+            data: { message: "Provider rejected the attachment.", statusCode: 400 },
+          },
+        },
+      },
+    ]);
+
+    expect(onEvent).toHaveBeenCalledWith({
+      type: "session.error",
+      properties: {
+        sessionID: "sess-1",
+        error: {
+          name: "APIError",
+          message: "Provider rejected the attachment.",
+          data: { message: "Provider rejected the attachment.", statusCode: 400 },
+        },
+      },
     });
   });
 

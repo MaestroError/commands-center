@@ -61,6 +61,18 @@ const sessionStatusEventSchema = z.object({
   }),
 });
 
+const sessionErrorEventSchema = z.object({
+  type: z.literal("session.error"),
+  properties: z.object({
+    sessionID: z.string().min(1),
+    error: z.object({
+      name: z.string().min(1),
+      message: z.string().min(1),
+      data: looseRecordSchema.optional(),
+    }),
+  }),
+});
+
 const messageUpdatedEventSchema = z.object({
   type: z.literal("message.updated"),
   properties: z.object({
@@ -204,6 +216,7 @@ export const chatEventSchema = z.discriminatedUnion("type", [
   connectedEventSchema,
   heartbeatEventSchema,
   sessionStatusEventSchema,
+  sessionErrorEventSchema,
   messageUpdatedEventSchema,
   messageRemovedEventSchema,
   messagePartUpdatedEventSchema,
@@ -227,6 +240,7 @@ export type QuestionOption = z.infer<typeof questionOptionSchema>;
 
 // Narrowed event types for convenience
 export type SessionStatusEvent = z.infer<typeof sessionStatusEventSchema>;
+export type SessionErrorEvent = z.infer<typeof sessionErrorEventSchema>;
 export type SessionStatus = z.infer<typeof sessionStatusSchema>;
 export type MessageUpdatedEvent = z.infer<typeof messageUpdatedEventSchema>;
 export type MessagePartDeltaEvent = z.infer<typeof messagePartDeltaEventSchema>;

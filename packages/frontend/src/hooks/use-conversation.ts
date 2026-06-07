@@ -183,6 +183,13 @@ function applySseEvent(state: ConversationState, event: ChatEvent): Conversation
     case "session.status":
       return { ...state, sessionStatus: event.properties.status };
 
+    case "session.error":
+      return {
+        ...state,
+        sessionStatus: { type: "idle" },
+        sendError: event.properties.error.message,
+      };
+
     case "message.updated": {
       if (!state.conversation) return state;
       const msg = event.properties.message;

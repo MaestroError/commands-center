@@ -64,7 +64,7 @@ export function MessageTimeline({
         const msgParts = parts[msg.id] ?? msg.parts;
         const copyText = getMessageCopyText(msg, msgParts);
         // Skip empty assistant message shells (no parts yet, no content)
-        if (msg.role === "assistant" && msgParts.length === 0 && !msg.content) {
+        if (msg.role === "assistant" && msgParts.length === 0 && !msg.content && !msg.error) {
           return null;
         }
         // Skip system-generated user messages

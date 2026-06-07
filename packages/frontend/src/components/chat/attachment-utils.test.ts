@@ -54,9 +54,15 @@ describe("attachment-utils", () => {
     expect(resolveAttachmentMimeType(file)).toBe("text/plain");
   });
 
-  it("preserves browser-provided mime types when present", () => {
+  it("normalizes known text file extensions when the browser provides a text subtype", () => {
     const file = new File(["hello"], "notes.md", { type: "text/markdown" });
 
-    expect(resolveAttachmentMimeType(file)).toBe("text/markdown");
+    expect(resolveAttachmentMimeType(file)).toBe("text/plain");
+  });
+
+  it("preserves browser-provided mime types for non-text attachments", () => {
+    const file = new File(["%PDF"], "notes.pdf", { type: "application/pdf" });
+
+    expect(resolveAttachmentMimeType(file)).toBe("application/pdf");
   });
 });

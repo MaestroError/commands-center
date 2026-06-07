@@ -42,6 +42,7 @@ export const messages = sqliteTable(
     content: text("content").notNull(),
     parts_json: text("parts_json"),
     attachments_json: text("attachments_json"),
+    error_json: text("error_json"),
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },

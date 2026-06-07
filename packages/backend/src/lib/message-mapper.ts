@@ -3,6 +3,7 @@ import {
   conversationMessageSchema,
   sessionMediaItemSchema,
   type ConversationAttachment,
+  type ConversationMessageError,
   type ConversationMessage,
   type SessionMediaItem,
 } from "@cc/shared/schemas";
@@ -28,6 +29,7 @@ export function mapRemoteMessage(
       content: readContent(message.parts),
       parts,
       attachments,
+      error: sanitizeMessageError(message.info["error"]),
       createdAt: new Date(createdAtMs).toISOString(),
       updatedAt: new Date(updatedAtMs).toISOString(),
     }),
@@ -116,6 +118,31 @@ export function extractMediaItems(messages: OpenCodeSessionMessage[]): SessionMe
 export function cleanTitle(value: string | null | undefined): string | undefined {
   const title = value?.trim();
   return title ? title : undefined;
+}
+
+export function sanitizeMessageError(error: unknown): ConversationMessageError | undefined {
+  if (!isRecord(error) || typeof error["name"] !== "string") {
+    return undefined;
+  }
+
+  const name = error["name"].trim();
+  const data = isRecord(error["data"]) ? error["data"] : undefined;
+  const message =
+    typeof error["message"] === "string"
+      ? error["message"]
+      : typeof data?.["message"] === "string"
+        ? data["message"]
+        : undefined;
+
+  if (!name || !message) {
+    return undefined;
+  }
+
+  return {
+    name,
+    message,
+    data,
+  };
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

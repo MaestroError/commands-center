@@ -311,8 +311,8 @@ function SidebarContent(props: {
               agentsSidebarRoute.path,
               agentsSidebarRoute.navigationMatch,
             )
-              ? "rounded-xl border border-accent/30 bg-surface p-3"
-              : "rounded-xl border border-border bg-surface p-3"
+              ? "min-w-0 overflow-hidden rounded-xl border border-accent/30 bg-surface p-3"
+              : "min-w-0 overflow-hidden rounded-xl border border-border bg-surface p-3"
           }
           data-testid={props.collapsed ? "recent-agents-collapsed" : "recent-agents-section"}
         >
@@ -350,21 +350,23 @@ function SidebarContent(props: {
                 </NavLink>
               </div>
               {props.recentAgents.length > 0 ? (
-                <div className="mt-3 grid gap-2">
+                <div className="mt-3 grid min-w-0 gap-2">
                   {props.recentAgents.map((agent) => (
                     <NavLink
-                      className="rounded-lg border border-border bg-surface-elevated/50 px-3 py-2 transition hover:border-accent/40 hover:bg-accent/5"
+                      className="block min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-surface-elevated/50 px-3 py-2 transition hover:border-accent/40 hover:bg-accent/5"
                       key={agent.slug}
                       onClick={props.onNavigate}
                       to={`/chat/${encodeURIComponent(agent.slug)}`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
                         <AgentAvatar iconPath={agent.iconPath} name={agent.name} size="sm" />
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1 overflow-hidden">
                           <p className="truncate text-sm font-medium text-text-primary">
                             {agent.name}
                           </p>
-                          <p className="truncate text-xs text-text-secondary">{agent.role}</p>
+                          <p className="max-w-full truncate text-xs text-text-secondary">
+                            {agent.role}
+                          </p>
                         </div>
                       </div>
                     </NavLink>
