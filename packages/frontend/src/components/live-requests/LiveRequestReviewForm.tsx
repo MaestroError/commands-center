@@ -278,6 +278,7 @@ function renderField(args: {
     const mono = JSON_FIELD_NAMES.has(field.name) ? " font-mono" : "";
     return (
       <textarea
+        aria-label={field.label}
         className={`${inputClass} min-h-28 resize-y${mono}`}
         disabled={busy}
         placeholder={field.placeholder}
