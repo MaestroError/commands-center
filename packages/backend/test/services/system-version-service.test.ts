@@ -187,6 +187,36 @@ describe("createSystemVersionService", () => {
     }
   });
 
+  it("exits with the restart-request code after a successful update", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "cc-version-"));
+    const config = loadRuntimeConfig({ cwd, env: { NODE_ENV: "test" } });
+    const runCommand = vi.fn(() => Promise.resolve());
+    const drain = vi.fn(() => Promise.resolve());
+    const exitProcess = vi.fn();
+    const service = createSystemVersionService({
+      config,
+      logger: createLogger(config),
+      packageInfo: { name: "commandscenter", version: "1.0.0", packageRoot: cwd },
+      packageRoot: cwd,
+      fetchLatest: () => Promise.resolve("1.2.0"),
+      runCommand,
+      drainController: { drain },
+      exitProcess,
+      detectMode: () => "npm-global",
+    });
+
+    try {
+      await service.update();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      expect(drain).toHaveBeenCalledWith("manual");
+      expect(exitProcess).toHaveBeenCalledWith(75);
+    } finally {
+      service.stop();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it("persists auto-update preference overrides in workspace settings", async () => {
     const testDb = await createTestDatabase();
     const service = createSystemVersionService({

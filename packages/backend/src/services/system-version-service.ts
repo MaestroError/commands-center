@@ -20,6 +20,7 @@ import type { PackageInfo } from "../lib/package-info.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 
 const AUTO_UPDATE_SETTING_KEY = "system.autoUpdateEnabled";
+const UPDATE_RESTART_EXIT_CODE = 75;
 
 const registryResponseSchema = z.object({
   version: z.string().min(1),
@@ -372,7 +373,7 @@ function scheduleRestart(
     void (async () => {
       try {
         await drainController?.drain("manual");
-        exitProcess(0);
+        exitProcess(UPDATE_RESTART_EXIT_CODE);
       } catch (error) {
         logger.error({ err: error }, "failed to drain runtime after update");
         exitProcess(1);

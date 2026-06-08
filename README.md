@@ -228,6 +228,8 @@ Environment=CC_DATA_DIR=/opt/commandscenter/data
 ExecStart=/usr/bin/env ccenter start --host 127.0.0.1 --port 3000 --cc-env-file /opt/commandscenter/.env
 Restart=on-failure
 RestartSec=5
+SuccessExitStatus=75
+RestartForceExitStatus=75
 KillSignal=SIGTERM
 TimeoutStopSec=30
 
@@ -260,7 +262,7 @@ ccenter upgrade --cc-env-file /opt/commandscenter/.env
 sudo systemctl restart commandscenter
 ```
 
-`ccenter upgrade` exits after a successful package update. A process supervisor such as systemd should restart the service.
+When an update is applied from the running web app, CommandsCenter exits with code `75` after the package update. The service treats that as an intentional update restart: systemd records it as a successful exit and starts the service again. For manual `ccenter upgrade` runs, restart the service with `systemctl` as shown above.
 
 ### Docker Compose
 
