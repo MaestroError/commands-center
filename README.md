@@ -126,7 +126,13 @@ curl http://127.0.0.1:3000/api/system/version
 
 The repository includes a cross-platform installer for Ubuntu/Linux with systemd and macOS with launchd. It checks for Node.js, installs missing requirements when possible, installs CommandsCenter globally, lets `ccenter` generate the production `.env` file on first service start, starts the app as a background service, generates the first owner claim code, and prints the app URLs plus filesystem locations.
 
-Install and start the background service:
+Run directly from GitHub (recommended for VPS setup):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MaestroError/commands-center/main/scripts/install-ccenter-service.sh | bash
+```
+
+Or clone the repo first and run locally:
 
 ```bash
 bash scripts/install-ccenter-service.sh
@@ -180,15 +186,16 @@ sudo systemctl enable commandscenter
 
 Contributor-only local tarball testing is documented in [CONTRIBUTING.md](CONTRIBUTING.md#cli-build-smoke-test).
 
-Useful overrides:
+Useful overrides (works with both the `curl` and local forms):
 
 ```bash
-CCENTER_INSTALL_DIR=/opt/commandscenter \
-CCENTER_WORKSPACE_DIR=/opt/commandscenter/workspace \
-CCENTER_ENV_FILE=/opt/commandscenter/.env \
-CCENTER_HOST=127.0.0.1 \
-CCENTER_PORT=3000 \
-bash scripts/install-ccenter-service.sh
+curl -fsSL https://raw.githubusercontent.com/MaestroError/commands-center/main/scripts/install-ccenter-service.sh \
+  | CCENTER_INSTALL_DIR=/opt/commandscenter \
+    CCENTER_WORKSPACE_DIR=/opt/commandscenter/workspace \
+    CCENTER_ENV_FILE=/opt/commandscenter/.env \
+    CCENTER_HOST=127.0.0.1 \
+    CCENTER_PORT=3000 \
+    bash
 ```
 
 On Ubuntu, the script writes `/etc/systemd/system/commandscenter.service`. On macOS, it writes `~/Library/LaunchAgents/com.commandscenter.app.plist`.
@@ -196,6 +203,8 @@ On Ubuntu, the script writes `/etc/systemd/system/commandscenter.service`. On ma
 After the service starts and creates the env file, the installer prints the owner claim code. Keep that code and enter it on the claim screen to unlock the instance. On Linux, the installer runs the systemd unit as the installing user by default; if you override `CCENTER_SERVICE_USER`, the installer also runs the claim command as that user and passes the same `CC_WORKSPACE_DIR` used by the service. On macOS, launchd runs under the current user and `CCENTER_SERVICE_USER` is not used.
 
 ### VPS With Systemd
+
+> For most VPS setups, the [Automatic Service Installer](#automatic-service-installer) above covers this entire flow with a single `curl | bash` command. The manual steps below are for operators who need full control over each step.
 
 Use a global npm install plus a systemd service. Keep runtime files and `.env` in `/opt/commandscenter`.
 
