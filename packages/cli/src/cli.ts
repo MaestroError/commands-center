@@ -258,23 +258,61 @@ function loadCliEnv(parsedArgs: CliArgs): void {
   }
 }
 
+// Keys handled explicitly below (with computed defaults or special precedence)
+// are excluded from the generic CC_* persistence pass.
+const EXPLICITLY_HANDLED_ENV_KEYS = new Set([
+  "CC_WORKSPACE_DIR",
+  "CC_DATA_DIR",
+  "CC_SECRET_KEY",
+  "CC_HOST",
+  "CC_PORT",
+]);
+
+function replaceEnvLine(content: string, key: string, value: string): string {
+  const pattern = new RegExp(`^${key}=.*$`, "m");
+
+  if (!pattern.test(content)) {
+    return content;
+  }
+
+  // Use a replacer function so `$` in the value is not treated as a
+  // replacement pattern (e.g. $&, $1).
+  return content.replace(pattern, () => `${key}=${value}`);
+}
+
 function createDefaultEnvFile(
   path: string,
   options: { dataDir: string; host?: string; port?: string; workspaceDir: string },
 ): string {
   mkdirSync(dirname(path), { recursive: true });
   const secretKey = randomBytes(32).toString("hex");
-  let content = readDefaultProdEnvExample()
-    .replace(/^CC_WORKSPACE_DIR=.*$/m, `CC_WORKSPACE_DIR=${options.workspaceDir}`)
-    .replace(/^CC_DATA_DIR=.*$/m, `CC_DATA_DIR=${options.dataDir}`)
-    .replace(/^CC_SECRET_KEY=.*$/m, `CC_SECRET_KEY=${secretKey}`);
+  let content = readDefaultProdEnvExample();
+  content = replaceEnvLine(content, "CC_WORKSPACE_DIR", options.workspaceDir);
+  content = replaceEnvLine(content, "CC_DATA_DIR", options.dataDir);
+  content = replaceEnvLine(content, "CC_SECRET_KEY", secretKey);
 
   if (options.host) {
-    content = content.replace(/^CC_HOST=.*$/m, `CC_HOST=${options.host}`);
+    content = replaceEnvLine(content, "CC_HOST", options.host);
   }
 
   if (options.port) {
-    content = content.replace(/^CC_PORT=.*$/m, `CC_PORT=${options.port}`);
+    content = replaceEnvLine(content, "CC_PORT", options.port);
+  }
+
+  // Persist any other CC_* values present in the environment into the generated
+  // file, but only for keys the template already documents. The template acts as
+  // an allowlist so internal runtime markers (e.g. CC_FIRST_RUN_*) are never written.
+  for (const [key, value] of Object.entries(process.env)) {
+    if (
+      !key.startsWith("CC_") ||
+      EXPLICITLY_HANDLED_ENV_KEYS.has(key) ||
+      value === undefined ||
+      value === ""
+    ) {
+      continue;
+    }
+
+    content = replaceEnvLine(content, key, value);
   }
 
   writeFileSync(path, content, { encoding: "utf8", mode: 0o600 });

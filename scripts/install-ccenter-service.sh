@@ -4,16 +4,45 @@ set -euo pipefail
 
 APP_NAME="commandscenter"
 SERVICE_NAME="commandscenter"
+
+# Installer-only configuration. These control how the installer behaves and
+# have no CC_* runtime equivalent.
 PACKAGE_SPEC="${CCENTER_PACKAGE_SPEC:-commandscenter}"
 INSTALL_DIR="${CCENTER_INSTALL_DIR:-$HOME/.cc}"
-WORKSPACE_DIR="${CCENTER_WORKSPACE_DIR:-$INSTALL_DIR/workspace}"
 ENV_FILE="${CCENTER_ENV_FILE:-$INSTALL_DIR/.env}"
-HOST="${CCENTER_HOST:-127.0.0.1}"
-PORT="${CCENTER_PORT:-3000}"
 PUBLIC_HOST="${CCENTER_PUBLIC_HOST:-127.0.0.1}"
 NODE_MAJOR="${CCENTER_NODE_MAJOR:-22}"
 SERVICE_USER="${CCENTER_SERVICE_USER:-$(id -un)}"
-SERVICE_GROUP="${CCENTER_SERVICE_GROUP:-$(id -gn)}"
+CREATE_USER="${CCENTER_CREATE_USER:-false}"
+
+# A dedicated service user defaults to a matching group name; otherwise the
+# installing user's primary group is used.
+if [[ -n "${CCENTER_SERVICE_GROUP:-}" ]]; then
+  SERVICE_GROUP="$CCENTER_SERVICE_GROUP"
+elif [[ -n "${CCENTER_SERVICE_USER:-}" ]]; then
+  SERVICE_GROUP="$CCENTER_SERVICE_USER"
+else
+  SERVICE_GROUP="$(id -gn)"
+fi
+
+# Runtime configuration passed through to the service as CC_* environment
+# variables. CC_* names are preferred and match the .env file; the CCENTER_*
+# equivalents remain as deprecated fallbacks. Exporting them means they are both
+# injected into the service unit (see collect_service_env) and read by ccenter
+# when it generates the .env file on first start. Any other CC_* variable set in
+# the environment (CC_PUBLIC_ORIGIN, CC_DATA_DIR, CC_LOG_LEVEL, ...) flows
+# through automatically with no per-variable wiring.
+export CC_HOST="${CC_HOST:-${CCENTER_HOST:-127.0.0.1}}"
+export CC_PORT="${CC_PORT:-${CCENTER_PORT:-3000}}"
+export CC_WORKSPACE_DIR="${CC_WORKSPACE_DIR:-${CCENTER_WORKSPACE_DIR:-$INSTALL_DIR/workspace}}"
+if [[ -n "${CC_PUBLIC_ORIGIN:-${CCENTER_PUBLIC_ORIGIN:-}}" ]]; then
+  export CC_PUBLIC_ORIGIN="${CC_PUBLIC_ORIGIN:-${CCENTER_PUBLIC_ORIGIN}}"
+fi
+
+# Convenience aliases used throughout the script.
+HOST="$CC_HOST"
+PORT="$CC_PORT"
+WORKSPACE_DIR="$CC_WORKSPACE_DIR"
 CCENTER_PATH=""
 
 OS="$(uname -s)"
@@ -21,7 +50,9 @@ OS="$(uname -s)"
 main() {
   require_supported_os
   warn_if_root_service_user
+  ensure_service_user
   ensure_install_dir
+  ensure_ownership
   ensure_node_and_npm
   install_commandscenter
   resolve_ccenter_path
@@ -44,12 +75,49 @@ require_supported_os() {
 
 warn_if_root_service_user() {
   if [[ "$OS" == "Linux" && "$SERVICE_USER" == "root" ]]; then
-    warn "The CommandsCenter systemd service will run as root. Set CCENTER_SERVICE_USER and CCENTER_SERVICE_GROUP to use a dedicated service account."
+    warn "The CommandsCenter systemd service will run as root. Set CCENTER_SERVICE_USER (and optionally CCENTER_CREATE_USER=true) to run under a dedicated service account."
   fi
 }
 
+ensure_service_user() {
+  [[ "$OS" == "Linux" ]] || return 0
+  [[ "$SERVICE_USER" != "$(id -un)" ]] || return 0
+
+  if id "$SERVICE_USER" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [[ "$CREATE_USER" != "true" ]]; then
+    fail "Service user '$SERVICE_USER' does not exist. Create it first, or pass CCENTER_CREATE_USER=true to have the installer create a dedicated system user."
+  fi
+
+  info "Creating dedicated system user: $SERVICE_USER"
+  sudo useradd --system --create-home --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
+}
+
 ensure_install_dir() {
-  mkdir -p "$INSTALL_DIR" "$WORKSPACE_DIR"
+  sudo_if_needed mkdir -p "$INSTALL_DIR" "$WORKSPACE_DIR"
+}
+
+# Run a command with sudo only when the target dirs are not writable by the
+# current user (e.g. a dedicated service user owns /opt/commandscenter).
+sudo_if_needed() {
+  if [[ "$OS" == "Linux" && "$SERVICE_USER" != "$(id -un)" ]]; then
+    sudo "$@"
+    return
+  fi
+
+  "$@"
+}
+
+ensure_ownership() {
+  [[ "$OS" == "Linux" ]] || return 0
+  [[ "$SERVICE_USER" != "$(id -un)" ]] || return 0
+
+  info "Setting ownership of runtime directories to $SERVICE_USER:$SERVICE_GROUP"
+  sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
+  sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$WORKSPACE_DIR"
+  sudo chown "$SERVICE_USER:$SERVICE_GROUP" "$(dirname "$ENV_FILE")" 2>/dev/null || true
 }
 
 ensure_node_and_npm() {
@@ -139,13 +207,35 @@ install_service() {
   install_launchd_service
 }
 
+# Print the names of CC_* environment variables that should be injected into the
+# service, one per line. Secrets and internal runtime markers are excluded;
+# ccenter generates CC_SECRET_KEY itself on first start.
+service_env_names() {
+  local name
+  for name in $(compgen -v); do
+    case "$name" in
+      CC_SECRET_KEY | CC_FIRST_RUN_* | CC_NPM_GLOBAL_ROOT) continue ;;
+      CC_*) ;;
+      *) continue ;;
+    esac
+
+    [[ -n "${!name:-}" ]] || continue
+    printf '%s\n' "$name"
+  done
+}
+
 install_systemd_service() {
   if ! command_exists systemctl; then
     fail "systemd is required for automatic Linux background service setup."
   fi
 
-  local service_file
+  local service_file env_lines name
   service_file="/etc/systemd/system/$SERVICE_NAME.service"
+
+  env_lines=""
+  while IFS= read -r name; do
+    env_lines+="Environment=${name}=${!name}"$'\n'
+  done < <(service_env_names)
 
   sudo tee "$service_file" >/dev/null <<EOF
 [Unit]
@@ -157,10 +247,7 @@ Type=simple
 User=$SERVICE_USER
 Group=$SERVICE_GROUP
 WorkingDirectory=$INSTALL_DIR
-Environment=CC_HOST=$HOST
-Environment=CC_PORT=$PORT
-Environment=CC_WORKSPACE_DIR=$WORKSPACE_DIR
-ExecStart=$CCENTER_PATH start --host $HOST --port $PORT --cc-env-file $ENV_FILE
+${env_lines}ExecStart=$CCENTER_PATH start --host $HOST --port $PORT --cc-env-file $ENV_FILE
 Restart=on-failure
 RestartSec=5
 SuccessExitStatus=75
@@ -177,13 +264,18 @@ EOF
 }
 
 install_launchd_service() {
-  local plist_dir plist_file ccenter_dir node_path node_dir launchd_path
+  local plist_dir plist_file ccenter_dir node_path node_dir launchd_path env_entries name
   plist_dir="$HOME/Library/LaunchAgents"
   plist_file="$plist_dir/com.commandscenter.app.plist"
   ccenter_dir="$(dirname "$CCENTER_PATH")"
   node_path="$(command -v node)"
   node_dir="$(dirname "$node_path")"
   launchd_path="$node_dir:$ccenter_dir:/usr/bin:/bin:/usr/sbin:/sbin"
+
+  env_entries=""
+  while IFS= read -r name; do
+    env_entries+="    <key>${name}</key>"$'\n'"    <string>${!name}</string>"$'\n'
+  done < <(service_env_names)
 
   mkdir -p "$plist_dir"
 
@@ -200,13 +292,7 @@ install_launchd_service() {
   <dict>
     <key>PATH</key>
     <string>$launchd_path</string>
-    <key>CC_HOST</key>
-    <string>$HOST</string>
-    <key>CC_PORT</key>
-    <string>$PORT</string>
-    <key>CC_WORKSPACE_DIR</key>
-    <string>$WORKSPACE_DIR</string>
-  </dict>
+${env_entries}  </dict>
   <key>ProgramArguments</key>
   <array>
     <string>$CCENTER_PATH</string>
@@ -308,14 +394,21 @@ run_claim_command() {
 }
 
 print_summary() {
-  local base_url
-  base_url="http://$PUBLIC_HOST:$PORT"
+  local base_url health_url
+  if [[ -n "${CC_PUBLIC_ORIGIN:-}" ]]; then
+    base_url="$CC_PUBLIC_ORIGIN"
+    health_url="http://$PUBLIC_HOST:$PORT"
+  else
+    base_url="http://$PUBLIC_HOST:$PORT"
+    health_url="$base_url"
+  fi
 
   printf '\nCommandsCenter is installed and running.\n'
   printf '\nURLs:\n'
   printf '  App:     %s\n' "$base_url"
-  printf '  Health:  %s/api/health\n' "$base_url"
-  printf '  Version: %s/api/system/version\n' "$base_url"
+  printf '  Claim:   %s/claim\n' "$base_url"
+  printf '  Health:  %s/api/health\n' "$health_url"
+  printf '  Version: %s/api/system/version\n' "$health_url"
   printf '\nLocations:\n'
   printf '  Install dir:   %s\n' "$INSTALL_DIR"
   printf '  Env file:      %s\n' "$ENV_FILE"
@@ -335,13 +428,19 @@ print_summary() {
   fi
 
   printf '\nNext steps:\n'
-  printf '  1. Set CC_PUBLIC_ORIGIN in %s if you are exposing this instance through a domain or reverse proxy:\n' "$ENV_FILE"
-  printf '       CC_PUBLIC_ORIGIN=https://your.domain.com\n'
-  printf '     Then restart the service. Without this, login will be rejected with "Request origin is not allowed".\n'
+  if [[ -n "${CC_PUBLIC_ORIGIN:-}" ]]; then
+    printf '  1. Point a reverse proxy with HTTPS at %s and ensure your DNS resolves to this server.\n' "$base_url"
+    printf '     CC_PUBLIC_ORIGIN is already set to %s, so claim at %s/claim once the proxy is live.\n' "$CC_PUBLIC_ORIGIN" "$base_url"
+  else
+    printf '  1. To expose this instance through a domain or reverse proxy, set CC_PUBLIC_ORIGIN in %s:\n' "$ENV_FILE"
+    printf '       CC_PUBLIC_ORIGIN=https://your.domain.com\n'
+    printf '     then restart the service, or rerun this installer with CC_PUBLIC_ORIGIN already set.\n'
+    printf '     Without it, login through a domain is rejected with "Request origin is not allowed".\n'
+  fi
   if [[ "$OS" == "Linux" && "$SERVICE_USER" == "root" ]]; then
-    printf '  2. The service is running as root. For better security, create a dedicated system user and reinstall:\n'
-    printf '       sudo useradd --system --create-home --home-dir /opt/commandscenter --shell /usr/sbin/nologin commandscenter\n'
-    printf '       CCENTER_INSTALL_DIR=/opt/commandscenter CCENTER_SERVICE_USER=commandscenter CCENTER_SERVICE_GROUP=commandscenter bash <installer>\n'
+    printf '  2. The service is running as root. For better security, rerun with a dedicated user:\n'
+    printf '       curl -fsSL <installer-url> | CCENTER_INSTALL_DIR=/opt/commandscenter \\\n'
+    printf '         CCENTER_SERVICE_USER=commandscenter CCENTER_CREATE_USER=true bash\n'
   fi
 }
 

@@ -126,10 +126,32 @@ curl http://127.0.0.1:3000/api/system/version
 
 The repository includes a cross-platform installer for Ubuntu/Linux with systemd and macOS with launchd. It checks for Node.js, installs missing requirements when possible, installs CommandsCenter globally, lets `ccenter` generate the production `.env` file on first service start, starts the app as a background service, generates the first owner claim code, and prints the app URLs plus filesystem locations.
 
-Run directly from GitHub (recommended for VPS setup):
+Any `CC_*` variable you set when running the installer is injected into the service unit and persisted into the generated `.env` file, so a domain or other runtime setting can be configured in the one-liner itself — no manual editing and restart afterward. Pick the tier that matches your deployment.
+
+**1. Quick (localhost):** good for trying it out, or when you will add a reverse proxy later.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MaestroError/commands-center/main/scripts/install-ccenter-service.sh | bash
+```
+
+**2. Domain:** sets `CC_PUBLIC_ORIGIN` so login works through your domain immediately (point DNS and run a reverse proxy with HTTPS first — see [Public Domain And Reverse Proxy](#public-domain-and-reverse-proxy)).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MaestroError/commands-center/main/scripts/install-ccenter-service.sh \
+  | CC_PUBLIC_ORIGIN=https://cc.example.com bash
+```
+
+**3. Production (recommended):** dedicated system user, `/opt/commandscenter` layout, and public origin in one command.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MaestroError/commands-center/main/scripts/install-ccenter-service.sh \
+  | CCENTER_CREATE_USER=true \
+    CCENTER_SERVICE_USER=commandscenter \
+    CCENTER_INSTALL_DIR=/opt/commandscenter \
+    CC_WORKSPACE_DIR=/opt/commandscenter/workspace \
+    CCENTER_ENV_FILE=/opt/commandscenter/.env \
+    CC_PUBLIC_ORIGIN=https://cc.example.com \
+    bash
 ```
 
 Or clone the repo first and run locally:
@@ -186,17 +208,19 @@ sudo systemctl enable commandscenter
 
 Contributor-only local tarball testing is documented in [CONTRIBUTING.md](CONTRIBUTING.md#cli-build-smoke-test).
 
-Useful overrides (works with both the `curl` and local forms):
+Configuration variables fall into two groups:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/MaestroError/commands-center/main/scripts/install-ccenter-service.sh \
-  | CCENTER_INSTALL_DIR=/opt/commandscenter \
-    CCENTER_WORKSPACE_DIR=/opt/commandscenter/workspace \
-    CCENTER_ENV_FILE=/opt/commandscenter/.env \
-    CCENTER_HOST=127.0.0.1 \
-    CCENTER_PORT=3000 \
-    bash
-```
+| Variable                                                                                                                        | Purpose                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CC_*` (e.g. `CC_HOST`, `CC_PORT`, `CC_WORKSPACE_DIR`, `CC_DATA_DIR`, `CC_PUBLIC_ORIGIN`, `CC_ALLOWED_ORIGINS`, `CC_LOG_LEVEL`) | App runtime settings. Any `CC_*` you set is injected into the service unit and written into the generated `.env`. These match the `.env` file names exactly. |
+| `CCENTER_INSTALL_DIR`                                                                                                           | Install/runtime base dir (default `~/.cc`).                                                                                                                  |
+| `CCENTER_ENV_FILE`                                                                                                              | Env file path (default `<install-dir>/.env`).                                                                                                                |
+| `CCENTER_SERVICE_USER` / `CCENTER_SERVICE_GROUP`                                                                                | Dedicated service account to run under.                                                                                                                      |
+| `CCENTER_CREATE_USER=true`                                                                                                      | Create the service user (a system account) if it does not exist, and fix ownership of the runtime dirs.                                                      |
+| `CCENTER_PACKAGE_SPEC`                                                                                                          | npm spec to install (e.g. pin `commandscenter@0.8.1`).                                                                                                       |
+| `CCENTER_NODE_MAJOR`                                                                                                            | Minimum Node.js major version to ensure (default `22`).                                                                                                      |
+
+`CCENTER_HOST`, `CCENTER_PORT`, and `CCENTER_WORKSPACE_DIR` are still accepted as deprecated fallbacks for `CC_HOST`, `CC_PORT`, and `CC_WORKSPACE_DIR`.
 
 On Ubuntu, the script writes `/etc/systemd/system/commandscenter.service`. On macOS, it writes `~/Library/LaunchAgents/com.commandscenter.app.plist`.
 
