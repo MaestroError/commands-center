@@ -104,7 +104,7 @@ install_node_macos() {
 
 install_commandscenter() {
   info "Installing $APP_NAME package: $PACKAGE_SPEC"
-  npm install -g "$PACKAGE_SPEC"
+  npm install -g --prefer-online "$PACKAGE_SPEC"
 }
 
 resolve_ccenter_path() {
@@ -254,7 +254,7 @@ wait_for_env_file() {
 
   info "Waiting for ccenter to create env file: $ENV_FILE"
 
-  for _ in {1..30}; do
+  for _ in {1..60}; do
     if [[ -f "$ENV_FILE" ]]; then
       return
     fi
