@@ -163,6 +163,8 @@ Environment=CC_WORKSPACE_DIR=$WORKSPACE_DIR
 ExecStart=$CCENTER_PATH start --host $HOST --port $PORT --cc-env-file $ENV_FILE
 Restart=on-failure
 RestartSec=5
+SuccessExitStatus=75
+RestartForceExitStatus=75
 KillSignal=SIGTERM
 TimeoutStopSec=30
 
