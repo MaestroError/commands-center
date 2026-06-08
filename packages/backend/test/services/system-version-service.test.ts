@@ -207,10 +207,11 @@ describe("createSystemVersionService", () => {
 
     try {
       await service.update();
-      await new Promise((resolve) => setTimeout(resolve, 150));
 
+      await vi.waitFor(() => {
+        expect(exitProcess).toHaveBeenCalledWith(75);
+      });
       expect(drain).toHaveBeenCalledWith("manual");
-      expect(exitProcess).toHaveBeenCalledWith(75);
     } finally {
       service.stop();
       await rm(cwd, { recursive: true, force: true });
