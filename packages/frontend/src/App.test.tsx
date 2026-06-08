@@ -80,6 +80,14 @@ describe("App", () => {
     expect(screen.getByTestId("recent-agents-section")).toBeInTheDocument();
   });
 
+  it("renders the application logo in the sidebar brand", async () => {
+    render(<App />);
+
+    await screen.findByRole("link", { name: "CommandsCenter" });
+
+    expect(screen.getByTestId("app-logo")).toBeInTheDocument();
+  });
+
   it("warns before browser refresh when task runs are active", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       if (input === "/api/auth/status") {
