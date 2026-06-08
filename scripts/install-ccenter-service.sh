@@ -4,6 +4,7 @@ set -euo pipefail
 
 APP_NAME="commandscenter"
 SERVICE_NAME="commandscenter"
+INSTALLER_URL="https://raw.githubusercontent.com/MaestroError/commands-center/main/scripts/install-ccenter-service.sh"
 
 # Installer-only configuration. These control how the installer behaves and
 # have no CC_* runtime equivalent.
@@ -435,12 +436,13 @@ print_summary() {
     printf '  1. To expose this instance through a domain or reverse proxy, set CC_PUBLIC_ORIGIN in %s:\n' "$ENV_FILE"
     printf '       CC_PUBLIC_ORIGIN=https://your.domain.com\n'
     printf '     then restart the service, or rerun this installer with CC_PUBLIC_ORIGIN already set.\n'
-    printf '     Without it, login through a domain is rejected with "Request origin is not allowed".\n'
+    printf '     Without it, login through a domain is rejected with "Request origin is not allowed."\n'
   fi
   if [[ "$OS" == "Linux" && "$SERVICE_USER" == "root" ]]; then
     printf '  2. The service is running as root. For better security, rerun with a dedicated user:\n'
-    printf '       curl -fsSL <installer-url> | CCENTER_INSTALL_DIR=/opt/commandscenter \\\n'
-    printf '         CCENTER_SERVICE_USER=commandscenter CCENTER_CREATE_USER=true bash\n'
+    printf '       curl -fsSL %s \\\n' "$INSTALLER_URL"
+    printf '         | CCENTER_INSTALL_DIR=/opt/commandscenter \\\n'
+    printf '           CCENTER_SERVICE_USER=commandscenter CCENTER_CREATE_USER=true bash\n'
   fi
 }
 
