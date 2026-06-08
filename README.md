@@ -273,6 +273,8 @@ sudo systemctl restart commandscenter
 
 When an update is applied from the running web app, CommandsCenter exits with code `75` after the package update. The service treats that as an intentional update restart: systemd records it as a successful exit and starts the service again. For manual `ccenter upgrade` runs, restart the service with `systemctl` as shown above.
 
+> To expose this instance publicly over HTTPS, see [Public Domain And Reverse Proxy](#public-domain-and-reverse-proxy).
+
 ### Docker Compose
 
 Docker images install the same global `commandscenter` npm package inside the container and run `ccenter start`. Docker installations do not self-update from inside the container. The app reports update guidance from `/api/system/version` and `/api/system/update`; the operator pulls a new image and restarts the container.
