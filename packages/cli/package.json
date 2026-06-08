@@ -1,6 +1,6 @@
 {
   "name": "commandscenter",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "description": "Single-user AI agent management — install, run, done.",
   "license": "Apache-2.0",
@@ -42,7 +42,7 @@
     "@fastify/static": "^9.1.3",
     "better-sqlite3": "^12.0.0",
     "fastify": "^5.8.5",
-    "opencode-ai": "^1.14.22"
+    "opencode-ai": "^1.16.2"
   },
   "devDependencies": {
     "@cc/backend": "workspace:*",
