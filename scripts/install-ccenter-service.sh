@@ -329,11 +329,20 @@ print_summary() {
     printf '  User:   %s:%s\n' "$SERVICE_USER" "$SERVICE_GROUP"
     printf '  Status: sudo systemctl status %s\n' "$SERVICE_NAME"
     printf '  Logs:   journalctl -u %s -f\n' "$SERVICE_NAME"
-    return
+  else
+    printf '  Status: launchctl print gui/$(id -u)/com.commandscenter.app\n'
+    printf '  Logs:   tail -f %s/commandscenter.out.log %s/commandscenter.err.log\n' "$INSTALL_DIR" "$INSTALL_DIR"
   fi
 
-  printf '  Status: launchctl print gui/$(id -u)/com.commandscenter.app\n'
-  printf '  Logs:   tail -f %s/commandscenter.out.log %s/commandscenter.err.log\n' "$INSTALL_DIR" "$INSTALL_DIR"
+  printf '\nNext steps:\n'
+  printf '  1. Set CC_PUBLIC_ORIGIN in %s if you are exposing this instance through a domain or reverse proxy:\n' "$ENV_FILE"
+  printf '       CC_PUBLIC_ORIGIN=https://your.domain.com\n'
+  printf '     Then restart the service. Without this, login will be rejected with "Request origin is not allowed".\n'
+  if [[ "$OS" == "Linux" && "$SERVICE_USER" == "root" ]]; then
+    printf '  2. The service is running as root. For better security, create a dedicated system user and reinstall:\n'
+    printf '       sudo useradd --system --create-home --home-dir /opt/commandscenter --shell /usr/sbin/nologin commandscenter\n'
+    printf '       CCENTER_INSTALL_DIR=/opt/commandscenter CCENTER_SERVICE_USER=commandscenter CCENTER_SERVICE_GROUP=commandscenter bash <installer>\n'
+  fi
 }
 
 command_exists() {

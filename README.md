@@ -360,7 +360,7 @@ Recommended setup sequence:
 3. Open `https://commands.example.com/claim` and claim the workspace.
 4. Use normal login afterward.
 
-Caddy example:
+Caddy example ([install Caddy](https://caddyserver.com/docs/install)):
 
 ```caddyfile
 commands.example.com {
