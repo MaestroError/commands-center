@@ -31,17 +31,14 @@ export async function resolveOpencodeBinary(config: RuntimeConfig): Promise<Open
     };
   }
 
-  let packageJsonPath: string;
-
-  try {
-    packageJsonPath = require.resolve("opencode-ai/package.json", {
-      paths: [config.paths.cwd, dirname(fileURLToPath(import.meta.url))],
-    });
-  } catch {
-    throw new Error(
-      "Unable to resolve the OpenCode binary from project dependencies. Install `opencode-ai` in the workspace or set CC_OPENCODE_PATH.",
-    );
-  }
+  // Search the @cc/backend package's own source dir first so the bundled
+  // opencode-ai (declared in `packages/backend/package.json` and resolved
+  // through pnpm) wins over any opencode-ai that happens to be hoisted into a
+  // parent directory. Falling back to the workspace cwd preserves the
+  // historical behavior for installations that have opencode-ai outside the
+  // package's own node_modules tree.
+  const ownSearchRoot = dirname(fileURLToPath(import.meta.url));
+  const packageJsonPath = resolveOpencodePackageJsonPath([ownSearchRoot, config.paths.cwd]);
 
   const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8")) as OpenCodePackage;
   const relativePath =
@@ -58,6 +55,25 @@ export async function resolveOpencodeBinary(config: RuntimeConfig): Promise<Open
     path,
     source: "dependency",
   };
+}
+
+/**
+ * Exported for testability. Walks up from each search root, in order, and
+ * returns the first `opencode-ai/package.json` it finds. Throws if no root
+ * has the package installed.
+ */
+export function resolveOpencodePackageJsonPath(searchRoots: string[]): string {
+  for (const root of searchRoots) {
+    try {
+      return require.resolve("opencode-ai/package.json", { paths: [root] });
+    } catch {
+      // try next root
+    }
+  }
+
+  throw new Error(
+    "Unable to resolve the OpenCode binary from project dependencies. Install `opencode-ai` in the workspace or set CC_OPENCODE_PATH.",
+  );
 }
 
 async function assertBinaryExists(path: string, source: string): Promise<void> {

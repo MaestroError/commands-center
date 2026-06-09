@@ -444,7 +444,7 @@ export function createAgentService(options: {
 }
 
 function qualifyModelId(providerId: string, modelId: string): string {
-  return modelId.includes("/") ? modelId : `${providerId}/${modelId}`;
+  return `${providerId}/${modelId}`;
 }
 
 function parseCapabilities(value: string) {
