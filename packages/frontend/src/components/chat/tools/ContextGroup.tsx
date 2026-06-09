@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Check, ChevronRight, Layers, Loader } from "lucide-react";
 import type { ConversationPart } from "@cc/shared/schemas";
 import { getToolName, getToolInput, getToolState } from "./tool-registry";
 
@@ -54,21 +55,28 @@ export function ContextGroup({ parts }: ContextGroupProps) {
   const summary = counts.join(", ");
 
   return (
-    <div className="border border-border rounded-md">
-      <button
-        type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/5 transition rounded-md"
-        onClick={() => setExpanded((prev) => !prev)}
-      >
-        <span className="text-text-secondary text-sm">{expanded ? "\u25BE" : "\u25B8"}</span>
-        <span className="text-sm font-medium text-text-primary flex-1">
-          {completed ? "Gathered context" : "Gathering context"}
-        </span>
-        <span className="text-xs text-text-secondary">{summary}</span>
-      </button>
+    <div className={`tool ${expanded ? "open" : ""}`}>
+      <div className="tool-row">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          className="tool-trigger"
+          onClick={() => setExpanded((prev) => !prev)}
+        >
+          <span className="tool-ico">
+            <Layers aria-hidden="true" className="h-3.5 w-3.5" />
+          </span>
+          <span className="tool-title">{completed ? "Gathered context" : "Gathering context"}</span>
+          <span className="tool-spacer" />
+          {summary ? <span className="tool-count">{summary}</span> : null}
+          <span className="tool-chev">
+            <ChevronRight aria-hidden="true" className="h-4 w-4" />
+          </span>
+        </button>
+      </div>
 
       {expanded && (
-        <div className="px-3 pb-2 space-y-1">
+        <div className="tool-body space-y-1">
           {parts.map((part) => {
             const name = getToolName(part);
             const label = getPartSummary(part);
@@ -76,15 +84,29 @@ export function ContextGroup({ parts }: ContextGroupProps) {
             const status = state?.["status"] as string | undefined;
 
             return (
-              <div key={part.id} className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs">
+              <div key={part.id} className="flex items-center gap-2 rounded-lg px-1 py-1 text-xs">
                 <span className="font-medium text-text-secondary w-12 shrink-0">{name}</span>
                 <span className="text-text-primary truncate flex-1 font-mono">{label}</span>
                 {status === "completed" ? (
-                  <span className="text-success shrink-0">✓</span>
+                  <>
+                    <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-success" />
+                    <span className="sr-only">completed</span>
+                  </>
                 ) : status === "error" ? (
-                  <span className="text-danger shrink-0">✗</span>
+                  <>
+                    <span aria-hidden="true" className="text-danger shrink-0">
+                      ✗
+                    </span>
+                    <span className="sr-only">failed</span>
+                  </>
                 ) : (
-                  <span className="text-info shrink-0 animate-pulse">…</span>
+                  <>
+                    <Loader
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5 shrink-0 animate-spin text-info"
+                    />
+                    <span className="sr-only">running</span>
+                  </>
                 )}
               </div>
             );

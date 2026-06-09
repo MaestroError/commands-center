@@ -466,7 +466,7 @@ export function ChatComposer({
 
   return (
     <div
-      className="relative border border-border rounded-md bg-surface"
+      className="relative border border-border rounded-b-md bg-surface"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >

@@ -1,53 +1,78 @@
 import { useState, type ReactNode } from "react";
+import { ChevronRight, Wrench } from "lucide-react";
+
 import { CopyIdButton } from "../CopyIdButton";
-import { getStatusDisplay } from "./tool-registry";
 
 type BasicToolProps = {
   title: string;
   subtitle?: string;
   status?: string;
+  icon?: ReactNode;
   defaultExpanded?: boolean;
   hideDetails?: boolean;
   copyValue?: string;
   children?: ReactNode;
 };
 
+function statusPill(status?: string): { label: string; cls: string } | null {
+  switch (status) {
+    case "completed":
+      return { label: "Completed", cls: "completed" };
+    case "pending":
+    case "running":
+      return { label: "Running", cls: "running" };
+    case "error":
+      return { label: "Error", cls: "error" };
+    default:
+      return null;
+  }
+}
+
 export function BasicTool({
   title,
   subtitle,
   status,
+  icon,
   defaultExpanded = false,
   hideDetails = false,
   copyValue,
   children,
 }: BasicToolProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const { label, className } = getStatusDisplay(status);
-  const canExpand = !hideDetails && children;
+  const pill = statusPill(status);
+  const canExpand = !hideDetails && Boolean(children);
 
   return (
-    <div className="border border-border rounded-md">
-      <div className="flex items-center gap-2 px-3 py-2">
+    <div className={`tool ${expanded ? "open" : ""}`}>
+      <div className="tool-row">
         <button
           type="button"
-          className={`flex flex-1 items-center gap-2 text-left transition rounded-md ${
-            canExpand ? "hover:bg-accent/5 cursor-pointer" : "cursor-default"
-          }`}
+          aria-expanded={canExpand ? expanded : undefined}
+          className={`tool-trigger ${canExpand ? "" : "static"}`}
           onClick={() => canExpand && setExpanded((prev) => !prev)}
         >
-          {canExpand && (
-            <span className="text-text-secondary text-sm">{expanded ? "\u25BE" : "\u25B8"}</span>
-          )}
-          <span className="text-sm font-medium text-text-primary flex-1 truncate">{title}</span>
-          {subtitle && (
-            <span className="text-xs text-text-secondary truncate max-w-[40%]">{subtitle}</span>
-          )}
-          {label && <span className={`text-xs font-medium ${className}`}>{label}</span>}
+          <span className="tool-ico">
+            {icon ?? <Wrench aria-hidden="true" className="h-3.5 w-3.5" />}
+          </span>
+          <span className="tool-name">{title}</span>
+          {subtitle ? <span className="tool-arg">{subtitle}</span> : null}
+          <span className="tool-spacer" />
+          {pill ? (
+            <span className={`tool-status ${pill.cls}`}>
+              <span className="sdot" />
+              {pill.label}
+            </span>
+          ) : null}
+          {canExpand ? (
+            <span className="tool-chev">
+              <ChevronRight aria-hidden="true" className="h-4 w-4" />
+            </span>
+          ) : null}
         </button>
         {copyValue ? <CopyIdButton label={`tool id ${title}`} value={copyValue} /> : null}
       </div>
 
-      {expanded && children && <div className="px-3 pb-3 space-y-2">{children}</div>}
+      {expanded && canExpand ? <div className="tool-body space-y-2">{children}</div> : null}
     </div>
   );
 }

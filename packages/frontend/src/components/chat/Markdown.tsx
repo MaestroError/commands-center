@@ -1,4 +1,4 @@
-import { Children, useState } from "react";
+import { Children, useState, type ReactNode } from "react";
 
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -19,12 +19,13 @@ const markdownSchema = {
 
 export function Markdown({ className, content }: MarkdownProps) {
   return (
-    <div
-      className={`prose prose-sm max-w-none text-text-primary [&_img]:rounded-lg [&_img]:border [&_img]:border-border [&_img]:bg-surface [&_img]:p-1 [&_img]:shadow-sm [&_pre]:bg-surface [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:text-sm [&_code]:text-sm [&_code]:bg-surface [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_a]:text-accent [&_a]:underline [&_p]:leading-6 [&_li]:leading-6 ${className ?? ""}`}
-    >
+    <div className={`cc-md ${className ?? ""}`}>
       <ReactMarkdown
         components={{
           code: Code,
+          pre: Pre,
+          a: Anchor,
+          table: Table,
         }}
         rehypePlugins={[[rehypeSanitize, markdownSchema]]}
         urlTransform={transformMarkdownUrl}
@@ -35,22 +36,99 @@ export function Markdown({ className, content }: MarkdownProps) {
   );
 }
 
-function Code(props: React.ComponentProps<"code"> & { inline?: boolean }) {
-  const { inline, className, children, ...rest } = props;
-  const value = Children.toArray(children)
+function childrenToText(children: ReactNode): string {
+  return Children.toArray(children)
     .map((child) => (typeof child === "string" ? child : ""))
     .join("");
+}
+
+// Pre is a passthrough: fenced code is rendered as a full `.md-codeblock`
+// by the Code component, so we avoid wrapping a <div> inside <pre>.
+function Pre(props: { children?: ReactNode }) {
+  return <>{props.children}</>;
+}
+
+function Anchor(props: React.ComponentProps<"a">) {
+  const { href, children, ...rest } = props;
+  const external = typeof href === "string" && /^https?:/i.test(href);
+  return (
+    <a
+      href={href}
+      {...rest}
+      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+    >
+      {children}
+    </a>
+  );
+}
+
+function Table(props: { children?: ReactNode }) {
+  return (
+    <div className="md-tablewrap">
+      <table className="md-table">{props.children}</table>
+    </div>
+  );
+}
+
+function Code(props: React.ComponentProps<"code"> & { inline?: boolean }) {
+  const { inline, className, children, ...rest } = props;
+  const value = childrenToText(children);
   const isInline = inline ?? (!className && !value.includes("\n"));
 
-  if (!isInline) {
-    return (
-      <code className={className} {...rest}>
-        {children}
-      </code>
-    );
+  if (isInline) {
+    return <InlineCopyCode className="md-code" value={value} {...rest} />;
   }
 
-  return <InlineCopyCode className={className} value={value} {...rest} />;
+  const language = /language-(\w+)/.exec(className ?? "")?.[1];
+  return <CodeBlock language={language} value={value} />;
+}
+
+function CodeBlock(props: { language?: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <div className="md-codeblock">
+      <div className="md-codebar">
+        <span className="md-codelang">{props.language ?? "code"}</span>
+        <button
+          className={`md-copy ${copied ? "is-copied" : ""}`}
+          onClick={() => void handleCopy()}
+          type="button"
+        >
+          <CopyGlyph />
+          <span>{copied ? "Copied" : "Copy"}</span>
+        </button>
+      </div>
+      <pre className="md-pre">
+        <code>{props.value}</code>
+      </pre>
+    </div>
+  );
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(props.value).catch(() => undefined);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1400);
+  }
+}
+
+function CopyGlyph() {
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      height="13"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      width="13"
+    >
+      <rect height="13" rx="2" width="13" x="9" y="9" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
 }
 
 function InlineCopyCode(props: React.ComponentProps<"code"> & { value: string }) {
@@ -60,9 +138,7 @@ function InlineCopyCode(props: React.ComponentProps<"code"> & { value: string })
   return (
     <code
       {...rest}
-      className={`${className ?? ""} cursor-pointer rounded-md transition-colors ${
-        copied ? "bg-emerald-500/15 text-emerald-700" : "hover:bg-surface-elevated"
-      }`}
+      className={`${className ?? ""} cursor-pointer transition-colors ${copied ? "is-copied" : ""}`}
       onClick={() => void handleCopy()}
       title={copied ? "Copied" : "Click to copy"}
     >

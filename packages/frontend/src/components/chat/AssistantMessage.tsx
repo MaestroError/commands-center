@@ -55,7 +55,7 @@ function renderPart(part: ConversationPart) {
 
   switch (part.type) {
     case "text":
-      return <Markdown content={(part["text"] as string) ?? ""} />;
+      return <Markdown className="cc-md--chat" content={(part["text"] as string) ?? ""} />;
     case "tool":
       return renderToolPart(part);
     default:
@@ -91,8 +91,8 @@ export function AssistantMessage({ message, parts }: AssistantMessageProps) {
 
   if (!hasParts) {
     return (
-      <div className="bg-chat-agent rounded-lg px-4 py-3 space-y-3">
-        <Markdown content={message.content} />
+      <div className="space-y-3">
+        <Markdown className="cc-md--chat" content={message.content} />
       </div>
     );
   }
@@ -104,12 +104,12 @@ export function AssistantMessage({ message, parts }: AssistantMessageProps) {
   if (!hasVisible) {
     if (!message.content && !messageError) return null;
     return (
-      <div className="bg-chat-agent rounded-lg px-4 py-3 space-y-3">
-        {message.content ? <Markdown content={message.content} /> : null}
+      <div className="space-y-3">
+        {message.content ? <Markdown className="cc-md--chat" content={message.content} /> : null}
         {messageError ? <p className="text-sm text-danger">{messageError}</p> : null}
       </div>
     );
   }
 
-  return <div className="bg-chat-agent rounded-lg px-4 py-3 space-y-3">{renderedEntries}</div>;
+  return <div className="space-y-3">{renderedEntries}</div>;
 }
