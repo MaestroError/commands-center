@@ -1,5 +1,5 @@
 import { chmod, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 import { describe, expect, it } from "vitest";
@@ -39,36 +39,29 @@ describe("resolveOpencodeBinary", () => {
 
   it("resolves the binary from the CommandsCenter opencode-ai dependency", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "cc-opencode-dep-"));
-    const packageRoot = join(cwd, "node_modules", "opencode-ai");
-    const bin = join(packageRoot, "bin", "opencode.js");
 
     try {
-      await mkdir(join(packageRoot, "bin"), { recursive: true });
-      await writeFile(
-        join(packageRoot, "package.json"),
-        JSON.stringify({
-          name: "opencode-ai",
-          bin: {
-            opencode: "bin/opencode.js",
-          },
-        }),
-      );
-      await writeFile(bin, "#!/usr/bin/env node\n");
-
       const config = loadRuntimeConfig({
         cwd,
         env: {
           NODE_ENV: "test",
         },
       });
+      const packageJsonPath = resolveOpencodePackageJsonPath(cwd);
+      const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8")) as {
+        bin?: string | Record<string, string>;
+      };
+      const relativePath =
+        typeof packageJson.bin === "string" ? packageJson.bin : packageJson.bin?.["opencode"];
 
-      await expect(resolveOpencodeBinary(config)).resolves.toMatchObject({
-        path: expect.stringContaining("/node_modules/opencode-ai/bin/"),
+      if (!relativePath) {
+        throw new Error("Resolved opencode-ai package does not declare an opencode binary.");
+      }
+
+      await expect(resolveOpencodeBinary(config)).resolves.toEqual({
+        path: resolve(dirname(packageJsonPath), relativePath),
         source: "dependency",
       });
-      await expect(readFile(join(packageRoot, "package.json"), "utf8")).resolves.toContain(
-        "opencode-ai",
-      );
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

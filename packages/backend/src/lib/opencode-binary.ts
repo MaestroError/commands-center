@@ -37,7 +37,7 @@ export async function resolveOpencodeBinary(config: RuntimeConfig): Promise<Open
     packageJsonPath = resolveOpencodePackageJsonPath(config.paths.cwd);
   } catch {
     throw new Error(
-      "Unable to resolve the OpenCode binary from project dependencies. Install `opencode-ai` in the workspace or set CC_OPENCODE_PATH.",
+      "Unable to resolve the OpenCode binary from CommandsCenter or workspace dependencies. Reinstall CommandsCenter, install `opencode-ai` in the workspace, or set CC_OPENCODE_PATH.",
     );
   }
 
