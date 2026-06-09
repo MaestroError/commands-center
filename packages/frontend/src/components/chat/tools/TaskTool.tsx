@@ -1,3 +1,5 @@
+import { Sparkles } from "lucide-react";
+
 import type { ToolRendererProps } from "./tool-registry";
 import { getToolInput, getToolState } from "./tool-registry";
 import { BasicTool } from "./BasicTool";
@@ -11,5 +13,13 @@ export function TaskTool({ part }: ToolRendererProps) {
   const description = (input?.["description"] as string) ?? "";
   const title = subagentType.charAt(0).toUpperCase() + subagentType.slice(1);
 
-  return <BasicTool title={title} subtitle={description} status={status} hideDetails />;
+  return (
+    <BasicTool
+      icon={<Sparkles aria-hidden="true" className="h-3.5 w-3.5" />}
+      title={title}
+      subtitle={description}
+      status={status}
+      hideDetails
+    />
+  );
 }

@@ -57,7 +57,7 @@ export function MessageTimeline({
   return (
     <div
       ref={containerRef}
-      className="overflow-y-auto flex-1 min-h-0 px-4 py-4 space-y-4"
+      className="overflow-y-auto flex-1 min-h-0 bg-app-bg px-4 py-4 space-y-4"
       onScroll={handleScroll}
     >
       {messages.map((msg) => {

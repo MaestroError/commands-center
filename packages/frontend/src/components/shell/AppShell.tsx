@@ -104,13 +104,13 @@ export function AppShell() {
           isDesktop
             ? sidebarCollapsed
               ? "lg:grid-cols-[4.5rem_minmax(0,1fr)]"
-              : "lg:grid-cols-[18rem_minmax(0,1fr)]"
+              : "lg:grid-cols-[15.5rem_minmax(0,1fr)]"
             : "grid-cols-1"
         }`}
       >
         {isDesktop ? (
           <aside
-            className={`border-r border-border bg-sidebar py-5 ${sidebarCollapsed ? "px-2" : "px-4"}`}
+            className={`border-r border-border bg-sidebar py-[18px] ${sidebarCollapsed ? "px-2" : "px-3.5"}`}
           >
             <SidebarContent
               collapsed={sidebarCollapsed}
@@ -128,8 +128,8 @@ export function AppShell() {
             onClick={() => setMobileSidebarOpen(false)}
           >
             <aside
-              className={`absolute inset-y-0 left-0 border-r border-border bg-sidebar py-5 shadow-2xl ${
-                sidebarCollapsed ? "w-[4.5rem] px-2" : "w-[18rem] px-4"
+              className={`absolute inset-y-0 left-0 border-r border-border bg-sidebar py-[18px] shadow-2xl ${
+                sidebarCollapsed ? "w-[4.5rem] px-2" : "w-[15.5rem] px-3.5"
               }`}
               onClick={(event) => event.stopPropagation()}
             >
@@ -256,23 +256,28 @@ function SidebarContent(props: {
   onToggleCollapsed: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col gap-6">
+    <div className="flex h-full flex-col gap-[18px]">
       <div
-        className={`flex items-center ${props.collapsed ? "justify-center" : "justify-between gap-3"}`}
+        className={`flex items-center ${props.collapsed ? "justify-center" : "justify-between gap-2"}`}
       >
         {!props.collapsed ? (
           <>
             <NavLink
-              className="cc-eyebrow inline-flex w-fit items-center gap-2"
+              aria-label="CommandsCenter"
+              className="inline-flex min-w-0 items-center gap-2 px-1 py-1"
               onClick={props.onNavigate}
               to="/"
             >
               <AppLogo className="h-8 w-8 shrink-0" data-testid="app-logo" />
-              <span>CommandsCenter</span>
+              <span className="text-[12px] font-bold uppercase leading-[1.2] tracking-[0.04em] text-text-primary">
+                Commands
+                <br />
+                Center
+              </span>
             </NavLink>
             <button
               aria-label="Collapse sidebar"
-              className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
               onClick={props.onToggleCollapsed}
               type="button"
             >
@@ -291,24 +296,6 @@ function SidebarContent(props: {
         )}
       </div>
 
-      <nav className="grid gap-2" data-testid="sidebar-navigation">
-        {dashboardSidebarRoute ? (
-          <SidebarRouteLink
-            collapsed={props.collapsed}
-            isActive={isRouteActive(
-              props.pathname,
-              dashboardSidebarRoute.path,
-              dashboardSidebarRoute.navigationMatch,
-            )}
-            label={dashboardSidebarRoute.navLabel ?? dashboardSidebarRoute.title}
-            onNavigate={props.onNavigate}
-            to={dashboardSidebarRoute.path}
-          >
-            {dashboardSidebarRoute.navIcon}
-          </SidebarRouteLink>
-        ) : null}
-      </nav>
-
       {agentsSidebarRoute ? (
         <section
           className={
@@ -317,8 +304,8 @@ function SidebarContent(props: {
               agentsSidebarRoute.path,
               agentsSidebarRoute.navigationMatch,
             )
-              ? "min-w-0 overflow-hidden rounded-xl border border-accent/30 bg-surface p-3"
-              : "min-w-0 overflow-hidden rounded-xl border border-border bg-surface p-3"
+              ? "min-w-0 overflow-hidden rounded-xl border border-accent/30 bg-surface p-2.5 shadow-[0_18px_48px_-36px_rgba(15,23,42,0.55)]"
+              : "min-w-0 overflow-hidden rounded-xl border border-border bg-surface p-2.5 shadow-[0_18px_48px_-36px_rgba(15,23,42,0.55)]"
           }
           data-testid={props.collapsed ? "recent-agents-collapsed" : "recent-agents-section"}
         >
@@ -348,7 +335,7 @@ function SidebarContent(props: {
                   {agentsSidebarRoute.navLabel}
                 </NavLink>
                 <NavLink
-                  className="text-sm text-accent transition hover:text-accent-hover"
+                  className="text-xs font-medium text-accent transition hover:text-accent-hover"
                   onClick={props.onNavigate}
                   to={agentsSidebarRoute.path}
                 >
@@ -356,15 +343,15 @@ function SidebarContent(props: {
                 </NavLink>
               </div>
               {props.recentAgents.length > 0 ? (
-                <div className="mt-3 grid min-w-0 gap-2">
+                <div className="mt-1 grid min-w-0 gap-0.5">
                   {props.recentAgents.map((agent) => (
                     <NavLink
-                      className="block min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-surface-elevated/50 px-3 py-2 transition hover:border-accent/40 hover:bg-accent/5"
+                      className="block min-w-0 max-w-full overflow-hidden rounded-lg px-2 py-2 transition hover:bg-surface-elevated"
                       key={agent.slug}
                       onClick={props.onNavigate}
                       to={`/chat/${encodeURIComponent(agent.slug)}`}
                     >
-                      <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
                         <AgentAvatar iconPath={agent.iconPath} name={agent.name} size="sm" />
                         <div className="min-w-0 flex-1 overflow-hidden">
                           <p className="truncate text-sm font-medium text-text-primary">
@@ -388,7 +375,22 @@ function SidebarContent(props: {
         </section>
       ) : null}
 
-      <nav className="grid gap-2">
+      <nav className="grid gap-0.5" data-testid="sidebar-navigation">
+        {dashboardSidebarRoute ? (
+          <SidebarRouteLink
+            collapsed={props.collapsed}
+            isActive={isRouteActive(
+              props.pathname,
+              dashboardSidebarRoute.path,
+              dashboardSidebarRoute.navigationMatch,
+            )}
+            label={dashboardSidebarRoute.navLabel ?? dashboardSidebarRoute.title}
+            onNavigate={props.onNavigate}
+            to={dashboardSidebarRoute.path}
+          >
+            {dashboardSidebarRoute.navIcon}
+          </SidebarRouteLink>
+        ) : null}
         {secondarySidebarRoutes.map((route) => (
           <SidebarRouteLink
             collapsed={props.collapsed}
@@ -426,8 +428,8 @@ function SidebarRouteLink(props: {
                 : "border-border bg-surface text-text-secondary hover:border-accent/40 hover:text-text-primary",
             ].join(" ")
           : props.isActive
-            ? "cc-nav-item cc-nav-item-active flex items-center gap-3"
-            : "cc-nav-item flex items-center gap-3"
+            ? "cc-nav-item-active flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition"
+            : "flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-text-secondary transition hover:bg-surface hover:text-text-primary"
       }
       onClick={props.onNavigate}
       title={props.collapsed ? props.label : undefined}
