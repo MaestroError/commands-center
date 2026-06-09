@@ -138,6 +138,14 @@ textarea {
   min-height: 100vh;
 }
 
+.cc-logo-background {
+  fill: color-mix(in srgb, var(--accent-active) 76%, var(--info) 24%);
+}
+
+.cc-logo-icon {
+  fill: var(--surface);
+}
+
 .cc-panel {
   @apply rounded-xl border border-border bg-surface shadow-[0_24px_64px_-40px_rgba(15,23,42,0.65)];
 }

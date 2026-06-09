@@ -3,6 +3,7 @@ import { ChevronLeft, Clock3, ListChecks, Menu, Search } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { AppLogo } from "@/components/common/AppLogo";
 import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useEngineStatusQuery } from "@/hooks/use-engine-status-query";
@@ -261,8 +262,13 @@ function SidebarContent(props: {
       >
         {!props.collapsed ? (
           <>
-            <NavLink className="cc-eyebrow inline-flex w-fit" onClick={props.onNavigate} to="/">
-              CommandsCenter
+            <NavLink
+              className="cc-eyebrow inline-flex w-fit items-center gap-2"
+              onClick={props.onNavigate}
+              to="/"
+            >
+              <AppLogo className="h-8 w-8 shrink-0" data-testid="app-logo" />
+              <span>CommandsCenter</span>
             </NavLink>
             <button
               aria-label="Collapse sidebar"
