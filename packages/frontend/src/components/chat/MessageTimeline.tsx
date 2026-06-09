@@ -162,7 +162,7 @@ function ConvertToTaskButton(props: {
   return (
     <button
       aria-label="Convert to task"
-      className="mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-secondary opacity-70 transition hover:border-accent/50 hover:text-text-primary focus:opacity-100 group-hover:opacity-100"
+      className="mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-transparent text-text-secondary opacity-30 transition hover:border-accent/50 hover:text-text-primary focus:opacity-100 group-hover:opacity-100"
       onClick={() => props.onConvert?.(props.message, props.parts)}
       title="Convert to task"
       type="button"
@@ -204,7 +204,7 @@ function MessageCopyButton(props: { copyText: string }) {
   return (
     <button
       aria-label={copied ? "Copied" : "Copy message"}
-      className="mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-secondary opacity-70 transition hover:border-accent/50 hover:text-text-primary focus:opacity-100 group-hover:opacity-100"
+      className="mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-transparent text-text-secondary opacity-30 transition hover:border-accent/50 hover:text-text-primary focus:opacity-100 group-hover:opacity-100"
       onClick={handleClick}
       title={copied ? "Copied!" : "Copy message"}
       type="button"
