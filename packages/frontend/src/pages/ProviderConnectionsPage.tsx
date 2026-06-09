@@ -304,6 +304,7 @@ function ProviderDialog(props: ProviderDialogProps) {
   const [autoStatus, setAutoStatus] = useState<string>();
   const [dialogBusy, setDialogBusy] = useState(false);
   const [manualCompleting, setManualCompleting] = useState(false);
+  const [pollCompleting, setPollCompleting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string>();
   const pollRef = useRef<number | undefined>(undefined);
   const pollBusyRef = useRef(false);
@@ -397,6 +398,7 @@ function ProviderDialog(props: ProviderDialogProps) {
       }
 
       pollBusyRef.current = true;
+      setPollCompleting(true);
       setDialogBusy(true);
       void props
         .onCompleteOauth(providerId, method)
@@ -421,6 +423,7 @@ function ProviderDialog(props: ProviderDialogProps) {
         })
         .finally(() => {
           pollBusyRef.current = false;
+          setPollCompleting(false);
         });
     }, 2000);
   }
@@ -429,6 +432,10 @@ function ProviderDialog(props: ProviderDialogProps) {
     event.preventDefault();
 
     if (!oauthSession) {
+      return;
+    }
+
+    if (pollBusyRef.current) {
       return;
     }
 
@@ -640,10 +647,12 @@ function ProviderDialog(props: ProviderDialogProps) {
                 </label>
                 <button
                   className="cc-button cc-button-secondary"
-                  disabled={props.busy || manualCompleting}
+                  disabled={props.busy || manualCompleting || pollCompleting}
                   type="submit"
                 >
-                  {props.busy || manualCompleting ? "Completing..." : "Complete OAuth"}
+                  {props.busy || manualCompleting || pollCompleting
+                    ? "Completing..."
+                    : "Complete OAuth"}
                 </button>
               </form>
             ) : null}

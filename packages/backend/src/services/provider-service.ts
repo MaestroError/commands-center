@@ -122,7 +122,8 @@ function readOauthCode(code?: string): string | undefined {
 
   try {
     const url = new URL(trimmed);
-    return url.searchParams.get("code")?.trim() || trimmed;
+    const parsedCode = url.searchParams.get("code");
+    return parsedCode?.trim() || undefined;
   } catch {
     return trimmed;
   }

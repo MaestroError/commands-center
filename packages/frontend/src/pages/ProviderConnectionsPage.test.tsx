@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProviderConnectionsPage } from "./ProviderConnectionsPage";
@@ -274,6 +274,48 @@ describe("ProviderConnectionsPage", () => {
         code: "http://localhost:1455/auth/callback?code=oauth-code&state=oauth-state",
       });
     });
+  });
+
+  it("disables manual completion while automatic oauth polling is in flight", async () => {
+    vi.useFakeTimers();
+    let resolvePoll: ((result: { connected: boolean; pending: boolean }) => void) | undefined;
+    startOauthMutateAsync.mockResolvedValue({
+      url: "https://example.com/oauth",
+      method: "auto",
+      instructions: "Waiting for callback.",
+    });
+    completeOauthMutateAsync.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePoll = resolve;
+        }),
+    );
+
+    try {
+      render(<ProviderConnectionsPage />);
+      fireEvent.click(screen.getByRole("button", { name: "Connect OAuth" }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Open provider login" }));
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+
+      const manualForm = screen.getByLabelText("Manual code or callback value").closest("form");
+      expect(manualForm).not.toBeNull();
+      expect(
+        within(manualForm as HTMLElement).getByRole("button", { name: "Completing..." }),
+      ).toBeDisabled();
+
+      await act(async () => {
+        resolvePoll?.({ connected: false, pending: true });
+        await Promise.resolve();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
