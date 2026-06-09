@@ -206,6 +206,10 @@ describe("workspace integration schemas", () => {
       updatedAt: "2026-05-03T12:00:00.000Z",
     });
 
-    expect(setSecretRequestSchema.parse({ value: "" })).toEqual({ value: "" });
+    expect(setSecretRequestSchema.parse({ value: "" })).toEqual({ value: "", restart: true });
+    expect(setSecretRequestSchema.parse({ value: "x", restart: false })).toEqual({
+      value: "x",
+      restart: false,
+    });
   });
 });

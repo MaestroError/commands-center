@@ -40,6 +40,7 @@ import {
   revokeApiToken,
   revokeTaskArtifactShareLink,
   resizeTerminalSession,
+  restartEngine,
   updateTaskArtifactSharingPreferences,
   runTaskTemplateNow,
   saveFileManagerFileContent,
@@ -572,6 +573,12 @@ describe("additional request wrapper coverage", () => {
     expectedInit: RequestInit;
   }>([
     {
+      name: "restartEngine posts a restart request",
+      run: () => restartEngine(),
+      expectedUrl: "/api/opencode/restart",
+      expectedInit: { method: "POST" },
+    },
+    {
       name: "checkSystemVersion posts a manual version check request",
       run: () => checkSystemVersion(),
       expectedUrl: "/api/system/version/check",
@@ -584,8 +591,24 @@ describe("additional request wrapper coverage", () => {
       expectedInit: {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ value: "secret-value" }),
+        body: JSON.stringify({ value: "secret-value", restart: true }),
       },
+    },
+    {
+      name: "setSecret can skip the engine restart",
+      run: () => setSecret("OPENAI KEY", "secret-value", false),
+      expectedUrl: "/api/secrets/OPENAI%20KEY",
+      expectedInit: {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value: "secret-value", restart: false }),
+      },
+    },
+    {
+      name: "deleteSecret can skip the engine restart",
+      run: () => deleteSecret("OPENAI KEY", false),
+      expectedUrl: "/api/secrets/OPENAI%20KEY?restart=false",
+      expectedInit: { method: "DELETE" },
     },
     {
       name: "revokeApiToken deletes the encoded token id",

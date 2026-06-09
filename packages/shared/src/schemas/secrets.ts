@@ -13,6 +13,7 @@ export const secretMetaListSchema = z.array(secretMetaSchema);
 
 export const setSecretRequestSchema = z.object({
   value: z.string(),
+  restart: z.boolean().default(true),
 });
 
 export type SecretMeta = z.infer<typeof secretMetaSchema>;

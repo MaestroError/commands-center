@@ -69,8 +69,8 @@ describe("useSecretsQuery", () => {
       await result.current.remove.mutateAsync({ key: "OPENAI_API_KEY" });
     });
 
-    expect(setSecret).toHaveBeenCalledWith("OPENAI_API_KEY", "secret");
-    expect(deleteSecret).toHaveBeenCalledWith("OPENAI_API_KEY");
+    expect(setSecret).toHaveBeenCalledWith("OPENAI_API_KEY", "secret", undefined);
+    expect(deleteSecret).toHaveBeenCalledWith("OPENAI_API_KEY", undefined);
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.secrets });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.mcpServers });
   });

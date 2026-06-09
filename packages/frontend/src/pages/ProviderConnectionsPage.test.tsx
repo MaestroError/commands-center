@@ -61,26 +61,29 @@ describe("ProviderConnectionsPage", () => {
   });
 
   it("renders empty states when there are no connected models or providers", () => {
-    vi.mocked(useProvidersQuery)
-      .mockReturnValueOnce({
-        data: [buildProvider({ connected: false, models: [] })],
-        isLoading: false,
-        error: null,
-        refetch: refetchSpy,
-      } as never)
-      .mockReturnValueOnce({
-        data: [],
-        isLoading: false,
-        error: null,
-        refetch: refetchSpy,
-      } as never);
+    vi.mocked(useProvidersQuery).mockReturnValue({
+      data: [buildProvider({ connected: false, models: [] })],
+      isLoading: false,
+      error: null,
+      refetch: refetchSpy,
+    } as never);
 
-    const { rerender } = render(<ProviderConnectionsPage />);
+    const { unmount } = render(<ProviderConnectionsPage />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Expand available models" }));
     expect(screen.getByText("No connected provider models yet.")).toBeInTheDocument();
     expect(screen.getByText("Connect API key")).toBeInTheDocument();
 
-    rerender(<ProviderConnectionsPage />);
+    unmount();
+
+    vi.mocked(useProvidersQuery).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: refetchSpy,
+    } as never);
+
+    render(<ProviderConnectionsPage />);
 
     expect(screen.getByText("Nothing to connect yet.")).toBeInTheDocument();
   });
@@ -117,6 +120,68 @@ describe("ProviderConnectionsPage", () => {
     await waitFor(() => {
       expect(disconnectMutateAsync).toHaveBeenCalledWith({ providerId: "openai" });
     });
+  });
+
+  it("collapses the models section by default and filters models when expanded", () => {
+    vi.mocked(useProvidersQuery).mockReturnValue({
+      data: [
+        buildProvider({
+          connected: true,
+          models: [buildModel("gpt-4o", "GPT-4o"), buildModel("claude-opus", "Claude Opus")],
+        }),
+      ],
+      isLoading: false,
+      error: null,
+      refetch: refetchSpy,
+    } as never);
+
+    render(<ProviderConnectionsPage />);
+
+    // Collapsed by default: the model search and model grid (model ids) are not rendered.
+    // Model names render as chips on the provider card, so assert on the grid-only model ids.
+    expect(screen.queryByLabelText("Search models")).not.toBeInTheDocument();
+    expect(screen.queryByText("gpt-4o")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand available models" }));
+
+    expect(screen.getByText("gpt-4o")).toBeInTheDocument();
+    expect(screen.getByText("claude-opus")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Search models"), { target: { value: "gpt" } });
+
+    expect(screen.getByText("gpt-4o")).toBeInTheDocument();
+    expect(screen.queryByText("claude-opus")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Search models"), { target: { value: "no-match" } });
+
+    expect(screen.getByText("No matching models")).toBeInTheDocument();
+  });
+
+  it("filters provider cards by the search query", () => {
+    vi.mocked(useProvidersQuery).mockReturnValue({
+      data: [buildProvider(), buildProvider({ provider: { id: "anthropic", name: "Anthropic" } })],
+      isLoading: false,
+      error: null,
+      refetch: refetchSpy,
+    } as never);
+
+    render(<ProviderConnectionsPage />);
+
+    expect(screen.getByRole("heading", { name: "OpenAI" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Anthropic" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Search providers"), {
+      target: { value: "anthro" },
+    });
+
+    expect(screen.queryByRole("heading", { name: "OpenAI" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Anthropic" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Search providers"), {
+      target: { value: "no-match" },
+    });
+
+    expect(screen.getByText("No matching providers")).toBeInTheDocument();
   });
 
   it("connects a provider with an API key and shows the success state", async () => {

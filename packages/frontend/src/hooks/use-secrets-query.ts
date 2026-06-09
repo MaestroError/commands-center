@@ -22,11 +22,13 @@ export function useSecretMutations() {
 
   return {
     set: useMutation({
-      mutationFn: ({ key, value }: { key: string; value: string }) => setSecret(key, value),
+      mutationFn: ({ key, value, restart }: { key: string; value: string; restart?: boolean }) =>
+        setSecret(key, value, restart),
       onSuccess: invalidateSecrets,
     }),
     remove: useMutation({
-      mutationFn: ({ key }: { key: string }) => deleteSecret(key),
+      mutationFn: ({ key, restart }: { key: string; restart?: boolean }) =>
+        deleteSecret(key, restart),
       onSuccess: invalidateSecrets,
     }),
   };

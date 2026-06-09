@@ -13,6 +13,7 @@ export const engineStatusSchema = z.object({
   healthy: z.boolean(),
   url: z.string().min(1),
   workspaceDir: z.string().min(1),
+  version: z.string().min(1).optional(),
   pid: z.number().int().positive().optional(),
   binaryPath: z.string().min(1).optional(),
   binarySource: z.enum(["dependency", "override"]).optional(),
