@@ -16,7 +16,8 @@ export function useMarkEngineRestarting() {
   const queryClient = useQueryClient();
 
   return useCallback(() => {
-    queryClient.setQueryData(queryKeys.engineStatus, undefined);
+    // Trigger a refetch but keep the previously cached status visible until it
+    // resolves, so the engine card does not blank out without a loading state.
     void queryClient.invalidateQueries({ queryKey: queryKeys.engineStatus });
   }, [queryClient]);
 }
@@ -26,9 +27,6 @@ export function useEngineRestartMutation() {
 
   return useMutation({
     mutationFn: restartEngine,
-    onMutate: () => {
-      queryClient.setQueryData(queryKeys.engineStatus, undefined);
-    },
     onSuccess: (status) => {
       queryClient.setQueryData(queryKeys.engineStatus, status);
     },

@@ -85,10 +85,15 @@ function ConfirmDialog(props: {
       onClick={props.onCancel}
     >
       <section
+        aria-labelledby="confirm-dialog-title"
+        aria-modal="true"
         className="cc-panel w-full max-w-lg p-6"
         onClick={(event) => event.stopPropagation()}
+        role="dialog"
       >
-        <h2 className="text-xl font-semibold text-text-primary">{props.title}</h2>
+        <h2 className="text-xl font-semibold text-text-primary" id="confirm-dialog-title">
+          {props.title}
+        </h2>
         <div className="mt-3 text-sm leading-6 text-text-secondary">{props.description}</div>
         <div className="mt-6 flex flex-wrap gap-2">
           <button

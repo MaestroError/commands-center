@@ -42,7 +42,6 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
   const [form, setForm] = useState<AgentFormState>(createEmptyAgentForm());
   const [errors, setErrors] = useState<AgentFormErrors>({});
   const [saveError, setSaveError] = useState<string>();
-  const [successMessage, setSuccessMessage] = useState<string>();
   const appliedSnapshotRef = useRef<AppliedAgentSnapshot | undefined>(undefined);
   const catalog = catalogQuery.data;
   const agents = agentsQuery.data ?? [];
@@ -110,7 +109,6 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
         title={props.mode === "create" ? "Create agent" : (agent?.name ?? "Edit agent")}
       />
 
-      {successMessage ? <section className="cc-success">{successMessage}</section> : null}
       {catalogError ? (
         <ErrorState description={catalogError} title="Agent catalog could not be loaded." />
       ) : null}
@@ -174,7 +172,6 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSuccessMessage(undefined);
     setSaveError(undefined);
 
     const slugTaken = agents.some(
@@ -209,9 +206,8 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
 
     try {
       if (props.mode === "create") {
-        const created = await agentMutations.create.mutateAsync(payload as CreateAgentInput);
+        await agentMutations.create.mutateAsync(payload as CreateAgentInput);
         void navigate("/agents", { replace: true });
-        setSuccessMessage(`${created.name} created.`);
         return;
       }
 
@@ -219,9 +215,8 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
         return;
       }
 
-      const updated = await agentMutations.update.mutateAsync({ id: agent.id, input: payload });
+      await agentMutations.update.mutateAsync({ id: agent.id, input: payload });
       void navigate("/agents", { replace: true });
-      setSuccessMessage(`${updated.name} saved.`);
     } catch (error) {
       setSaveError(readError(error));
     }
