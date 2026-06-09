@@ -444,7 +444,8 @@ export function createAgentService(options: {
 }
 
 function qualifyModelId(providerId: string, modelId: string): string {
-  return modelId.includes("/") ? modelId : `${providerId}/${modelId}`;
+  const prefix = `${providerId}/`;
+  return modelId.startsWith(prefix) ? modelId : `${prefix}${modelId}`;
 }
 
 function parseCapabilities(value: string) {
