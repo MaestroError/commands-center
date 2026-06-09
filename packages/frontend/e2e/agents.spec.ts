@@ -50,6 +50,14 @@ test("creates and edits an agent", async ({ page }) => {
   await page.getByRole("button", { name: /code-reviewer/i }).click();
   await page.getByRole("button", { name: "Create agent" }).click();
 
+  // Creating an agent returns to the agents list.
+  await expect(page).toHaveURL(/\/agents$/);
+  await expect(page.getByRole("heading", { name: "Planner", level: 2 })).toBeVisible();
+
+  // Open the newly created agent for editing.
+  await page.getByPlaceholder("Search by name or role").fill("Planner");
+  await page.getByRole("link", { name: "Edit" }).click();
+
   await expect(page).toHaveURL(/\/agents\/planner\/edit$/);
   await expect(page.getByLabel(/^Name/)).toHaveValue("Planner");
   await expect(page.getByLabel(/^Role/)).toHaveValue("plan work");
@@ -68,7 +76,10 @@ test("creates and edits an agent", async ({ page }) => {
   await expect(page.getByLabel(/^Role/)).toHaveValue("plan features");
   await page.getByRole("button", { name: "Save changes" }).click();
   await updateResponse;
-  await expect(page.getByLabel(/^Role/)).toHaveValue("plan features");
+
+  // Saving also returns to the agents list, now showing the updated role.
+  await expect(page).toHaveURL(/\/agents$/);
+  await expect(page.getByText("plan features")).toBeVisible();
 });
 
 test("browses built-in skills and detail metadata", async ({ page }) => {
