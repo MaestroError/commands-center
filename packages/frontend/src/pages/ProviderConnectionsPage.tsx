@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ChevronDown } from "lucide-react";
+
 import type {
   ProviderOauthAuthorization,
   ProviderOauthCompleteResult,
@@ -22,7 +24,18 @@ export function ProviderConnectionsPage() {
   const [dialog, setDialog] = useState<DialogState>();
   const [busyProviderId, setBusyProviderId] = useState<string>();
   const [successMessage, setSuccessMessage] = useState<string>();
+  const [search, setSearch] = useState("");
+  const [modelSearch, setModelSearch] = useState("");
+  const [modelsExpanded, setModelsExpanded] = useState(false);
   const providers = providersQuery.data ?? [];
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredProviders = normalizedSearch
+    ? providers.filter(
+        (entry: ProviderStatus) =>
+          entry.provider.name.toLowerCase().includes(normalizedSearch) ||
+          entry.provider.id.toLowerCase().includes(normalizedSearch),
+      )
+    : providers;
   const availableModels = providers.flatMap((entry: ProviderStatus) =>
     entry.models.map((model: ProviderStatus["models"][number]) => ({
       ...model,
@@ -33,6 +46,15 @@ export function ProviderConnectionsPage() {
   const connectedModels = availableModels.filter(
     (model: (typeof availableModels)[number]) => model.connected,
   );
+  const normalizedModelSearch = modelSearch.trim().toLowerCase();
+  const filteredModels = normalizedModelSearch
+    ? connectedModels.filter(
+        (model: (typeof connectedModels)[number]) =>
+          model.name.toLowerCase().includes(normalizedModelSearch) ||
+          model.id.toLowerCase().includes(normalizedModelSearch) ||
+          model.providerName.toLowerCase().includes(normalizedModelSearch),
+      )
+    : connectedModels;
   const queryError = providersQuery.error ? readError(providersQuery.error) : undefined;
 
   return (
@@ -74,7 +96,13 @@ export function ProviderConnectionsPage() {
 
       {!providersQuery.isLoading ? (
         <section className="cc-panel p-6">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <button
+            aria-expanded={modelsExpanded}
+            aria-label={`${modelsExpanded ? "Collapse" : "Expand"} available models`}
+            className="flex w-full flex-col gap-3 text-left md:flex-row md:items-start md:justify-between"
+            onClick={() => setModelsExpanded((current) => !current)}
+            type="button"
+          >
             <div>
               <h2 className="text-xl font-semibold text-text-primary">Available models</h2>
               <p className="mt-1 text-sm text-text-secondary">
@@ -82,32 +110,59 @@ export function ProviderConnectionsPage() {
                 immediate.
               </p>
             </div>
-            <div className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-text-secondary">
-              {connectedModels.length} connected model{connectedModels.length === 1 ? "" : "s"}
+            <div className="flex items-center gap-3">
+              <span className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-text-secondary">
+                {connectedModels.length} connected model{connectedModels.length === 1 ? "" : "s"}
+              </span>
+              <ChevronDown
+                aria-hidden
+                className={`h-5 w-5 shrink-0 text-text-secondary transition-transform ${
+                  modelsExpanded ? "rotate-180" : ""
+                }`}
+              />
             </div>
-          </div>
+          </button>
 
-          {connectedModels.length > 0 ? (
-            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {connectedModels.map((model: (typeof connectedModels)[number]) => (
-                <div
-                  className="rounded-lg border border-border bg-surface p-4"
-                  key={`${model.providerId}:${model.id}`}
-                >
-                  <p className="text-sm font-semibold text-text-primary">{model.name}</p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-accent">
-                    {model.providerName}
-                  </p>
-                  <p className="mt-2 break-all text-xs text-text-secondary">{model.id}</p>
+          {modelsExpanded ? (
+            <div className="mt-5 grid gap-4">
+              {connectedModels.length > 0 ? (
+                <input
+                  aria-label="Search models"
+                  className="cc-input w-full md:w-auto md:min-w-80"
+                  onChange={(event) => setModelSearch(event.target.value)}
+                  placeholder="Search models"
+                  value={modelSearch}
+                />
+              ) : null}
+
+              {connectedModels.length === 0 ? (
+                <EmptyState
+                  description="Authenticate a provider below, then refresh to confirm the model list."
+                  title="No connected provider models yet."
+                />
+              ) : filteredModels.length === 0 ? (
+                <EmptyState
+                  description="No connected models match the current search."
+                  title="No matching models"
+                />
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredModels.map((model: (typeof filteredModels)[number]) => (
+                    <div
+                      className="rounded-lg border border-border bg-surface p-4"
+                      key={`${model.providerId}:${model.id}`}
+                    >
+                      <p className="text-sm font-semibold text-text-primary">{model.name}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-accent">
+                        {model.providerName}
+                      </p>
+                      <p className="mt-2 break-all text-xs text-text-secondary">{model.id}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          ) : (
-            <EmptyState
-              description="Authenticate a provider below, then refresh to confirm the model list."
-              title="No connected provider models yet."
-            />
-          )}
+          ) : null}
         </section>
       ) : null}
 
@@ -118,116 +173,147 @@ export function ProviderConnectionsPage() {
         />
       ) : null}
 
-      {!providersQuery.isLoading ? (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {providers.map((entry: ProviderStatus) => {
-            const oauthMethod = entry.authMethods.find(
-              (method: ProviderStatus["authMethods"][number]) => method.type === "oauth",
-            );
-            const apiMethod = entry.authMethods.find(
-              (method: ProviderStatus["authMethods"][number]) => method.type === "api",
-            );
-            const busy = busyProviderId === entry.provider.id;
+      {!providersQuery.isLoading && providers.length > 0 ? (
+        <div className="grid gap-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-text-primary">Providers</h2>
+              <p className="mt-1 text-sm text-text-secondary">
+                Connect or manage authentication for each available provider.
+              </p>
+            </div>
+            <input
+              aria-label="Search providers"
+              className="cc-input w-full md:w-auto md:min-w-80"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search providers"
+              value={search}
+            />
+          </div>
 
-            return (
-              <article className="cc-panel flex min-h-72 flex-col p-5" key={entry.provider.id}>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-xl font-semibold text-text-primary">
-                      {entry.provider.name}
-                    </h2>
-                    <p className="mt-1 text-sm text-text-secondary">{entry.provider.id}</p>
-                  </div>
-                  <span
-                    className={
-                      entry.connected ? "cc-badge cc-badge-connected" : "cc-badge cc-badge-muted"
-                    }
-                  >
-                    {entry.connected ? "Connected" : "Not connected"}
-                  </span>
-                </div>
+          {filteredProviders.length === 0 ? (
+            <EmptyState
+              description="No providers match the current search."
+              title="No matching providers"
+            />
+          ) : (
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredProviders.map((entry: ProviderStatus) => {
+                const oauthMethod = entry.authMethods.find(
+                  (method: ProviderStatus["authMethods"][number]) => method.type === "oauth",
+                );
+                const apiMethod = entry.authMethods.find(
+                  (method: ProviderStatus["authMethods"][number]) => method.type === "api",
+                );
+                const busy = busyProviderId === entry.provider.id;
 
-                <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-lg border border-border bg-surface p-3">
-                    <dt className="text-text-secondary">Models</dt>
-                    <dd className="mt-1 text-lg font-semibold text-text-primary">
-                      {entry.models.length}
-                    </dd>
-                  </div>
-                  <div className="rounded-lg border border-border bg-surface p-3">
-                    <dt className="text-text-secondary">Default</dt>
-                    <dd className="mt-1 truncate text-sm font-medium text-text-primary">
-                      {entry.defaultModel ?? "None"}
-                    </dd>
-                  </div>
-                </dl>
-
-                <div className="mt-5 flex flex-wrap gap-2">
-                  {entry.models.slice(0, 4).map((model: ProviderStatus["models"][number]) => (
-                    <span
-                      className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent"
-                      key={model.id}
-                    >
-                      {model.name}
-                    </span>
-                  ))}
-                  {entry.models.length > 4 ? (
-                    <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
-                      +{String(entry.models.length - 4)} more
-                    </span>
-                  ) : null}
-                </div>
-
-                <div className="mt-auto pt-6">
-                  <div className="flex flex-wrap gap-2">
-                    {apiMethod ? (
-                      <button
-                        className="cc-button"
-                        disabled={busy}
-                        onClick={() => setDialog({ provider: entry, mode: "api" })}
-                        type="button"
-                      >
-                        {entry.connected ? "Update API key" : "Connect API key"}
-                      </button>
-                    ) : null}
-                    {oauthMethod ? (
-                      <button
-                        className="cc-button cc-button-secondary"
-                        disabled={busy}
-                        onClick={() => setDialog({ provider: entry, mode: "oauth" })}
-                        type="button"
-                      >
-                        {entry.connected ? "Reconnect OAuth" : "Connect OAuth"}
-                      </button>
-                    ) : null}
-                    {entry.connected ? (
-                      <button
-                        className="cc-button cc-button-danger"
-                        disabled={busy}
-                        onClick={() =>
-                          void runProviderAction(entry.provider.id, setBusyProviderId, async () => {
-                            setSuccessMessage(undefined);
-                            await providerMutations.disconnect.mutateAsync({
-                              providerId: entry.provider.id,
-                            });
-                          })
+                return (
+                  <article className="cc-panel flex min-h-72 flex-col p-5" key={entry.provider.id}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-semibold text-text-primary">
+                          {entry.provider.name}
+                        </h2>
+                        <p className="mt-1 text-sm text-text-secondary">{entry.provider.id}</p>
+                      </div>
+                      <span
+                        className={
+                          entry.connected
+                            ? "cc-badge cc-badge-connected"
+                            : "cc-badge cc-badge-muted"
                         }
-                        type="button"
                       >
-                        Disconnect
-                      </button>
-                    ) : null}
-                  </div>
-                  <p className="mt-3 text-xs leading-5 text-text-secondary">
-                    {entry.authMethods
-                      .map((method: ProviderStatus["authMethods"][number]) => method.label)
-                      .join(" • ") || "No auth methods exposed by OpenCode."}
-                  </p>
-                </div>
-              </article>
-            );
-          })}
-        </section>
+                        {entry.connected ? "Connected" : "Not connected"}
+                      </span>
+                    </div>
+
+                    <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-lg border border-border bg-surface p-3">
+                        <dt className="text-text-secondary">Models</dt>
+                        <dd className="mt-1 text-lg font-semibold text-text-primary">
+                          {entry.models.length}
+                        </dd>
+                      </div>
+                      <div className="rounded-lg border border-border bg-surface p-3">
+                        <dt className="text-text-secondary">Default</dt>
+                        <dd className="mt-1 truncate text-sm font-medium text-text-primary">
+                          {entry.defaultModel ?? "None"}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      {entry.models.slice(0, 4).map((model: ProviderStatus["models"][number]) => (
+                        <span
+                          className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent"
+                          key={model.id}
+                        >
+                          {model.name}
+                        </span>
+                      ))}
+                      {entry.models.length > 4 ? (
+                        <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
+                          +{String(entry.models.length - 4)} more
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-auto pt-6">
+                      <div className="flex flex-wrap gap-2">
+                        {apiMethod ? (
+                          <button
+                            className="cc-button"
+                            disabled={busy}
+                            onClick={() => setDialog({ provider: entry, mode: "api" })}
+                            type="button"
+                          >
+                            {entry.connected ? "Update API key" : "Connect API key"}
+                          </button>
+                        ) : null}
+                        {oauthMethod ? (
+                          <button
+                            className="cc-button cc-button-secondary"
+                            disabled={busy}
+                            onClick={() => setDialog({ provider: entry, mode: "oauth" })}
+                            type="button"
+                          >
+                            {entry.connected ? "Reconnect OAuth" : "Connect OAuth"}
+                          </button>
+                        ) : null}
+                        {entry.connected ? (
+                          <button
+                            className="cc-button cc-button-danger"
+                            disabled={busy}
+                            onClick={() =>
+                              void runProviderAction(
+                                entry.provider.id,
+                                setBusyProviderId,
+                                async () => {
+                                  setSuccessMessage(undefined);
+                                  await providerMutations.disconnect.mutateAsync({
+                                    providerId: entry.provider.id,
+                                  });
+                                },
+                              )
+                            }
+                            type="button"
+                          >
+                            Disconnect
+                          </button>
+                        ) : null}
+                      </div>
+                      <p className="mt-3 text-xs leading-5 text-text-secondary">
+                        {entry.authMethods
+                          .map((method: ProviderStatus["authMethods"][number]) => method.label)
+                          .join(" • ") || "No auth methods exposed by OpenCode."}
+                      </p>
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+          )}
+        </div>
       ) : null}
 
       {dialog ? (
