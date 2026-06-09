@@ -6,7 +6,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsPage } from "./SettingsPage";
 
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
-import { useMarkEngineRestarting } from "@/hooks/use-engine-status-query";
+import {
+  useEngineRestartMutation,
+  useEngineStatusQuery,
+  useMarkEngineRestarting,
+} from "@/hooks/use-engine-status-query";
 import {
   useSystemVersionCheckMutation,
   useSystemUpdateMutation,
@@ -37,6 +41,8 @@ vi.mock("@/hooks/use-system-version-query", () => ({
 }));
 
 vi.mock("@/hooks/use-engine-status-query", () => ({
+  useEngineStatusQuery: vi.fn(),
+  useEngineRestartMutation: vi.fn(),
   useMarkEngineRestarting: vi.fn(),
 }));
 
@@ -61,6 +67,7 @@ const checkVersionMutate = vi.fn();
 const updateSystemMutate = vi.fn();
 const updatePreferencesMutate = vi.fn();
 const markEngineRestarting = vi.fn();
+const restartEngineMutate = vi.fn();
 
 beforeEach(() => {
   setMutateAsync.mockReset();
@@ -69,6 +76,7 @@ beforeEach(() => {
   updateSystemMutate.mockReset();
   updatePreferencesMutate.mockReset();
   markEngineRestarting.mockReset();
+  restartEngineMutate.mockReset();
   vi.mocked(getFileManagerPreferences).mockReset();
   vi.mocked(updateFileManagerPreferences).mockReset();
   vi.mocked(useSecretsQuery).mockReturnValue({
@@ -94,6 +102,25 @@ beforeEach(() => {
     remove: { mutateAsync: removeMutateAsync, isPending: false },
   } as never);
   vi.mocked(useMarkEngineRestarting).mockReturnValue(markEngineRestarting);
+  vi.mocked(useEngineStatusQuery).mockReturnValue({
+    data: {
+      state: "healthy",
+      healthy: true,
+      url: "http://127.0.0.1:4100",
+      workspaceDir: "/tmp/workspace",
+      version: "1.16.2",
+      binarySource: "dependency",
+      restartCount: 0,
+      maxRestarts: 3,
+    },
+    isLoading: false,
+    error: null,
+  } as never);
+  vi.mocked(useEngineRestartMutation).mockReturnValue({
+    mutate: restartEngineMutate,
+    isPending: false,
+    error: null,
+  } as never);
   vi.mocked(useSystemVersionQuery).mockReturnValue({
     data: {
       current: "1.0.0",
@@ -158,6 +185,9 @@ describe("SettingsPage", () => {
     renderWithQueryClient(<SettingsPage />);
 
     expect(screen.getByRole("tab", { name: "System" })).toBeInTheDocument();
+    expect(screen.getByText("Opencode engine")).toBeInTheDocument();
+    expect(screen.getByText("1.16.2")).toBeInTheDocument();
+    expect(screen.getByText("Running")).toBeInTheDocument();
     expect(screen.getByText("1.0.0")).toBeInTheDocument();
     expect(screen.getByText("1.1.0")).toBeInTheDocument();
 
@@ -167,6 +197,18 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply update" }));
 
     expect(updateSystemMutate).toHaveBeenCalledOnce();
+  });
+
+  it("restarts the opencode engine from the system tab after confirmation", () => {
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart instance" }));
+    expect(restartEngineMutate).not.toHaveBeenCalled();
+
+    expect(screen.getByText("Restart Opencode engine?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm restart" }));
+
+    expect(restartEngineMutate).toHaveBeenCalledOnce();
   });
 
   it("shows the pending manual version check state", () => {
@@ -244,21 +286,69 @@ describe("SettingsPage", () => {
       target: { value: "new-secret" },
     });
     fireEvent.click(screen.getAllByRole("button", { name: "Update" })[0]!);
-    fireEvent.click(screen.getByRole("button", { name: "Confirm update" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart now" }));
 
     await waitFor(() => {
       expect(setMutateAsync).toHaveBeenCalledWith({
         key: "CC_MCP_GITHUB_TOKEN",
         value: "new-secret",
+        restart: true,
       });
     });
 
     fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
-    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart now" }));
 
     await waitFor(() => {
-      expect(removeMutateAsync).toHaveBeenCalledWith({ key: "CC_MCP_GITHUB_TOKEN" });
+      expect(removeMutateAsync).toHaveBeenCalledWith({
+        key: "CC_MCP_GITHUB_TOKEN",
+        restart: true,
+      });
     });
+  });
+
+  it("updates a secret without restarting when choosing to restart later", async () => {
+    setMutateAsync.mockResolvedValue(undefined);
+
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+
+    fireEvent.change(screen.getByLabelText("Value for CC_MCP_GITHUB_TOKEN"), {
+      target: { value: "new-secret" },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Update" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "I'll restart later" }));
+
+    await waitFor(() => {
+      expect(setMutateAsync).toHaveBeenCalledWith({
+        key: "CC_MCP_GITHUB_TOKEN",
+        value: "new-secret",
+        restart: false,
+      });
+    });
+
+    expect(markEngineRestarting).not.toHaveBeenCalled();
+  });
+
+  it("deletes a secret without restarting when choosing to restart later", async () => {
+    removeMutateAsync.mockResolvedValue(undefined);
+
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "I'll restart later" }));
+
+    await waitFor(() => {
+      expect(removeMutateAsync).toHaveBeenCalledWith({
+        key: "CC_MCP_GITHUB_TOKEN",
+        restart: false,
+      });
+    });
+
+    expect(markEngineRestarting).not.toHaveBeenCalled();
   });
 
   it("creates a new secret manually", async () => {
@@ -275,16 +365,46 @@ describe("SettingsPage", () => {
       target: { value: "manual-secret" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save secret" }));
+    expect(setMutateAsync).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Restart now" }));
 
     await waitFor(() => {
       expect(setMutateAsync).toHaveBeenCalledWith({
         key: "CC_MANUAL_TOKEN",
         value: "manual-secret",
+        restart: true,
       });
     });
 
     expect(markEngineRestarting).toHaveBeenCalledOnce();
     expect(screen.queryByLabelText("Secret key")).not.toBeInTheDocument();
+  });
+
+  it("creates a new secret without restarting when choosing to restart later", async () => {
+    setMutateAsync.mockResolvedValue(undefined);
+
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add secret" }));
+    fireEvent.change(screen.getByLabelText("Secret key"), {
+      target: { value: "CC_MANUAL_TOKEN" },
+    });
+    fireEvent.change(screen.getByLabelText("Secret value"), {
+      target: { value: "manual-secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save secret" }));
+    fireEvent.click(screen.getByRole("button", { name: "I'll restart later" }));
+
+    await waitFor(() => {
+      expect(setMutateAsync).toHaveBeenCalledWith({
+        key: "CC_MANUAL_TOKEN",
+        value: "manual-secret",
+        restart: false,
+      });
+    });
+
+    expect(markEngineRestarting).not.toHaveBeenCalled();
   });
 
   it("prevents creating a duplicate secret key", () => {
@@ -318,6 +438,7 @@ describe("SettingsPage", () => {
       target: { value: "manual-secret" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save secret" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart now" }));
 
     expect(await screen.findByText("Request failed.")).toBeInTheDocument();
     expect(markEngineRestarting).not.toHaveBeenCalled();
@@ -441,7 +562,7 @@ describe("SettingsPage", () => {
     renderWithQueryClient(<SettingsPage />);
     fireEvent.click(screen.getByRole("tab", { name: "Secrets" }));
     fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
-    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart now" }));
 
     expect(await screen.findByText("Request failed.")).toBeInTheDocument();
     expect(markEngineRestarting).not.toHaveBeenCalled();
@@ -456,7 +577,7 @@ describe("SettingsPage", () => {
       target: { value: "new-secret" },
     });
     fireEvent.click(screen.getAllByRole("button", { name: "Update" })[0]!);
-    fireEvent.click(screen.getByRole("button", { name: "Confirm update" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart now" }));
 
     await waitFor(() => {
       expect(markEngineRestarting).toHaveBeenCalledOnce();

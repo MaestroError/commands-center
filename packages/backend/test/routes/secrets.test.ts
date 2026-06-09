@@ -88,6 +88,51 @@ describe("secret routes", () => {
     }
   });
 
+  it("stores secrets without restarting when restart is disabled", async () => {
+    const testDb = await createTestDatabase();
+    const orchestrator = createMockOrchestrator();
+    const secretService = createSecretService({ db: testDb.client.db, config: testDb.config });
+    const server = await createRouteServer({ testDb, orchestrator, secretService });
+
+    try {
+      const response = await server.inject({
+        method: "PUT",
+        url: "/api/secrets/CC_API_TOKEN",
+        payload: { value: "super-secret", restart: false },
+      });
+
+      expect(response.statusCode).toBe(204);
+      expect(await secretService.buildEnvMap()).toEqual({ CC_API_TOKEN: "super-secret" });
+      expect(orchestrator.restart).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("deletes secrets without restarting when restart is disabled", async () => {
+    const testDb = await createTestDatabase();
+    const orchestrator = createMockOrchestrator();
+    const secretService = createSecretService({ db: testDb.client.db, config: testDb.config });
+    const server = await createRouteServer({ testDb, orchestrator, secretService });
+
+    try {
+      await secretService.set("CC_DELETE_ME", "gone-soon");
+
+      const response = await server.inject({
+        method: "DELETE",
+        url: "/api/secrets/CC_DELETE_ME?restart=false",
+      });
+
+      expect(response.statusCode).toBe(204);
+      expect(await secretService.buildEnvMap()).toEqual({});
+      expect(orchestrator.restart).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("deletes secrets and restarts the orchestrator", async () => {
     const testDb = await createTestDatabase();
     const orchestrator = createMockOrchestrator();

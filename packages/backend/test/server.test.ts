@@ -33,11 +33,14 @@ function createDatabase(sqlitePath: string): DatabaseClient {
   };
 }
 
-function createOrchestrator(status: EngineStatus): OpenCodeOrchestrator {
+function createOrchestrator(
+  status: EngineStatus,
+  restart: OpenCodeOrchestrator["restart"] = () => Promise.resolve(),
+): OpenCodeOrchestrator {
   return {
     start: () => Promise.resolve(),
     stop: () => Promise.resolve(),
-    restart: () => Promise.resolve(),
+    restart,
     refreshHealth: () => Promise.resolve(status.healthy),
     getStatus: () => status,
   };
@@ -213,6 +216,57 @@ describe("createServer", () => {
         restartCount: 2,
         maxRestarts: 3,
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("restarts the opencode engine through the dedicated API route", async () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: {
+        NODE_ENV: "test",
+      },
+    });
+    const restart = vi.fn(() => Promise.resolve());
+    const engine = createOrchestrator(
+      {
+        state: "healthy",
+        healthy: true,
+        url: "http://127.0.0.1:4100",
+        workspaceDir: "/tmp/project/.cc/workspace",
+        version: "1.16.2",
+        restartCount: 0,
+        maxRestarts: 3,
+      },
+      restart,
+    );
+    const server = await createServer({
+      config,
+      logger: createLogger(config),
+      database: createDatabase("/tmp/project/.cc/data/cc.db"),
+      apiTokenService: createApiTokenService({
+        db: createDatabase("/tmp/project/.cc/data/cc.db").db,
+      }),
+      orchestrator: engine,
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretServiceStub(),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/opencode/restart",
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(response.json()).toMatchObject({
+        state: "healthy",
+        version: "1.16.2",
+      });
+      expect(restart).toHaveBeenCalledWith("manual restart requested");
     } finally {
       await server.close();
     }

@@ -210,7 +210,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     try {
       if (props.mode === "create") {
         const created = await agentMutations.create.mutateAsync(payload as CreateAgentInput);
-        void navigate(`/agents/${created.slug}/edit`, { replace: true });
+        void navigate("/agents", { replace: true });
         setSuccessMessage(`${created.name} created.`);
         return;
       }
@@ -220,7 +220,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
       }
 
       const updated = await agentMutations.update.mutateAsync({ id: agent.id, input: payload });
-      void navigate(`/agents/${updated.slug}/edit`, { replace: true });
+      void navigate("/agents", { replace: true });
       setSuccessMessage(`${updated.name} saved.`);
     } catch (error) {
       setSaveError(readError(error));

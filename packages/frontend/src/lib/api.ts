@@ -268,6 +268,12 @@ export async function getEngineStatus(): Promise<EngineStatus> {
   return requestJson<EngineStatus>("/api/opencode", engineStatusSchema);
 }
 
+export async function restartEngine(): Promise<EngineStatus> {
+  return requestJson<EngineStatus>("/api/opencode/restart", engineStatusSchema, {
+    method: "POST",
+  });
+}
+
 export async function getSystemVersion(): Promise<SystemVersion> {
   return requestJson<SystemVersion>("/api/system/version", systemVersionSchema);
 }
@@ -444,11 +450,11 @@ export async function revokeApiToken(id: string): Promise<void> {
   }
 }
 
-export async function setSecret(key: string, value: string): Promise<void> {
+export async function setSecret(key: string, value: string, restart = true): Promise<void> {
   const response = await apiFetch(`/api/secrets/${encodeURIComponent(key)}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(setSecretRequestSchema.parse({ value })),
+    body: JSON.stringify(setSecretRequestSchema.parse({ value, restart })),
   });
 
   if (!response.ok && response.status !== 204) {
@@ -457,8 +463,11 @@ export async function setSecret(key: string, value: string): Promise<void> {
   }
 }
 
-export async function deleteSecret(key: string): Promise<void> {
-  const response = await apiFetch(`/api/secrets/${encodeURIComponent(key)}`, { method: "DELETE" });
+export async function deleteSecret(key: string, restart = true): Promise<void> {
+  const query = restart ? "" : "?restart=false";
+  const response = await apiFetch(`/api/secrets/${encodeURIComponent(key)}${query}`, {
+    method: "DELETE",
+  });
 
   if (!response.ok && response.status !== 204) {
     const payload = (await response.json().catch(() => undefined)) as unknown;

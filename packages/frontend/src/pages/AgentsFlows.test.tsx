@@ -113,7 +113,7 @@ describe("agent flows", () => {
     expect(screen.getByRole("heading", { name: "Reviewer", level: 2 })).toBeInTheDocument();
   });
 
-  it("creates an agent and navigates to edit state", async () => {
+  it("creates an agent and navigates to the agents page", async () => {
     mockApi({
       "GET /api/agents/catalog": [jsonResponse(200, catalog), jsonResponse(200, catalog)],
       "GET /api/agents": [
@@ -200,9 +200,9 @@ describe("agent flows", () => {
     await user.click(screen.getByRole("button", { name: "Create agent" }));
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe("/agents/planner/edit");
+      expect(window.location.pathname).toBe("/agents");
     });
-    expect(screen.getByDisplayValue("Planner")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Planner", level: 2 })).toBeInTheDocument();
   });
 
   it("renders the built-in skills browser and detail pane", async () => {

@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { PasswordInput } from "@/components/common/PasswordInput";
 import { TabBar } from "@/components/common/TabBar";
-import { useMarkEngineRestarting } from "@/hooks/use-engine-status-query";
+import {
+  useEngineRestartMutation,
+  useEngineStatusQuery,
+  useMarkEngineRestarting,
+} from "@/hooks/use-engine-status-query";
 import { useSecretMutations, useSecretsQuery } from "@/hooks/use-secrets-query";
 import {
   useSystemVersionCheckMutation,
@@ -55,7 +59,9 @@ export function SettingsPage() {
       <section className="cc-panel p-6">
         <TabBar activeTabId={activeTabId} onTabChange={setActiveTabId} tabs={tabs} />
         {activeTabId === "system" ? <SystemTab /> : null}
-        {activeTabId === "secrets" ? <SecretsTab /> : null}
+        {activeTabId === "secrets" ? (
+          <SecretsTab onShowSystemTab={() => setActiveTabId("system")} />
+        ) : null}
         {activeTabId === "file-manager" ? <FileManagerTab /> : null}
         {activeTabId === "sharing" ? <SharingTab /> : null}
       </section>
@@ -63,7 +69,76 @@ export function SettingsPage() {
   );
 }
 
+function ConfirmDialog(props: {
+  title: string;
+  description: ReactNode;
+  confirmLabel: string;
+  confirmVariant?: "primary" | "danger";
+  onConfirm: () => void;
+  onCancel: () => void;
+  secondaryLabel?: string;
+  onSecondary?: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6"
+      onClick={props.onCancel}
+    >
+      <section
+        className="cc-panel w-full max-w-lg p-6"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2 className="text-xl font-semibold text-text-primary">{props.title}</h2>
+        <div className="mt-3 text-sm leading-6 text-text-secondary">{props.description}</div>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <button
+            className={
+              props.confirmVariant === "danger" ? "cc-button cc-button-danger" : "cc-button"
+            }
+            onClick={props.onConfirm}
+            type="button"
+          >
+            {props.confirmLabel}
+          </button>
+          {props.secondaryLabel && props.onSecondary ? (
+            <button
+              className="cc-button cc-button-secondary"
+              onClick={props.onSecondary}
+              type="button"
+            >
+              {props.secondaryLabel}
+            </button>
+          ) : null}
+          <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+            Cancel
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SecretRestartNotice(props: { onShowSystemTab: () => void }) {
+  return (
+    <p>
+      Restarting the AI engine is required for this secret change to take effect. You can restart
+      now, or restart later from the System tab in{" "}
+      <button
+        className="font-medium text-accent underline-offset-4 hover:underline"
+        onClick={props.onShowSystemTab}
+        type="button"
+      >
+        Settings
+      </button>
+      . Restarting interrupts any active agent sessions briefly.
+    </p>
+  );
+}
+
 function SystemTab() {
+  const engineQuery = useEngineStatusQuery();
+  const engineRestartMutation = useEngineRestartMutation();
+  const [confirmingRestart, setConfirmingRestart] = useState(false);
   const versionQuery = useSystemVersionQuery();
   const versionCheckMutation = useSystemVersionCheckMutation();
   const preferencesQuery = useSystemUpdatePreferencesQuery();
@@ -86,7 +161,16 @@ function SystemTab() {
     updateMutation.error instanceof Error ? updateMutation.error.message : undefined;
   const versionCheckError =
     versionCheckMutation.error instanceof Error ? versionCheckMutation.error.message : undefined;
+  const engineError =
+    engineQuery.error instanceof Error
+      ? engineQuery.error.message
+      : engineRestartMutation.error instanceof Error
+        ? engineRestartMutation.error.message
+        : undefined;
   const updateResult = updateMutation.data;
+  const engine = engineQuery.data;
+  const engineRestartDisabled =
+    engineRestartMutation.isPending || engine?.state === "starting" || engine?.state === "stopping";
 
   return (
     <div className="mt-6 grid gap-5">
@@ -96,6 +180,38 @@ function SystemTab() {
           Check the installed CommandsCenter version and apply safe updates for this installation.
         </p>
       </div>
+
+      <article className="grid gap-5 rounded-xl border border-border bg-surface p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-text-primary">Opencode engine</h3>
+            <p className="mt-1 text-sm text-text-secondary">
+              Runtime status for the local AI engine instance.
+            </p>
+          </div>
+          <button
+            className="cc-button cc-button-secondary shrink-0 whitespace-nowrap sm:w-auto"
+            disabled={engineRestartDisabled}
+            onClick={() => setConfirmingRestart(true)}
+            type="button"
+          >
+            {engineRestartMutation.isPending ? "Restarting..." : "Restart instance"}
+          </button>
+        </div>
+
+        {engineQuery.isLoading ? <LoadingState testId="engine-status-loading" /> : null}
+        {engine ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <VersionMetric label="Engine Version" value={engine.version ?? "Unknown"} />
+            <VersionMetric label="State" value={formatEngineState(engine.state)} />
+            <VersionMetric label="Source" value={formatEngineSource(engine.binarySource)} />
+            <VersionMetric label="Endpoint" value={engine.url} />
+          </div>
+        ) : null}
+        {engineError ? (
+          <ErrorState description={engineError} title="Opencode engine status failed." />
+        ) : null}
+      </article>
 
       {versionQuery.isLoading || preferencesQuery.isLoading ? (
         <LoadingState testId="system-version-loading" />
@@ -112,6 +228,12 @@ function SystemTab() {
 
       {version ? (
         <article className="grid gap-5 rounded-xl border border-border bg-surface p-5">
+          <div>
+            <h3 className="text-lg font-semibold text-text-primary">CommandsCenter</h3>
+            <p className="mt-1 text-sm text-text-secondary">
+              Installed version and available updates for this installation.
+            </p>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <VersionMetric label="Current" value={version.current} />
             <VersionMetric label="Latest" value={version.latest ?? "Unknown"} />
@@ -231,8 +353,53 @@ function SystemTab() {
         </div>
       ) : null}
       {updateError ? <ErrorState description={updateError} title="Update failed." /> : null}
+
+      {confirmingRestart ? (
+        <ConfirmDialog
+          confirmLabel="Confirm restart"
+          description="The AI engine will be restarted. This may take a few minutes, and this instance will not be available until the restart finishes. Any active agent sessions will be interrupted."
+          onCancel={() => setConfirmingRestart(false)}
+          onConfirm={() => {
+            setConfirmingRestart(false);
+            engineRestartMutation.mutate();
+          }}
+          title="Restart Opencode engine?"
+        />
+      ) : null}
     </div>
   );
+}
+
+function formatEngineState(state: string) {
+  if (state === "healthy") {
+    return "Running";
+  }
+
+  if (state === "starting") {
+    return "Starting";
+  }
+
+  if (state === "stopping") {
+    return "Stopping";
+  }
+
+  if (state === "unhealthy") {
+    return "Unhealthy";
+  }
+
+  return "Stopped";
+}
+
+function formatEngineSource(source: "dependency" | "override" | undefined) {
+  if (source === "dependency") {
+    return "Bundled dependency";
+  }
+
+  if (source === "override") {
+    return "Configured override";
+  }
+
+  return "Unknown";
 }
 
 function VersionMetric(props: { label: string; value: string }) {
@@ -472,7 +639,7 @@ function SharingTab() {
   );
 }
 
-function SecretsTab() {
+function SecretsTab(props: { onShowSystemTab: () => void }) {
   const secretsQuery = useSecretsQuery();
   const mutations = useSecretMutations();
   const markEngineRestarting = useMarkEngineRestarting();
@@ -518,9 +685,12 @@ function SecretsTab() {
           busy={mutations.set.isPending || mutations.remove.isPending}
           existingKeys={(secretsQuery.data ?? []).map((secret) => secret.key)}
           onCancel={() => setCreating(false)}
-          onSave={async (key, value) => {
-            await mutations.set.mutateAsync({ key, value });
-            markEngineRestarting();
+          onShowSystemTab={props.onShowSystemTab}
+          onSave={async (key, value, restart) => {
+            await mutations.set.mutateAsync({ key, value, restart });
+            if (restart) {
+              markEngineRestarting();
+            }
             setCreating(false);
           }}
         />
@@ -549,13 +719,16 @@ function SecretsTab() {
               key={secret.key}
               name={secret.key}
               stale={secret.stale}
-              onDelete={async () => {
-                await mutations.remove.mutateAsync({ key: secret.key });
-                markEngineRestarting();
+              onShowSystemTab={props.onShowSystemTab}
+              onDelete={async (restart) => {
+                await mutations.remove.mutateAsync({ key: secret.key, restart });
+                if (restart) {
+                  markEngineRestarting();
+                }
               }}
-              onSave={async (value) => {
-                await mutations.set.mutateAsync({ key: secret.key, value });
-                if (value.trim().length > 0) {
+              onSave={async (value, restart) => {
+                await mutations.set.mutateAsync({ key: secret.key, value, restart });
+                if (restart && value.trim().length > 0) {
                   markEngineRestarting();
                 }
               }}
@@ -570,12 +743,14 @@ function SecretsTab() {
 function SecretCreateForm(props: {
   busy: boolean;
   existingKeys: string[];
-  onSave: (key: string, value: string) => Promise<void>;
+  onSave: (key: string, value: string, restart: boolean) => Promise<void>;
   onCancel: () => void;
+  onShowSystemTab: () => void;
 }) {
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
   const [error, setError] = useState<string>();
+  const [confirming, setConfirming] = useState(false);
 
   const normalizedKey = key.trim();
   const normalizedValue = value.trim();
@@ -626,17 +801,47 @@ function SecretCreateForm(props: {
             props.busy || normalizedKey.length === 0 || normalizedValue.length === 0 || duplicateKey
           }
           onClick={() => {
-            void handleSave();
+            setError(undefined);
+            if (duplicateKey) {
+              setError("Secret already exists. Update it below.");
+              return;
+            }
+            setConfirming(true);
           }}
           type="button"
         >
           {props.busy ? "Saving..." : "Save secret"}
         </button>
       </div>
+
+      {confirming ? (
+        <ConfirmDialog
+          confirmLabel="Restart now"
+          description={
+            <SecretRestartNotice
+              onShowSystemTab={() => {
+                setConfirming(false);
+                props.onShowSystemTab();
+              }}
+            />
+          }
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false);
+            void handleSave(true);
+          }}
+          onSecondary={() => {
+            setConfirming(false);
+            void handleSave(false);
+          }}
+          secondaryLabel="I'll restart later"
+          title={`Add ${normalizedKey}?`}
+        />
+      ) : null}
     </article>
   );
 
-  async function handleSave() {
+  async function handleSave(restart: boolean) {
     setError(undefined);
 
     if (duplicateKey) {
@@ -645,7 +850,7 @@ function SecretCreateForm(props: {
     }
 
     try {
-      await props.onSave(normalizedKey, value);
+      await props.onSave(normalizedKey, value, restart);
     } catch (nextError) {
       setError(readError(nextError));
     }
@@ -657,8 +862,9 @@ function SecretCard(props: {
   isSet: boolean;
   stale: boolean;
   busy: boolean;
-  onSave: (value: string) => Promise<void>;
-  onDelete: () => Promise<void>;
+  onSave: (value: string, restart: boolean) => Promise<void>;
+  onDelete: (restart: boolean) => Promise<void>;
+  onShowSystemTab: () => void;
 }) {
   const [value, setValue] = useState("");
   const [revealed, setRevealed] = useState(false);
@@ -735,66 +941,63 @@ function SecretCard(props: {
       </div>
 
       {pendingAction ? (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6"
-          onClick={() => setPendingAction(undefined)}
-        >
-          <section
-            className="cc-panel w-full max-w-lg p-6"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2 className="text-xl font-semibold text-text-primary">
-              {pendingAction === "delete" ? `Delete ${props.name}?` : `Update ${props.name}?`}
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-text-secondary">
-              The AI engine will be restarted automatically so the updated environment is picked up.
-              Any active agent sessions will be interrupted briefly.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-2">
-              <button
-                className={pendingAction === "delete" ? "cc-button cc-button-danger" : "cc-button"}
-                onClick={() => {
-                  setPendingAction(undefined);
-                  void (pendingAction === "delete" ? handleDelete() : handleSave());
-                }}
-                type="button"
-              >
-                {pendingAction === "delete" ? "Confirm delete" : "Confirm update"}
-              </button>
-              <button
-                className="cc-button cc-button-secondary"
-                onClick={() => setPendingAction(undefined)}
-                type="button"
-              >
-                Cancel
-              </button>
-            </div>
-          </section>
-        </div>
+        <ConfirmDialog
+          confirmLabel="Restart now"
+          confirmVariant={pendingAction === "delete" ? "danger" : "primary"}
+          description={
+            <SecretRestartNotice
+              onShowSystemTab={() => {
+                setPendingAction(undefined);
+                props.onShowSystemTab();
+              }}
+            />
+          }
+          onCancel={() => setPendingAction(undefined)}
+          onConfirm={() => {
+            const action = pendingAction;
+            setPendingAction(undefined);
+            void (action === "delete" ? handleDelete(true) : handleSave(true));
+          }}
+          onSecondary={() => {
+            const action = pendingAction;
+            setPendingAction(undefined);
+            void (action === "delete" ? handleDelete(false) : handleSave(false));
+          }}
+          secondaryLabel="I'll restart later"
+          title={pendingAction === "delete" ? `Delete ${props.name}?` : `Update ${props.name}?`}
+        />
       ) : null}
     </article>
   );
 
-  async function handleSave() {
+  async function handleSave(restart: boolean) {
     setMessage(undefined);
     setError(undefined);
 
     try {
-      await props.onSave(value);
+      await props.onSave(value, restart);
       setValue("");
-      setMessage("Secret updated. Engine is restarting…");
+      setMessage(
+        restart
+          ? "Secret updated. Engine is restarting…"
+          : "Secret updated. Restart the engine from the System tab to apply it.",
+      );
     } catch (nextError) {
       setError(readError(nextError));
     }
   }
 
-  async function handleDelete() {
+  async function handleDelete(restart: boolean) {
     setMessage(undefined);
     setError(undefined);
 
     try {
-      await props.onDelete();
-      setMessage("Secret deleted. Engine is restarting…");
+      await props.onDelete(restart);
+      setMessage(
+        restart
+          ? "Secret deleted. Engine is restarting…"
+          : "Secret deleted. Restart the engine from the System tab to apply it.",
+      );
     } catch (nextError) {
       setError(readError(nextError));
     }

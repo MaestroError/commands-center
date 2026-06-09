@@ -12,6 +12,7 @@ export type EngineStatus = {
   healthy: boolean;
   url: string;
   workspaceDir: string;
+  version?: string;
   pid?: number;
   binaryPath?: string;
   binarySource?: OpenCodeBinary["source"];
@@ -58,6 +59,7 @@ export function createOpenCodeOrchestrator(options: {
   let stopPromise: Promise<void> | undefined;
   let pollTimer: NodeJS.Timeout | undefined;
   let binary: OpenCodeBinary | undefined;
+  let engineVersion: string | undefined;
   let startedAt: number | undefined;
   let lastHealthCheckAt: number | undefined;
   let lastHealthyAt: number | undefined;
@@ -86,6 +88,7 @@ export function createOpenCodeOrchestrator(options: {
       state = "starting";
       healthy = false;
       startedAt = undefined;
+      engineVersion = undefined;
       lastError = undefined;
       lastExitCode = undefined;
       lastExitSignal = undefined;
@@ -261,6 +264,7 @@ export function createOpenCodeOrchestrator(options: {
     try {
       const response = await fetchHealthDirectly();
       healthy = response.healthy;
+      engineVersion = response.version;
 
       if (response.healthy) {
         lastHealthyAt = Date.now();
@@ -292,6 +296,7 @@ export function createOpenCodeOrchestrator(options: {
       healthy,
       url: options.config.opencode.baseUrl,
       workspaceDir: options.config.paths.workspaceDir,
+      version: engineVersion,
       pid: child?.pid,
       binaryPath: binary?.path,
       binarySource: binary?.source,
@@ -393,7 +398,7 @@ export function createOpenCodeOrchestrator(options: {
     }
   }
 
-  async function fetchHealthDirectly(): Promise<{ healthy: boolean; version: string }> {
+  async function fetchHealthDirectly(): Promise<{ healthy: boolean; version?: string }> {
     const response = await fetchWithTimeout(
       new URL("/global/health", options.config.opencode.baseUrl),
     );
@@ -402,7 +407,15 @@ export function createOpenCodeOrchestrator(options: {
       throw new Error(`Health check returned status ${String(response.status)}.`);
     }
 
-    return (await response.json()) as { healthy: boolean; version: string };
+    const body = (await response.json()) as { healthy: boolean; version?: unknown };
+
+    return {
+      healthy: body.healthy,
+      version:
+        typeof body.version === "string" && body.version.trim().length > 0
+          ? body.version
+          : undefined,
+    };
   }
 
   async function probeExistingEngine(): Promise<boolean> {
@@ -417,7 +430,10 @@ export function createOpenCodeOrchestrator(options: {
         return false;
       }
 
-      const body = (await response.json()) as { healthy?: boolean };
+      const body = (await response.json()) as { healthy?: boolean; version?: unknown };
+      if (typeof body.version === "string" && body.version.trim().length > 0) {
+        engineVersion = body.version;
+      }
       return body.healthy === true;
     } catch {
       return false;

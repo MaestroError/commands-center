@@ -1,7 +1,7 @@
 import { useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { getEngineStatus } from "@/lib/api";
+import { getEngineStatus, restartEngine } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 
 export function useEngineStatusQuery() {
@@ -19,4 +19,21 @@ export function useMarkEngineRestarting() {
     queryClient.setQueryData(queryKeys.engineStatus, undefined);
     void queryClient.invalidateQueries({ queryKey: queryKeys.engineStatus });
   }, [queryClient]);
+}
+
+export function useEngineRestartMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: restartEngine,
+    onMutate: () => {
+      queryClient.setQueryData(queryKeys.engineStatus, undefined);
+    },
+    onSuccess: (status) => {
+      queryClient.setQueryData(queryKeys.engineStatus, status);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.engineStatus });
+    },
+  });
 }

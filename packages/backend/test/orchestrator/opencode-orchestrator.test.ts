@@ -74,6 +74,7 @@ describe("createOpenCodeOrchestrator", () => {
       expect.objectContaining({
         state: "healthy",
         healthy: true,
+        version: "1.0.0",
         pid: 321,
         binarySource: "dependency",
       }),
@@ -157,6 +158,7 @@ describe("createOpenCodeOrchestrator", () => {
       expect.objectContaining({
         state: "healthy",
         healthy: true,
+        version: "1.0.0",
         pid: undefined,
       }),
     );

@@ -381,6 +381,15 @@ describe("AgentEditorPage", () => {
     });
   });
 
+  it("redirects to the agents page after successful update", async () => {
+    updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
+
+    renderEditor();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByText("Agents route")).toBeInTheDocument();
+  });
+
   it("saves emoji avatars through the picker", async () => {
     updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
 
@@ -450,6 +459,7 @@ function renderEditor() {
     <MemoryRouter initialEntries={["/agents/writer/edit"]}>
       <Routes>
         <Route path="/agents/:slug/edit" element={<AgentEditorPage mode="edit" />} />
+        <Route path="/agents" element={<div>Agents route</div>} />
       </Routes>
     </MemoryRouter>,
   );

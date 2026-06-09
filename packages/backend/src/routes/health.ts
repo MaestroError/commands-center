@@ -37,4 +37,22 @@ export function registerHealthRoutes(server: AppServer, context: RuntimeContext)
     },
     () => service.getEngineStatus(),
   );
+
+  app.post(
+    "/api/opencode/restart",
+    {
+      schema: {
+        response: {
+          202: engineStatusSchema,
+        },
+      },
+    },
+    (request, reply) => {
+      void context.orchestrator.restart("manual restart requested").catch((error: unknown) => {
+        request.log.error({ err: error }, "manual opencode restart failed");
+      });
+      reply.code(202);
+      return service.getEngineStatus();
+    },
+  );
 }
