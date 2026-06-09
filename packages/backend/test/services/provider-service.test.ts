@@ -175,4 +175,64 @@ describe("createProviderService", () => {
       pending: true,
     });
   });
+
+  it("extracts oauth codes from pasted callback URLs", async () => {
+    const completeOauth = vi.fn(() => Promise.resolve(true));
+    const service = createProviderService({
+      config: loadRuntimeConfig({ cwd: "/tmp/project", env: { NODE_ENV: "test" } }),
+      opencodeService: createMockOpenCodeService({
+        completeOauth,
+        listProviders: vi.fn(() =>
+          Promise.resolve({
+            all: [],
+            default: {},
+            connected: ["openai"],
+          }),
+        ),
+      }),
+    });
+
+    await service.completeOauth(
+      "openai",
+      0,
+      "http://localhost:1455/auth/callback?code=oauth-code&state=oauth-state",
+    );
+
+    expect(completeOauth).toHaveBeenCalledWith(
+      "/tmp/project/.cc/workspace",
+      "openai",
+      0,
+      "oauth-code",
+    );
+  });
+
+  it("treats empty callback URL codes as missing", async () => {
+    const completeOauth = vi.fn(() => Promise.resolve(true));
+    const service = createProviderService({
+      config: loadRuntimeConfig({ cwd: "/tmp/project", env: { NODE_ENV: "test" } }),
+      opencodeService: createMockOpenCodeService({
+        completeOauth,
+        listProviders: vi.fn(() =>
+          Promise.resolve({
+            all: [],
+            default: {},
+            connected: ["openai"],
+          }),
+        ),
+      }),
+    });
+
+    await service.completeOauth(
+      "openai",
+      0,
+      "http://localhost:1455/auth/callback?code=&state=oauth-state",
+    );
+
+    expect(completeOauth).toHaveBeenCalledWith(
+      "/tmp/project/.cc/workspace",
+      "openai",
+      0,
+      undefined,
+    );
+  });
 });

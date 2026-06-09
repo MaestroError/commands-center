@@ -56,7 +56,7 @@ export function createProviderService(options: {
     },
 
     async completeOauth(providerId: string, method: number, code?: string) {
-      const trimmedCode = code?.trim();
+      const trimmedCode = readOauthCode(code);
 
       try {
         const result = await options.opencodeService.completeOauth(
@@ -111,6 +111,22 @@ function isPendingOauthError(error: unknown): boolean {
   const text = error instanceof Error ? error.message : typeof error === "string" ? error : "";
 
   return /request timed out/i.test(text) || /ProviderAuthOauthMissing/i.test(text);
+}
+
+function readOauthCode(code?: string): string | undefined {
+  const trimmed = code?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(trimmed);
+    const parsedCode = url.searchParams.get("code");
+    return parsedCode?.trim() || undefined;
+  } catch {
+    return trimmed;
+  }
 }
 
 function mergeAuthMethods(

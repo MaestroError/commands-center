@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProviderConnectionsPage } from "./ProviderConnectionsPage";
@@ -148,7 +148,7 @@ describe("ProviderConnectionsPage", () => {
   it("starts and completes a manual oauth flow with filtered prompts", async () => {
     startOauthMutateAsync.mockResolvedValue({
       url: "https://example.com/oauth",
-      method: "manual",
+      method: "code",
       instructions: "Complete the login.",
     });
     completeOauthMutateAsync.mockResolvedValue({
@@ -183,7 +183,7 @@ describe("ProviderConnectionsPage", () => {
       "_blank",
       "noopener,noreferrer",
     );
-    expect(screen.getByText("Mode: manual")).toBeInTheDocument();
+    expect(screen.getByText("Mode: code")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Manual code or callback value"), {
       target: { value: "oauth-code" },
@@ -234,6 +234,85 @@ describe("ProviderConnectionsPage", () => {
       expect(completeOauthMutateAsync).toHaveBeenCalledTimes(2);
 
       expect(screen.getByText("OpenAI connected automatically.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("allows manual callback submission while automatic oauth is polling", async () => {
+    startOauthMutateAsync.mockResolvedValue({
+      url: "https://example.com/oauth",
+      method: "auto",
+      instructions: "Waiting for callback.",
+    });
+    completeOauthMutateAsync.mockResolvedValue({
+      connected: true,
+      message: "OpenAI connected from callback URL.",
+    });
+
+    render(<ProviderConnectionsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Connect OAuth" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open provider login" }));
+      await Promise.resolve();
+    });
+
+    const completeButton = screen.getByRole("button", { name: "Complete OAuth" });
+    expect(completeButton).not.toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Manual code or callback value"), {
+      target: {
+        value: "http://localhost:1455/auth/callback?code=oauth-code&state=oauth-state",
+      },
+    });
+    fireEvent.click(completeButton);
+
+    await waitFor(() => {
+      expect(completeOauthMutateAsync).toHaveBeenCalledWith({
+        providerId: "openai",
+        method: 1,
+        code: "http://localhost:1455/auth/callback?code=oauth-code&state=oauth-state",
+      });
+    });
+  });
+
+  it("disables manual completion while automatic oauth polling is in flight", async () => {
+    vi.useFakeTimers();
+    let resolvePoll: ((result: { connected: boolean; pending: boolean }) => void) | undefined;
+    startOauthMutateAsync.mockResolvedValue({
+      url: "https://example.com/oauth",
+      method: "auto",
+      instructions: "Waiting for callback.",
+    });
+    completeOauthMutateAsync.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePoll = resolve;
+        }),
+    );
+
+    try {
+      render(<ProviderConnectionsPage />);
+      fireEvent.click(screen.getByRole("button", { name: "Connect OAuth" }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Open provider login" }));
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+
+      const manualForm = screen.getByLabelText("Manual code or callback value").closest("form");
+      expect(manualForm).not.toBeNull();
+      expect(
+        within(manualForm as HTMLElement).getByRole("button", { name: "Completing..." }),
+      ).toBeDisabled();
+
+      await act(async () => {
+        resolvePoll?.({ connected: false, pending: true });
+        await Promise.resolve();
+      });
     } finally {
       vi.useRealTimers();
     }

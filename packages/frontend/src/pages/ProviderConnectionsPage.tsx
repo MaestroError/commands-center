@@ -303,6 +303,8 @@ function ProviderDialog(props: ProviderDialogProps) {
   const [localError, setLocalError] = useState<string>();
   const [autoStatus, setAutoStatus] = useState<string>();
   const [dialogBusy, setDialogBusy] = useState(false);
+  const [manualCompleting, setManualCompleting] = useState(false);
+  const [pollCompleting, setPollCompleting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string>();
   const pollRef = useRef<number | undefined>(undefined);
   const pollBusyRef = useRef(false);
@@ -396,6 +398,7 @@ function ProviderDialog(props: ProviderDialogProps) {
       }
 
       pollBusyRef.current = true;
+      setPollCompleting(true);
       setDialogBusy(true);
       void props
         .onCompleteOauth(providerId, method)
@@ -420,6 +423,7 @@ function ProviderDialog(props: ProviderDialogProps) {
         })
         .finally(() => {
           pollBusyRef.current = false;
+          setPollCompleting(false);
         });
     }, 2000);
   }
@@ -431,9 +435,19 @@ function ProviderDialog(props: ProviderDialogProps) {
       return;
     }
 
+    if (pollBusyRef.current) {
+      return;
+    }
+
     setLocalError(undefined);
 
     try {
+      if (pollRef.current) {
+        window.clearInterval(pollRef.current);
+        pollRef.current = undefined;
+      }
+
+      setManualCompleting(true);
       setDialogBusy(true);
       completingRef.current = true;
       const result = await props.onCompleteOauth(
@@ -461,6 +475,8 @@ function ProviderDialog(props: ProviderDialogProps) {
       completingRef.current = false;
       setLocalError(readError(error));
     } finally {
+      setManualCompleting(false);
+
       if (!completingRef.current) {
         setDialogBusy(false);
       }
@@ -625,16 +641,18 @@ function ProviderDialog(props: ProviderDialogProps) {
                     className="cc-input"
                     id="oauth-code-input"
                     onChange={(event) => setManualCode(event.target.value)}
-                    placeholder="Paste code only if the provider flow asks for it"
+                    placeholder="Paste the redirected callback URL or code"
                     value={manualCode}
                   />
                 </label>
                 <button
                   className="cc-button cc-button-secondary"
-                  disabled={props.busy || dialogBusy}
+                  disabled={props.busy || manualCompleting || pollCompleting}
                   type="submit"
                 >
-                  {props.busy || dialogBusy ? "Completing..." : "Complete OAuth"}
+                  {props.busy || manualCompleting || pollCompleting
+                    ? "Completing..."
+                    : "Complete OAuth"}
                 </button>
               </form>
             ) : null}
