@@ -83,9 +83,9 @@ describe("App", () => {
   it("renders the application logo in the sidebar brand", async () => {
     render(<App />);
 
-    await screen.findByRole("link", { name: "CommandsCenter" });
+    const brandLink = await screen.findByRole("link", { name: "CommandsCenter" });
 
-    expect(screen.getByTestId("app-logo")).toBeInTheDocument();
+    expect(brandLink.querySelector('[data-testid="app-logo"]')).not.toBeNull();
   });
 
   it("warns before browser refresh when task runs are active", async () => {
