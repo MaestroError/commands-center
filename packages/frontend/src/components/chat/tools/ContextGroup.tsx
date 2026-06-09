@@ -70,7 +70,7 @@ export function ContextGroup({ parts }: ContextGroupProps) {
           <span className="tool-spacer" />
           {summary ? <span className="tool-count">{summary}</span> : null}
           <span className="tool-chev">
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight aria-hidden="true" className="h-4 w-4" />
           </span>
         </button>
       </div>
@@ -88,14 +88,25 @@ export function ContextGroup({ parts }: ContextGroupProps) {
                 <span className="font-medium text-text-secondary w-12 shrink-0">{name}</span>
                 <span className="text-text-primary truncate flex-1 font-mono">{label}</span>
                 {status === "completed" ? (
-                  <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-success" />
+                  <>
+                    <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-success" />
+                    <span className="sr-only">completed</span>
+                  </>
                 ) : status === "error" ? (
-                  <span className="text-danger shrink-0">✗</span>
+                  <>
+                    <span aria-hidden="true" className="text-danger shrink-0">
+                      ✗
+                    </span>
+                    <span className="sr-only">failed</span>
+                  </>
                 ) : (
-                  <Loader
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5 shrink-0 animate-spin text-info"
-                  />
+                  <>
+                    <Loader
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5 shrink-0 animate-spin text-info"
+                    />
+                    <span className="sr-only">running</span>
+                  </>
                 )}
               </div>
             );

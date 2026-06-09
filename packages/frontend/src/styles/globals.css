@@ -338,6 +338,14 @@ select.cc-input {
     border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
     color: color-mix(in srgb, var(--accent) 72%, var(--text-primary));
   }
+  .cc-md .md-code:hover {
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .cc-md .md-code.is-copied {
+    background: color-mix(in srgb, var(--success) 14%, var(--surface));
+    border-color: color-mix(in srgb, var(--success) 40%, transparent);
+    color: var(--success);
+  }
 
   /* Links */
   .cc-md a {

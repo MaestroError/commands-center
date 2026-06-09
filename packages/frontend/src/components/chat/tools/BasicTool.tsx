@@ -51,7 +51,9 @@ export function BasicTool({
           className={`tool-trigger ${canExpand ? "" : "static"}`}
           onClick={() => canExpand && setExpanded((prev) => !prev)}
         >
-          <span className="tool-ico">{icon ?? <Wrench className="h-3.5 w-3.5" />}</span>
+          <span className="tool-ico">
+            {icon ?? <Wrench aria-hidden="true" className="h-3.5 w-3.5" />}
+          </span>
           <span className="tool-name">{title}</span>
           {subtitle ? <span className="tool-arg">{subtitle}</span> : null}
           <span className="tool-spacer" />
@@ -63,7 +65,7 @@ export function BasicTool({
           ) : null}
           {canExpand ? (
             <span className="tool-chev">
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight aria-hidden="true" className="h-4 w-4" />
             </span>
           ) : null}
         </button>

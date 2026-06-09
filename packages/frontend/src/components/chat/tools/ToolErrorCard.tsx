@@ -45,7 +45,7 @@ export function ToolErrorCard({ part }: ToolErrorCardProps) {
           </span>
           {canExpand ? (
             <span className="tool-chev">
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight aria-hidden="true" className="h-4 w-4" />
             </span>
           ) : null}
         </button>
