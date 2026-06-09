@@ -34,9 +34,7 @@ export async function resolveOpencodeBinary(config: RuntimeConfig): Promise<Open
   let packageJsonPath: string;
 
   try {
-    packageJsonPath = require.resolve("opencode-ai/package.json", {
-      paths: [config.paths.cwd, dirname(fileURLToPath(import.meta.url))],
-    });
+    packageJsonPath = resolveOpencodePackageJsonPath(config.paths.cwd);
   } catch {
     throw new Error(
       "Unable to resolve the OpenCode binary from project dependencies. Install `opencode-ai` in the workspace or set CC_OPENCODE_PATH.",
@@ -58,6 +56,15 @@ export async function resolveOpencodeBinary(config: RuntimeConfig): Promise<Open
     path,
     source: "dependency",
   };
+}
+
+export function resolveOpencodePackageJsonPath(
+  cwd: string,
+  packageDirectory = dirname(fileURLToPath(import.meta.url)),
+): string {
+  return require.resolve("opencode-ai/package.json", {
+    paths: [packageDirectory, cwd],
+  });
 }
 
 async function assertBinaryExists(path: string, source: string): Promise<void> {
