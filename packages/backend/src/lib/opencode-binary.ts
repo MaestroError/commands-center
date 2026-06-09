@@ -1,12 +1,9 @@
-import { constants } from "node:fs";
-import { access, readFile } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
-import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
+import { access, constants, readFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { RuntimeConfig } from "./runtime-config.js";
-
-const require = createRequire(import.meta.url);
 
 type OpenCodePackage = {
   bin?: string | Record<string, string>;
@@ -59,21 +56,41 @@ export async function resolveOpencodeBinary(config: RuntimeConfig): Promise<Open
 
 /**
  * Exported for testability. Walks up from each search root, in order, and
- * returns the first `opencode-ai/package.json` it finds. Throws if no root
- * has the package installed.
+ * returns the first `<root>/node_modules/opencode-ai/package.json` it finds
+ * by direct filesystem check. Throws if no root has the package installed.
+ *
+ * Implemented with an explicit `node_modules/<pkg>/package.json` walk instead
+ * of `require.resolve(..., { paths })` so the search is deterministic and
+ * cannot fall through to the caller's own module resolution (which on
+ * pnpm-installed workspaces would find the package via a different path and
+ * silently shadow the intended search root).
  */
 export function resolveOpencodePackageJsonPath(searchRoots: string[]): string {
   for (const root of searchRoots) {
-    try {
-      return require.resolve("opencode-ai/package.json", { paths: [root] });
-    } catch {
-      // try next root
+    const found = findOpencodePackageJsonFrom(root);
+    if (found) {
+      return found;
     }
   }
 
   throw new Error(
     "Unable to resolve the OpenCode binary from project dependencies. Install `opencode-ai` in the workspace or set CC_OPENCODE_PATH.",
   );
+}
+
+function findOpencodePackageJsonFrom(start: string): string | undefined {
+  let current = start;
+  while (true) {
+    const candidate = join(current, "node_modules", "opencode-ai", "package.json");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      return undefined;
+    }
+    current = parent;
+  }
 }
 
 async function assertBinaryExists(path: string, source: string): Promise<void> {
