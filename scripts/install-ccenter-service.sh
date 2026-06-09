@@ -14,22 +14,13 @@ ENV_FILE="${CCENTER_ENV_FILE:-$INSTALL_DIR/.env}"
 PUBLIC_HOST="${CCENTER_PUBLIC_HOST:-127.0.0.1}"
 NODE_MAJOR="${CCENTER_NODE_MAJOR:-22}"
 SERVICE_USER="${CCENTER_SERVICE_USER:-$(id -un)}"
+SERVICE_GROUP="${CCENTER_SERVICE_GROUP:-}"
 CREATE_USER="${CCENTER_CREATE_USER:-false}"
-
-# A dedicated service user defaults to a matching group name; otherwise the
-# installing user's primary group is used.
-if [[ -n "${CCENTER_SERVICE_GROUP:-}" ]]; then
-  SERVICE_GROUP="$CCENTER_SERVICE_GROUP"
-elif [[ -n "${CCENTER_SERVICE_USER:-}" ]]; then
-  SERVICE_GROUP="$CCENTER_SERVICE_USER"
-else
-  SERVICE_GROUP="$(id -gn)"
-fi
 
 # Runtime configuration passed through to the service as CC_* environment
 # variables. CC_* names are preferred and match the .env file; the CCENTER_*
 # equivalents remain as deprecated fallbacks. Exporting them means they are both
-# injected into the service unit (see collect_service_env) and read by ccenter
+# injected into the service unit (see service_env_names) and read by ccenter
 # when it generates the .env file on first start. Any other CC_* variable set in
 # the environment (CC_PUBLIC_ORIGIN, CC_DATA_DIR, CC_LOG_LEVEL, ...) flows
 # through automatically with no per-variable wiring.
@@ -52,6 +43,7 @@ main() {
   require_supported_os
   warn_if_root_service_user
   ensure_service_user
+  resolve_service_group
   ensure_install_dir
   ensure_ownership
   ensure_node_and_npm
@@ -93,15 +85,45 @@ ensure_service_user() {
   fi
 
   info "Creating dedicated system user: $SERVICE_USER"
-  sudo useradd --system --create-home --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
+  if [[ -n "$SERVICE_GROUP" ]]; then
+    ensure_service_group_exists "$SERVICE_GROUP"
+    sudo useradd --system --create-home --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin --gid "$SERVICE_GROUP" "$SERVICE_USER"
+    return
+  fi
+
+  sudo useradd --system --user-group --create-home --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
+}
+
+ensure_service_group_exists() {
+  local group
+  group="$1"
+
+  if getent group "$group" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  info "Creating dedicated system group: $group"
+  sudo groupadd --system "$group"
+}
+
+resolve_service_group() {
+  [[ "$OS" == "Linux" ]] || return 0
+
+  if [[ -n "$SERVICE_GROUP" ]]; then
+    if ! getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
+      fail "Service group '$SERVICE_GROUP' does not exist. Create it first, or pass CCENTER_CREATE_USER=true with a missing CCENTER_SERVICE_USER to have the installer create it."
+    fi
+    return 0
+  fi
+
+  SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
 }
 
 ensure_install_dir() {
   sudo_if_needed mkdir -p "$INSTALL_DIR" "$WORKSPACE_DIR"
 }
 
-# Run a command with sudo only when the target dirs are not writable by the
-# current user (e.g. a dedicated service user owns /opt/commandscenter).
+# Run a command with sudo when Linux service setup targets a different user.
 sudo_if_needed() {
   if [[ "$OS" == "Linux" && "$SERVICE_USER" != "$(id -un)" ]]; then
     sudo "$@"
@@ -225,6 +247,17 @@ service_env_names() {
   done
 }
 
+systemd_environment_line() {
+  local name value
+  name="$1"
+  value="${!name}"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//%/%%}"
+
+  printf 'Environment="%s=%s"\n' "$name" "$value"
+}
+
 install_systemd_service() {
   if ! command_exists systemctl; then
     fail "systemd is required for automatic Linux background service setup."
@@ -235,7 +268,7 @@ install_systemd_service() {
 
   env_lines=""
   while IFS= read -r name; do
-    env_lines+="Environment=${name}=${!name}"$'\n'
+    env_lines+="$(systemd_environment_line "$name")"$'\n'
   done < <(service_env_names)
 
   sudo tee "$service_file" >/dev/null <<EOF
@@ -264,18 +297,35 @@ EOF
   sudo systemctl enable "$SERVICE_NAME"
 }
 
+xml_escape() {
+  local value
+  value="$1"
+  value="${value//&/&amp;}"
+  value="${value//</&lt;}"
+  value="${value//>/&gt;}"
+
+  printf '%s' "$value"
+}
+
 install_launchd_service() {
   local plist_dir plist_file ccenter_dir node_path node_dir launchd_path env_entries name
+  local escaped_ccenter_path escaped_env_file escaped_host escaped_install_dir escaped_launchd_path escaped_port
   plist_dir="$HOME/Library/LaunchAgents"
   plist_file="$plist_dir/com.commandscenter.app.plist"
   ccenter_dir="$(dirname "$CCENTER_PATH")"
   node_path="$(command -v node)"
   node_dir="$(dirname "$node_path")"
   launchd_path="$node_dir:$ccenter_dir:/usr/bin:/bin:/usr/sbin:/sbin"
+  escaped_ccenter_path="$(xml_escape "$CCENTER_PATH")"
+  escaped_env_file="$(xml_escape "$ENV_FILE")"
+  escaped_host="$(xml_escape "$HOST")"
+  escaped_install_dir="$(xml_escape "$INSTALL_DIR")"
+  escaped_launchd_path="$(xml_escape "$launchd_path")"
+  escaped_port="$(xml_escape "$PORT")"
 
   env_entries=""
   while IFS= read -r name; do
-    env_entries+="    <key>${name}</key>"$'\n'"    <string>${!name}</string>"$'\n'
+    env_entries+="    <key>${name}</key>"$'\n'"    <string>$(xml_escape "${!name}")</string>"$'\n'
   done < <(service_env_names)
 
   mkdir -p "$plist_dir"
@@ -288,22 +338,22 @@ install_launchd_service() {
   <key>Label</key>
   <string>com.commandscenter.app</string>
   <key>WorkingDirectory</key>
-  <string>$INSTALL_DIR</string>
+  <string>$escaped_install_dir</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>$launchd_path</string>
+    <string>$escaped_launchd_path</string>
 ${env_entries}  </dict>
   <key>ProgramArguments</key>
   <array>
-    <string>$CCENTER_PATH</string>
+    <string>$escaped_ccenter_path</string>
     <string>start</string>
     <string>--host</string>
-    <string>$HOST</string>
+    <string>$escaped_host</string>
     <string>--port</string>
-    <string>$PORT</string>
+    <string>$escaped_port</string>
     <string>--cc-env-file</string>
-    <string>$ENV_FILE</string>
+    <string>$escaped_env_file</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -313,9 +363,9 @@ ${env_entries}  </dict>
     <false/>
   </dict>
   <key>StandardOutPath</key>
-  <string>$INSTALL_DIR/commandscenter.out.log</string>
+  <string>$escaped_install_dir/commandscenter.out.log</string>
   <key>StandardErrorPath</key>
-  <string>$INSTALL_DIR/commandscenter.err.log</string>
+  <string>$escaped_install_dir/commandscenter.err.log</string>
 </dict>
 </plist>
 EOF
