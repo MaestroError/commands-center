@@ -484,9 +484,12 @@ function ProviderDialog(props: ProviderDialogProps) {
 
       pollBusyRef.current = true;
       setDialogBusy(true);
+      let connected = false;
       void props
         .onCompleteOauth(providerId, method)
         .then((result) => {
+          connected = result.connected;
+
           if (!result.connected) {
             setAutoStatus(result.pending ? "Waiting for provider confirmation..." : undefined);
             return;
@@ -507,6 +510,10 @@ function ProviderDialog(props: ProviderDialogProps) {
         })
         .finally(() => {
           pollBusyRef.current = false;
+
+          if (!connected) {
+            setDialogBusy(false);
+          }
         });
     }, 2000);
   }
@@ -727,10 +734,12 @@ function ProviderDialog(props: ProviderDialogProps) {
                 </label>
                 <button
                   className="cc-button cc-button-secondary"
-                  disabled={props.busy || manualCompleting}
+                  disabled={props.busy || manualCompleting || dialogBusy}
                   type="submit"
                 >
-                  {props.busy || manualCompleting ? "Completing..." : "Complete OAuth"}
+                  {props.busy || manualCompleting || dialogBusy
+                    ? "Completing..."
+                    : "Complete OAuth"}
                 </button>
               </form>
             ) : null}
