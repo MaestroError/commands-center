@@ -390,7 +390,6 @@ function ProviderDialog(props: ProviderDialogProps) {
   const [autoStatus, setAutoStatus] = useState<string>();
   const [dialogBusy, setDialogBusy] = useState(false);
   const [manualCompleting, setManualCompleting] = useState(false);
-  const [pollCompleting, setPollCompleting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string>();
   const pollRef = useRef<number | undefined>(undefined);
   const pollBusyRef = useRef(false);
@@ -484,11 +483,13 @@ function ProviderDialog(props: ProviderDialogProps) {
       }
 
       pollBusyRef.current = true;
-      setPollCompleting(true);
       setDialogBusy(true);
+      let connected = false;
       void props
         .onCompleteOauth(providerId, method)
         .then((result) => {
+          connected = result.connected;
+
           if (!result.connected) {
             setAutoStatus(result.pending ? "Waiting for provider confirmation..." : undefined);
             return;
@@ -509,7 +510,10 @@ function ProviderDialog(props: ProviderDialogProps) {
         })
         .finally(() => {
           pollBusyRef.current = false;
-          setPollCompleting(false);
+
+          if (!connected) {
+            setDialogBusy(false);
+          }
         });
     }, 2000);
   }
@@ -521,10 +525,6 @@ function ProviderDialog(props: ProviderDialogProps) {
       return;
     }
 
-    if (pollBusyRef.current) {
-      return;
-    }
-
     setLocalError(undefined);
 
     try {
@@ -533,6 +533,7 @@ function ProviderDialog(props: ProviderDialogProps) {
         pollRef.current = undefined;
       }
 
+      pollBusyRef.current = false;
       setManualCompleting(true);
       setDialogBusy(true);
       completingRef.current = true;
@@ -733,10 +734,10 @@ function ProviderDialog(props: ProviderDialogProps) {
                 </label>
                 <button
                   className="cc-button cc-button-secondary"
-                  disabled={props.busy || manualCompleting || pollCompleting}
+                  disabled={props.busy || manualCompleting || dialogBusy}
                   type="submit"
                 >
-                  {props.busy || manualCompleting || pollCompleting
+                  {props.busy || manualCompleting || dialogBusy
                     ? "Completing..."
                     : "Complete OAuth"}
                 </button>
