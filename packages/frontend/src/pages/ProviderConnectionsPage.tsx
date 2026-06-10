@@ -378,7 +378,15 @@ type ProviderDialogProps = {
 
 function ProviderDialog(props: ProviderDialogProps) {
   const apiKeyMethod = props.provider.authMethods.find((method) => method.type === "api");
-  const oauthMethod = props.provider.authMethods.find((method) => method.type === "oauth");
+  const oauthMethods = useMemo(
+    () =>
+      props.provider.authMethods
+        .map((method, index) => ({ method, index }))
+        .filter((entry) => entry.method.type === "oauth"),
+    [props.provider.authMethods],
+  );
+  const [selectedOauthIndex, setSelectedOauthIndex] = useState(() => oauthMethods[0]?.index ?? 0);
+  const oauthMethod = props.provider.authMethods[selectedOauthIndex];
   const [apiKey, setApiKey] = useState("");
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [oauthSession, setOauthSession] = useState<{
@@ -437,6 +445,29 @@ function ProviderDialog(props: ProviderDialogProps) {
     }
   }
 
+  function handleSelectOauthMethod(index: number) {
+    if (index === selectedOauthIndex) {
+      return;
+    }
+
+    // Switching methods abandons any in-flight session so the new method starts clean.
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = undefined;
+    }
+
+    pollBusyRef.current = false;
+    completingRef.current = false;
+    setSelectedOauthIndex(index);
+    setOauthSession(undefined);
+    setAutoStatus(undefined);
+    setManualCode("");
+    setInputs({});
+    setManualCompleting(false);
+    setLocalError(undefined);
+    setDialogBusy(false);
+  }
+
   async function handleStartOauth() {
     if (!oauthMethod) {
       return;
@@ -446,7 +477,7 @@ function ProviderDialog(props: ProviderDialogProps) {
 
     try {
       setDialogBusy(true);
-      const methodIndex = props.provider.authMethods.indexOf(oauthMethod);
+      const methodIndex = selectedOauthIndex;
       const auth = await props.onStartOauth(
         props.provider.provider.id,
         methodIndex,
@@ -653,6 +684,32 @@ function ProviderDialog(props: ProviderDialogProps) {
 
         {props.mode === "oauth" && oauthMethod ? (
           <div className="mt-6 space-y-5">
+            {oauthMethods.length > 1 ? (
+              <fieldset className="grid gap-2" disabled={props.busy || dialogBusy}>
+                <legend className="text-sm font-medium text-text-primary">Sign-in method</legend>
+                <p className="text-sm text-text-secondary">
+                  Running CommandsCenter on a remote server or VPS? Pick a headless / device-code
+                  option — the browser option only works when your browser is on the same machine as
+                  CommandsCenter.
+                </p>
+                {oauthMethods.map((entry) => (
+                  <label
+                    className="flex items-start gap-3 rounded-xl border border-accent/20 p-3 text-sm text-text-primary"
+                    key={entry.index}
+                  >
+                    <input
+                      checked={entry.index === selectedOauthIndex}
+                      className="mt-1"
+                      name="oauth-method"
+                      onChange={() => handleSelectOauthMethod(entry.index)}
+                      type="radio"
+                    />
+                    <span>{entry.method.label}</span>
+                  </label>
+                ))}
+              </fieldset>
+            ) : null}
+
             {prompts.length > 0 ? (
               <div className="grid gap-4">
                 {prompts.map((prompt) => {
@@ -720,7 +777,7 @@ function ProviderDialog(props: ProviderDialogProps) {
               </div>
             ) : null}
 
-            {oauthSession ? (
+            {oauthSession && oauthSession.auth.method === "code" ? (
               <form className="space-y-4" onSubmit={(event) => void handleManualOauthSubmit(event)}>
                 <label className="grid gap-2 text-sm text-text-primary" htmlFor="oauth-code-input">
                   <span>Manual code or callback value</span>

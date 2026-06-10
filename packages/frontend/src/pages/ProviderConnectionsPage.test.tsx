@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProviderConnectionsPage } from "./ProviderConnectionsPage";
@@ -304,20 +304,89 @@ describe("ProviderConnectionsPage", () => {
     }
   });
 
-  it("disables manual completion while automatic oauth polling is in flight", async () => {
-    vi.useFakeTimers();
-    let resolvePoll: ((result: { connected: boolean; pending: boolean }) => void) | undefined;
+  it("hides the manual code form for automatic oauth flows", async () => {
     startOauthMutateAsync.mockResolvedValue({
       url: "https://example.com/oauth",
       method: "auto",
       instructions: "Waiting for callback.",
     });
-    completeOauthMutateAsync.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolvePoll = resolve;
+    completeOauthMutateAsync.mockResolvedValue({ connected: false, pending: true });
+
+    render(<ProviderConnectionsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Connect OAuth" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open provider login" }));
+      await Promise.resolve();
+    });
+
+    // Auto flows complete via polling; opencode ignores any pasted code, so the
+    // misleading manual-code form must not be offered.
+    expect(screen.queryByLabelText("Manual code or callback value")).not.toBeInTheDocument();
+    expect(screen.getByText("Waiting for provider confirmation...")).toBeInTheDocument();
+  });
+
+  it("lets the user choose between multiple oauth methods", async () => {
+    vi.mocked(useProvidersQuery).mockReturnValue({
+      data: [
+        buildProvider({
+          authMethods: [
+            { type: "api", label: "API key" },
+            { type: "oauth", label: "ChatGPT Pro/Plus (browser)" },
+            { type: "oauth", label: "ChatGPT Pro/Plus (headless)" },
+          ],
         }),
+      ],
+      isLoading: false,
+      error: null,
+      refetch: refetchSpy,
+    } as never);
+    startOauthMutateAsync.mockResolvedValue({
+      url: "https://example.com/device",
+      method: "auto",
+      instructions: "Enter code: ABCD-1234",
+    });
+    completeOauthMutateAsync.mockResolvedValue({ connected: false, pending: true });
+
+    render(<ProviderConnectionsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Connect OAuth" }));
+
+    // The browser method is selected by default (first oauth method).
+    expect(screen.getByLabelText("ChatGPT Pro/Plus (browser)")).toBeChecked();
+
+    fireEvent.click(screen.getByLabelText("ChatGPT Pro/Plus (headless)"));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open provider login" }));
+      await Promise.resolve();
+    });
+
+    expect(startOauthMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: "openai", method: 2 }),
     );
+  });
+
+  it("resets an in-flight session and stops polling when switching oauth methods", async () => {
+    vi.useFakeTimers();
+    vi.mocked(useProvidersQuery).mockReturnValue({
+      data: [
+        buildProvider({
+          authMethods: [
+            { type: "api", label: "API key" },
+            { type: "oauth", label: "ChatGPT Pro/Plus (browser)" },
+            { type: "oauth", label: "ChatGPT Pro/Plus (headless)" },
+          ],
+        }),
+      ],
+      isLoading: false,
+      error: null,
+      refetch: refetchSpy,
+    } as never);
+    startOauthMutateAsync.mockResolvedValue({
+      url: "https://example.com/oauth",
+      method: "auto",
+      instructions: "Waiting for callback.",
+    });
+    completeOauthMutateAsync.mockResolvedValue({ connected: false, pending: true });
 
     try {
       render(<ProviderConnectionsPage />);
@@ -327,20 +396,24 @@ describe("ProviderConnectionsPage", () => {
         await Promise.resolve();
       });
 
+      // Let one poll tick run so polling is active and the dialog is idle again.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2000);
       });
+      expect(screen.getByText("Waiting for provider confirmation...")).toBeInTheDocument();
+      const callsBeforeSwitch = completeOauthMutateAsync.mock.calls.length;
 
-      const manualForm = screen.getByLabelText("Manual code or callback value").closest("form");
-      expect(manualForm).not.toBeNull();
-      expect(
-        within(manualForm as HTMLElement).getByRole("button", { name: "Completing..." }),
-      ).toBeDisabled();
+      // Switching methods must abandon the in-flight session and clear the poll interval.
+      fireEvent.click(screen.getByLabelText("ChatGPT Pro/Plus (headless)"));
 
+      expect(screen.getByLabelText("ChatGPT Pro/Plus (headless)")).toBeChecked();
+      expect(screen.queryByText("Waiting for provider confirmation...")).not.toBeInTheDocument();
+
+      // No further polling should happen after the switch.
       await act(async () => {
-        resolvePoll?.({ connected: false, pending: true });
-        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(6000);
       });
+      expect(completeOauthMutateAsync.mock.calls.length).toBe(callsBeforeSwitch);
     } finally {
       vi.useRealTimers();
     }
