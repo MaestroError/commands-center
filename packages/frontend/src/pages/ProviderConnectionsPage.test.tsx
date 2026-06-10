@@ -364,6 +364,60 @@ describe("ProviderConnectionsPage", () => {
       expect.objectContaining({ providerId: "openai", method: 2 }),
     );
   });
+
+  it("resets an in-flight session and stops polling when switching oauth methods", async () => {
+    vi.useFakeTimers();
+    vi.mocked(useProvidersQuery).mockReturnValue({
+      data: [
+        buildProvider({
+          authMethods: [
+            { type: "api", label: "API key" },
+            { type: "oauth", label: "ChatGPT Pro/Plus (browser)" },
+            { type: "oauth", label: "ChatGPT Pro/Plus (headless)" },
+          ],
+        }),
+      ],
+      isLoading: false,
+      error: null,
+      refetch: refetchSpy,
+    } as never);
+    startOauthMutateAsync.mockResolvedValue({
+      url: "https://example.com/oauth",
+      method: "auto",
+      instructions: "Waiting for callback.",
+    });
+    completeOauthMutateAsync.mockResolvedValue({ connected: false, pending: true });
+
+    try {
+      render(<ProviderConnectionsPage />);
+      fireEvent.click(screen.getByRole("button", { name: "Connect OAuth" }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Open provider login" }));
+        await Promise.resolve();
+      });
+
+      // Let one poll tick run so polling is active and the dialog is idle again.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(screen.getByText("Waiting for provider confirmation...")).toBeInTheDocument();
+      const callsBeforeSwitch = completeOauthMutateAsync.mock.calls.length;
+
+      // Switching methods must abandon the in-flight session and clear the poll interval.
+      fireEvent.click(screen.getByLabelText("ChatGPT Pro/Plus (headless)"));
+
+      expect(screen.getByLabelText("ChatGPT Pro/Plus (headless)")).toBeChecked();
+      expect(screen.queryByText("Waiting for provider confirmation...")).not.toBeInTheDocument();
+
+      // No further polling should happen after the switch.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(6000);
+      });
+      expect(completeOauthMutateAsync.mock.calls.length).toBe(callsBeforeSwitch);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 function buildProvider(overrides: Partial<Record<string, unknown>> = {}) {

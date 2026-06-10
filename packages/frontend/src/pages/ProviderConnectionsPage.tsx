@@ -462,6 +462,8 @@ function ProviderDialog(props: ProviderDialogProps) {
     setOauthSession(undefined);
     setAutoStatus(undefined);
     setManualCode("");
+    setInputs({});
+    setManualCompleting(false);
     setLocalError(undefined);
     setDialogBusy(false);
   }
@@ -683,7 +685,7 @@ function ProviderDialog(props: ProviderDialogProps) {
         {props.mode === "oauth" && oauthMethod ? (
           <div className="mt-6 space-y-5">
             {oauthMethods.length > 1 ? (
-              <fieldset className="grid gap-2">
+              <fieldset className="grid gap-2" disabled={props.busy || dialogBusy}>
                 <legend className="text-sm font-medium text-text-primary">Sign-in method</legend>
                 <p className="text-sm text-text-secondary">
                   Running CommandsCenter on a remote server or VPS? Pick a headless / device-code
