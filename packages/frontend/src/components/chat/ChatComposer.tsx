@@ -7,6 +7,7 @@ import { AttachmentBar } from "./AttachmentBar";
 import { resolveAttachmentMimeType } from "./attachment-utils";
 import { FileMentionPopover } from "./FileMentionPopover";
 import { isMentionableWorkspacePath } from "./file-mention";
+import { ModelSelector } from "./ModelSelector";
 import { SlashCommandPopover, type SlashCommand } from "./SlashCommandPopover";
 
 type ComposerMode = "normal" | "shell";
@@ -31,7 +32,33 @@ type ChatComposerProps = {
   skills?: { slug: string; description?: string }[];
   disabled?: boolean;
   autoFocusKey?: string;
+  /** Agent's default model (qualified `provider/model`); preselected for each new chat. */
+  defaultModel?: string;
 };
+
+// Per-conversation model selection persists across navigation/remounts so a
+// chat keeps the model the user picked; new chats fall back to the agent default.
+const CHAT_MODEL_KEY_PREFIX = "cc-chat-model:";
+
+function readChatModel(conversationId: string): string | null {
+  try {
+    return localStorage.getItem(`${CHAT_MODEL_KEY_PREFIX}${conversationId}`);
+  } catch {
+    return null;
+  }
+}
+
+function writeChatModel(conversationId: string, model: string | null): void {
+  try {
+    if (model) {
+      localStorage.setItem(`${CHAT_MODEL_KEY_PREFIX}${conversationId}`, model);
+    } else {
+      localStorage.removeItem(`${CHAT_MODEL_KEY_PREFIX}${conversationId}`);
+    }
+  } catch {
+    // Ignore storage errors (private mode, quota, etc.)
+  }
+}
 
 export function ChatComposer({
   onSend,
@@ -47,9 +74,13 @@ export function ChatComposer({
   skills,
   disabled,
   autoFocusKey,
+  defaultModel,
 }: ChatComposerProps) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<ComposerMode>("normal");
+  const [selectedModel, setSelectedModel] = useState<string | null>(
+    () => (autoFocusKey ? readChatModel(autoFocusKey) : null) ?? defaultModel ?? null,
+  );
   const [attachments, setAttachments] = useState<SendConversationAttachmentInput[]>([]);
   const [mentionedFiles, setMentionedFiles] = useState<{ path: string; filename: string }[]>([]);
   const [selectedSkill, setSelectedSkill] = useState<{ slug: string; description?: string } | null>(
@@ -71,6 +102,25 @@ export function ChatComposer({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [text]);
+
+  // When the chat changes (or the default arrives asynchronously), restore the
+  // model previously chosen for that conversation, falling back to the agent
+  // default for brand-new chats.
+  useEffect(() => {
+    const persisted = autoFocusKey ? readChatModel(autoFocusKey) : null;
+    setSelectedModel(persisted ?? defaultModel ?? null);
+  }, [autoFocusKey, defaultModel]);
+
+  // Persist the user's choice for the active conversation.
+  const handleModelChange = useCallback(
+    (model: string) => {
+      setSelectedModel(model);
+      if (autoFocusKey) {
+        writeChatModel(autoFocusKey, model);
+      }
+    },
+    [autoFocusKey],
+  );
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -147,6 +197,7 @@ export function ChatComposer({
         onSend({
           text: parts.join(" "),
           attachments,
+          model: selectedModel ?? undefined,
         });
       } else {
         // No extra context: execute skill directly via command API
@@ -163,6 +214,7 @@ export function ChatComposer({
       onSend({
         text: fullText,
         attachments,
+        model: selectedModel ?? undefined,
       });
       history.addEntry(trimmed);
     }
@@ -172,7 +224,18 @@ export function ChatComposer({
     setMentionedFiles([]);
     setSelectedSkill(null);
     history.reset();
-  }, [text, mode, attachments, mentionedFiles, selectedSkill, onSend, onShell, onCommand, history]);
+  }, [
+    text,
+    mode,
+    attachments,
+    mentionedFiles,
+    selectedSkill,
+    selectedModel,
+    onSend,
+    onShell,
+    onCommand,
+    history,
+  ]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -505,6 +568,12 @@ export function ChatComposer({
             onChange={(e) => handleFileSelect(e.target.files)}
           />
           <AutoApproveToggle enabled={autoApprove} onChange={onAutoApproveChange} />
+
+          <ModelSelector
+            value={selectedModel}
+            onChange={handleModelChange}
+            defaultModel={defaultModel}
+          />
 
           {/* Skill & File Mention Pills */}
           {selectedSkill && (

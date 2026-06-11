@@ -740,7 +740,7 @@ function TaskFeedbackSection(props: {
                   key={entry.id}
                 >
                   <FeedbackComment
-                    author="You"
+                    author="Me"
                     body={entry.body}
                     meta={
                       <>

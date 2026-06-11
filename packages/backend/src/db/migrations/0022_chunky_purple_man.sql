@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `latest_result_text` text;

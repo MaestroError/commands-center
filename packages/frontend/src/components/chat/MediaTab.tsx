@@ -70,7 +70,7 @@ export function MediaTab({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-10 text-sm text-text-secondary">
-        Loading media...
+        Loading uploads...
       </div>
     );
   }
@@ -78,7 +78,7 @@ export function MediaTab({
   if (error) {
     return (
       <div className="px-4 py-10 text-center text-sm text-danger">
-        {error instanceof Error ? error.message : "Failed to load media."}
+        {error instanceof Error ? error.message : "Failed to load uploads."}
       </div>
     );
   }
@@ -86,7 +86,7 @@ export function MediaTab({
   if (data.length === 0) {
     return (
       <div className="px-4 py-10 text-center text-sm text-text-secondary">
-        No media shared in this conversation
+        No uploads shared in this conversation
       </div>
     );
   }
@@ -99,7 +99,7 @@ export function MediaTab({
             className="text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary"
             htmlFor="media-search"
           >
-            Search media
+            Search uploads
           </label>
           <input
             id="media-search"
@@ -113,7 +113,7 @@ export function MediaTab({
 
         {filteredData.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-text-secondary">
-            No media matches "{searchQuery}"
+            No uploads match "{searchQuery}"
           </div>
         ) : null}
 

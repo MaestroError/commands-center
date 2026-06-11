@@ -62,6 +62,7 @@ import { buildTemplateEndpointDocs } from "@cc/shared/lib";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { CopyableCode } from "@/components/api/EndpointsTab";
 import { Markdown } from "@/components/chat/Markdown";
+import { ModelSelector } from "@/components/chat/ModelSelector";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
@@ -344,6 +345,7 @@ function TaskListPage() {
             mutations.createTemplate.mutate(
               {
                 defaultAgentId: task.defaultAgentId ?? task.agentId,
+                model: task.model,
                 title: task.title,
                 description: task.description,
                 todos: task.todos.map((todo) => ({ content: todo.content, status: todo.status })),
@@ -813,8 +815,10 @@ function TaskBoardCard(props: {
             {task.title}
           </Link>
           <div className="flex shrink-0 items-center gap-2">
-            {task.latestFinalMessage ? (
-              <TaskResultMessageTooltip message={task.latestFinalMessage} />
+            {(task.latestResultText ?? task.latestFinalMessage) ? (
+              <TaskResultMessageTooltip
+                message={(task.latestResultText ?? task.latestFinalMessage)!}
+              />
             ) : null}
             <BoardAssigneeAvatar agent={props.agent} fallbackName={task.agentId} />
           </div>
@@ -1469,6 +1473,14 @@ function TaskDetailPanel(props: {
                   <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
                     {agent?.name ?? task.agentId}
                   </span>
+                  {hasTaskModelOverride(task, agent) ? (
+                    <span
+                      className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary"
+                      title="Model override for this task"
+                    >
+                      {task.model}
+                    </span>
+                  ) : null}
                   <TaskTimingBadges task={task} surface="surface" />
                   {task.sourceTemplateId ? (
                     <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent">
@@ -1545,6 +1557,16 @@ function TaskDetailPanel(props: {
                       className="text-inherit [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
                       content={latestRunResult.content}
                     />
+                    {latestRunResult.run.resultText &&
+                    latestRunResult.run.resultText !== latestRunResult.content ? (
+                      <div className="pt-2">
+                        <ClampedResultText
+                          className="text-xs italic text-text-secondary"
+                          expandable
+                          text={latestRunResult.run.resultText}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -2037,7 +2059,7 @@ function TaskFeedbackSection(props: {
                   key={entry.id}
                 >
                   <FeedbackComment
-                    author="You"
+                    author="Me"
                     body={entry.body}
                     meta={
                       <>
@@ -2064,6 +2086,7 @@ function TaskFeedbackSection(props: {
               <FeedbackComment
                 author={`${readAgentName(props.agents, run.agentId)} commented`}
                 body={readRunCommentBody(run)}
+                resultText={run.resultText}
                 key={run.id}
                 meta={
                   <>
@@ -2093,6 +2116,7 @@ function TaskFeedbackSection(props: {
 function FeedbackComment(props: {
   author: string;
   body: string;
+  resultText?: string;
   artifacts?: TaskRunArtifact[];
   taskId?: string;
   runId?: string;
@@ -2118,6 +2142,15 @@ function FeedbackComment(props: {
           className="mt-1 text-sm leading-6 text-text-secondary [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
           content={props.body}
         />
+        {props.resultText && props.resultText !== props.body ? (
+          <div className={`mt-2 ${RESULT_BOX_CLASS}`}>
+            <ClampedResultText
+              className="text-xs italic leading-5 text-text-primary"
+              expandable
+              text={props.resultText}
+            />
+          </div>
+        ) : null}
         <RunArtifactAttachments
           artifacts={props.artifacts ?? []}
           taskId={props.taskId}
@@ -2268,6 +2301,7 @@ function FeedbackReplies(props: { agents: Agent[]; subtasks: TaskFeedbackThread[
         <FeedbackComment
           author={`${readAgentName(props.agents, reply.agentId)} replied`}
           body={readRunCommentBody(reply.run)}
+          resultText={reply.run.resultText}
           key={reply.run.id}
           meta={
             <>
@@ -2289,6 +2323,7 @@ function TaskOverviewDetails(props: { task: Task; agent?: Agent }) {
   const rows = [
     { label: "Status", value: formatToken(readBoardStatus(props.task)) },
     { label: "Agent", value: props.agent?.name ?? props.task.agentId },
+    { label: "Model", value: formatTaskModel(props.task, props.agent) },
     { label: "Schedule", value: formatSchedule(props.task) },
     { label: "Source", value: formatSourceTemplate(props.task) },
     { label: "Todos", value: formatTodoProgress(props.task) },
@@ -2960,6 +2995,16 @@ function TaskTemplateForm(props: {
             ))}
           </select>
         </label>
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Model
+          <ModelSelector
+            allowAgentDefault
+            defaultModel={props.agents.find((agent) => agent.id === form.agentId)?.defaultModel}
+            onChange={(model) => updateForm({ model })}
+            placement="down"
+            value={form.model || null}
+          />
+        </label>
       </div>
       <label className="grid gap-1 text-sm text-text-secondary">
         Task prompt
@@ -3539,6 +3584,16 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                     ))}
                   </select>
                 </label>
+                <label className="grid gap-1 text-sm text-text-secondary">
+                  Model
+                  <ModelSelector
+                    allowAgentDefault
+                    defaultModel={agents.find((agent) => agent.id === form.agentId)?.defaultModel}
+                    onChange={(model) => updateForm({ model })}
+                    placement="down"
+                    value={form.model || null}
+                  />
+                </label>
               </div>
 
               <section className="grid gap-1 text-sm text-text-secondary">
@@ -3668,6 +3723,8 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
 
 type FormState = {
   agentId: string;
+  /** Optional qualified `provider/model` override; empty = use the agent default. */
+  model: string;
   title: string;
   prompt: TaskPromptValue;
   scheduledAtLocal: string;
@@ -3689,6 +3746,7 @@ type TaskView = (typeof TASK_VIEWS)[number];
 function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormState {
   return {
     agentId: task?.agentId ?? prefill?.agentId ?? "",
+    model: task?.model ?? "",
     title: task?.title ?? "",
     prompt: task
       ? createTaskPromptValue(task.description)
@@ -3712,6 +3770,7 @@ function templateToForm(template?: TaskTemplate): FormState {
 
   return {
     agentId: template?.defaultAgentId ?? "",
+    model: template?.model ?? "",
     title: template?.title ?? "",
     prompt: createTaskPromptValue(template?.description ?? ""),
     scheduledAtLocal: "",
@@ -3758,6 +3817,7 @@ function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {
   const description = buildTaskPromptText(form.prompt);
   const input: CreateTaskInput | UpdateTaskInput = {
     agentId: form.agentId,
+    model: form.model ? form.model : null,
     title: readTaskTitle(form.title, description),
     description,
     todos: form.todosText
@@ -3790,6 +3850,7 @@ function readTaskTitle(title: string, description: string): string {
 function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
   const input: CreateTaskTemplateInput = {
     defaultAgentId: form.agentId,
+    model: form.model ? form.model : null,
     title: form.title,
     description: buildTaskPromptText(form.prompt),
     todos: form.todosText
@@ -4180,6 +4241,40 @@ function readSubtaskDotClassName(
   return `block h-3 w-3 rounded-full border-2 ring-2 ring-surface ${color}`;
 }
 
+// Blueish, rounded result box matching the "Latest update" treatment.
+const RESULT_BOX_CLASS =
+  "min-w-0 break-words [overflow-wrap:anywhere] rounded-lg border border-accent/30 bg-accent/10 p-3 text-text-primary";
+
+/** Renders text clamped to ~3 lines (with an ellipsis); optionally click-to-expand. */
+function ClampedResultText(props: { text: string; expandable?: boolean; className?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const textClass = `block break-words [overflow-wrap:anywhere] ${
+    expanded ? "whitespace-pre-wrap" : "line-clamp-3"
+  } ${props.className ?? ""}`;
+
+  if (!props.expandable) {
+    return (
+      <span
+        className={`block break-words [overflow-wrap:anywhere] line-clamp-3 ${props.className ?? ""}`}
+      >
+        {props.text}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      aria-expanded={expanded}
+      className="block w-full cursor-pointer text-left"
+      onClick={() => setExpanded((value) => !value)}
+      title={expanded ? "Click to collapse" : "Click to expand"}
+      type="button"
+    >
+      <span className={textClass}>{props.text}</span>
+    </button>
+  );
+}
+
 function readResultClassName(status: BoardTaskStatus): string {
   const emphasis =
     status === "ready_to_check"
@@ -4343,6 +4438,18 @@ function formatSourceTemplate(task: Task): string {
     : "Generated from template";
 }
 
+function formatTaskModel(task: Task, agent?: Agent): string {
+  if (task.model) {
+    return task.model;
+  }
+  return agent?.defaultModel ? `${agent.defaultModel} (agent default)` : "Agent's default";
+}
+
+/** True when the task pins a model that differs from its agent's default. */
+function hasTaskModelOverride(task: Task, agent?: Agent): boolean {
+  return Boolean(task.model && task.model !== agent?.defaultModel);
+}
+
 function formatTemplateRepeat(template: TaskTemplate): string {
   return template.recurrence
     ? formatRepeatSummary(template.recurrence.repeatRule)
@@ -4395,6 +4502,14 @@ function RunHistory(props: {
           <p className="mt-2 break-words text-text-secondary [overflow-wrap:anywhere]">
             {run.finalMessage ?? run.errorMessage ?? "No summary"}
           </p>
+          {run.resultText && run.resultText !== run.finalMessage ? (
+            <div className={`mt-2 ${RESULT_BOX_CLASS}`}>
+              <ClampedResultText
+                className="mb-0.5 text-xs italic text-text-primary"
+                text={run.resultText}
+              />
+            </div>
+          ) : null}
         </Link>
       ))}
     </div>

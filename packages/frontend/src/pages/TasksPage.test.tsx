@@ -486,6 +486,38 @@ describe("TasksPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows the agent default model in the overview when no override is set", async () => {
+    mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    const details = within(panel).getByRole("region", { name: "Overview details" });
+    expect(within(details).getByText("Model")).toBeInTheDocument();
+    expect(within(details).getByText("openai/gpt-4.1 (agent default)")).toBeInTheDocument();
+    // No override → no model pill in the header.
+    expect(within(panel).queryByTitle("Model override for this task")).not.toBeInTheDocument();
+  });
+
+  it("shows the task model override in the overview and as a header pill", async () => {
+    mockFetch({ taskPayload: { ...task, model: "anthropic/claude-haiku" } });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    const details = within(panel).getByRole("region", { name: "Overview details" });
+    expect(within(details).getByText("anthropic/claude-haiku")).toBeInTheDocument();
+    expect(within(panel).getByTitle("Model override for this task")).toHaveTextContent(
+      "anthropic/claude-haiku",
+    );
+  });
+
   it("renders the latest run result as markdown in the board panel", async () => {
     mockFetch({
       taskPayload: { ...task, latestFinalMessage: "Stale cached result." },
@@ -509,6 +541,33 @@ describe("TasksPage", () => {
       within(panel).getAllByText((_, element) => element?.textContent === "Done\nLine two").length,
     ).toBeGreaterThan(0);
     expect(within(panel).queryByText("Stale cached result.")).not.toBeInTheDocument();
+  });
+
+  it("shows the explicit result after the last message across the panel", async () => {
+    mockFetch({
+      runsPayload: [
+        {
+          ...run,
+          finalMessage: "Done.",
+          resultText: "The explicit agent result.",
+        },
+      ],
+      feedbackPayload: [],
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    // Latest update box shows the session summary plus the explicit result.
+    expect(within(panel).getAllByText("Done.").length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("The explicit agent result.").length).toBeGreaterThan(0);
+
+    // Runs history list shows the result too.
+    await user.click(within(panel).getByRole("tab", { name: "Runs" }));
+    expect(within(panel).getAllByText("The explicit agent result.").length).toBeGreaterThan(0);
   });
 
   it("keeps overview selected by default for review tasks in the board panel", async () => {
@@ -1312,6 +1371,37 @@ describe("TasksPage", () => {
     expect(await screen.findByLabelText("Latest result message")).toBeInTheDocument();
     expect(screen.getByText(`${"A".repeat(200)}...`)).toBeInTheDocument();
     expect(screen.queryByText(longMessage)).not.toBeInTheDocument();
+  });
+
+  it("prefers the explicit result over the session summary in the card tooltip", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        latestFinalMessage: "Session summary text.",
+        latestResultText: "Explicit agent result.",
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(await screen.findByLabelText("Latest result message")).toBeInTheDocument();
+    expect(screen.getByText("Explicit agent result.")).toBeInTheDocument();
+    expect(screen.queryByText("Session summary text.")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the session summary in the card tooltip when no result is set", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        latestFinalMessage: "Session summary text.",
+        latestResultText: undefined,
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    expect(await screen.findByLabelText("Latest result message")).toBeInTheDocument();
+    expect(screen.getByText("Session summary text.")).toBeInTheDocument();
   });
 
   it("deletes a template from the templates view", async () => {

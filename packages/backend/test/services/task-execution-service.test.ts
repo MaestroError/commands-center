@@ -86,6 +86,74 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("runs the task session with the task model, falling back to the agent default", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      providers: {
+        all: [
+          { id: "openai", models: { "gpt-4.1": {} } },
+          { id: "anthropic", models: { "claude-haiku": {} } },
+        ],
+        default: {},
+        connected: ["openai", "anthropic"],
+      },
+      onPrompt: (input) => prompts.push(input),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      // Agent default is openai/gpt-4.1 (see insertAgent).
+      const agent = await insertAgent(testDb.client.db);
+
+      const overrideTask = await taskService.create({
+        agentId: agent.id,
+        model: "anthropic/claude-haiku",
+        title: "Override",
+        description: "Use the smaller model.",
+      });
+      const overrideRun = await executionService.trigger(overrideTask.id, {
+        triggerSource: "manual",
+      });
+      await expectRunStatus(taskService, overrideRun.id, "completed");
+
+      const unavailableTask = await taskService.create({
+        agentId: agent.id,
+        model: "ghost/removed-model",
+        title: "Unavailable",
+        description: "Model no longer exists.",
+      });
+      const unavailableRun = await executionService.trigger(unavailableTask.id, {
+        triggerSource: "manual",
+      });
+      await expectRunStatus(taskService, unavailableRun.id, "completed");
+
+      const defaultTask = await taskService.create({
+        agentId: agent.id,
+        title: "Default",
+        description: "No override.",
+      });
+      const defaultRun = await executionService.trigger(defaultTask.id, {
+        triggerSource: "manual",
+      });
+      await expectRunStatus(taskService, defaultRun.id, "completed");
+
+      expect(prompts[0]?.model).toEqual({ providerID: "anthropic", modelID: "claude-haiku" });
+      expect(prompts[1]?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
+      expect(prompts[2]?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
+      // The override model is snapshotted onto the run.
+      expect((await taskService.getRunById(overrideRun.id))?.model).toBe("anthropic/claude-haiku");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("persists and renders context supplied for a specific run", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -711,8 +779,19 @@ function createDeferred<T>(): {
   return { promise, resolve, reject };
 }
 
+type MockProviderList = {
+  all: { id: string; models: Record<string, unknown> }[];
+  default: Record<string, string>;
+  connected: string[];
+};
+
 function createMockOpenCodeService(
-  options: { promptGate?: Promise<void>; promptGates?: Promise<void>[] } = {},
+  options: {
+    promptGate?: Promise<void>;
+    promptGates?: Promise<void>[];
+    providers?: MockProviderList;
+    onPrompt?: (input: { model?: { providerID: string; modelID: string }; text: string }) => void;
+  } = {},
 ): OpenCodeService {
   const sessions = new Map<string, OpenCodeSession>();
   const messages = new Map<string, OpenCodeSessionMessage[]>();
@@ -753,7 +832,18 @@ function createMockOpenCodeService(
     },
     listSessionMessages: (_directory: string, sessionID: string) =>
       Promise.resolve(messages.get(sessionID) ?? []),
-    promptSession: async ({ sessionID, text }: { sessionID: string; text: string }) => {
+    listProviders: (_directory: string) =>
+      Promise.resolve(options.providers ?? { all: [], default: {}, connected: [] }),
+    promptSession: async ({
+      sessionID,
+      text,
+      model,
+    }: {
+      sessionID: string;
+      text: string;
+      model?: { providerID: string; modelID: string };
+    }) => {
+      options.onPrompt?.({ model, text });
       await (options.promptGates?.shift() ?? options.promptGate);
 
       const sessionMessages = messages.get(sessionID);

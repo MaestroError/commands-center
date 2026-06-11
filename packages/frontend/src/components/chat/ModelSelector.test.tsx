@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ModelSelector } from "./ModelSelector";
@@ -20,18 +21,31 @@ vi.mock("../../hooks/use-providers-query", () => ({
   useProvidersQuery: (): ProvidersQueryResult => useProvidersQuery(),
 }));
 
+const twoConnectedProviders: ProviderEntry[] = [
+  {
+    provider: { id: "openai", name: "OpenAI" },
+    connected: true,
+    models: [{ id: "gpt-5", name: "GPT-5" }],
+  },
+  {
+    provider: { id: "anthropic", name: "Anthropic" },
+    connected: true,
+    models: [{ id: "claude-3", name: "Claude 3" }],
+  },
+];
+
 describe("ModelSelector", () => {
   beforeEach(() => {
     useProvidersQuery.mockReset();
+    localStorage.clear();
   });
 
-  it("renders a loading select while providers are loading", () => {
+  it("renders a loading pill while providers are loading", () => {
     useProvidersQuery.mockReturnValue({ isLoading: true, data: undefined });
 
     render(<ModelSelector onChange={vi.fn()} value={null} />);
 
-    expect(screen.getByRole("combobox")).toBeDisabled();
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
 
   it("renders an empty state when no connected models are available", () => {
@@ -48,40 +62,124 @@ describe("ModelSelector", () => {
 
     render(<ModelSelector onChange={vi.fn()} value={null} />);
 
-    expect(screen.getByRole("combobox")).toBeDisabled();
     expect(screen.getByText("No models available")).toBeInTheDocument();
   });
 
-  it("renders connected models and propagates changes", () => {
+  it("shows the selected model on the pill and opens a popover to change it", async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
-    useProvidersQuery.mockReturnValue({
-      isLoading: false,
-      data: [
-        {
-          provider: { id: "openai", name: "OpenAI" },
-          connected: true,
-          models: [{ id: "gpt-5", name: "GPT-5" }],
-        },
-        {
-          provider: { id: "anthropic", name: "Anthropic" },
-          connected: true,
-          models: [{ id: "claude-3", name: "Claude 3" }],
-        },
-      ],
-    });
+    useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
 
     render(
       <ModelSelector defaultModel="openai/gpt-5" onChange={onChange} value="anthropic/claude-3" />,
     );
 
-    const select = screen.getByRole("combobox", { name: "Select model" });
+    const trigger = screen.getByRole("button", { name: "Select model" });
+    expect(trigger).toHaveTextContent("Claude 3");
 
-    expect(select).toHaveValue("anthropic/claude-3");
-    expect(screen.getByRole("option", { name: "OpenAI / GPT-5" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Anthropic / Claude 3" })).toBeInTheDocument();
-
-    fireEvent.change(select, { target: { value: "openai/gpt-5" } });
+    await user.click(trigger);
+    await user.click(screen.getByRole("option", { name: "OpenAI / GPT-5" }));
 
     expect(onChange).toHaveBeenCalledWith("openai/gpt-5");
+  });
+
+  it("records the chosen model in localStorage and surfaces it as a suggestion", async () => {
+    const user = userEvent.setup();
+    useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
+
+    const { rerender } = render(
+      <ModelSelector defaultModel="openai/gpt-5" onChange={vi.fn()} value="openai/gpt-5" />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+    await user.click(screen.getByRole("option", { name: "Anthropic / Claude 3" }));
+
+    expect(JSON.parse(localStorage.getItem("cc-recent-models") ?? "[]")).toEqual([
+      "anthropic/claude-3",
+    ]);
+
+    rerender(
+      <ModelSelector defaultModel="openai/gpt-5" onChange={vi.fn()} value="anthropic/claude-3" />,
+    );
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+
+    expect(screen.getByText("Suggested")).toBeInTheDocument();
+  });
+
+  it("drops recent suggestions that are no longer available", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      "cc-recent-models",
+      JSON.stringify(["anthropic/claude-3", "removed/old-model"]),
+    );
+    useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
+
+    render(<ModelSelector defaultModel="openai/gpt-5" onChange={vi.fn()} value="openai/gpt-5" />);
+
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+
+    expect(screen.getByText("Suggested")).toBeInTheDocument();
+    // Still-available recent model appears once (only in Suggested).
+    expect(screen.getAllByRole("option", { name: "Anthropic / Claude 3" })).toHaveLength(1);
+    expect(screen.queryByText(/old-model/)).not.toBeInTheDocument();
+  });
+
+  it("offers an agent-default entry and clears the override when chosen", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
+
+    render(
+      <ModelSelector
+        allowAgentDefault
+        defaultModel="openai/gpt-5"
+        onChange={onChange}
+        value={null}
+      />,
+    );
+
+    // With no override, the pill shows the agent-default label.
+    const trigger = screen.getByRole("button", { name: "Select model" });
+    expect(trigger).toHaveTextContent("Agent's default");
+
+    // Picking a concrete model reports it.
+    await user.click(trigger);
+    await user.click(screen.getByRole("option", { name: "Anthropic / Claude 3" }));
+    expect(onChange).toHaveBeenCalledWith("anthropic/claude-3");
+  });
+
+  it("clears back to the agent default via the agent-default entry", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
+
+    render(
+      <ModelSelector
+        allowAgentDefault
+        defaultModel="openai/gpt-5"
+        onChange={onChange}
+        value="anthropic/claude-3"
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Select model" });
+    expect(trigger).toHaveTextContent("Claude 3");
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("option", { name: /Agent's default/ }));
+    expect(onChange).toHaveBeenCalledWith("");
+  });
+
+  it("filters the model list by name", async () => {
+    const user = userEvent.setup();
+    useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
+
+    render(<ModelSelector defaultModel="openai/gpt-5" onChange={vi.fn()} value="openai/gpt-5" />);
+
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+    await user.type(screen.getByRole("textbox", { name: "Filter models" }), "claude");
+
+    expect(screen.getByRole("option", { name: "Anthropic / Claude 3" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "OpenAI / GPT-5" })).not.toBeInTheDocument();
   });
 });

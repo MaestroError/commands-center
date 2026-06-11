@@ -91,6 +91,8 @@ export const sendConversationAttachmentInputSchema = z.object({
 export const sendConversationPromptInputSchema = z.object({
   text: z.string(),
   attachments: z.array(sendConversationAttachmentInputSchema).default([]),
+  /** Optional qualified `provider/model` override for this prompt. Falls back to the agent default. */
+  model: z.string().trim().min(1).optional(),
 });
 
 export const sendConversationShellInputSchema = z.object({

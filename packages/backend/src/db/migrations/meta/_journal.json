@@ -148,6 +148,20 @@
       "when": 1780813816962,
       "tag": "0020_tearful_joshua_kane",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1781143939179,
+      "tag": "0021_puzzling_moira_mactaggert",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1781149111174,
+      "tag": "0022_chunky_purple_man",
+      "breakpoints": true
     }
   ]
 }

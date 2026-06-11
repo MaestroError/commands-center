@@ -290,7 +290,14 @@ function handleTaskRoute(route: Route, state: TaskState) {
   const path = new URL(request.url()).pathname;
   const body = (): Record<string, unknown> => {
     const raw = request.postData();
-    return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    // The backend stores a cleared/empty model as "no model" and never echoes
+    // null back, so mirror that here — otherwise merging the raw body would put
+    // `model: null` on the response, which the Task/Template schema rejects.
+    if (parsed["model"] === null) {
+      delete parsed["model"];
+    }
+    return parsed;
   };
 
   // Collection + fixed sub-collections.
