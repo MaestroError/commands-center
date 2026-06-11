@@ -38,7 +38,7 @@ describe("MediaTab", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("No media shared in this conversation")).toBeInTheDocument();
+      expect(screen.getByText("No uploads shared in this conversation")).toBeInTheDocument();
     });
   });
 
@@ -176,7 +176,7 @@ describe("MediaTab", () => {
 
     await waitFor(() => expect(screen.getByText("diagram.png")).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText("Search media"), {
+    fireEvent.change(screen.getByLabelText("Search uploads"), {
       target: { value: "Carpenter Vacancy" },
     });
 

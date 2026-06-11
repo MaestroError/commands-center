@@ -230,7 +230,7 @@ export function WorkspaceChatPage() {
             },
             {
               id: "media",
-              label: "Media",
+              label: "Uploads",
               content: (
                 <MediaTab
                   conversationId={conv.conversation.id}

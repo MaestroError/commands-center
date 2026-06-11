@@ -388,7 +388,7 @@ describe("WorkspaceChatPage", () => {
 
     render(<WorkspaceChatPage />);
 
-    expect(screen.getByTestId("context-tabs")).toHaveTextContent("Files,Media");
+    expect(screen.getByTestId("context-tabs")).toHaveTextContent("Files,Uploads");
     expect(screen.getByTestId("workspace-files-tab")).toBeInTheDocument();
     expect(screen.getByTestId("media-tab")).toHaveTextContent("MediaTab:conv-1:");
     expect(screen.queryByTestId("session-settings-tab")).not.toBeInTheDocument();
