@@ -162,6 +162,13 @@
       "when": 1781149111174,
       "tag": "0022_chunky_purple_man",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1781175539018,
+      "tag": "0023_daily_abomination",
+      "breakpoints": true
     }
   ]
 }

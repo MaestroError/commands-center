@@ -87,11 +87,19 @@ export const agentCapabilitySelectionSchema = z.object({
   appToolPermissions: z.array(agentPermissionRuleSchema).default([]),
 });
 
+// Ordered list of qualified `provider/model` ids tried in sequence when the
+// default model fails. Capped at 5 to keep the failover chain bounded.
+export const MAX_FALLBACK_MODELS = 5;
+const fallbackModelsBaseSchema = z.array(z.string().trim().min(1)).max(MAX_FALLBACK_MODELS);
+// Defaulted variant for create/output, where the field is always materialised.
+export const fallbackModelsSchema = fallbackModelsBaseSchema.default([]);
+
 export const createAgentInputSchema = z.object({
   name: z.string().trim().min(1),
   role: z.string().trim().min(1),
   instructions: z.string().trim().min(1),
   defaultModel: z.string().trim().min(1),
+  fallbackModels: fallbackModelsSchema,
   iconPath: z.string().trim().min(1).optional(),
   customToolOverwriteSlugs: z.array(z.string().min(1)).default([]),
   capabilities: agentCapabilitySelectionSchema,
@@ -102,6 +110,9 @@ export const updateAgentInputSchema = createAgentInputSchema.partial().extend({
   role: z.string().trim().min(1).optional(),
   instructions: z.string().trim().min(1).optional(),
   defaultModel: z.string().trim().min(1).optional(),
+  // No default here: an absent field means "leave the saved chain untouched",
+  // distinct from an explicit [] which clears it.
+  fallbackModels: fallbackModelsBaseSchema.optional(),
   capabilities: agentCapabilitySelectionSchema.optional(),
   // When false (default), AGENTS.md is preserved on update so hand-edited rules
   // survive. opencode.jsonc and skills always re-render from capabilities.
@@ -117,6 +128,7 @@ export const agentSchema = z.object({
   role: z.string().min(1),
   instructions: z.string().min(1),
   defaultModel: z.string().min(1),
+  fallbackModels: fallbackModelsSchema,
   iconPath: z.string().min(1).optional(),
   workspacePath: z.string().min(1),
   status: agentStatusSchema,

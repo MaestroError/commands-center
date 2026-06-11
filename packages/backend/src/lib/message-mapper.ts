@@ -145,6 +145,23 @@ export function sanitizeMessageError(error: unknown): ConversationMessageError |
   };
 }
 
+// OpenCode error `name`s that describe a model/provider failure another model
+// could plausibly succeed at, so falling over to the next model is worthwhile.
+// Everything else (context overflow, output length, structured-output, user
+// abort, …) is terminal regardless of model and should fail fast.
+const FAILOVER_WORTHY_ERROR_NAMES = new Set(["APIError", "ProviderAuthError", "UnknownError"]);
+
+export function isFailoverWorthyModelError(error: ConversationMessageError): boolean {
+  return FAILOVER_WORTHY_ERROR_NAMES.has(error.name);
+}
+
+// Pull a model failure out of a freshly-returned assistant message, if any.
+export function readModelError(
+  message: OpenCodeSessionMessage,
+): ConversationMessageError | undefined {
+  return sanitizeMessageError(message.info["error"]);
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

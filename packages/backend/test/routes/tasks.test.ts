@@ -616,11 +616,11 @@ function createMockOpenCodeService(): OpenCodeService {
         },
         parts: [{ id: `part-${userMessageId}`, type: "text", text }],
       });
-      sessionMessages.push({
+      const assistantMessage = {
         info: {
           id: assistantMessageId,
           sessionID,
-          role: "assistant",
+          role: "assistant" as const,
           time: { created: nextTime(), completed: nextTime() },
         },
         parts: [
@@ -630,9 +630,10 @@ function createMockOpenCodeService(): OpenCodeService {
             text: `Task finished: ${text}`,
           },
         ],
-      });
+      };
+      sessionMessages.push(assistantMessage);
       session.time.updated = nextTime();
-      return Promise.resolve();
+      return Promise.resolve(assistantMessage);
     }),
     promptSessionAsync: vi.fn(),
     commandSession: vi.fn(),

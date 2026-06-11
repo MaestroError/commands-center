@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import type { Logger } from "pino";
 
 import {
   conversationDetailSchema,
@@ -18,13 +19,23 @@ import {
   type SendConversationPromptInput,
   type SendConversationShellInput,
 } from "../schemas/conversations.js";
-import { agentCapabilitySelectionSchema } from "@cc/shared/schemas";
+import {
+  agentCapabilitySelectionSchema,
+  fallbackModelsSchema,
+  type SendConversationAttachmentInput,
+} from "@cc/shared/schemas";
 
 import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
 import { type agents, conversations, messages } from "../db/schema/index.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
-import { cleanTitle, extractMediaItems, mapRemoteMessage } from "../lib/message-mapper.js";
+import {
+  cleanTitle,
+  extractMediaItems,
+  isFailoverWorthyModelError,
+  mapRemoteMessage,
+  readModelError,
+} from "../lib/message-mapper.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import {
   getBuiltInSkillRoot,
@@ -63,6 +74,7 @@ export function createConversationService(options: {
   db: AppDb;
   config: RuntimeConfig;
   opencodeService: OpenCodeService;
+  logger?: Logger;
 }) {
   const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
     config: options.config,
@@ -160,17 +172,10 @@ export function createConversationService(options: {
         throw new BadRequestError("Conversation is not a task run session.");
       }
 
-      const model = await resolveRunModel(
-        loaded.agent.workspace_path,
-        parsed.model,
-        loaded.agent.default_model,
-      );
-
-      await options.opencodeService.promptSession({
-        directory: loaded.agent.workspace_path,
+      await promptTaskRunWithFallback({
+        agent: loaded.agent,
         sessionID: loaded.conversation.opencode_session_id,
-        agent: resolveOpenCodeAgent(loaded.agent.slug),
-        model,
+        requestedModel: parsed.model,
         text: parsed.text,
         attachments: parsed.attachments,
       });
@@ -478,6 +483,128 @@ export function createConversationService(options: {
     return parseModel(fallbackQualified);
   }
 
+  // Build the ordered model chain for a task run: the resolved primary model
+  // (per-task override when connected, else the agent default) followed by the
+  // agent's configured fallbacks, de-duplicated and filtered to connected
+  // models. A single provider lookup is shared across the whole chain.
+  async function buildTaskModelChain(
+    directory: string,
+    requested: string | undefined,
+    agent: AgentRuntimeRow,
+  ): Promise<Array<{ qualified: string; model: { providerID: string; modelID: string } }>> {
+    const defaultModel = agent.default_model;
+    const fallbacks = parseFallbackModels(agent.fallback_models);
+
+    let available: Set<string> | undefined;
+    try {
+      const providers = await options.opencodeService.listProviders(directory);
+      available = new Set(
+        providers.all
+          .filter((provider) => providers.connected.includes(provider.id))
+          .flatMap((provider) =>
+            Object.keys(provider.models ?? {}).map((modelId) => `${provider.id}/${modelId}`),
+          ),
+      );
+    } catch {
+      // Provider lookup failed — keep every candidate and let opencode reject
+      // any that are not actually connected.
+      available = undefined;
+    }
+
+    const isAvailable = (qualified: string): boolean =>
+      available ? available.has(qualified) : true;
+
+    const primary =
+      requested && requested !== defaultModel && isAvailable(requested) ? requested : defaultModel;
+
+    const ordered: string[] = [];
+    const seen = new Set<string>();
+    for (const qualified of [primary, ...fallbacks]) {
+      if (seen.has(qualified)) {
+        continue;
+      }
+      // The primary is always attempted; fallbacks are skipped when known-offline.
+      if (qualified !== primary && !isAvailable(qualified)) {
+        continue;
+      }
+      seen.add(qualified);
+      ordered.push(qualified);
+    }
+
+    return ordered.map((qualified) => ({ qualified, model: parseModel(qualified) }));
+  }
+
+  // Prompt the task-run session, falling over to the next model whenever a model
+  // returns a failover-worthy error (provider/auth/API failure). Terminal errors
+  // that no model could recover from (context overflow, etc.) fail immediately.
+  async function promptTaskRunWithFallback(input: {
+    agent: AgentRuntimeRow;
+    sessionID: string;
+    requestedModel: string | undefined;
+    text: string;
+    attachments?: SendConversationAttachmentInput[];
+  }): Promise<void> {
+    const chain = await buildTaskModelChain(
+      input.agent.workspace_path,
+      input.requestedModel,
+      input.agent,
+    );
+
+    if (chain.length === 0) {
+      // Shouldn't happen (default model is always present) but guard anyway.
+      throw new BadRequestError("No model is configured for this agent.");
+    }
+
+    const openCodeAgent = resolveOpenCodeAgent(input.agent.slug);
+    let lastError: { name: string; message: string } | undefined;
+
+    for (let index = 0; index < chain.length; index += 1) {
+      const candidate = chain[index]!;
+      const isLast = index === chain.length - 1;
+
+      const message = await options.opencodeService.promptSession({
+        directory: input.agent.workspace_path,
+        sessionID: input.sessionID,
+        agent: openCodeAgent,
+        model: candidate.model,
+        text: input.text,
+        attachments: input.attachments,
+      });
+
+      const error = readModelError(message);
+      if (!error) {
+        if (index > 0) {
+          options.logger?.info(
+            { sessionID: input.sessionID, model: candidate.qualified, attempts: index + 1 },
+            "task run recovered via fallback model",
+          );
+        }
+        return;
+      }
+
+      lastError = error;
+
+      // A non-failover error (or the exhausted chain) is terminal — surface it so
+      // the task run is recorded as failed with the model's own error message.
+      if (!isFailoverWorthyModelError(error) || isLast) {
+        throw new Error(error.message);
+      }
+
+      options.logger?.warn(
+        {
+          sessionID: input.sessionID,
+          model: candidate.qualified,
+          nextModel: chain[index + 1]?.qualified,
+          error: error.name,
+        },
+        "task run model failed, falling over to next model",
+      );
+    }
+
+    // Unreachable: the loop returns on success or throws on the last attempt.
+    throw new Error(lastError?.message ?? "All configured models failed.");
+  }
+
   async function getConversationAgent(
     conversationId: string,
     optionsOverride: { includeTaskRun?: boolean } = {},
@@ -757,6 +884,18 @@ export function createConversationService(options: {
       skillRoot: getBuiltInSkillRoot(options.config),
       workspaceSkillRoot: getWorkspaceSkillRoot(options.config),
     });
+  }
+}
+
+function parseFallbackModels(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    return fallbackModelsSchema.parse(JSON.parse(value));
+  } catch {
+    return [];
   }
 }
 

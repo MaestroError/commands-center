@@ -96,6 +96,8 @@ export {
   builtInSkillListSchema,
   builtInSkillSchema,
   createAgentInputSchema,
+  fallbackModelsSchema,
+  MAX_FALLBACK_MODELS,
   permissionActionSchema,
   updateAgentInputSchema,
   workspaceSkillListSchema,

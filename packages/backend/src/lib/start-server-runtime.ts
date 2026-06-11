@@ -154,6 +154,7 @@ export async function startServerRuntime(
     db: database.db,
     config,
     opencodeService,
+    logger,
   });
   const taskPermissionService = createTaskPermissionService({
     db: database.db,

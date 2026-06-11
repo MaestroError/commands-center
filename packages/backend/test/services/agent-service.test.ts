@@ -141,6 +141,53 @@ describe("createAgentService", () => {
     }
   });
 
+  it("persists fallback models and only rewrites them when the field is provided", async () => {
+    const testDb = await createTestDatabase();
+    const service = createAgentService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+
+    try {
+      const created = await service.create({
+        name: "Failover Agent",
+        role: "ship features",
+        instructions: "Implement the requested change.",
+        defaultModel: "openai/gpt-4.1",
+        // The default model and duplicates are stripped from the saved chain.
+        fallbackModels: ["openai/gpt-4.1", "anthropic/claude-opus", "anthropic/claude-opus"],
+        capabilities: {
+          builtInSkills: [],
+          workspaceSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+          appMcpServers: [],
+          appToolPermissions: [],
+        },
+      });
+
+      expect(created.fallbackModels).toEqual(["anthropic/claude-opus"]);
+
+      // Updating an unrelated field leaves the saved chain untouched.
+      const renamed = await service.update(created.id, { instructions: "Plan first." });
+      expect(renamed?.fallbackModels).toEqual(["anthropic/claude-opus"]);
+
+      // Passing the field replaces the chain; an empty array clears it.
+      const replaced = await service.update(created.id, {
+        fallbackModels: ["anthropic/claude-haiku"],
+      });
+      expect(replaced?.fallbackModels).toEqual(["anthropic/claude-haiku"]);
+
+      const cleared = await service.update(created.id, { fallbackModels: [] });
+      expect(cleared?.fallbackModels).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("archives agents by moving workspace state instead of orphaning it", async () => {
     const testDb = await createTestDatabase();
     const dispose = vi.fn(() => Promise.resolve());

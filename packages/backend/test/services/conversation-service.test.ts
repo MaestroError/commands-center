@@ -521,11 +521,11 @@ function createMockOpenCodeService(
           })),
         ],
       });
-      list.push({
+      const assistantMessage = {
         info: {
           id: assistantId,
           sessionID,
-          role: "assistant",
+          role: "assistant" as const,
           time: { created: nextTime(), completed: nextTime() },
         },
         parts: [
@@ -537,11 +537,12 @@ function createMockOpenCodeService(
             text: `Reply to: ${text}`,
           },
         ],
-      });
+      };
+      list.push(assistantMessage);
 
       session.title = session.title ?? text.slice(0, 40);
       session.time.updated = nextTime();
-      return Promise.resolve();
+      return Promise.resolve(assistantMessage);
     },
     commandSession: ({ sessionID, command, arguments: args, attachments }) => {
       const session = mustSession(sessionID);

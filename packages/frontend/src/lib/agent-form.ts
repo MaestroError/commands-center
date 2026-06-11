@@ -11,6 +11,8 @@ export type AgentFormState = {
   instructions: string;
   iconPath: string;
   defaultModel: string;
+  // Ordered failover chain (max 5) tried after the default model fails.
+  fallbackModels: string[];
   capabilities: AgentCapabilitySelection;
   // Edit mode only: opt in to regenerating AGENTS.md from role/instructions.
   // Off by default so hand-edited rules are preserved on save.
@@ -28,6 +30,7 @@ export function createEmptyAgentForm(): AgentFormState {
     instructions: "",
     iconPath: "",
     defaultModel: "",
+    fallbackModels: [],
     capabilities: {
       builtInSkills: [],
       workspaceSkills: [],
@@ -50,6 +53,7 @@ export function createAgentFormFromAgent(catalog: AgentCatalog, agent?: Agent): 
     instructions: agent?.instructions ?? "",
     iconPath: agent?.iconPath ?? "",
     defaultModel: resolveInitialModelId(catalog, agent?.defaultModel),
+    fallbackModels: resolveFallbackModelIds(catalog, agent?.fallbackModels),
     capabilities: {
       builtInSkills: existingCapabilities.builtInSkills,
       workspaceSkills: existingCapabilities.workspaceSkills ?? [],
@@ -111,6 +115,34 @@ export function agentFormSlug(value: string): string {
     .slice(0, 48);
 
   return slug || "agent";
+}
+
+// Resolve each saved fallback id against the catalog (handling unqualified ids
+// the same way the default model does), dropping blanks/duplicates and capping
+// the chain at five entries.
+export function resolveFallbackModelIds(
+  catalog: AgentCatalog,
+  fallbackModels: string[] | undefined,
+): string[] {
+  const seen = new Set<string>();
+  const resolved: string[] = [];
+
+  for (const raw of fallbackModels ?? []) {
+    if (!raw.trim()) {
+      continue;
+    }
+    const id = resolveInitialModelId(catalog, raw);
+    if (!id || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    resolved.push(id);
+    if (resolved.length >= 5) {
+      break;
+    }
+  }
+
+  return resolved;
 }
 
 export function resolveInitialModelId(catalog: AgentCatalog, currentModel?: string): string {

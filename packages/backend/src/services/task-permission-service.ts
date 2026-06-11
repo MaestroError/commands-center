@@ -1,5 +1,6 @@
 import {
   agentCapabilitySelectionSchema,
+  fallbackModelsSchema,
   type Agent,
   type AgentCapabilitySelection,
 } from "../schemas/agents.js";
@@ -93,6 +94,7 @@ export function createTaskPermissionService(options: {
       role: row.role,
       instructions: row.instructions,
       defaultModel: row.default_model,
+      fallbackModels: parseFallbackModelsJson(row.fallback_models),
       iconPath: row.icon_path ?? undefined,
       workspacePath: "",
       status: row.status,
@@ -101,6 +103,18 @@ export function createTaskPermissionService(options: {
       updatedAt: row.updated_at.toISOString(),
       archivedAt: row.archived_at?.toISOString(),
     };
+  }
+}
+
+function parseFallbackModelsJson(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    return fallbackModelsSchema.parse(JSON.parse(value));
+  } catch {
+    return [];
   }
 }
 

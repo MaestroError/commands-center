@@ -27,6 +27,7 @@ const agent: Agent = {
   role: "Plans work",
   instructions: "Plan carefully.",
   defaultModel: "openai/gpt-4.1",
+  fallbackModels: [],
   workspacePath: "/tmp/planner",
   status: "active",
   capabilities: {
