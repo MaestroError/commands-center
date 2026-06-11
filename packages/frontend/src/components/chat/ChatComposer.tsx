@@ -7,6 +7,7 @@ import { AttachmentBar } from "./AttachmentBar";
 import { resolveAttachmentMimeType } from "./attachment-utils";
 import { FileMentionPopover } from "./FileMentionPopover";
 import { isMentionableWorkspacePath } from "./file-mention";
+import { ModelSelector } from "./ModelSelector";
 import { SlashCommandPopover, type SlashCommand } from "./SlashCommandPopover";
 
 type ComposerMode = "normal" | "shell";
@@ -31,6 +32,8 @@ type ChatComposerProps = {
   skills?: { slug: string; description?: string }[];
   disabled?: boolean;
   autoFocusKey?: string;
+  /** Agent's default model (qualified `provider/model`); preselected for each new chat. */
+  defaultModel?: string;
 };
 
 export function ChatComposer({
@@ -47,9 +50,11 @@ export function ChatComposer({
   skills,
   disabled,
   autoFocusKey,
+  defaultModel,
 }: ChatComposerProps) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<ComposerMode>("normal");
+  const [selectedModel, setSelectedModel] = useState<string | null>(defaultModel ?? null);
   const [attachments, setAttachments] = useState<SendConversationAttachmentInput[]>([]);
   const [mentionedFiles, setMentionedFiles] = useState<{ path: string; filename: string }[]>([]);
   const [selectedSkill, setSelectedSkill] = useState<{ slug: string; description?: string } | null>(
@@ -71,6 +76,12 @@ export function ChatComposer({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [text]);
+
+  // Reset the model selection to the agent default whenever the chat changes
+  // (new conversation) or the default arrives asynchronously.
+  useEffect(() => {
+    setSelectedModel(defaultModel ?? null);
+  }, [autoFocusKey, defaultModel]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -147,6 +158,7 @@ export function ChatComposer({
         onSend({
           text: parts.join(" "),
           attachments,
+          model: selectedModel ?? undefined,
         });
       } else {
         // No extra context: execute skill directly via command API
@@ -163,6 +175,7 @@ export function ChatComposer({
       onSend({
         text: fullText,
         attachments,
+        model: selectedModel ?? undefined,
       });
       history.addEntry(trimmed);
     }
@@ -172,7 +185,18 @@ export function ChatComposer({
     setMentionedFiles([]);
     setSelectedSkill(null);
     history.reset();
-  }, [text, mode, attachments, mentionedFiles, selectedSkill, onSend, onShell, onCommand, history]);
+  }, [
+    text,
+    mode,
+    attachments,
+    mentionedFiles,
+    selectedSkill,
+    selectedModel,
+    onSend,
+    onShell,
+    onCommand,
+    history,
+  ]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -505,6 +529,12 @@ export function ChatComposer({
             onChange={(e) => handleFileSelect(e.target.files)}
           />
           <AutoApproveToggle enabled={autoApprove} onChange={onAutoApproveChange} />
+
+          <ModelSelector
+            value={selectedModel}
+            onChange={setSelectedModel}
+            defaultModel={defaultModel}
+          />
 
           {/* Skill & File Mention Pills */}
           {selectedSkill && (

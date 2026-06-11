@@ -86,6 +86,61 @@ describe("createConversationService", () => {
     }
   });
 
+  it("uses the per-prompt model override and falls back to the agent default", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const agentService = createAgentService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const service = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    const promptModels: unknown[] = [];
+    const originalPromptSession = opencodeService.promptSession;
+    opencodeService.promptSession = (input) => {
+      promptModels.push(input.model);
+      return originalPromptSession(input);
+    };
+
+    try {
+      const agent = await agentService.create({
+        name: "Chat Agent",
+        role: "help with implementation",
+        instructions: "Be useful.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+
+      const opened = await service.resolveCurrent(agent.id);
+
+      await service.sendPrompt(opened.current.id, {
+        text: "Use a different model.",
+        attachments: [],
+        model: "anthropic/claude-opus",
+      });
+      await service.sendPrompt(opened.current.id, {
+        text: "Use the default model.",
+        attachments: [],
+      });
+
+      expect(promptModels[0]).toEqual({ providerID: "anthropic", modelID: "claude-opus" });
+      expect(promptModels[1]).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("persists tool call parts for command and shell executions", async () => {
     const testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();

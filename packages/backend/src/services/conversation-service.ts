@@ -247,7 +247,7 @@ export function createConversationService(options: {
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
         agent: resolveOpenCodeAgent(loaded.agent.slug),
-        model: parseModel(loaded.agent.default_model),
+        model: parseModel(parsed.model ?? loaded.agent.default_model),
         text: parsed.text,
         attachments: parsed.attachments,
       });

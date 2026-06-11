@@ -494,7 +494,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   // --- Actions ---
 
   const sendUserPrompt = useCallback(
-    (text: string, attachments?: SendConversationAttachmentInput[], _model?: string) => {
+    (text: string, attachments?: SendConversationAttachmentInput[], model?: string) => {
       if (!state.conversation) return;
 
       // Optimistic user message
@@ -515,7 +515,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       };
       dispatch({ type: "OPTIMISTIC_USER_MESSAGE", message: optimisticMessage });
 
-      void sendPrompt(state.conversation.id, { text, attachments: attachments ?? [] }).catch(
+      void sendPrompt(state.conversation.id, { text, attachments: attachments ?? [], model }).catch(
         (err) => {
           dispatch({
             type: "SEND_FAILED",

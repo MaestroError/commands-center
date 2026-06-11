@@ -4,12 +4,31 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { ChatComposer } from "./ChatComposer";
 
+vi.mock("../../hooks/use-providers-query", () => ({
+  useProvidersQuery: () => ({
+    data: [
+      {
+        provider: { id: "minimax", name: "MiniMax" },
+        connected: true,
+        models: [{ id: "minimax-m3", name: "MiniMax M3", providerId: "minimax" }],
+      },
+      {
+        provider: { id: "anthropic", name: "Anthropic" },
+        connected: true,
+        models: [{ id: "claude-opus", name: "Claude Opus", providerId: "anthropic" }],
+      },
+    ],
+    isLoading: false,
+  }),
+}));
+
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  localStorage.clear();
 });
 
 function renderComposer(overrides: Partial<React.ComponentProps<typeof ChatComposer>> = {}) {
@@ -208,6 +227,42 @@ describe("ChatComposer", () => {
     expect(props.onSend).toHaveBeenCalledWith({
       text: 'Use skill "review". check this file',
       attachments: [],
+    });
+  });
+
+  it("preselects the agent default model and resets to it when the chat changes", async () => {
+    const user = userEvent.setup();
+    const { rerender, props } = renderComposer({ defaultModel: "minimax/minimax-m3" });
+
+    const trigger = screen.getByRole("button", { name: "Select model" });
+    expect(trigger).toHaveTextContent("MiniMax M3");
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Anthropic / Claude Opus" }));
+    expect(screen.getByRole("button", { name: "Select model" })).toHaveTextContent("Claude Opus");
+
+    // Switching conversation resets the selection back to the agent default.
+    rerender(<ChatComposer {...props} defaultModel="minimax/minimax-m3" autoFocusKey="conv-2" />);
+    expect(screen.getByRole("button", { name: "Select model" })).toHaveTextContent("MiniMax M3");
+  });
+
+  it("includes the selected model in the onSend payload", async () => {
+    const user = userEvent.setup();
+    const { props } = renderComposer({ defaultModel: "minimax/minimax-m3" });
+
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+    await user.click(screen.getByRole("button", { name: "Anthropic / Claude Opus" }));
+
+    await user.type(
+      screen.getByPlaceholderText('Type a message... Use "#" to mention'),
+      "hello world",
+    );
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(props.onSend).toHaveBeenCalledWith({
+      text: "hello world",
+      attachments: [],
+      model: "anthropic/claude-opus",
     });
   });
 
