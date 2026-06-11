@@ -266,6 +266,28 @@ describe("ChatComposer", () => {
     });
   });
 
+  it("persists the model per conversation and restores it on remount", async () => {
+    const user = userEvent.setup();
+    const { unmount, props } = renderComposer({
+      defaultModel: "minimax/minimax-m3",
+      autoFocusKey: "conv-1",
+    });
+
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+    await user.click(screen.getByRole("button", { name: "Anthropic / Claude Opus" }));
+    expect(screen.getByRole("button", { name: "Select model" })).toHaveTextContent("Claude Opus");
+
+    // Leaving and returning to the same chat keeps the chosen model.
+    unmount();
+    render(<ChatComposer {...props} defaultModel="minimax/minimax-m3" autoFocusKey="conv-1" />);
+    expect(screen.getByRole("button", { name: "Select model" })).toHaveTextContent("Claude Opus");
+
+    // A different (new) chat falls back to the agent default.
+    render(<ChatComposer {...props} defaultModel="minimax/minimax-m3" autoFocusKey="conv-2" />);
+    const triggers = screen.getAllByRole("button", { name: "Select model" });
+    expect(triggers[triggers.length - 1]).toHaveTextContent("MiniMax M3");
+  });
+
   it("adds a file mention when a workspace file is dropped onto the composer", async () => {
     const user = userEvent.setup();
     const { props } = renderComposer();

@@ -194,6 +194,7 @@ export const taskSubtaskSchema = taskSubtaskInputSchema.extend({
 export const createTaskInputSchema = z.object({
   agentId: z.string().trim().min(1),
   defaultAgentId: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).nullish(),
   title: z.string().trim().min(1),
   description: z.string().trim().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
@@ -209,6 +210,7 @@ export const createTaskInputSchema = z.object({
 export const updateTaskInputSchema = z.object({
   agentId: z.string().trim().min(1).optional(),
   defaultAgentId: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).nullish(),
   title: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
   todos: z.array(taskTodoInputSchema).optional(),
@@ -322,6 +324,7 @@ export const taskSchema = z.object({
   templateId: z.string().min(1).optional(),
   agentId: z.string().min(1),
   defaultAgentId: z.string().min(1).optional(),
+  model: z.string().min(1).optional(),
   title: z.string().min(1),
   description: z.string(),
   context: taskContextSchema.default({ attachments: [] }),
@@ -331,6 +334,7 @@ export const taskSchema = z.object({
   enabled: z.boolean(),
   archived: z.boolean(),
   latestFinalMessage: z.string().optional(),
+  latestResultText: z.string().optional(),
   latestRunId: z.string().min(1).optional(),
   sourceTemplateId: z.string().min(1).optional(),
   sourceOccurrenceAt: z.string().datetime().optional(),
@@ -348,6 +352,7 @@ export const taskListSchema = z.array(taskSchema);
 export const taskTemplateSchema = z.object({
   id: z.string().min(1),
   defaultAgentId: z.string().min(1),
+  model: z.string().min(1).optional(),
   title: z.string().min(1),
   description: z.string(),
   todos: z.array(taskTodoSchema),
@@ -372,6 +377,7 @@ export const taskTemplateRunNowInputSchema = z.object({
 
 export const createTaskTemplateInputSchema = z.object({
   defaultAgentId: z.string().trim().min(1),
+  model: z.string().trim().min(1).nullish(),
   title: z.string().trim().min(1),
   description: z.string().trim().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
@@ -382,6 +388,7 @@ export const createTaskTemplateInputSchema = z.object({
 
 export const updateTaskTemplateInputSchema = createTaskTemplateInputSchema.partial().extend({
   recurrence: recurringTaskScheduleSchema.nullish(),
+  model: z.string().trim().min(1).nullish(),
 });
 
 export const createTaskRunInputSchema = z.object({
@@ -389,6 +396,7 @@ export const createTaskRunInputSchema = z.object({
   taskId: z.string().trim().min(1),
   subtaskId: z.string().trim().min(1).optional(),
   agentId: z.string().trim().min(1),
+  model: z.string().trim().min(1).optional(),
   status: taskRunStatusSchema.default("queued"),
   triggerSource: taskRunTriggerSourceSchema,
   outcome: taskRunOutcomeSchema.optional(),
@@ -441,6 +449,7 @@ export const taskRunSchema = z.object({
   taskId: z.string().min(1),
   subtaskId: z.string().min(1).optional(),
   agentId: z.string().min(1),
+  model: z.string().min(1).optional(),
   opencodeSessionId: z.string().min(1).optional(),
   status: taskRunStatusSchema,
   triggerSource: taskRunTriggerSourceSchema,

@@ -238,6 +238,7 @@ export function createTaskExecutionService(options: {
         const synced = await options.conversationService.sendTaskRunPrompt(conversation.id, {
           text: running.renderedPrompt,
           attachments,
+          model: running.model,
         });
         const latest = await findRun(running.id);
 

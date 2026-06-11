@@ -124,6 +124,52 @@ describe("ModelSelector", () => {
     expect(screen.queryByText(/old-model/)).not.toBeInTheDocument();
   });
 
+  it("offers an agent-default entry and clears the override when chosen", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
+
+    render(
+      <ModelSelector
+        allowAgentDefault
+        defaultModel="openai/gpt-5"
+        onChange={onChange}
+        value={null}
+      />,
+    );
+
+    // With no override, the pill shows the agent-default label.
+    const trigger = screen.getByRole("button", { name: "Select model" });
+    expect(trigger).toHaveTextContent("Agent's default");
+
+    // Picking a concrete model reports it.
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Anthropic / Claude 3" }));
+    expect(onChange).toHaveBeenCalledWith("anthropic/claude-3");
+  });
+
+  it("clears back to the agent default via the agent-default entry", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
+
+    render(
+      <ModelSelector
+        allowAgentDefault
+        defaultModel="openai/gpt-5"
+        onChange={onChange}
+        value="anthropic/claude-3"
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Select model" });
+    expect(trigger).toHaveTextContent("Claude 3");
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: /Agent's default/ }));
+    expect(onChange).toHaveBeenCalledWith("");
+  });
+
   it("filters the model list by name", async () => {
     const user = userEvent.setup();
     useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });

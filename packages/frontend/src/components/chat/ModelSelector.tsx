@@ -6,6 +6,16 @@ interface ModelSelectorProps {
   value: string | null;
   onChange: (modelId: string) => void;
   defaultModel?: string;
+  /**
+   * When true, the picker offers an explicit "use the agent's default" entry.
+   * Choosing it calls `onChange("")` (no override). Used by the task/template
+   * forms where the model is optional; chat leaves this off.
+   */
+  allowAgentDefault?: boolean;
+  agentDefaultLabel?: string;
+  /** Which way the popover opens. Defaults to "up" (chat composer sits at the
+   * bottom of the screen); forms near the top of a container should pass "down". */
+  placement?: "up" | "down";
 }
 
 interface ModelOption {
@@ -50,7 +60,14 @@ function persistRecentModel(modelKey: string): string[] {
 const pillClass =
   "inline-flex h-7 max-w-[14rem] items-center gap-1 rounded-full border border-border bg-surface-elevated px-2.5 text-xs text-text-primary transition hover:border-accent focus:border-accent focus:outline-none disabled:cursor-default disabled:opacity-50";
 
-export function ModelSelector({ value, onChange, defaultModel }: ModelSelectorProps) {
+export function ModelSelector({
+  value,
+  onChange,
+  defaultModel,
+  allowAgentDefault = false,
+  agentDefaultLabel = "Agent's default",
+  placement = "up",
+}: ModelSelectorProps) {
   const { data: providers, isLoading } = useProvidersQuery();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -77,8 +94,12 @@ export function ModelSelector({ value, onChange, defaultModel }: ModelSelectorPr
   );
 
   const uniqueKey = (model: ModelOption) => `${model.providerId}/${model.id}`;
-  const selectedKey =
-    value ?? defaultModel ?? (connectedModels[0] ? uniqueKey(connectedModels[0]) : "");
+  // In "agent default" mode an empty value means "no override"; otherwise the
+  // picker always resolves to a concrete model (chat behaviour).
+  const usesAgentDefault = allowAgentDefault && !value;
+  const selectedKey = usesAgentDefault
+    ? ""
+    : (value ?? defaultModel ?? (connectedModels[0] ? uniqueKey(connectedModels[0]) : ""));
   const selectedModel = connectedModels.find((model) => uniqueKey(model) === selectedKey);
 
   const modelByKey = useMemo(() => {
@@ -178,6 +199,11 @@ export function ModelSelector({ value, onChange, defaultModel }: ModelSelectorPr
     setOpen(false);
   };
 
+  const selectAgentDefault = () => {
+    onChange("");
+    setOpen(false);
+  };
+
   const handleInputKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -238,19 +264,25 @@ export function ModelSelector({ value, onChange, defaultModel }: ModelSelectorPr
         className={pillClass}
         onClick={() => setOpen((current) => !current)}
         title={
-          selectedModel ? `${selectedModel.providerName} / ${selectedModel.name}` : "Select model"
+          usesAgentDefault
+            ? agentDefaultLabel
+            : selectedModel
+              ? `${selectedModel.providerName} / ${selectedModel.name}`
+              : "Select model"
         }
       >
         <ChipIcon />
         <span className="min-w-0 truncate">
-          {selectedModel ? selectedModel.name : "Select model"}
+          {usesAgentDefault ? agentDefaultLabel : (selectedModel?.name ?? "Select model")}
         </span>
         <ChevronIcon />
       </button>
 
       {open ? (
         <div
-          className="absolute bottom-[calc(100%+6px)] left-0 z-[100] w-72 overflow-hidden rounded-lg border border-border bg-surface shadow-lg"
+          className={`absolute left-0 z-[100] w-72 overflow-hidden rounded-lg border border-border bg-surface shadow-lg ${
+            placement === "down" ? "top-[calc(100%+6px)]" : "bottom-[calc(100%+6px)]"
+          }`}
           role="listbox"
         >
           <div className="border-b border-border p-2">
@@ -267,10 +299,27 @@ export function ModelSelector({ value, onChange, defaultModel }: ModelSelectorPr
           </div>
 
           <div ref={listRef} className="max-h-64 overflow-y-auto py-1">
+            {allowAgentDefault && !normalizedQuery ? (
+              <button
+                type="button"
+                className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs ${
+                  usesAgentDefault
+                    ? "bg-surface-elevated text-text-primary"
+                    : "text-text-secondary hover:bg-surface-elevated"
+                }`}
+                onClick={selectAgentDefault}
+              >
+                <span className="min-w-0 truncate">{agentDefaultLabel}</span>
+                {usesAgentDefault ? <CheckIcon /> : null}
+              </button>
+            ) : null}
+
             {flatList.length === 0 ? (
-              <div className="px-3 py-4 text-center text-xs text-text-secondary">
-                No matching models
-              </div>
+              allowAgentDefault && !normalizedQuery ? null : (
+                <div className="px-3 py-4 text-center text-xs text-text-secondary">
+                  No matching models
+                </div>
+              )
             ) : (
               <>
                 {recentMatches.length > 0 ? (

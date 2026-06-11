@@ -62,6 +62,7 @@ import { buildTemplateEndpointDocs } from "@cc/shared/lib";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { CopyableCode } from "@/components/api/EndpointsTab";
 import { Markdown } from "@/components/chat/Markdown";
+import { ModelSelector } from "@/components/chat/ModelSelector";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
@@ -344,6 +345,7 @@ function TaskListPage() {
             mutations.createTemplate.mutate(
               {
                 defaultAgentId: task.defaultAgentId ?? task.agentId,
+                model: task.model,
                 title: task.title,
                 description: task.description,
                 todos: task.todos.map((todo) => ({ content: todo.content, status: todo.status })),
@@ -813,8 +815,10 @@ function TaskBoardCard(props: {
             {task.title}
           </Link>
           <div className="flex shrink-0 items-center gap-2">
-            {task.latestFinalMessage ? (
-              <TaskResultMessageTooltip message={task.latestFinalMessage} />
+            {(task.latestResultText ?? task.latestFinalMessage) ? (
+              <TaskResultMessageTooltip
+                message={(task.latestResultText ?? task.latestFinalMessage)!}
+              />
             ) : null}
             <BoardAssigneeAvatar agent={props.agent} fallbackName={task.agentId} />
           </div>
@@ -1469,6 +1473,14 @@ function TaskDetailPanel(props: {
                   <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary">
                     {agent?.name ?? task.agentId}
                   </span>
+                  {hasTaskModelOverride(task, agent) ? (
+                    <span
+                      className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary"
+                      title="Model override for this task"
+                    >
+                      {task.model}
+                    </span>
+                  ) : null}
                   <TaskTimingBadges task={task} surface="surface" />
                   {task.sourceTemplateId ? (
                     <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent">
@@ -2289,6 +2301,7 @@ function TaskOverviewDetails(props: { task: Task; agent?: Agent }) {
   const rows = [
     { label: "Status", value: formatToken(readBoardStatus(props.task)) },
     { label: "Agent", value: props.agent?.name ?? props.task.agentId },
+    { label: "Model", value: formatTaskModel(props.task, props.agent) },
     { label: "Schedule", value: formatSchedule(props.task) },
     { label: "Source", value: formatSourceTemplate(props.task) },
     { label: "Todos", value: formatTodoProgress(props.task) },
@@ -2960,6 +2973,16 @@ function TaskTemplateForm(props: {
             ))}
           </select>
         </label>
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Model
+          <ModelSelector
+            allowAgentDefault
+            defaultModel={props.agents.find((agent) => agent.id === form.agentId)?.defaultModel}
+            onChange={(model) => updateForm({ model })}
+            placement="down"
+            value={form.model || null}
+          />
+        </label>
       </div>
       <label className="grid gap-1 text-sm text-text-secondary">
         Task prompt
@@ -3539,6 +3562,16 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                     ))}
                   </select>
                 </label>
+                <label className="grid gap-1 text-sm text-text-secondary">
+                  Model
+                  <ModelSelector
+                    allowAgentDefault
+                    defaultModel={agents.find((agent) => agent.id === form.agentId)?.defaultModel}
+                    onChange={(model) => updateForm({ model })}
+                    placement="down"
+                    value={form.model || null}
+                  />
+                </label>
               </div>
 
               <section className="grid gap-1 text-sm text-text-secondary">
@@ -3668,6 +3701,8 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
 
 type FormState = {
   agentId: string;
+  /** Optional qualified `provider/model` override; empty = use the agent default. */
+  model: string;
   title: string;
   prompt: TaskPromptValue;
   scheduledAtLocal: string;
@@ -3689,6 +3724,7 @@ type TaskView = (typeof TASK_VIEWS)[number];
 function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormState {
   return {
     agentId: task?.agentId ?? prefill?.agentId ?? "",
+    model: task?.model ?? "",
     title: task?.title ?? "",
     prompt: task
       ? createTaskPromptValue(task.description)
@@ -3712,6 +3748,7 @@ function templateToForm(template?: TaskTemplate): FormState {
 
   return {
     agentId: template?.defaultAgentId ?? "",
+    model: template?.model ?? "",
     title: template?.title ?? "",
     prompt: createTaskPromptValue(template?.description ?? ""),
     scheduledAtLocal: "",
@@ -3758,6 +3795,7 @@ function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {
   const description = buildTaskPromptText(form.prompt);
   const input: CreateTaskInput | UpdateTaskInput = {
     agentId: form.agentId,
+    model: form.model ? form.model : null,
     title: readTaskTitle(form.title, description),
     description,
     todos: form.todosText
@@ -3790,6 +3828,7 @@ function readTaskTitle(title: string, description: string): string {
 function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
   const input: CreateTaskTemplateInput = {
     defaultAgentId: form.agentId,
+    model: form.model ? form.model : null,
     title: form.title,
     description: buildTaskPromptText(form.prompt),
     todos: form.todosText
@@ -4341,6 +4380,18 @@ function formatSourceTemplate(task: Task): string {
   return task.sourceOccurrenceAt
     ? `Generated ${formatDate(task.sourceOccurrenceAt)}`
     : "Generated from template";
+}
+
+function formatTaskModel(task: Task, agent?: Agent): string {
+  if (task.model) {
+    return task.model;
+  }
+  return agent?.defaultModel ? `${agent.defaultModel} (agent default)` : "Agent's default";
+}
+
+/** True when the task pins a model that differs from its agent's default. */
+function hasTaskModelOverride(task: Task, agent?: Agent): boolean {
+  return Boolean(task.model && task.model !== agent?.defaultModel);
 }
 
 function formatTemplateRepeat(template: TaskTemplate): string {

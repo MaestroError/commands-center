@@ -160,11 +160,17 @@ export function createConversationService(options: {
         throw new BadRequestError("Conversation is not a task run session.");
       }
 
+      const model = await resolveRunModel(
+        loaded.agent.workspace_path,
+        parsed.model,
+        loaded.agent.default_model,
+      );
+
       await options.opencodeService.promptSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
         agent: resolveOpenCodeAgent(loaded.agent.slug),
-        model: parseModel(loaded.agent.default_model),
+        model,
         text: parsed.text,
         attachments: parsed.attachments,
       });
@@ -322,7 +328,7 @@ export function createConversationService(options: {
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
         agent: resolveOpenCodeAgent(loaded.agent.slug),
-        model: parseModel(loaded.agent.default_model),
+        model: parseModel(parsed.model ?? loaded.agent.default_model),
         text: parsed.text,
         attachments: parsed.attachments,
       });
@@ -431,6 +437,37 @@ export function createConversationService(options: {
     }
 
     return conversation;
+  }
+
+  // Resolve the qualified model to use for a task run: the requested model if it
+  // is still available for the agent's workspace, otherwise the agent default.
+  async function resolveRunModel(
+    directory: string,
+    requested: string | undefined,
+    fallbackQualified: string,
+  ): Promise<{ providerID: string; modelID: string }> {
+    if (!requested || requested === fallbackQualified) {
+      return parseModel(fallbackQualified);
+    }
+
+    try {
+      const providers = await options.opencodeService.listProviders(directory);
+      const available = new Set(
+        providers.all
+          .filter((provider) => providers.connected.includes(provider.id))
+          .flatMap((provider) =>
+            Object.keys(provider.models ?? {}).map((modelId) => `${provider.id}/${modelId}`),
+          ),
+      );
+
+      if (available.has(requested)) {
+        return parseModel(requested);
+      }
+    } catch {
+      // Provider lookup failed — fall back to the agent default.
+    }
+
+    return parseModel(fallbackQualified);
   }
 
   async function getConversationAgent(

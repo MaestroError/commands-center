@@ -465,6 +465,66 @@ describe("createTaskService", () => {
     }
   });
 
+  it("snapshots the session summary and the explicit result separately on the task", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+
+      // Run where the agent set an explicit result via the MCP tool: the session
+      // summary and the explicit result are kept as distinct fields.
+      const withResult = await service.create({ agentId: agent.id, title: "Explicit result" });
+      const resultRun = await service.createRun({
+        taskId: withResult.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Do it.",
+      });
+      await service.setRunResultText(resultRun.id, agent.id, "Explicit agent result.");
+      await service.setRunStatus(resultRun.id, "completed", {
+        finalMessage: "Last assistant message.",
+      });
+      const withResultTask = await service.get(withResult.id);
+      expect(withResultTask?.latestFinalMessage).toBe("Last assistant message.");
+      expect(withResultTask?.latestResultText).toBe("Explicit agent result.");
+
+      // Run without an explicit result: only the session summary is recorded.
+      const withoutResult = await service.create({ agentId: agent.id, title: "No result" });
+      const summaryRun = await service.createRun({
+        taskId: withoutResult.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Do it.",
+      });
+      await service.setRunStatus(summaryRun.id, "completed", {
+        finalMessage: "Last assistant message.",
+      });
+      const withoutResultTask = await service.get(withoutResult.id);
+      expect(withoutResultTask?.latestFinalMessage).toBe("Last assistant message.");
+      expect(withoutResultTask?.latestResultText).toBeUndefined();
+
+      // A later run on the same task that sets no result clears the stale snapshot.
+      const followUpRun = await service.createRun({
+        taskId: withResult.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Do it again.",
+      });
+      await service.setRunStatus(followUpRun.id, "completed", {
+        finalMessage: "A newer message without a result.",
+      });
+      const refreshed = await service.get(withResult.id);
+      expect(refreshed?.latestFinalMessage).toBe("A newer message without a result.");
+      expect(refreshed?.latestResultText).toBeUndefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("preserves parallel artifact appends", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -571,6 +631,44 @@ describe("createTaskService", () => {
       expect(storedOccurrence?.description).toBe("Use the old prompt.");
       expect(storedOccurrence?.scheduledFor).toBe("2026-06-08T09:00:00.000Z");
       expect(occurrences.map((task) => task.id)).toEqual([occurrence?.id]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("round-trips a task model and carries the template model into generated tasks", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+
+      // Task-level model round-trips through create/update (and clears with null).
+      const task = await service.create({
+        agentId: agent.id,
+        model: "anthropic/claude-haiku",
+        title: "Cheap task",
+        description: "Do a simple thing.",
+      });
+      expect(task.model).toBe("anthropic/claude-haiku");
+
+      const cleared = await service.update(task.id, { model: null });
+      expect(cleared?.model).toBeUndefined();
+
+      // Template model carries into a generated occurrence.
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        model: "anthropic/claude-haiku",
+        title: "Templated",
+        description: "From a template.",
+      });
+      expect(template.model).toBe("anthropic/claude-haiku");
+
+      const occurrence = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-08T09:00:00.000Z",
+        triggerSource: "template",
+      });
+      expect(occurrence?.model).toBe("anthropic/claude-haiku");
     } finally {
       await testDb.cleanup();
     }

@@ -85,6 +85,7 @@ const taskTemplateFileSchema = z.object({
   version: z.literal(1),
   id: z.string(),
   defaultAgentId: z.string(),
+  model: z.string().nullable().optional(),
   title: z.string(),
   description: z.string(),
   todos: z.array(taskTodoSchema),
@@ -146,6 +147,7 @@ export const taskTemplateReconciler: WorkspaceReconciler = {
       const payload = {
         agent_id: data.defaultAgentId,
         default_agent_id: data.defaultAgentId,
+        model: data.model ?? null,
         title: data.title,
         description: data.description,
         todos_json: JSON.stringify(data.todos),
@@ -200,6 +202,7 @@ export type TaskService = ReturnType<typeof createTaskService>;
 
 type QueueTaskOptions = QueueTaskInput & {
   id?: string;
+  model?: string;
   context?: TaskContext;
   renderedPrompt?: string;
   renderedContext?: Record<string, unknown>;
@@ -286,6 +289,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       await writeTemplateFile(options.config, {
         id,
         defaultAgentId: parsed.defaultAgentId,
+        model: parsed.model ?? null,
         title: parsed.title,
         description: parsed.description,
         todos,
@@ -302,6 +306,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           id,
           agent_id: parsed.defaultAgentId,
           default_agent_id: parsed.defaultAgentId,
+          model: parsed.model ?? null,
           title: parsed.title,
           description: parsed.description,
           todos_json: JSON.stringify(todos),
@@ -362,11 +367,13 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const enabled = parsed.enabled ?? existing.enabled;
       const defaultAgentId =
         parsed.defaultAgentId ?? existing.default_agent_id ?? existing.agent_id;
+      const model = parsed.model === undefined ? existing.model : (parsed.model ?? null);
 
       // File-first: update configuration/task-templates/<id>.json.
       await writeTemplateFile(options.config, {
         id,
         defaultAgentId,
+        model,
         title: parsed.title ?? existing.title,
         description: parsed.description ?? existing.description,
         todos,
@@ -385,6 +392,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         .set({
           agent_id: defaultAgentId,
           default_agent_id: defaultAgentId,
+          model,
           title: parsed.title ?? existing.title,
           description: parsed.description ?? existing.description,
           todos_json: JSON.stringify(todos),
@@ -437,6 +445,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           template_id: null,
           agent_id: parsed.agentId,
           default_agent_id: defaultAgentId,
+          model: parsed.model ?? null,
           title: parsed.title,
           description: parsed.description,
           context: JSON.stringify(context),
@@ -482,6 +491,8 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
       return this.create({
         agentId: task.agentId,
+        defaultAgentId: task.defaultAgentId,
+        model: task.model,
         title: `${task.title} copy`,
         description: task.description,
         context: task.context,
@@ -537,6 +548,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         .set({
           agent_id: parsed.agentId ?? existing.agent_id,
           default_agent_id: parsed.defaultAgentId ?? existing.default_agent_id,
+          model: parsed.model === undefined ? existing.model : (parsed.model ?? null),
           title: parsed.title ?? existing.title,
           description: parsed.description ?? existing.description,
           context:
@@ -1024,6 +1036,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           template_id: null,
           agent_id: template.agent_id,
           default_agent_id: template.default_agent_id,
+          model: template.model,
           title: template.title,
           description: template.description,
           context: JSON.stringify(normalizeTaskContext(input.context)),
@@ -1321,6 +1334,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         taskId: task.id,
         subtaskId: parsed.subtaskId,
         agentId: parsed.agentId ?? subtask?.agent_id ?? task.default_agent_id ?? task.agent_id,
+        model: input.model ?? task.model ?? undefined,
         status: "queued",
         triggerSource: parsed.triggerSource,
         context: input.context,
@@ -1360,6 +1374,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           task_id: parsed.taskId,
           subtask_id: parsed.subtaskId ?? null,
           agent_id: parsed.agentId,
+          model: parsed.model ?? null,
           opencode_session_id: parsed.opencodeSessionId ?? null,
           status: parsed.status,
           trigger_source: parsed.triggerSource,
@@ -1587,6 +1602,9 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         status,
         latest_run_id: run.id,
         ...(run.finalMessage === undefined ? {} : { latest_final_message: run.finalMessage }),
+        // Always track the latest run's explicit result (clearing a stale value
+        // from a previous run when this run set none).
+        latest_result_text: run.resultText ?? null,
         updated_at: timestamp,
       })
       .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)));
@@ -1923,6 +1941,7 @@ function mapTask(row: typeof tasks.$inferSelect): Task {
     templateId: row.template_id ?? undefined,
     agentId: row.agent_id,
     defaultAgentId: row.default_agent_id ?? undefined,
+    model: row.model ?? undefined,
     title: row.title,
     description: row.description,
     context: parseTaskContext(row.context),
@@ -1932,6 +1951,7 @@ function mapTask(row: typeof tasks.$inferSelect): Task {
     enabled: row.enabled,
     archived: row.archived,
     latestFinalMessage: row.latest_final_message ?? undefined,
+    latestResultText: row.latest_result_text ?? undefined,
     latestRunId: row.latest_run_id ?? undefined,
     sourceTemplateId: row.source_template_id ?? undefined,
     sourceOccurrenceAt: row.source_occurrence_at?.toISOString(),
@@ -1951,6 +1971,7 @@ function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task {
     templateId: row.id,
     agentId: row.agent_id,
     defaultAgentId: row.default_agent_id ?? undefined,
+    model: row.model ?? undefined,
     title: row.title,
     description: row.description,
     context: normalizeTaskContext(),
@@ -1970,6 +1991,7 @@ function mapTaskTemplate(row: typeof task_templates.$inferSelect): TaskTemplate 
   return taskTemplateSchema.parse({
     id: row.id,
     defaultAgentId: row.default_agent_id ?? row.agent_id,
+    model: row.model ?? undefined,
     title: row.title,
     description: row.description,
     todos: parseTaskTodos(row.todos_json),
@@ -2047,6 +2069,7 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
     taskId: row.task_id,
     subtaskId: row.subtask_id ?? undefined,
     agentId: row.agent_id,
+    model: row.model ?? undefined,
     opencodeSessionId: row.opencode_session_id ?? undefined,
     status: row.status,
     triggerSource: row.trigger_source,

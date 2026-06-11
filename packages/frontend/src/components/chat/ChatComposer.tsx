@@ -36,6 +36,30 @@ type ChatComposerProps = {
   defaultModel?: string;
 };
 
+// Per-conversation model selection persists across navigation/remounts so a
+// chat keeps the model the user picked; new chats fall back to the agent default.
+const CHAT_MODEL_KEY_PREFIX = "cc-chat-model:";
+
+function readChatModel(conversationId: string): string | null {
+  try {
+    return localStorage.getItem(`${CHAT_MODEL_KEY_PREFIX}${conversationId}`);
+  } catch {
+    return null;
+  }
+}
+
+function writeChatModel(conversationId: string, model: string | null): void {
+  try {
+    if (model) {
+      localStorage.setItem(`${CHAT_MODEL_KEY_PREFIX}${conversationId}`, model);
+    } else {
+      localStorage.removeItem(`${CHAT_MODEL_KEY_PREFIX}${conversationId}`);
+    }
+  } catch {
+    // Ignore storage errors (private mode, quota, etc.)
+  }
+}
+
 export function ChatComposer({
   onSend,
   onShell,
@@ -54,7 +78,9 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<ComposerMode>("normal");
-  const [selectedModel, setSelectedModel] = useState<string | null>(defaultModel ?? null);
+  const [selectedModel, setSelectedModel] = useState<string | null>(
+    () => (autoFocusKey ? readChatModel(autoFocusKey) : null) ?? defaultModel ?? null,
+  );
   const [attachments, setAttachments] = useState<SendConversationAttachmentInput[]>([]);
   const [mentionedFiles, setMentionedFiles] = useState<{ path: string; filename: string }[]>([]);
   const [selectedSkill, setSelectedSkill] = useState<{ slug: string; description?: string } | null>(
@@ -77,11 +103,24 @@ export function ChatComposer({
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [text]);
 
-  // Reset the model selection to the agent default whenever the chat changes
-  // (new conversation) or the default arrives asynchronously.
+  // When the chat changes (or the default arrives asynchronously), restore the
+  // model previously chosen for that conversation, falling back to the agent
+  // default for brand-new chats.
   useEffect(() => {
-    setSelectedModel(defaultModel ?? null);
+    const persisted = autoFocusKey ? readChatModel(autoFocusKey) : null;
+    setSelectedModel(persisted ?? defaultModel ?? null);
   }, [autoFocusKey, defaultModel]);
+
+  // Persist the user's choice for the active conversation.
+  const handleModelChange = useCallback(
+    (model: string) => {
+      setSelectedModel(model);
+      if (autoFocusKey) {
+        writeChatModel(autoFocusKey, model);
+      }
+    },
+    [autoFocusKey],
+  );
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -532,7 +571,7 @@ export function ChatComposer({
 
           <ModelSelector
             value={selectedModel}
-            onChange={setSelectedModel}
+            onChange={handleModelChange}
             defaultModel={defaultModel}
           />
 

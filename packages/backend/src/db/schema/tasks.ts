@@ -11,6 +11,7 @@ export const task_templates = sqliteTable(
       .notNull()
       .references(() => agents.id),
     default_agent_id: text("default_agent_id").references(() => agents.id),
+    model: text("model"),
     title: text("title").notNull(),
     description: text("description").notNull(),
     todos_json: text("todos_json").notNull(),
@@ -49,6 +50,7 @@ export const tasks = sqliteTable(
       .notNull()
       .references(() => agents.id),
     default_agent_id: text("default_agent_id").references(() => agents.id),
+    model: text("model"),
     title: text("title").notNull(),
     description: text("description").notNull(),
     context: text("context").notNull(),
@@ -59,6 +61,7 @@ export const tasks = sqliteTable(
     enabled: integer("enabled", { mode: "boolean" }).notNull(),
     archived: integer("archived", { mode: "boolean" }).notNull(),
     latest_final_message: text("latest_final_message"),
+    latest_result_text: text("latest_result_text"),
     latest_run_id: text("latest_run_id"),
     source_template_id: text("source_template_id").references(() => task_templates.id),
     source_occurrence_at: integer("source_occurrence_at", { mode: "timestamp_ms" }),
@@ -141,6 +144,7 @@ export const task_runs = sqliteTable(
     agent_id: text("agent_id")
       .notNull()
       .references(() => agents.id),
+    model: text("model"),
     opencode_session_id: text("opencode_session_id"),
     status: text("status").notNull(),
     trigger_source: text("trigger_source").notNull(),

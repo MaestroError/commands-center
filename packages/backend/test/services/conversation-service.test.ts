@@ -107,6 +107,13 @@ describe("createConversationService", () => {
       promptModels.push(input.model);
       return originalPromptSession(input);
     };
+    // The chat UI sends with ?stream=true, which routes to promptSessionAsync.
+    const asyncModels: unknown[] = [];
+    const originalPromptSessionAsync = opencodeService.promptSessionAsync;
+    opencodeService.promptSessionAsync = (input) => {
+      asyncModels.push(input.model);
+      return originalPromptSessionAsync(input);
+    };
 
     try {
       const agent = await agentService.create({
@@ -134,8 +141,21 @@ describe("createConversationService", () => {
         attachments: [],
       });
 
+      // Streaming path (what the chat composer actually uses).
+      await service.sendPromptAsync(opened.current.id, {
+        text: "Stream with an override.",
+        attachments: [],
+        model: "anthropic/claude-opus",
+      });
+      await service.sendPromptAsync(opened.current.id, {
+        text: "Stream with the default.",
+        attachments: [],
+      });
+
       expect(promptModels[0]).toEqual({ providerID: "anthropic", modelID: "claude-opus" });
       expect(promptModels[1]).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
+      expect(asyncModels[0]).toEqual({ providerID: "anthropic", modelID: "claude-opus" });
+      expect(asyncModels[1]).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
     } finally {
       await testDb.cleanup();
     }
