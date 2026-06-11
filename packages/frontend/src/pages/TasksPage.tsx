@@ -1557,6 +1557,16 @@ function TaskDetailPanel(props: {
                       className="text-inherit [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
                       content={latestRunResult.content}
                     />
+                    {latestRunResult.run.resultText &&
+                    latestRunResult.run.resultText !== latestRunResult.content ? (
+                      <div className="pt-2">
+                        <ClampedResultText
+                          className="text-xs italic text-text-secondary"
+                          expandable
+                          text={latestRunResult.run.resultText}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -2049,7 +2059,7 @@ function TaskFeedbackSection(props: {
                   key={entry.id}
                 >
                   <FeedbackComment
-                    author="You"
+                    author="Me"
                     body={entry.body}
                     meta={
                       <>
@@ -2076,6 +2086,7 @@ function TaskFeedbackSection(props: {
               <FeedbackComment
                 author={`${readAgentName(props.agents, run.agentId)} commented`}
                 body={readRunCommentBody(run)}
+                resultText={run.resultText}
                 key={run.id}
                 meta={
                   <>
@@ -2105,6 +2116,7 @@ function TaskFeedbackSection(props: {
 function FeedbackComment(props: {
   author: string;
   body: string;
+  resultText?: string;
   artifacts?: TaskRunArtifact[];
   taskId?: string;
   runId?: string;
@@ -2130,6 +2142,15 @@ function FeedbackComment(props: {
           className="mt-1 text-sm leading-6 text-text-secondary [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
           content={props.body}
         />
+        {props.resultText && props.resultText !== props.body ? (
+          <div className={`mt-2 ${RESULT_BOX_CLASS}`}>
+            <ClampedResultText
+              className="text-xs italic leading-5 text-text-primary"
+              expandable
+              text={props.resultText}
+            />
+          </div>
+        ) : null}
         <RunArtifactAttachments
           artifacts={props.artifacts ?? []}
           taskId={props.taskId}
@@ -2280,6 +2301,7 @@ function FeedbackReplies(props: { agents: Agent[]; subtasks: TaskFeedbackThread[
         <FeedbackComment
           author={`${readAgentName(props.agents, reply.agentId)} replied`}
           body={readRunCommentBody(reply.run)}
+          resultText={reply.run.resultText}
           key={reply.run.id}
           meta={
             <>
@@ -4219,6 +4241,40 @@ function readSubtaskDotClassName(
   return `block h-3 w-3 rounded-full border-2 ring-2 ring-surface ${color}`;
 }
 
+// Blueish, rounded result box matching the "Latest update" treatment.
+const RESULT_BOX_CLASS =
+  "min-w-0 break-words [overflow-wrap:anywhere] rounded-lg border border-accent/30 bg-accent/10 p-3 text-text-primary";
+
+/** Renders text clamped to ~3 lines (with an ellipsis); optionally click-to-expand. */
+function ClampedResultText(props: { text: string; expandable?: boolean; className?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const textClass = `block break-words [overflow-wrap:anywhere] ${
+    expanded ? "whitespace-pre-wrap" : "line-clamp-3"
+  } ${props.className ?? ""}`;
+
+  if (!props.expandable) {
+    return (
+      <span
+        className={`block break-words [overflow-wrap:anywhere] line-clamp-3 ${props.className ?? ""}`}
+      >
+        {props.text}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      aria-expanded={expanded}
+      className="block w-full cursor-pointer text-left"
+      onClick={() => setExpanded((value) => !value)}
+      title={expanded ? "Click to collapse" : "Click to expand"}
+      type="button"
+    >
+      <span className={textClass}>{props.text}</span>
+    </button>
+  );
+}
+
 function readResultClassName(status: BoardTaskStatus): string {
   const emphasis =
     status === "ready_to_check"
@@ -4446,6 +4502,14 @@ function RunHistory(props: {
           <p className="mt-2 break-words text-text-secondary [overflow-wrap:anywhere]">
             {run.finalMessage ?? run.errorMessage ?? "No summary"}
           </p>
+          {run.resultText && run.resultText !== run.finalMessage ? (
+            <div className={`mt-2 ${RESULT_BOX_CLASS}`}>
+              <ClampedResultText
+                className="mb-0.5 text-xs italic text-text-primary"
+                text={run.resultText}
+              />
+            </div>
+          ) : null}
         </Link>
       ))}
     </div>
