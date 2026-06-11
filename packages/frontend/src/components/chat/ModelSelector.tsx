@@ -94,12 +94,21 @@ export function ModelSelector({
   );
 
   const uniqueKey = (model: ModelOption) => `${model.providerId}/${model.id}`;
+  const isConnectedKey = (key: string) => connectedModels.some((model) => uniqueKey(model) === key);
+  const firstKey = connectedModels[0] ? uniqueKey(connectedModels[0]) : "";
   // In "agent default" mode an empty value means "no override"; otherwise the
-  // picker always resolves to a concrete model (chat behaviour).
+  // picker resolves to a concrete model (chat behaviour). If the requested value
+  // is no longer connected (stale localStorage / provider disconnect), fall the
+  // displayed selection back to the default or the first available model so we
+  // never present an unavailable model as selected.
   const usesAgentDefault = allowAgentDefault && !value;
   const selectedKey = usesAgentDefault
     ? ""
-    : (value ?? defaultModel ?? (connectedModels[0] ? uniqueKey(connectedModels[0]) : ""));
+    : value && isConnectedKey(value)
+      ? value
+      : defaultModel && isConnectedKey(defaultModel)
+        ? defaultModel
+        : firstKey;
   const selectedModel = connectedModels.find((model) => uniqueKey(model) === selectedKey);
 
   const modelByKey = useMemo(() => {
@@ -237,6 +246,8 @@ export function ModelSelector({
         key={key}
         data-model-option
         type="button"
+        role="option"
+        aria-selected={isSelected}
         className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs ${
           index === activeIndex
             ? "bg-surface-elevated text-text-primary"
@@ -283,7 +294,6 @@ export function ModelSelector({
           className={`absolute left-0 z-[100] w-72 overflow-hidden rounded-lg border border-border bg-surface shadow-lg ${
             placement === "down" ? "top-[calc(100%+6px)]" : "bottom-[calc(100%+6px)]"
           }`}
-          role="listbox"
         >
           <div className="border-b border-border p-2">
             <input
@@ -298,10 +308,17 @@ export function ModelSelector({
             />
           </div>
 
-          <div ref={listRef} className="max-h-64 overflow-y-auto py-1">
+          <div
+            ref={listRef}
+            className="max-h-64 overflow-y-auto py-1"
+            role="listbox"
+            aria-label="Models"
+          >
             {allowAgentDefault && !normalizedQuery ? (
               <button
                 type="button"
+                role="option"
+                aria-selected={usesAgentDefault}
                 className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs ${
                   usesAgentDefault
                     ? "bg-surface-elevated text-text-primary"

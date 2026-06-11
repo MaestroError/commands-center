@@ -561,11 +561,11 @@ describe("TasksPage", () => {
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
 
     const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
-    // Latest update box: "Result:" label plus the explicit result.
-    expect(within(panel).getAllByText("Result:").length).toBeGreaterThan(0);
+    // Latest update box shows the session summary plus the explicit result.
+    expect(within(panel).getAllByText("Done.").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("The explicit agent result.").length).toBeGreaterThan(0);
 
-    // Runs history list shows it too.
+    // Runs history list shows the result too.
     await user.click(within(panel).getByRole("tab", { name: "Runs" }));
     expect(within(panel).getAllByText("The explicit agent result.").length).toBeGreaterThan(0);
   });

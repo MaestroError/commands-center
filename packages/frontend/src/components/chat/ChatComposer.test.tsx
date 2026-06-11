@@ -238,7 +238,7 @@ describe("ChatComposer", () => {
     expect(trigger).toHaveTextContent("MiniMax M3");
 
     await user.click(trigger);
-    await user.click(screen.getByRole("button", { name: "Anthropic / Claude Opus" }));
+    await user.click(screen.getByRole("option", { name: "Anthropic / Claude Opus" }));
     expect(screen.getByRole("button", { name: "Select model" })).toHaveTextContent("Claude Opus");
 
     // Switching conversation resets the selection back to the agent default.
@@ -251,7 +251,7 @@ describe("ChatComposer", () => {
     const { props } = renderComposer({ defaultModel: "minimax/minimax-m3" });
 
     await user.click(screen.getByRole("button", { name: "Select model" }));
-    await user.click(screen.getByRole("button", { name: "Anthropic / Claude Opus" }));
+    await user.click(screen.getByRole("option", { name: "Anthropic / Claude Opus" }));
 
     await user.type(
       screen.getByPlaceholderText('Type a message... Use "#" to mention'),
@@ -274,7 +274,7 @@ describe("ChatComposer", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "Select model" }));
-    await user.click(screen.getByRole("button", { name: "Anthropic / Claude Opus" }));
+    await user.click(screen.getByRole("option", { name: "Anthropic / Claude Opus" }));
     expect(screen.getByRole("button", { name: "Select model" })).toHaveTextContent("Claude Opus");
 
     // Leaving and returning to the same chat keeps the chosen model.

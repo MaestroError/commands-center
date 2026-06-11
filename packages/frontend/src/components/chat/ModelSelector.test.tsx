@@ -78,7 +78,7 @@ describe("ModelSelector", () => {
     expect(trigger).toHaveTextContent("Claude 3");
 
     await user.click(trigger);
-    await user.click(screen.getByRole("button", { name: "OpenAI / GPT-5" }));
+    await user.click(screen.getByRole("option", { name: "OpenAI / GPT-5" }));
 
     expect(onChange).toHaveBeenCalledWith("openai/gpt-5");
   });
@@ -92,7 +92,7 @@ describe("ModelSelector", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Select model" }));
-    await user.click(screen.getByRole("button", { name: "Anthropic / Claude 3" }));
+    await user.click(screen.getByRole("option", { name: "Anthropic / Claude 3" }));
 
     expect(JSON.parse(localStorage.getItem("cc-recent-models") ?? "[]")).toEqual([
       "anthropic/claude-3",
@@ -120,7 +120,7 @@ describe("ModelSelector", () => {
 
     expect(screen.getByText("Suggested")).toBeInTheDocument();
     // Still-available recent model appears once (only in Suggested).
-    expect(screen.getAllByRole("button", { name: "Anthropic / Claude 3" })).toHaveLength(1);
+    expect(screen.getAllByRole("option", { name: "Anthropic / Claude 3" })).toHaveLength(1);
     expect(screen.queryByText(/old-model/)).not.toBeInTheDocument();
   });
 
@@ -144,7 +144,7 @@ describe("ModelSelector", () => {
 
     // Picking a concrete model reports it.
     await user.click(trigger);
-    await user.click(screen.getByRole("button", { name: "Anthropic / Claude 3" }));
+    await user.click(screen.getByRole("option", { name: "Anthropic / Claude 3" }));
     expect(onChange).toHaveBeenCalledWith("anthropic/claude-3");
   });
 
@@ -166,7 +166,7 @@ describe("ModelSelector", () => {
     expect(trigger).toHaveTextContent("Claude 3");
 
     await user.click(trigger);
-    await user.click(screen.getByRole("button", { name: /Agent's default/ }));
+    await user.click(screen.getByRole("option", { name: /Agent's default/ }));
     expect(onChange).toHaveBeenCalledWith("");
   });
 
@@ -179,7 +179,7 @@ describe("ModelSelector", () => {
     await user.click(screen.getByRole("button", { name: "Select model" }));
     await user.type(screen.getByRole("textbox", { name: "Filter models" }), "claude");
 
-    expect(screen.getByRole("button", { name: "Anthropic / Claude 3" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "OpenAI / GPT-5" })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Anthropic / Claude 3" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "OpenAI / GPT-5" })).not.toBeInTheDocument();
   });
 });
