@@ -39,7 +39,6 @@ describe("agent and provider schemas", () => {
       role: "helper",
       instructions: "Be precise.",
       defaultModel: "openai/gpt-5",
-      fallbackModels: [],
       customToolOverwriteSlugs: [],
       capabilities: {
         builtInSkills: [],

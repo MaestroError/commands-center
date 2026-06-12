@@ -198,9 +198,6 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
       role: form.role.trim(),
       instructions: form.instructions.trim(),
       defaultModel: form.defaultModel.trim(),
-      fallbackModels: form.fallbackModels
-        .map((model) => model.trim())
-        .filter((model) => model && model !== form.defaultModel.trim()),
       iconPath: form.iconPath.trim() || undefined,
       customToolOverwriteSlugs: overwriteSlugs,
       capabilities: form.capabilities,

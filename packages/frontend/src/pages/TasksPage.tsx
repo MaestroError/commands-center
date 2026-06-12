@@ -24,6 +24,7 @@ import {
   Link2,
   MessageSquareText,
   Pencil,
+  Plus,
   Play,
   RotateCcw,
   Save,
@@ -34,24 +35,25 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import type {
-  Agent,
-  AgentCatalog,
-  BoardTaskStatus,
-  CreateTaskFeedbackInput,
-  CreateTaskInput,
-  CreateTaskTemplateInput,
-  Task,
-  TaskFeedbackThread,
-  TaskQueuePreview,
-  TaskRun,
-  TaskRunArtifact,
-  TaskSubtaskProgress,
-  TaskSubtask,
-  TaskSchedulerState,
-  TaskTemplate,
-  TaskRepeatRule,
-  UpdateTaskInput,
+import {
+  MAX_FALLBACK_MODELS,
+  type Agent,
+  type AgentCatalog,
+  type BoardTaskStatus,
+  type CreateTaskFeedbackInput,
+  type CreateTaskInput,
+  type CreateTaskTemplateInput,
+  type Task,
+  type TaskFeedbackThread,
+  type TaskQueuePreview,
+  type TaskRun,
+  type TaskRunArtifact,
+  type TaskSubtaskProgress,
+  type TaskSubtask,
+  type TaskSchedulerState,
+  type TaskTemplate,
+  type TaskRepeatRule,
+  type UpdateTaskInput,
 } from "@cc/shared/schemas";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
@@ -3005,6 +3007,11 @@ function TaskTemplateForm(props: {
             value={form.model || null}
           />
         </label>
+        <FallbackModelsField
+          fallbackModels={form.fallbackModels}
+          primaryModel={form.model}
+          onChange={(fallbackModels) => updateForm({ fallbackModels })}
+        />
       </div>
       <label className="grid gap-1 text-sm text-text-secondary">
         Task prompt
@@ -3594,6 +3601,11 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                     value={form.model || null}
                   />
                 </label>
+                <FallbackModelsField
+                  fallbackModels={form.fallbackModels}
+                  primaryModel={form.model}
+                  onChange={(fallbackModels) => updateForm({ fallbackModels })}
+                />
               </div>
 
               <section className="grid gap-1 text-sm text-text-secondary">
@@ -3725,6 +3737,7 @@ type FormState = {
   agentId: string;
   /** Optional qualified `provider/model` override; empty = use the agent default. */
   model: string;
+  fallbackModels: string[];
   title: string;
   prompt: TaskPromptValue;
   scheduledAtLocal: string;
@@ -3747,6 +3760,7 @@ function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormState {
   return {
     agentId: task?.agentId ?? prefill?.agentId ?? "",
     model: task?.model ?? "",
+    fallbackModels: task?.fallbackModels ?? [],
     title: task?.title ?? "",
     prompt: task
       ? createTaskPromptValue(task.description)
@@ -3771,6 +3785,7 @@ function templateToForm(template?: TaskTemplate): FormState {
   return {
     agentId: template?.defaultAgentId ?? "",
     model: template?.model ?? "",
+    fallbackModels: template?.fallbackModels ?? [],
     title: template?.title ?? "",
     prompt: createTaskPromptValue(template?.description ?? ""),
     scheduledAtLocal: "",
@@ -3818,6 +3833,7 @@ function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {
   const input: CreateTaskInput | UpdateTaskInput = {
     agentId: form.agentId,
     model: form.model ? form.model : null,
+    fallbackModels: normalizeTaskFallbackModels(form.fallbackModels, form.model),
     title: readTaskTitle(form.title, description),
     description,
     todos: form.todosText
@@ -3851,6 +3867,7 @@ function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
   const input: CreateTaskTemplateInput = {
     defaultAgentId: form.agentId,
     model: form.model ? form.model : null,
+    fallbackModels: normalizeTaskFallbackModels(form.fallbackModels, form.model),
     title: form.title,
     description: buildTaskPromptText(form.prompt),
     todos: form.todosText
@@ -3873,12 +3890,73 @@ function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
   return input;
 }
 
+function FallbackModelsField(props: {
+  fallbackModels: string[];
+  primaryModel: string;
+  onChange: (fallbackModels: string[]) => void;
+}) {
+  const displayedModels = props.fallbackModels.slice(0, MAX_FALLBACK_MODELS);
+  const canAdd = displayedModels.length < MAX_FALLBACK_MODELS;
+
+  return (
+    <section className="grid gap-2 text-sm text-text-secondary">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <span>Fallback models</span>
+        <button
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/40 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!canAdd}
+          title="Add fallback model"
+          type="button"
+          onClick={() => props.onChange([...displayedModels, ""])}
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+      {displayedModels.length === 0 ? (
+        <p className="text-xs text-text-secondary">No fallback models configured.</p>
+      ) : (
+        <div className="grid gap-2">
+          {displayedModels.map((model, index) => (
+            <div className="flex min-w-0 items-center gap-2" key={`${model || "empty"}-${index}`}>
+              <ModelSelector
+                allowEmptySelection
+                onChange={(nextModel) => {
+                  const next = [...displayedModels];
+                  next[index] = nextModel;
+                  props.onChange(normalizeTaskFallbackModels(next, props.primaryModel));
+                }}
+                placeholder="Select fallback"
+                placement="down"
+                value={model || null}
+              />
+              <button
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-secondary transition hover:bg-danger/10 hover:text-danger"
+                title="Remove fallback model"
+                type="button"
+                onClick={() =>
+                  props.onChange(
+                    displayedModels.filter((_, fallbackIndex) => fallbackIndex !== index),
+                  )
+                }
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function templateAsTask(template: TaskTemplate): Task {
   return {
     id: template.id,
     agentId: template.defaultAgentId,
     defaultAgentId: template.defaultAgentId,
     templateId: template.id,
+    model: template.model,
+    fallbackModels: template.fallbackModels,
     title: template.title,
     description: template.description,
     context: { attachments: [] },
@@ -3890,6 +3968,26 @@ function templateAsTask(template: TaskTemplate): Task {
     createdAt: template.createdAt,
     updatedAt: template.updatedAt,
   };
+}
+
+function normalizeTaskFallbackModels(models: string[], primaryModel: string): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  const trimmedPrimary = primaryModel.trim();
+
+  for (const model of models) {
+    const trimmed = model.trim();
+    if (!trimmed || trimmed === trimmedPrimary || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    normalized.push(trimmed);
+    if (normalized.length >= MAX_FALLBACK_MODELS) {
+      break;
+    }
+  }
+
+  return normalized;
 }
 
 function buildTaskContextAttachmentHref(storageKey: string): string {

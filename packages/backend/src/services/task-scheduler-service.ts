@@ -282,7 +282,7 @@ export function createTaskSchedulerService(options: {
     await options.taskService.createRun({
       taskId: task.id,
       agentId: task.agentId,
-      status: "failed",
+      status: "error",
       triggerSource: "scheduled",
       renderedPrompt: "",
       renderedContext: {
@@ -475,6 +475,8 @@ function templateSchedulerTask(template: TaskTemplate): Task {
     id: template.id,
     agentId: template.defaultAgentId,
     defaultAgentId: template.defaultAgentId,
+    model: template.model,
+    fallbackModels: template.fallbackModels,
     title: template.title,
     description: template.description,
     context: { attachments: [] },
@@ -902,7 +904,7 @@ function readScheduledAt(run: TaskRun): Date | undefined {
 }
 
 function isTerminalRunStatus(status: TaskRun["status"]): boolean {
-  return ["completed", "failed", "cancelled", "skipped"].includes(status);
+  return ["completed", "failed", "error", "cancelled", "skipped"].includes(status);
 }
 
 function mapSchedulerState(row: typeof task_scheduler_state.$inferSelect): TaskSchedulerState {

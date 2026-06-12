@@ -27,7 +27,6 @@ const agent: Agent = {
   role: "Plans work",
   instructions: "Plan carefully.",
   defaultModel: "openai/gpt-4.1",
-  fallbackModels: [],
   workspacePath: "/tmp/planner",
   status: "active",
   capabilities: {
@@ -53,6 +52,7 @@ const reviewerAgent: Agent = {
 const task: Task = {
   id: "task-1",
   agentId: "agent-1",
+  fallbackModels: [],
   title: "Ship release",
   description: "Prepare release notes.",
   context: { attachments: [] },
@@ -92,6 +92,7 @@ const generatedTask: Task = {
 const taskTemplate: TaskTemplate = {
   id: "template-1",
   defaultAgentId: "agent-1",
+  fallbackModels: [],
   title: "Weekly release notes",
   description: "Generate release note draft every week.",
   todos: [],
@@ -121,6 +122,7 @@ const run: TaskRun = {
   id: "run-1",
   taskId: "task-1",
   agentId: "agent-1",
+  fallbackModels: [],
   opencodeSessionId: "session-1",
   status: "completed",
   triggerSource: "manual",
@@ -1185,6 +1187,7 @@ describe("TasksPage", () => {
           method: "POST",
           body: JSON.stringify({
             defaultAgentId: "agent-1",
+            fallbackModels: [],
             title: "Ship release",
             description: "Prepare release notes.",
             todos: [{ content: "Read changelog", status: "pending" }],

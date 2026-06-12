@@ -7,9 +7,6 @@ export const agents = sqliteTable("agents", {
   role: text("role").notNull(),
   instructions: text("instructions").notNull(),
   default_model: text("default_model").notNull(),
-  // Ordered JSON array of qualified `provider/model` ids (max 5) tried in
-  // sequence when the default model fails. Nullable for pre-fallback rows.
-  fallback_models: text("fallback_models"),
   icon_path: text("icon_path"),
   status: text("status").notNull(),
   capabilities_json: text("capabilities_json").notNull(),

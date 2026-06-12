@@ -213,7 +213,6 @@ describe("AgentEditorPage", () => {
           role: "write docs",
           instructions: "Write useful docs.",
           defaultModel: "openai/gpt-4.1",
-          fallbackModels: [],
           iconPath: undefined,
           customToolOverwriteSlugs: [],
           capabilities: {
@@ -265,7 +264,6 @@ describe("AgentEditorPage", () => {
           role: "write docs",
           instructions: "Write useful docs.",
           defaultModel: "openai/gpt-4.1",
-          fallbackModels: [],
           iconPath: undefined,
           customToolOverwriteSlugs: [],
           capabilities: {

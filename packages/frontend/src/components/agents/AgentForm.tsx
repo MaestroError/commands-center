@@ -18,7 +18,6 @@ import {
 } from "@/lib/agent-capabilities";
 import { agentFormSlug, type AgentFormErrors, type AgentFormState } from "@/lib/agent-form";
 
-import { MAX_FALLBACK_MODELS } from "@cc/shared/schemas";
 import type {
   AgentCatalog,
   AgentCapabilitySelection,
@@ -88,39 +87,6 @@ export function AgentForm(props: AgentFormProps) {
 
   function update<Key extends keyof AgentFormState>(key: Key, next: AgentFormState[Key]) {
     onChange({ ...value, [key]: next });
-  }
-
-  // Models still available to add as a fallback: everything except the default
-  // model and models already in the chain (optionally keeping `current` so the
-  // editing row can re-select its own value).
-  function availableFallbackOptions(current?: string) {
-    const taken = new Set<string>([value.defaultModel, ...value.fallbackModels]);
-    if (current) {
-      taken.delete(current);
-    }
-    return (catalog?.providerModels ?? []).filter((model) => !taken.has(model.id));
-  }
-
-  function setFallbackModel(index: number, next: string) {
-    update(
-      "fallbackModels",
-      value.fallbackModels.map((model, position) => (position === index ? next : model)),
-    );
-  }
-
-  function addFallbackModel() {
-    const next = availableFallbackOptions()[0]?.id;
-    if (!next) {
-      return;
-    }
-    update("fallbackModels", [...value.fallbackModels, next]);
-  }
-
-  function removeFallbackModel(index: number) {
-    update(
-      "fallbackModels",
-      value.fallbackModels.filter((_, position) => position !== index),
-    );
   }
 
   function updateCapabilities(next: AgentCapabilitySelection) {
@@ -259,7 +225,7 @@ export function AgentForm(props: AgentFormProps) {
         </div>
 
         {hasProviderModels ? (
-          <div className="mt-5 grid gap-5">
+          <div className="mt-5">
             <Field error={errors.defaultModel} label="Model" required>
               <SearchableSelect
                 ariaLabel="Model"
@@ -269,59 +235,6 @@ export function AgentForm(props: AgentFormProps) {
                 value={value.defaultModel}
               />
             </Field>
-
-            <div className="grid gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-text-primary">Fallback models</h3>
-                <p className="mt-1 text-sm text-text-secondary">
-                  Tried in order when the default model fails (provider outage, rate limit, auth).
-                  Up to {MAX_FALLBACK_MODELS}.
-                </p>
-              </div>
-
-              {value.fallbackModels.length > 0 ? (
-                <ul className="grid gap-2">
-                  {value.fallbackModels.map((model, index) => (
-                    <li className="flex items-center gap-2" key={`${model}-${String(index)}`}>
-                      <span className="w-5 shrink-0 text-sm text-text-secondary">{index + 1}.</span>
-                      <div className="min-w-0 flex-1">
-                        <SearchableSelect
-                          ariaLabel={`Fallback model ${String(index + 1)}`}
-                          onChange={(next) => setFallbackModel(index, next)}
-                          options={availableFallbackOptions(model)}
-                          placeholder="Search models..."
-                          value={model}
-                        />
-                      </div>
-                      <button
-                        aria-label={`Remove fallback model ${String(index + 1)}`}
-                        className="cc-button cc-button-secondary"
-                        onClick={() => removeFallbackModel(index)}
-                        type="button"
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-text-secondary">No fallback models configured.</p>
-              )}
-
-              <div>
-                <button
-                  className="cc-button cc-button-secondary"
-                  disabled={
-                    value.fallbackModels.length >= MAX_FALLBACK_MODELS ||
-                    availableFallbackOptions().length === 0
-                  }
-                  onClick={addFallbackModel}
-                  type="button"
-                >
-                  Add fallback model
-                </button>
-              </div>
-            </div>
           </div>
         ) : (
           <EmptyState

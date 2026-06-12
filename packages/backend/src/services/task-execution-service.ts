@@ -1,5 +1,6 @@
 import {
   cancelTaskRunInputSchema,
+  MAX_FALLBACK_MODELS,
   queueTaskInputSchema,
   taskContextInputSchema,
   taskContextSchema,
@@ -19,7 +20,7 @@ import { z } from "zod";
 import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
-import type { ConversationService } from "./conversation-service.js";
+import { TaskRunPromptError, type ConversationService } from "./conversation-service.js";
 import type { TaskContextAttachmentService } from "./task-context-attachment-service.js";
 import { createTaskRunContextService } from "./task-run-context-service.js";
 import {
@@ -30,17 +31,30 @@ import type { TaskService } from "./task-service.js";
 
 export type TaskExecutionService = ReturnType<typeof createTaskExecutionService>;
 type QueueTaskExecutionInput = Partial<Omit<QueueTaskInput, "taskId">> & {
+  model?: string;
+  fallbackModels?: string[];
+  retryOfRunId?: string;
   context?: TaskContext;
   contextAttachmentUploads?: z.infer<typeof uploadTaskContextAttachmentInputSchema>[];
 };
+const fallbackModelsOverrideSchema = z.array(z.string().trim().min(1)).max(MAX_FALLBACK_MODELS);
 const queueTaskExecutionInputSchema = queueTaskInputSchema.extend({
+  model: z.string().trim().min(1).optional(),
+  fallbackModels: fallbackModelsOverrideSchema.optional(),
+  retryOfRunId: z.string().trim().min(1).optional(),
   context: taskContextInputSchema.optional(),
   contextAttachmentUploads: z.array(uploadTaskContextAttachmentInputSchema).default([]),
 });
 type ParsedQueueTaskExecutionInput = z.infer<typeof queueTaskExecutionInputSchema>;
 type QueueSingleRunInput = Pick<
   ParsedQueueTaskExecutionInput,
-  "agentId" | "metadata" | "subtaskId" | "triggerSource"
+  | "agentId"
+  | "fallbackModels"
+  | "metadata"
+  | "model"
+  | "retryOfRunId"
+  | "subtaskId"
+  | "triggerSource"
 >;
 
 export function createTaskExecutionService(options: {
@@ -285,22 +299,150 @@ export function createTaskExecutionService(options: {
         return latest;
       }
 
-      const failed = await options.taskService.setRunStatus(running.id, "failed", {
+      const errored = await options.taskService.setRunStatus(running.id, "error", {
         completedAt: new Date().toISOString(),
         errorMessage: error instanceof Error ? error.message : "Task execution failed.",
-        errorDetails: {
-          errorName: error instanceof Error ? error.name : "UnknownError",
-          stage: running.opencodeSessionId ? "task_session_prompt" : "task_session_create",
-        },
+        errorDetails: buildTaskRunErrorDetails(error, running),
       });
 
-      if (!failed) {
+      if (!errored) {
         throw new NotFoundError("Task run not found.");
       }
 
-      await handleTerminalRun(failed, { triggerContext: readRunContext(running) });
-      return failed;
+      const fallback = buildFallbackRunInput(errored, error);
+      if (fallback) {
+        notifyRunTerminal(errored);
+        const fallbackRun = await queueTask(errored.taskId, fallback);
+        options.logger?.warn(
+          {
+            taskId: errored.taskId,
+            previousRunId: errored.id,
+            fallbackRunId: fallbackRun.id,
+            model: fallback.model,
+          },
+          "task run errored, queued fallback model run",
+        );
+        return fallbackRun;
+      }
+
+      await handleTerminalRun(errored, { triggerContext: readRunContext(running) });
+      return errored;
     }
+  }
+
+  function buildTaskRunErrorDetails(error: unknown, run: TaskRun): Record<string, unknown> {
+    if (error instanceof TaskRunPromptError) {
+      return {
+        errorName: error.modelError.name,
+        attemptedModel: error.attemptedModel,
+        modelError: error.modelError,
+        stage: "task_session_prompt",
+      };
+    }
+
+    return {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      stage: run.opencodeSessionId ? "task_session_prompt" : "task_session_create",
+    };
+  }
+
+  function buildFallbackRunInput(
+    errored: TaskRun,
+    error: unknown,
+  ): QueueTaskExecutionInput | undefined {
+    if (!(error instanceof TaskRunPromptError) || !isFallbackEligible(error)) {
+      return undefined;
+    }
+
+    const selected = selectNextFallbackModel(error, errored.fallbackModels);
+    if (!selected) {
+      return undefined;
+    }
+
+    return {
+      agentId: errored.agentId,
+      subtaskId: errored.subtaskId,
+      triggerSource: "system",
+      model: selected.model,
+      fallbackModels: selected.remaining,
+      retryOfRunId: errored.id,
+      context: {
+        text: [
+          "Previous task run ended with a model/provider error.",
+          `Previous run id: ${errored.id}`,
+          `Attempted model: ${error.attemptedModel}`,
+          `Error: ${error.modelError.name}: ${error.modelError.message}`,
+          "The previous attempt may have already changed workspace files. Inspect the current workspace state before continuing, avoid duplicating completed work, and finish the original task goal.",
+        ].join("\n"),
+        attachments: [],
+      },
+      metadata: {
+        fallbackOfRunId: errored.id,
+        attemptedModel: error.attemptedModel,
+        errorName: error.modelError.name,
+      },
+    };
+  }
+
+  function selectNextFallbackModel(
+    error: TaskRunPromptError,
+    fallbackModels: string[],
+  ): { model: string; remaining: string[] } | undefined {
+    for (let index = 0; index < fallbackModels.length; index += 1) {
+      const model = fallbackModels[index]!;
+      if (model === error.attemptedModel) {
+        continue;
+      }
+
+      if (
+        error.modelError.name === "ProviderAuthError" &&
+        readProvider(model) === readProvider(error.attemptedModel)
+      ) {
+        continue;
+      }
+
+      return {
+        model,
+        remaining: fallbackModels.slice(index + 1),
+      };
+    }
+
+    return undefined;
+  }
+
+  function isFallbackEligible(error: TaskRunPromptError): boolean {
+    if (error.modelError.name === "UnknownError") {
+      return false;
+    }
+
+    if (error.modelError.name === "ProviderAuthError") {
+      return true;
+    }
+
+    if (error.modelError.name !== "APIError") {
+      return false;
+    }
+
+    const data = error.modelError.data ?? {};
+    const statusCode = typeof data["statusCode"] === "number" ? data["statusCode"] : undefined;
+    const isRetryable = data["isRetryable"] === true;
+    const message = error.modelError.message.toLowerCase();
+
+    return (
+      isRetryable ||
+      statusCode === 404 ||
+      statusCode === 429 ||
+      (statusCode !== undefined && statusCode >= 500) ||
+      message.includes("overload") ||
+      message.includes("rate limit") ||
+      message.includes("too many requests") ||
+      message.includes("model not found")
+    );
+  }
+
+  function readProvider(model: string): string {
+    const slash = model.indexOf("/");
+    return slash > 0 ? model.slice(0, slash) : model;
   }
 
   async function queueNextSubtaskRun(
@@ -342,6 +484,9 @@ export function createTaskExecutionService(options: {
       subtaskId,
       agentId: runAgentId,
       triggerSource: parsed.triggerSource,
+      model: parsed.model,
+      fallbackModels: parsed.fallbackModels,
+      retryOfRunId: parsed.retryOfRunId,
       context: triggerContext,
       metadata: parsed.metadata,
       renderedPrompt,
@@ -415,6 +560,7 @@ export function createTaskExecutionService(options: {
       task,
       {
         triggerSource: run.triggerSource,
+        fallbackModels: run.fallbackModels,
         metadata: run.triggerMetadata,
       },
       triggerContext,

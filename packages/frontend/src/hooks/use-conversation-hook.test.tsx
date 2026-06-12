@@ -70,7 +70,6 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
     role: "Writes things",
     instructions: "Draft carefully.",
     defaultModel: "openai/gpt-4.1",
-    fallbackModels: [],
     status: "active",
     capabilities: {
       builtInSkills: [],

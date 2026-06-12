@@ -6,8 +6,6 @@ import {
   agentCapabilitySelectionSchema,
   agentCatalogSchema,
   agentSchema,
-  fallbackModelsSchema,
-  MAX_FALLBACK_MODELS,
   builtInSkillListSchema,
   createAgentInputSchema,
   updateAgentInputSchema,
@@ -145,8 +143,6 @@ export function createAgentService(options: {
         overwriteSlugs: parsed.customToolOverwriteSlugs,
       });
 
-      const fallbackModels = normalizeFallbackModels(parsed.fallbackModels, parsed.defaultModel);
-
       // File-first: agent.json is the source of record for the derived row.
       await writeAgentFile(options.config, slug, "active", {
         id,
@@ -154,7 +150,6 @@ export function createAgentService(options: {
         role: parsed.role,
         instructions: parsed.instructions,
         defaultModel: parsed.defaultModel,
-        fallbackModels,
         iconPath: parsed.iconPath,
         capabilities,
         createdAt: timestamp.toISOString(),
@@ -170,7 +165,6 @@ export function createAgentService(options: {
           role: parsed.role,
           instructions: parsed.instructions,
           default_model: parsed.defaultModel,
-          fallback_models: JSON.stringify(fallbackModels),
           icon_path: parsed.iconPath,
           status: "active",
           capabilities_json: JSON.stringify(capabilities),
@@ -212,16 +206,11 @@ export function createAgentService(options: {
         slug: nextSlug,
         capabilities: normalizedCapabilities,
       });
-      const nextDefaultModel = parsed.defaultModel ?? existing.default_model;
-      const nextFallbackModels = normalizeFallbackModels(
-        parsed.fallbackModels ?? parseFallbackModels(existing.fallback_models),
-        nextDefaultModel,
-      );
       const workspaceInput = {
         name: nextName,
         role: parsed.role ?? existing.role,
         instructions: parsed.instructions ?? existing.instructions,
-        defaultModel: nextDefaultModel,
+        defaultModel: parsed.defaultModel ?? existing.default_model,
         capabilities: normalizedCapabilities,
         appMcpEntries,
       };
@@ -255,7 +244,6 @@ export function createAgentService(options: {
         role: workspaceInput.role,
         instructions: workspaceInput.instructions,
         defaultModel: workspaceInput.defaultModel,
-        fallbackModels: nextFallbackModels,
         iconPath: nextIconPath ?? undefined,
         capabilities: normalizedCapabilities,
         createdAt: existing.created_at.toISOString(),
@@ -270,7 +258,6 @@ export function createAgentService(options: {
           role: workspaceInput.role,
           instructions: workspaceInput.instructions,
           default_model: workspaceInput.defaultModel,
-          fallback_models: JSON.stringify(nextFallbackModels),
           icon_path: nextIconPath,
           capabilities_json: JSON.stringify(normalizedCapabilities),
           updated_at: updatedAt,
@@ -445,7 +432,6 @@ export function createAgentService(options: {
       role: row.role,
       instructions: row.instructions,
       defaultModel: row.default_model,
-      fallbackModels: parseFallbackModels(row.fallback_models),
       iconPath: row.icon_path ?? undefined,
       workspacePath: resolveWorkspacePath(row),
       status: row.status,
@@ -464,39 +450,6 @@ function qualifyModelId(providerId: string, modelId: string): string {
 
 function parseCapabilities(value: string) {
   return agentCapabilitySelectionSchema.parse(JSON.parse(value));
-}
-
-function parseFallbackModels(value: string | null): string[] {
-  if (!value) {
-    return [];
-  }
-
-  try {
-    return fallbackModelsSchema.parse(JSON.parse(value));
-  } catch {
-    return [];
-  }
-}
-
-// Drop blanks, the default model itself, and duplicates so the failover chain is
-// a clean ordered list of distinct models to try after the default.
-function normalizeFallbackModels(models: string[] | undefined, defaultModel: string): string[] {
-  const seen = new Set<string>([defaultModel.trim()]);
-  const result: string[] = [];
-
-  for (const raw of models ?? []) {
-    const model = raw.trim();
-    if (!model || seen.has(model)) {
-      continue;
-    }
-    seen.add(model);
-    result.push(model);
-    if (result.length >= MAX_FALLBACK_MODELS) {
-      break;
-    }
-  }
-
-  return result;
 }
 
 function slugify(value: string): string {

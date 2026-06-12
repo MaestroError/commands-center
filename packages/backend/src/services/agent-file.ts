@@ -13,7 +13,6 @@ import type { WorkspaceReconciler } from "../lib/workspace-reconciler.js";
 import { parseRulesMarkdown } from "../opencode/workspace-contract.js";
 import {
   agentCapabilitySelectionSchema,
-  fallbackModelsSchema,
   type AgentCapabilitySelection,
 } from "../schemas/agents.js";
 
@@ -36,7 +35,6 @@ export const agentFileSchema = z.object({
   role: z.string().min(1),
   instructions: z.string().min(1),
   defaultModel: z.string().min(1),
-  fallbackModels: fallbackModelsSchema,
   iconPath: z.string().min(1).optional(),
   capabilities: agentCapabilitySelectionSchema,
   createdAt: z.string(),
@@ -97,7 +95,6 @@ export const agentReconciler: WorkspaceReconciler = {
         role: agent.role,
         instructions: agent.instructions,
         default_model: agent.defaultModel,
-        fallback_models: JSON.stringify(agent.fallbackModels ?? []),
         icon_path: agent.iconPath ?? null,
         status: agent.status,
         capabilities_json: JSON.stringify(agent.capabilities),
@@ -178,7 +175,6 @@ async function resolveAgentIdentity(
     role: inferred.role,
     instructions: inferred.instructions,
     defaultModel: inferred.defaultModel,
-    fallbackModels: [],
     capabilities: agentCapabilitySelectionSchema.parse({}),
     createdAt: timestamp,
     updatedAt: timestamp,

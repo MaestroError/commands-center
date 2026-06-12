@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "06202ede-0b22-4e64-88ab-533ac9ddfd10",
+  "id": "d172d056-afbb-4bf2-910b-73db94bf287d",
   "prevId": "3bccf74a-8873-4b49-9620-9543d1bc95f9",
   "tables": {
     "agents": {
@@ -47,13 +47,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "fallback_models": {
-          "name": "fallback_models",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "icon_path": {
@@ -982,6 +975,21 @@
           "notNull": false,
           "autoincrement": false
         },
+        "fallback_models": {
+          "name": "fallback_models",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "retry_of_run_id": {
+          "name": "retry_of_run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "opencode_session_id": {
           "name": "opencode_session_id",
           "type": "text",
@@ -1211,6 +1219,15 @@
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "task_runs_retry_of_run_id_task_runs_id_fk": {
+          "name": "task_runs_retry_of_run_id_task_runs_id_fk",
+          "tableFrom": "task_runs",
+          "tableTo": "task_runs",
+          "columnsFrom": ["retry_of_run_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1421,6 +1438,14 @@
           "notNull": false,
           "autoincrement": false
         },
+        "fallback_models": {
+          "name": "fallback_models",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
         "title": {
           "name": "title",
           "type": "text",
@@ -1627,6 +1652,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "fallback_models": {
+          "name": "fallback_models",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
         },
         "title": {
           "name": "title",

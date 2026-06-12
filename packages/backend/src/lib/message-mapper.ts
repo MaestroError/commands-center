@@ -149,7 +149,7 @@ export function sanitizeMessageError(error: unknown): ConversationMessageError |
 // could plausibly succeed at, so falling over to the next model is worthwhile.
 // Everything else (context overflow, output length, structured-output, user
 // abort, …) is terminal regardless of model and should fail fast.
-const FAILOVER_WORTHY_ERROR_NAMES = new Set(["APIError", "ProviderAuthError", "UnknownError"]);
+const FAILOVER_WORTHY_ERROR_NAMES = new Set(["APIError", "ProviderAuthError"]);
 
 export function isFailoverWorthyModelError(error: ConversationMessageError): boolean {
   return FAILOVER_WORTHY_ERROR_NAMES.has(error.name);

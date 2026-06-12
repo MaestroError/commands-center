@@ -626,7 +626,7 @@ describe("createTaskSchedulerService", () => {
     }
   });
 
-  it("records a failed run when scheduled trigger setup fails", async () => {
+  it("records an error run when scheduled trigger setup fails", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const executionService = {
@@ -660,7 +660,7 @@ describe("createTaskSchedulerService", () => {
       const runs = await taskService.listRuns(template.id);
 
       expect(runs).toHaveLength(1);
-      expect(runs[0]?.status).toBe("failed");
+      expect(runs[0]?.status).toBe("error");
       expect(runs[0]?.triggerSource).toBe("scheduled");
       expect(runs[0]?.errorMessage).toBe("Trigger setup failed.");
       expect(runs[0]?.errorDetails).toEqual({ errorName: "Error", stage: "scheduled_trigger" });

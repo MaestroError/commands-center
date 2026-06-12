@@ -116,7 +116,6 @@ const agent: Agent = {
   role: "Write docs",
   instructions: "Write clearly.",
   defaultModel: "openai/gpt-5",
-  fallbackModels: [],
   workspacePath: "/tmp/agents/writer",
   status: "active",
   capabilities: {

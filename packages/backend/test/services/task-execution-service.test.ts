@@ -172,7 +172,7 @@ describe("createTaskExecutionService", () => {
       // the fallback (anthropic/claude-haiku) succeeds.
       promptError: ({ model }) =>
         model?.providerID === "openai"
-          ? { name: "APIError", message: "Provider is overloaded" }
+          ? { name: "APIError", message: "Provider is overloaded", data: { isRetryable: true } }
           : undefined,
     });
     const conversationService = createConversationService({
@@ -183,21 +183,29 @@ describe("createTaskExecutionService", () => {
     const executionService = createTaskExecutionService({ taskService, conversationService });
 
     try {
-      const agent = await insertAgent(
-        testDb.client.db,
-        {},
-        { fallbackModels: ["anthropic/claude-haiku"] },
-      );
+      const agent = await insertAgent(testDb.client.db);
       const task = await taskService.create({
         agentId: agent.id,
+        fallbackModels: ["anthropic/claude-haiku"],
         title: "Failover",
         description: "Primary model is down.",
       });
 
+      expect(task.fallbackModels).toEqual(["anthropic/claude-haiku"]);
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      // The run still completes because the fallback model handled the prompt.
-      await expectRunStatus(taskService, run.id, "completed");
+      expect(run.fallbackModels).toEqual(["anthropic/claude-haiku"]);
+      await expectRunStatus(taskService, run.id, "error");
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+      const runs = await taskService.listRuns(task.id);
+      const fallbackRun = runs.find((candidate) => candidate.retryOfRunId === run.id);
+
+      expect(fallbackRun?.status).toBe("completed");
+      expect(fallbackRun?.model).toBe("anthropic/claude-haiku");
+      expect(fallbackRun?.renderedPrompt).toContain(
+        "Previous task run ended with a model/provider error.",
+      );
+      expect(fallbackRun?.renderedPrompt).toContain(run.id);
       expect(prompts.map((prompt) => prompt.model)).toEqual([
         { providerID: "openai", modelID: "gpt-4.1" },
         { providerID: "anthropic", modelID: "claude-haiku" },
@@ -207,7 +215,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("fails the run without trying fallbacks on a non-failover error", async () => {
+  it("errors the run without trying fallbacks on an unknown error", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
@@ -221,8 +229,7 @@ describe("createTaskExecutionService", () => {
         connected: ["openai", "anthropic"],
       },
       onPrompt: (input) => prompts.push(input),
-      // Context overflow is terminal regardless of model — no fallback should run.
-      promptError: () => ({ name: "ContextOverflowError", message: "Context too large" }),
+      promptError: () => ({ name: "UnknownError", message: "Something failed" }),
     });
     const conversationService = createConversationService({
       db: testDb.client.db,
@@ -232,26 +239,23 @@ describe("createTaskExecutionService", () => {
     const executionService = createTaskExecutionService({ taskService, conversationService });
 
     try {
-      const agent = await insertAgent(
-        testDb.client.db,
-        {},
-        { fallbackModels: ["anthropic/claude-haiku"] },
-      );
+      const agent = await insertAgent(testDb.client.db);
       const task = await taskService.create({
         agentId: agent.id,
+        fallbackModels: ["anthropic/claude-haiku"],
         title: "No failover",
-        description: "Overflow is not recoverable.",
+        description: "Unknown errors are not classified as recoverable.",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "failed");
-      // Only the primary model was attempted; the chain stopped on the terminal error.
+      await expectRunStatus(taskService, run.id, "error");
+      expect(await taskService.listRuns(task.id)).toHaveLength(1);
       expect(prompts.map((prompt) => prompt.model)).toEqual([
         { providerID: "openai", modelID: "gpt-4.1" },
       ]);
       const failedRun = await taskService.getRunById(run.id);
-      expect(failedRun?.errorMessage).toContain("Context too large");
+      expect(failedRun?.errorMessage).toContain("Something failed");
     } finally {
       await testDb.cleanup();
     }
@@ -275,7 +279,7 @@ describe("createTaskExecutionService", () => {
       promptError: ({ model }) =>
         model?.modelID === "claude-opus"
           ? undefined
-          : { name: "ProviderAuthError", message: "Provider auth failed" },
+          : { name: "APIError", message: "Provider is overloaded", data: { isRetryable: true } },
     });
     const conversationService = createConversationService({
       db: testDb.client.db,
@@ -285,20 +289,20 @@ describe("createTaskExecutionService", () => {
     const executionService = createTaskExecutionService({ taskService, conversationService });
 
     try {
-      const agent = await insertAgent(
-        testDb.client.db,
-        {},
-        { fallbackModels: ["anthropic/claude-haiku", "anthropic/claude-opus"] },
-      );
+      const agent = await insertAgent(testDb.client.db);
       const task = await taskService.create({
         agentId: agent.id,
+        fallbackModels: ["anthropic/claude-haiku", "anthropic/claude-opus"],
         title: "Chained failover",
         description: "Try each model in order.",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "completed");
+      await expectRunStatus(taskService, run.id, "error");
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(3);
+      const runs = await taskService.listRuns(task.id);
+      expect(runs.filter((candidate) => candidate.status === "completed")).toHaveLength(1);
       expect(prompts.map((prompt) => prompt.model)).toEqual([
         { providerID: "openai", modelID: "gpt-4.1" },
         { providerID: "anthropic", modelID: "claude-haiku" },
@@ -327,6 +331,7 @@ describe("createTaskExecutionService", () => {
       promptError: ({ model }) => ({
         name: "APIError",
         message: `Overloaded: ${model?.modelID ?? "unknown"}`,
+        data: { isRetryable: true },
       }),
     });
     const conversationService = createConversationService({
@@ -337,27 +342,25 @@ describe("createTaskExecutionService", () => {
     const executionService = createTaskExecutionService({ taskService, conversationService });
 
     try {
-      const agent = await insertAgent(
-        testDb.client.db,
-        {},
-        { fallbackModels: ["anthropic/claude-haiku"] },
-      );
+      const agent = await insertAgent(testDb.client.db);
       const task = await taskService.create({
         agentId: agent.id,
+        fallbackModels: ["anthropic/claude-haiku"],
         title: "All down",
         description: "No model can recover.",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "failed");
-      // Both models were attempted before giving up.
+      await expectRunStatus(taskService, run.id, "error");
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
       expect(prompts.map((prompt) => prompt.model)).toEqual([
         { providerID: "openai", modelID: "gpt-4.1" },
         { providerID: "anthropic", modelID: "claude-haiku" },
       ]);
-      // The failure surfaces the last model's error message.
-      const failedRun = await taskService.getRunById(run.id);
+      const runs = await taskService.listRuns(task.id);
+      expect(runs.map((candidate) => candidate.status)).toEqual(["error", "error"]);
+      const failedRun = runs.find((candidate) => candidate.model === "anthropic/claude-haiku");
       expect(failedRun?.errorMessage).toContain("Overloaded: claude-haiku");
     } finally {
       await testDb.cleanup();
@@ -609,7 +612,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("marks detached task execution failures as failed runs", async () => {
+  it("marks detached task execution failures as error runs", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const logger = { error: vi.fn() } as unknown as Logger;
@@ -640,7 +643,7 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "failed");
+      await expectRunStatus(taskService, run.id, "error");
       const failed = await taskService.getRunById(run.id);
 
       expect(failed?.errorMessage).toBe("Task run not found.");
@@ -946,7 +949,6 @@ async function expectRunStatus(
 async function insertAgent(
   db: AppDb,
   capabilities: Record<string, unknown> = {},
-  overrides: { fallbackModels?: string[] } = {},
 ): Promise<typeof agents.$inferSelect> {
   const timestamp = new Date();
   const id = `agent-${crypto.randomUUID()}`;
@@ -959,7 +961,6 @@ async function insertAgent(
       role: "help with tasks",
       instructions: "Be useful.",
       default_model: "openai/gpt-4.1",
-      fallback_models: overrides.fallbackModels ? JSON.stringify(overrides.fallbackModels) : null,
       icon_path: null,
       status: "active",
       capabilities_json: JSON.stringify(capabilities),
@@ -1008,7 +1009,7 @@ function createMockOpenCodeService(
     promptError?: (input: {
       model?: { providerID: string; modelID: string };
       text: string;
-    }) => { name: string; message: string } | undefined;
+    }) => { name: string; message: string; data?: Record<string, unknown> } | undefined;
   } = {},
 ): OpenCodeService {
   const sessions = new Map<string, OpenCodeSession>();
@@ -1089,7 +1090,9 @@ function createMockOpenCodeService(
           sessionID,
           role: "assistant",
           time: { created: nextTime(), completed: nextTime() },
-          ...(error ? { error: { name: error.name, message: error.message, data: {} } } : {}),
+          ...(error
+            ? { error: { name: error.name, message: error.message, data: error.data ?? {} } }
+            : {}),
         },
         parts: [
           {
