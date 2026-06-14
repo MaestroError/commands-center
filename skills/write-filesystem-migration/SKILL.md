@@ -55,8 +55,26 @@ For rollback:
 
 ## Recommended Shape
 
+Create one file per migration under:
+
+```text
+packages/backend/src/workspace-migrations/migrations/
+```
+
+Name files with the migration id, for example:
+
+```text
+0002-specialists-rename.ts
+```
+
+Then add the exported migration to
+`packages/backend/src/workspace-migrations/migrations/index.ts`. Keep
+`registry.ts` focused on validation and lookup logic; do not put migration
+implementations there. Avoid runtime filesystem discovery or glob imports for
+registration because the CLI is bundled into a single file.
+
 ```ts
-export const migration = {
+export const specialistsRenameMigration = {
   id: "0001-example",
   description: "Short human-readable description.",
   async up({ config, logger }) {
@@ -69,7 +87,7 @@ export const migration = {
     // Apply deterministic rollback changes.
     // Throw clear errors for conflicts.
   },
-};
+} satisfies WorkspaceMigration;
 ```
 
 Helpers should stay small and migration-local unless reused by a second

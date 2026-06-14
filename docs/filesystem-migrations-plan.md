@@ -38,10 +38,16 @@ files.
 
 ## Migration Contract
 
+Each migration lives in a separate numbered module under:
+
+```text
+packages/backend/src/workspace-migrations/migrations/
+```
+
 Each migration module exposes:
 
 ```ts
-export const migration = {
+export const exampleMigration = {
   id: "0001-example",
   description: "Short human-readable description.",
   async up(context) {
@@ -50,8 +56,13 @@ export const migration = {
   async down(context) {
     // Roll back this migration for manual intervention.
   },
-};
+} satisfies WorkspaceMigration;
 ```
+
+`packages/backend/src/workspace-migrations/migrations/index.ts` is the
+bundle-safe migration manifest. Add each migration export there in id order.
+Do not use runtime filesystem scanning or glob imports for registration; the
+CLI is bundled into a single file, so static imports are the reliable path.
 
 Rules:
 
@@ -141,6 +152,8 @@ Behavior:
 - `packages/backend/src/workspace-migrations/types.ts`
 - `packages/backend/src/workspace-migrations/state.ts`
 - `packages/backend/src/workspace-migrations/registry.ts`
+- `packages/backend/src/workspace-migrations/migrations/index.ts`
+- `packages/backend/src/workspace-migrations/migrations/0001-example.ts`
 - `packages/backend/src/workspace-migrations/service.ts`
 - `packages/backend/test/workspace-migrations/state.test.ts`
 - `packages/backend/test/workspace-migrations/service.test.ts`
@@ -159,7 +172,7 @@ Behavior:
 
 `registry.ts`:
 
-- Export ordered migrations.
+- Import ordered migrations from the static migration manifest.
 - Validate no duplicate IDs.
 - Validate IDs are sorted.
 - Expose helpers for pending migrations and latest applied migration.

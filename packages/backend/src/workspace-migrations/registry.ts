@@ -1,36 +1,6 @@
-import { mkdir, rm, rmdir } from "node:fs/promises";
-import { resolve } from "node:path";
-
 import type { AppliedWorkspaceMigration, WorkspaceMigration } from "./types.js";
 
-export const workspaceMigrations = [
-  {
-    id: "0001-create-migration-smoke-test-directory",
-    description: "Create a harmless workspace migration smoke-test directory.",
-    async up({ config }) {
-      await mkdir(resolve(config.paths.workspaceDir, ".cc", "migration-smoke-test"), {
-        recursive: true,
-      });
-    },
-    async down({ config }) {
-      const directory = resolve(config.paths.workspaceDir, ".cc");
-
-      await rm(resolve(directory, "migration-smoke-test"), {
-        recursive: true,
-        force: true,
-      });
-      await rmdir(directory).catch((error: unknown) => {
-        const code = (error as NodeJS.ErrnoException).code;
-
-        if (code === "ENOENT" || code === "ENOTEMPTY") {
-          return;
-        }
-
-        throw error;
-      });
-    },
-  },
-] satisfies WorkspaceMigration[];
+export { workspaceMigrations } from "./migrations/index.js";
 
 export function validateWorkspaceMigrationRegistry(
   migrations: readonly WorkspaceMigration[],
