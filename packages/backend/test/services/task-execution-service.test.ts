@@ -154,7 +154,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("falls over to the next model when the primary model fails", async () => {
+  it("fails over to the next model when the primary model fails", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];

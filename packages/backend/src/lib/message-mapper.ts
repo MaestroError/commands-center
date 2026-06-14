@@ -146,7 +146,7 @@ export function sanitizeMessageError(error: unknown): ConversationMessageError |
 }
 
 // OpenCode error `name`s that describe a model/provider failure another model
-// could plausibly succeed at, so falling over to the next model is worthwhile.
+// could plausibly succeed at, so failing over to the next model is worthwhile.
 // Everything else (context overflow, output length, structured-output, user
 // abort, …) is terminal regardless of model and should fail fast.
 const FAILOVER_WORTHY_ERROR_NAMES = new Set(["APIError", "ProviderAuthError"]);

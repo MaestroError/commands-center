@@ -8,6 +8,9 @@ describe("StatusBadge", () => {
     const { rerender } = render(<StatusBadge status="failed" />);
     expect(screen.getByText("Failed")).toHaveClass("text-danger");
 
+    rerender(<StatusBadge status="error" />);
+    expect(screen.getByText("Error")).toHaveClass("text-danger");
+
     rerender(<StatusBadge status="cancelled" />);
     expect(screen.getByText("Cancelled")).toHaveClass("text-danger");
   });

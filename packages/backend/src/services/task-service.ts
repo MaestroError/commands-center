@@ -1369,6 +1369,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         model: parsed.model ?? task.model ?? undefined,
         fallbackModels: normalizeFallbackModels(
           parsed.fallbackModels ?? parseFallbackModels(task.fallback_models),
+          parsed.model ?? task.model ?? undefined,
         ),
         retryOfRunId: parsed.retryOfRunId,
         status: "queued",
@@ -1411,7 +1412,9 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           subtask_id: parsed.subtaskId ?? null,
           agent_id: parsed.agentId,
           model: parsed.model ?? null,
-          fallback_models: JSON.stringify(normalizeFallbackModels(parsed.fallbackModels)),
+          fallback_models: JSON.stringify(
+            normalizeFallbackModels(parsed.fallbackModels, parsed.model ?? undefined),
+          ),
           retry_of_run_id: parsed.retryOfRunId ?? null,
           opencode_session_id: parsed.opencodeSessionId ?? null,
           status: parsed.status,
@@ -1961,15 +1964,21 @@ function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
 }
 
 function hasFailedSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
-  return runs.some(
-    (run) =>
-      run.subtaskId === subtaskId &&
-      (run.status === "failed" ||
-        run.status === "error" ||
-        run.status === "cancelled" ||
-        run.outcome === "failed" ||
-        run.outcome === "needs_human_review" ||
-        run.needsHumanReview),
+  // `runs` is ordered by created_at desc, so the first match is the latest run.
+  // Only the latest run decides the subtask outcome: a successful fallback retry
+  // must clear a transient model/provider error from an earlier attempt.
+  const latest = runs.find((run) => run.subtaskId === subtaskId);
+  if (!latest) {
+    return false;
+  }
+
+  return (
+    latest.status === "failed" ||
+    latest.status === "error" ||
+    latest.status === "cancelled" ||
+    latest.outcome === "failed" ||
+    latest.outcome === "needs_human_review" ||
+    latest.needsHumanReview
   );
 }
 

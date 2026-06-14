@@ -45,7 +45,16 @@ export const taskRunStatusSchema = z.enum([
 export const taskRunOutcomeSchema = z.enum(["success", "needs_human_review", "failed"]);
 
 export const MAX_FALLBACK_MODELS = 5;
-const fallbackModelsBaseSchema = z.array(z.string().trim().min(1)).max(MAX_FALLBACK_MODELS);
+// Each fallback entry must be a qualified `provider/model` id (a non-empty
+// provider, a slash, then a non-empty model). Downstream code calls
+// `parseModel()` on these, which throws on unqualified values, so the format is
+// validated at the schema boundary to keep invalid chains out of the DB.
+const qualifiedModelSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .regex(/^[^/]+\/.+$/, "Fallback model must be a qualified 'provider/model' id.");
+const fallbackModelsBaseSchema = z.array(qualifiedModelSchema).max(MAX_FALLBACK_MODELS);
 export const fallbackModelsSchema = fallbackModelsBaseSchema.default([]);
 
 export const taskSubtaskDerivedStatusSchema = z.enum([
