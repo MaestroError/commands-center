@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { loadRuntimeConfig } from "../../src/lib/runtime-config";
+import { createMigrationSmokeTestDirectoryMigration } from "../../src/workspace-migrations/migrations/0001-create-migration-smoke-test-directory";
 import {
   findLatestAppliedWorkspaceMigration,
   listPendingWorkspaceMigrations,
@@ -130,6 +131,7 @@ describe("runWorkspaceMigrations", () => {
       const result = await runWorkspaceMigrations({
         config,
         logger: logger as never,
+        migrations: [createMigrationSmokeTestDirectoryMigration],
         now: () => APPLIED_AT,
       });
 
@@ -256,12 +258,14 @@ describe("rollbackLatestWorkspaceMigration", () => {
       await runWorkspaceMigrations({
         config,
         logger: logger as never,
+        migrations: [createMigrationSmokeTestDirectoryMigration],
         now: () => APPLIED_AT,
       });
 
       const result = await rollbackLatestWorkspaceMigration({
         config,
         logger: logger as never,
+        migrations: [createMigrationSmokeTestDirectoryMigration],
       });
 
       expect(result.rolledBack?.id).toBe("0001-create-migration-smoke-test-directory");
