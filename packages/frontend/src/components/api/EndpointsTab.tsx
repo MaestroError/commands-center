@@ -134,7 +134,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
           id: "01J…",
           title: "Audit the staging logs",
           status: "backlog",
-          agentId: "01J…",
+          specialistId: "01J…",
           todos: [],
           scheduledAt: null,
           dueAt: null,

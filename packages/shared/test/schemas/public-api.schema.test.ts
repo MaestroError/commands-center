@@ -61,14 +61,14 @@ describe("public API schemas", () => {
 
     it("parses a create task body", () => {
       const parsed = publicCreateTaskBodySchema.parse({
-        agentId: "agent-1",
+        specialistId: "agent-1",
         title: "Do the thing",
       });
-      expect(parsed.agentId).toBe("agent-1");
+      expect(parsed.specialistId).toBe("agent-1");
       expect(parsed.title).toBe("Do the thing");
     });
 
-    it("rejects a create task body without an agentId", () => {
+    it("rejects a create task body without a specialistId", () => {
       expect(() => publicCreateTaskBodySchema.parse({ title: "x" })).toThrow();
     });
 
@@ -97,7 +97,7 @@ describe("public API schemas", () => {
         title: "Title",
         description: "",
         status: "enabled",
-        agentId: "agent-1",
+        specialistId: "agent-1",
         todos: [],
         scheduledAt: null,
         dueAt: null,

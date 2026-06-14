@@ -239,7 +239,7 @@ export function createSpecialistLiveToolDefinitions(options: SpecialistManagemen
           const draft = draftSpecialistToolInputSchema.parse(args);
           const reviewed = await reviewAgentMutation(options, {
             callingAgentSlug: context.agentSlug,
-            kind: "agent_create_review",
+            kind: "specialist_create_review",
             title: "Review specialist",
             description: "Review and edit the specialist before CommandsCenter creates it.",
             fields: [
@@ -324,7 +324,7 @@ export function createSpecialistLiveToolDefinitions(options: SpecialistManagemen
 
           const reviewed = await reviewAgentMutation(options, {
             callingAgentSlug: context.agentSlug,
-            kind: "agent_update_review",
+            kind: "specialist_update_review",
             title: "Review specialist update",
             description: "Review and edit the specialist update before CommandsCenter saves it.",
             fields,
@@ -438,7 +438,7 @@ async function confirmRemove(
   const snapshot = await options.conversationService.resolveCurrent(callingAgent.id);
   const decision = await options.liveRequestService.create({
     conversationId: snapshot.current.id,
-    kind: "agent_management_confirmation",
+    kind: "specialist_management_confirmation",
     closable: false,
     presentation: {
       title: "Remove specialist",

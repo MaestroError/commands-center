@@ -126,7 +126,7 @@ export function createPublicTaskApiService(deps: {
 
     async createTask(body: PublicCreateTaskBody): Promise<PublicTask> {
       const task = await taskService.create({
-        agentId: body.agentId,
+        agentId: body.specialistId,
         title: body.title,
         description: body.description,
         todos: body.todos,
@@ -174,7 +174,7 @@ export function createPublicTaskApiService(deps: {
     async listTasks(query: ListPublicTasksQuery): Promise<PublicTask[]> {
       const tasks = await taskService.list({
         status: query.status,
-        agentId: query.agentId,
+        agentId: query.specialistId,
         sourceTemplateId: query.templateId,
         includeArchived: false,
       });
@@ -251,7 +251,7 @@ function toPublicTask(task: Task): PublicTask {
     title: task.title,
     description: task.description,
     status: task.status,
-    agentId: task.agentId,
+    specialistId: task.agentId,
     todos: task.todos.map((todo) => ({ id: todo.id, content: todo.content, status: todo.status })),
     scheduledAt: task.scheduledAt ?? null,
     dueAt: task.dueAt ?? null,
