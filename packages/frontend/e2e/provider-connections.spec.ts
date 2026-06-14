@@ -35,7 +35,7 @@ test("renders the global shell and provider page", async ({ page, isMobile }) =>
     await expect(page.getByTestId("sidebar-navigation")).toBeHidden();
   } else {
     await expect(page.getByRole("link", { name: "CommandsCenter" })).toHaveAttribute("href", "/");
-    await expect(page.getByRole("link", { name: "Agents" }).first()).toHaveAttribute(
+    await expect(page.getByRole("link", { name: "Specialists" }).first()).toHaveAttribute(
       "href",
       "/specialists",
     );

@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 
 import type { LiveRequest, LiveRequestAction, LiveRequestFormField } from "@cc/shared/schemas";
 
-import { AgentAvatarPicker } from "@/components/agents/AgentAvatarPicker";
-import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { SpecialistAvatarPicker } from "@/components/specialists/SpecialistAvatarPicker";
+import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { SearchableSelect } from "@/components/common/SearchableSelect";
-import { useSpecialistCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 
 import {
   getActionClassName,
@@ -42,7 +42,7 @@ export function LiveRequestReviewForm(props: Props) {
 
   const needsAgents = request.fields.some((field) => AGENT_FIELD_NAMES.has(field.name));
   const needsModels = request.fields.some((field) => MODEL_FIELD_NAMES.has(field.name));
-  const agentsQuery = useAgentsQuery();
+  const agentsQuery = useSpecialistsQuery();
   const catalogQuery = useSpecialistCatalogQuery();
   const agents = needsAgents ? (agentsQuery.data ?? []) : [];
   const providerModels = needsModels ? (catalogQuery.data?.providerModels ?? []) : [];
@@ -178,7 +178,11 @@ export function LiveRequestReviewForm(props: Props) {
 function IdentityHeader(props: { identity: ReviewIdentity }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-3">
-      <AgentAvatar iconPath={props.identity.iconPath ?? ""} name={props.identity.name} size="md" />
+      <SpecialistAvatar
+        iconPath={props.identity.iconPath ?? ""}
+        name={props.identity.name}
+        size="md"
+      />
       <span className="min-w-0 truncate text-sm font-semibold text-text-primary">
         {props.identity.name}
       </span>
@@ -218,7 +222,7 @@ function renderField(args: {
     "w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-accent";
 
   if (field.name === "iconPath") {
-    return <AgentAvatarPicker dense name={avatarName} onChange={onChange} value={value} />;
+    return <SpecialistAvatarPicker dense name={avatarName} onChange={onChange} value={value} />;
   }
 
   if (MODEL_FIELD_NAMES.has(field.name)) {
@@ -248,7 +252,7 @@ function renderField(args: {
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        {!field.required ? <option value="">No agent</option> : null}
+        {!field.required ? <option value="">No specialist</option> : null}
         {value && !agents.some((agent) => agent.id === value) ? (
           <option value={value}>{value}</option>
         ) : null}

@@ -112,7 +112,7 @@ describe("useWorkspaceSkillsQuery", () => {
     expect(deleteWorkspaceSkill).toHaveBeenCalledWith("custom-skill");
     expect(updateWorkspaceSkillCategory).toHaveBeenCalledWith("custom-skill", { category: "ops" });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.workspaceSkills });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.agentCatalog });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.agents });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.specialistCatalog });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.specialists });
   });
 });

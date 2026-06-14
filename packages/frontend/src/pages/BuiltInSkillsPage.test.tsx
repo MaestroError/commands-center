@@ -8,18 +8,18 @@ import { BuiltInSkillsPage } from "./BuiltInSkillsPage";
 
 import {
   useSpecialistCatalogQuery,
-  useAgentMutations,
-  useAgentsQuery,
-} from "@/hooks/use-agents-query";
+  useSpecialistMutations,
+  useSpecialistsQuery,
+} from "@/hooks/use-specialists-query";
 import { useWorkspaceSkillMutations } from "@/hooks/use-workspace-skills-query";
 import { normalizeUploadableFiles, toFileManagerUploadEntries } from "@/lib/file-transfer";
 
 import type { Specialist, SpecialistCatalog, BuiltInSkill } from "@cc/shared/schemas";
 
-vi.mock("@/hooks/use-agents-query", () => ({
+vi.mock("@/hooks/use-specialists-query", () => ({
   useSpecialistCatalogQuery: vi.fn(),
-  useAgentsQuery: vi.fn(),
-  useAgentMutations: vi.fn(),
+  useSpecialistsQuery: vi.fn(),
+  useSpecialistMutations: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-workspace-skills-query", () => ({
@@ -154,13 +154,13 @@ beforeEach(() => {
     error: null,
   } as never);
 
-  vi.mocked(useAgentsQuery).mockReturnValue({
+  vi.mocked(useSpecialistsQuery).mockReturnValue({
     data: [agent],
     isLoading: false,
     error: null,
   } as never);
 
-  vi.mocked(useAgentMutations).mockReturnValue({
+  vi.mocked(useSpecialistMutations).mockReturnValue({
     update: { mutateAsync: updateMutateAsync, isPending: false },
   } as never);
 
@@ -282,13 +282,13 @@ describe("BuiltInSkillsPage", () => {
     }
   });
 
-  it("assigns a built-in skill to the selected agent", async () => {
+  it("assigns a built-in skill to the selected specialist", async () => {
     updateMutateAsync.mockResolvedValue(agent);
 
     renderPage();
     selectAgent("Writer");
 
-    fireEvent.click(screen.getByRole("button", { name: "Assign to agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Assign to specialist" }));
 
     await waitFor(() => {
       expect(updateMutateAsync).toHaveBeenCalledWith({
@@ -323,14 +323,14 @@ describe("BuiltInSkillsPage", () => {
     });
   });
 
-  it("removes a workspace skill from the selected agent", async () => {
+  it("removes a workspace skill from the selected specialist", async () => {
     updateMutateAsync.mockResolvedValue(agent);
 
     renderPage();
     clickSkillCard("Workspace Helper");
     selectAgent("Writer");
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove from agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove from specialist" }));
 
     await waitFor(() => {
       expect(updateMutateAsync).toHaveBeenCalledWith({

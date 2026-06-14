@@ -26,7 +26,7 @@ test.describe("task feedback", { tag: "@tasks" }, () => {
     await expect(comment).toContainText("Please retest the release flow.");
   });
 
-  test("submits feedback with an agent mention", async ({ page }) => {
+  test("submits feedback with an specialist mention", async ({ page }) => {
     const state = createTaskState();
     await mockTaskApi(page, state);
 
@@ -36,9 +36,9 @@ test.describe("task feedback", { tag: "@tasks" }, () => {
     await panel.getByTestId("task-feedback-open").click();
     await panel.getByTestId("task-feedback-input").fill("Please retest @");
 
-    // The "@" opens the agent mention popover; selecting an agent adds a chip.
-    await panel.getByTestId("task-agent-mention-option-agent-2").click();
-    await expect(panel.getByTestId("task-agent-mention-chip-agent-2")).toBeVisible();
+    // The "@" opens the specialist mention popover; selecting a specialist adds a chip.
+    await panel.getByTestId("task-specialist-mention-option-agent-2").click();
+    await expect(panel.getByTestId("task-specialist-mention-chip-agent-2")).toBeVisible();
 
     const create = page.waitForResponse(
       (response) =>

@@ -1,9 +1,12 @@
-import { AgentAvatar } from "@/components/agents/agent-avatar";
-import { AGENT_EMOJI_OPTIONS, AGENT_ICON_OPTIONS } from "@/components/agents/agent-avatar-options";
+import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
+import {
+  SPECIALIST_EMOJI_OPTIONS,
+  SPECIALIST_ICON_OPTIONS,
+} from "@/components/specialists/specialist-avatar-options";
 
-type AgentAvatarMode = "image" | "emoji" | "icon";
+type SpecialistAvatarMode = "image" | "emoji" | "icon";
 
-type AgentAvatarPickerProps = {
+type SpecialistAvatarPickerProps = {
   name: string;
   value: string;
   onChange: (value: string) => void;
@@ -12,13 +15,13 @@ type AgentAvatarPickerProps = {
   dense?: boolean;
 };
 
-export function AgentAvatarPicker(props: AgentAvatarPickerProps) {
+export function SpecialistAvatarPicker(props: SpecialistAvatarPickerProps) {
   const selection = resolveSelection(props.value);
 
   return (
     <div className={props.dense ? "grid gap-4" : "grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)]"}>
       <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-surface p-4">
-        <AgentAvatar iconPath={props.value} name={props.name || "Specialist"} size="xl" />
+        <SpecialistAvatar iconPath={props.value} name={props.name || "Specialist"} size="xl" />
         <p className="text-xs text-text-secondary">Preview</p>
       </div>
 
@@ -75,7 +78,7 @@ export function AgentAvatarPicker(props: AgentAvatarPickerProps) {
               />
             </div>
             <div className="flex flex-wrap gap-2">
-              {AGENT_EMOJI_OPTIONS.map((emoji) => {
+              {SPECIALIST_EMOJI_OPTIONS.map((emoji) => {
                 const selected = selection.emojiValue === emoji;
                 return (
                   <button
@@ -113,7 +116,7 @@ export function AgentAvatarPicker(props: AgentAvatarPickerProps) {
             <div
               className={props.dense ? "grid gap-2" : "grid gap-2 sm:grid-cols-2 xl:grid-cols-3"}
             >
-              {AGENT_ICON_OPTIONS.map((option) => {
+              {SPECIALIST_ICON_OPTIONS.map((option) => {
                 const selected = props.value === option.value;
                 return (
                   <button
@@ -128,7 +131,7 @@ export function AgentAvatarPicker(props: AgentAvatarPickerProps) {
                     type="button"
                   >
                     <div className="flex items-center gap-3">
-                      <AgentAvatar iconPath={option.value} name={option.label} size="sm" />
+                      <SpecialistAvatar iconPath={option.value} name={option.label} size="sm" />
                       <span className="text-sm font-medium text-text-primary">{option.label}</span>
                     </div>
                   </button>
@@ -146,10 +149,10 @@ const MODE_OPTIONS = [
   { label: "Image", value: "image" },
   { label: "Emoji", value: "emoji" },
   { label: "Icon", value: "icon" },
-] as const satisfies ReadonlyArray<{ label: string; value: AgentAvatarMode }>;
+] as const satisfies ReadonlyArray<{ label: string; value: SpecialistAvatarMode }>;
 
 function resolveSelection(value: string): {
-  mode: AgentAvatarMode;
+  mode: SpecialistAvatarMode;
   imageValue: string;
   emojiValue: string;
   iconValue: string;
@@ -191,7 +194,7 @@ function resolveSelection(value: string): {
   };
 }
 
-function defaultValueForMode(mode: AgentAvatarMode): string {
+function defaultValueForMode(mode: SpecialistAvatarMode): string {
   switch (mode) {
     case "emoji":
       return "emoji:🤖";

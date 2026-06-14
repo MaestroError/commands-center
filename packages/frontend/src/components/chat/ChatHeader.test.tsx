@@ -17,8 +17,8 @@ vi.mock("./ConversationHistoryModal", () => ({
 function renderHeader(overrides: Partial<React.ComponentProps<typeof ChatHeader>> = {}) {
   const props: React.ComponentProps<typeof ChatHeader> = {
     agentId: "agent-1",
-    agentName: "Planner",
-    agentRole: "Plans implementation work",
+    specialistName: "Planner",
+    specialistRole: "Plans implementation work",
     agentIconPath: undefined,
     currentConversationId: "conv-1",
     onStartFresh: vi.fn(),
@@ -30,13 +30,13 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof ChatHeader>
 }
 
 describe("ChatHeader", () => {
-  it("renders the agentName as the primary label", () => {
+  it("renders the specialistName as the primary label", () => {
     renderHeader();
 
     expect(screen.getByRole("heading", { name: "Planner" })).toBeInTheDocument();
   });
 
-  it("renders the agentRole as the subtitle", () => {
+  it("renders the specialistRole as the subtitle", () => {
     renderHeader();
 
     expect(screen.getByText("Plans implementation work")).toBeInTheDocument();

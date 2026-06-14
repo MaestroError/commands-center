@@ -98,7 +98,7 @@ afterEach(() => {
 });
 
 describe("agent flows", () => {
-  it("filters agents by name or role", async () => {
+  it("filters specialists by name or role", async () => {
     mockApi({
       "GET /api/specialists": [jsonResponse(200, agents)],
     });
@@ -113,7 +113,7 @@ describe("agent flows", () => {
     expect(screen.getByRole("heading", { name: "Reviewer", level: 2 })).toBeInTheDocument();
   });
 
-  it("creates an agent and navigates to the agents page", async () => {
+  it("creates a specialist and navigates to the specialists page", async () => {
     mockApi({
       "GET /api/specialists/catalog": [jsonResponse(200, catalog), jsonResponse(200, catalog)],
       "GET /api/specialists": [
@@ -190,14 +190,14 @@ describe("agent flows", () => {
     const user = userEvent.setup();
     await screen.findByLabelText(/Name/i);
     await user.type(screen.getByLabelText(/Name/i), "Planner");
-    expect(screen.getByTestId("agent-slug-preview")).toHaveTextContent("Identifier: planner");
+    expect(screen.getByTestId("specialist-slug-preview")).toHaveTextContent("Identifier: planner");
     await user.type(screen.getByLabelText(/Role/i), "plan work");
     await user.type(screen.getByLabelText(/Instructions/i), "Plan before editing.");
     await user.click(screen.getByLabelText(/^Model/i));
     await user.click(screen.getByRole("option", { name: "openai/gpt-4.1" }));
     await user.type(screen.getByLabelText(/Search skills/i), "code-reviewer");
     await user.click(screen.getByText("code-reviewer"));
-    await user.click(screen.getByRole("button", { name: "Create agent" }));
+    await user.click(screen.getByRole("button", { name: "Create specialist" }));
 
     await waitFor(() => {
       expect(window.location.pathname).toBe("/specialists");
@@ -234,7 +234,7 @@ describe("agent flows", () => {
     const user = userEvent.setup();
     await screen.findByLabelText(/Name/i);
     await user.type(screen.getByLabelText(/Name/i), "Writer");
-    await user.click(screen.getByRole("button", { name: "Create agent" }));
+    await user.click(screen.getByRole("button", { name: "Create specialist" }));
 
     expect(screen.getByText("Identifier 'writer' is already in use.")).toBeInTheDocument();
   });

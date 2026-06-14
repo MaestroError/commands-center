@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "@/App";
 import { queryClient } from "@/lib/query-client";
-import { RECENT_AGENTS_STORAGE_KEY } from "@/lib/recent-agents";
+import { RECENT_SPECIALISTS_STORAGE_KEY } from "@/lib/recent-specialists";
 import { THEME_STORAGE_KEY } from "@/stores/ui-store";
 
 const connectedProvider = {
@@ -70,7 +70,7 @@ describe("App", () => {
       0,
     );
     expect(screen.getByRole("link", { name: "CommandsCenter" })).toHaveAttribute("href", "/");
-    expect(screen.getAllByRole("link", { name: "Agents" })[0]).toHaveAttribute(
+    expect(screen.getAllByRole("link", { name: "Specialists" })[0]).toHaveAttribute(
       "href",
       "/specialists",
     );
@@ -80,7 +80,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "Tasks" })).toHaveAttribute("href", "/tasks");
     expect(screen.queryByText("Automations")).not.toBeInTheDocument();
     expect(screen.getByText("Provider Connections")).toBeInTheDocument();
-    expect(screen.getByTestId("recent-agents-section")).toBeInTheDocument();
+    expect(screen.getByTestId("recent-specialists-section")).toBeInTheDocument();
   });
 
   it("renders the application logo in the sidebar brand", async () => {
@@ -180,7 +180,10 @@ describe("App", () => {
     await user.click(await screen.findByRole("button", { name: "Collapse sidebar" }));
 
     expect(screen.queryByText("Provider Connections")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Agents" })).toHaveAttribute("href", "/specialists");
+    expect(screen.getByRole("link", { name: "Specialists" })).toHaveAttribute(
+      "href",
+      "/specialists",
+    );
     expect(window.localStorage.getItem("cc-sidebar-collapsed")).toBe("true");
   });
 
@@ -323,7 +326,7 @@ describe("App", () => {
       "You are a research analyst, fact-checker, and evidence reviewer for long-running investigations";
 
     window.localStorage.setItem(
-      RECENT_AGENTS_STORAGE_KEY,
+      RECENT_SPECIALISTS_STORAGE_KEY,
       JSON.stringify([
         {
           id: "a1",
@@ -344,7 +347,10 @@ describe("App", () => {
     const plannerLink = await screen.findByRole("link", { name: `🤖 Planner ${longPlannerRole}` });
 
     expect(plannerLink).toHaveAttribute("href", "/chat/planner");
-    expect(screen.getByTestId("recent-agents-section")).toHaveClass("min-w-0", "overflow-hidden");
+    expect(screen.getByTestId("recent-specialists-section")).toHaveClass(
+      "min-w-0",
+      "overflow-hidden",
+    );
     expect(plannerLink).toHaveClass("block", "min-w-0", "overflow-hidden");
     expect(screen.getByText(longPlannerRole)).toHaveClass("max-w-full", "truncate");
     expect(screen.getByRole("link", { name: "RE Reviewer Reviews" })).toHaveAttribute(
@@ -516,7 +522,7 @@ describe("App", () => {
     await user.type(await screen.findByLabelText("Password"), "owner-password");
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
-    expect(await screen.findByRole("heading", { name: "Agents" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Specialists" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/specialists");
   });
 
@@ -587,7 +593,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText("Confirm password"), "owner-password");
     await user.click(screen.getByRole("button", { name: "Claim workspace" }));
 
-    expect(await screen.findByRole("heading", { name: "Agents" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Specialists" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/specialists");
   });
 
@@ -926,7 +932,7 @@ function resetStorage() {
 
   if (typeof window.localStorage?.removeItem === "function") {
     window.localStorage.removeItem(THEME_STORAGE_KEY);
-    window.localStorage.removeItem(RECENT_AGENTS_STORAGE_KEY);
+    window.localStorage.removeItem(RECENT_SPECIALISTS_STORAGE_KEY);
     window.localStorage.removeItem("cc-sidebar-collapsed");
   }
 }

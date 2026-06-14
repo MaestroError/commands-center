@@ -8,9 +8,9 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import {
   useSpecialistCatalogQuery,
-  useAgentMutations,
-  useAgentsQuery,
-} from "@/hooks/use-agents-query";
+  useSpecialistMutations,
+  useSpecialistsQuery,
+} from "@/hooks/use-specialists-query";
 import { useWorkspaceSkillMutations } from "@/hooks/use-workspace-skills-query";
 import { normalizeUploadableFiles, toFileManagerUploadEntries } from "@/lib/file-transfer";
 import { WorkspaceSkillUploadRenameError } from "@/lib/api";
@@ -32,8 +32,8 @@ type UploadRenameDialogState = {
 export function BuiltInSkillsPage() {
   const [searchParams] = useSearchParams();
   const catalogQuery = useSpecialistCatalogQuery();
-  const agentsQuery = useAgentsQuery();
-  const agentMutations = useAgentMutations();
+  const agentsQuery = useSpecialistsQuery();
+  const agentMutations = useSpecialistMutations();
   const workspaceSkillMutations = useWorkspaceSkillMutations();
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [search, setSearch] = useState("");
@@ -125,7 +125,7 @@ export function BuiltInSkillsPage() {
   return (
     <div className="grid gap-4">
       <PageHeader
-        description="Browse curated skills, create reusable workspace skills, and assign or remove them from agent workspaces."
+        description="Browse curated skills, create reusable workspace skills, and assign or remove them from specialist workspaces."
         eyebrow="Skills"
         title="Skills library"
       />
@@ -188,8 +188,8 @@ export function BuiltInSkillsPage() {
           <div className="rounded-xl border border-border bg-surface p-4 text-sm text-text-secondary">
             <p className="font-medium text-text-primary">Workspace skills are portable</p>
             <p className="mt-2">
-              They live under `.cc/workspace/skills/` and are copied into selected agent workspaces
-              on save.
+              They live under `.cc/workspace/skills/` and are copied into selected specialist
+              workspaces on save.
             </p>
           </div>
         </div>
@@ -263,7 +263,7 @@ export function BuiltInSkillsPage() {
       {agentsQuery.error ? (
         <ErrorState
           description={readError(agentsQuery.error)}
-          title="Agents could not be loaded."
+          title="Specialists could not be loaded."
         />
       ) : null}
       {!catalogQuery.isLoading &&
@@ -683,7 +683,7 @@ function SkillActions(props: {
         onChange={(event) => props.onSelectAgent(event.target.value || undefined)}
         value={props.selectedAgentId ?? ""}
       >
-        <option value="">Select an agent</option>
+        <option value="">Select a specialist</option>
         {props.agents.map((agent) => (
           <option key={agent.id} value={agent.id}>
             {agent.name}
@@ -697,7 +697,7 @@ function SkillActions(props: {
           onClick={props.onAssign}
           type="button"
         >
-          Assign to agent
+          Assign to specialist
         </button>
         <button
           className="cc-button cc-button-secondary"
@@ -705,7 +705,7 @@ function SkillActions(props: {
           onClick={props.onRemove}
           type="button"
         >
-          Remove from agent
+          Remove from specialist
         </button>
         {props.entry.source === "workspace" ? (
           <Link

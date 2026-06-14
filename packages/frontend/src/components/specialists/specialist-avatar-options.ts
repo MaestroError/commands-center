@@ -1,4 +1,4 @@
-export const AGENT_ICON_OPTIONS = [
+export const SPECIALIST_ICON_OPTIONS = [
   { label: "Bot", value: "icon:bot" },
   { label: "Sparkles", value: "icon:sparkles" },
   { label: "Brain", value: "icon:brain" },
@@ -24,7 +24,7 @@ export const AGENT_ICON_OPTIONS = [
   { label: "Math", value: "icon:calculator" },
 ] as const;
 
-export const AGENT_EMOJI_OPTIONS = [
+export const SPECIALIST_EMOJI_OPTIONS = [
   "🤖",
   "🧠",
   "✨",

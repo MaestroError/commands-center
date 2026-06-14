@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Switch } from "@/components/common/Switch";
-import { AgentAvatarPicker } from "@/components/agents/AgentAvatarPicker";
+import { SpecialistAvatarPicker } from "@/components/specialists/SpecialistAvatarPicker";
 import { EmptyState, LoadingState } from "@/components/common/PageStates";
 import { SearchableSelect } from "@/components/common/SearchableSelect";
-import { useAgentCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
-import { useSpecialistCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
+import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import {
   getAppMcpServerAction,
@@ -15,8 +15,12 @@ import {
   setAppMcpServerAction,
   setAppMcpToolEnabled,
   setMcpServerAction,
-} from "@/lib/agent-capabilities";
-import { agentFormSlug, type AgentFormErrors, type AgentFormState } from "@/lib/agent-form";
+} from "@/lib/specialist-capabilities";
+import {
+  specialistFormSlug,
+  type SpecialistFormErrors,
+  type SpecialistFormState,
+} from "@/lib/specialist-form";
 
 import type {
   SpecialistCatalog,
@@ -36,32 +40,32 @@ type SkillOption =
   | { kind: "built-in"; skill: BuiltInSkill }
   | { kind: "workspace"; skill: WorkspaceSkill };
 
-type AgentFormProps = {
+type SpecialistFormProps = {
   mode: "create" | "edit";
-  value: AgentFormState;
-  onChange: (next: AgentFormState) => void;
-  errors?: AgentFormErrors;
-  /** Edit/draft-update: agent id used to show the current agent-local tool drift. */
+  value: SpecialistFormState;
+  onChange: (next: SpecialistFormState) => void;
+  errors?: SpecialistFormErrors;
+  /** Edit/draft-update: specialist id used to show the current specialist-local tool drift. */
   agentId?: string;
   /** Single-column layout for narrow containers such as the review pane. */
   dense?: boolean;
 };
 
 /**
- * Self-contained agent form used by both the agent editor page and the draft-agent
+ * Self-contained specialist form used by both the specialist editor page and the draft-specialist
  * review surface. It owns its own catalog/skill/tool/MCP data fetching and renders
  * every field (basics, model, skills, custom tools, CC-managed tools, MCP permissions).
  * It does not render a submit control or perform any save — the parent owns submission.
  */
-export function AgentForm(props: AgentFormProps) {
+export function SpecialistForm(props: SpecialistFormProps) {
   const { value, onChange, mode } = props;
   const errors = props.errors ?? {};
 
   const catalogQuery = useSpecialistCatalogQuery();
-  const agentsQuery = useAgentsQuery();
+  const agentsQuery = useSpecialistsQuery();
   const mcpServersQuery = useMcpServersQuery();
   const customToolsQuery = useCustomToolsQuery();
-  const agentCustomToolsQuery = useAgentCustomToolsQuery(props.agentId);
+  const specialistCustomToolsQuery = useSpecialistCustomToolsQuery(props.agentId);
 
   const [skillSearch, setSkillSearch] = useState("");
   const [customToolSearch, setCustomToolSearch] = useState("");
@@ -69,7 +73,7 @@ export function AgentForm(props: AgentFormProps) {
   const catalog = catalogQuery.data;
   const agents = agentsQuery.data ?? [];
   const hasProviderModels = (catalog?.providerModels.length ?? 0) > 0;
-  const slug = agentFormSlug(value.name);
+  const slug = specialistFormSlug(value.name);
   const slugTaken = agents.some((entry) => entry.slug === slug && entry.id !== props.agentId);
   const skillOptions = buildSkillOptions(catalog);
   const selectedSkills = skillOptions.filter((option) =>
@@ -85,7 +89,7 @@ export function AgentForm(props: AgentFormProps) {
     customToolSearch,
   );
 
-  function update<Key extends keyof AgentFormState>(key: Key, next: AgentFormState[Key]) {
+  function update<Key extends keyof SpecialistFormState>(key: Key, next: SpecialistFormState[Key]) {
     onChange({ ...value, [key]: next });
   }
 
@@ -159,7 +163,7 @@ export function AgentForm(props: AgentFormProps) {
               onChange={(event) => update("name", event.target.value)}
               value={value.name}
             />
-            <p className="text-xs text-text-secondary" data-testid="agent-slug-preview">
+            <p className="text-xs text-text-secondary" data-testid="specialist-slug-preview">
               Identifier: <span className="font-medium text-text-primary">{slug}</span>
               {slugTaken ? <span className="ml-1 text-danger">(already in use)</span> : null}
             </p>
@@ -174,7 +178,7 @@ export function AgentForm(props: AgentFormProps) {
         </Field>
         <div className="lg:col-span-2">
           <Field error={undefined} label="Avatar">
-            <AgentAvatarPicker
+            <SpecialistAvatarPicker
               dense={dense}
               name={value.name}
               onChange={(next) => update("iconPath", next)}
@@ -197,8 +201,8 @@ export function AgentForm(props: AgentFormProps) {
               <div>
                 <p className="font-medium text-text-primary">Rewrite AGENTS.md</p>
                 <p className="mt-1 text-sm text-text-secondary">
-                  Off by default. When on, saving regenerates the agent&apos;s AGENTS.md from the
-                  role and instructions above, overwriting any manual edits.
+                  Off by default. When on, saving regenerates the specialist&apos;s AGENTS.md from
+                  the role and instructions above, overwriting any manual edits.
                 </p>
               </div>
               <Switch
@@ -238,7 +242,7 @@ export function AgentForm(props: AgentFormProps) {
           </div>
         ) : (
           <EmptyState
-            description="Connect a provider before you can save an agent."
+            description="Connect a provider before you can save a specialist."
             title="No connected models available"
           />
         )}
@@ -250,7 +254,7 @@ export function AgentForm(props: AgentFormProps) {
             Browse skills
           </Link>
         }
-        description="Assigned skills are copied into the agent workspace when the form is saved."
+        description="Assigned skills are copied into the specialist workspace when the form is saved."
         title="Skills"
       >
         {skillOptions.length > 0 ? (
@@ -304,7 +308,7 @@ export function AgentForm(props: AgentFormProps) {
           </div>
         ) : (
           <EmptyState
-            description="Create a workspace skill or use a built-in skill to extend this agent."
+            description="Create a workspace skill or use a built-in skill to extend this specialist."
             title="No skills available"
           />
         )}
@@ -316,7 +320,7 @@ export function AgentForm(props: AgentFormProps) {
             Open tools library
           </Link>
         }
-        description="Selected global tools are copied into the agent workspace as snapshots. Existing local copies can drift from the global library."
+        description="Selected global tools are copied into the specialist workspace as snapshots. Existing local copies can drift from the global library."
         title="Custom tools"
       >
         {customToolsQuery.isLoading ? (
@@ -379,7 +383,7 @@ export function AgentForm(props: AgentFormProps) {
         ) : (
           <div>
             <EmptyState
-              description="Create a global tool before assigning it to an agent."
+              description="Create a global tool before assigning it to a specialist."
               title="No custom tools available"
             />
           </div>
@@ -389,24 +393,24 @@ export function AgentForm(props: AgentFormProps) {
           <div className="mt-6 grid gap-3 border-t border-border pt-6">
             <div>
               <h3 className="text-base font-semibold text-text-primary">
-                Current agent-local tools
+                Current specialist-local tools
               </h3>
               <p className="mt-1 text-sm text-text-secondary">
                 These are the actual tools currently present in the workspace, including modified or
                 manual copies.
               </p>
             </div>
-            {agentCustomToolsQuery.isLoading ? <LoadingState /> : null}
-            {agentCustomToolsQuery.error ? (
+            {specialistCustomToolsQuery.isLoading ? <LoadingState /> : null}
+            {specialistCustomToolsQuery.error ? (
               <div className="rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
-                {readError(agentCustomToolsQuery.error)}
+                {readError(specialistCustomToolsQuery.error)}
               </div>
             ) : null}
-            {!agentCustomToolsQuery.isLoading &&
-            !agentCustomToolsQuery.error &&
-            agentCustomToolsQuery.data?.length ? (
+            {!specialistCustomToolsQuery.isLoading &&
+            !specialistCustomToolsQuery.error &&
+            specialistCustomToolsQuery.data?.length ? (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {agentCustomToolsQuery.data.map((tool) => (
+                {specialistCustomToolsQuery.data.map((tool) => (
                   <article
                     className="rounded-xl border border-border bg-app-bg p-4"
                     key={tool.slug}
@@ -432,7 +436,7 @@ export function AgentForm(props: AgentFormProps) {
       </CollapsibleSection>
 
       <CollapsibleSection
-        description="Enable CC-managed MCP groups per agent. These are internal app capabilities, not external integrations."
+        description="Enable CC-managed MCP groups per specialist. These are internal app capabilities, not external integrations."
         title="CommandsCenter tools"
       >
         {(catalog?.appMcpServers.length ?? 0) > 0 ? (
@@ -519,7 +523,7 @@ export function AgentForm(props: AgentFormProps) {
             Manage integrations
           </Link>
         }
-        description="Enable global MCP servers per agent, then opt tools into allow, ask, or deny."
+        description="Enable global MCP servers per specialist, then opt tools into allow, ask, or deny."
         title="MCP permissions"
       >
         {mcpServersQuery.isLoading ? (
@@ -563,7 +567,7 @@ export function AgentForm(props: AgentFormProps) {
         ) : (
           <div>
             <EmptyState
-              description="Create a global MCP integration before assigning its tools to an agent."
+              description="Create a global MCP integration before assigning its tools to a specialist."
               title="No MCP integrations configured"
             />
           </div>
@@ -930,5 +934,7 @@ function statusBadgeClassName(server: McpServer): string {
 }
 
 function readError(error: unknown): string {
-  return error instanceof Error && error.message ? error.message : "Could not load agent data.";
+  return error instanceof Error && error.message
+    ? error.message
+    : "Could not load specialist data.";
 }

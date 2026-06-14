@@ -2,22 +2,22 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AgentEditorPage } from "./AgentEditorPage";
+import { SpecialistEditorPage } from "./SpecialistEditorPage";
 
 import {
   useSpecialistCatalogQuery,
-  useAgentMutations,
-  useAgentQuery,
-  useAgentsQuery,
-} from "@/hooks/use-agents-query";
-import { useAgentCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
+  useSpecialistMutations,
+  useSpecialistQuery,
+  useSpecialistsQuery,
+} from "@/hooks/use-specialists-query";
+import { useSpecialistCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 
-vi.mock("@/hooks/use-agents-query", () => ({
+vi.mock("@/hooks/use-specialists-query", () => ({
   useSpecialistCatalogQuery: vi.fn(),
-  useAgentMutations: vi.fn(),
-  useAgentQuery: vi.fn(),
-  useAgentsQuery: vi.fn(),
+  useSpecialistMutations: vi.fn(),
+  useSpecialistQuery: vi.fn(),
+  useSpecialistsQuery: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-mcp-servers-query", () => ({
@@ -26,7 +26,7 @@ vi.mock("@/hooks/use-mcp-servers-query", () => ({
 
 vi.mock("@/hooks/use-custom-tools-query", () => ({
   useCustomToolsQuery: vi.fn(),
-  useAgentCustomToolsQuery: vi.fn(),
+  useSpecialistCustomToolsQuery: vi.fn(),
 }));
 
 const createMutateAsync = vi.fn();
@@ -45,14 +45,14 @@ beforeEach(() => {
         {
           name: "cc_app",
           enabledByDefault: false,
-          description: "CommandsCenter app-managed capabilities for this agent.",
+          description: "CommandsCenter app-managed capabilities for this specialist.",
           tools: [{ name: "add_secret", description: "Add a workspace secret.", context: "chat" }],
         },
         {
           name: "cc_tool_management",
           enabledByDefault: false,
           description:
-            "CommandsCenter-managed tool creation and library maintenance for this agent.",
+            "CommandsCenter-managed tool creation and library maintenance for this specialist.",
           tools: [
             { name: "create_custom_tool", description: "Create a custom tool.", context: "chat" },
             {
@@ -70,7 +70,7 @@ beforeEach(() => {
     error: null,
   } as never);
 
-  vi.mocked(useAgentsQuery).mockReturnValue({
+  vi.mocked(useSpecialistsQuery).mockReturnValue({
     data: [
       {
         id: "agent-1",
@@ -98,7 +98,7 @@ beforeEach(() => {
     error: null,
   } as never);
 
-  vi.mocked(useAgentQuery).mockReturnValue({
+  vi.mocked(useSpecialistQuery).mockReturnValue({
     data: {
       id: "agent-1",
       slug: "writer",
@@ -168,7 +168,7 @@ beforeEach(() => {
     error: null,
   } as never);
 
-  vi.mocked(useAgentCustomToolsQuery).mockReturnValue({
+  vi.mocked(useSpecialistCustomToolsQuery).mockReturnValue({
     data: [
       {
         slug: "release-helper",
@@ -189,14 +189,14 @@ beforeEach(() => {
     error: null,
   } as never);
 
-  vi.mocked(useAgentMutations).mockReturnValue({
+  vi.mocked(useSpecialistMutations).mockReturnValue({
     create: { mutateAsync: createMutateAsync, isPending: false },
     update: { mutateAsync: updateMutateAsync, isPending: false },
     archive: { mutateAsync: vi.fn(), isPending: false },
   } as never);
 });
 
-describe("AgentEditorPage", () => {
+describe("SpecialistEditorPage", () => {
   it("saves MCP server permission as allow when selected", async () => {
     updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
 
@@ -381,13 +381,13 @@ describe("AgentEditorPage", () => {
     });
   });
 
-  it("redirects to the agents page after successful update", async () => {
+  it("redirects to the specialists page after successful update", async () => {
     updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
 
     renderEditor();
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-    expect(await screen.findByText("Agents route")).toBeInTheDocument();
+    expect(await screen.findByText("Specialists route")).toBeInTheDocument();
   });
 
   it("saves emoji avatars through the picker", async () => {
@@ -458,8 +458,8 @@ function renderEditor() {
   return render(
     <MemoryRouter initialEntries={["/specialists/writer/edit"]}>
       <Routes>
-        <Route path="/specialists/:slug/edit" element={<AgentEditorPage mode="edit" />} />
-        <Route path="/specialists" element={<div>Agents route</div>} />
+        <Route path="/specialists/:slug/edit" element={<SpecialistEditorPage mode="edit" />} />
+        <Route path="/specialists" element={<div>Specialists route</div>} />
       </Routes>
     </MemoryRouter>,
   );

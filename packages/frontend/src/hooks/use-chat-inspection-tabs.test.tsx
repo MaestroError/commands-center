@@ -53,7 +53,7 @@ describe("useChatInspectionTabs", () => {
     const { result } = renderHook(() => useChatInspectionTabs("conv-1"));
 
     await act(async () => {
-      result.current.openFile({ root: "workspace", path: "agents/planner/README.md" });
+      result.current.openFile({ root: "workspace", path: "specialists/planner/README.md" });
       result.current.openMedia({
         id: "img-1",
         messageId: "msg-1",
@@ -84,7 +84,7 @@ describe("useChatInspectionTabs", () => {
         createdAt: "2026-05-02T10:00:00.000Z",
         presentation: {
           title: "Add GitHub token",
-          description: "Enter the token while the agent waits.",
+          description: "Enter the token while the specialist waits.",
           submitLabel: "Store token",
           cancelLabel: "Cancel",
         },
@@ -115,7 +115,7 @@ describe("useChatInspectionTabs", () => {
     const { result, unmount } = renderHook(() => useChatInspectionTabs("conv-1"));
 
     await act(async () => {
-      result.current.openFile({ root: "workspace", path: "agents/planner/README.md" });
+      result.current.openFile({ root: "workspace", path: "specialists/planner/README.md" });
       result.current.openMedia({
         id: "img-1",
         messageId: "msg-1",
@@ -124,7 +124,7 @@ describe("useChatInspectionTabs", () => {
         url: "data:image/png;base64,AAAA",
         createdAt: "2026-05-02T10:00:00.000Z",
       });
-      result.current.setActive("file:workspace:agents/planner/README.md");
+      result.current.setActive("file:workspace:specialists/planner/README.md");
       await Promise.resolve();
     });
 
@@ -138,7 +138,7 @@ describe("useChatInspectionTabs", () => {
     await act(async () => {});
 
     expect(restored.result.current.tabs).toHaveLength(2);
-    expect(restored.result.current.activeKey).toBe("file:workspace:agents/planner/README.md");
+    expect(restored.result.current.activeKey).toBe("file:workspace:specialists/planner/README.md");
     expect(restored.result.current.open).toBe(true);
   });
 
@@ -149,7 +149,7 @@ describe("useChatInspectionTabs", () => {
     );
 
     await act(async () => {
-      result.current.openFile({ root: "workspace", path: "agents/planner/README.md" });
+      result.current.openFile({ root: "workspace", path: "specialists/planner/README.md" });
       await Promise.resolve();
     });
 
@@ -180,32 +180,32 @@ describe("useChatInspectionTabs", () => {
     });
 
     expect(result.current.tabs).toHaveLength(1);
-    expect(result.current.activeKey).toBe("file:workspace:agents/planner/README.md");
+    expect(result.current.activeKey).toBe("file:workspace:specialists/planner/README.md");
   });
 
   it("saves a dirty file tab and clears its dirty state", async () => {
     vi.mocked(saveFileManagerFileContent).mockResolvedValue({
-      path: "agents/planner/README.md",
+      path: "specialists/planner/README.md",
       revision: { mtimeMs: 2, sizeBytes: 6, sha256: "b".repeat(64) },
     });
 
     const { result } = renderHook(() => useChatInspectionTabs("conv-1"));
 
     await act(async () => {
-      result.current.openFile({ root: "workspace", path: "agents/planner/README.md" });
+      result.current.openFile({ root: "workspace", path: "specialists/planner/README.md" });
       await Promise.resolve();
     });
 
     await vi.waitFor(() => expect(result.current.activeTab?.tabType).toBe("file"));
 
     act(() => {
-      result.current.updateDraft("file:workspace:agents/planner/README.md", "next");
+      result.current.updateDraft("file:workspace:specialists/planner/README.md", "next");
     });
 
     let outcome: Awaited<ReturnType<typeof result.current.save>> | undefined;
 
     await act(async () => {
-      outcome = await result.current.save("file:workspace:agents/planner/README.md");
+      outcome = await result.current.save("file:workspace:specialists/planner/README.md");
     });
 
     expect(outcome).toEqual({ ok: true });

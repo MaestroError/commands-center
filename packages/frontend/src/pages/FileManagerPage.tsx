@@ -36,7 +36,7 @@ import { normalizeUploadableFiles, toFileManagerUploadEntries } from "@/lib/file
 
 const ROOT_LABELS: Record<FileManagerRootKind, string> = {
   workspace: "Workspace",
-  "all-specialists": "All Agents",
+  "all-specialists": "All Specialists",
   "host-filesystem": "Root",
 };
 

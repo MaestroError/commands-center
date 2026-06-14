@@ -37,7 +37,7 @@ type ChatComposerProps = {
 };
 
 // Per-conversation model selection persists across navigation/remounts so a
-// chat keeps the model the user picked; new chats fall back to the agent default.
+// chat keeps the model the user picked; new chats fall back to the specialist default.
 const CHAT_MODEL_KEY_PREFIX = "cc-chat-model:";
 
 function readChatModel(conversationId: string): string | null {
@@ -104,7 +104,7 @@ export function ChatComposer({
   }, [text]);
 
   // When the chat changes (or the default arrives asynchronously), restore the
-  // model previously chosen for that conversation, falling back to the agent
+  // model previously chosen for that conversation, falling back to the specialist
   // default for brand-new chats.
   useEffect(() => {
     const persisted = autoFocusKey ? readChatModel(autoFocusKey) : null;

@@ -3,30 +3,30 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", () => ({
-  copyAgentCustomToolToGlobal: vi.fn(),
-  copyCustomToolToAgents: vi.fn(),
+  copySpecialistCustomToolToGlobal: vi.fn(),
+  copyCustomToolToSpecialists: vi.fn(),
   createCustomTool: vi.fn(),
-  deleteAgentCustomTool: vi.fn(),
+  deleteSpecialistCustomTool: vi.fn(),
   deleteCustomTool: vi.fn(),
-  listAgentCustomTools: vi.fn(),
+  listSpecialistCustomTools: vi.fn(),
   listCustomTools: vi.fn(),
-  moveAgentCustomToolToGlobal: vi.fn(),
+  moveSpecialistCustomToolToGlobal: vi.fn(),
 }));
 
 import {
-  copyAgentCustomToolToGlobal,
-  copyCustomToolToAgents,
+  copySpecialistCustomToolToGlobal,
+  copyCustomToolToSpecialists,
   createCustomTool,
-  deleteAgentCustomTool,
+  deleteSpecialistCustomTool,
   deleteCustomTool,
-  listAgentCustomTools,
+  listSpecialistCustomTools,
   listCustomTools,
-  moveAgentCustomToolToGlobal,
+  moveSpecialistCustomToolToGlobal,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 
 import {
-  useAgentCustomToolsQuery,
+  useSpecialistCustomToolsQuery,
   useCustomToolMutations,
   useCustomToolsQuery,
 } from "./use-custom-tools-query";
@@ -73,9 +73,9 @@ describe("useCustomToolsQuery", () => {
     });
   });
 
-  it("skips the agent tools query until an agent id is available and then loads it", async () => {
+  it("skips the specialist tools query until an specialist id is available and then loads it", async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    vi.mocked(listAgentCustomTools).mockResolvedValue([
+    vi.mocked(listSpecialistCustomTools).mockResolvedValue([
       {
         slug: "release-helper-copy",
         name: "Release Helper Copy",
@@ -93,7 +93,7 @@ describe("useCustomToolsQuery", () => {
     ]);
 
     const { result, rerender } = renderHook(
-      ({ agentId }: { agentId?: string }) => useAgentCustomToolsQuery(agentId),
+      ({ agentId }: { agentId?: string }) => useSpecialistCustomToolsQuery(agentId),
       {
         initialProps: { agentId: undefined as string | undefined },
         wrapper: createWrapper(queryClient),
@@ -101,12 +101,12 @@ describe("useCustomToolsQuery", () => {
     );
 
     expect(result.current.fetchStatus).toBe("idle");
-    expect(listAgentCustomTools).not.toHaveBeenCalled();
+    expect(listSpecialistCustomTools).not.toHaveBeenCalled();
 
     rerender({ agentId: "agent-1" });
 
     await waitFor(() => {
-      expect(listAgentCustomTools).toHaveBeenCalledWith("agent-1");
+      expect(listSpecialistCustomTools).toHaveBeenCalledWith("agent-1");
       expect(result.current.data).toEqual([
         expect.objectContaining({ slug: "release-helper-copy", status: "matching" }),
       ]);
@@ -139,10 +139,10 @@ describe("useCustomToolsQuery", () => {
       warnings: [],
     });
     vi.mocked(deleteCustomTool).mockResolvedValue(undefined);
-    vi.mocked(copyCustomToolToAgents).mockResolvedValue({
+    vi.mocked(copyCustomToolToSpecialists).mockResolvedValue({
       copied: [{ agentId: "agent-1", agentSlug: "writer", overwritten: false }],
     });
-    vi.mocked(copyAgentCustomToolToGlobal).mockResolvedValue({
+    vi.mocked(copySpecialistCustomToolToGlobal).mockResolvedValue({
       tool: {
         id: "tool-2",
         slug: "release-helper-global",
@@ -161,7 +161,7 @@ describe("useCustomToolsQuery", () => {
       overwritten: false,
       warnings: [],
     });
-    vi.mocked(moveAgentCustomToolToGlobal).mockResolvedValue({
+    vi.mocked(moveSpecialistCustomToolToGlobal).mockResolvedValue({
       tool: {
         id: "tool-3",
         slug: "release-helper-moved",
@@ -180,7 +180,7 @@ describe("useCustomToolsQuery", () => {
       overwritten: false,
       warnings: [],
     });
-    vi.mocked(deleteAgentCustomTool).mockResolvedValue(undefined);
+    vi.mocked(deleteSpecialistCustomTool).mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useCustomToolMutations(), {
       wrapper: createWrapper(queryClient),
@@ -192,21 +192,21 @@ describe("useCustomToolsQuery", () => {
         description: "Draft release notes.",
       });
       await result.current.delete.mutateAsync("release-helper");
-      await result.current.copyToAgents.mutateAsync({
+      await result.current.copyToSpecialists.mutateAsync({
         slug: "release-helper",
         input: { agentIds: ["agent-1"], overwrite: false },
       });
-      await result.current.copyAgentToGlobal.mutateAsync({
+      await result.current.copySpecialistToGlobal.mutateAsync({
         agentId: "agent-1",
         slug: "release-helper-copy",
         input: { destinationName: "Release Helper Global", overwrite: false },
       });
-      await result.current.moveAgentToGlobal.mutateAsync({
+      await result.current.moveSpecialistToGlobal.mutateAsync({
         agentId: "agent-1",
         slug: "release-helper-copy",
         input: { destinationName: "Release Helper Moved", overwrite: true },
       });
-      await result.current.deleteAgentTool.mutateAsync({
+      await result.current.deleteSpecialistTool.mutateAsync({
         agentId: "agent-1",
         slug: "release-helper-copy",
       });
@@ -217,23 +217,31 @@ describe("useCustomToolsQuery", () => {
       description: "Draft release notes.",
     });
     expect(deleteCustomTool).toHaveBeenCalledWith("release-helper");
-    expect(copyCustomToolToAgents).toHaveBeenCalledWith("release-helper", {
+    expect(copyCustomToolToSpecialists).toHaveBeenCalledWith("release-helper", {
       agentIds: ["agent-1"],
       overwrite: false,
     });
-    expect(copyAgentCustomToolToGlobal).toHaveBeenCalledWith("agent-1", "release-helper-copy", {
-      destinationName: "Release Helper Global",
-      overwrite: false,
-    });
-    expect(moveAgentCustomToolToGlobal).toHaveBeenCalledWith("agent-1", "release-helper-copy", {
-      destinationName: "Release Helper Moved",
-      overwrite: true,
-    });
-    expect(deleteAgentCustomTool).toHaveBeenCalledWith("agent-1", "release-helper-copy");
+    expect(copySpecialistCustomToolToGlobal).toHaveBeenCalledWith(
+      "agent-1",
+      "release-helper-copy",
+      {
+        destinationName: "Release Helper Global",
+        overwrite: false,
+      },
+    );
+    expect(moveSpecialistCustomToolToGlobal).toHaveBeenCalledWith(
+      "agent-1",
+      "release-helper-copy",
+      {
+        destinationName: "Release Helper Moved",
+        overwrite: true,
+      },
+    );
+    expect(deleteSpecialistCustomTool).toHaveBeenCalledWith("agent-1", "release-helper-copy");
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.customTools });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.agentCatalog });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.specialistCatalog });
     expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.agentCustomTools("agent-1"),
+      queryKey: queryKeys.specialistCustomTools("agent-1"),
     });
   });
 });

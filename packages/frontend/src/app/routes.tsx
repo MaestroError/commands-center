@@ -18,8 +18,8 @@ import type { RouteObject } from "react-router-dom";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ApiPage } from "@/pages/ApiPage";
 import { FileManagerPage } from "@/pages/FileManagerPage";
-import { AgentEditorPage } from "@/pages/AgentEditorPage";
-import { AgentsPage } from "@/pages/AgentsPage";
+import { SpecialistEditorPage } from "@/pages/SpecialistEditorPage";
+import { SpecialistsPage } from "@/pages/SpecialistsPage";
 import { BuiltInSkillsPage } from "@/pages/BuiltInSkillsPage";
 import { CustomToolsPage } from "@/pages/CustomToolsPage";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
@@ -50,21 +50,21 @@ export const appRoutes = [
   },
   {
     path: "/specialists",
-    title: "Agents",
-    navLabel: "Agents",
+    title: "Specialists",
+    navLabel: "Specialists",
     navIcon: <Users className="h-4 w-4 shrink-0" />,
     navigationMatch: ["/specialists/new", "/specialists/:slug/edit"],
-    element: <AgentsPage />,
+    element: <SpecialistsPage />,
   },
   {
     path: "/specialists/new",
     title: "Create Specialist",
-    element: <AgentEditorPage mode="create" />,
+    element: <SpecialistEditorPage mode="create" />,
   },
   {
     path: "/specialists/:slug/edit",
     title: "Edit Specialist",
-    element: <AgentEditorPage mode="edit" />,
+    element: <SpecialistEditorPage mode="edit" />,
   },
   {
     path: "/chat/:agentId",
@@ -182,7 +182,7 @@ export const sidebarRoutes = appRoutes.filter((route) => route.navLabel);
 
 export const dashboardSidebarRoute = sidebarRoutes.find((route) => route.path === "/");
 
-export const agentsSidebarRoute = sidebarRoutes.find((route) => route.path === "/specialists");
+export const specialistsSidebarRoute = sidebarRoutes.find((route) => route.path === "/specialists");
 
 export const secondarySidebarRoutes = sidebarRoutes.filter(
   (route) => route.path !== "/" && route.path !== "/specialists",

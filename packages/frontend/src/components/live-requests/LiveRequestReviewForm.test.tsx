@@ -4,16 +4,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LiveRequest } from "@cc/shared/schemas";
 
-import { useSpecialistCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
-import { useAgentCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
+import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-specialists-query";
+import { useSpecialistCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 
 import { isLiveRequestReviewKind } from "./live-request-helpers";
 import { LiveRequestReviewForm } from "./LiveRequestReviewForm";
 
-vi.mock("@/hooks/use-agents-query", () => ({
+vi.mock("@/hooks/use-specialists-query", () => ({
   useSpecialistCatalogQuery: vi.fn(),
-  useAgentsQuery: vi.fn(),
+  useSpecialistsQuery: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-mcp-servers-query", () => ({
@@ -22,7 +22,7 @@ vi.mock("@/hooks/use-mcp-servers-query", () => ({
 
 vi.mock("@/hooks/use-custom-tools-query", () => ({
   useCustomToolsQuery: vi.fn(),
-  useAgentCustomToolsQuery: vi.fn(),
+  useSpecialistCustomToolsQuery: vi.fn(),
 }));
 
 const catalog = {
@@ -43,10 +43,10 @@ function emptyQuery<T>(data: T) {
 
 beforeEach(() => {
   vi.mocked(useSpecialistCatalogQuery).mockReturnValue(emptyQuery(catalog));
-  vi.mocked(useAgentsQuery).mockReturnValue(emptyQuery([]));
+  vi.mocked(useSpecialistsQuery).mockReturnValue(emptyQuery([]));
   vi.mocked(useMcpServersQuery).mockReturnValue(emptyQuery([]));
   vi.mocked(useCustomToolsQuery).mockReturnValue(emptyQuery([]));
-  vi.mocked(useAgentCustomToolsQuery).mockReturnValue(emptyQuery([]));
+  vi.mocked(useSpecialistCustomToolsQuery).mockReturnValue(emptyQuery([]));
 });
 
 function renderForm(request: LiveRequest, onResolve = vi.fn().mockResolvedValue(undefined)) {
@@ -169,7 +169,7 @@ describe("LiveRequestReviewForm — agent update (compact field form)", () => {
     };
   }
 
-  it("shows the agent identity header and only the changed field", async () => {
+  it("shows the specialist identity header and only the changed field", async () => {
     renderForm(updateRequest());
 
     expect(await screen.findByText("research agent")).toBeInTheDocument();
@@ -194,8 +194,8 @@ describe("LiveRequestReviewForm — agent update (compact field form)", () => {
 });
 
 describe("LiveRequestReviewForm — task review", () => {
-  it("renders an agent dropdown for task reviews", async () => {
-    vi.mocked(useAgentsQuery).mockReturnValue(
+  it("renders a specialist dropdown for task reviews", async () => {
+    vi.mocked(useSpecialistsQuery).mockReturnValue(
       emptyQuery([
         { id: "agent-1", name: "Builder" },
         { id: "agent-2", name: "Reviewer" },

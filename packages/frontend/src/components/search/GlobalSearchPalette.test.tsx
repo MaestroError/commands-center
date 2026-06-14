@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", () => ({
   getSpecialistCatalog: vi.fn(),
-  listAgents: vi.fn(),
+  listSpecialists: vi.fn(),
   listArchivedTasks: vi.fn(),
   listCustomTools: vi.fn(),
   listTasks: vi.fn(),
@@ -18,7 +18,7 @@ import { GlobalSearchPalette } from "./GlobalSearchPalette";
 
 import {
   getSpecialistCatalog,
-  listAgents,
+  listSpecialists,
   listArchivedTasks,
   listCustomTools,
   listTasks,
@@ -196,7 +196,7 @@ function LocationProbe() {
 }
 
 function mockGlobalSearchSources() {
-  vi.mocked(listAgents).mockResolvedValue([
+  vi.mocked(listSpecialists).mockResolvedValue([
     {
       id: "agent-1",
       slug: "planner",

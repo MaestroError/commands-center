@@ -17,7 +17,7 @@ import {
   rejectQuestion as apiRejectQuestion,
   connectConversationEvents,
 } from "@/lib/api";
-import { useAgentQuery } from "@/hooks/use-agents-query";
+import { useSpecialistQuery } from "@/hooks/use-specialists-query";
 import { queryKeys } from "@/lib/query-keys";
 import type {
   Specialist,
@@ -386,7 +386,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   // Auto-approve state with localStorage persistence
   const [autoApprove, setAutoApproveState] = useState(() => {
     try {
-      return localStorage.getItem(`cc-auto-approve-${agentSlug}`) === "true";
+      return localStorage.getItem(`cc-specialist-auto-approve-${agentSlug}`) === "true";
     } catch {
       return false;
     }
@@ -398,7 +398,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
       setAutoApproveState(enabled);
       autoApproveRef.current = enabled;
       try {
-        localStorage.setItem(`cc-auto-approve-${agentSlug}`, enabled ? "true" : "false");
+        localStorage.setItem(`cc-specialist-auto-approve-${agentSlug}`, enabled ? "true" : "false");
       } catch {
         // Ignore storage errors
       }
@@ -412,10 +412,10 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   }, [autoApprove]);
 
   // 1. Resolve slug → agent
-  const agentQuery = useAgentQuery(agentSlug);
+  const agentQuery = useSpecialistQuery(agentSlug);
   const agent = agentQuery.data ?? null;
 
-  // 2. Fetch active conversation once we have the agent
+  // 2. Fetch active conversation once we have the specialist
   const snapshotQuery = useQuery({
     queryKey: queryKeys.conversationSnapshot(agent?.id ?? ""),
     queryFn: () => getActiveConversation(agent!.id),

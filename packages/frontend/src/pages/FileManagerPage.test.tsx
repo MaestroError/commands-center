@@ -103,7 +103,7 @@ describe("FileManagerPage", () => {
                   sizeBytes: 128,
                   lineCount: 4,
                   isCritical: true,
-                  criticalReason: "AGENTS.md defines the agent instructions.",
+                  criticalReason: "AGENTS.md defines the specialist instructions.",
                 },
                 {
                   name: "src",
@@ -167,7 +167,7 @@ describe("FileManagerPage", () => {
 
     await screen.findByText("index.ts");
 
-    fireEvent.click(getRootTab("All Agents"));
+    fireEvent.click(getRootTab("All Specialists"));
 
     await waitFor(() => {
       expect(listFileManagerNodes).toHaveBeenLastCalledWith({
@@ -175,7 +175,7 @@ describe("FileManagerPage", () => {
         path: ".",
       });
     });
-    expect(getRootTab("All Agents")).toHaveAttribute("aria-pressed", "true");
+    expect(getRootTab("All Specialists")).toHaveAttribute("aria-pressed", "true");
   });
 
   it("selects folders without auto-opening them and opens them explicitly", async () => {

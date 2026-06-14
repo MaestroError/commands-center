@@ -11,9 +11,9 @@ import type {
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { PasswordInput } from "@/components/common/PasswordInput";
-import { useAgentMutations, useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistMutations, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
-import { getMcpServerSelection, setMcpServerEnabled } from "@/lib/agent-capabilities";
+import { getMcpServerSelection, setMcpServerEnabled } from "@/lib/specialist-capabilities";
 import { useSecretsQuery } from "@/hooks/use-secrets-query";
 
 type DialogState =
@@ -354,8 +354,8 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
 ];
 
 export function IntegrationsPage() {
-  const agentsQuery = useAgentsQuery();
-  const agentMutations = useAgentMutations();
+  const agentsQuery = useSpecialistsQuery();
+  const agentMutations = useSpecialistMutations();
   const mcpServersQuery = useMcpServersQuery();
   const mcpMutations = useMcpServerMutations();
   const secretsQuery = useSecretsQuery();
@@ -400,7 +400,7 @@ export function IntegrationsPage() {
             </button>
           </div>
         }
-        description="Manage global external MCP servers once, then reuse them safely across agents through permissions."
+        description="Manage global external MCP servers once, then reuse them safely across specialists through permissions."
         eyebrow="Integrations"
         title="External Apps"
       />
@@ -1372,9 +1372,9 @@ function McpServerDialog(props: {
                 type="button"
               >
                 <div>
-                  <h3 className="text-sm font-medium text-text-primary">Enable for agents</h3>
+                  <h3 className="text-sm font-medium text-text-primary">Enable for specialists</h3>
                   <p className="mt-1 text-xs text-text-secondary">
-                    Assign this MCP to selected agents using the same capability update flow as
+                    Assign this MCP to selected specialists using the same capability update flow as
                     Specialist Editor.
                   </p>
                 </div>
@@ -1390,10 +1390,10 @@ function McpServerDialog(props: {
                 props.agents.length > 0 ? (
                   <div className="border-t border-border p-4 pt-3">
                     <input
-                      aria-label="Search agents"
+                      aria-label="Search specialists"
                       className="cc-input"
                       onChange={(event) => setAgentSearch(event.target.value)}
-                      placeholder="Search agents"
+                      placeholder="Search specialists"
                       value={agentSearch}
                     />
                     <div className="mt-3 grid max-h-48 gap-2 overflow-y-auto pr-1">
@@ -1422,14 +1422,14 @@ function McpServerDialog(props: {
                       })}
                       {filteredAgents.length === 0 ? (
                         <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-text-secondary">
-                          No agents match the current search.
+                          No specialists match the current search.
                         </p>
                       ) : null}
                     </div>
                   </div>
                 ) : (
                   <p className="border-t border-border p-4 text-sm text-text-secondary">
-                    No active agents available.
+                    No active specialists available.
                   </p>
                 )
               ) : null}
@@ -1918,7 +1918,7 @@ async function syncAgentAssignments(options: {
 
 function buildAssignmentMessage(baseMessage: string, assignedAgentCount: number): string {
   return assignedAgentCount > 0
-    ? `${baseMessage} Enabled for ${assignedAgentCount} agent${assignedAgentCount === 1 ? "" : "s"}.`
+    ? `${baseMessage} Enabled for ${assignedAgentCount} specialist${assignedAgentCount === 1 ? "" : "s"}.`
     : baseMessage;
 }
 

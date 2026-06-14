@@ -27,8 +27,8 @@ export function useWorkspaceSkillMutations() {
   const invalidate = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.workspaceSkills }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.agentCatalog }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.specialistCatalog }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.specialists }),
     ]);
   };
 

@@ -4,44 +4,44 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CustomToolsPage } from "./CustomToolsPage";
 
-import { useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import {
-  useAgentCustomToolsQuery,
+  useSpecialistCustomToolsQuery,
   useCustomToolMutations,
   useCustomToolsQuery,
 } from "@/hooks/use-custom-tools-query";
 
-vi.mock("@/hooks/use-agents-query", () => ({
-  useAgentsQuery: vi.fn(),
+vi.mock("@/hooks/use-specialists-query", () => ({
+  useSpecialistsQuery: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-custom-tools-query", () => ({
   useCustomToolsQuery: vi.fn(),
-  useAgentCustomToolsQuery: vi.fn(),
+  useSpecialistCustomToolsQuery: vi.fn(),
   useCustomToolMutations: vi.fn(),
 }));
 
 const createMutateAsync = vi.fn();
 const deleteMutateAsync = vi.fn();
-const copyToAgentsMutateAsync = vi.fn();
-const copyAgentToGlobalMutateAsync = vi.fn();
-const moveAgentToGlobalMutateAsync = vi.fn();
-const deleteAgentToolMutateAsync = vi.fn();
+const copyToSpecialistsMutateAsync = vi.fn();
+const copySpecialistToGlobalMutateAsync = vi.fn();
+const moveSpecialistToGlobalMutateAsync = vi.fn();
+const deleteSpecialistToolMutateAsync = vi.fn();
 const confirmSpy = vi.fn<(message?: string) => boolean>();
 
 beforeEach(() => {
   createMutateAsync.mockReset();
   deleteMutateAsync.mockReset();
-  copyToAgentsMutateAsync.mockReset();
-  copyAgentToGlobalMutateAsync.mockReset();
-  moveAgentToGlobalMutateAsync.mockReset();
-  deleteAgentToolMutateAsync.mockReset();
+  copyToSpecialistsMutateAsync.mockReset();
+  copySpecialistToGlobalMutateAsync.mockReset();
+  moveSpecialistToGlobalMutateAsync.mockReset();
+  deleteSpecialistToolMutateAsync.mockReset();
   confirmSpy.mockReset();
 
   vi.spyOn(window, "confirm").mockImplementation(confirmSpy);
   confirmSpy.mockReturnValue(true);
 
-  vi.mocked(useAgentsQuery).mockReturnValue({
+  vi.mocked(useSpecialistsQuery).mockReturnValue({
     data: [
       {
         id: "agent-1",
@@ -83,7 +83,7 @@ beforeEach(() => {
     error: null,
   } as never);
 
-  vi.mocked(useAgentCustomToolsQuery).mockReturnValue({
+  vi.mocked(useSpecialistCustomToolsQuery).mockReturnValue({
     data: [
       {
         slug: "release-helper-copy",
@@ -107,15 +107,15 @@ beforeEach(() => {
   vi.mocked(useCustomToolMutations).mockReturnValue({
     create: { mutateAsync: createMutateAsync, isPending: false },
     delete: { mutateAsync: deleteMutateAsync, isPending: false },
-    copyToAgents: { mutateAsync: copyToAgentsMutateAsync, isPending: false },
-    copyAgentToGlobal: { mutateAsync: copyAgentToGlobalMutateAsync, isPending: false },
-    moveAgentToGlobal: { mutateAsync: moveAgentToGlobalMutateAsync, isPending: false },
-    deleteAgentTool: { mutateAsync: deleteAgentToolMutateAsync, isPending: false },
+    copyToSpecialists: { mutateAsync: copyToSpecialistsMutateAsync, isPending: false },
+    copySpecialistToGlobal: { mutateAsync: copySpecialistToGlobalMutateAsync, isPending: false },
+    moveSpecialistToGlobal: { mutateAsync: moveSpecialistToGlobalMutateAsync, isPending: false },
+    deleteSpecialistTool: { mutateAsync: deleteSpecialistToolMutateAsync, isPending: false },
   } as never);
 });
 
 describe("CustomToolsPage", () => {
-  it("keeps direct copy disabled until an agent is selected", () => {
+  it("keeps direct copy disabled until a specialist is selected", () => {
     renderPage();
 
     expect(screen.getByRole("button", { name: ">>" })).toBeDisabled();
@@ -198,25 +198,25 @@ describe("CustomToolsPage", () => {
 
     await waitFor(() => {
       expect(confirmSpy).toHaveBeenCalledWith(
-        "Delete global tool 'Release Helper'? Existing agent copies will remain untouched.",
+        "Delete global tool 'Release Helper'? Existing specialist copies will remain untouched.",
       );
       expect(deleteMutateAsync).toHaveBeenCalledWith("release-helper");
     });
   });
 
-  it("copies a tool to selected agents from the modal", async () => {
-    copyToAgentsMutateAsync.mockResolvedValue({
+  it("copies a tool to selected specialists from the modal", async () => {
+    copyToSpecialistsMutateAsync.mockResolvedValue({
       copied: [{ agentId: "agent-1", agentSlug: "writer", overwritten: false }],
       warnings: [],
     });
 
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "Copy to agents" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy to specialists" }));
     fireEvent.click(screen.getByRole("checkbox"));
-    fireEvent.click(screen.getByRole("button", { name: "Copy selected agents" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy selected specialists" }));
 
     await waitFor(() => {
-      expect(copyToAgentsMutateAsync).toHaveBeenCalledWith({
+      expect(copyToSpecialistsMutateAsync).toHaveBeenCalledWith({
         slug: "release-helper",
         input: {
           agentIds: ["agent-1"],
@@ -228,9 +228,9 @@ describe("CustomToolsPage", () => {
   });
 
   it("opens the conflict modal for direct copy and supports rename", async () => {
-    copyToAgentsMutateAsync
+    copyToSpecialistsMutateAsync
       .mockRejectedValueOnce(
-        new Error("Custom tool 'release-helper' already exists in this agent workspace."),
+        new Error("Custom tool 'release-helper' already exists in this specialist workspace."),
       )
       .mockResolvedValueOnce({
         copied: [{ agentId: "agent-1", agentSlug: "writer", overwritten: false }],
@@ -238,7 +238,7 @@ describe("CustomToolsPage", () => {
 
     renderPage();
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "agent-1" } });
-    fireEvent.click(screen.getByRole("button", { name: "Copy to agents" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy to specialists" }));
 
     expect(screen.getByText(/Newly copied tools are picked up in new chats/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -256,7 +256,7 @@ describe("CustomToolsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy with new name" }));
 
     await waitFor(() => {
-      expect(copyToAgentsMutateAsync).toHaveBeenLastCalledWith({
+      expect(copyToSpecialistsMutateAsync).toHaveBeenLastCalledWith({
         slug: "release-helper",
         input: {
           agentIds: ["agent-1"],
@@ -267,26 +267,26 @@ describe("CustomToolsPage", () => {
     });
   });
 
-  it("confirms and removes an agent-local tool", async () => {
-    deleteAgentToolMutateAsync.mockResolvedValue(undefined);
+  it("confirms and removes an specialist-local tool", async () => {
+    deleteSpecialistToolMutateAsync.mockResolvedValue(undefined);
 
     renderPage();
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "agent-1" } });
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
 
-    await screen.findByText("Remove agent-local tool");
+    await screen.findByText("Remove specialist-local tool");
     fireEvent.click(screen.getAllByRole("button", { name: /^Remove$/ })[1]!);
 
     await waitFor(() => {
-      expect(deleteAgentToolMutateAsync).toHaveBeenCalledWith({
+      expect(deleteSpecialistToolMutateAsync).toHaveBeenCalledWith({
         agentId: "agent-1",
         slug: "release-helper-copy",
       });
     });
   });
 
-  it("opens the global conflict modal for an agent tool and supports rename", async () => {
-    copyAgentToGlobalMutateAsync
+  it("opens the global conflict modal for a specialist tool and supports rename", async () => {
+    copySpecialistToGlobalMutateAsync
       .mockRejectedValueOnce(
         new Error("Custom tool 'release-helper-copy' already exists globally."),
       )
@@ -321,7 +321,7 @@ describe("CustomToolsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy with new name" }));
 
     await waitFor(() => {
-      expect(copyAgentToGlobalMutateAsync).toHaveBeenLastCalledWith({
+      expect(copySpecialistToGlobalMutateAsync).toHaveBeenLastCalledWith({
         agentId: "agent-1",
         slug: "release-helper-copy",
         input: {

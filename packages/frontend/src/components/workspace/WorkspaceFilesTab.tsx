@@ -11,7 +11,7 @@ import {
   uploadFileManagerEntries,
   type FileNode,
 } from "@/lib/api";
-import { resolveAgentWorkspacePath } from "@/lib/agent-workspace-path";
+import { resolveSpecialistWorkspacePath } from "@/lib/specialist-workspace-path";
 import { buildFileManagerHref } from "@/lib/file-manager-href";
 import { extractDroppedUploadableFiles, toFileManagerUploadEntries } from "@/lib/file-transfer";
 
@@ -67,7 +67,9 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
 
   const openLocation = useCallback(
     (path: string) => {
-      void navigate(buildFileManagerHref({ path: resolveAgentWorkspacePath(agentSlug, path) }));
+      void navigate(
+        buildFileManagerHref({ path: resolveSpecialistWorkspacePath(agentSlug, path) }),
+      );
     },
     [agentSlug, navigate],
   );
@@ -226,7 +228,7 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
     try {
       await createFileManagerEntry({
         root: "workspace",
-        parentPath: resolveAgentWorkspacePath(agentSlug, "."),
+        parentPath: resolveSpecialistWorkspacePath(agentSlug, "."),
         name,
         type: "directory",
       });
@@ -257,7 +259,7 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
       try {
         await deleteFileManagerEntry({
           root: "workspace",
-          path: resolveAgentWorkspacePath(agentSlug, node.path),
+          path: resolveSpecialistWorkspacePath(agentSlug, node.path),
         });
         if (selectedPath === node.path) {
           setSelectedPath(null);
@@ -284,11 +286,11 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
       try {
         const response = await moveFileManagerEntry({
           root: "workspace",
-          path: resolveAgentWorkspacePath(agentSlug, sourcePath),
-          destinationPath: resolveAgentWorkspacePath(agentSlug, destinationPath),
+          path: resolveSpecialistWorkspacePath(agentSlug, sourcePath),
+          destinationPath: resolveSpecialistWorkspacePath(agentSlug, destinationPath),
         });
         if (selectedPath === sourcePath) {
-          setSelectedPath(trimAgentWorkspacePrefix(agentSlug, response.path));
+          setSelectedPath(trimSpecialistWorkspacePrefix(agentSlug, response.path));
         }
         setExpandedPaths((current) => new Set(current).add(destinationPath));
         await refreshTree();
@@ -327,7 +329,7 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
       try {
         await uploadFileManagerEntries({
           root: "workspace",
-          destinationPath: resolveAgentWorkspacePath(agentSlug, destinationPath),
+          destinationPath: resolveSpecialistWorkspacePath(agentSlug, destinationPath),
           entries: await toFileManagerUploadEntries(files),
         });
         if (destinationPath !== ".") {
@@ -732,8 +734,8 @@ function findNodeByPath(
   return undefined;
 }
 
-function trimAgentWorkspacePrefix(agentSlug: string, path: string): string {
-  const rootPath = `agents/${agentSlug}`;
+function trimSpecialistWorkspacePrefix(agentSlug: string, path: string): string {
+  const rootPath = `specialists/${agentSlug}`;
   const prefix = `${rootPath}/`;
 
   if (path === rootPath) {

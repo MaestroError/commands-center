@@ -57,7 +57,7 @@ export function RunTaskContextDialog(props: Props) {
           Run context
           <textarea
             className="cc-input min-h-32 resize-y"
-            placeholder="Anything the agent should know for this specific run..."
+            placeholder="Anything the specialist should know for this specific run..."
             value={contextText}
             onChange={(event) => setContextText(event.target.value)}
           />

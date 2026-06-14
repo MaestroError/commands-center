@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from "./fixtures";
 
-type AgentRecord = {
+type SpecialistRecord = {
   id: string;
   slug: string;
   name: string;
@@ -19,9 +19,9 @@ type AgentRecord = {
   updatedAt: string;
 };
 
-test("lists, filters, and deletes agents", async ({ page }) => {
-  const state = createAgentState();
-  await mockAgentApi(page, state);
+test("lists, filters, and deletes specialists", async ({ page }) => {
+  const state = createSpecialistState();
+  await mockSpecialistApi(page, state);
 
   await page.goto("/specialists");
   await expect(page.getByRole("heading", { name: "Writer" })).toBeVisible();
@@ -34,9 +34,9 @@ test("lists, filters, and deletes agents", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Delete Writer?" })).toHaveCount(0);
 });
 
-test("creates and edits an agent", async ({ page }) => {
-  const state = createAgentState();
-  await mockAgentApi(page, state);
+test("creates and edits a specialist", async ({ page }) => {
+  const state = createSpecialistState();
+  await mockSpecialistApi(page, state);
 
   await page.goto("/specialists/new");
   await page.getByLabel(/^Name/).fill("Planner");
@@ -48,17 +48,17 @@ test("creates and edits an agent", async ({ page }) => {
   await page.getByRole("textbox", { name: /^Emoji$/ }).fill("🤖");
   await page.getByLabel(/Search skills/i).fill("code");
   await page.getByRole("button", { name: /code-reviewer/i }).click();
-  await page.getByRole("button", { name: "Create agent" }).click();
+  await page.getByRole("button", { name: "Create specialist" }).click();
 
-  // Creating an agent returns to the agents list.
-  await expect(page).toHaveURL(/\/agents$/);
+  // Creating a specialist returns to the specialists list.
+  await expect(page).toHaveURL(/\/specialists$/);
   await expect(page.getByRole("heading", { name: "Planner", level: 2 })).toBeVisible();
 
-  // Open the newly created agent for editing.
+  // Open the newly created specialist for editing.
   await page.getByPlaceholder("Search by name or role").fill("Planner");
   await page.getByRole("link", { name: "Edit" }).click();
 
-  await expect(page).toHaveURL(/\/agents\/planner\/edit$/);
+  await expect(page).toHaveURL(/\/specialists\/planner\/edit$/);
   await expect(page.getByLabel(/^Name/)).toHaveValue("Planner");
   await expect(page.getByLabel(/^Role/)).toHaveValue("plan work");
   await expect(page.getByRole("button", { name: /^Use 🤖 avatar$/ })).toHaveAttribute(
@@ -77,14 +77,14 @@ test("creates and edits an agent", async ({ page }) => {
   await page.getByRole("button", { name: "Save changes" }).click();
   await updateResponse;
 
-  // Saving also returns to the agents list, now showing the updated role.
-  await expect(page).toHaveURL(/\/agents$/);
+  // Saving also returns to the specialists list, now showing the updated role.
+  await expect(page).toHaveURL(/\/specialists$/);
   await expect(page.getByText("plan features")).toBeVisible();
 });
 
 test("browses built-in skills and detail metadata", async ({ page }) => {
-  const state = createAgentState();
-  await mockAgentApi(page, state);
+  const state = createSpecialistState();
+  await mockSpecialistApi(page, state);
 
   await page.goto("/skills");
   await expect(page.getByRole("button", { name: /code-reviewer/i })).toBeVisible();
@@ -102,9 +102,9 @@ test("browses built-in skills and detail metadata", async ({ page }) => {
   ).toBeVisible();
 });
 
-async function mockAgentApi(
+async function mockSpecialistApi(
   page: Page,
-  state: { agents: AgentRecord[]; catalog: unknown },
+  state: { agents: SpecialistRecord[]; catalog: unknown },
 ): Promise<void> {
   await page.route("**/api/opencode", async (route: Route) => {
     await route.fulfill(jsonResponse({ state: "healthy" }));
@@ -137,15 +137,15 @@ async function mockAgentApi(
     }
 
     if (path === "/api/specialists" && route.request().method() === "POST") {
-      const payload = route.request().postDataJSON() as Partial<AgentRecord> & {
-        capabilities: AgentRecord["capabilities"];
+      const payload = route.request().postDataJSON() as Partial<SpecialistRecord> & {
+        capabilities: SpecialistRecord["capabilities"];
       };
       const slug =
         payload.name
           ?.toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "") ?? "agent";
-      const created: AgentRecord = {
+          .replace(/^-+|-+$/g, "") ?? "specialist";
+      const created: SpecialistRecord = {
         id: `agent-${state.agents.length + 1}`,
         slug,
         name: payload.name ?? "Specialist",
@@ -182,8 +182,8 @@ async function mockAgentApi(
     }
 
     if (route.request().method() === "PATCH") {
-      const payload = route.request().postDataJSON() as Partial<AgentRecord> & {
-        capabilities?: AgentRecord["capabilities"];
+      const payload = route.request().postDataJSON() as Partial<SpecialistRecord> & {
+        capabilities?: SpecialistRecord["capabilities"];
       };
       const nextUpdatedAt = new Date(Date.parse(agent.updatedAt) + 1_000).toISOString();
       Object.assign(agent, payload, {
@@ -215,7 +215,7 @@ async function mockAgentApi(
   });
 }
 
-function createAgentState() {
+function createSpecialistState() {
   return {
     agents: [
       {

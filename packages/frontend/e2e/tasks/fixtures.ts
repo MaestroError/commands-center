@@ -253,7 +253,7 @@ function notFound() {
 }
 
 /**
- * Installs route handlers for the agent + task endpoints the Tasks pages depend on.
+ * Installs route handlers for the specialist + task endpoints the Tasks pages depend on.
  * A single broad handler owns every `/api/tasks*` path and branches on method +
  * pathname, mutating `state` so re-fetches observe writes.
  */

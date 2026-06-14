@@ -9,12 +9,12 @@ interface ModelSelectorProps {
   allowEmptySelection?: boolean;
   placeholder?: string;
   /**
-   * When true, the picker offers an explicit "use the agent's default" entry.
+   * When true, the picker offers an explicit "use the specialist default" entry.
    * Choosing it calls `onChange("")` (no override). Used by the task/template
    * forms where the model is optional; chat leaves this off.
    */
-  allowAgentDefault?: boolean;
-  agentDefaultLabel?: string;
+  allowSpecialistDefault?: boolean;
+  specialistDefaultLabel?: string;
   /** Which way the popover opens. Defaults to "up" (chat composer sits at the
    * bottom of the screen); forms near the top of a container should pass "down". */
   placement?: "up" | "down";
@@ -68,8 +68,8 @@ export function ModelSelector({
   defaultModel,
   allowEmptySelection = false,
   placeholder = "Select model",
-  allowAgentDefault = false,
-  agentDefaultLabel = "Specialist's default",
+  allowSpecialistDefault = false,
+  specialistDefaultLabel = "Specialist's default",
   placement = "up",
 }: ModelSelectorProps) {
   const { data: providers, isLoading } = useProvidersQuery();
@@ -100,13 +100,13 @@ export function ModelSelector({
   const uniqueKey = (model: ModelOption) => `${model.providerId}/${model.id}`;
   const isConnectedKey = (key: string) => connectedModels.some((model) => uniqueKey(model) === key);
   const firstKey = connectedModels[0] ? uniqueKey(connectedModels[0]) : "";
-  // In "agent default" mode an empty value means "no override"; otherwise the
+  // In "specialist default" mode an empty value means "no override"; otherwise the
   // picker resolves to a concrete model (chat behaviour). If the requested value
   // is no longer connected (stale localStorage / provider disconnect), fall the
   // displayed selection back to the default or the first available model so we
   // never present an unavailable model as selected.
-  const usesAgentDefault = allowAgentDefault && !value;
-  const selectedKey = usesAgentDefault
+  const usesSpecialistDefault = allowSpecialistDefault && !value;
+  const selectedKey = usesSpecialistDefault
     ? ""
     : value && isConnectedKey(value)
       ? value
@@ -214,7 +214,7 @@ export function ModelSelector({
     setOpen(false);
   };
 
-  const selectAgentDefault = () => {
+  const selectSpecialistDefault = () => {
     onChange("");
     setOpen(false);
   };
@@ -281,8 +281,8 @@ export function ModelSelector({
         className={pillClass}
         onClick={() => setOpen((current) => !current)}
         title={
-          usesAgentDefault
-            ? agentDefaultLabel
+          usesSpecialistDefault
+            ? specialistDefaultLabel
             : selectedModel
               ? `${selectedModel.providerName} / ${selectedModel.name}`
               : placeholder
@@ -290,7 +290,7 @@ export function ModelSelector({
       >
         <ChipIcon />
         <span className="min-w-0 truncate">
-          {usesAgentDefault ? agentDefaultLabel : (selectedModel?.name ?? placeholder)}
+          {usesSpecialistDefault ? specialistDefaultLabel : (selectedModel?.name ?? placeholder)}
         </span>
         <ChevronIcon />
       </button>
@@ -320,25 +320,25 @@ export function ModelSelector({
             role="listbox"
             aria-label="Models"
           >
-            {allowAgentDefault && !normalizedQuery ? (
+            {allowSpecialistDefault && !normalizedQuery ? (
               <button
                 type="button"
                 role="option"
-                aria-selected={usesAgentDefault}
+                aria-selected={usesSpecialistDefault}
                 className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs ${
-                  usesAgentDefault
+                  usesSpecialistDefault
                     ? "bg-surface-elevated text-text-primary"
                     : "text-text-secondary hover:bg-surface-elevated"
                 }`}
-                onClick={selectAgentDefault}
+                onClick={selectSpecialistDefault}
               >
-                <span className="min-w-0 truncate">{agentDefaultLabel}</span>
-                {usesAgentDefault ? <CheckIcon /> : null}
+                <span className="min-w-0 truncate">{specialistDefaultLabel}</span>
+                {usesSpecialistDefault ? <CheckIcon /> : null}
               </button>
             ) : null}
 
             {flatList.length === 0 ? (
-              allowAgentDefault && !normalizedQuery ? null : (
+              allowSpecialistDefault && !normalizedQuery ? null : (
                 <div className="px-3 py-4 text-center text-xs text-text-secondary">
                   No matching models
                 </div>

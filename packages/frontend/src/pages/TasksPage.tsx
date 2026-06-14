@@ -61,7 +61,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
 import { buildTemplateEndpointDocs } from "@cc/shared/lib";
 
-import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { CopyableCode } from "@/components/api/EndpointsTab";
 import { Markdown } from "@/components/chat/Markdown";
 import { ModelSelector } from "@/components/chat/ModelSelector";
@@ -82,7 +82,7 @@ import {
 } from "@/components/tasks/task-prompt";
 import { StatusBadge } from "@/components/tasks/task-ui";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
-import { useSpecialistCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import {
   useActiveTaskRunsQuery,
   useArchivedTasksQuery,
@@ -130,7 +130,7 @@ const BOARD_COLUMNS = [
     status: "queued",
     title: "Queued",
     description: "Tasks with queued or running AI work.",
-    empty: "Queued and running work appears here while the agent is active.",
+    empty: "Queued and running work appears here while the specialist is active.",
   },
   {
     status: "review",
@@ -213,7 +213,7 @@ function TaskListPage() {
   const schedulerStateQuery = useTaskSchedulerStateQuery();
   const templatesQuery = useTaskTemplatesQuery();
   const archiveQuery = useArchivedTasksQuery();
-  const agentsQuery = useAgentsQuery();
+  const agentsQuery = useSpecialistsQuery();
   const mutations = useTaskMutations();
   const [runTemplate, setRunTemplate] = useState<TaskTemplate>();
   const [scheduleDropTask, setScheduleDropTask] = useState<Task>();
@@ -598,7 +598,7 @@ function TaskFilterPanel(props: {
         <input
           className="cc-input"
           data-testid="task-filter-input"
-          placeholder="Search titles, descriptions, statuses, badges, agents..."
+          placeholder="Search titles, descriptions, statuses, badges, specialists..."
           value={props.filterText}
           onChange={(event) => props.onChange(event.target.value)}
         />
@@ -1060,7 +1060,7 @@ function BoardAssigneeAvatar(props: { agent?: Specialist; fallbackName: string }
       tabIndex={0}
       title={name}
     >
-      <AgentAvatar
+      <SpecialistAvatar
         className="h-7 w-7 rounded-full text-[11px]"
         iconPath={props.agent?.iconPath}
         name={name}
@@ -1862,7 +1862,7 @@ function TaskFeedbackPanelSection(props: {
       <div>
         <h3 className="font-semibold text-text-primary">Feedback</h3>
         <p className="mt-1 text-sm text-text-secondary">
-          Comments, follow-up requests, and agent replies for this task.
+          Comments, follow-up requests, and specialist replies for this task.
         </p>
       </div>
       <TaskFeedbackSection
@@ -1995,7 +1995,7 @@ function TaskFeedbackSection(props: {
           <section className="grid gap-2 text-sm text-text-secondary">
             <div>
               <p className="text-xs text-text-secondary">
-                Use # for files, / for skills, and @ to mention agents for subtasks.
+                Use # for files, / for skills, and @ to mention specialists for subtasks.
               </p>
             </div>
             <TaskPromptComposer
@@ -2012,7 +2012,8 @@ function TaskFeedbackSection(props: {
             />
           </section>
           <p className="text-xs text-text-secondary italic">
-            If no agent is mentioned, feedback creates one subtask for the task default agent.
+            If no specialist is mentioned, feedback creates one subtask for the task default
+            specialist.
           </p>
           <button
             className="cc-button w-fit"
@@ -2045,7 +2046,7 @@ function TaskFeedbackSection(props: {
       props.feedback.length === 0 &&
       !hasParentRunComments(props.parentRuns) ? (
         <EmptyState
-          description="Feedback added here creates agent-assigned subtasks, and completed task runs appear as agent comments."
+          description="Feedback added here creates specialist-assigned subtasks, and completed task runs appear as specialist comments."
           title="No feedback yet"
         />
       ) : null}
@@ -2232,7 +2233,7 @@ function TaskSubtasksSection(props: {
       ) : null}
       {!props.isLoading && props.subtasks.length === 0 ? (
         <EmptyState
-          description="Feedback creates simple subtasks assigned to the mentioned agents."
+          description="Feedback creates simple subtasks assigned to the mentioned specialists."
           title="No subtasks yet"
         />
       ) : null}
@@ -2862,7 +2863,7 @@ function TaskTemplatesView(props: {
                 </span>
               </div>
               <div className="grid gap-3 text-sm text-text-secondary sm:grid-cols-3">
-                <Metric label="Default agent" value={agent?.name ?? template.defaultAgentId} />
+                <Metric label="Default specialist" value={agent?.name ?? template.defaultAgentId} />
                 <Metric label="Repeat" value={formatTemplateRepeat(template)} />
                 <Metric label="Next task" value={formatDate(template.nextOccurrenceAt)} />
                 <Metric
@@ -2985,14 +2986,14 @@ function TaskTemplateForm(props: {
           />
         </label>
         <label className="grid gap-1 text-sm text-text-secondary">
-          Default agent
+          Default specialist
           <select
             className="cc-input"
             required
             value={form.agentId}
             onChange={(event) => updateForm({ agentId: event.target.value })}
           >
-            <option value="">Select an agent</option>
+            <option value="">Select a specialist</option>
             {props.agents.map((agent) => (
               <option key={agent.id} value={agent.id}>
                 {agent.name}
@@ -3003,7 +3004,7 @@ function TaskTemplateForm(props: {
         <label className="grid gap-1 text-sm text-text-secondary">
           Model
           <ModelSelector
-            allowAgentDefault
+            allowSpecialistDefault
             defaultModel={props.agents.find((agent) => agent.id === form.agentId)?.defaultModel}
             onChange={(model) => updateForm({ model })}
             placement="down"
@@ -3142,7 +3143,7 @@ function TaskTemplateFormPage() {
   const navigate = useNavigate();
   const params = useParams();
   const templateQuery = useTaskTemplateQuery(params["id"]);
-  const agentsQuery = useAgentsQuery();
+  const agentsQuery = useSpecialistsQuery();
   const mutations = useTaskMutations();
   const template = templateQuery.data;
   const agents = agentsQuery.data ?? [];
@@ -3252,7 +3253,7 @@ function TaskTemplateDetailPanel(props: {
                 value={template.description || "No description provided."}
               />
               <div className="grid gap-3 sm:grid-cols-2">
-                <Metric label="Default agent" value={agent?.name ?? template.defaultAgentId} />
+                <Metric label="Default specialist" value={agent?.name ?? template.defaultAgentId} />
                 <Metric label="Next occurrence" value={formatDate(template.nextOccurrenceAt)} />
                 <Metric
                   label="Previous occurrence"
@@ -3498,7 +3499,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
   const location = useLocation();
   const params = useParams();
   const taskQuery = useTaskQuery(props.mode === "edit" ? params["id"] : undefined);
-  const agentsQuery = useAgentsQuery();
+  const agentsQuery = useSpecialistsQuery();
   const catalogQuery = useSpecialistCatalogQuery();
   const mutations = useTaskMutations();
   const task = taskQuery.data;
@@ -3535,7 +3536,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
             Cancel
           </Link>
         }
-        description="Define the schedule, assigned agent, and lightweight task todo list. Run-specific context is added when triggering the task."
+        description="Define the schedule, assigned specialist, and lightweight task todo list. Run-specific context is added when triggering the task."
         eyebrow="Tasks"
         title={props.mode === "create" ? "Create task" : "Edit task"}
       />
@@ -3557,7 +3558,8 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                   </div>
                 ) : (
                   <p className="p-3 text-sm text-text-secondary">
-                    Select an agent to browse workspace files and drag files into the task prompt.
+                    Select a specialist to browse workspace files and drag files into the task
+                    prompt.
                   </p>
                 ),
               },
@@ -3579,14 +3581,14 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                   />
                 </label>
                 <label className="grid gap-1 text-sm text-text-secondary">
-                  Assigned agent
+                  Assigned specialist
                   <select
                     className="cc-input"
                     required
                     value={form.agentId}
                     onChange={(event) => handleAgentChange(event.target.value)}
                   >
-                    <option value="">Select an agent</option>
+                    <option value="">Select a specialist</option>
                     {agents.map((agent) => (
                       <option key={agent.id} value={agent.id}>
                         {agent.name}
@@ -3597,7 +3599,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                 <label className="grid gap-1 text-sm text-text-secondary">
                   Model
                   <ModelSelector
-                    allowAgentDefault
+                    allowSpecialistDefault
                     defaultModel={agents.find((agent) => agent.id === form.agentId)?.defaultModel}
                     onChange={(model) => updateForm({ model })}
                     placement="down"
@@ -3669,8 +3671,8 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
               <section className="rounded-xl border border-border bg-surface p-4">
                 <h2 className="font-semibold text-text-primary">Permission profile</h2>
                 <p className="mt-1 text-sm leading-6 text-text-secondary">
-                  This UI currently inherits the assigned agent permissions. Task runs still persist
-                  their effective permission snapshot and auto-approve task-safe rules.
+                  This UI currently inherits the assigned specialist permissions. Task runs still
+                  persist their effective permission snapshot and auto-approve task-safe rules.
                 </p>
               </section>
 
@@ -3710,7 +3712,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
           : {
               ...current.prompt,
               mentionedFiles: [],
-              mentionedAgents: [],
+              mentionedSpecialists: [],
               selectedSkill: null,
             },
     }));
@@ -3738,7 +3740,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
 
 type FormState = {
   agentId: string;
-  /** Optional qualified `provider/model` override; empty = use the agent default. */
+  /** Optional qualified `provider/model` override; empty = use the specialist default. */
   model: string;
   fallbackModels: string[];
   title: string;
@@ -4543,10 +4545,12 @@ function formatTaskModel(task: Task, agent?: Specialist): string {
   if (task.model) {
     return task.model;
   }
-  return agent?.defaultModel ? `${agent.defaultModel} (agent default)` : "Specialist's default";
+  return agent?.defaultModel
+    ? `${agent.defaultModel} (specialist default)`
+    : "Specialist's default";
 }
 
-/** True when the task pins a model that differs from its agent's default. */
+/** True when the task pins a model that differs from its specialist default. */
 function hasTaskModelOverride(task: Task, agent?: Specialist): boolean {
   return Boolean(task.model && task.model !== agent?.defaultModel);
 }

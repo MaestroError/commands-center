@@ -55,11 +55,11 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
-    expect(result.current.file?.path).toBe("agents/planner/README.md");
-    expect(result.current.file?.draft).toBe("content of agents/planner/README.md");
+    expect(result.current.file?.path).toBe("specialists/planner/README.md");
+    expect(result.current.file?.draft).toBe("content of specialists/planner/README.md");
   });
 
   it("prompts before closing a dirty file and respects cancel", async () => {
@@ -67,7 +67,7 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     act(() => {
@@ -92,14 +92,14 @@ describe("useQuickFile", () => {
 
   it("saves and clears dirty state", async () => {
     vi.mocked(saveFileManagerFileContent).mockResolvedValue({
-      path: "agents/planner/README.md",
+      path: "specialists/planner/README.md",
       revision: { mtimeMs: 2, sizeBytes: 6, sha256: "b".repeat(64) },
     });
 
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     act(() => {
@@ -112,7 +112,7 @@ describe("useQuickFile", () => {
 
     expect(saveFileManagerFileContent).toHaveBeenCalledWith({
       root: "workspace",
-      path: "agents/planner/README.md",
+      path: "specialists/planner/README.md",
       content: "next",
       expectedRevision: baseRevision,
     });
@@ -125,11 +125,11 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     expect(getFileManagerFileContent).toHaveBeenCalledTimes(2);
@@ -141,7 +141,7 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     act(() => {
@@ -149,19 +149,19 @@ describe("useQuickFile", () => {
     });
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/writer/notes.md" });
+      await result.current.open({ root: "workspace", path: "specialists/writer/notes.md" });
     });
 
     expect(confirmSpy).toHaveBeenCalledWith("Discard unsaved changes to README.md?");
-    expect(result.current.file?.path).toBe("agents/planner/README.md");
+    expect(result.current.file?.path).toBe("specialists/planner/README.md");
 
     confirmSpy.mockReturnValue(true);
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/writer/notes.md" });
+      await result.current.open({ root: "workspace", path: "specialists/writer/notes.md" });
     });
 
-    expect(result.current.file?.path).toBe("agents/writer/notes.md");
+    expect(result.current.file?.path).toBe("specialists/writer/notes.md");
   });
 
   it("stores fallback errors when loading a file fails", async () => {
@@ -169,11 +169,11 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     expect(result.current.file).toMatchObject({
-      path: "agents/planner/README.md",
+      path: "specialists/planner/README.md",
       loading: false,
       error: "Failed to load file.",
     });
@@ -187,7 +187,7 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     act(() => {
@@ -208,7 +208,7 @@ describe("useQuickFile", () => {
     });
 
     expect(result.current.conflict).toBeUndefined();
-    expect(result.current.file?.draft).toBe("content of agents/planner/README.md");
+    expect(result.current.file?.draft).toBe("content of specialists/planner/README.md");
   });
 
   it("uses override revisions and reports generic save failures", async () => {
@@ -217,7 +217,7 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     act(() => {
@@ -230,7 +230,7 @@ describe("useQuickFile", () => {
 
     expect(saveFileManagerFileContent).toHaveBeenLastCalledWith({
       root: "workspace",
-      path: "agents/planner/README.md",
+      path: "specialists/planner/README.md",
       content: "edited again",
       expectedRevision: overrideRevision,
     });
@@ -240,7 +240,7 @@ describe("useQuickFile", () => {
   it("keeps binary files unchanged when updating drafts and skips saving without a text revision", async () => {
     vi.mocked(getFileManagerFileContent).mockResolvedValueOnce({
       root: "workspace",
-      path: "agents/planner/image.png",
+      path: "specialists/planner/image.png",
       absolutePath: "/abs/specialists/planner/image.png",
       name: "image.png",
       kind: "binary",
@@ -252,7 +252,7 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/image.png" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/image.png" });
     });
 
     act(() => {
@@ -264,7 +264,7 @@ describe("useQuickFile", () => {
     });
 
     expect(result.current.file).toMatchObject({
-      path: "agents/planner/image.png",
+      path: "specialists/planner/image.png",
       kind: "binary",
       dirty: false,
       binaryContentBase64: "ZmFrZQ==",
@@ -289,7 +289,7 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     act(() => {
@@ -308,7 +308,7 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     let closed = false;
@@ -334,7 +334,7 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      await result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     act(() => {
@@ -343,11 +343,11 @@ describe("useQuickFile", () => {
     });
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/writer/notes.md" });
+      await result.current.open({ root: "workspace", path: "specialists/writer/notes.md" });
     });
 
     resolveSave?.({
-      path: "agents/planner/README.md",
+      path: "specialists/planner/README.md",
       revision: { mtimeMs: 2, sizeBytes: 10, sha256: "d".repeat(64) },
     });
 
@@ -356,8 +356,8 @@ describe("useQuickFile", () => {
     });
 
     expect(confirmSpy).toHaveBeenCalledWith("Discard unsaved changes to README.md?");
-    expect(result.current.file?.path).toBe("agents/writer/notes.md");
-    expect(result.current.file?.baseline).toBe("content of agents/writer/notes.md");
+    expect(result.current.file?.path).toBe("specialists/writer/notes.md");
+    expect(result.current.file?.baseline).toBe("content of specialists/writer/notes.md");
   });
 
   it("ignores an older file load that resolves after a newer open request", async () => {
@@ -389,16 +389,16 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     act(() => {
-      void result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      void result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/writer/notes.md" });
+      await result.current.open({ root: "workspace", path: "specialists/writer/notes.md" });
     });
 
     resolveFirst?.({
       root: "workspace",
-      path: "agents/planner/README.md",
+      path: "specialists/planner/README.md",
       absolutePath: "/abs/specialists/planner/README.md",
       name: "README.md",
       kind: "text",
@@ -412,8 +412,8 @@ describe("useQuickFile", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.file?.path).toBe("agents/writer/notes.md");
-    expect(result.current.file?.baseline).toBe("content of agents/writer/notes.md");
+    expect(result.current.file?.path).toBe("specialists/writer/notes.md");
+    expect(result.current.file?.baseline).toBe("content of specialists/writer/notes.md");
   });
 
   it("ignores an older file load failure after a newer open request", async () => {
@@ -443,11 +443,11 @@ describe("useQuickFile", () => {
     const { result } = renderHook(() => useQuickFile());
 
     act(() => {
-      void result.current.open({ root: "workspace", path: "agents/planner/README.md" });
+      void result.current.open({ root: "workspace", path: "specialists/planner/README.md" });
     });
 
     await act(async () => {
-      await result.current.open({ root: "workspace", path: "agents/writer/notes.md" });
+      await result.current.open({ root: "workspace", path: "specialists/writer/notes.md" });
     });
 
     rejectFirst?.(new Error("stale failure"));
@@ -456,7 +456,7 @@ describe("useQuickFile", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.file?.path).toBe("agents/writer/notes.md");
+    expect(result.current.file?.path).toBe("specialists/writer/notes.md");
     expect(result.current.file?.error).toBeUndefined();
   });
 });

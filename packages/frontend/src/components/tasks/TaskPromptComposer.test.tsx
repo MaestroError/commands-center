@@ -31,7 +31,7 @@ describe("TaskPromptComposer", () => {
     expect(await screen.findByRole("button", { name: /\/components/i })).toBeInTheDocument();
   });
 
-  it("adds and removes the delegated agent mention from the prompt", async () => {
+  it("adds and removes the delegated specialist mention from the prompt", async () => {
     const user = userEvent.setup();
 
     renderComposer();
@@ -47,7 +47,7 @@ describe("TaskPromptComposer", () => {
     expect(screen.queryByText("@Reviewer")).not.toBeInTheDocument();
   });
 
-  it("replaces the delegated agent mention when another agent is selected", async () => {
+  it("replaces the delegated specialist mention when another agent is selected", async () => {
     const user = userEvent.setup();
 
     renderComposer();

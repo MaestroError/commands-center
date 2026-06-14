@@ -15,7 +15,7 @@ import {
   setMcpServerAction,
   setMcpServerEnabled,
   upsertMcpServerSelection,
-} from "./agent-capabilities";
+} from "./specialist-capabilities";
 
 function makeCapabilities(
   overrides: Partial<SpecialistCapabilitySelection> = {},
@@ -32,7 +32,7 @@ function makeCapabilities(
   };
 }
 
-describe("agent-capabilities", () => {
+describe("specialist-capabilities", () => {
   it("selects mcp and app mcp server overrides by name", () => {
     const capabilities = makeCapabilities({
       mcpServers: [{ name: "filesystem", enabled: true, action: "allow" }],

@@ -489,7 +489,7 @@ describe("TasksPage", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows the agent default model in the overview when no override is set", async () => {
+  it("shows the specialist default model in the overview when no override is set", async () => {
     mockFetch();
 
     renderWithRouter(<TasksPage />, "/tasks");
@@ -500,7 +500,7 @@ describe("TasksPage", () => {
     const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
     const details = within(panel).getByRole("region", { name: "Overview details" });
     expect(within(details).getByText("Model")).toBeInTheDocument();
-    expect(within(details).getByText("openai/gpt-4.1 (agent default)")).toBeInTheDocument();
+    expect(within(details).getByText("openai/gpt-4.1 (specialist default)")).toBeInTheDocument();
     // No override → no model pill in the header.
     expect(within(panel).queryByTitle("Model override for this task")).not.toBeInTheDocument();
   });
@@ -873,7 +873,7 @@ describe("TasksPage", () => {
     expect(screen.queryByRole("button", { name: "Retry subtask" })).not.toBeInTheDocument();
   });
 
-  it("submits feedback with file, skill, and agent mentions from the board panel", async () => {
+  it("submits feedback with file, skill, and specialist mentions from the board panel", async () => {
     const fetchMock = mockFetch({
       agentsPayload: [
         {
@@ -1499,7 +1499,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Create template" }));
     await user.type(screen.getByLabelText("Title"), "Reusable release checklist");
-    await user.selectOptions(screen.getByLabelText("Default agent"), "agent-1");
+    await user.selectOptions(screen.getByLabelText("Default specialist"), "agent-1");
     await user.type(screen.getByLabelText("Task prompt"), "Draft release notes.");
     const createButtons = screen.getAllByRole("button", { name: "Create template" });
     expect(createButtons[1]).toBeDefined();
@@ -1928,8 +1928,8 @@ describe("TasksPage", () => {
 
     const user = userEvent.setup();
     const prompt = "Draft nightly release notes for the platform launch and summarize blockers";
-    await screen.findByRole("combobox", { name: /Assigned agent/i });
-    await user.selectOptions(screen.getByLabelText(/Assigned agent/i), "agent-1");
+    await screen.findByRole("combobox", { name: /Assigned specialist/i });
+    await user.selectOptions(screen.getByLabelText(/Assigned specialist/i), "agent-1");
     expect(
       screen.queryByText("Browse workspace files and drag relevant files into the task prompt."),
     ).not.toBeInTheDocument();
@@ -1961,9 +1961,9 @@ describe("TasksPage", () => {
     renderWithRouter(<TasksPage mode="create" />, "/tasks/new");
 
     const user = userEvent.setup();
-    await screen.findByRole("combobox", { name: /Assigned agent/i });
+    await screen.findByRole("combobox", { name: /Assigned specialist/i });
     await user.type(screen.getByLabelText(/Title/i), "Requirements review");
-    await user.selectOptions(screen.getByLabelText(/Assigned agent/i), "agent-1");
+    await user.selectOptions(screen.getByLabelText(/Assigned specialist/i), "agent-1");
     await user.type(screen.getByLabelText(/Task prompt/i), "#GOAL");
     await user.click(await screen.findByRole("button", { name: /GOAL.md/i }));
     await user.type(screen.getByLabelText(/Task prompt/i), "/code");
@@ -2010,9 +2010,9 @@ describe("TasksPage", () => {
     });
 
     const user = userEvent.setup();
-    await screen.findByRole("combobox", { name: /Assigned agent/i });
+    await screen.findByRole("combobox", { name: /Assigned specialist/i });
 
-    expect(screen.getByLabelText(/Assigned agent/i)).toHaveValue("agent-1");
+    expect(screen.getByLabelText(/Assigned specialist/i)).toHaveValue("agent-1");
     expect(screen.getByLabelText(/Task prompt/i)).toHaveValue("Update requirements");
     expect(screen.getByText("/code-reviewer")).toBeInTheDocument();
     expect(screen.getByText("GOAL.md")).toBeInTheDocument();
@@ -2033,7 +2033,7 @@ describe("TasksPage", () => {
     });
   });
 
-  it("clears converted message references when assigned agent changes", async () => {
+  it("clears converted message references when assigned specialist changes", async () => {
     const skilledAgent: Specialist = {
       ...agent,
       capabilities: {
@@ -2066,9 +2066,9 @@ describe("TasksPage", () => {
     });
 
     const user = userEvent.setup();
-    await screen.findByRole("combobox", { name: /Assigned agent/i });
+    await screen.findByRole("combobox", { name: /Assigned specialist/i });
 
-    await user.selectOptions(screen.getByLabelText(/Assigned agent/i), "agent-2");
+    await user.selectOptions(screen.getByLabelText(/Assigned specialist/i), "agent-2");
 
     expect(screen.getByLabelText(/Task prompt/i)).toHaveValue("Update requirements");
     expect(screen.queryByText("/code-reviewer")).not.toBeInTheDocument();
@@ -2096,7 +2096,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Create template" }));
     await user.type(screen.getByLabelText("Title"), "Hourly review");
-    await user.selectOptions(screen.getByLabelText("Default agent"), "agent-1");
+    await user.selectOptions(screen.getByLabelText("Default specialist"), "agent-1");
     await user.click(screen.getByLabelText(/Repeat on a schedule/i));
     await user.selectOptions(screen.getByLabelText(/^Repeat$/i), "custom");
     await user.selectOptions(screen.getByLabelText(/Unit/i), "hour");
@@ -2458,7 +2458,7 @@ describe("TaskDetailPage", () => {
     expect(screen.queryByRole("button", { name: "Continue in chat" })).not.toBeInTheDocument();
   });
 
-  it("hides continue in chat when the agent slug cannot be resolved", async () => {
+  it("hides continue in chat when the specialist slug cannot be resolved", async () => {
     mockFetch({ agentsPayload: [] });
 
     renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");
@@ -2695,7 +2695,7 @@ describe("TaskDetailPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens chat with the agent slug in the URL", async () => {
+  it("opens chat with the specialist slug in the URL", async () => {
     mockFetch();
 
     renderWithRouter(<TaskDetailPage mode="run" />, "/tasks/task-1/runs/run-1");

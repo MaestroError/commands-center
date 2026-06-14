@@ -1,20 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  deleteAgentCustomTool,
-  copyAgentCustomToolToGlobal,
-  copyCustomToolToAgents,
+  deleteSpecialistCustomTool,
+  copySpecialistCustomToolToGlobal,
+  copyCustomToolToSpecialists,
   createCustomTool,
   deleteCustomTool,
-  listAgentCustomTools,
+  listSpecialistCustomTools,
   listCustomTools,
-  moveAgentCustomToolToGlobal,
+  moveSpecialistCustomToolToGlobal,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import type {
-  CopyCustomToolToAgentsInput,
+  CopyCustomToolToAgentsInput as CopyCustomToolToSpecialistsInput,
   CreateCustomToolInput,
-  ImportAgentCustomToolInput,
+  ImportAgentCustomToolInput as ImportSpecialistCustomToolInput,
 } from "@cc/shared/schemas";
 
 export function useCustomToolsQuery() {
@@ -24,10 +24,10 @@ export function useCustomToolsQuery() {
   });
 }
 
-export function useAgentCustomToolsQuery(agentId?: string) {
+export function useSpecialistCustomToolsQuery(agentId?: string) {
   return useQuery({
-    queryKey: queryKeys.agentCustomTools(agentId ?? "unknown"),
-    queryFn: () => listAgentCustomTools(agentId ?? ""),
+    queryKey: queryKeys.specialistCustomTools(agentId ?? "unknown"),
+    queryFn: () => listSpecialistCustomTools(agentId ?? ""),
     enabled: agentId !== undefined,
   });
 }
@@ -38,9 +38,9 @@ export function useCustomToolMutations() {
   const invalidate = async (agentIds: string[] = []) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.customTools }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.agentCatalog }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.specialistCatalog }),
       ...agentIds.map((agentId) =>
-        queryClient.invalidateQueries({ queryKey: queryKeys.agentCustomTools(agentId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.specialistCustomTools(agentId) }),
       ),
     ]);
   };
@@ -58,14 +58,14 @@ export function useCustomToolMutations() {
         await invalidate();
       },
     }),
-    copyToAgents: useMutation({
-      mutationFn: ({ slug, input }: { slug: string; input: CopyCustomToolToAgentsInput }) =>
-        copyCustomToolToAgents(slug, input),
+    copyToSpecialists: useMutation({
+      mutationFn: ({ slug, input }: { slug: string; input: CopyCustomToolToSpecialistsInput }) =>
+        copyCustomToolToSpecialists(slug, input),
       onSuccess: async (_result, variables) => {
         await invalidate(variables.input.agentIds);
       },
     }),
-    copyAgentToGlobal: useMutation({
+    copySpecialistToGlobal: useMutation({
       mutationFn: ({
         agentId,
         slug,
@@ -73,13 +73,13 @@ export function useCustomToolMutations() {
       }: {
         agentId: string;
         slug: string;
-        input: ImportAgentCustomToolInput;
-      }) => copyAgentCustomToolToGlobal(agentId, slug, input),
+        input: ImportSpecialistCustomToolInput;
+      }) => copySpecialistCustomToolToGlobal(agentId, slug, input),
       onSuccess: async (_result, variables) => {
         await invalidate([variables.agentId]);
       },
     }),
-    moveAgentToGlobal: useMutation({
+    moveSpecialistToGlobal: useMutation({
       mutationFn: ({
         agentId,
         slug,
@@ -87,15 +87,15 @@ export function useCustomToolMutations() {
       }: {
         agentId: string;
         slug: string;
-        input: ImportAgentCustomToolInput;
-      }) => moveAgentCustomToolToGlobal(agentId, slug, input),
+        input: ImportSpecialistCustomToolInput;
+      }) => moveSpecialistCustomToolToGlobal(agentId, slug, input),
       onSuccess: async (_result, variables) => {
         await invalidate([variables.agentId]);
       },
     }),
-    deleteAgentTool: useMutation({
+    deleteSpecialistTool: useMutation({
       mutationFn: ({ agentId, slug }: { agentId: string; slug: string }) =>
-        deleteAgentCustomTool(agentId, slug),
+        deleteSpecialistCustomTool(agentId, slug),
       onSuccess: async (_result, variables) => {
         await invalidate([variables.agentId]);
       },

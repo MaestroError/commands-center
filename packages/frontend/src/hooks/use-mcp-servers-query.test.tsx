@@ -141,6 +141,6 @@ describe("useMcpServersQuery", () => {
     expect(setQueryData).toHaveBeenCalledWith(queryKeys.mcpServers, refreshedServers);
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.mcpServers });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.secrets });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.agentCatalog });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.specialistCatalog });
   });
 });

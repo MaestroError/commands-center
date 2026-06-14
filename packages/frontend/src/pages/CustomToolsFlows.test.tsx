@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe("custom tools flow", () => {
-  it("supports direct copy to a selected agent and rename on conflict", async () => {
+  it("supports direct copy to a selected specialist and rename on conflict", async () => {
     const requests = mockApi({
       "GET /api/specialists": [
         jsonResponse(200, [
@@ -62,7 +62,7 @@ describe("custom tools flow", () => {
       "POST /api/custom-tools/release-helper/copy-to-specialists": [
         jsonResponse(409, {
           error: {
-            message: "Custom tool 'release-helper' already exists in this agent workspace.",
+            message: "Custom tool 'release-helper' already exists in this specialist workspace.",
           },
         }),
         jsonResponse(200, {

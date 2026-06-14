@@ -3,13 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IntegrationsPage } from "./IntegrationsPage";
 
-import { useAgentMutations, useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistMutations, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useMcpServerMutations, useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import { useSecretsQuery } from "@/hooks/use-secrets-query";
 
-vi.mock("@/hooks/use-agents-query", () => ({
-  useAgentsQuery: vi.fn(),
-  useAgentMutations: vi.fn(),
+vi.mock("@/hooks/use-specialists-query", () => ({
+  useSpecialistsQuery: vi.fn(),
+  useSpecialistMutations: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-mcp-servers-query", () => ({
@@ -29,7 +29,7 @@ const startAuthMutateAsync = vi.fn();
 const completeAuthMutateAsync = vi.fn();
 const authenticateMutateAsync = vi.fn();
 const removeAuthMutateAsync = vi.fn();
-const updateAgentMutateAsync = vi.fn();
+const updateSpecialistMutateAsync = vi.fn();
 const confirmSpy = vi.spyOn(window, "confirm");
 const writeClipboardSpy = vi.fn(() => Promise.resolve());
 
@@ -66,7 +66,7 @@ beforeEach(() => {
   completeAuthMutateAsync.mockReset();
   authenticateMutateAsync.mockReset();
   removeAuthMutateAsync.mockReset();
-  updateAgentMutateAsync.mockReset();
+  updateSpecialistMutateAsync.mockReset();
   confirmSpy.mockReset();
   confirmSpy.mockReturnValue(true);
   Object.defineProperty(window.navigator, "clipboard", {
@@ -102,7 +102,7 @@ beforeEach(() => {
     error: null,
   } as never);
 
-  vi.mocked(useAgentsQuery).mockReturnValue({
+  vi.mocked(useSpecialistsQuery).mockReturnValue({
     data: [
       {
         id: "agent-1",
@@ -135,9 +135,9 @@ beforeEach(() => {
     error: null,
   } as never);
 
-  vi.mocked(useAgentMutations).mockReturnValue({
+  vi.mocked(useSpecialistMutations).mockReturnValue({
     create: { mutateAsync: vi.fn(), isPending: false },
-    update: { mutateAsync: updateAgentMutateAsync, isPending: false },
+    update: { mutateAsync: updateSpecialistMutateAsync, isPending: false },
     archive: { mutateAsync: vi.fn(), isPending: false },
   } as never);
 });
@@ -358,7 +358,7 @@ describe("IntegrationsPage", () => {
     });
   });
 
-  it("assigns a newly created MCP server to selected agents", async () => {
+  it("assigns a newly created MCP server to selected specialists", async () => {
     createMutateAsync.mockResolvedValue({
       id: "mcp-new",
       name: "github",
@@ -375,7 +375,7 @@ describe("IntegrationsPage", () => {
       createdAt: "2026-04-22T10:00:00.000Z",
       updatedAt: "2026-04-22T10:00:00.000Z",
     });
-    updateAgentMutateAsync.mockResolvedValue(undefined);
+    updateSpecialistMutateAsync.mockResolvedValue(undefined);
 
     render(<IntegrationsPage />);
 
@@ -390,12 +390,12 @@ describe("IntegrationsPage", () => {
     fireEvent.change(screen.getByLabelText("Auth method"), {
       target: { value: "headers" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Enable for agents/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Enable for specialists/i }));
     fireEvent.click(screen.getByLabelText("Writer"));
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
 
     await waitFor(() => {
-      expect(updateAgentMutateAsync).toHaveBeenCalledWith({
+      expect(updateSpecialistMutateAsync).toHaveBeenCalledWith({
         id: "agent-1",
         input: {
           capabilities: {

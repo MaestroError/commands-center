@@ -124,21 +124,21 @@ describe("ModelSelector", () => {
     expect(screen.queryByText(/old-model/)).not.toBeInTheDocument();
   });
 
-  it("offers an agent-default entry and clears the override when chosen", async () => {
+  it("offers an specialist-default entry and clears the override when chosen", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
 
     render(
       <ModelSelector
-        allowAgentDefault
+        allowSpecialistDefault
         defaultModel="openai/gpt-5"
         onChange={onChange}
         value={null}
       />,
     );
 
-    // With no override, the pill shows the agent-default label.
+    // With no override, the pill shows the specialist-default label.
     const trigger = screen.getByRole("button", { name: "Select model" });
     expect(trigger).toHaveTextContent("Specialist's default");
 
@@ -148,14 +148,14 @@ describe("ModelSelector", () => {
     expect(onChange).toHaveBeenCalledWith("anthropic/claude-3");
   });
 
-  it("clears back to the agent default via the agent-default entry", async () => {
+  it("clears back to the specialist default via the specialist-default entry", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
 
     render(
       <ModelSelector
-        allowAgentDefault
+        allowSpecialistDefault
         defaultModel="openai/gpt-5"
         onChange={onChange}
         value="anthropic/claude-3"

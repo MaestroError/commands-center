@@ -37,7 +37,7 @@ type AgentToolRecord = {
   warnings: Array<{ code: string; message: string }>;
 };
 
-test("creates a tool, resolves copy conflict with rename, and removes agent-local copy", async ({
+test("creates a tool, resolves copy conflict with rename, and removes specialist-local copy", async ({
   page,
 }) => {
   const state = createState();
@@ -179,7 +179,9 @@ async function mockCustomToolsApi(
       await route.fulfill(
         jsonResponse(
           {
-            error: { message: `Custom tool '${nextSlug}' already exists in this agent workspace.` },
+            error: {
+              message: `Custom tool '${nextSlug}' already exists in this specialist workspace.`,
+            },
           },
           409,
         ),

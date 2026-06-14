@@ -26,7 +26,7 @@ import type {
 
 import {
   getSpecialistCatalog,
-  listAgents,
+  listSpecialists,
   listArchivedTasks,
   listCustomTools,
   listTasks,
@@ -49,7 +49,7 @@ type ResultAction = {
 
 type PaletteResult = {
   id: string;
-  group: "Agents" | "Tasks" | "Task Templates" | "Custom Tools" | "Skills" | "Files";
+  group: "Specialists" | "Tasks" | "Task Templates" | "Custom Tools" | "Skills" | "Files";
   title: string;
   subtitle?: string;
   markerIcon: React.ReactNode;
@@ -72,8 +72,8 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
   }, [props.open]);
 
   const agentsQuery = useQuery({
-    queryKey: queryKeys.agents,
-    queryFn: () => listAgents(),
+    queryKey: queryKeys.specialists,
+    queryFn: () => listSpecialists(),
     enabled: props.open,
   });
 
@@ -102,7 +102,7 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
   });
 
   const catalogQuery = useQuery({
-    queryKey: queryKeys.agentCatalog,
+    queryKey: queryKeys.specialistCatalog,
     queryFn: () => getSpecialistCatalog(),
     enabled: props.open && deferredQuery.length > 0,
   });
@@ -270,7 +270,7 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
         </div>
         <div className="max-h-[70vh] overflow-y-auto">
           {deferredQuery.length === 0 ? (
-            <EmptyState message="Search agents, tasks, custom tools, skills, and workspace files." />
+            <EmptyState message="Search specialists, tasks, custom tools, skills, and workspace files." />
           ) : isLoading ? (
             <EmptyState message="Searching resources..." />
           ) : results.length === 0 ? (
@@ -369,18 +369,18 @@ function buildAgentResult(
 ) {
   return {
     id: `agent:${agent.id}`,
-    group: "Agents",
+    group: "Specialists",
     title: agent.name,
     subtitle: `${agent.slug} · ${agent.role}`,
     markerIcon: <Bot className="h-4 w-4" />,
-    markerLabel: "Open agent",
+    markerLabel: "Open specialist",
     primaryAction: () => {
       void navigate(`/chat/${encodeURIComponent(agent.slug)}`);
       onClose();
     },
     secondaryActions: [
       {
-        label: "Edit agent",
+        label: "Edit specialist",
         icon: <Pencil className="h-4 w-4" />,
         onSelect: () => {
           void navigate(`/specialists/${encodeURIComponent(agent.slug)}/edit`);

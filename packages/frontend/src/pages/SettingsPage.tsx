@@ -135,7 +135,7 @@ function SecretRestartNotice(props: { onShowSystemTab: () => void }) {
       >
         Settings
       </button>
-      . Restarting interrupts any active agent sessions briefly.
+      . Restarting interrupts any active specialist sessions briefly.
     </p>
   );
 }
@@ -362,7 +362,7 @@ function SystemTab() {
       {confirmingRestart ? (
         <ConfirmDialog
           confirmLabel="Confirm restart"
-          description="The AI engine will be restarted. This may take a few minutes, and this instance will not be available until the restart finishes. Any active agent sessions will be interrupted."
+          description="The AI engine will be restarted. This may take a few minutes, and this instance will not be available until the restart finishes. Any active specialist sessions will be interrupted."
           onCancel={() => setConfirmingRestart(false)}
           onConfirm={() => {
             setConfirmingRestart(false);
@@ -516,7 +516,7 @@ function FileManagerTab() {
           </span>
           <span className="mt-1 block text-sm text-text-secondary">
             When disabled, files browsed from the Host Filesystem root are read-only in the editor.
-            The Workspace and All Agents roots remain editable regardless of this setting.
+            The Workspace and All Specialists roots remain editable regardless of this setting.
           </span>
         </span>
       </label>
@@ -774,7 +774,7 @@ function SecretCreateForm(props: {
             value={key}
           />
           <span className="text-xs text-text-secondary">
-            Environment variable name exposed to agents.
+            Environment variable name exposed to specialists.
           </span>
         </label>
         <label className="grid gap-2 text-sm text-text-primary">
@@ -786,7 +786,7 @@ function SecretCreateForm(props: {
             value={value}
           />
           <span className="text-xs text-text-secondary">
-            Stored encrypted in this workspace and never shown back to agents.
+            Stored encrypted in this workspace and never shown back to specialists.
           </span>
         </label>
       </div>

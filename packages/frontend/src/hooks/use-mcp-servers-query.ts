@@ -30,7 +30,7 @@ export function useMcpServerMutations() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers }),
       queryClient.invalidateQueries({ queryKey: queryKeys.secrets }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.agentCatalog }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.specialistCatalog }),
     ]);
   };
 

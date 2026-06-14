@@ -5,7 +5,7 @@ import type {
   CustomToolAgentCopy,
 } from "@cc/shared/schemas";
 
-export type AgentFormState = {
+export type SpecialistFormState = {
   name: string;
   role: string;
   instructions: string;
@@ -17,11 +17,11 @@ export type AgentFormState = {
   rewriteAgentsMd: boolean;
 };
 
-export type AgentFormErrors = Partial<
-  Record<keyof Pick<AgentFormState, "name" | "role" | "instructions" | "defaultModel">, string>
+export type SpecialistFormErrors = Partial<
+  Record<keyof Pick<SpecialistFormState, "name" | "role" | "instructions" | "defaultModel">, string>
 >;
 
-export function createEmptyAgentForm(): AgentFormState {
+export function createEmptySpecialistForm(): SpecialistFormState {
   return {
     name: "",
     role: "",
@@ -41,18 +41,18 @@ export function createEmptyAgentForm(): AgentFormState {
   };
 }
 
-export function createAgentFormFromAgent(
+export function createSpecialistFormFromSpecialist(
   catalog: SpecialistCatalog,
-  agent?: Specialist,
-): AgentFormState {
-  const existingCapabilities = agent?.capabilities ?? createEmptyAgentForm().capabilities;
+  specialist?: Specialist,
+): SpecialistFormState {
+  const existingCapabilities = specialist?.capabilities ?? createEmptySpecialistForm().capabilities;
 
   return {
-    name: agent?.name ?? "",
-    role: agent?.role ?? "",
-    instructions: agent?.instructions ?? "",
-    iconPath: agent?.iconPath ?? "",
-    defaultModel: resolveInitialModelId(catalog, agent?.defaultModel),
+    name: specialist?.name ?? "",
+    role: specialist?.role ?? "",
+    instructions: specialist?.instructions ?? "",
+    iconPath: specialist?.iconPath ?? "",
+    defaultModel: resolveInitialModelId(catalog, specialist?.defaultModel),
     capabilities: {
       builtInSkills: existingCapabilities.builtInSkills,
       workspaceSkills: existingCapabilities.workspaceSkills ?? [],
@@ -66,15 +66,15 @@ export function createAgentFormFromAgent(
   };
 }
 
-export function validateAgentForm(
-  form: AgentFormState,
+export function validateSpecialistForm(
+  form: SpecialistFormState,
   options: { hasProviderModels: boolean; slugTaken: boolean },
-): AgentFormErrors {
+): SpecialistFormErrors {
   return {
     name: !form.name.trim()
       ? "Name is required."
       : options.slugTaken
-        ? `Identifier '${agentFormSlug(form.name)}' is already in use.`
+        ? `Identifier '${specialistFormSlug(form.name)}' is already in use.`
         : undefined,
     role: form.role.trim() ? undefined : "Role is required.",
     instructions: form.instructions.trim() ? undefined : "Instructions are required.",
@@ -87,9 +87,9 @@ export function validateAgentForm(
 
 export function resolveCustomToolOverwriteSlugs(
   selectedSlugs: string[],
-  agentTools: CustomToolAgentCopy[],
+  specialistTools: CustomToolAgentCopy[],
 ): string[] | undefined {
-  const collisions = agentTools.filter(
+  const collisions = specialistTools.filter(
     (tool) =>
       selectedSlugs.includes(tool.slug) && (!tool.isManaged || tool.sourceToolSlug !== tool.slug),
   );
@@ -99,13 +99,13 @@ export function resolveCustomToolOverwriteSlugs(
   }
 
   const confirmed = window.confirm(
-    `The agent already has local tool copies for: ${collisions.map((tool) => tool.slug).join(", ")}. Overwrite them with the selected global versions?`,
+    `The specialist already has local tool copies for: ${collisions.map((tool) => tool.slug).join(", ")}. Overwrite them with the selected global versions?`,
   );
 
   return confirmed ? collisions.map((tool) => tool.slug) : undefined;
 }
 
-export function agentFormSlug(value: string): string {
+export function specialistFormSlug(value: string): string {
   const slug = value
     .toLowerCase()
     .trim()
@@ -113,7 +113,7 @@ export function agentFormSlug(value: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
 
-  return slug || "agent";
+  return slug || "specialist";
 }
 
 export function resolveInitialModelId(catalog: SpecialistCatalog, currentModel?: string): string {

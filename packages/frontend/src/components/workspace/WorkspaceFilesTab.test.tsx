@@ -170,7 +170,7 @@ describe("WorkspaceFilesTab", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("location-probe")).toHaveTextContent(
-        "/files?root=workspace&path=agents%2Ftesting-agent&select=agents%2Ftesting-agent%2FREADME.md",
+        "/files?root=workspace&path=specialists%2Ftesting-agent&select=specialists%2Ftesting-agent%2FREADME.md",
       );
     });
   });
@@ -247,7 +247,7 @@ describe("WorkspaceFilesTab", () => {
     await waitFor(() => {
       expect(api.createFileManagerEntry).toHaveBeenCalledWith({
         root: "workspace",
-        parentPath: "agents/testing-agent",
+        parentPath: "specialists/testing-agent",
         name: "new-folder",
         type: "directory",
       });
@@ -268,7 +268,7 @@ describe("WorkspaceFilesTab", () => {
     await waitFor(() => {
       expect(api.deleteFileManagerEntry).toHaveBeenCalledWith({
         root: "workspace",
-        path: "agents/testing-agent/README.md",
+        path: "specialists/testing-agent/README.md",
       });
     });
   });

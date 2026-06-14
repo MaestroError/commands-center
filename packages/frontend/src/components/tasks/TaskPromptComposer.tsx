@@ -23,7 +23,7 @@ type TaskPromptComposerProps = {
 export function TaskPromptComposer(props: TaskPromptComposerProps) {
   const { agentId, agents = [], disabled, fileSearchAgentId, onChange, skills, value } = props;
   const effectiveFileSearchAgentId = fileSearchAgentId === undefined ? agentId : fileSearchAgentId;
-  const [activePopover, setActivePopover] = useState<"agent" | "file" | "slash" | null>(null);
+  const [activePopover, setActivePopover] = useState<"specialist" | "file" | "slash" | null>(null);
   const [popoverQuery, setPopoverQuery] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popoverKeyHandlerRef = useRef<((event: React.KeyboardEvent) => boolean) | null>(null);
@@ -55,7 +55,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
     const agentMatch = beforeCursor.match(/@(\S*)$/);
 
     if (agentMatch && agents.length > 0) {
-      setActivePopover("agent");
+      setActivePopover("specialist");
       setPopoverQuery(agentMatch[1] ?? "");
       return;
     }
@@ -170,7 +170,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
     [getCursorPosition, setCursorPosition, updateValue],
   );
 
-  const handleAgentMentionSelect = useCallback(
+  const handleSpecialistMentionSelect = useCallback(
     (agent: { id: string; name: string }) => {
       const currentValue = valueRef.current;
       const mentionedAgents = [agent];
@@ -249,7 +249,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
     [updateValue, value.mentionedFiles],
   );
 
-  const handleRemoveAgentMention = useCallback(
+  const handleRemoveSpecialistMention = useCallback(
     (id: string) => {
       updateValue({
         mentionedAgents: (value.mentionedAgents ?? []).filter((agent) => agent.id !== id),
@@ -265,7 +265,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
       }
 
       updateValue({ text: shortcut });
-      setActivePopover(shortcut === "#" ? "file" : shortcut === "@" ? "agent" : "slash");
+      setActivePopover(shortcut === "#" ? "file" : shortcut === "@" ? "specialist" : "slash");
       setPopoverQuery("");
 
       setTimeout(() => {
@@ -280,9 +280,9 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
     props.placeholder ??
     (value.selectedSkill
       ? `Prompt for /${value.selectedSkill.slug}...`
-      : 'Describe the task prompt... Use "#" for files, "/" for skills, and "@" for agents');
+      : 'Describe the task prompt... Use "#" for files, "/" for skills, and "@" for specialists');
   const mentionedAgents = value.mentionedAgents ?? [];
-  const agentOptions = agents.filter((agent) =>
+  const specialistOptions = agents.filter((agent) =>
     agent.name.toLowerCase().includes(popoverQuery.toLowerCase()),
   );
 
@@ -332,14 +332,14 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
           {mentionedAgents.map((agent) => (
             <span
               className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-1 text-xs font-medium text-emerald-400"
-              data-testid={`task-agent-mention-chip-${agent.id}`}
+              data-testid={`task-specialist-mention-chip-${agent.id}`}
               key={agent.id}
               title={agent.name}
             >
               @{agent.name}
               <button
                 className="ml-0.5 rounded-full p-0.5 hover:bg-emerald-500/20"
-                onClick={() => handleRemoveAgentMention(agent.id)}
+                onClick={() => handleRemoveSpecialistMention(agent.id)}
                 type="button"
               >
                 x
@@ -374,7 +374,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
               onClick={() => activateShortcut("@")}
               type="button"
             >
-              @ agents
+              @ specialists
             </button>
           </div>
         ) : null}
@@ -391,11 +391,11 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
           ref={textareaRef}
           value={value.text}
         />
-        {activePopover === "agent" ? (
-          <AgentMentionPopover
-            agents={agentOptions}
+        {activePopover === "specialist" ? (
+          <SpecialistMentionPopover
+            agents={specialistOptions}
             onClose={() => setActivePopover(null)}
-            onSelect={handleAgentMentionSelect}
+            onSelect={handleSpecialistMentionSelect}
             registerKeyHandler={(handler) => {
               popoverKeyHandlerRef.current = handler;
             }}
@@ -431,7 +431,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
   );
 }
 
-function AgentMentionPopover(props: {
+function SpecialistMentionPopover(props: {
   agents: { id: string; name: string }[];
   onClose: () => void;
   onSelect: (agent: { id: string; name: string }) => void;
@@ -473,7 +473,7 @@ function AgentMentionPopover(props: {
   return (
     <div className="absolute left-3 right-3 top-3 z-20 max-h-56 overflow-auto rounded-xl border border-border bg-surface-elevated p-2 shadow-xl">
       {props.agents.length === 0 ? (
-        <p className="px-3 py-2 text-sm text-text-secondary">No agents match.</p>
+        <p className="px-3 py-2 text-sm text-text-secondary">No specialists match.</p>
       ) : null}
       {props.agents.map((agent, index) => (
         <button
@@ -482,7 +482,7 @@ function AgentMentionPopover(props: {
               ? "bg-accent text-accent-contrast"
               : "text-text-primary hover:bg-surface"
           }`}
-          data-testid={`task-agent-mention-option-${agent.id}`}
+          data-testid={`task-specialist-mention-option-${agent.id}`}
           key={agent.id}
           onClick={() => props.onSelect(agent)}
           onMouseEnter={() => setActiveIndex(index)}
@@ -492,7 +492,7 @@ function AgentMentionPopover(props: {
         </button>
       ))}
       <button className="sr-only" onClick={props.onClose} type="button">
-        Close agent mentions
+        Close specialist mentions
       </button>
     </div>
   );

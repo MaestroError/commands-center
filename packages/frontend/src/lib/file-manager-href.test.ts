@@ -7,7 +7,7 @@ import { buildFileManagerHref } from "./file-manager-href";
 describe("buildFileManagerHref", () => {
   it("builds a workspace file href from a non-files route", () => {
     const href = buildFileManagerHref({
-      path: "agents/planner/README.md",
+      path: "specialists/planner/README.md",
       currentPathname: "/settings",
       currentSearch: "?ignored=true",
     });
@@ -15,21 +15,21 @@ describe("buildFileManagerHref", () => {
 
     expect(href.startsWith("/files?")).toBe(true);
     expect(params.get("root")).toBe("workspace");
-    expect(params.get("path")).toBe("agents/planner");
-    expect(params.get("select")).toBe("agents/planner/README.md");
+    expect(params.get("path")).toBe("specialists/planner");
+    expect(params.get("select")).toBe("specialists/planner/README.md");
     expect(params.get("ignored")).toBeNull();
   });
 
   it("adds an editor tab and active key when opening in the editor", () => {
     const href = buildFileManagerHref({
-      path: "agents/planner/README.md",
+      path: "specialists/planner/README.md",
       currentPathname: "/files",
       currentSearch: "?view=list",
       openInEditor: true,
     });
     const params = new URLSearchParams(href.replace("/files?", ""));
     const tabs = parseTabsParam(params.get("tabs"));
-    const activeKey = makeTabKey("workspace", "agents/planner/README.md");
+    const activeKey = makeTabKey("workspace", "specialists/planner/README.md");
 
     expect(params.get("view")).toBe("list");
     expect(params.get("active")).toBe(activeKey);
@@ -37,17 +37,17 @@ describe("buildFileManagerHref", () => {
       expect.objectContaining({
         key: activeKey,
         root: "workspace",
-        path: "agents/planner/README.md",
+        path: "specialists/planner/README.md",
         name: "README.md",
       }),
     ]);
   });
 
   it("does not duplicate an already open editor tab", () => {
-    const key = makeTabKey("workspace", "agents/planner/README.md");
-    const existingTabs = "workspace:agents%2Fplanner%2FREADME.md";
+    const key = makeTabKey("workspace", "specialists/planner/README.md");
+    const existingTabs = "workspace:specialists%2Fplanner%2FREADME.md";
     const href = buildFileManagerHref({
-      path: "agents/planner/README.md",
+      path: "specialists/planner/README.md",
       currentPathname: "/files",
       currentSearch: `?tabs=${existingTabs}`,
       openInEditor: true,

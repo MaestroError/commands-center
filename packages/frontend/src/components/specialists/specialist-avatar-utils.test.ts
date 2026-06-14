@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { parseAgentAvatar, readInitials, resolveIconComponent } from "./agent-avatar-utils";
+import {
+  parseSpecialistAvatar,
+  readInitials,
+  resolveIconComponent,
+} from "./specialist-avatar-utils";
 
-describe("agent-avatar-utils", () => {
+describe("specialist-avatar-utils", () => {
   it.each([
     ["Ada Lovelace", "AL"],
     ["single", "SI"],
@@ -25,13 +29,13 @@ describe("agent-avatar-utils", () => {
     ["data:image/png;base64,abc", { type: "image", src: "data:image/png;base64,abc" }],
     ["🧠", { type: "emoji", value: "🧠" }],
   ] as const)("parses %s", (iconPath, expected) => {
-    expect(parseAgentAvatar("Ada Lovelace", iconPath)).toEqual(expected);
+    expect(parseSpecialistAvatar("Ada Lovelace", iconPath)).toEqual(expected);
   });
 
   it.each(["", "   ", "icon:not-real", "emoji:   ", "plain text"])(
     "falls back to initials for %s",
     (iconPath) => {
-      expect(parseAgentAvatar("Ada Lovelace", iconPath)).toEqual({
+      expect(parseSpecialistAvatar("Ada Lovelace", iconPath)).toEqual({
         type: "initials",
         value: "AL",
       });

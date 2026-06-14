@@ -51,13 +51,13 @@ const LUCIDE_ICON_MAP = {
   wrench: Wrench,
 } satisfies Record<string, LucideIcon>;
 
-export type ParsedAgentAvatar =
+export type ParsedSpecialistAvatar =
   | { type: "image"; src: string }
   | { type: "emoji"; value: string }
   | { type: "icon"; value: string }
   | { type: "initials"; value: string };
 
-export function parseAgentAvatar(name: string, iconPath?: string): ParsedAgentAvatar {
+export function parseSpecialistAvatar(name: string, iconPath?: string): ParsedSpecialistAvatar {
   const value = iconPath?.trim();
 
   if (!value) {

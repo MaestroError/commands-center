@@ -2,7 +2,7 @@ import {
   specialistCatalogSchema,
   apiTokenListResponseSchema,
   cancelTaskRunInputSchema,
-  copyCustomToolToAgentsInputSchema,
+  copyCustomToolToAgentsInputSchema as copyCustomToolToSpecialistsInputSchema,
   createTaskArtifactShareLinkInputSchema,
   createTaskArtifactShareLinkResponseSchema,
   customToolAgentCopyListSchema,
@@ -111,7 +111,7 @@ import {
   type ApiTokenListResponse,
   type ApiTokenScope,
   type CancelTaskRunInput,
-  type CopyCustomToolToAgentsInput,
+  type CopyCustomToolToAgentsInput as CopyCustomToolToSpecialistsInput,
   type CreateCustomToolInput,
   type CustomTool,
   type CustomToolAgentCopy,
@@ -149,7 +149,7 @@ import {
   type FileManagerUploadResponse,
   type FileManagerUpdatePreferencesInput,
   type GlobalSearchWorkspaceFilesResponse,
-  type ImportAgentCustomToolInput,
+  type ImportAgentCustomToolInput as ImportSpecialistCustomToolInput,
   type LiveRequestCancelInput,
   type LiveRequestResolveInput,
   type LiveRequestResolveResult,
@@ -505,7 +505,7 @@ export async function cancelLiveRequest(
   );
 }
 
-export async function listAgents(): Promise<Specialist[]> {
+export async function listSpecialists(): Promise<Specialist[]> {
   return requestJson<Specialist[]>("/api/specialists", specialistListSchema);
 }
 
@@ -522,7 +522,7 @@ export async function searchWorkspaceFiles(
   );
 }
 
-export async function getAgentBySlug(slug: string): Promise<Specialist> {
+export async function getSpecialistBySlug(slug: string): Promise<Specialist> {
   return requestJson<Specialist>(
     `/api/specialists/by-slug/${encodeURIComponent(slug)}`,
     specialistSchema,
@@ -650,31 +650,31 @@ export async function updateWorkspaceSkillCategory(
   return workspaceSkillMutationResultSchema.parse(payload);
 }
 
-export async function copyCustomToolToAgents(
+export async function copyCustomToolToSpecialists(
   slug: string,
-  input: CopyCustomToolToAgentsInput,
+  input: CopyCustomToolToSpecialistsInput,
 ): Promise<{ copied: Array<{ agentId: string; agentSlug: string; overwritten: boolean }> }> {
   return requestJson(
     `/api/custom-tools/${encodeURIComponent(slug)}/copy-to-specialists`,
     customToolBulkCopyResultSchema,
     {
       method: "POST",
-      body: copyCustomToolToAgentsInputSchema.parse(input),
+      body: copyCustomToolToSpecialistsInputSchema.parse(input),
     },
   );
 }
 
-export async function listAgentCustomTools(agentId: string): Promise<CustomToolAgentCopy[]> {
+export async function listSpecialistCustomTools(agentId: string): Promise<CustomToolAgentCopy[]> {
   return requestJson<CustomToolAgentCopy[]>(
     `/api/specialists/${encodeURIComponent(agentId)}/custom-tools`,
     customToolAgentCopyListSchema,
   );
 }
 
-export async function copyAgentCustomToolToGlobal(
+export async function copySpecialistCustomToolToGlobal(
   agentId: string,
   slug: string,
-  input: ImportAgentCustomToolInput,
+  input: ImportSpecialistCustomToolInput,
 ): Promise<CustomToolMutationResult> {
   return requestJson<CustomToolMutationResult>(
     `/api/specialists/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}/copy-to-global`,
@@ -686,10 +686,10 @@ export async function copyAgentCustomToolToGlobal(
   );
 }
 
-export async function moveAgentCustomToolToGlobal(
+export async function moveSpecialistCustomToolToGlobal(
   agentId: string,
   slug: string,
-  input: ImportAgentCustomToolInput,
+  input: ImportSpecialistCustomToolInput,
 ): Promise<CustomToolMutationResult> {
   return requestJson<CustomToolMutationResult>(
     `/api/specialists/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}/move-to-global`,
@@ -701,7 +701,7 @@ export async function moveAgentCustomToolToGlobal(
   );
 }
 
-export async function deleteAgentCustomTool(agentId: string, slug: string): Promise<void> {
+export async function deleteSpecialistCustomTool(agentId: string, slug: string): Promise<void> {
   const response = await apiFetch(
     `/api/specialists/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}`,
     {
@@ -715,21 +715,24 @@ export async function deleteAgentCustomTool(agentId: string, slug: string): Prom
   }
 }
 
-export async function createAgent(input: CreateSpecialistInput): Promise<Specialist> {
+export async function createSpecialist(input: CreateSpecialistInput): Promise<Specialist> {
   return requestJson<Specialist>("/api/specialists", specialistSchema, {
     method: "POST",
     body: createSpecialistInputSchema.parse(input),
   });
 }
 
-export async function updateAgent(id: string, input: UpdateSpecialistInput): Promise<Specialist> {
+export async function updateSpecialist(
+  id: string,
+  input: UpdateSpecialistInput,
+): Promise<Specialist> {
   return requestJson<Specialist>(`/api/specialists/${encodeURIComponent(id)}`, specialistSchema, {
     method: "PATCH",
     body: updateSpecialistInputSchema.parse(input),
   });
 }
 
-export async function archiveAgent(id: string): Promise<Specialist> {
+export async function archiveSpecialist(id: string): Promise<Specialist> {
   return requestJson<Specialist>(`/api/specialists/${encodeURIComponent(id)}`, specialistSchema, {
     method: "DELETE",
   });

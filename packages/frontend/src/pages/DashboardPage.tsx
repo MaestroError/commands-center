@@ -4,7 +4,7 @@ export function DashboardPage() {
   return (
     <div className="grid gap-4">
       <PageHeader
-        description="Overview of your workspace, agents, and system health."
+        description="Overview of your workspace, specialists, and system health."
         eyebrow="Dashboard"
         title="Dashboard"
       />

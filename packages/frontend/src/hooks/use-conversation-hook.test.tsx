@@ -9,8 +9,8 @@ import type {
   ConversationSnapshot,
 } from "@cc/shared/schemas";
 
-vi.mock("@/hooks/use-agents-query", () => ({
-  useAgentQuery: vi.fn(),
+vi.mock("@/hooks/use-specialists-query", () => ({
+  useSpecialistQuery: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -30,7 +30,7 @@ vi.mock("@/lib/api", () => ({
   summarizeConversation: vi.fn(),
 }));
 
-import { useAgentQuery } from "@/hooks/use-agents-query";
+import { useSpecialistQuery } from "@/hooks/use-specialists-query";
 import {
   abortConversation,
   cancelLiveRequest,
@@ -123,10 +123,10 @@ describe("useConversation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
-    vi.mocked(useAgentQuery).mockReturnValue({
+    vi.mocked(useSpecialistQuery).mockReturnValue({
       data: makeAgent(),
       error: null,
-    } as ReturnType<typeof useAgentQuery>);
+    } as ReturnType<typeof useSpecialistQuery>);
     vi.mocked(connectConversationEvents).mockImplementation(() => emptyEvents());
     vi.mocked(getActiveConversation).mockResolvedValue(makeSnapshot());
     vi.mocked(getConversation).mockResolvedValue(makeConversation({ id: "conv-specific" }));
@@ -331,7 +331,7 @@ describe("useConversation", () => {
   });
 
   it("auto-replies to permission events when auto approve is enabled", async () => {
-    window.localStorage.setItem("cc-auto-approve-writer", "true");
+    window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
     vi.mocked(connectConversationEvents).mockImplementation(() =>
       oneEvent({
         type: "permission.asked",
@@ -358,7 +358,7 @@ describe("useConversation", () => {
     expect(result.current.pendingPermission).toBeNull();
   });
 
-  it("persists auto approve changes per agent slug", async () => {
+  it("persists auto approve changes per specialist slug", async () => {
     const queryClient = createQueryClient();
     const { result } = renderHook(() => useConversation("writer"), {
       wrapper: createWrapper(queryClient),
@@ -372,7 +372,7 @@ describe("useConversation", () => {
       result.current.setAutoApprove(true);
     });
 
-    expect(window.localStorage.getItem("cc-auto-approve-writer")).toBe("true");
+    expect(window.localStorage.getItem("cc-specialist-auto-approve-writer")).toBe("true");
     expect(result.current.autoApprove).toBe(true);
   });
 });

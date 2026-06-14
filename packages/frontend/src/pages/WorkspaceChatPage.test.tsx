@@ -20,7 +20,7 @@ vi.mock("@/hooks/use-conversation", () => ({
   useConversation: (...args: unknown[]) => useConversationMock(...args) as unknown,
 }));
 
-vi.mock("@/hooks/use-agents-query", () => ({
+vi.mock("@/hooks/use-specialists-query", () => ({
   useSpecialistCatalogQuery: () => useSpecialistCatalogQueryMock() as unknown,
 }));
 
@@ -616,7 +616,7 @@ describe("WorkspaceChatPage", () => {
     expect(screen.queryByTestId("workspace-terminal-pane")).not.toBeInTheDocument();
   });
 
-  it("opens the inspection pane with an agent-scoped workspace path", async () => {
+  it("opens the inspection pane with a specialist-scoped workspace path", async () => {
     const user = userEvent.setup();
 
     mockParams = { agentId: "planner", conversationId: "conv-1" };
@@ -631,7 +631,7 @@ describe("WorkspaceChatPage", () => {
 
     expect(screen.getByTestId("quick-file-panel")).toBeInTheDocument();
     expect(screen.getByTestId("quick-file-panel")).toHaveTextContent(
-      "file:workspace:agents/planner/README.md",
+      "file:workspace:specialists/planner/README.md",
     );
   });
 
@@ -667,7 +667,7 @@ describe("WorkspaceChatPage", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("quick-file-panel")).toHaveTextContent(
-        "file:workspace:agents/planner/notes/plan.md",
+        "file:workspace:specialists/planner/notes/plan.md",
       );
     });
     expect(resolveLiveRequest).toHaveBeenCalledWith("req-1", "opened", {});
@@ -716,7 +716,7 @@ describe("WorkspaceChatPage", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("quick-file-panel")).toHaveTextContent(
-        "file:workspace:agents/testing-agent/mermaid.png",
+        "file:workspace:specialists/testing-agent/mermaid.png",
       );
     });
     expect(resolveLiveRequest).toHaveBeenCalledWith("req-1", "opened", {});

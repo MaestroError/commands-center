@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ChevronLeft, Clock3, ListChecks, Menu, Search } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
-import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { AppLogo } from "@/components/common/AppLogo";
 import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -11,13 +11,13 @@ import { useSystemVersionQuery } from "@/hooks/use-system-version-query";
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import { useTheme } from "@/context/use-theme";
 import {
-  agentsSidebarRoute,
+  specialistsSidebarRoute,
   dashboardSidebarRoute,
   getRouteTitle,
   isRouteActive,
   secondarySidebarRoutes,
 } from "@/app/routes";
-import { readRecentAgents } from "@/lib/recent-agents";
+import { readRecentSpecialists } from "@/lib/recent-specialists";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "cc-sidebar-collapsed";
 const FIRST_RUN_ENV_NOTICE_STORAGE_KEY = "cc-first-run-env-notice-dismissed";
@@ -31,7 +31,7 @@ export function AppShell() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
-  const recentAgents = readRecentAgents();
+  const recentSpecialists = readRecentSpecialists();
   const engineQuery = useEngineStatusQuery();
   const systemVersionQuery = useSystemVersionQuery();
   const activeRunsQuery = useActiveTaskRunsQuery();
@@ -115,7 +115,7 @@ export function AppShell() {
             <SidebarContent
               collapsed={sidebarCollapsed}
               pathname={pathname}
-              recentAgents={recentAgents}
+              recentSpecialists={recentSpecialists}
               onNavigate={() => undefined}
               onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
             />
@@ -136,7 +136,7 @@ export function AppShell() {
               <SidebarContent
                 collapsed={sidebarCollapsed}
                 pathname={pathname}
-                recentAgents={recentAgents}
+                recentSpecialists={recentSpecialists}
                 onNavigate={() => setMobileSidebarOpen(false)}
                 onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
               />
@@ -251,7 +251,7 @@ function FirstRunEnvNotice(props: { envFilePath: string; onClose: () => void }) 
 function SidebarContent(props: {
   pathname: string;
   collapsed: boolean;
-  recentAgents: ReturnType<typeof readRecentAgents>;
+  recentSpecialists: ReturnType<typeof readRecentSpecialists>;
   onNavigate: () => void;
   onToggleCollapsed: () => void;
 }) {
@@ -296,32 +296,34 @@ function SidebarContent(props: {
         )}
       </div>
 
-      {agentsSidebarRoute ? (
+      {specialistsSidebarRoute ? (
         <section
           className={
             isRouteActive(
               props.pathname,
-              agentsSidebarRoute.path,
-              agentsSidebarRoute.navigationMatch,
+              specialistsSidebarRoute.path,
+              specialistsSidebarRoute.navigationMatch,
             )
               ? "min-w-0 overflow-hidden rounded-xl border border-accent/30 bg-surface p-2.5 shadow-[0_18px_48px_-36px_rgba(15,23,42,0.55)]"
               : "min-w-0 overflow-hidden rounded-xl border border-border bg-surface p-2.5 shadow-[0_18px_48px_-36px_rgba(15,23,42,0.55)]"
           }
-          data-testid={props.collapsed ? "recent-agents-collapsed" : "recent-agents-section"}
+          data-testid={
+            props.collapsed ? "recent-specialists-collapsed" : "recent-specialists-section"
+          }
         >
           {props.collapsed ? (
             <SidebarRouteLink
               collapsed
               isActive={isRouteActive(
                 props.pathname,
-                agentsSidebarRoute.path,
-                agentsSidebarRoute.navigationMatch,
+                specialistsSidebarRoute.path,
+                specialistsSidebarRoute.navigationMatch,
               )}
-              label={agentsSidebarRoute.navLabel ?? agentsSidebarRoute.title}
+              label={specialistsSidebarRoute.navLabel ?? specialistsSidebarRoute.title}
               onNavigate={props.onNavigate}
-              to={agentsSidebarRoute.path}
+              to={specialistsSidebarRoute.path}
             >
-              {agentsSidebarRoute.navIcon}
+              {specialistsSidebarRoute.navIcon}
             </SidebarRouteLink>
           ) : (
             <>
@@ -329,22 +331,22 @@ function SidebarContent(props: {
                 <NavLink
                   className="inline-flex items-center gap-2 text-sm font-semibold text-text-primary transition hover:text-accent"
                   onClick={props.onNavigate}
-                  to={agentsSidebarRoute.path}
+                  to={specialistsSidebarRoute.path}
                 >
-                  {agentsSidebarRoute.navIcon}
-                  {agentsSidebarRoute.navLabel}
+                  {specialistsSidebarRoute.navIcon}
+                  {specialistsSidebarRoute.navLabel}
                 </NavLink>
                 <NavLink
                   className="text-xs font-medium text-accent transition hover:text-accent-hover"
                   onClick={props.onNavigate}
-                  to={agentsSidebarRoute.path}
+                  to={specialistsSidebarRoute.path}
                 >
                   See all
                 </NavLink>
               </div>
-              {props.recentAgents.length > 0 ? (
+              {props.recentSpecialists.length > 0 ? (
                 <div className="mt-1 grid min-w-0 gap-0.5">
-                  {props.recentAgents.map((agent) => (
+                  {props.recentSpecialists.map((agent) => (
                     <NavLink
                       className="block min-w-0 max-w-full overflow-hidden rounded-lg px-2 py-2 transition hover:bg-surface-elevated"
                       key={agent.slug}
@@ -352,7 +354,7 @@ function SidebarContent(props: {
                       to={`/chat/${encodeURIComponent(agent.slug)}`}
                     >
                       <div className="flex min-w-0 items-center gap-2.5">
-                        <AgentAvatar iconPath={agent.iconPath} name={agent.name} size="sm" />
+                        <SpecialistAvatar iconPath={agent.iconPath} name={agent.name} size="sm" />
                         <div className="min-w-0 flex-1 overflow-hidden">
                           <p className="truncate text-sm font-medium text-text-primary">
                             {agent.name}
@@ -367,7 +369,7 @@ function SidebarContent(props: {
                 </div>
               ) : (
                 <p className="mt-3 text-sm leading-6 text-text-secondary">
-                  Recent agent chats will appear here after you open them from direct chat.
+                  Recent specialist chats will appear here after you open them from direct chat.
                 </p>
               )}
             </>
@@ -459,7 +461,7 @@ function QueuedRunsBadge(props: { count: number }) {
     <NavLink
       className="hidden items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-xs text-accent transition hover:border-accent/50 sm:inline-flex"
       to="/tasks?status=queued"
-      title="Queued task runs are waiting for their assigned agent."
+      title="Queued task runs are waiting for their assigned specialist."
     >
       <ListChecks className="h-3.5 w-3.5" />
       {props.count} queued {props.count === 1 ? "task" : "tasks"}

@@ -117,7 +117,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
         method="GET"
         path="/api/public/v1/specialists"
         scope="Tasks"
-        description="Discover agent IDs so you can create a task against a specific agent."
+        description="Discover specialist IDs so you can create a task against a specific specialist."
         snippets={[{ label: "curl", code: taskDocs.specialistsCurl }]}
         responseExample={{
           specialists: [{ id: "01J…", name: "Researcher", slug: "researcher" }],
@@ -128,7 +128,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
         method="POST"
         path="/api/public/v1/tasks"
         scope="Tasks"
-        description="Create a task against an agent. Include scheduledAt to create it in the scheduled state; attachments are inline base64 data URLs (≤10 MB each)."
+        description="Create a task against a specialist. Include scheduledAt to create it in the scheduled state; attachments are inline base64 data URLs (≤10 MB each)."
         snippets={[{ label: "curl", code: taskDocs.createCurl }]}
         responseExample={{
           id: "01J…",

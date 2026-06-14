@@ -34,7 +34,7 @@ afterAll(() => {
 });
 
 describe("FileMentionPopover", () => {
-  it("loads file-name search results from the agent workspace", async () => {
+  it("loads file-name search results from the specialist workspace", async () => {
     vi.mocked(api.searchAgentWorkspaceFiles).mockResolvedValueOnce(["README.md", "src/index.ts"]);
 
     render(
@@ -52,7 +52,7 @@ describe("FileMentionPopover", () => {
     expect(api.searchAgentWorkspaceFiles).toHaveBeenCalledWith("agent-1", "read");
   });
 
-  it("loads file-name search results from the full workspace without an agent", async () => {
+  it("loads file-name search results from the full workspace without a specialist", async () => {
     vi.mocked(api.searchWorkspaceFiles).mockResolvedValueOnce({
       nameMatches: [{ path: "README.md" }, { path: "src/index.ts" }],
       contentMatches: [],

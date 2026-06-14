@@ -29,7 +29,7 @@ import {
   type TaskPromptValue,
 } from "@/components/tasks/task-prompt";
 import { StatusBadge } from "@/components/tasks/task-ui";
-import { useSpecialistCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import {
   useTaskMutations,
   useTaskFeedbackQuery,
@@ -59,7 +59,7 @@ export function TaskDetailPage(props: TaskDetailPageProps) {
   const taskId = params["id"];
   const runId = params["runId"];
   const taskQuery = useTaskQuery(taskId);
-  const agentsQuery = useAgentsQuery();
+  const agentsQuery = useSpecialistsQuery();
   const task = taskQuery.data;
   const agent = agentsQuery.data?.find((entry) => entry.id === task?.agentId);
 
@@ -254,7 +254,7 @@ function TaskOverview(props: {
             </article>
 
             <aside className="cc-panel grid min-w-0 gap-4 p-5">
-              <Metric label="Assigned agent" value={props.agent?.name ?? task.agentId} />
+              <Metric label="Assigned specialist" value={props.agent?.name ?? task.agentId} />
               <Metric label="Schedule" value={formatSchedule(task)} />
               <Metric label="Latest result" value={latestRunResult?.content ?? "No runs yet"} />
               <Metric label="Todos" value={formatTodoProgress(task)} />
@@ -609,7 +609,7 @@ function TaskFeedbackPanelSection(props: {
       <div>
         <h2 className="text-xl font-semibold text-text-primary">Feedback</h2>
         <p className="mt-1 text-sm text-text-secondary">
-          Comments, follow-up requests, and agent replies for this task.
+          Comments, follow-up requests, and specialist replies for this task.
         </p>
       </div>
       <TaskFeedbackSection
@@ -677,7 +677,7 @@ function TaskFeedbackSection(props: {
           <section className="grid gap-2 text-sm text-text-secondary">
             <div>
               <p className="text-xs text-text-secondary">
-                Use # for files, / for skills, and @ to mention agents for subtasks.
+                Use # for files, / for skills, and @ to mention specialists for subtasks.
               </p>
             </div>
             <TaskPromptComposer
@@ -724,7 +724,7 @@ function TaskFeedbackSection(props: {
       props.feedback.length === 0 &&
       !hasParentRunComments(props.parentRuns) ? (
         <EmptyState
-          description="Feedback added here creates agent-assigned subtasks, and completed task runs appear as agent comments."
+          description="Feedback added here creates specialist-assigned subtasks, and completed task runs appear as specialist comments."
           title="No feedback yet"
         />
       ) : null}
@@ -915,7 +915,7 @@ function TaskSubtasksSection(props: {
       ) : null}
       {!props.isLoading && props.subtasks.length === 0 ? (
         <EmptyState
-          description="Feedback creates simple subtasks assigned to the mentioned agents."
+          description="Feedback creates simple subtasks assigned to the mentioned specialists."
           title="No subtasks yet"
         />
       ) : null}
@@ -1408,7 +1408,7 @@ function PermissionSummary(props: { profile?: TaskPermissionProfile }) {
       <p className="mt-2 text-sm leading-6 text-text-secondary">
         {props.profile
           ? `Custom tools: ${String(props.profile.customTools?.length ?? 0)}. External MCP: ${String(props.profile.mcpServers?.length ?? 0)}. App MCP: ${String(props.profile.appMcpServers?.length ?? 0)}.`
-          : "Inherits the assigned agent permissions. Each run stores its effective permission snapshot."}
+          : "Inherits the assigned specialist permissions. Each run stores its effective permission snapshot."}
       </p>
     </section>
   );

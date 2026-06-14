@@ -18,9 +18,9 @@ import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
 import { useChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useConversation } from "@/hooks/use-conversation";
-import { useSpecialistCatalogQuery } from "@/hooks/use-agents-query";
-import { resolveAgentWorkspacePath } from "@/lib/agent-workspace-path";
-import { recordRecentAgent } from "@/lib/recent-agents";
+import { useSpecialistCatalogQuery } from "@/hooks/use-specialists-query";
+import { resolveSpecialistWorkspacePath } from "@/lib/specialist-workspace-path";
+import { recordRecentSpecialist } from "@/lib/recent-specialists";
 import {
   createTaskPrefillFromUserMessage,
   type TaskCreationPrefill,
@@ -98,7 +98,7 @@ export function WorkspaceChatPage() {
       return;
     }
 
-    recordRecentAgent({
+    recordRecentSpecialist({
       id: conv.agent.id,
       slug: conv.agent.slug,
       name: conv.agent.name,
@@ -118,7 +118,7 @@ export function WorkspaceChatPage() {
           autoResolvedLiveRequestIdsRef.current.add(request.id);
           inspection.openFile({
             root: "workspace",
-            path: resolveAgentWorkspacePath(agentSlug, path),
+            path: resolveSpecialistWorkspacePath(agentSlug, path),
             displayPath: path,
           });
           void resolveLiveRequest(request.id, "opened", {}).catch(() => {
@@ -191,7 +191,7 @@ export function WorkspaceChatPage() {
 
     inspection.openFile({
       root: "workspace",
-      path: resolveAgentWorkspacePath(agentSlug, path),
+      path: resolveSpecialistWorkspacePath(agentSlug, path),
       displayPath: path,
     });
   };
@@ -278,8 +278,8 @@ export function WorkspaceChatPage() {
             <ChatHeader
               agentId={conv.agent?.id ?? ""}
               agentIconPath={conv.agent?.iconPath}
-              agentName={conv.agent?.name ?? agentSlug ?? "Specialist"}
-              agentRole={conv.agent?.role ?? ""}
+              specialistName={conv.agent?.name ?? agentSlug ?? "Specialist"}
+              specialistRole={conv.agent?.role ?? ""}
               currentConversationId={conv.conversation.id}
               onStartFresh={conv.startFresh}
               onSelectConversation={conv.switchConversation}
@@ -487,7 +487,7 @@ function getShowFilePath(request: LiveRequest, agentSlug?: string): string | und
     return normalizedPath;
   }
 
-  const agentPrefix = `agents/${agentSlug}/`;
+  const agentPrefix = `specialists/${agentSlug}/`;
   const agentPrefixIndex = normalizedPath.lastIndexOf(agentPrefix);
 
   if (agentPrefixIndex >= 0) {

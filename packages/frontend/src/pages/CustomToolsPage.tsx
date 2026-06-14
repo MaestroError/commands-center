@@ -9,9 +9,9 @@ import type {
 } from "@cc/shared/schemas";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
-import { useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import {
-  useAgentCustomToolsQuery,
+  useSpecialistCustomToolsQuery,
   useCustomToolMutations,
   useCustomToolsQuery,
 } from "@/hooks/use-custom-tools-query";
@@ -32,7 +32,7 @@ type CopyConflictState =
 
 export function CustomToolsPage() {
   const customToolsQuery = useCustomToolsQuery();
-  const agentsQuery = useAgentsQuery();
+  const agentsQuery = useSpecialistsQuery();
   const mutations = useCustomToolMutations();
   const [search, setSearch] = useState("");
   const [newName, setNewName] = useState("");
@@ -51,7 +51,7 @@ export function CustomToolsPage() {
     [customToolsQuery.data, search],
   );
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
-  const agentToolsQuery = useAgentCustomToolsQuery(selectedAgent?.id);
+  const agentToolsQuery = useSpecialistCustomToolsQuery(selectedAgent?.id);
   const agentTools = agentToolsQuery.data ?? [];
 
   async function handleCreateTool() {
@@ -73,7 +73,7 @@ export function CustomToolsPage() {
   async function handleDeleteTool(tool: CustomTool) {
     if (
       !window.confirm(
-        `Delete global tool '${tool.name}'? Existing agent copies will remain untouched.`,
+        `Delete global tool '${tool.name}'? Existing specialist copies will remain untouched.`,
       )
     ) {
       return;
@@ -104,7 +104,7 @@ export function CustomToolsPage() {
     setActionError(undefined);
 
     try {
-      await mutations.copyToAgents.mutateAsync({
+      await mutations.copyToSpecialists.mutateAsync({
         slug: tool.slug,
         input: {
           agentIds,
@@ -146,7 +146,7 @@ export function CustomToolsPage() {
     setActionError(undefined);
 
     try {
-      await mutations.copyAgentToGlobal.mutateAsync({
+      await mutations.copySpecialistToGlobal.mutateAsync({
         agentId: selectedAgent.id,
         slug: tool.slug,
         input: {
@@ -179,7 +179,10 @@ export function CustomToolsPage() {
     setActionError(undefined);
 
     try {
-      await mutations.deleteAgentTool.mutateAsync({ agentId: selectedAgent.id, slug: tool.slug });
+      await mutations.deleteSpecialistTool.mutateAsync({
+        agentId: selectedAgent.id,
+        slug: tool.slug,
+      });
       setRemoveTool(undefined);
     } catch (error) {
       setActionError(readError(error));
@@ -197,7 +200,7 @@ export function CustomToolsPage() {
                 Custom tools
               </h1>
               <p className="mt-2 text-sm leading-6 text-text-secondary">
-                Global library and agent copies.
+                Global library and specialist copies.
               </p>
             </div>
 
@@ -303,7 +306,7 @@ export function CustomToolsPage() {
                           {tool.entryFile}
                         </span>
                         <span className="rounded-full border border-border px-2 py-1">
-                          {tool.usage.length} agent copy{tool.usage.length === 1 ? "" : "ies"}
+                          {tool.usage.length} specialist copy{tool.usage.length === 1 ? "" : "ies"}
                         </span>
                       </div>
                       {tool.warnings.length > 0 ? (
@@ -327,7 +330,7 @@ export function CustomToolsPage() {
                         }}
                         type="button"
                       >
-                        Copy to agents
+                        Copy to specialists
                       </button>
                       <button
                         className="cc-button cc-button-secondary"
@@ -348,7 +351,9 @@ export function CustomToolsPage() {
                             : undefined
                         }
                         title={
-                          selectedAgent ? `Copy to ${selectedAgent.name}` : "Select an agent first"
+                          selectedAgent
+                            ? `Copy to ${selectedAgent.name}`
+                            : "Select a specialist first"
                         }
                         type="button"
                       >
@@ -388,7 +393,7 @@ export function CustomToolsPage() {
             <div>
               <h2 className="text-lg font-semibold text-text-primary">Specialist tools</h2>
               <p className="mt-1 text-sm text-text-secondary">
-                Tool changes apply to new chats. Start a fresh chat with this agent to use an
+                Tool changes apply to new chats. Start a fresh chat with this specialist to use an
                 updated tool set.
               </p>
             </div>
@@ -397,7 +402,7 @@ export function CustomToolsPage() {
               onChange={(event) => setSelectedAgentId(event.target.value || undefined)}
               value={selectedAgentId ?? ""}
             >
-              <option value="">Select an agent</option>
+              <option value="">Select a specialist</option>
               {agents.map((agent) => (
                 <option key={agent.id} value={agent.id}>
                   {agent.name}
@@ -407,7 +412,7 @@ export function CustomToolsPage() {
           </div>
 
           {!selectedAgent ? (
-            <EmptyState description="Choose an agent." title="No agent selected" />
+            <EmptyState description="Choose a specialist." title="No specialist selected" />
           ) : agentToolsQuery.isLoading ? (
             <LoadingState />
           ) : agentToolsQuery.error ? (
@@ -416,7 +421,10 @@ export function CustomToolsPage() {
               title="Specialist tools could not be loaded."
             />
           ) : agentTools.length === 0 ? (
-            <EmptyState description="No local tools in this workspace." title="No agent tools" />
+            <EmptyState
+              description="No local tools in this workspace."
+              title="No specialist tools"
+            />
           ) : (
             <div className="grid gap-4">
               {agentTools.map((tool) => (
@@ -439,7 +447,7 @@ export function CustomToolsPage() {
                     <div className="flex flex-wrap gap-2">
                       <Link
                         className="cc-button cc-button-secondary"
-                        to={buildAgentToolFileManagerUrl(selectedAgent, tool)}
+                        to={buildSpecialistToolFileManagerUrl(selectedAgent, tool)}
                       >
                         Open
                       </Link>
@@ -480,11 +488,11 @@ export function CustomToolsPage() {
                   Copy {copyTool.name} to agents
                 </h2>
                 <p className="mt-1 text-sm text-text-secondary">
-                  Existing agent copies may be replaced if you confirm an overwrite.
+                  Existing specialist copies may be replaced if you confirm an overwrite.
                 </p>
                 <p className="mt-2 text-sm text-text-secondary">
-                  Newly copied tools are picked up in new chats. If the agent already has an open
-                  chat, start a fresh chat after copying.
+                  Newly copied tools are picked up in new chats. If the specialist already has an
+                  open chat, start a fresh chat after copying.
                 </p>
               </div>
               <button
@@ -526,11 +534,13 @@ export function CustomToolsPage() {
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 className="cc-button"
-                disabled={selectedCopyAgentIds.length === 0 || mutations.copyToAgents.isPending}
+                disabled={
+                  selectedCopyAgentIds.length === 0 || mutations.copyToSpecialists.isPending
+                }
                 onClick={() => void handleCopyToAgents()}
                 type="button"
               >
-                {mutations.copyToAgents.isPending ? "Copying..." : "Copy selected agents"}
+                {mutations.copyToSpecialists.isPending ? "Copying..." : "Copy selected specialists"}
               </button>
               <button
                 className="cc-button cc-button-secondary"
@@ -548,8 +558,8 @@ export function CustomToolsPage() {
         <CopyConflictDialog
           busy={
             copyConflict.kind === "copy-to-specialists"
-              ? mutations.copyToAgents.isPending
-              : mutations.copyAgentToGlobal.isPending
+              ? mutations.copyToSpecialists.isPending
+              : mutations.copySpecialistToGlobal.isPending
           }
           currentName={
             copyConflict.kind === "copy-to-specialists"
@@ -559,7 +569,7 @@ export function CustomToolsPage() {
           destinationName={copyConflict.destinationName}
           message={
             copyConflict.kind === "copy-to-specialists"
-              ? "A tool with this name already exists in at least one selected agent. Rewrite it or copy a renamed variant."
+              ? "A tool with this name already exists in at least one selected specialist. Rewrite it or copy a renamed variant."
               : "A tool with this name already exists globally. Rewrite it or copy a renamed variant."
           }
           onCancel={() => setCopyConflict(undefined)}
@@ -601,7 +611,7 @@ export function CustomToolsPage() {
 
       {removeTool && selectedAgent ? (
         <RemoveAgentToolDialog
-          busy={mutations.deleteAgentTool.isPending}
+          busy={mutations.deleteSpecialistTool.isPending}
           name={removeTool.name}
           onCancel={() => setRemoveTool(undefined)}
           onConfirm={() => void handleRemoveAgentTool(removeTool)}
@@ -633,13 +643,13 @@ function buildGlobalToolFileManagerUrl(tool: CustomTool): string {
   return `/files?${params.toString()}`;
 }
 
-function buildAgentToolFileManagerUrl(agent: Specialist, tool: CustomToolAgentCopy): string {
+function buildSpecialistToolFileManagerUrl(agent: Specialist, tool: CustomToolAgentCopy): string {
   const selectedRelativePath = tool.isManaged
-    ? `agents/${agent.slug}/.opencode/tools/${tool.slug}/tool.ts`
-    : `agents/${agent.slug}/.opencode/tools/${tool.entryFile}`;
+    ? `specialists/${agent.slug}/.opencode/tools/${tool.slug}/tool.ts`
+    : `specialists/${agent.slug}/.opencode/tools/${tool.entryFile}`;
   const params = new URLSearchParams({
     root: "workspace",
-    path: `agents/${agent.slug}/.opencode/tools`,
+    path: `specialists/${agent.slug}/.opencode/tools`,
     select: selectedRelativePath,
   });
   return `/files?${params.toString()}`;
@@ -790,10 +800,10 @@ function RemoveAgentToolDialog(props: {
   return (
     <section className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/80 p-4 backdrop-blur-sm">
       <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-2xl">
-        <h2 className="text-lg font-semibold text-text-primary">Remove agent-local tool</h2>
+        <h2 className="text-lg font-semibold text-text-primary">Remove specialist-local tool</h2>
         <p className="mt-2 text-sm text-text-secondary">
-          Remove <span className="font-medium text-text-primary">{props.name}</span> from this agent
-          workspace.
+          Remove <span className="font-medium text-text-primary">{props.name}</span> from this
+          specialist workspace.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">

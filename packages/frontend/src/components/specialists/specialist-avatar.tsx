@@ -1,8 +1,11 @@
 import { Bot } from "lucide-react";
 
-import { parseAgentAvatar, resolveIconComponent } from "@/components/agents/agent-avatar-utils";
+import {
+  parseSpecialistAvatar,
+  resolveIconComponent,
+} from "@/components/specialists/specialist-avatar-utils";
 
-type AgentAvatarProps = {
+type SpecialistAvatarProps = {
   name: string;
   iconPath?: string;
   size?: "sm" | "md" | "lg" | "xl";
@@ -16,8 +19,13 @@ const SIZE_CLASS_NAMES = {
   xl: "h-16 w-16 rounded-xl text-xl",
 } as const;
 
-export function AgentAvatar({ name, iconPath, size = "md", className }: AgentAvatarProps) {
-  const parsed = parseAgentAvatar(name, iconPath);
+export function SpecialistAvatar({
+  name,
+  iconPath,
+  size = "md",
+  className,
+}: SpecialistAvatarProps) {
+  const parsed = parseSpecialistAvatar(name, iconPath);
   const sizeClassName = SIZE_CLASS_NAMES[size];
   const rootClassName = [
     "flex shrink-0 items-center justify-center overflow-hidden border border-border bg-surface-elevated text-accent",

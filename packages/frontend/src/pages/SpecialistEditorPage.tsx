@@ -3,50 +3,50 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import type { CreateSpecialistInput, UpdateSpecialistInput } from "@cc/shared/schemas";
 
-import { AgentForm } from "@/components/agents/AgentForm";
+import { SpecialistForm } from "@/components/specialists/SpecialistForm";
 import {
-  agentFormSlug,
-  createAgentFormFromAgent,
-  createEmptyAgentForm,
+  specialistFormSlug,
+  createSpecialistFormFromSpecialist,
+  createEmptySpecialistForm,
   resolveCustomToolOverwriteSlugs,
-  validateAgentForm,
-  type AgentFormErrors,
-  type AgentFormState,
-} from "@/lib/agent-form";
+  validateSpecialistForm,
+  type SpecialistFormErrors,
+  type SpecialistFormState,
+} from "@/lib/specialist-form";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
-import { useAgentCustomToolsQuery } from "@/hooks/use-custom-tools-query";
+import { useSpecialistCustomToolsQuery } from "@/hooks/use-custom-tools-query";
 import {
   useSpecialistCatalogQuery,
-  useAgentMutations,
-  useAgentQuery,
-  useAgentsQuery,
-} from "@/hooks/use-agents-query";
+  useSpecialistMutations,
+  useSpecialistQuery,
+  useSpecialistsQuery,
+} from "@/hooks/use-specialists-query";
 
-type AgentEditorPageProps = {
+type SpecialistEditorPageProps = {
   mode: "create" | "edit";
 };
 
-type AppliedAgentSnapshot = {
+type AppliedSpecialistSnapshot = {
   key: string;
   updatedAtMs: number;
 };
 
-export function AgentEditorPage(props: AgentEditorPageProps) {
+export function SpecialistEditorPage(props: SpecialistEditorPageProps) {
   const params = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const catalogQuery = useSpecialistCatalogQuery();
-  const agentsQuery = useAgentsQuery();
-  const agentQuery = useAgentQuery(props.mode === "edit" ? params.slug : undefined);
-  const agentMutations = useAgentMutations();
-  const [form, setForm] = useState<AgentFormState>(createEmptyAgentForm());
-  const [errors, setErrors] = useState<AgentFormErrors>({});
+  const specialistsQuery = useSpecialistsQuery();
+  const specialistQuery = useSpecialistQuery(props.mode === "edit" ? params.slug : undefined);
+  const specialistMutations = useSpecialistMutations();
+  const [form, setForm] = useState<SpecialistFormState>(createEmptySpecialistForm());
+  const [errors, setErrors] = useState<SpecialistFormErrors>({});
   const [saveError, setSaveError] = useState<string>();
-  const appliedSnapshotRef = useRef<AppliedAgentSnapshot | undefined>(undefined);
+  const appliedSnapshotRef = useRef<AppliedSpecialistSnapshot | undefined>(undefined);
   const catalog = catalogQuery.data;
-  const agents = agentsQuery.data ?? [];
-  const agent = agentQuery.data;
-  const agentCustomToolsQuery = useAgentCustomToolsQuery(agent?.id);
+  const specialists = specialistsQuery.data ?? [];
+  const specialist = specialistQuery.data;
+  const specialistCustomToolsQuery = useSpecialistCustomToolsQuery(specialist?.id);
   const hasProviderModels = (catalog?.providerModels.length ?? 0) > 0;
 
   useEffect(() => {
@@ -54,18 +54,19 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
       return;
     }
 
-    if (props.mode === "edit" && !agent) {
+    if (props.mode === "edit" && !specialist) {
       return;
     }
 
-    const nextKey = props.mode === "create" ? "create" : `${agent?.slug}:${agent?.updatedAt}`;
+    const nextKey =
+      props.mode === "create" ? "create" : `${specialist?.slug}:${specialist?.updatedAt}`;
 
     if (!nextKey) {
       return;
     }
 
-    if (props.mode === "edit" && agent?.updatedAt) {
-      const nextUpdatedAtMs = Date.parse(agent.updatedAt);
+    if (props.mode === "edit" && specialist?.updatedAt) {
+      const nextUpdatedAtMs = Date.parse(specialist.updatedAt);
       const currentSnapshot = appliedSnapshotRef.current;
 
       if (
@@ -84,56 +85,60 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     appliedSnapshotRef.current = {
       key: nextKey,
       updatedAtMs:
-        props.mode === "edit" && agent?.updatedAt ? Date.parse(agent.updatedAt) : Number.NaN,
+        props.mode === "edit" && specialist?.updatedAt
+          ? Date.parse(specialist.updatedAt)
+          : Number.NaN,
     };
-    setForm(createAgentFormFromAgent(catalog, agent));
+    setForm(createSpecialistFormFromSpecialist(catalog, specialist));
     setErrors({});
     setSaveError(undefined);
-  }, [agent, catalog, props.mode]);
+  }, [specialist, catalog, props.mode]);
 
   const catalogError = catalogQuery.error ? readError(catalogQuery.error) : undefined;
-  const agentError = agentQuery.error ? readError(agentQuery.error) : undefined;
+  const specialistError = specialistQuery.error ? readError(specialistQuery.error) : undefined;
 
   return (
     <div className="grid gap-4">
       <PageHeader
         actions={
-          props.mode === "edit" && agent ? (
-            <Link className="cc-button cc-button-secondary" to={`/chat/${agent.slug}`}>
+          props.mode === "edit" && specialist ? (
+            <Link className="cc-button cc-button-secondary" to={`/chat/${specialist.slug}`}>
               Open chat
             </Link>
           ) : undefined
         }
-        description="Create a new agent or update an existing one using the same reusable workflow and workspace-backed configuration."
+        description="Create a new specialist or update an existing one using the same reusable workflow and workspace-backed configuration."
         eyebrow={props.mode === "create" ? "Create Specialist" : "Edit Specialist"}
-        title={props.mode === "create" ? "Create agent" : (agent?.name ?? "Edit agent")}
+        title={
+          props.mode === "create" ? "Create specialist" : (specialist?.name ?? "Edit specialist")
+        }
       />
 
       {catalogError ? (
         <ErrorState description={catalogError} title="Specialist catalog could not be loaded." />
       ) : null}
-      {agentError ? (
-        <ErrorState description={agentError} title="Specialist details could not be loaded." />
+      {specialistError ? (
+        <ErrorState description={specialistError} title="Specialist details could not be loaded." />
       ) : null}
-      {catalogQuery.isLoading || (props.mode === "edit" && agentQuery.isLoading) ? (
+      {catalogQuery.isLoading || (props.mode === "edit" && specialistQuery.isLoading) ? (
         <LoadingState />
       ) : null}
 
       {!catalogQuery.isLoading &&
       !catalogError &&
       props.mode === "edit" &&
-      !agent &&
-      !agentQuery.isLoading ? (
+      !specialist &&
+      !specialistQuery.isLoading ? (
         <EmptyState
-          description="The requested agent slug no longer exists."
+          description="The requested specialist slug no longer exists."
           title="Specialist not found"
         />
       ) : null}
 
-      {!catalogQuery.isLoading && !catalogError && (props.mode === "create" || agent) ? (
+      {!catalogQuery.isLoading && !catalogError && (props.mode === "create" || specialist) ? (
         <form className="grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
-          <AgentForm
-            agentId={agent?.id}
+          <SpecialistForm
+            agentId={specialist?.id}
             errors={errors}
             mode={props.mode}
             onChange={(next) => {
@@ -149,20 +154,20 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
             <button
               className="cc-button"
               disabled={
-                agentMutations.create.isPending ||
-                agentMutations.update.isPending ||
+                specialistMutations.create.isPending ||
+                specialistMutations.update.isPending ||
                 !hasProviderModels
               }
               type="submit"
             >
-              {agentMutations.create.isPending || agentMutations.update.isPending
+              {specialistMutations.create.isPending || specialistMutations.update.isPending
                 ? "Saving..."
                 : props.mode === "create"
-                  ? "Create agent"
+                  ? "Create specialist"
                   : "Save changes"}
             </button>
             <Link className="cc-button cc-button-secondary" to="/specialists">
-              Back to agents
+              Back to specialists
             </Link>
           </div>
         </form>
@@ -174,10 +179,10 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     event.preventDefault();
     setSaveError(undefined);
 
-    const slugTaken = agents.some(
-      (entry) => entry.slug === agentFormSlug(form.name) && entry.id !== agent?.id,
+    const slugTaken = specialists.some(
+      (entry) => entry.slug === specialistFormSlug(form.name) && entry.id !== specialist?.id,
     );
-    const validation = validateAgentForm(form, { hasProviderModels, slugTaken });
+    const validation = validateSpecialistForm(form, { hasProviderModels, slugTaken });
     setErrors(validation);
 
     if (Object.values(validation).some(Boolean)) {
@@ -186,7 +191,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
 
     const overwriteSlugs = resolveCustomToolOverwriteSlugs(
       form.capabilities.customTools ?? [],
-      agentCustomToolsQuery.data ?? [],
+      specialistCustomToolsQuery.data ?? [],
     );
 
     if (overwriteSlugs === undefined) {
@@ -206,16 +211,16 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
 
     try {
       if (props.mode === "create") {
-        await agentMutations.create.mutateAsync(payload as CreateSpecialistInput);
+        await specialistMutations.create.mutateAsync(payload as CreateSpecialistInput);
         void navigate("/specialists", { replace: true });
         return;
       }
 
-      if (!agent) {
+      if (!specialist) {
         return;
       }
 
-      await agentMutations.update.mutateAsync({ id: agent.id, input: payload });
+      await specialistMutations.update.mutateAsync({ id: specialist.id, input: payload });
       void navigate("/specialists", { replace: true });
     } catch (error) {
       setSaveError(readError(error));

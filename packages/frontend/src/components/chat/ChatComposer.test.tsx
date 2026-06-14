@@ -230,7 +230,7 @@ describe("ChatComposer", () => {
     });
   });
 
-  it("preselects the agent default model and resets to it when the chat changes", async () => {
+  it("preselects the specialist default model and resets to it when the chat changes", async () => {
     const user = userEvent.setup();
     const { rerender, props } = renderComposer({ defaultModel: "minimax/minimax-m3" });
 
@@ -241,7 +241,7 @@ describe("ChatComposer", () => {
     await user.click(screen.getByRole("option", { name: "Anthropic / Claude Opus" }));
     expect(screen.getByRole("button", { name: "Select model" })).toHaveTextContent("Claude Opus");
 
-    // Switching conversation resets the selection back to the agent default.
+    // Switching conversation resets the selection back to the specialist default.
     rerender(<ChatComposer {...props} defaultModel="minimax/minimax-m3" autoFocusKey="conv-2" />);
     expect(screen.getByRole("button", { name: "Select model" })).toHaveTextContent("MiniMax M3");
   });
@@ -282,7 +282,7 @@ describe("ChatComposer", () => {
     render(<ChatComposer {...props} defaultModel="minimax/minimax-m3" autoFocusKey="conv-1" />);
     expect(screen.getByRole("button", { name: "Select model" })).toHaveTextContent("Claude Opus");
 
-    // A different (new) chat falls back to the agent default.
+    // A different (new) chat falls back to the specialist default.
     render(<ChatComposer {...props} defaultModel="minimax/minimax-m3" autoFocusKey="conv-2" />);
     const triggers = screen.getAllByRole("button", { name: "Select model" });
     expect(triggers[triggers.length - 1]).toHaveTextContent("MiniMax M3");
