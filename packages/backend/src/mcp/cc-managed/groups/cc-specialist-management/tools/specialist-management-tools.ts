@@ -9,7 +9,7 @@ import type { SpecialistService } from "../../../../../services/specialist-servi
 import type { ConversationService } from "../../../../../services/conversation-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
 
-type AgentManagementToolOptions = {
+type SpecialistManagementToolOptions = {
   agentService: SpecialistService;
   conversationService?: ConversationService;
   liveRequestService?: LiveRequestService;
@@ -29,12 +29,12 @@ type ReviewField = {
   defaultValue?: string;
 };
 
-const listAgentsInputSchema = z.object({
+const listSpecialistsInputSchema = z.object({
   includeArchived: z.boolean().default(false),
 });
 
-const listAgentsOutputSchema = z.object({
-  agents: z.array(specialistSchema),
+const listSpecialistsOutputSchema = z.object({
+  specialists: z.array(specialistSchema),
 });
 
 const listModelsInputSchema = z.object({
@@ -50,25 +50,25 @@ const listModelsOutputSchema = z.object({
 });
 
 // `capabilities` (skills/custom tools/MCP selections) is intentionally omitted from the
-// MCP tools: the agent has no reliable way to discover valid slugs yet, so agents are
+// MCP tools: the specialist has no reliable way to discover valid slugs yet, so specialists are
 // created with empty capabilities and configured later in the editor UI.
-const createAgentToolInputSchema = createSpecialistInputSchema.omit({ capabilities: true });
+const createSpecialistToolInputSchema = createSpecialistInputSchema.omit({ capabilities: true });
 
-const updateAgentToolInputSchema = z.object({
+const updateSpecialistToolInputSchema = z.object({
   id: z.string().trim().min(1),
   input: updateSpecialistInputSchema.omit({ capabilities: true }),
 });
 
-// Draft tools accept partial input so the agent can pre-fill whatever it knows and
+// Draft tools accept partial input so the specialist can pre-fill whatever it knows and
 // let the operator complete the rest in the form.
-const draftAgentToolInputSchema = createAgentToolInputSchema.partial();
+const draftSpecialistToolInputSchema = createSpecialistToolInputSchema.partial();
 
-const draftAgentUpdateToolInputSchema = z.object({
+const draftSpecialistUpdateToolInputSchema = z.object({
   id: z.string().trim().min(1),
-  input: updateAgentToolInputSchema.shape.input.optional(),
+  input: updateSpecialistToolInputSchema.shape.input.optional(),
 });
 
-const removeAgentInputSchema = z.object({
+const removeSpecialistInputSchema = z.object({
   id: z.string().trim().min(1),
 });
 
@@ -82,76 +82,76 @@ const reviewDecisionSchema = z.object({
   values: z.record(z.string(), z.string()),
 });
 
-export const listAgentsToolMetadata = {
-  name: "list_agents",
-  description: "List CommandsCenter agents available in this workspace.",
+export const listSpecialistsToolMetadata = {
+  name: "list_specialists",
+  description: "List CommandsCenter specialists available in this workspace.",
   context: "both",
 } as const;
 
 export const listModelsToolMetadata = {
   name: "list_models",
   description:
-    "List the model IDs available from connected providers. Use one of these IDs as defaultModel when creating or updating an agent.",
+    "List the model IDs available from connected providers. Use one of these IDs as defaultModel when creating or updating a specialist.",
   context: "both",
 } as const;
 
-export const createAgentToolMetadata = {
-  name: "create_agent",
+export const createSpecialistToolMetadata = {
+  name: "create_specialist",
   description:
-    "Create a CommandsCenter agent directly, without an operator review form. In chat, prefer draft_agent so the operator can review and edit first.",
+    "Create a CommandsCenter specialist directly, without an operator review form. In chat, prefer draft_specialist so the operator can review and edit first.",
   context: "both",
 } as const;
 
-export const updateAgentToolMetadata = {
-  name: "update_agent",
+export const updateSpecialistToolMetadata = {
+  name: "update_specialist",
   description:
-    "Update an existing CommandsCenter agent by id directly, without an operator review form. In chat, prefer draft_agent_update.",
+    "Update an existing CommandsCenter specialist by id directly, without an operator review form. In chat, prefer draft_specialist_update.",
   context: "both",
 } as const;
 
-export const draftAgentToolMetadata = {
-  name: "draft_agent",
+export const draftSpecialistToolMetadata = {
+  name: "draft_specialist",
   description:
-    "Open a prefilled agent form in chat for the operator to review, edit, and confirm before the agent is created. Pass whatever details you know (all optional) to pre-fill the form. Chat only.",
+    "Open a prefilled specialist form in chat for the operator to review, edit, and confirm before the specialist is created. Pass whatever details you know (all optional) to pre-fill the form. Chat only.",
   context: "chat",
 } as const;
 
-export const draftAgentUpdateToolMetadata = {
-  name: "draft_agent_update",
+export const draftSpecialistUpdateToolMetadata = {
+  name: "draft_specialist_update",
   description:
-    "Open a prefilled form in chat with an existing agent's current details for the operator to review, edit, and confirm before the update is saved. Provide the agent id and optionally any suggested changes to pre-fill. Chat only.",
+    "Open a prefilled form in chat with an existing specialist's current details for the operator to review, edit, and confirm before the update is saved. Provide the specialist id and optionally any suggested changes to pre-fill. Chat only.",
   context: "chat",
 } as const;
 
-export const removeAgentToolMetadata = {
-  name: "remove_agent",
+export const removeSpecialistToolMetadata = {
+  name: "remove_specialist",
   description:
-    "Remove an agent from active use after operator confirmation by archiving its portable workspace state.",
+    "Remove a specialist from active use after operator confirmation by archiving its portable workspace state.",
   context: "chat",
 } as const;
 
-export function createListAgentsToolDefinition(options: { agentService: SpecialistService }) {
+export function createListSpecialistsToolDefinition(options: { agentService: SpecialistService }) {
   return {
-    name: listAgentsToolMetadata.name,
-    description: listAgentsToolMetadata.description,
-    context: listAgentsToolMetadata.context,
-    inputSchema: listAgentsInputSchema,
-    outputSchema: listAgentsOutputSchema,
+    name: listSpecialistsToolMetadata.name,
+    description: listSpecialistsToolMetadata.description,
+    context: listSpecialistsToolMetadata.context,
+    inputSchema: listSpecialistsInputSchema,
+    outputSchema: listSpecialistsOutputSchema,
     execute: async (args: unknown) =>
       executeTool(async () => {
-        const parsed = listAgentsInputSchema.parse(args);
-        const agents = await options.agentService.list(parsed.includeArchived);
-        const header = `Found ${String(agents.length)} agent${agents.length === 1 ? "" : "s"}.`;
-        const lines = agents.map(
-          (agent) =>
-            `- ${agent.name} (id: ${agent.id}, slug: ${agent.slug}) — ${agent.role} [${agent.status}, model: ${agent.defaultModel}]`,
+        const parsed = listSpecialistsInputSchema.parse(args);
+        const specialists = await options.agentService.list(parsed.includeArchived);
+        const header = `Found ${String(specialists.length)} specialist${specialists.length === 1 ? "" : "s"}.`;
+        const lines = specialists.map(
+          (specialist) =>
+            `- ${specialist.name} (id: ${specialist.id}, slug: ${specialist.slug}) — ${specialist.role} [${specialist.status}, model: ${specialist.defaultModel}]`,
         );
         const text = lines.length > 0 ? `${header}\n${lines.join("\n")}` : header;
 
         return success(text, {
-          agents: z.array(specialistSchema).parse(agents),
+          specialists: z.array(specialistSchema).parse(specialists),
         });
-      }, "Failed to list agents."),
+      }, "Failed to list specialists."),
   };
 }
 
@@ -183,63 +183,65 @@ export function createListModelsToolDefinition(options: { agentService: Speciali
   };
 }
 
-export function createAgentManagementToolDefinitions(options: AgentManagementToolOptions) {
+export function createSpecialistManagementToolDefinitions(
+  options: SpecialistManagementToolOptions,
+) {
   return [
-    createListAgentsToolDefinition({ agentService: options.agentService }),
+    createListSpecialistsToolDefinition({ agentService: options.agentService }),
     createListModelsToolDefinition({ agentService: options.agentService }),
     {
-      name: createAgentToolMetadata.name,
-      description: createAgentToolMetadata.description,
-      context: createAgentToolMetadata.context,
-      inputSchema: createAgentToolInputSchema,
+      name: createSpecialistToolMetadata.name,
+      description: createSpecialistToolMetadata.description,
+      context: createSpecialistToolMetadata.context,
+      inputSchema: createSpecialistToolInputSchema,
       outputSchema: specialistSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
-          const input = createAgentToolInputSchema.parse(args);
-          const agent = await options.agentService.create({ ...input, capabilities: {} });
+          const input = createSpecialistToolInputSchema.parse(args);
+          const specialist = await options.agentService.create({ ...input, capabilities: {} });
 
-          return success("Specialist created.", specialistSchema.parse(agent));
-        }, "Failed to create agent."),
+          return success("Specialist created.", specialistSchema.parse(specialist));
+        }, "Failed to create specialist."),
     },
     {
-      name: updateAgentToolMetadata.name,
-      description: updateAgentToolMetadata.description,
-      context: updateAgentToolMetadata.context,
-      inputSchema: updateAgentToolInputSchema,
+      name: updateSpecialistToolMetadata.name,
+      description: updateSpecialistToolMetadata.description,
+      context: updateSpecialistToolMetadata.context,
+      inputSchema: updateSpecialistToolInputSchema,
       outputSchema: specialistSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
-          const parsed = updateAgentToolInputSchema.parse(args);
-          const agent = await options.agentService.update(parsed.id, parsed.input);
+          const parsed = updateSpecialistToolInputSchema.parse(args);
+          const specialist = await options.agentService.update(parsed.id, parsed.input);
 
-          if (!agent) {
+          if (!specialist) {
             throw new Error("Specialist not found.");
           }
 
-          return success("Specialist updated.", specialistSchema.parse(agent));
-        }, "Failed to update agent."),
+          return success("Specialist updated.", specialistSchema.parse(specialist));
+        }, "Failed to update specialist."),
     },
   ] as const;
 }
 
 // Operator-blocking tools (open a live request and wait). These live in the cc_app
 // group so only that MCP server needs the long client timeout.
-export function createAgentLiveToolDefinitions(options: AgentManagementToolOptions) {
+export function createSpecialistLiveToolDefinitions(options: SpecialistManagementToolOptions) {
   return [
     {
-      name: draftAgentToolMetadata.name,
-      description: draftAgentToolMetadata.description,
-      context: draftAgentToolMetadata.context,
-      inputSchema: draftAgentToolInputSchema,
+      name: draftSpecialistToolMetadata.name,
+      description: draftSpecialistToolMetadata.description,
+      context: draftSpecialistToolMetadata.context,
+      inputSchema: draftSpecialistToolInputSchema,
       outputSchema: specialistSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
-          const draft = draftAgentToolInputSchema.parse(args);
+          const draft = draftSpecialistToolInputSchema.parse(args);
           const reviewed = await reviewAgentMutation(options, {
             callingAgentSlug: context.agentSlug,
             kind: "agent_create_review",
-            title: "Review agent",
-            description: "Review and edit the agent before CommandsCenter creates it.",
+            title: "Review specialist",
+            description: "Review and edit the specialist before CommandsCenter creates it.",
             fields: [
               textField("name", "Name", draft.name, true),
               textField("role", "Role", draft.role, true),
@@ -247,10 +249,10 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
               textField("defaultModel", "Default model", draft.defaultModel, true),
               textField("iconPath", "Icon path", draft.iconPath),
             ],
-            metadata: { agentName: draft.name, operation: "create_agent" },
+            metadata: { specialistName: draft.name, operation: "create_specialist" },
           });
 
-          const agent = await options.agentService.create(
+          const specialist = await options.agentService.create(
             createSpecialistInputSchema.parse({
               name: reviewed["name"],
               role: reviewed["role"],
@@ -261,18 +263,18 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
             }),
           );
 
-          return success("Specialist created.", specialistSchema.parse(agent));
-        }, "Failed to draft agent."),
+          return success("Specialist created.", specialistSchema.parse(specialist));
+        }, "Failed to draft specialist."),
     },
     {
-      name: draftAgentUpdateToolMetadata.name,
-      description: draftAgentUpdateToolMetadata.description,
-      context: draftAgentUpdateToolMetadata.context,
-      inputSchema: draftAgentUpdateToolInputSchema,
+      name: draftSpecialistUpdateToolMetadata.name,
+      description: draftSpecialistUpdateToolMetadata.description,
+      context: draftSpecialistUpdateToolMetadata.context,
+      inputSchema: draftSpecialistUpdateToolInputSchema,
       outputSchema: specialistSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
-          const parsed = draftAgentUpdateToolInputSchema.parse(args);
+          const parsed = draftSpecialistUpdateToolInputSchema.parse(args);
           const current = await options.agentService.get(parsed.id);
 
           if (!current) {
@@ -323,14 +325,14 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
           const reviewed = await reviewAgentMutation(options, {
             callingAgentSlug: context.agentSlug,
             kind: "agent_update_review",
-            title: "Review agent update",
-            description: "Review and edit the agent update before CommandsCenter saves it.",
+            title: "Review specialist update",
+            description: "Review and edit the specialist update before CommandsCenter saves it.",
             fields,
             metadata: {
               agentId: parsed.id,
-              agentName: current.name,
-              agentIconPath: current.iconPath ?? "",
-              operation: "update_agent",
+              specialistName: current.name,
+              specialistIconPath: current.iconPath ?? "",
+              operation: "update_specialist",
             },
           });
 
@@ -341,27 +343,27 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
           if ("defaultModel" in reviewed) update["defaultModel"] = reviewed["defaultModel"];
           if ("iconPath" in reviewed) update["iconPath"] = emptyToUndefined(reviewed["iconPath"]);
 
-          const agent = await options.agentService.update(
+          const specialist = await options.agentService.update(
             parsed.id,
             updateSpecialistInputSchema.parse(update),
           );
 
-          if (!agent) {
+          if (!specialist) {
             throw new Error("Specialist not found.");
           }
 
-          return success("Specialist updated.", specialistSchema.parse(agent));
-        }, "Failed to draft agent update."),
+          return success("Specialist updated.", specialistSchema.parse(specialist));
+        }, "Failed to draft specialist update."),
     },
     {
-      name: removeAgentToolMetadata.name,
-      description: removeAgentToolMetadata.description,
-      context: removeAgentToolMetadata.context,
-      inputSchema: removeAgentInputSchema,
+      name: removeSpecialistToolMetadata.name,
+      description: removeSpecialistToolMetadata.description,
+      context: removeSpecialistToolMetadata.context,
+      inputSchema: removeSpecialistInputSchema,
       outputSchema: specialistSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
-          const parsed = removeAgentInputSchema.parse(args);
+          const parsed = removeSpecialistInputSchema.parse(args);
           const target = await options.agentService.get(parsed.id);
 
           if (!target) {
@@ -382,7 +384,7 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
           }
 
           return success("Specialist removed from active use.", specialistSchema.parse(archived));
-        }, "Failed to remove agent."),
+        }, "Failed to remove specialist."),
     },
   ] as const;
 }
@@ -413,7 +415,7 @@ function success(message: string, structuredContent: Record<string, unknown>): T
 
 async function confirmRemove(
   options: Pick<
-    AgentManagementToolOptions,
+    SpecialistManagementToolOptions,
     "agentService" | "conversationService" | "liveRequestService"
   >,
   input: {
@@ -439,16 +441,16 @@ async function confirmRemove(
     kind: "agent_management_confirmation",
     closable: false,
     presentation: {
-      title: "Remove agent",
-      description: `Archive agent '${input.targetAgentName}' and remove it from active use.`,
+      title: "Remove specialist",
+      description: `Archive specialist '${input.targetAgentName}' and remove it from active use.`,
       submitLabel: "Confirm",
       cancelLabel: "Cancel",
     },
     fields: [],
     metadata: {
-      agentId: input.targetAgentId,
-      agentName: input.targetAgentName,
-      agentSlug: input.targetAgentSlug,
+      specialistId: input.targetAgentId,
+      specialistName: input.targetAgentName,
+      specialistSlug: input.targetAgentSlug,
     },
     actions: [
       {
@@ -473,7 +475,7 @@ async function confirmRemove(
 
 async function reviewAgentMutation(
   options: Pick<
-    AgentManagementToolOptions,
+    SpecialistManagementToolOptions,
     "agentService" | "conversationService" | "liveRequestService"
   >,
   input: {
@@ -492,7 +494,7 @@ async function reviewAgentMutation(
   },
 ): Promise<Record<string, string>> {
   if (!options.conversationService || !options.liveRequestService) {
-    throw new Error("Drafting an agent requires chat live requests.");
+    throw new Error("Drafting a specialist requires chat live requests.");
   }
 
   const callingAgent = await options.agentService.getBySlug(input.callingAgentSlug);

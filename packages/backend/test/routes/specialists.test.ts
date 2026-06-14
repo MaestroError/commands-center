@@ -32,7 +32,7 @@ describe("agent routes", () => {
     try {
       const created = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Writer",
           role: "write docs",
@@ -51,34 +51,34 @@ describe("agent routes", () => {
 
       const listed = await server.inject({
         method: "GET",
-        url: "/api/agents",
+        url: "/api/specialists",
       });
       const fetched = await server.inject({
         method: "GET",
-        url: `/api/agents/${agent.id}`,
+        url: `/api/specialists/${agent.id}`,
       });
       const fetchedBySlug = await server.inject({
         method: "GET",
-        url: `/api/agents/by-slug/${agent.slug}`,
+        url: `/api/specialists/by-slug/${agent.slug}`,
       });
       const catalog = await server.inject({
         method: "GET",
-        url: "/api/agents/catalog",
+        url: "/api/specialists/catalog",
       });
       const updated = await server.inject({
         method: "PATCH",
-        url: `/api/agents/${agent.id}`,
+        url: `/api/specialists/${agent.id}`,
         payload: {
           name: "Writer Prime",
         },
       });
       const archived = await server.inject({
         method: "DELETE",
-        url: `/api/agents/${agent.id}`,
+        url: `/api/specialists/${agent.id}`,
       });
       const withArchived = await server.inject({
         method: "GET",
-        url: "/api/agents?includeArchived=true",
+        url: "/api/specialists?includeArchived=true",
       });
 
       expect(listed.statusCode).toBe(200);
@@ -127,7 +127,7 @@ describe("agent routes", () => {
       // Create agent
       const created = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Coder",
           role: "write code",
@@ -142,7 +142,7 @@ describe("agent routes", () => {
       // Update only the model — same name should not trigger "slug taken"
       const updated = await server.inject({
         method: "PATCH",
-        url: `/api/agents/${agent.id}`,
+        url: `/api/specialists/${agent.id}`,
         payload: {
           defaultModel: "anthropic/claude-sonnet-4-20250514",
         },
@@ -154,7 +154,7 @@ describe("agent routes", () => {
       // Update with the same name explicitly — should also succeed
       const updatedWithName = await server.inject({
         method: "PATCH",
-        url: `/api/agents/${agent.id}`,
+        url: `/api/specialists/${agent.id}`,
         payload: {
           name: "Coder",
           role: "write better code",
@@ -188,7 +188,7 @@ describe("agent routes", () => {
       // Create first agent
       const first = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Reviewer",
           role: "review code",
@@ -202,7 +202,7 @@ describe("agent routes", () => {
       // Try to create second agent with the same name
       const duplicate = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Reviewer",
           role: "another reviewer",
@@ -238,7 +238,7 @@ describe("agent routes", () => {
     try {
       const created = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Files Specialist",
           role: "inspect workspace",
@@ -253,23 +253,23 @@ describe("agent routes", () => {
 
       const textSearch = await server.inject({
         method: "GET",
-        url: `/api/agents/${agent.id}/workspace/find?pattern=TODO`,
+        url: `/api/specialists/${agent.id}/workspace/find?pattern=TODO`,
       });
       const fileSearch = await server.inject({
         method: "GET",
-        url: `/api/agents/${agent.id}/workspace/find/file?query=readme&type=file&limit=5`,
+        url: `/api/specialists/${agent.id}/workspace/find/file?query=readme&type=file&limit=5`,
       });
       const fileList = await server.inject({
         method: "GET",
-        url: `/api/agents/${agent.id}/workspace/file?path=src`,
+        url: `/api/specialists/${agent.id}/workspace/file?path=src`,
       });
       const fileContent = await server.inject({
         method: "GET",
-        url: `/api/agents/${agent.id}/workspace/file/content?path=README.md`,
+        url: `/api/specialists/${agent.id}/workspace/file/content?path=README.md`,
       });
       const fileStatus = await server.inject({
         method: "GET",
-        url: `/api/agents/${agent.id}/workspace/file/status`,
+        url: `/api/specialists/${agent.id}/workspace/file/status`,
       });
 
       expect(textSearch.statusCode).toBe(200);

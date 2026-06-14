@@ -30,7 +30,7 @@ describe("file manager routes", () => {
     try {
       const created = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Writer",
           role: "write docs",
@@ -163,7 +163,7 @@ describe("file manager routes", () => {
 
       const allAgents = await server.inject({
         method: "GET",
-        url: "/api/file-manager/nodes?root=all-agents",
+        url: "/api/file-manager/nodes?root=all-specialists",
       });
 
       expect(allAgents.statusCode).toBe(200);
@@ -548,7 +548,7 @@ describe("file manager content routes", () => {
         method: "POST",
         url: "/api/file-manager/uploads",
         payload: {
-          root: "all-agents",
+          root: "all-specialists",
           destinationPath: "agent-a",
           entries: [
             {

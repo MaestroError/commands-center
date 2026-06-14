@@ -11,9 +11,9 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { method: "POST", path: "/api/auth/login" },
   { method: "POST", path: "/api/auth/logout" },
   { method: "POST", path: "/api/auth/reclaim" },
-  { method: "GET", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
-  { method: "POST", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
-  { method: "DELETE", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
+  { method: "GET", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
+  { method: "POST", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
+  { method: "DELETE", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
 ];
 
 export function isPublicRoute(method: string, pathname: string): boolean {

@@ -104,7 +104,7 @@ export function registerCustomToolRoutes(server: AppServer, context: RuntimeCont
   );
 
   app.post(
-    "/api/custom-tools/:slug/copy-to-agents",
+    "/api/custom-tools/:slug/copy-to-specialists",
     {
       schema: {
         params: customToolSlugParamsSchema,

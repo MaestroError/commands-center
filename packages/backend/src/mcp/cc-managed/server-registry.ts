@@ -26,8 +26,8 @@ import {
   markNeedsHumanReviewToolMetadata,
   setTaskResultToolMetadata,
 } from "./groups/cc-default/tools/task-run-outcome-tools.js";
-import { createCopyCustomToolToAgentDefinition } from "./groups/cc-tool-management/tools/copy-custom-tool-to-agent.js";
-import { copyCustomToolToAgentMetadata } from "./groups/cc-tool-management/tools/copy-custom-tool-to-agent.js";
+import { createCopyCustomToolToSpecialistDefinition } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
+import { copyCustomToolToSpecialistMetadata } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
 import {
   createCustomToolMetadata,
   createCreateCustomToolDefinition,
@@ -52,17 +52,17 @@ import {
   listTasksToolMetadata,
 } from "./groups/cc-tasks-management/tools/task-management-tools.js";
 import {
-  createAgentLiveToolDefinitions,
-  createAgentManagementToolDefinitions,
-  createAgentToolMetadata,
-  createListAgentsToolDefinition,
-  draftAgentToolMetadata,
-  draftAgentUpdateToolMetadata,
-  listAgentsToolMetadata,
+  createSpecialistLiveToolDefinitions,
+  createSpecialistManagementToolDefinitions,
+  createSpecialistToolMetadata,
+  createListSpecialistsToolDefinition,
+  draftSpecialistToolMetadata,
+  draftSpecialistUpdateToolMetadata,
+  listSpecialistsToolMetadata,
   listModelsToolMetadata,
-  removeAgentToolMetadata,
-  updateAgentToolMetadata,
-} from "./groups/cc-agent-management/tools/agent-management-tools.js";
+  removeSpecialistToolMetadata,
+  updateSpecialistToolMetadata,
+} from "./groups/cc-specialist-management/tools/specialist-management-tools.js";
 
 export type CcManagedToolContext = {
   agentSlug: string;
@@ -153,18 +153,18 @@ export function createCcManagedMcpServerRegistry(options: {
   }
 
   // cc_app holds the operator-interactive tools (live requests) plus the custom-tool
-  // authoring helpers and a quick agent listing. Only cc_app needs the long timeout.
+  // authoring helpers and a quick specialist listing. Only cc_app needs the long timeout.
   ccAppTools.push(
     createCreateCustomToolDefinition({ customToolService: options.customToolService }),
   );
 
   if (options.agentService) {
-    ccAppTools.push(createListAgentsToolDefinition({ agentService: options.agentService }));
+    ccAppTools.push(createListSpecialistsToolDefinition({ agentService: options.agentService }));
   }
 
   if (options.customToolActionService) {
     ccAppTools.push(
-      createCopyCustomToolToAgentDefinition({
+      createCopyCustomToolToSpecialistDefinition({
         customToolActionService: options.customToolActionService,
         conversationService: options.conversationService,
         liveRequestService: options.liveRequestService,
@@ -174,7 +174,7 @@ export function createCcManagedMcpServerRegistry(options: {
 
   if (options.agentService) {
     ccAppTools.push(
-      ...createAgentLiveToolDefinitions({
+      ...createSpecialistLiveToolDefinitions({
         agentService: options.agentService,
         conversationService: options.conversationService,
         liveRequestService: options.liveRequestService,
@@ -205,13 +205,13 @@ export function createCcManagedMcpServerRegistry(options: {
             liveRequestService: options.liveRequestService,
           }),
           ...(options.agentService
-            ? [createListAgentsToolDefinition({ agentService: options.agentService })]
+            ? [createListSpecialistsToolDefinition({ agentService: options.agentService })]
             : []),
         ]
       : [];
-  const agentManagementTools: CcManagedToolDefinition[] = options.agentService
+  const specialistManagementTools: CcManagedToolDefinition[] = options.agentService
     ? [
-        ...createAgentManagementToolDefinitions({
+        ...createSpecialistManagementToolDefinitions({
           agentService: options.agentService,
           conversationService: options.conversationService,
           liveRequestService: options.liveRequestService,
@@ -248,35 +248,36 @@ export function createCcManagedMcpServerRegistry(options: {
     {
       name: "cc_app",
       routeSegment: "cc-app",
-      description: "CommandsCenter app-managed, operator-interactive capabilities for this agent.",
+      description:
+        "CommandsCenter app-managed, operator-interactive capabilities for this specialist.",
       enabledByDefault: false,
       interactive: true,
       catalogTools: [
         addSecretToolMetadata,
         showFileToUserToolMetadata,
         createCustomToolMetadata,
-        listAgentsToolMetadata,
-        copyCustomToolToAgentMetadata,
-        draftAgentToolMetadata,
-        draftAgentUpdateToolMetadata,
-        removeAgentToolMetadata,
+        listSpecialistsToolMetadata,
+        copyCustomToolToSpecialistMetadata,
+        draftSpecialistToolMetadata,
+        draftSpecialistUpdateToolMetadata,
+        removeSpecialistToolMetadata,
         draftTaskToolMetadata,
         draftTaskUpdateToolMetadata,
       ],
       tools: ccAppTools,
     },
     {
-      name: "cc_agent_management",
-      routeSegment: "cc-agent-management",
-      description: "CommandsCenter agent listing, creation, and update.",
+      name: "cc_specialist_management",
+      routeSegment: "cc-specialist-management",
+      description: "CommandsCenter specialist listing, creation, and update.",
       enabledByDefault: false,
       catalogTools: [
-        listAgentsToolMetadata,
+        listSpecialistsToolMetadata,
         listModelsToolMetadata,
-        createAgentToolMetadata,
-        updateAgentToolMetadata,
+        createSpecialistToolMetadata,
+        updateSpecialistToolMetadata,
       ],
-      tools: agentManagementTools,
+      tools: specialistManagementTools,
     },
     {
       name: "cc_tasks_management",
@@ -294,7 +295,7 @@ export function createCcManagedMcpServerRegistry(options: {
         getTaskRunToolMetadata,
         createTaskTemplateToolMetadata,
         runTaskTemplateNowToolMetadata,
-        listAgentsToolMetadata,
+        listSpecialistsToolMetadata,
       ],
       tools: taskManagementTools,
     },

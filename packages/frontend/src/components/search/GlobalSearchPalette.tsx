@@ -383,7 +383,7 @@ function buildAgentResult(
         label: "Edit agent",
         icon: <Pencil className="h-4 w-4" />,
         onSelect: () => {
-          void navigate(`/agents/${encodeURIComponent(agent.slug)}/edit`);
+          void navigate(`/specialists/${encodeURIComponent(agent.slug)}/edit`);
           onClose();
         },
       },

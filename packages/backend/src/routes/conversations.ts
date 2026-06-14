@@ -39,7 +39,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
   });
 
   app.get(
-    "/api/agents/:id/conversations/active",
+    "/api/specialists/:id/conversations/active",
     {
       schema: {
         params: agentIdParamsSchema,
@@ -49,7 +49,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
   );
 
   app.get(
-    "/api/agents/:id/conversations",
+    "/api/specialists/:id/conversations",
     {
       schema: {
         params: agentIdParamsSchema,
@@ -59,7 +59,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
   );
 
   app.get(
-    "/api/agents/:id/conversations/:conversationId",
+    "/api/specialists/:id/conversations/:conversationId",
     {
       schema: {
         params: agentConversationParamsSchema,
@@ -69,7 +69,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
   );
 
   app.delete(
-    "/api/agents/:id/conversations/:conversationId",
+    "/api/specialists/:id/conversations/:conversationId",
     {
       schema: {
         params: agentConversationParamsSchema,
@@ -82,7 +82,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
   );
 
   app.post(
-    "/api/agents/:id/conversations/start-fresh",
+    "/api/specialists/:id/conversations/start-fresh",
     {
       schema: {
         params: agentIdParamsSchema,

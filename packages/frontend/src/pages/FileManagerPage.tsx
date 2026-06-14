@@ -36,7 +36,7 @@ import { normalizeUploadableFiles, toFileManagerUploadEntries } from "@/lib/file
 
 const ROOT_LABELS: Record<FileManagerRootKind, string> = {
   workspace: "Workspace",
-  "all-agents": "All Agents",
+  "all-specialists": "All Agents",
   "host-filesystem": "Root",
 };
 
@@ -414,7 +414,7 @@ export function FileManagerPage() {
             <div className="flex flex-col rounded-lg border border-border bg-surface lg:h-full lg:min-h-[28rem]">
               <div className="border-b border-border px-4 py-4">
                 <div className="flex flex-wrap gap-1 border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {(["workspace", "all-agents", "host-filesystem"] as const).map((option) => {
+                  {(["workspace", "all-specialists", "host-filesystem"] as const).map((option) => {
                     return (
                       <button
                         aria-pressed={root === option}
@@ -1146,7 +1146,11 @@ function MoveEntryDialog(props: {
 function getInitialRoot(searchParams: URLSearchParams): FileManagerRootKind {
   const requested = searchParams.get("root");
 
-  if (requested === "workspace" || requested === "all-agents" || requested === "host-filesystem") {
+  if (
+    requested === "workspace" ||
+    requested === "all-specialists" ||
+    requested === "host-filesystem"
+  ) {
     return requested;
   }
 

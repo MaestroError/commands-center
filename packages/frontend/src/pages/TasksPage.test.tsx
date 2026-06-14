@@ -902,7 +902,7 @@ describe("TasksPage", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/search/files?query=GOAL", { method: "GET" });
       expect(fetchMock).not.toHaveBeenCalledWith(
-        "/api/agents/agent-1/workspace/find/file?query=GOAL",
+        "/api/specialists/agent-1/workspace/find/file?query=GOAL",
         { method: "GET" },
       );
       expect(fetchMock).toHaveBeenCalledWith(
@@ -983,9 +983,12 @@ describe("TasksPage", () => {
     await user.type(feedbackInput, " #REVIEW");
 
     expect(await screen.findByRole("button", { name: /REVIEW\.md/i })).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith("/api/agents/agent-2/workspace/find/file?query=REVIEW", {
-      method: "GET",
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/specialists/agent-2/workspace/find/file?query=REVIEW",
+      {
+        method: "GET",
+      },
+    );
   });
 
   it("updates persistent task context from the collapsible context section", async () => {
@@ -2759,20 +2762,21 @@ function mockFetch(options: MockFetchOptions = {}) {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : input.toString();
 
-    if (url === "/api/agents") return Promise.resolve(jsonResponse(200, agentsPayload));
-    if (url === "/api/agents/catalog") return Promise.resolve(jsonResponse(200, catalogPayload));
+    if (url === "/api/specialists") return Promise.resolve(jsonResponse(200, agentsPayload));
+    if (url === "/api/specialists/catalog")
+      return Promise.resolve(jsonResponse(200, catalogPayload));
     if (url.startsWith("/api/search/files")) {
       return Promise.resolve(
         jsonResponse(200, { nameMatches: [{ path: "GOAL.md" }], contentMatches: [] }),
       );
     }
-    if (url.startsWith("/api/agents/agent-1/workspace/find/file")) {
+    if (url.startsWith("/api/specialists/agent-1/workspace/find/file")) {
       return Promise.resolve(jsonResponse(200, ["GOAL.md"]));
     }
-    if (url.startsWith("/api/agents/agent-2/workspace/find/file")) {
+    if (url.startsWith("/api/specialists/agent-2/workspace/find/file")) {
       return Promise.resolve(jsonResponse(200, ["REVIEW.md"]));
     }
-    if (url.startsWith("/api/agents/agent-1/workspace/file")) {
+    if (url.startsWith("/api/specialists/agent-1/workspace/file")) {
       return Promise.resolve(
         jsonResponse(200, [{ name: "GOAL.md", path: "GOAL.md", type: "file", ignored: false }]),
       );

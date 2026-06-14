@@ -94,7 +94,7 @@ async function mockCustomToolsApi(
     await route.fulfill(jsonResponse([]));
   });
 
-  await page.route("**/api/agents/catalog", async (route: Route) => {
+  await page.route("**/api/specialists/catalog", async (route: Route) => {
     await route.fulfill(
       jsonResponse({
         builtInSkills: [],
@@ -107,7 +107,7 @@ async function mockCustomToolsApi(
     );
   });
 
-  await page.route("**/api/agents", async (route: Route) => {
+  await page.route("**/api/specialists", async (route: Route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -120,7 +120,7 @@ async function mockCustomToolsApi(
           role: "role",
           instructions: "instructions",
           defaultModel: "openai/gpt-4.1",
-          workspacePath: `/tmp/agents/${agent.slug}`,
+          workspacePath: `/tmp/specialists/${agent.slug}`,
           status: "active",
           capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
           createdAt: "2026-01-01T00:00:00.000Z",
@@ -162,7 +162,7 @@ async function mockCustomToolsApi(
     await route.fallback();
   });
 
-  await page.route("**/api/custom-tools/*/copy-to-agents", async (route: Route) => {
+  await page.route("**/api/custom-tools/*/copy-to-specialists", async (route: Route) => {
     const slug = route.request().url().split("/").at(-2) ?? "";
     const payload = route.request().postDataJSON() as {
       agentIds: string[];
@@ -213,7 +213,7 @@ async function mockCustomToolsApi(
     );
   });
 
-  await page.route("**/api/agents/*/custom-tools**", async (route: Route) => {
+  await page.route("**/api/specialists/*/custom-tools**", async (route: Route) => {
     const parts = new URL(route.request().url()).pathname.split("/");
     const agentId = parts[3] ?? "";
 

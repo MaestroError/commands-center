@@ -37,7 +37,7 @@ describe("workspace skill routes", () => {
 
       const catalog = await server.inject({
         method: "GET",
-        url: "/api/agents/catalog",
+        url: "/api/specialists/catalog",
       });
       expect(catalog.statusCode).toBe(200);
       expect(catalog.json<{ workspaceSkills: Array<{ slug: string }> }>().workspaceSkills).toEqual([
@@ -75,7 +75,7 @@ describe("workspace skill routes", () => {
 
       const agentCreated = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Writer",
           role: "write docs",
@@ -100,7 +100,7 @@ describe("workspace skill routes", () => {
 
       const fetched = await server.inject({
         method: "GET",
-        url: `/api/agents/${agent.id}`,
+        url: `/api/specialists/${agent.id}`,
       });
       expect(fetched.statusCode).toBe(200);
       expect(

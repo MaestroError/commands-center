@@ -17,7 +17,7 @@ afterEach(() => {
 describe("custom tools flow", () => {
   it("supports direct copy to a selected agent and rename on conflict", async () => {
     const requests = mockApi({
-      "GET /api/agents": [
+      "GET /api/specialists": [
         jsonResponse(200, [
           {
             id: "agent-1",
@@ -26,7 +26,7 @@ describe("custom tools flow", () => {
             role: "write docs",
             instructions: "Write.",
             defaultModel: "openai/gpt-4.1",
-            workspacePath: "/tmp/agents/writer",
+            workspacePath: "/tmp/specialists/writer",
             status: "active",
             capabilities: {
               builtInSkills: [],
@@ -58,8 +58,8 @@ describe("custom tools flow", () => {
           },
         ]),
       ],
-      "GET /api/agents/agent-1/custom-tools": [jsonResponse(200, [])],
-      "POST /api/custom-tools/release-helper/copy-to-agents": [
+      "GET /api/specialists/agent-1/custom-tools": [jsonResponse(200, [])],
+      "POST /api/custom-tools/release-helper/copy-to-specialists": [
         jsonResponse(409, {
           error: {
             message: "Custom tool 'release-helper' already exists in this agent workspace.",
@@ -91,7 +91,7 @@ describe("custom tools flow", () => {
 
     await waitFor(() => {
       expect(requests).toContainEqual({
-        key: "POST /api/custom-tools/release-helper/copy-to-agents",
+        key: "POST /api/custom-tools/release-helper/copy-to-specialists",
         body: {
           agentIds: ["agent-1"],
           destinationName: "Release Helper Variant",

@@ -34,7 +34,7 @@ export function AgentsPage() {
     <div className="grid gap-4">
       <PageHeader
         actions={
-          <Link className="cc-button" to="/agents/new">
+          <Link className="cc-button" to="/specialists/new">
             Create agent
           </Link>
         }
@@ -84,7 +84,7 @@ export function AgentsPage() {
       {!agentsQuery.isLoading && !agentsQuery.error && agents.length === 0 ? (
         <EmptyState
           action={
-            <Link className="cc-button" to="/agents/new">
+            <Link className="cc-button" to="/specialists/new">
               Create your first agent
             </Link>
           }
@@ -140,7 +140,10 @@ export function AgentsPage() {
                 <Link className="cc-button" to={`/chat/${agent.slug}`}>
                   Open chat
                 </Link>
-                <Link className="cc-button cc-button-secondary" to={`/agents/${agent.slug}/edit`}>
+                <Link
+                  className="cc-button cc-button-secondary"
+                  to={`/specialists/${agent.slug}/edit`}
+                >
                   Edit
                 </Link>
                 <button

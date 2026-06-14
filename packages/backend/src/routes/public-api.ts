@@ -7,7 +7,7 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
   listPublicTasksQuerySchema,
-  publicAgentListResponseSchema,
+  publicSpecialistListResponseSchema,
   publicCreateTaskBodySchema,
   publicFeedbackListResponseSchema,
   publicGetTaskQuerySchema,
@@ -235,15 +235,15 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
   // --- Epic 09: direct task operations (tasks scope) -----------------------
 
   app.get(
-    "/api/public/v1/agents",
+    "/api/public/v1/specialists",
     {
       schema: {
         response: {
-          200: publicAgentListResponseSchema,
+          200: publicSpecialistListResponseSchema,
         },
       },
     },
-    async () => ({ agents: await service.listAgents() }),
+    async () => ({ specialists: await service.listAgents() }),
   );
 
   app.post(

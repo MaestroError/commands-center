@@ -59,7 +59,7 @@ describe("conversation routes", () => {
   it("resolves the active conversation for an agent", async () => {
     const response = await server.inject({
       method: "GET",
-      url: `/api/agents/${agentId}/conversations/active`,
+      url: `/api/specialists/${agentId}/conversations/active`,
     });
 
     expect(response.statusCode).toBe(200);
@@ -71,7 +71,7 @@ describe("conversation routes", () => {
   it("persists prompt request and response in the session", async () => {
     const opened = await server.inject({
       method: "GET",
-      url: `/api/agents/${agentId}/conversations/active`,
+      url: `/api/specialists/${agentId}/conversations/active`,
     });
     const conversationId = opened.json<{ current: { id: string } }>().current.id;
 
@@ -88,7 +88,7 @@ describe("conversation routes", () => {
   it("restores streamed prompt messages after reloading a specific conversation", async () => {
     const opened = await server.inject({
       method: "GET",
-      url: `/api/agents/${agentId}/conversations/active`,
+      url: `/api/specialists/${agentId}/conversations/active`,
     });
     const conversationId = opened.json<{ current: { id: string } }>().current.id;
 
@@ -102,7 +102,7 @@ describe("conversation routes", () => {
 
     const reloaded = await server.inject({
       method: "GET",
-      url: `/api/agents/${agentId}/conversations/${conversationId}`,
+      url: `/api/specialists/${agentId}/conversations/${conversationId}`,
     });
 
     expect(reloaded.statusCode).toBe(200);
@@ -119,7 +119,7 @@ describe("conversation routes", () => {
   it("returns session media from message parts and tool attachments", async () => {
     const opened = await server.inject({
       method: "GET",
-      url: `/api/agents/${agentId}/conversations/active`,
+      url: `/api/specialists/${agentId}/conversations/active`,
     });
     const conversationId = opened.json<{ current: { id: string } }>().current.id;
 
@@ -155,7 +155,7 @@ describe("conversation routes", () => {
   it("lists all conversations for an agent", async () => {
     const response = await server.inject({
       method: "GET",
-      url: `/api/agents/${agentId}/conversations`,
+      url: `/api/specialists/${agentId}/conversations`,
     });
 
     expect(response.statusCode).toBe(200);
@@ -165,13 +165,13 @@ describe("conversation routes", () => {
   it("start-fresh creates a new session and preserves the previous one", async () => {
     const before = await server.inject({
       method: "GET",
-      url: `/api/agents/${agentId}/conversations/active`,
+      url: `/api/specialists/${agentId}/conversations/active`,
     });
     const previousId = before.json<{ current: { id: string } }>().current.id;
 
     const response = await server.inject({
       method: "POST",
-      url: `/api/agents/${agentId}/conversations/start-fresh`,
+      url: `/api/specialists/${agentId}/conversations/start-fresh`,
     });
 
     expect(response.statusCode).toBe(201);

@@ -120,7 +120,7 @@ const agent: Specialist = {
   role: "Write docs",
   instructions: "Write clearly.",
   defaultModel: "openai/gpt-5",
-  workspacePath: "/tmp/agents/writer",
+  workspacePath: "/tmp/specialists/writer",
   status: "active",
   capabilities: {
     builtInSkills: [],

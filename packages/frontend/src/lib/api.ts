@@ -506,7 +506,7 @@ export async function cancelLiveRequest(
 }
 
 export async function listAgents(): Promise<Specialist[]> {
-  return requestJson<Specialist[]>("/api/agents", specialistListSchema);
+  return requestJson<Specialist[]>("/api/specialists", specialistListSchema);
 }
 
 export async function searchWorkspaceFiles(
@@ -524,13 +524,13 @@ export async function searchWorkspaceFiles(
 
 export async function getAgentBySlug(slug: string): Promise<Specialist> {
   return requestJson<Specialist>(
-    `/api/agents/by-slug/${encodeURIComponent(slug)}`,
+    `/api/specialists/by-slug/${encodeURIComponent(slug)}`,
     specialistSchema,
   );
 }
 
 export async function getSpecialistCatalog(): Promise<SpecialistCatalog> {
-  return requestJson<SpecialistCatalog>("/api/agents/catalog", specialistCatalogSchema);
+  return requestJson<SpecialistCatalog>("/api/specialists/catalog", specialistCatalogSchema);
 }
 
 export async function listCustomTools(): Promise<CustomTool[]> {
@@ -655,7 +655,7 @@ export async function copyCustomToolToAgents(
   input: CopyCustomToolToAgentsInput,
 ): Promise<{ copied: Array<{ agentId: string; agentSlug: string; overwritten: boolean }> }> {
   return requestJson(
-    `/api/custom-tools/${encodeURIComponent(slug)}/copy-to-agents`,
+    `/api/custom-tools/${encodeURIComponent(slug)}/copy-to-specialists`,
     customToolBulkCopyResultSchema,
     {
       method: "POST",
@@ -666,7 +666,7 @@ export async function copyCustomToolToAgents(
 
 export async function listAgentCustomTools(agentId: string): Promise<CustomToolAgentCopy[]> {
   return requestJson<CustomToolAgentCopy[]>(
-    `/api/agents/${encodeURIComponent(agentId)}/custom-tools`,
+    `/api/specialists/${encodeURIComponent(agentId)}/custom-tools`,
     customToolAgentCopyListSchema,
   );
 }
@@ -677,7 +677,7 @@ export async function copyAgentCustomToolToGlobal(
   input: ImportAgentCustomToolInput,
 ): Promise<CustomToolMutationResult> {
   return requestJson<CustomToolMutationResult>(
-    `/api/agents/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}/copy-to-global`,
+    `/api/specialists/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}/copy-to-global`,
     customToolMutationResultSchema,
     {
       method: "POST",
@@ -692,7 +692,7 @@ export async function moveAgentCustomToolToGlobal(
   input: ImportAgentCustomToolInput,
 ): Promise<CustomToolMutationResult> {
   return requestJson<CustomToolMutationResult>(
-    `/api/agents/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}/move-to-global`,
+    `/api/specialists/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}/move-to-global`,
     customToolMutationResultSchema,
     {
       method: "POST",
@@ -703,7 +703,7 @@ export async function moveAgentCustomToolToGlobal(
 
 export async function deleteAgentCustomTool(agentId: string, slug: string): Promise<void> {
   const response = await apiFetch(
-    `/api/agents/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}`,
+    `/api/specialists/${encodeURIComponent(agentId)}/custom-tools/${encodeURIComponent(slug)}`,
     {
       method: "DELETE",
     },
@@ -716,21 +716,21 @@ export async function deleteAgentCustomTool(agentId: string, slug: string): Prom
 }
 
 export async function createAgent(input: CreateSpecialistInput): Promise<Specialist> {
-  return requestJson<Specialist>("/api/agents", specialistSchema, {
+  return requestJson<Specialist>("/api/specialists", specialistSchema, {
     method: "POST",
     body: createSpecialistInputSchema.parse(input),
   });
 }
 
 export async function updateAgent(id: string, input: UpdateSpecialistInput): Promise<Specialist> {
-  return requestJson<Specialist>(`/api/agents/${encodeURIComponent(id)}`, specialistSchema, {
+  return requestJson<Specialist>(`/api/specialists/${encodeURIComponent(id)}`, specialistSchema, {
     method: "PATCH",
     body: updateSpecialistInputSchema.parse(input),
   });
 }
 
 export async function archiveAgent(id: string): Promise<Specialist> {
-  return requestJson<Specialist>(`/api/agents/${encodeURIComponent(id)}`, specialistSchema, {
+  return requestJson<Specialist>(`/api/specialists/${encodeURIComponent(id)}`, specialistSchema, {
     method: "DELETE",
   });
 }
@@ -1434,21 +1434,21 @@ function readApiErrorIssues(error: object): string[] {
 
 export async function getActiveConversation(agentId: string): Promise<ConversationSnapshot> {
   return requestJson<ConversationSnapshot>(
-    `/api/agents/${encodeURIComponent(agentId)}/conversations/active`,
+    `/api/specialists/${encodeURIComponent(agentId)}/conversations/active`,
     conversationSnapshotSchema,
   );
 }
 
 export async function listConversations(agentId: string): Promise<ConversationSummary[]> {
   return requestJson<ConversationSummary[]>(
-    `/api/agents/${encodeURIComponent(agentId)}/conversations`,
+    `/api/specialists/${encodeURIComponent(agentId)}/conversations`,
     conversationListSchema,
   );
 }
 
 export async function deleteConversation(agentId: string, conversationId: string): Promise<void> {
   const response = await apiFetch(
-    `/api/agents/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`,
+    `/api/specialists/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`,
     { method: "DELETE" },
   );
 
@@ -1463,14 +1463,14 @@ export async function getConversation(
   conversationId: string,
 ): Promise<ConversationDetail> {
   return requestJson<ConversationDetail>(
-    `/api/agents/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`,
+    `/api/specialists/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`,
     conversationDetailSchema,
   );
 }
 
 export async function startFreshConversation(agentId: string): Promise<ConversationSnapshot> {
   return requestJson<ConversationSnapshot>(
-    `/api/agents/${encodeURIComponent(agentId)}/conversations/start-fresh`,
+    `/api/specialists/${encodeURIComponent(agentId)}/conversations/start-fresh`,
     conversationSnapshotSchema,
     { method: "POST" },
   );
@@ -1621,7 +1621,7 @@ export async function summarizeConversation(conversationId: string): Promise<voi
 
 export async function searchAgentWorkspaceFiles(agentId: string, query: string): Promise<string[]> {
   return requestJson<string[]>(
-    `/api/agents/${encodeURIComponent(agentId)}/workspace/find/file?query=${encodeURIComponent(query)}`,
+    `/api/specialists/${encodeURIComponent(agentId)}/workspace/find/file?query=${encodeURIComponent(query)}`,
     opencodeFileSearchResultSchema,
   );
 }
@@ -1639,7 +1639,7 @@ export async function getWorkspaceTree(agentId: string, path?: string): Promise<
   params.set("path", path ?? ".");
   const qs = params.toString();
   const nodes = await requestJson(
-    `/api/agents/${encodeURIComponent(agentId)}/workspace/file?${qs}`,
+    `/api/specialists/${encodeURIComponent(agentId)}/workspace/file?${qs}`,
     opencodeFileListResultSchema,
   );
 
@@ -1693,11 +1693,14 @@ export async function* connectWorkspaceEvents(
   agentId: string,
   signal: AbortSignal,
 ): AsyncGenerator<WorkspaceWatchEvent> {
-  const response = await apiFetch(`/api/agents/${encodeURIComponent(agentId)}/workspace/events`, {
-    method: "GET",
-    headers: { Accept: "text/event-stream" },
-    signal,
-  });
+  const response = await apiFetch(
+    `/api/specialists/${encodeURIComponent(agentId)}/workspace/events`,
+    {
+      method: "GET",
+      headers: { Accept: "text/event-stream" },
+      signal,
+    },
+  );
 
   if (!response.ok) {
     throw new Error(`Workspace SSE connection failed with status ${String(response.status)}`);

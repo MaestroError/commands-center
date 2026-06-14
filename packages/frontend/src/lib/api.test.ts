@@ -639,7 +639,7 @@ describe("additional request wrapper coverage", () => {
     {
       name: "deleteAgentCustomTool deletes the encoded agent tool slug",
       run: () => deleteAgentCustomTool("agent/1", "tool/name"),
-      expectedUrl: "/api/agents/agent%2F1/custom-tools/tool%2Fname",
+      expectedUrl: "/api/specialists/agent%2F1/custom-tools/tool%2Fname",
       expectedInit: { method: "DELETE" },
     },
     {

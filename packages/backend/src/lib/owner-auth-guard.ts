@@ -11,7 +11,7 @@ import type { RuntimeContext } from "./start-server-runtime.js";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const STATIC_ASSET_PATTERN = /\.[a-zA-Z0-9]+$/;
-const CC_MANAGED_MCP_ROUTE_PATTERN = /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/;
+const CC_MANAGED_MCP_ROUTE_PATTERN = /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/;
 const PUBLIC_API_PREFIX = "/api/public/";
 const SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN =
   /^\/api\/public\/v1\/task-artifacts\/download\/[^/]+$/;
@@ -132,7 +132,7 @@ function scopeForPublicRoute(
 
   if (
     normalizedMethod === "GET" &&
-    (pathname === "/api/public/v1/agents" || pathname === "/api/public/v1/tasks")
+    (pathname === "/api/public/v1/specialists" || pathname === "/api/public/v1/tasks")
   ) {
     return "tasks";
   }

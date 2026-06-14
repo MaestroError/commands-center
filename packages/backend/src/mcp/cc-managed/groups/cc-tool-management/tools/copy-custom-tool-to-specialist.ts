@@ -7,22 +7,22 @@ import type {
 } from "../../../../../services/custom-tool-action-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
 
-const copyCustomToolToAgentInputSchema = z.object({
+const copyCustomToolToSpecialistInputSchema = z.object({
   toolSlug: z.string().trim().min(1),
-  agentSlug: z.string().trim().min(1).optional(),
+  specialistSlug: z.string().trim().min(1).optional(),
 });
 
-const copyCustomToolToAgentOutputSchema = z.object({
+const copyCustomToolToSpecialistOutputSchema = z.object({
   toolSlug: z.string().min(1),
   destinationSlug: z.string().min(1),
-  agentSlug: z.string().min(1),
+  specialistSlug: z.string().min(1),
   overwritten: z.boolean(),
 });
 
-export const copyCustomToolToAgentMetadata = {
-  name: "copy_custom_tool_to_agent",
+export const copyCustomToolToSpecialistMetadata = {
+  name: "copy_custom_tool_to_specialist",
   description:
-    "Copy a global CommandsCenter custom tool into an agent workspace, asking the operator when overwrite or rename is needed.",
+    "Copy a global CommandsCenter custom tool into a specialist workspace, asking the operator when overwrite or rename is needed.",
   context: "chat",
 } as const;
 
@@ -33,24 +33,24 @@ const copyDecisionSchema = z.object({
   }),
 });
 
-export function createCopyCustomToolToAgentDefinition(options: {
+export function createCopyCustomToolToSpecialistDefinition(options: {
   customToolActionService: CustomToolActionService;
   conversationService?: ConversationService;
   liveRequestService?: LiveRequestService;
 }) {
   return {
-    name: copyCustomToolToAgentMetadata.name,
-    description: copyCustomToolToAgentMetadata.description,
-    context: copyCustomToolToAgentMetadata.context,
-    inputSchema: copyCustomToolToAgentInputSchema,
-    outputSchema: copyCustomToolToAgentOutputSchema,
+    name: copyCustomToolToSpecialistMetadata.name,
+    description: copyCustomToolToSpecialistMetadata.description,
+    context: copyCustomToolToSpecialistMetadata.context,
+    inputSchema: copyCustomToolToSpecialistInputSchema,
+    outputSchema: copyCustomToolToSpecialistOutputSchema,
     async execute(args: unknown, context: { agentSlug: string }) {
       try {
-        const parsed = copyCustomToolToAgentInputSchema.parse(args);
-        const targetAgentSlug = parsed.agentSlug ?? context.agentSlug;
+        const parsed = copyCustomToolToSpecialistInputSchema.parse(args);
+        const targetSpecialistSlug = parsed.specialistSlug ?? context.agentSlug;
         const firstAttempt = await options.customToolActionService.copyGlobalToolToAgent({
           slug: parsed.toolSlug,
-          agentSlug: targetAgentSlug,
+          agentSlug: targetSpecialistSlug,
           overwrite: false,
         });
 
@@ -58,7 +58,7 @@ export function createCopyCustomToolToAgentDefinition(options: {
           return successResult({
             toolSlug: parsed.toolSlug,
             destinationSlug: firstAttempt.destinationSlug,
-            agentSlug: targetAgentSlug,
+            specialistSlug: targetSpecialistSlug,
             overwritten: firstAttempt.result.copied[0]?.overwritten ?? false,
           });
         }
@@ -88,7 +88,7 @@ export function createCopyCustomToolToAgentDefinition(options: {
         return successResult({
           toolSlug: firstAttempt.conflict.toolSlug,
           destinationSlug: finalAttempt.destinationSlug,
-          agentSlug: firstAttempt.conflict.agentSlug,
+          specialistSlug: firstAttempt.conflict.agentSlug,
           overwritten: finalAttempt.result.copied[0]?.overwritten ?? overwrite,
         });
       } catch (error) {
@@ -126,7 +126,7 @@ async function requestConflictDecision(options: {
     presentation: {
       title: "Tool name conflict",
       description:
-        "A tool with this name already exists in the selected agent workspace. Rewrite it or copy a renamed variant.",
+        "A tool with this name already exists in the selected specialist workspace. Rewrite it or copy a renamed variant.",
       submitLabel: "Continue",
       cancelLabel: "Cancel",
     },
@@ -142,7 +142,7 @@ async function requestConflictDecision(options: {
     metadata: {
       toolName: options.conflict.toolName,
       toolSlug: options.conflict.toolSlug,
-      agentSlug: options.conflict.agentSlug,
+      specialistSlug: options.conflict.agentSlug,
       conflictMessage: options.conflict.message,
       currentName: options.conflict.currentName,
     },
@@ -190,17 +190,17 @@ async function requestConflictDecision(options: {
 function successResult(input: {
   toolSlug: string;
   destinationSlug: string;
-  agentSlug: string;
+  specialistSlug: string;
   overwritten: boolean;
 }) {
-  const structuredContent = copyCustomToolToAgentOutputSchema.parse(input);
+  const structuredContent = copyCustomToolToSpecialistOutputSchema.parse(input);
 
   return {
     structuredContent,
     content: [
       {
         type: "text" as const,
-        text: `Copied '${input.toolSlug}' to agent '${input.agentSlug}' as '${input.destinationSlug}'.`,
+        text: `Copied '${input.toolSlug}' to specialist '${input.specialistSlug}' as '${input.destinationSlug}'.`,
       },
     ],
   };

@@ -14,7 +14,11 @@ import {
   saveFileManagerFileContent,
 } from "@/lib/api";
 
-const VALID_ROOTS: readonly FileManagerRootKind[] = ["workspace", "all-agents", "host-filesystem"];
+const VALID_ROOTS: readonly FileManagerRootKind[] = [
+  "workspace",
+  "all-specialists",
+  "host-filesystem",
+];
 
 export const MAX_OPEN_TABS = 30;
 export const TABS_PARAM = "tabs";

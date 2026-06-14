@@ -90,7 +90,7 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
 }
 
 function buildServerUrl(config: RuntimeConfig, routeSegment: string, agentSlug: string): string {
-  return `http://127.0.0.1:${String(config.server.port)}/api/mcp/cc/${routeSegment}/agents/${encodeURIComponent(agentSlug)}`;
+  return `http://127.0.0.1:${String(config.server.port)}/api/mcp/cc/${routeSegment}/specialists/${encodeURIComponent(agentSlug)}`;
 }
 
 export type CcManagedMcpWorkspaceEntryService = ReturnType<

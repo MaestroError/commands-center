@@ -100,7 +100,7 @@ export function buildTemplateEndpointDocs(
 
 export interface TaskApiDocs {
   apiBaseUrl: string;
-  agentsCurl: string;
+  specialistsCurl: string;
   createCurl: string;
   listByStatusCurl: string;
   listByTemplateCurl: string;
@@ -134,7 +134,7 @@ export function buildTaskApiDocs(baseUrl: string): TaskApiDocs {
 
   return {
     apiBaseUrl,
-    agentsCurl: [`curl '${apiBaseUrl}/agents' \\`, `  ${auth}`].join("\n"),
+    specialistsCurl: [`curl '${apiBaseUrl}/specialists' \\`, `  ${auth}`].join("\n"),
     createCurl: [
       `curl -X POST '${apiBaseUrl}/tasks' \\`,
       `  ${auth} \\`,

@@ -90,7 +90,7 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
   });
 
   app.post(
-    "/api/mcp/cc/:serverName/agents/:agentSlug",
+    "/api/mcp/cc/:serverName/specialists/:agentSlug",
     {
       schema: {
         params: paramsSchema,
@@ -109,7 +109,7 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
   );
 
   app.get(
-    "/api/mcp/cc/:serverName/agents/:agentSlug",
+    "/api/mcp/cc/:serverName/specialists/:agentSlug",
     {
       schema: {
         params: paramsSchema,
@@ -127,7 +127,7 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
   );
 
   app.delete(
-    "/api/mcp/cc/:serverName/agents/:agentSlug",
+    "/api/mcp/cc/:serverName/specialists/:agentSlug",
     {
       schema: {
         params: paramsSchema,

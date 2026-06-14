@@ -18,7 +18,7 @@ import {
 
 type CopyConflictState =
   | {
-      kind: "copy-to-agents";
+      kind: "copy-to-specialists";
       tool: CustomTool;
       selectedAgentIds: string[];
       destinationName: string;
@@ -120,7 +120,7 @@ export function CustomToolsPage() {
 
       if ((input?.overwrite ?? false) === false && isCopyConflictError(message)) {
         setCopyConflict({
-          kind: "copy-to-agents",
+          kind: "copy-to-specialists",
           tool,
           selectedAgentIds: agentIds,
           destinationName: input?.destinationName?.trim() || tool.name,
@@ -366,7 +366,7 @@ export function CustomToolsPage() {
                           <StatusBadge status={usage.status} />
                           <Link
                             className="text-text-primary underline-offset-4 hover:underline"
-                            to={`/agents/${usage.agentSlug}/edit`}
+                            to={`/specialists/${usage.agentSlug}/edit`}
                           >
                             {usage.agentName}
                           </Link>
@@ -547,16 +547,18 @@ export function CustomToolsPage() {
       {copyConflict ? (
         <CopyConflictDialog
           busy={
-            copyConflict.kind === "copy-to-agents"
+            copyConflict.kind === "copy-to-specialists"
               ? mutations.copyToAgents.isPending
               : mutations.copyAgentToGlobal.isPending
           }
           currentName={
-            copyConflict.kind === "copy-to-agents" ? copyConflict.tool.name : copyConflict.tool.name
+            copyConflict.kind === "copy-to-specialists"
+              ? copyConflict.tool.name
+              : copyConflict.tool.name
           }
           destinationName={copyConflict.destinationName}
           message={
-            copyConflict.kind === "copy-to-agents"
+            copyConflict.kind === "copy-to-specialists"
               ? "A tool with this name already exists in at least one selected agent. Rewrite it or copy a renamed variant."
               : "A tool with this name already exists globally. Rewrite it or copy a renamed variant."
           }
@@ -567,7 +569,7 @@ export function CustomToolsPage() {
             )
           }
           onCopyWithNewName={() => {
-            if (copyConflict.kind === "copy-to-agents") {
+            if (copyConflict.kind === "copy-to-specialists") {
               void handleCopyToAgents({
                 tool: copyConflict.tool,
                 selectedAgentIds: copyConflict.selectedAgentIds,
@@ -583,7 +585,7 @@ export function CustomToolsPage() {
             });
           }}
           onRewrite={() => {
-            if (copyConflict.kind === "copy-to-agents") {
+            if (copyConflict.kind === "copy-to-specialists") {
               void handleCopyToAgents({
                 tool: copyConflict.tool,
                 selectedAgentIds: copyConflict.selectedAgentIds,

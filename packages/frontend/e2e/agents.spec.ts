@@ -23,7 +23,7 @@ test("lists, filters, and deletes agents", async ({ page }) => {
   const state = createAgentState();
   await mockAgentApi(page, state);
 
-  await page.goto("/agents");
+  await page.goto("/specialists");
   await expect(page.getByRole("heading", { name: "Writer" })).toBeVisible();
   await page.getByPlaceholder("Search by name or role").fill("review");
   await expect(page.getByRole("heading", { name: "Reviewer" })).toBeVisible();
@@ -38,7 +38,7 @@ test("creates and edits an agent", async ({ page }) => {
   const state = createAgentState();
   await mockAgentApi(page, state);
 
-  await page.goto("/agents/new");
+  await page.goto("/specialists/new");
   await page.getByLabel(/^Name/).fill("Planner");
   await page.getByLabel(/^Role/).fill("plan work");
   await page.getByLabel(/^Instructions/).fill("Plan before editing.");
@@ -68,7 +68,7 @@ test("creates and edits an agent", async ({ page }) => {
 
   const updateResponse = page.waitForResponse(
     (response) =>
-      response.url().includes("/api/agents/agent-") &&
+      response.url().includes("/api/specialists/agent-") &&
       response.request().method() === "PATCH" &&
       response.status() === 200,
   );
@@ -122,21 +122,21 @@ async function mockAgentApi(
     await route.fulfill(jsonResponse([]));
   });
 
-  await page.route("**/api/agents**", async (route: Route) => {
+  await page.route("**/api/specialists**", async (route: Route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
 
-    if (path === "/api/agents/catalog") {
+    if (path === "/api/specialists/catalog") {
       await route.fulfill(jsonResponse(state.catalog));
       return;
     }
 
-    if (path === "/api/agents" && route.request().method() === "GET") {
+    if (path === "/api/specialists" && route.request().method() === "GET") {
       await route.fulfill(jsonResponse(state.agents.filter((agent) => agent.status === "active")));
       return;
     }
 
-    if (path === "/api/agents" && route.request().method() === "POST") {
+    if (path === "/api/specialists" && route.request().method() === "POST") {
       const payload = route.request().postDataJSON() as Partial<AgentRecord> & {
         capabilities: AgentRecord["capabilities"];
       };
@@ -152,7 +152,7 @@ async function mockAgentApi(
         role: payload.role ?? "role",
         instructions: payload.instructions ?? "instructions",
         defaultModel: payload.defaultModel ?? "openai/gpt-4.1",
-        workspacePath: `/tmp/agents/${slug}`,
+        workspacePath: `/tmp/specialists/${slug}`,
         status: "active",
         capabilities: payload.capabilities,
         createdAt: "2026-01-01T00:00:00.000Z",
@@ -164,7 +164,7 @@ async function mockAgentApi(
       return;
     }
 
-    if (path.startsWith("/api/agents/by-slug/")) {
+    if (path.startsWith("/api/specialists/by-slug/")) {
       const slug = path.split("/").pop();
       const bySlugAgent = state.agents.find((entry) => entry.slug === slug);
       await route.fulfill(
@@ -194,7 +194,7 @@ async function mockAgentApi(
               .replace(/^-+|-+$/g, "")
           : agent.slug,
         workspacePath: payload.name
-          ? `/tmp/agents/${payload.name
+          ? `/tmp/specialists/${payload.name
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, "-")
               .replace(/^-+|-+$/g, "")}`
@@ -225,7 +225,7 @@ function createAgentState() {
         role: "write docs",
         instructions: "Write clear docs.",
         defaultModel: "openai/gpt-4.1",
-        workspacePath: "/tmp/agents/writer",
+        workspacePath: "/tmp/specialists/writer",
         status: "active" as const,
         capabilities: {
           builtInSkills: ["code-reviewer"],
@@ -242,7 +242,7 @@ function createAgentState() {
         role: "review code",
         instructions: "Review diffs.",
         defaultModel: "openai/gpt-4.1",
-        workspacePath: "/tmp/agents/reviewer",
+        workspacePath: "/tmp/specialists/reviewer",
         status: "active" as const,
         capabilities: { builtInSkills: [], mcpServers: [], toolPermissions: [] },
         createdAt: "2026-01-01T00:00:00.000Z",

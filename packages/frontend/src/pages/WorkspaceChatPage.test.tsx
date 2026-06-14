@@ -697,7 +697,7 @@ describe("WorkspaceChatPage", () => {
             kind: "show_file_to_user",
             closable: true,
             metadata: {
-              path: "/Users/revazgh/cc-dev/.cc/workspace/agents/testing-agent/mermaid.png",
+              path: "/Users/revazgh/cc-dev/.cc/workspace/specialists/testing-agent/mermaid.png",
             },
             actions: [],
             fields: [],

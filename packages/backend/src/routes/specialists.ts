@@ -42,7 +42,7 @@ const listAgentsQuerySchema = z.object({
   includeArchived: z.coerce.boolean().optional().default(false),
 });
 
-export function registerAgentRoutes(server: AppServer, context: RuntimeContext): void {
+export function registerSpecialistRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const customToolService = createCustomToolService({
     config: context.config,
@@ -77,7 +77,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   }
 
   app.get(
-    "/api/agents",
+    "/api/specialists",
     {
       schema: {
         querystring: listAgentsQuerySchema,
@@ -86,10 +86,10 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
     async (request) => service.list(request.query.includeArchived),
   );
 
-  app.get("/api/agents/catalog", async () => service.getCatalog());
+  app.get("/api/specialists/catalog", async () => service.getCatalog());
 
   app.get(
-    "/api/agents/:id",
+    "/api/specialists/:id",
     {
       schema: {
         params: agentIdParamsSchema,
@@ -107,7 +107,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.get(
-    "/api/agents/by-slug/:slug",
+    "/api/specialists/by-slug/:slug",
     {
       schema: {
         params: agentSlugParamsSchema,
@@ -125,7 +125,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.post(
-    "/api/agents",
+    "/api/specialists",
     {
       schema: {
         body: createSpecialistInputSchema,
@@ -138,7 +138,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.patch(
-    "/api/agents/:id",
+    "/api/specialists/:id",
     {
       schema: {
         params: agentIdParamsSchema,
@@ -157,7 +157,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.delete(
-    "/api/agents/:id",
+    "/api/specialists/:id",
     {
       schema: {
         params: agentIdParamsSchema,
@@ -175,7 +175,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.get(
-    "/api/agents/:id/custom-tools",
+    "/api/specialists/:id/custom-tools",
     {
       schema: {
         params: agentIdParamsSchema,
@@ -188,7 +188,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.post(
-    "/api/agents/:id/custom-tools/:slug/copy-to-global",
+    "/api/specialists/:id/custom-tools/:slug/copy-to-global",
     {
       schema: {
         params: z.object({ id: z.string().min(1), slug: z.string().min(1) }),
@@ -207,7 +207,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.post(
-    "/api/agents/:id/custom-tools/:slug/move-to-global",
+    "/api/specialists/:id/custom-tools/:slug/move-to-global",
     {
       schema: {
         params: z.object({ id: z.string().min(1), slug: z.string().min(1) }),
@@ -226,7 +226,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.delete(
-    "/api/agents/:id/custom-tools/:slug",
+    "/api/specialists/:id/custom-tools/:slug",
     {
       schema: {
         params: z.object({ id: z.string().min(1), slug: z.string().min(1) }),
@@ -267,7 +267,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.get(
-    "/api/agents/:id/workspace/find",
+    "/api/specialists/:id/workspace/find",
     {
       schema: {
         params: agentIdParamsSchema,
@@ -284,7 +284,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.get(
-    "/api/agents/:id/workspace/find/file",
+    "/api/specialists/:id/workspace/find/file",
     {
       schema: {
         params: agentIdParamsSchema,
@@ -301,7 +301,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.get(
-    "/api/agents/:id/workspace/file",
+    "/api/specialists/:id/workspace/file",
     {
       schema: {
         params: agentIdParamsSchema,
@@ -331,7 +331,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.get(
-    "/api/agents/:id/workspace/file/content",
+    "/api/specialists/:id/workspace/file/content",
     {
       schema: {
         params: agentIdParamsSchema,
@@ -348,7 +348,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.get(
-    "/api/agents/:id/workspace/file/status",
+    "/api/specialists/:id/workspace/file/status",
     {
       schema: {
         params: agentIdParamsSchema,
@@ -364,7 +364,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
   );
 
   app.get(
-    "/api/agents/:id/workspace/events",
+    "/api/specialists/:id/workspace/events",
     {
       schema: {
         params: agentIdParamsSchema,

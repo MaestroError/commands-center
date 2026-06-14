@@ -1,6 +1,6 @@
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
-import { registerAgentRoutes } from "./agents.js";
+import { registerSpecialistRoutes } from "./specialists.js";
 import { registerApiTokenRoutes } from "./api-tokens.js";
 import { registerCcManagedMcpRoutes } from "./cc-managed-mcp.js";
 import { registerConversationEventRoutes } from "./conversation-events.js";
@@ -25,7 +25,7 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerOwnerAuthRoutes(server, context);
   registerApiTokenRoutes(server, context);
   registerCcManagedMcpRoutes(server, context);
-  registerAgentRoutes(server, context);
+  registerSpecialistRoutes(server, context);
   registerConversationRoutes(server, context);
   registerConversationEventRoutes(server, context);
   registerLiveRequestRoutes(server, context);

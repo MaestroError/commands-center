@@ -1,10 +1,10 @@
-# Plan: Capabilities in `create_agent` / `update_agent` (and drafts) via MCP
+# Plan: Capabilities in `create_specialist` / `update_specialist` (and drafts) via MCP
 
 ## Goal
 
-Let agents configure another agent's **capabilities** (skills, custom tools, MCP
+Let specialists configure another specialist's **capabilities** (skills, custom tools, MCP
 permissions, app-MCP groups) through the CommandsCenter-managed MCP tools, the same way
-the Agent editor page does — **without** the AI having to guess slugs/names.
+the specialist editor page does — **without** the AI having to guess slugs/names.
 
 Two pieces:
 
@@ -20,7 +20,7 @@ options anywhere. There is already a single source of truth for both:
 
 | Concern                                                                           | Single source of truth                                                                                             | Consumed today by                                      |
 | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| **Available options** (skills, models, MCP servers, app-MCP groups, custom tools) | `agentService.getCatalog()` → `GET /api/agents/catalog` (`agentCatalogSchema`)                                     | Agent editor page via `useAgentCatalogQuery()`         |
+| **Available options** (skills, models, MCP servers, app-MCP groups, custom tools) | `agentService.getCatalog()` → `GET /api/specialists/catalog` (`agentCatalogSchema`)                                | Specialist editor page via `useAgentCatalogQuery()`    |
 | **Capabilities shape** (what a selection looks like)                              | `agentCapabilitySelectionSchema` (`packages/backend/src/schemas/agents.ts`, re-exported from `@cc/shared/schemas`) | `agentService.create/update`, the editor form, the API |
 
 If the discovery tool returns `agentService.getCatalog()` verbatim and the create/update
@@ -34,8 +34,8 @@ this (see [Testing](#testing)).
 
 ## Current state (post-refactor)
 
-- `capabilities` was **removed** from `create_agent` / `update_agent` / `draft_agent` /
-  `draft_agent_update` (`packages/backend/src/mcp/cc-managed/groups/cc-agent-management/tools/agent-management-tools.ts`). Agents are created with empty capabilities and configured later in the UI.
+- `capabilities` was **removed** from `create_specialist` / `update_specialist` / `draft_specialist` /
+  `draft_specialist_update` (`packages/backend/src/mcp/cc-managed/groups/cc-specialist-management/tools/specialist-management-tools.ts`). Specialists are created with empty capabilities and configured later in the UI.
 - `list_models` (context `both`) already exposes connected-provider model IDs, backed by
   `agentService.getCatalog().providerModels`. It is the template to follow for the
   discovery tool.
@@ -65,7 +65,7 @@ workflow possible.
 
 ### 1. Discovery tool: `get_agent_catalog`
 
-- **Group / context:** `cc_agent_management`, context `both` (mirrors `list_agents` /
+- **Group / context:** `cc_specialist_management`, context `both` (mirrors `list_specialists` /
   `list_models`). Lives beside the other non-interactive discovery tools.
 - **Implementation:** thin wrapper over `agentService.getCatalog()`. **Returns only
   enabled / selectable options:**
@@ -83,16 +83,16 @@ workflow possible.
 
 ### 2. Re-add `capabilities` to the direct tools
 
-In `agent-management-tools.ts`:
+In `specialist-management-tools.ts`:
 
-- `createAgentToolInputSchema` = `createAgentInputSchema` (stop `.omit({ capabilities })`).
-- `updateAgentToolInputSchema.input` = `updateAgentInputSchema` (stop omitting).
+- `createSpecialistToolInputSchema` = `createSpecialistInputSchema` (stop `.omit({ capabilities })`).
+- `updateSpecialistToolInputSchema.input` = `updateSpecialistInputSchema` (stop omitting).
 - Execute paths simply pass `capabilities` through to `agentService.create/update`, which
   already validate via `agentCapabilitySelectionSchema`. **No new validation code.**
 - Tool descriptions: instruct the model to call `get_agent_catalog` first and only use
   slugs/names returned there.
 
-### 3. Drafts (`draft_agent` / `draft_agent_update`) — operator review
+### 3. Drafts (`draft_specialist` / `draft_specialist_update`) — operator review
 
 The draft tools open a live-request review form. Capabilities options:
 
@@ -129,12 +129,12 @@ final authority.
 
 ## Files to change
 
-- `packages/backend/src/mcp/cc-managed/groups/cc-agent-management/tools/agent-management-tools.ts`
+- `packages/backend/src/mcp/cc-managed/groups/cc-specialist-management/tools/specialist-management-tools.ts`
   - add `get_agent_catalog` tool + metadata + `createGetAgentCatalogToolDefinition`
   - un-omit `capabilities` on create/update/draft input schemas; thread it through
   - add `validateCapabilitiesAgainstCatalog` helper
 - `packages/backend/src/mcp/cc-managed/server-registry.ts`
-  - register `get_agent_catalog` in `cc_agent_management` (catalog + tools)
+  - register `get_agent_catalog` in `cc_specialist_management` (catalog + tools)
 - `packages/shared` (only if a trimmed catalog output type is wanted) — prefer deriving
   from `agentCatalogSchema`.
 - Frontend (only if Option A): route `agent_*_review` kinds to `AgentForm` (dense) in
@@ -148,13 +148,13 @@ final authority.
   - assert `get_agent_catalog` structured output is parseable by a schema derived from
     `agentCatalogSchema` (so adding a catalog field forces the tool to surface it).
   - assert the create/update tools accept the full `agentCapabilitySelectionSchema` shape
-    (round-trip a selection built from catalog data and read it back via `list_agents` /
+    (round-trip a selection built from catalog data and read it back via `list_specialists` /
     `get`).
 - `get_agent_catalog` returns only enabled MCP servers / custom tools (seed one
   disabled + one enabled, assert filtering).
-- `create_agent` with valid capabilities persists them; with an unknown slug returns the
+- `create_specialist` with valid capabilities persists them; with an unknown slug returns the
   helpful catalog error.
-- Update the `cc_agent_management` catalog snapshot in `agent-service.test.ts`.
+- Update the `cc_specialist_management` catalog snapshot in `specialist-service.test.ts`.
 
 ## Open questions
 
@@ -164,6 +164,6 @@ final authority.
    wider/scrollable surface.
 2. **Strict vs lenient validation** — hard-reject unknown slugs, or drop-with-warning?
    Recommend hard-reject with the catalog error for predictability.
-3. **Group placement** — `get_agent_catalog` in `cc_agent_management` (with the direct
+3. **Group placement** — `get_agent_catalog` in `cc_specialist_management` (with the direct
    create/update tools). Drafts live in `cc_app`; the AI may need the catalog there too —
    either also expose it in `cc_app`, or rely on the operator-driven form for drafts.

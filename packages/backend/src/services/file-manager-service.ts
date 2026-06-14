@@ -554,7 +554,7 @@ export function resolveFileManagerRoot(options: {
     };
   }
 
-  if (options.kind === "all-agents") {
+  if (options.kind === "all-specialists") {
     return {
       kind: options.kind,
       basePath: options.config.paths.subdirectories.specialists,

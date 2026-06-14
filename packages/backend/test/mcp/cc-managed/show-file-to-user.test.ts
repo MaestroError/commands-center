@@ -23,7 +23,7 @@ describe("normalizeAgentFilePath", () => {
     expect(
       normalizeAgentFilePath({
         ...options,
-        path: "/Users/revazgh/cc-dev/.cc/workspace/agents/testing-agent/mermaid.png",
+        path: "/Users/revazgh/cc-dev/.cc/workspace/specialists/testing-agent/mermaid.png",
       }),
     ).toBe("mermaid.png");
   });
@@ -32,7 +32,7 @@ describe("normalizeAgentFilePath", () => {
     expect(() =>
       normalizeAgentFilePath({
         ...options,
-        path: "/Users/revazgh/cc-dev/.cc/workspace/agents/other-agent/secret.md",
+        path: "/Users/revazgh/cc-dev/.cc/workspace/specialists/other-agent/secret.md",
       }),
     ).toThrow("Absolute paths must point inside this agent workspace.");
   });

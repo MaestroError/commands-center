@@ -37,7 +37,7 @@ const agents = [
     role: "write docs",
     instructions: "Write clear docs.",
     defaultModel: "openai/gpt-4.1",
-    workspacePath: "/tmp/agents/writer",
+    workspacePath: "/tmp/specialists/writer",
     status: "active",
     capabilities: {
       builtInSkills: ["code-reviewer"],
@@ -58,7 +58,7 @@ const agents = [
     role: "review code",
     instructions: "Review diffs.",
     defaultModel: "openai/gpt-4.1",
-    workspacePath: "/tmp/agents/reviewer",
+    workspacePath: "/tmp/specialists/reviewer",
     status: "active",
     capabilities: {
       builtInSkills: [],
@@ -100,9 +100,9 @@ afterEach(() => {
 describe("agent flows", () => {
   it("filters agents by name or role", async () => {
     mockApi({
-      "GET /api/agents": [jsonResponse(200, agents)],
+      "GET /api/specialists": [jsonResponse(200, agents)],
     });
-    window.history.replaceState({}, "", "/agents");
+    window.history.replaceState({}, "", "/specialists");
     render(<App />);
 
     await screen.findByRole("heading", { name: "Writer", level: 2 });
@@ -115,8 +115,8 @@ describe("agent flows", () => {
 
   it("creates an agent and navigates to the agents page", async () => {
     mockApi({
-      "GET /api/agents/catalog": [jsonResponse(200, catalog), jsonResponse(200, catalog)],
-      "GET /api/agents": [
+      "GET /api/specialists/catalog": [jsonResponse(200, catalog), jsonResponse(200, catalog)],
+      "GET /api/specialists": [
         jsonResponse(200, agents),
         jsonResponse(200, [
           ...agents,
@@ -136,13 +136,13 @@ describe("agent flows", () => {
               appMcpServers: [],
               appToolPermissions: [],
             },
-            workspacePath: "/tmp/agents/planner",
+            workspacePath: "/tmp/specialists/planner",
           },
         ]),
       ],
       "GET /api/custom-tools": [jsonResponse(200, []), jsonResponse(200, [])],
       "GET /api/mcp-servers": [jsonResponse(200, []), jsonResponse(200, [])],
-      "POST /api/agents": [
+      "POST /api/specialists": [
         jsonResponse(201, {
           ...agents[0],
           id: "agent-3",
@@ -159,10 +159,10 @@ describe("agent flows", () => {
             appMcpServers: [],
             appToolPermissions: [],
           },
-          workspacePath: "/tmp/agents/planner",
+          workspacePath: "/tmp/specialists/planner",
         }),
       ],
-      "GET /api/agents/by-slug/planner": [
+      "GET /api/specialists/by-slug/planner": [
         jsonResponse(200, {
           ...agents[0],
           id: "agent-3",
@@ -179,12 +179,12 @@ describe("agent flows", () => {
             appMcpServers: [],
             appToolPermissions: [],
           },
-          workspacePath: "/tmp/agents/planner",
+          workspacePath: "/tmp/specialists/planner",
         }),
       ],
-      "GET /api/agents/agent-3/custom-tools": [jsonResponse(200, [])],
+      "GET /api/specialists/agent-3/custom-tools": [jsonResponse(200, [])],
     });
-    window.history.replaceState({}, "", "/agents/new");
+    window.history.replaceState({}, "", "/specialists/new");
     render(<App />);
 
     const user = userEvent.setup();
@@ -200,15 +200,15 @@ describe("agent flows", () => {
     await user.click(screen.getByRole("button", { name: "Create agent" }));
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe("/agents");
+      expect(window.location.pathname).toBe("/specialists");
     });
     expect(screen.getByRole("heading", { name: "Planner", level: 2 })).toBeInTheDocument();
   });
 
   it("renders the built-in skills browser and detail pane", async () => {
     mockApi({
-      "GET /api/agents/catalog": [jsonResponse(200, catalog)],
-      "GET /api/agents": [jsonResponse(200, agents)],
+      "GET /api/specialists/catalog": [jsonResponse(200, catalog)],
+      "GET /api/specialists": [jsonResponse(200, agents)],
       "GET /api/custom-tools": [jsonResponse(200, [])],
     });
     window.history.replaceState({}, "", "/skills");
@@ -223,12 +223,12 @@ describe("agent flows", () => {
 
   it("shows a duplicate identifier error before submit", async () => {
     mockApi({
-      "GET /api/agents": [jsonResponse(200, agents)],
-      "GET /api/agents/catalog": [jsonResponse(200, catalog)],
+      "GET /api/specialists": [jsonResponse(200, agents)],
+      "GET /api/specialists/catalog": [jsonResponse(200, catalog)],
       "GET /api/custom-tools": [jsonResponse(200, [])],
       "GET /api/mcp-servers": [jsonResponse(200, [])],
     });
-    window.history.replaceState({}, "", "/agents/new");
+    window.history.replaceState({}, "", "/specialists/new");
     render(<App />);
 
     const user = userEvent.setup();

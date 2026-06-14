@@ -62,7 +62,7 @@ describe("buildTaskApiDocs", () => {
 
   it("derives the versioned base URL and targets the task endpoints", () => {
     expect(docs.apiBaseUrl).toBe("https://example.test/api/public/v1");
-    expect(docs.agentsCurl).toContain("/api/public/v1/agents");
+    expect(docs.specialistsCurl).toContain("/api/public/v1/specialists");
     expect(docs.createCurl).toContain("POST 'https://example.test/api/public/v1/tasks'");
     expect(docs.listByStatusCurl).toContain("/tasks?status=ready_to_check");
     expect(docs.listByTemplateCurl).toContain("templateId=<TEMPLATE_ID>&status=queued");

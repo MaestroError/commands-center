@@ -262,18 +262,18 @@ export async function mockTaskApi(page: Page, state: TaskState): Promise<void> {
   await page.route("**/api/custom-tools", (route: Route) => route.fulfill(json([])));
   await page.route("**/api/workspace-skills", (route: Route) => route.fulfill(json([])));
 
-  await page.route("**/api/agents**", (route: Route) => {
+  await page.route("**/api/specialists**", (route: Route) => {
     const path = new URL(route.request().url()).pathname;
 
-    if (path === "/api/agents/catalog") {
+    if (path === "/api/specialists/catalog") {
       return route.fulfill(json(state.catalog));
     }
 
-    if (path === "/api/agents") {
+    if (path === "/api/specialists") {
       return route.fulfill(json(state.agents.filter((agent) => agent.status === "active")));
     }
 
-    if (path.startsWith("/api/agents/by-slug/")) {
+    if (path.startsWith("/api/specialists/by-slug/")) {
       const slug = decodeURIComponent(path.split("/").pop() ?? "");
       const agent = state.agents.find((entry) => entry.slug === slug);
       return route.fulfill(agent ? json(agent) : notFound());

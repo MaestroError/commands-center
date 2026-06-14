@@ -2,7 +2,7 @@ import { makeTabKey, parseTabsParam, serializeTabsParam } from "@/hooks/use-edit
 
 type BuildFileManagerHrefOptions = {
   path: string;
-  root?: "workspace" | "all-agents" | "host-filesystem";
+  root?: "workspace" | "all-specialists" | "host-filesystem";
   currentPathname?: string;
   currentSearch?: string;
   openInEditor?: boolean;

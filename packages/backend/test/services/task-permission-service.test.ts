@@ -56,7 +56,7 @@ describe("createTaskPermissionService", () => {
 
       const effective = await permissionService.compute(task);
 
-      // cc_app stays enabled in task runs because it exposes list_agents (context "both");
+      // cc_app stays enabled in task runs because it exposes list_specialists (context "both");
       // its chat-only tools are denied individually below.
       expect(effective.appMcpServers).toEqual([
         { name: "cc_app", enabled: true, action: "allow" },

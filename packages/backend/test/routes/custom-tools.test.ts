@@ -38,7 +38,7 @@ describe("custom tool routes", () => {
 
       const agentCreated = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Writer",
           role: "write docs",
@@ -52,7 +52,7 @@ describe("custom tool routes", () => {
 
       const copied = await server.inject({
         method: "POST",
-        url: `/api/custom-tools/${tool.slug}/copy-to-agents`,
+        url: `/api/custom-tools/${tool.slug}/copy-to-specialists`,
         payload: {
           agentIds: [agent.id],
           overwrite: false,
@@ -65,7 +65,7 @@ describe("custom tool routes", () => {
 
       const listedAgentTools = await server.inject({
         method: "GET",
-        url: `/api/agents/${agent.id}/custom-tools`,
+        url: `/api/specialists/${agent.id}/custom-tools`,
       });
       expect(listedAgentTools.statusCode).toBe(200);
       expect(listedAgentTools.json<Array<{ slug: string; status: string }>>()).toEqual([
@@ -74,7 +74,7 @@ describe("custom tool routes", () => {
 
       const moved = await server.inject({
         method: "POST",
-        url: `/api/agents/${agent.id}/custom-tools/${tool.slug}/move-to-global`,
+        url: `/api/specialists/${agent.id}/custom-tools/${tool.slug}/move-to-global`,
         payload: {
           overwrite: true,
         },
@@ -122,7 +122,7 @@ describe("custom tool routes", () => {
 
       const agentCreated = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Writer",
           role: "write docs",
@@ -135,7 +135,7 @@ describe("custom tool routes", () => {
 
       const copied = await server.inject({
         method: "POST",
-        url: `/api/custom-tools/${tool.slug}/copy-to-agents`,
+        url: `/api/custom-tools/${tool.slug}/copy-to-specialists`,
         payload: {
           agentIds: [agent.id],
           destinationName: "Release Helper Copy",
@@ -146,7 +146,7 @@ describe("custom tool routes", () => {
 
       const listedAgentTools = await server.inject({
         method: "GET",
-        url: `/api/agents/${agent.id}/custom-tools`,
+        url: `/api/specialists/${agent.id}/custom-tools`,
       });
       expect(listedAgentTools.json<Array<{ slug: string }>>().map((entry) => entry.slug)).toContain(
         "release-helper-copy",
@@ -154,7 +154,7 @@ describe("custom tool routes", () => {
 
       const removed = await server.inject({
         method: "DELETE",
-        url: `/api/agents/${agent.id}/custom-tools/release-helper-copy`,
+        url: `/api/specialists/${agent.id}/custom-tools/release-helper-copy`,
       });
       expect(removed.statusCode).toBe(204);
     } finally {

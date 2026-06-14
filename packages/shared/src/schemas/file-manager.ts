@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-export const fileManagerRootKindSchema = z.enum(["workspace", "all-agents", "host-filesystem"]);
+export const fileManagerRootKindSchema = z.enum([
+  "workspace",
+  "all-specialists",
+  "host-filesystem",
+]);
 
 export const fileManagerEntryTypeSchema = z.enum(["file", "directory"]);
 

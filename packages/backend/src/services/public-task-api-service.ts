@@ -1,7 +1,7 @@
 import type {
   Specialist,
   ListPublicTasksQuery,
-  PublicAgentSummary,
+  PublicSpecialistSummary,
   PublicCreateTaskBody,
   PublicFeedbackThread,
   PublicScheduleTaskBody,
@@ -234,7 +234,7 @@ export function createPublicTaskApiService(deps: {
       return feedback.map(toPublicFeedbackThread);
     },
 
-    async listAgents(): Promise<PublicAgentSummary[]> {
+    async listAgents(): Promise<PublicSpecialistSummary[]> {
       const agents = await agentService.list();
       return agents.map((agent: Specialist) => ({
         id: agent.id,

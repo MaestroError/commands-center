@@ -241,7 +241,7 @@ describe("useQuickFile", () => {
     vi.mocked(getFileManagerFileContent).mockResolvedValueOnce({
       root: "workspace",
       path: "agents/planner/image.png",
-      absolutePath: "/abs/agents/planner/image.png",
+      absolutePath: "/abs/specialists/planner/image.png",
       name: "image.png",
       kind: "binary",
       content: "ZmFrZQ==",
@@ -399,7 +399,7 @@ describe("useQuickFile", () => {
     resolveFirst?.({
       root: "workspace",
       path: "agents/planner/README.md",
-      absolutePath: "/abs/agents/planner/README.md",
+      absolutePath: "/abs/specialists/planner/README.md",
       name: "README.md",
       kind: "text",
       content: "stale content",

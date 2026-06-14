@@ -70,7 +70,10 @@ describe("App", () => {
       0,
     );
     expect(screen.getByRole("link", { name: "CommandsCenter" })).toHaveAttribute("href", "/");
-    expect(screen.getAllByRole("link", { name: "Agents" })[0]).toHaveAttribute("href", "/agents");
+    expect(screen.getAllByRole("link", { name: "Agents" })[0]).toHaveAttribute(
+      "href",
+      "/specialists",
+    );
     expect(screen.getByTestId("sidebar-navigation")).toBeInTheDocument();
     expect(screen.queryByText("Frontend foundation")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
@@ -177,7 +180,7 @@ describe("App", () => {
     await user.click(await screen.findByRole("button", { name: "Collapse sidebar" }));
 
     expect(screen.queryByText("Provider Connections")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Agents" })).toHaveAttribute("href", "/agents");
+    expect(screen.getByRole("link", { name: "Agents" })).toHaveAttribute("href", "/specialists");
     expect(window.localStorage.getItem("cc-sidebar-collapsed")).toBe("true");
   });
 
@@ -213,7 +216,7 @@ describe("App", () => {
         return Promise.resolve(jsonResponse(200, systemVersionPayload()));
       }
 
-      if (input === "/api/agents") {
+      if (input === "/api/specialists") {
         return Promise.resolve(
           jsonResponse(200, [
             {
@@ -265,7 +268,7 @@ describe("App", () => {
         return Promise.resolve(jsonResponse(200, []));
       }
 
-      if (input === "/api/agents/catalog") {
+      if (input === "/api/specialists/catalog") {
         return Promise.resolve(
           jsonResponse(200, {
             builtInSkills: [],
@@ -305,7 +308,7 @@ describe("App", () => {
     await screen.findByText("Plan launch");
     await screen.findByText((_, element) => element?.textContent === "docs/planning.md");
     expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/agents",
+      "/api/specialists",
       expect.objectContaining({ method: "GET" }),
     );
     expect(fetchSpy).toHaveBeenCalledWith("/api/tasks", expect.objectContaining({ method: "GET" }));
@@ -471,7 +474,7 @@ describe("App", () => {
       return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
     });
 
-    window.history.replaceState({}, "", "/agents");
+    window.history.replaceState({}, "", "/specialists");
     render(<App />);
 
     expect(
@@ -506,7 +509,7 @@ describe("App", () => {
       return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
     });
 
-    window.history.replaceState({}, "", "/agents");
+    window.history.replaceState({}, "", "/specialists");
     render(<App />);
 
     const user = userEvent.setup();
@@ -514,7 +517,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
     expect(await screen.findByRole("heading", { name: "Agents" })).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/agents");
+    expect(window.location.pathname).toBe("/specialists");
   });
 
   it("shows a helpful login error when the API returns the app shell HTML", async () => {
@@ -535,7 +538,7 @@ describe("App", () => {
       return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
     });
 
-    window.history.replaceState({}, "", "/agents");
+    window.history.replaceState({}, "", "/specialists");
     render(<App />);
 
     const user = userEvent.setup();
@@ -575,7 +578,7 @@ describe("App", () => {
       return Promise.reject(new Error(`Unexpected fetch URL: ${describeFetchInput(input)}`));
     });
 
-    window.history.replaceState({}, "", "/agents");
+    window.history.replaceState({}, "", "/specialists");
     render(<App />);
 
     const user = userEvent.setup();
@@ -585,7 +588,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Claim workspace" }));
 
     expect(await screen.findByRole("heading", { name: "Agents" })).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/agents");
+    expect(window.location.pathname).toBe("/specialists");
   });
 
   it("shows password requirements on the claim page", async () => {

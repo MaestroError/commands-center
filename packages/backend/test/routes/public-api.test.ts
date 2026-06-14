@@ -228,7 +228,7 @@ describe("public task API", () => {
       });
       const agentsForbidden = await server.inject({
         method: "GET",
-        url: "/api/public/v1/agents",
+        url: "/api/public/v1/specialists",
         headers: auth,
       });
 
@@ -253,12 +253,12 @@ describe("public task API", () => {
       // Discover agents.
       const agentsResponse = await server.inject({
         method: "GET",
-        url: "/api/public/v1/agents",
+        url: "/api/public/v1/specialists",
         headers: auth,
       });
       expect(agentsResponse.statusCode).toBe(200);
       expect(agentsResponse.json()).toEqual({
-        agents: [{ id: agent.id, name: agent.name, slug: agent.slug }],
+        specialists: [{ id: agent.id, name: agent.name, slug: agent.slug }],
       });
 
       // Create a task (public projection, no internal fields).

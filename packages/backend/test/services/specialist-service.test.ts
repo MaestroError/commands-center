@@ -236,7 +236,7 @@ describe("createSpecialistService", () => {
           name: "cc_app",
           enabledByDefault: false,
           description:
-            "CommandsCenter app-managed, operator-interactive capabilities for this agent.",
+            "CommandsCenter app-managed, operator-interactive capabilities for this specialist.",
           tools: [
             {
               name: "add_secret",
@@ -257,32 +257,32 @@ describe("createSpecialistService", () => {
               context: "chat",
             },
             {
-              name: "list_agents",
-              description: "List CommandsCenter agents available in this workspace.",
+              name: "list_specialists",
+              description: "List CommandsCenter specialists available in this workspace.",
               context: "both",
             },
             {
-              name: "copy_custom_tool_to_agent",
+              name: "copy_custom_tool_to_specialist",
               description:
-                "Copy a global CommandsCenter custom tool into an agent workspace, asking the operator when overwrite or rename is needed.",
+                "Copy a global CommandsCenter custom tool into a specialist workspace, asking the operator when overwrite or rename is needed.",
               context: "chat",
             },
             {
-              name: "draft_agent",
+              name: "draft_specialist",
               description:
-                "Open a prefilled agent form in chat for the operator to review, edit, and confirm before the agent is created. Pass whatever details you know (all optional) to pre-fill the form. Chat only.",
+                "Open a prefilled specialist form in chat for the operator to review, edit, and confirm before the specialist is created. Pass whatever details you know (all optional) to pre-fill the form. Chat only.",
               context: "chat",
             },
             {
-              name: "draft_agent_update",
+              name: "draft_specialist_update",
               description:
-                "Open a prefilled form in chat with an existing agent's current details for the operator to review, edit, and confirm before the update is saved. Provide the agent id and optionally any suggested changes to pre-fill. Chat only.",
+                "Open a prefilled form in chat with an existing specialist's current details for the operator to review, edit, and confirm before the update is saved. Provide the specialist id and optionally any suggested changes to pre-fill. Chat only.",
               context: "chat",
             },
             {
-              name: "remove_agent",
+              name: "remove_specialist",
               description:
-                "Remove an agent from active use after operator confirmation by archiving its portable workspace state.",
+                "Remove a specialist from active use after operator confirmation by archiving its portable workspace state.",
               context: "chat",
             },
             {
@@ -300,31 +300,31 @@ describe("createSpecialistService", () => {
           ],
         },
         {
-          name: "cc_agent_management",
+          name: "cc_specialist_management",
           enabledByDefault: false,
-          description: "CommandsCenter agent listing, creation, and update.",
+          description: "CommandsCenter specialist listing, creation, and update.",
           tools: [
             {
-              name: "list_agents",
-              description: "List CommandsCenter agents available in this workspace.",
+              name: "list_specialists",
+              description: "List CommandsCenter specialists available in this workspace.",
               context: "both",
             },
             {
               name: "list_models",
               description:
-                "List the model IDs available from connected providers. Use one of these IDs as defaultModel when creating or updating an agent.",
+                "List the model IDs available from connected providers. Use one of these IDs as defaultModel when creating or updating a specialist.",
               context: "both",
             },
             {
-              name: "create_agent",
+              name: "create_specialist",
               description:
-                "Create a CommandsCenter agent directly, without an operator review form. In chat, prefer draft_agent so the operator can review and edit first.",
+                "Create a CommandsCenter specialist directly, without an operator review form. In chat, prefer draft_specialist so the operator can review and edit first.",
               context: "both",
             },
             {
-              name: "update_agent",
+              name: "update_specialist",
               description:
-                "Update an existing CommandsCenter agent by id directly, without an operator review form. In chat, prefer draft_agent_update.",
+                "Update an existing CommandsCenter specialist by id directly, without an operator review form. In chat, prefer draft_specialist_update.",
               context: "both",
             },
           ],
@@ -388,8 +388,8 @@ describe("createSpecialistService", () => {
               context: "both",
             },
             {
-              name: "list_agents",
-              description: "List CommandsCenter agents available in this workspace.",
+              name: "list_specialists",
+              description: "List CommandsCenter specialists available in this workspace.",
               context: "both",
             },
           ],

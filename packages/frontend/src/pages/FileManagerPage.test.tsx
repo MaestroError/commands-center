@@ -171,7 +171,7 @@ describe("FileManagerPage", () => {
 
     await waitFor(() => {
       expect(listFileManagerNodes).toHaveBeenLastCalledWith({
-        root: "all-agents",
+        root: "all-specialists",
         path: ".",
       });
     });

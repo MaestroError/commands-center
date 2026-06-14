@@ -80,7 +80,7 @@ function makeAgent(overrides: Partial<Specialist> = {}): Specialist {
       appMcpServers: [],
       appToolPermissions: [],
     },
-    workspacePath: ".cc/agents/writer",
+    workspacePath: ".cc/specialists/writer",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,

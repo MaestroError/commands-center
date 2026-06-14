@@ -23,7 +23,7 @@ Use this skill when creating or updating custom OpenCode tools for CommandsCente
 - Create only global CommandsCenter custom tools, only using `cc_tool_management_*` MCP server tools.
 - `create_custom_tool` creates a global tool scaffold under and returns directory you should use for further development.
 - Do not offer agent-local tool creation as an option.
-- When a global tool needs to be assigned to an agent, use CommandsCenter's managed copy flow from `cc_tool_management_*` instead of writing into an agent workspace manually.
+- When a global tool needs to be assigned to a specialist, use CommandsCenter's managed copy flow from `cc_tool_management_*` instead of writing into a specialist workspace manually.
 
 ## Required Creation Flow
 
@@ -34,7 +34,7 @@ Use this skill when creating or updating custom OpenCode tools for CommandsCente
 5. Keep helper files next to `tool.ts` inside the global tool directory.
 6. Do not manage CommandsCenter metadata fields, IDs, timestamps, or fingerprints manually.
 7. When finished, ask the user whether they want this tool enabled for any existing agent now.
-8. If the user wants it enabled, use the CommandsCenter managed flow, such as `cc_tool_management_copy_custom_tool_to_agent`, when that tool is available. When not, Do not write directly into an agent workspace, Ask user to enable the tool for specific agents from CC's Tools page.
+8. If the user wants it enabled, use the CommandsCenter managed flow, such as `cc_tool_management_copy_custom_tool_to_specialist`, when that tool is available. When not, Do not write directly into a specialist workspace, Ask user to enable the tool for specific specialists from CC's Tools page.
 
 ## Global Tool Layout
 

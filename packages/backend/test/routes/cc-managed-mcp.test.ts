@@ -41,7 +41,7 @@ describe("cc-managed MCP routes", () => {
     try {
       const created = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Writer",
           role: "write docs",
@@ -69,7 +69,7 @@ describe("cc-managed MCP routes", () => {
       const ccToolManagement = config.mcp["cc_app"];
 
       expect(ccToolManagement).toBeDefined();
-      expect(ccToolManagement?.url).toContain("/api/mcp/cc/cc-app/agents/writer");
+      expect(ccToolManagement?.url).toContain("/api/mcp/cc/cc-app/specialists/writer");
       expect(ccToolManagement?.headers["Authorization"]).toContain("Bearer ");
 
       if (!ccToolManagement) {
@@ -84,7 +84,7 @@ describe("cc-managed MCP routes", () => {
 
       const initializeResponse = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-app/agents/writer",
+        url: "/api/mcp/cc/cc-app/specialists/writer",
         headers: {
           Authorization: authHeader,
           Accept: "application/json, text/event-stream",
@@ -112,7 +112,7 @@ describe("cc-managed MCP routes", () => {
 
       const listToolsResponse = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-app/agents/writer",
+        url: "/api/mcp/cc/cc-app/specialists/writer",
         headers: {
           Authorization: authHeader,
           Accept: "application/json, text/event-stream",
@@ -133,7 +133,7 @@ describe("cc-managed MCP routes", () => {
 
       const callToolResponse = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-app/agents/writer",
+        url: "/api/mcp/cc/cc-app/specialists/writer",
         headers: {
           Authorization: authHeader,
           Accept: "application/json, text/event-stream",
@@ -194,7 +194,7 @@ describe("cc-managed MCP routes", () => {
     try {
       const response = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-app/agents/writer",
+        url: "/api/mcp/cc/cc-app/specialists/writer",
         payload: {
           jsonrpc: "2.0",
           id: 1,
@@ -232,7 +232,7 @@ describe("cc-managed MCP routes", () => {
     try {
       const created = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Writer",
           role: "write docs",
@@ -258,7 +258,7 @@ describe("cc-managed MCP routes", () => {
 
       const response = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-app/agents/writer",
+        url: "/api/mcp/cc/cc-app/specialists/writer",
         headers: {
           Authorization: authHeader,
           Accept: "application/json, text/event-stream",
@@ -312,7 +312,7 @@ describe("cc-managed MCP routes", () => {
 
       expect(listToolsResponse.statusCode).toBe(200);
       expect(listToolsResponse.body).toContain('"name":"create_task"');
-      expect(listToolsResponse.body).toContain('"name":"list_agents"');
+      expect(listToolsResponse.body).toContain('"name":"list_specialists"');
       expect(listToolsResponse.body).toContain('"name":"queue_task"');
 
       const createTaskResponse = await callMcpToolRoute(
@@ -537,7 +537,7 @@ describe("cc-managed MCP routes", () => {
         "get_task_run",
         "create_task_template",
         "run_task_template_now",
-        "list_agents",
+        "list_specialists",
       ]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
@@ -767,7 +767,7 @@ describe("cc-managed MCP routes", () => {
     try {
       const created = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Tool Manager",
           role: "manage tools",
@@ -797,16 +797,16 @@ describe("cc-managed MCP routes", () => {
         "cc-app",
         authHeader,
         "tools/call",
-        { name: "list_agents", arguments: {} },
+        { name: "list_specialists", arguments: {} },
         26,
       );
 
       expect(listToolsResponse.statusCode).toBe(200);
-      expect(listToolsResponse.body).toContain('"name":"list_agents"');
+      expect(listToolsResponse.body).toContain('"name":"list_specialists"');
       expect(parseSseJson(listAgentsResponse.body)).toMatchObject({
         result: {
           structuredContent: {
-            agents: [expect.objectContaining({ slug: "tool-manager" })],
+            specialists: [expect.objectContaining({ slug: "tool-manager" })],
           },
         },
       });
@@ -833,14 +833,14 @@ describe("cc-managed MCP routes", () => {
     try {
       const created = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Specialist Manager",
           role: "manage agents",
-          instructions: "Maintain agent workspaces.",
+          instructions: "Maintain specialist workspaces.",
           defaultModel: "openai/gpt-4.1",
           capabilities: {
-            appMcpServers: [{ name: "cc_agent_management", enabled: true, action: "allow" }],
+            appMcpServers: [{ name: "cc_specialist_management", enabled: true, action: "allow" }],
           },
         },
       });
@@ -850,13 +850,13 @@ describe("cc-managed MCP routes", () => {
       const authHeader = await issueAuthHeader(
         testDb.config,
         manager.slug,
-        "cc_agent_management",
+        "cc_specialist_management",
         "task_run",
       );
       const listToolsResponse = await callMcpToolRouteForServer(
         server,
         manager.slug,
-        "cc-agent-management",
+        "cc-specialist-management",
         authHeader,
         "tools/list",
         {},
@@ -865,11 +865,11 @@ describe("cc-managed MCP routes", () => {
       const createAgentResponse = await callMcpToolRouteForServer(
         server,
         manager.slug,
-        "cc-agent-management",
+        "cc-specialist-management",
         authHeader,
         "tools/call",
         {
-          name: "create_agent",
+          name: "create_specialist",
           arguments: {
             name: "Researcher",
             role: "research context",
@@ -886,17 +886,17 @@ describe("cc-managed MCP routes", () => {
       const researcherId = createJson.result?.structuredContent?.id;
 
       if (!researcherId) {
-        throw new Error("Expected create_agent to return an agent id.");
+        throw new Error("Expected create_specialist to return an agent id.");
       }
 
       const updateAgentResponse = await callMcpToolRouteForServer(
         server,
         manager.slug,
-        "cc-agent-management",
+        "cc-specialist-management",
         authHeader,
         "tools/call",
         {
-          name: "update_agent",
+          name: "update_specialist",
           arguments: {
             id: researcherId,
             input: { role: "research product context" },
@@ -906,8 +906,8 @@ describe("cc-managed MCP routes", () => {
       );
 
       expect(listToolsResponse.statusCode).toBe(200);
-      expect(listToolsResponse.body).toContain('"name":"create_agent"');
-      expect(listToolsResponse.body).toContain('"name":"update_agent"');
+      expect(listToolsResponse.body).toContain('"name":"create_specialist"');
+      expect(listToolsResponse.body).toContain('"name":"update_specialist"');
       expect(createJson.result?.structuredContent).toMatchObject({
         slug: "researcher",
       });
@@ -942,14 +942,14 @@ describe("cc-managed MCP routes", () => {
     try {
       const created = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Task Run Manager",
           role: "manage agents",
-          instructions: "Maintain agent workspaces.",
+          instructions: "Maintain specialist workspaces.",
           defaultModel: "openai/gpt-4.1",
           capabilities: {
-            appMcpServers: [{ name: "cc_agent_management", enabled: true, action: "allow" }],
+            appMcpServers: [{ name: "cc_specialist_management", enabled: true, action: "allow" }],
           },
         },
       });
@@ -959,13 +959,13 @@ describe("cc-managed MCP routes", () => {
       const authHeader = await issueAuthHeader(
         testDb.config,
         manager.slug,
-        "cc_agent_management",
+        "cc_specialist_management",
         "task_run",
       );
       const listToolsResponse = await callMcpToolRouteForServer(
         server,
         manager.slug,
-        "cc-agent-management",
+        "cc-specialist-management",
         authHeader,
         "tools/list",
         {},
@@ -973,21 +973,21 @@ describe("cc-managed MCP routes", () => {
       );
 
       expect(listToolsResponse.statusCode).toBe(200);
-      for (const toolName of ["list_agents", "create_agent", "update_agent"]) {
+      for (const toolName of ["list_specialists", "create_specialist", "update_specialist"]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
-      for (const toolName of ["draft_agent", "draft_agent_update", "remove_agent"]) {
+      for (const toolName of ["draft_specialist", "draft_specialist_update", "remove_specialist"]) {
         expect(listToolsResponse.body).not.toContain(`"name":"${toolName}"`);
       }
 
       const createResponse = await callMcpToolRouteForServer(
         server,
         manager.slug,
-        "cc-agent-management",
+        "cc-specialist-management",
         authHeader,
         "tools/call",
         {
-          name: "create_agent",
+          name: "create_specialist",
           arguments: {
             name: "Task Spawned Specialist",
             role: "spawned in a task",
@@ -1009,7 +1009,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("drafts agent creation through draft_agent", async () => {
+  it("drafts agent creation through draft_specialist", async () => {
     const testDb = await createTestDatabase();
     const liveRequestService = {
       create: vi.fn(() =>
@@ -1042,11 +1042,11 @@ describe("cc-managed MCP routes", () => {
     try {
       const created = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Interactive Specialist Manager",
           role: "manage agents",
-          instructions: "Maintain agent workspaces.",
+          instructions: "Maintain specialist workspaces.",
           defaultModel: "openai/gpt-4.1",
           capabilities: {
             appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
@@ -1064,7 +1064,7 @@ describe("cc-managed MCP routes", () => {
         authHeader,
         "tools/call",
         {
-          name: "draft_agent",
+          name: "draft_specialist",
           arguments: {
             name: "Draft Researcher",
             role: "draft role",
@@ -1088,7 +1088,7 @@ describe("cc-managed MCP routes", () => {
       expect(liveRequestService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           kind: "agent_create_review",
-          metadata: expect.objectContaining({ operation: "create_agent" }),
+          metadata: expect.objectContaining({ operation: "create_specialist" }),
         }),
       );
     } finally {
@@ -1097,7 +1097,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("drafts agent updates through draft_agent_update", async () => {
+  it("drafts agent updates through draft_specialist_update", async () => {
     const testDb = await createTestDatabase();
     const liveRequestService = {
       create: vi.fn(() =>
@@ -1130,11 +1130,11 @@ describe("cc-managed MCP routes", () => {
     try {
       const managerResponse = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Interactive Update Manager",
           role: "manage agents",
-          instructions: "Maintain agent workspaces.",
+          instructions: "Maintain specialist workspaces.",
           defaultModel: "openai/gpt-4.1",
           capabilities: {
             appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
@@ -1143,7 +1143,7 @@ describe("cc-managed MCP routes", () => {
       });
       const targetResponse = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Draft Analyst",
           role: "draft analyst role",
@@ -1165,7 +1165,7 @@ describe("cc-managed MCP routes", () => {
         authHeader,
         "tools/call",
         {
-          name: "draft_agent_update",
+          name: "draft_specialist_update",
           arguments: {
             id: target.id,
             input: { role: "proposed analyst role" },
@@ -1187,7 +1187,7 @@ describe("cc-managed MCP routes", () => {
       expect(liveRequestService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           kind: "agent_update_review",
-          metadata: expect.objectContaining({ agentId: target.id, operation: "update_agent" }),
+          metadata: expect.objectContaining({ agentId: target.id, operation: "update_specialist" }),
         }),
       );
     } finally {
@@ -1217,7 +1217,7 @@ describe("cc-managed MCP routes", () => {
     try {
       const managerResponse = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Specialist Remover",
           role: "remove agents",
@@ -1230,7 +1230,7 @@ describe("cc-managed MCP routes", () => {
       });
       const targetResponse = await server.inject({
         method: "POST",
-        url: "/api/agents",
+        url: "/api/specialists",
         payload: {
           name: "Archive Target",
           role: "temporary",
@@ -1251,7 +1251,7 @@ describe("cc-managed MCP routes", () => {
         "cc-app",
         authHeader,
         "tools/call",
-        { name: "remove_agent", arguments: { id: target.id } },
+        { name: "remove_specialist", arguments: { id: target.id } },
         30,
       );
 
@@ -1269,7 +1269,7 @@ describe("cc-managed MCP routes", () => {
       expect(liveRequestService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           kind: "agent_management_confirmation",
-          metadata: expect.objectContaining({ agentId: target.id }),
+          metadata: expect.objectContaining({ specialistId: target.id }),
         }),
       );
     } finally {
@@ -1560,7 +1560,7 @@ async function callMcpToolRoute(
 
 async function callMcpToolRouteForAgent(
   server: InjectServer,
-  agentSlug: string,
+  specialistSlug: string,
   authHeader: string,
   method: string,
   params: Record<string, unknown>,
@@ -1568,7 +1568,7 @@ async function callMcpToolRouteForAgent(
 ) {
   return callMcpToolRouteForServer(
     server,
-    agentSlug,
+    specialistSlug,
     "cc-tasks-management",
     authHeader,
     method,
@@ -1579,7 +1579,7 @@ async function callMcpToolRouteForAgent(
 
 async function callMcpToolRouteForServer(
   server: InjectServer,
-  agentSlug: string,
+  specialistSlug: string,
   routeSegment: string,
   authHeader: string,
   method: string,
@@ -1588,7 +1588,7 @@ async function callMcpToolRouteForServer(
 ) {
   return server.inject({
     method: "POST",
-    url: `/api/mcp/cc/${routeSegment}/agents/${agentSlug}`,
+    url: `/api/mcp/cc/${routeSegment}/specialists/${specialistSlug}`,
     headers: {
       Authorization: authHeader,
       Accept: "application/json, text/event-stream",
@@ -1605,14 +1605,14 @@ async function callMcpToolRouteForServer(
 
 async function issueAuthHeader(
   config: TestConfig,
-  agentSlug: string,
+  specialistSlug: string,
   serverName: string,
   contextMode?: CcManagedMcpTokenContextMode,
 ): Promise<string> {
   const tokenService = createCcManagedMcpAuthTokenService({
     authStateStore: createCcManagedMcpAuthStateStore(config),
   });
-  return `Bearer ${await tokenService.issueToken(agentSlug, serverName, contextMode)}`;
+  return `Bearer ${await tokenService.issueToken(specialistSlug, serverName, contextMode)}`;
 }
 
 async function insertAgentWithTasksManagement(db: AppDb) {

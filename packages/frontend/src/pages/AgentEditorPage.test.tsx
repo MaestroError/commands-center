@@ -56,7 +56,7 @@ beforeEach(() => {
           tools: [
             { name: "create_custom_tool", description: "Create a custom tool.", context: "chat" },
             {
-              name: "copy_custom_tool_to_agent",
+              name: "copy_custom_tool_to_specialist",
               description: "Copy a custom tool.",
               context: "task_run",
             },
@@ -79,7 +79,7 @@ beforeEach(() => {
         role: "write docs",
         instructions: "Write useful docs.",
         defaultModel: "openai/gpt-4.1",
-        workspacePath: "/tmp/agents/writer",
+        workspacePath: "/tmp/specialists/writer",
         status: "active",
         capabilities: {
           builtInSkills: [],
@@ -106,7 +106,7 @@ beforeEach(() => {
       role: "write docs",
       instructions: "Write useful docs.",
       defaultModel: "openai/gpt-4.1",
-      workspacePath: "/tmp/agents/writer",
+      workspacePath: "/tmp/specialists/writer",
       status: "active",
       capabilities: {
         builtInSkills: [],
@@ -345,7 +345,7 @@ describe("AgentEditorPage", () => {
     expect(screen.getByText("Task run")).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole("switch", { name: "cc_tool_management copy_custom_tool_to_agent" }),
+      screen.getByRole("switch", { name: "cc_tool_management copy_custom_tool_to_specialist" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -362,7 +362,7 @@ describe("AgentEditorPage", () => {
               },
             ],
             appToolPermissions: [
-              { pattern: "cc_tool_management_copy_custom_tool_to_agent", action: "deny" },
+              { pattern: "cc_tool_management_copy_custom_tool_to_specialist", action: "deny" },
             ],
           }),
         }),
@@ -456,10 +456,10 @@ describe("AgentEditorPage", () => {
 
 function renderEditor() {
   return render(
-    <MemoryRouter initialEntries={["/agents/writer/edit"]}>
+    <MemoryRouter initialEntries={["/specialists/writer/edit"]}>
       <Routes>
-        <Route path="/agents/:slug/edit" element={<AgentEditorPage mode="edit" />} />
-        <Route path="/agents" element={<div>Agents route</div>} />
+        <Route path="/specialists/:slug/edit" element={<AgentEditorPage mode="edit" />} />
+        <Route path="/specialists" element={<div>Agents route</div>} />
       </Routes>
     </MemoryRouter>,
   );

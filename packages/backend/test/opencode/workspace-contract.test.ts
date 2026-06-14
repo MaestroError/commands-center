@@ -44,7 +44,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       appMcpEntries: {
         cc_tool_management: {
           type: "remote",
-          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/agents/writer",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/specialists/writer",
           enabled: true,
           oauth: false,
           headers: {
@@ -66,7 +66,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
         github: { enabled: true },
         cc_tool_management: {
           type: "remote",
-          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/agents/writer",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/specialists/writer",
           enabled: true,
           oauth: false,
           headers: {
@@ -104,7 +104,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       appMcpEntries: {
         cc_tool_management: {
           type: "remote",
-          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/agents/writer",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/specialists/writer",
           enabled: false,
           oauth: false,
           headers: {
@@ -180,7 +180,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       appMcpEntries: {
         cc_tool_management: {
           type: "remote",
-          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/agents/writer",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/specialists/writer",
           enabled: true,
           oauth: false,
           headers: {

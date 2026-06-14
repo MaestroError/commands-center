@@ -115,11 +115,13 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
 
       <EndpointBlock
         method="GET"
-        path="/api/public/v1/agents"
+        path="/api/public/v1/specialists"
         scope="Tasks"
         description="Discover agent IDs so you can create a task against a specific agent."
-        snippets={[{ label: "curl", code: taskDocs.agentsCurl }]}
-        responseExample={{ agents: [{ id: "01J…", name: "Researcher", slug: "researcher" }] }}
+        snippets={[{ label: "curl", code: taskDocs.specialistsCurl }]}
+        responseExample={{
+          specialists: [{ id: "01J…", name: "Researcher", slug: "researcher" }],
+        }}
       />
 
       <EndpointBlock

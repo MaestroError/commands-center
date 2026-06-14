@@ -49,20 +49,20 @@ export const appRoutes = [
     element: <DashboardPage />,
   },
   {
-    path: "/agents",
+    path: "/specialists",
     title: "Agents",
     navLabel: "Agents",
     navIcon: <Users className="h-4 w-4 shrink-0" />,
-    navigationMatch: ["/agents/new", "/agents/:slug/edit"],
+    navigationMatch: ["/specialists/new", "/specialists/:slug/edit"],
     element: <AgentsPage />,
   },
   {
-    path: "/agents/new",
+    path: "/specialists/new",
     title: "Create Specialist",
     element: <AgentEditorPage mode="create" />,
   },
   {
-    path: "/agents/:slug/edit",
+    path: "/specialists/:slug/edit",
     title: "Edit Specialist",
     element: <AgentEditorPage mode="edit" />,
   },
@@ -182,10 +182,10 @@ export const sidebarRoutes = appRoutes.filter((route) => route.navLabel);
 
 export const dashboardSidebarRoute = sidebarRoutes.find((route) => route.path === "/");
 
-export const agentsSidebarRoute = sidebarRoutes.find((route) => route.path === "/agents");
+export const agentsSidebarRoute = sidebarRoutes.find((route) => route.path === "/specialists");
 
 export const secondarySidebarRoutes = sidebarRoutes.filter(
-  (route) => route.path !== "/" && route.path !== "/agents",
+  (route) => route.path !== "/" && route.path !== "/specialists",
 );
 
 export const appRouteObjects = appRoutes.map((route) => ({

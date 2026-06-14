@@ -37,7 +37,7 @@ test("renders the global shell and provider page", async ({ page, isMobile }) =>
     await expect(page.getByRole("link", { name: "CommandsCenter" })).toHaveAttribute("href", "/");
     await expect(page.getByRole("link", { name: "Agents" }).first()).toHaveAttribute(
       "href",
-      "/agents",
+      "/specialists",
     );
     await expect(page.getByTestId("sidebar-navigation")).toBeVisible();
     await expect(page.getByText("Theme:")).toBeVisible();
@@ -166,7 +166,7 @@ async function mockProviderApi(
     role: "demo role",
     instructions: "demo instructions",
     defaultModel: "openai/gpt-4.1",
-    workspacePath: "/tmp/agents/demo-agent",
+    workspacePath: "/tmp/specialists/demo-agent",
     status: "active",
     capabilities: {
       builtInSkills: [],
@@ -194,7 +194,7 @@ async function mockProviderApi(
     messages: [],
   };
 
-  await page.route("**/api/agents/catalog", async (route: Route) => {
+  await page.route("**/api/specialists/catalog", async (route: Route) => {
     await route.fulfill(
       jsonResponse({
         builtInSkills: [],
@@ -207,19 +207,22 @@ async function mockProviderApi(
     );
   });
 
-  await page.route("**/api/agents/by-slug/demo-agent", async (route: Route) => {
+  await page.route("**/api/specialists/by-slug/demo-agent", async (route: Route) => {
     await route.fulfill(jsonResponse(agent));
   });
 
-  await page.route("**/api/agents/agent-1/conversations/active", async (route: Route) => {
+  await page.route("**/api/specialists/agent-1/conversations/active", async (route: Route) => {
     await route.fulfill(jsonResponse({ current: conversation, previous: [] }));
   });
 
-  await page.route("**/api/agents/agent-1/conversations/conversation-1", async (route: Route) => {
-    await route.fulfill(jsonResponse(conversation));
-  });
+  await page.route(
+    "**/api/specialists/agent-1/conversations/conversation-1",
+    async (route: Route) => {
+      await route.fulfill(jsonResponse(conversation));
+    },
+  );
 
-  await page.route("**/api/agents/agent-1/conversations", async (route: Route) => {
+  await page.route("**/api/specialists/agent-1/conversations", async (route: Route) => {
     await route.fulfill(jsonResponse([]));
   });
 
@@ -227,11 +230,11 @@ async function mockProviderApi(
     await route.fulfill(jsonResponse([]));
   });
 
-  await page.route("**/api/agents/agent-1/workspace/file**", async (route: Route) => {
+  await page.route("**/api/specialists/agent-1/workspace/file**", async (route: Route) => {
     await route.fulfill(jsonResponse([]));
   });
 
-  await page.route("**/api/agents/agent-1/workspace/events", async (route: Route) => {
+  await page.route("**/api/specialists/agent-1/workspace/events", async (route: Route) => {
     await route.fulfill({
       status: 200,
       contentType: "text/event-stream",

@@ -161,7 +161,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
                   ? "Create agent"
                   : "Save changes"}
             </button>
-            <Link className="cc-button cc-button-secondary" to="/agents">
+            <Link className="cc-button cc-button-secondary" to="/specialists">
               Back to agents
             </Link>
           </div>
@@ -207,7 +207,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
     try {
       if (props.mode === "create") {
         await agentMutations.create.mutateAsync(payload as CreateSpecialistInput);
-        void navigate("/agents", { replace: true });
+        void navigate("/specialists", { replace: true });
         return;
       }
 
@@ -216,7 +216,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
       }
 
       await agentMutations.update.mutateAsync({ id: agent.id, input: payload });
-      void navigate("/agents", { replace: true });
+      void navigate("/specialists", { replace: true });
     } catch (error) {
       setSaveError(readError(error));
     }

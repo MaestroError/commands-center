@@ -50,7 +50,7 @@ beforeEach(() => {
         role: "write docs",
         instructions: "Write.",
         defaultModel: "openai/gpt-4.1",
-        workspacePath: "/tmp/agents/writer",
+        workspacePath: "/tmp/specialists/writer",
         status: "active",
         capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
         createdAt: "2026-01-01T00:00:00.000Z",

@@ -147,7 +147,7 @@ export const publicTaskSchema = z.object({
   feedback: z.array(publicFeedbackThreadSchema).optional(),
 });
 
-export const publicAgentSummarySchema = z.object({
+export const publicSpecialistSummarySchema = z.object({
   id: z.string().min(1),
   name: z.string(),
   slug: z.string(),
@@ -212,15 +212,15 @@ export const publicFeedbackListResponseSchema = z.object({
   feedback: z.array(publicFeedbackThreadSchema),
 });
 
-export const publicAgentListResponseSchema = z.object({
-  agents: z.array(publicAgentSummarySchema),
+export const publicSpecialistListResponseSchema = z.object({
+  specialists: z.array(publicSpecialistSummarySchema),
 });
 
 export type PublicTaskTodo = z.infer<typeof publicTaskTodoSchema>;
 export type PublicTaskRun = z.infer<typeof publicTaskRunSchema>;
 export type PublicFeedbackThread = z.infer<typeof publicFeedbackThreadSchema>;
 export type PublicTask = z.infer<typeof publicTaskSchema>;
-export type PublicAgentSummary = z.infer<typeof publicAgentSummarySchema>;
+export type PublicSpecialistSummary = z.infer<typeof publicSpecialistSummarySchema>;
 export type PublicCreateTaskBody = z.input<typeof publicCreateTaskBodySchema>;
 export type PublicTriggerTaskBody = z.input<typeof publicTriggerTaskBodySchema>;
 export type PublicTriggerTaskResponse = z.infer<typeof publicTriggerTaskResponseSchema>;

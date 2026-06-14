@@ -29,12 +29,12 @@ describe("owner auth guard", () => {
       { method: "POST", path: "/api/auth/login" },
       { method: "POST", path: "/api/auth/logout" },
       { method: "POST", path: "/api/auth/reclaim" },
-      { method: "GET", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
-      { method: "POST", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
-      { method: "DELETE", path: /^\/api\/mcp\/cc\/[^/]+\/agents\/[^/]+$/ },
+      { method: "GET", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
+      { method: "POST", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
+      { method: "DELETE", path: /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/ },
     ]);
     expect(isPublicRoute("GET", "/api/opencode")).toBe(false);
-    expect(isPublicRoute("POST", "/api/mcp/cc/cc-app/agents/writer")).toBe(true);
+    expect(isPublicRoute("POST", "/api/mcp/cc/cc-app/specialists/writer")).toBe(true);
   });
 
   it("rejects protected API requests without an owner session", async () => {
@@ -167,7 +167,7 @@ describe("owner auth guard", () => {
       await claimWorkspace(ownerAccessService);
       const response = await server.inject({
         method: "POST",
-        url: "/api/mcp/cc/cc-app/agents/writer",
+        url: "/api/mcp/cc/cc-app/specialists/writer",
         headers: {
           authorization: "Bearer invalid",
           accept: "application/json, text/event-stream",
