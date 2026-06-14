@@ -26,7 +26,7 @@ const showFileToUserDecisionSchema = z.object({
 export const showFileToUserToolMetadata = {
   name: "show_file_to_user",
   description:
-    "Open a file from this agent workspace in the CommandsCenter operator's preview tab while the agent waits. Accepts either an agent-relative path or an absolute path inside this agent workspace.",
+    "Open a file from this specialist workspace in the CommandsCenter operator's preview tab while the specialist waits. Accepts either a specialist-relative path or an absolute path inside this specialist workspace.",
   context: "chat",
 } as const;
 
@@ -60,11 +60,11 @@ export function createShowFileToUserDefinition(options: {
           throw new Error(`Specialist '${context.agentSlug}' not found.`);
         }
 
-        const path = normalizeAgentFilePath({
+        const path = normalizeSpecialistFilePath({
           path: parsed.path,
-          agentSlug: context.agentSlug,
+          specialistSlug: context.agentSlug,
           workspaceDir: options.config.paths.workspaceDir,
-          agentsDir: options.config.paths.subdirectories.specialists,
+          specialistsDir: options.config.paths.subdirectories.specialists,
         });
         const snapshot = await conversationService.resolveCurrent(agent.id);
         const response = await options.liveRequestService.create({
@@ -105,11 +105,11 @@ export function createShowFileToUserDefinition(options: {
   };
 }
 
-export function normalizeAgentFilePath(options: {
+export function normalizeSpecialistFilePath(options: {
   path: string;
-  agentSlug: string;
+  specialistSlug: string;
   workspaceDir: string;
-  agentsDir: string;
+  specialistsDir: string;
 }): string {
   const rawPath = options.path.trim();
 
@@ -117,17 +117,17 @@ export function normalizeAgentFilePath(options: {
     throw new Error("A file path is required.");
   }
 
-  const agentRoot = resolve(options.agentsDir, options.agentSlug);
+  const specialistRoot = resolve(options.specialistsDir, options.specialistSlug);
   const normalizedPath = isAbsolute(rawPath)
-    ? pathInsideRoot(agentRoot, rawPath)
-    : relativeAgentPathFromWorkspacePath(rawPath, options.agentSlug);
+    ? pathInsideRoot(specialistRoot, rawPath)
+    : relativeSpecialistPathFromWorkspacePath(rawPath, options.specialistSlug);
 
   if (normalizedPath) {
     return normalizedPath;
   }
 
   if (isAbsolute(rawPath)) {
-    throw new Error("Absolute paths must point inside this agent workspace.");
+    throw new Error("Absolute paths must point inside this specialist workspace.");
   }
 
   const normalized = rawPath.replace(/^\/+/, "").replace(/\/+/gu, "/");
@@ -139,9 +139,12 @@ export function normalizeAgentFilePath(options: {
   return normalized;
 }
 
-function relativeAgentPathFromWorkspacePath(path: string, agentSlug: string): string | undefined {
+function relativeSpecialistPathFromWorkspacePath(
+  path: string,
+  specialistSlug: string,
+): string | undefined {
   const normalized = path.replace(/^\/+/, "").replace(/\/+/gu, "/");
-  const prefix = `agents/${agentSlug}/`;
+  const prefix = `specialists/${specialistSlug}/`;
 
   if (!normalized.startsWith(prefix)) {
     return undefined;

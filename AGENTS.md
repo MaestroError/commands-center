@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-**CommandsCenter (`cc`)** is a single-user, workspace-centric application for creating, managing, and interacting with isolated AI agents through persistent direct chat. The operator installs it, runs it, and is the sole user — there is no auth, no multi-tenancy. All application state lives inside the active workspace directory so the entire system can be moved to another machine without losing context.
+**CommandsCenter (`cc`)** is a single-user, workspace-centric application for creating, managing, and interacting with isolated AI specialists through persistent direct chat. The operator installs it, runs it, and is the sole user — there is no auth, no multi-tenancy. All application state lives inside the active workspace directory so the entire system can be moved to another machine without losing context.
 
 ---
 
@@ -136,30 +136,30 @@ The CLI bundles backend + frontend into `packages/cli/dist/`. The backend expose
 
 ### Naming
 
-| Thing                 | Convention                    | Example              |
-| --------------------- | ----------------------------- | -------------------- |
-| Files                 | `kebab-case.ts`               | `agent-service.ts`   |
-| React components      | `PascalCase.tsx`              | `AgentCard.tsx`      |
-| Variables, functions  | `camelCase`                   | `getActiveAgent()`   |
-| Types, interfaces     | `PascalCase`                  | `AgentConfig`        |
-| Constants             | `SCREAMING_SNAKE`             | `MAX_RETRY_COUNT`    |
-| Database tables       | `snake_case`                  | `agent_configs`      |
-| Database columns      | `snake_case`                  | `created_at`         |
-| Zod schemas           | `camelCase` + `Schema` suffix | `agentConfigSchema`  |
-| Route paths           | `kebab-case`                  | `/api/agent-configs` |
-| Environment variables | `SCREAMING_SNAKE`             | `CC_WORKSPACE_DIR`   |
+| Thing                 | Convention                    | Example                   |
+| --------------------- | ----------------------------- | ------------------------- |
+| Files                 | `kebab-case.ts`               | `specialist-service.ts`   |
+| React components      | `PascalCase.tsx`              | `AgentCard.tsx`           |
+| Variables, functions  | `camelCase`                   | `getActiveAgent()`        |
+| Types, interfaces     | `PascalCase`                  | `AgentConfig`             |
+| Constants             | `SCREAMING_SNAKE`             | `MAX_RETRY_COUNT`         |
+| Database tables       | `snake_case`                  | `specialist_configs`      |
+| Database columns      | `snake_case`                  | `created_at`              |
+| Zod schemas           | `camelCase` + `Schema` suffix | `agentConfigSchema`       |
+| Route paths           | `kebab-case`                  | `/api/specialist-configs` |
+| Environment variables | `SCREAMING_SNAKE`             | `CC_WORKSPACE_DIR`        |
 
 ### File Organization
 
 - One concept per file. If a file exceeds ~250 lines, consider splitting.
-- Co-locate tests next to source in the backend: `src/services/agent-service.ts` → `test/services/agent-service.test.ts`
+- Co-locate tests next to source in the backend: `src/services/specialist-service.ts` → `test/services/specialist-service.test.ts`
 - Co-locate Playwright tests in the frontend under e2e directory: `packages/frontend/e2e/`
-- Group by domain, not by type. Prefer `services/agent-service.ts` over `services/index.ts` re-exporting everything.
+- Group by domain, not by type. Prefer `services/specialist-service.ts` over `services/index.ts` re-exporting everything.
 - No barrel files (`index.ts` that re-export) unless the package has an explicit public API (like `@cc/shared`).
 
 ### Imports
 
-- Absolute imports within a package using tsconfig `paths` (e.g., `@/services/agent-service`)
+- Absolute imports within a package using tsconfig `paths` (e.g., `@/services/specialist-service`)
 - Cross-package imports use the package name (e.g., `@cc/shared/schemas`)
 - Order: node builtins → external packages → workspace packages → relative imports
 - Let the linter enforce import order — don't manually sort
@@ -191,7 +191,7 @@ All database code lives in `packages/backend/src/db/`:
 ```
 db/
 ├── schema/
-│   ├── agents.ts          # Agent table definition
+│   ├── agents.ts          # Internal specialist table definition
 │   ├── conversations.ts   # Conversation + message tables
 │   ├── tools.ts           # Custom tool definitions
 │   ├── providers.ts       # Provider connections
@@ -248,7 +248,7 @@ export const agents = sqliteTable("agents", {
 - When mocks are necessary (external APIs, filesystem), prefer lightweight test doubles over mocking libraries
 - Use dependency injection to swap real services for test doubles
 - Each test must be independent — no shared mutable state between tests
-- Name tests descriptively: `it("returns empty array when agent has no conversations")`
+- Name tests descriptively: `it("returns empty array when specialist has no conversations")`
 - **One behavior per test** — each `it()` block must test exactly one thing. If the test name contains "and" or commas listing multiple behaviors, split it into separate tests. This keeps failures precise: when a test breaks you immediately know which behavior regressed without reading the test body.
 - Use `beforeAll`/`afterAll` to share expensive setup (DB, server) across tests in a `describe` block — this keeps each `it()` focused on a single assertion while avoiding redundant setup cost.
 
@@ -268,15 +268,15 @@ it("supports opening, prompting, listing, and starting fresh", async () => {
 
 // Good: one behavior per test, shared setup via beforeAll.
 describe("conversation routes", () => {
-  let server, agentId;
+  let server, specialistId;
   beforeAll(async () => {
-    /* create DB, server, agent */
+    /* create DB, server, specialist */
   });
   afterAll(async () => {
     /* close server, cleanup DB */
   });
 
-  it("resolves the active conversation for an agent", async () => {
+  it("resolves the active conversation for a specialist", async () => {
     const response = await server.inject({ method: "GET", url: activeUrl });
     expect(response.statusCode).toBe(200);
     expect(response.json().current.id).toBeDefined();
@@ -289,7 +289,7 @@ describe("conversation routes", () => {
     expect(response.json().messages).toHaveLength(2);
   });
 
-  it("lists all conversations for an agent", async () => {
+  it("lists all conversations for a specialist", async () => {
     /* ... */
   });
 
@@ -302,7 +302,7 @@ describe("conversation routes", () => {
 ### E2E Tests (Playwright)
 
 - Cover every MVP screen's critical paths
-- Test real user flows: create agent → open chat → send message → see response
+- Test real user flows: create specialist → open chat → send message → see response
 - Use `data-testid` attributes for stable selectors (not CSS classes or text content)
 - E2E tests run against a fully built app with a real database (SQLite for CI speed)
 - Keep E2E tests focused on user flows, not implementation details
@@ -416,7 +416,7 @@ When making changes that affect the developer experience, update the relevant do
 - **AGENTS.md** (this file) — Update if: coding conventions change, new patterns are established, tech stack entries are added/removed/replaced.
 - **.env.example** — Update if: new environment variables are introduced.
 
-### Debugging Agent Issues
+### Debugging Specialist Issues
 
 - Check Pino logs — every request has a correlation ID
 - For opencode process issues, check the orchestrator's lifecycle logs

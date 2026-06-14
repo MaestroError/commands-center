@@ -16,7 +16,7 @@ Use this skill when creating or updating reusable workspace skills for CommandsC
 - Store reusable workspace skills under `.cc/workspace/skills/<slug>/`.
 - Each skill directory must contain `SKILL.md` and may include any supporting files the skill references.
 - CommandsCenter treats `.cc/workspace/skills/` as the source of truth.
-- Agent `.opencode/skills/` folders are generated copies. Edit the workspace skill source, not the generated agent copy.
+- Specialist `.opencode/skills/` folders are generated copies. Edit the workspace skill source, not the generated specialist copy.
 
 ## Preferred workflow
 
@@ -24,7 +24,7 @@ Use this skill when creating or updating reusable workspace skills for CommandsC
 2. Let CommandsCenter generate the folder and starter `SKILL.md`.
 3. Open the new skill folder in the file manager.
 4. Add the final instructions, examples, and any supporting files there.
-5. Assign the skill to one or more agents from the skills page or the agent editor.
+5. Assign the skill to one or more specialists from the skills page or the Specialist editor.
 
 ## Required structure
 
@@ -61,4 +61,4 @@ Explain what the skill should do, when to use it, and how it should behave.
 - Keep the description short and action-oriented.
 - Put durable instructions in the body, not only in frontmatter.
 - If the skill depends on templates or examples, keep those files next to `SKILL.md` so the whole skill stays portable.
-- Do not edit generated agent `.opencode/skills/` copies by hand because CommandsCenter rewrites them on save.
+- Do not edit generated specialist `.opencode/skills/` copies by hand because CommandsCenter rewrites them on save.

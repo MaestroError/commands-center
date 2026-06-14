@@ -34,29 +34,29 @@ npm install -g commandscenter
   - Headless / programmatic access
   - Development setups where Vite dev server handles the frontend
 
-> **Single-User Application** — This is a single-operator tool. There is no user registration, login, or multi-tenancy. The person who installs and runs the app is the sole user with full access to all agents, workspaces, terminals, and the host filesystem. Authentication may be added in a future phase, but the MVP assumes a trusted, single-user environment.
+> **Single-User Application** — This is a single-operator tool. There is no user registration, login, or multi-tenancy. The person who installs and runs the app is the sole user with full access to all specialists, workspaces, terminals, and the host filesystem. Authentication may be added in a future phase, but the MVP assumes a trusted, single-user environment.
 
-> **MUST: Portable Workspace Rule** — The workspace directory (`CC_WORKSPACE_DIR`) is the source of truth for portable configuration and assets. SQLite (`CC_DATA_DIR/cc.db`) is a disposable derived cache — delete it and the app boots as a fully configured instance with all agents, MCP servers, settings, task templates, and expected secret keys restored from workspace files. Runtime history, provider auth state, scheduler state, and secret _values_ are intentionally not portable and must be re-entered on a new machine.
+> **MUST: Portable Workspace Rule** — The workspace directory (`CC_WORKSPACE_DIR`) is the source of truth for portable configuration and assets. SQLite (`CC_DATA_DIR/cc.db`) is a disposable derived cache — delete it and the app boots as a fully configured instance with all specialists, MCP servers, settings, task templates, and expected secret keys restored from workspace files. Runtime history, provider auth state, scheduler state, and secret _values_ are intentionally not portable and must be re-entered on a new machine.
 
 ## Features
 
-App manages OpenCode workspaces as agents, allowing user to add different agents with different tools and instructions.
+App manages OpenCode workspaces as specialists, allowing user to add different specialists with different tools and instructions.
 
-### What is an Agent
+### What is a Specialist
 
-An agent in this app is an **OpenCode workspace** — nothing more. Each agent maps 1:1 to an OpenCode workspace directory containing standard OpenCode configuration files:
+A specialist in this app is an **OpenCode workspace** — nothing more. Each specialist maps 1:1 to an OpenCode workspace directory containing standard OpenCode configuration files:
 
-- `AGENTS.md` — the agent's name, role, and instructions (OpenCode reads this as the system prompt)
+- `AGENTS.md` — the specialist's name, role, and instructions (OpenCode reads this as the system prompt)
 - `opencode.jsonc` — OpenCode workspace config: default model, MCP server permissions, tool permissions
 - `.opencode/skills/` — copied built-in skill files that OpenCode loads on workspace initialization
 
-The app creates this workspace directory when the user creates an agent and updates the files when the user edits the agent. All chat, prompt execution, tool calls, and terminal sessions go through the single `opencode serve` process, routed to the correct workspace via directory parameter. The app additionally provides tools to agents via its own MCP servers (app-provided tools and user-configured custom tools).
+The app creates this workspace directory when the user creates a specialist and updates the files when the user edits the specialist. All chat, prompt execution, tool calls, and terminal sessions go through the single `opencode serve` process, routed to the correct workspace via directory parameter. The app additionally provides tools to specialists via its own MCP servers (app-provided tools and user-configured custom tools).
 
 **The app is the orchestrator; OpenCode is the engine.** Refer to OpenCode documentation for workspace configuration format, supported `opencode.jsonc` fields, `AGENTS.md` conventions, skill file structure, and MCP permission rules.
 
-Then, it orchestrates this OpenCode agents inside group chats and Kanban board as well as allows direct messages to each agent.
+Then, it orchestrates these OpenCode workspaces inside group chats and Kanban board as well as allows direct messages to each specialist.
 
-In case of group chats and kanban board all agents have shared context such as documents, images, task description, chat history, etc..
+In case of group chats and kanban board all specialists have shared context such as documents, images, task description, chat history, etc..
 
 At the MVP stage we focus on Direct Messaging only. Let's focus on that.
 
@@ -64,11 +64,11 @@ At the MVP stage we focus on Direct Messaging only. Let's focus on that.
 
 The product has three planned feature pillars. We build them sequentially:
 
-| Phase             | Feature             | Scope                                                                                                                                             |
-| ----------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Phase 1 (MVP)** | **Direct Messages** | Agent CRUD, 1-on-1 chat with each agent via OpenCode SDK, file manager, terminal, tasks/templates, custom tools, MCP/provider auth, self-updating |
-| **Phase 2**       | **Group Chat**      | Multi-agent conversations with shared context (documents, images, chat history)                                                                   |
-| **Phase 3**       | **Kanban Board**    | Task-based orchestration — agents assigned to cards/columns with shared project context                                                           |
+| Phase             | Feature             | Scope                                                                                                                                                       |
+| ----------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Phase 1 (MVP)** | **Direct Messages** | Specialist CRUD, 1-on-1 chat with each specialist via OpenCode SDK, file manager, terminal, tasks/templates, custom tools, MCP/provider auth, self-updating |
+| **Phase 2**       | **Group Chat**      | Multi-specialist conversations with shared context (documents, images, chat history)                                                                        |
+| **Phase 3**       | **Kanban Board**    | Task-based orchestration — specialists assigned to cards/columns with shared project context                                                                |
 
 **Current focus: Phase 1 — Direct Messages.** All subsequent sections in this document describe Phase 1 scope unless explicitly noted otherwise.
 
@@ -76,15 +76,15 @@ The user should be able to globally:
 
 - Add any custom skills + Browse curated skill library from us (Founders)
 - Add MCPs, including with OAuth + Our built-in integrations
-- Auth Integrations from Composio (built-in MCP suggestion with dedicated UI — user provides only a name plus OAuth or API key, CC pre-registers the MCP endpoint globally via OpenCode, per-agent tool access via workspace config)
+- Auth Integrations from Composio (built-in MCP suggestion with dedicated UI — user provides only a name plus OAuth or API key, CC pre-registers the MCP endpoint globally via OpenCode, per-specialist tool access via workspace config)
 
-Then while creating the agent, the user specifies what it should have access to, plus the role, name, and instructions. Optionally the icon/image too. See **What is an Agent** above for what this produces on disk.
+Then while creating the specialist, the user specifies what it should have access to, plus the role, name, and instructions. Optionally the icon/image too. See **What is a Specialist** above for what this produces on disk.
 
 ### Filesystem
 
 App also should include file manager (preferable using some well-established and documented npm package).
 
-Allowing the user to locate files inside workspace including agents, read them and edit them from web with syntax highlighting.
+Allowing the user to locate files inside workspace including specialists, read them and edit them from web with syntax highlighting.
 
 The user can also browse the full machine filesystem (since they are the owner/operator).
 
@@ -92,7 +92,7 @@ The user can also browse the full machine filesystem (since they are the owner/o
 
 Global terminal that allows the user to run CLI commands, install apps/bins and everything else, including root access with sudo.
 
-Additionally, each agent's chat page should have a terminal provided by OpenCode to run commands inside that agent's workspace (Default location) which is closed by default.
+Additionally, each specialist's chat page should have a terminal provided by OpenCode to run commands inside that specialist's workspace (Default location) which is closed by default.
 
 (preferable using some well-established and documented npm package with interactive teminal capabilities).
 
@@ -100,15 +100,15 @@ Terminal can be based on openCode's socket endpoint specifically created for ter
 
 ### Tasks and Templates
 
-The user should be able to open the Tasks page and manage board tasks plus reusable task templates. A template may run manually or on a schedule. Each run targets an agent with a prompt, and the system enriches that prompt with needed context before invoking the agent. Each invocation is recorded as task run history for later review.
+The user should be able to open the Tasks page and manage board tasks plus reusable task templates. A template may run manually or on a schedule. Each run targets a specialist with a prompt, and the system enriches that prompt with needed context before invoking the specialist. Each invocation is recorded as task run history for later review.
 
 ### Direct chat
 
-In sidebar under agents dropdown (expanded by default), should be rendered 3 latest agents the user had direct chat with and "See all" button which leads to agents page.
+In sidebar under specialists dropdown (expanded by default), should be rendered 3 latest specialists the user had direct chat with and "See all" button which leads to specialists page.
 
-On agents page should be rendered all available agents with image/icon, name, role and action buttons including "chat" (prefferable in grid view 2 or 3 agents per row) and search input which just filter agents by name and role
+On specialists page should be rendered all available specialists with image/icon, name, role and action buttons including "chat" (prefferable in grid view 2 or 3 specialists per row) and search input which just filter specialists by name and role
 
-Direct chat should feel persistent per agent rather than encouraging many separate visible chat threads. Opening an agent should return the user to that agent's ongoing conversation by default.
+Direct chat should feel persistent per specialist rather than encouraging many separate visible chat threads. Opening a specialist should return the user to that specialist's ongoing conversation by default.
 
 If the user wants to begin with a clean context, the chat UI should expose a `Start Fresh` action. Internally this creates a new session, but session mechanics should stay secondary in the UX.
 
@@ -118,7 +118,7 @@ User preferences and important long-term memories should be persisted inside the
 
 ## Inside chat window
 
-Very similar to what the opencode agent has:
+Very similar to what the OpenCode task flow supports:
 
 - input with main configs: model, auto-approve switch. And attachments uploading feature.
   - Attachments are passed directly to OpenCode via the SDK's `FilePartInput` in `session.prompt()`. The app handles the upload UI and temporary storage; OpenCode handles the AI processing. Supported part types: `TextPartInput`, `FilePartInput`, `AgentPartInput`, `SubtaskPartInput`.
@@ -133,7 +133,7 @@ Note: Would be great to use some well-established component library for building
 
 ## OpenCode Engine Management
 
-**Context:** It orchestrates multiple isolated OpenCode AI agents across varied deployment environments (Docker, global NPM, and bare metal).
+**Context:** It orchestrates multiple isolated specialists across varied deployment environments (Docker, global NPM, and bare metal).
 
 The following decisions outline how the application manages the underlying `opencode` binary for maximum performance, stability, and ease of installation.
 
@@ -141,14 +141,14 @@ The following decisions outline how the application manages the underlying `open
 
 ### 1. Execution Strategy: Single-Process Orchestrator
 
-**Decision:** The application runs a **single `opencode serve` process** as a persistent, long-running background daemon (managed by a Node Orchestrator). All agent workspaces are accessed through this single process — workspaces are switched via HTTP headers or query parameters, not by spawning separate server processes per agent.
+**Decision:** The application runs a **single `opencode serve` process** as a persistent, long-running background daemon (managed by a Node Orchestrator). All specialist workspaces are accessed through this single process — workspaces are switched via HTTP headers or query parameters, not by spawning separate server processes per specialist.
 
 **Rationale:**
 
 - **Zero-Latency Interactions:** Spinning up the engine for every message incurs a 2-5 second startup penalty. A persistent service keeps the models loaded in memory, allowing for instant, snappy chat UI responses.
-- **Stateful Context:** Agents require continuous memory. A long-running process maintains active conversation states, instance-scoped caches/services, and authentication without re-initializing on every request.
-- **Single-Process Simplicity:** Instead of spawning one child process per agent (with dynamic port allocation and reverse proxying), a single `opencode serve` instance handles all workspaces. The Orchestrator routes requests to the correct workspace via HTTP headers or query parameters. This eliminates port management, reduces resource consumption, and simplifies lifecycle management.
-- **Active Monitoring:** The Orchestrator polls the single engine's `/health` endpoint, providing the UI with real-time status and graceful error handling if an agent's MCP script crashes.
+- **Stateful Context:** Specialists require continuous memory. A long-running process maintains active conversation states, instance-scoped caches/services, and authentication without re-initializing on every request.
+- **Single-Process Simplicity:** Instead of spawning one child process per specialist (with dynamic port allocation and reverse proxying), a single `opencode serve` instance handles all workspaces. The Orchestrator routes requests to the correct workspace via HTTP headers or query parameters. This eliminates port management, reduces resource consumption, and simplifies lifecycle management.
+- **Active Monitoring:** The Orchestrator polls the single engine's `/health` endpoint, providing the UI with real-time status and graceful error handling if a specialist's MCP script crashes.
 
 **Note:** Skill discovery is loaded as part of workspace instance initialization, not hot-reloaded inside an already initialized instance. When skills are added or changed for an existing workspace, the app should dispose that workspace instance (or restart `opencode serve`) before expecting the new skill set to appear. Disposing the instance is preferred because it reloads workspace state without insfrastructure overhead, keep restarting full opencode serve as a fallback option.
 
@@ -179,15 +179,15 @@ The following decisions outline how the application manages the underlying `open
 
 While the local dependency is the strict default, the Orchestrator will respect an environment variable (e.g., CC_OPENCODE_PATH). If present, the Orchestrator will bypass the node_modules path and use the provided binary. This supports advanced operators who wish to point the application to a custom, globally compiled fork of the OpenCode engine
 
-## Agent CLI Tool Management
+## Specialist CLI Tool Management
 
 ### Context
 
-OpenCode agents frequently require CLI applications to perform tasks. When orchestrating these agents via Docker on a cloud VPS, the ephemeral nature of containers creates a challenge: dynamically installed tools are lost whenever the orchestrator is updated and the container is rebuilt.
+OpenCode specialists frequently require CLI applications to perform tasks. When orchestrating these specialists via Docker on a cloud VPS, the ephemeral nature of containers creates a challenge: dynamically installed tools are lost whenever the orchestrator is updated and the container is rebuilt.
 
 ### Decision
 
-To balance security, container immutability, and agent autonomy, the OpenCode orchestrator will utilize a **Tiered Dependency Strategy** heavily anchored in the Node.js ecosystem, alongside an optional **Bare Metal** deployment mode.
+To balance security, container immutability, and specialist autonomy, the OpenCode orchestrator will utilize a **Tiered Dependency Strategy** heavily anchored in the Node.js ecosystem, alongside an optional **Bare Metal** deployment mode.
 
 #### The Tiered Docker Strategy
 
@@ -200,27 +200,27 @@ To balance security, container immutability, and agent autonomy, the OpenCode or
   - **Rationale:** Ensures heavy or universally required system packages are immediately available without slowing down container startup times or requiring complex installations.
 
 - **Tier 3: Startup Scripts (Edge Cases)**
-  - **Mechanism:** Users or agents can write initialization commands to a persisted startup script that runs when the container boots.
+  - **Mechanism:** Users or specialists can write initialization commands to a persisted startup script that runs when the container boots.
   - **Rationale:** Acts as an escape hatch for specific, non-NPM utilities that don't belong in the core base image, restoring them automatically after a container rebuild.
 
 ### Bare Metal Option (Non-Docker)
 
 - **Mechanism:** Allowing the orchestrator to run directly on the host system without containerization on VPN or locally
-- **Rationale:** Provides an alternative for self-hosting users who prioritize absolute environment freedom, native integrations, and unrestricted agent capabilities over container isolation.
+- **Rationale:** Provides an alternative for self-hosting users who prioritize absolute environment freedom, native integrations, and unrestricted specialist capabilities over container isolation.
 
 ## Tools
 
-App should expose 2 custom MCP servers where all custom (user-configured) and app-provided tools will be registered and controllered dynamically, per agent.
+App should expose 2 custom MCP servers where all custom (user-configured) and app-provided tools will be registered and controllered dynamically, per specialist.
 
 > "When an MCP server updates its toolset, it sends this notification and OpenCode publishes a ToolsChanged event" - OpenCode source code
 
 ### Custom tools
 
-The user can add custom tools globally, that later can be registered to the agents. Custom tools are kinda configurable HTTP requests that may go to the n8n or something similar, do something and return the feedback. So, it should have a basic HTTP request building configurations + name, description (Goes to MCP) and optional extra instructions (If set, goes as a part of system message before each session)
+The user can add custom tools globally, that later can be registered to the specialists. Custom tools are kinda configurable HTTP requests that may go to the n8n or something similar, do something and return the feedback. So, it should have a basic HTTP request building configurations + name, description (Goes to MCP) and optional extra instructions (If set, goes as a part of system message before each session)
 
 ### App provided tools
 
-Composio is offered as a built-in MCP server suggestion. The user brings their own Composio API key, CC registers it as a global MCP server via OpenCode's standard auth flow, and per-agent tool access is controlled through the workspace `opencode.jsonc` permission system — same as any other MCP server. No deep SDK integration; we use Composio's MCP mode exclusively. Enterprise multi-profile Composio integration is planned for a future phase.
+Composio is offered as a built-in MCP server suggestion. The user brings their own Composio API key, CC registers it as a global MCP server via OpenCode's standard auth flow, and per-specialist tool access is controlled through the workspace `opencode.jsonc` permission system — same as any other MCP server. No deep SDK integration; we use Composio's MCP mode exclusively. Enterprise multi-profile Composio integration is planned for a future phase.
 
 And any other interactions with main app will be happen through this MCP (TBD)
 
@@ -230,18 +230,18 @@ Authentication for both LLM providers and MCP servers is handled via OpenCode's 
 
 ### LLM Provider Auth (Global)
 
-Provider authentication is **global**, not per-agent. The user configures their LLM providers (OpenAI, Anthropic, etc.) once at the app level, and all agents share access to those providers.
+Provider authentication is **global**, not per-specialist. The user configures their LLM providers (OpenAI, Anthropic, etc.) once at the app level, and all specialists share access to those providers.
 
 - The app UI presents a provider auth modal supporting two methods:
   - **OAuth flow** — the app opens a browser-based authorization flow, then completes the exchange via OpenCode's `/provider/oauth/` API endpoints.
   - **API key** — the user pastes a secret key directly; the app stores it via OpenCode's API.
 - Tokens and keys are persisted by OpenCode in its configuration directory (`.opencode/`).
-- The user selects a **default model** per agent at creation time. This default can be changed at any time from the chat window's model selector.
+- The user selects a **default model** per specialist at creation time. This default can be changed at any time from the chat window's model selector.
 - The app may use extended timeouts for OAuth endpoints (up to 5 minutes) to accommodate slow browser redirects or device flows (e.g., OpenAI's headless device flow).
 
-### MCP Server Auth (Global + Per-Agent Control)
+### MCP Server Auth (Global + Per-Specialist Control)
 
-MCP server connections and their OAuth credentials are also configured **globally** through the app, using OpenCode's `/mcp/auth/` API endpoints. However, tool **access** is controlled per agent.
+MCP server connections and their OAuth credentials are also configured **globally** through the app, using OpenCode's `/mcp/auth/` API endpoints. However, tool **access** is controlled per specialist.
 
 **Global setup:**
 
@@ -249,15 +249,15 @@ MCP server connections and their OAuth credentials are also configured **globall
 - The app triggers OpenCode's MCP auth flow, which handles the browser-based OAuth, token exchange, and secure token storage.
 - Extended timeouts (up to 90 seconds) are used for MCP auth callbacks.
 
-**Per-agent tool access:**
+**Per-specialist tool access:**
 
-- When creating or editing an agent, the user explicitly selects which MCP servers (and which specific tools) that agent is allowed to use.
+- When creating or editing a specialist, the user explicitly selects which MCP servers (and which specific tools) that specialist is allowed to use.
 - The app translates these selections into OpenCode's workspace config using the `permission` object (the legacy `tools` boolean config is deprecated as of v1.1.1):
   - Deny all tools from a server by default: `"servername_*": "deny"`
-  - Allow specific servers per agent: `"servername_*": "allow"`
+  - Allow specific servers per specialist: `"servername_*": "allow"`
   - Require approval for specific tools: `"servername_*": "ask"`
 - Permission values: `"allow"` (run without approval), `"ask"` (prompt for approval), `"deny"` (block the action).
-- This uses OpenCode's native configuration precedence — workspace/agent-level config overrides global config.
+- This uses OpenCode's native configuration precedence — workspace/specialist-level config overrides global config.
 - MCP servers can also be fully disabled at the workspace level using the `enabled: false` flag in the `mcp` config section, which prevents the server connection from being established at all.
 
 **Config format (OpenCode `permission` system):**
@@ -271,8 +271,8 @@ MCP server connections and their OAuth credentials are also configured **globall
 1. User authenticates providers and MCP servers globally via the app UI.
 2. App delegates all auth flows to OpenCode's REST API (`/provider/oauth/`, `/mcp/auth/`).
 3. OpenCode stores tokens in its config directory.
-4. On agent creation/edit, the app writes the agent's `opencode.json` with the appropriate `permission` grants/denials.
-5. When tools change at runtime, the orchestrator uses MCP's `listChanged` notification to force agents to refresh their available toolsets without restart.
+4. On specialist creation/edit, the app writes the specialist's `opencode.json` with the appropriate `permission` grants/denials.
+5. When tools change at runtime, the orchestrator uses MCP's `listChanged` notification to force specialists to refresh their available toolsets without restart.
 
 # Principles
 
@@ -306,7 +306,7 @@ We should adhere to following principles while development and maintenance of th
 - **Minimum 95% code coverage** enforced in CI — PRs that drop coverage below threshold are blocked, when it is mandatory, explicitly reduce threshold. Max reduction to 85%, less than that is unacceptible.
 - **Unit tests:** Every utility, service, and pure function must have unit tests. Use Vitest (or Jest) with fast, isolated test suites.
 - **Integration / Feature tests:** Test service interactions, API routes, middleware chains, and database queries against real (or containerised) dependencies.
-- **End-to-End (E2E) tests:** Critical user flows (agent creation, chat messaging, file management, terminal sessions, cron creation) tested with Playwright.
+- **End-to-End (E2E) tests:** Critical user flows (specialist creation, chat messaging, file management, terminal sessions, cron creation) tested with Playwright.
 - **Snapshot tests** for UI components where visual regression matters — but keep them minimal and intentional.
 - **Test naming convention:** `describe` the unit, `it('should <expected behaviour> when <condition>')`.
 - **No skipped tests in main branch.** `it.skip` / `xit` must be resolved or removed before merge.
@@ -316,7 +316,7 @@ We should adhere to following principles while development and maintenance of th
 - **Separation of Concerns:** Clear boundaries between layers — transport (routes/controllers), business logic (services), data access (repositories), and presentation (React components).
 - **Dependency Injection:** Services receive their dependencies explicitly, making them testable and swappable.
 - **Configuration via Environment:** All environment-specific values come from `.env` / environment variables, validated at startup with a schema (Zod). Fail fast on misconfiguration.
-- **Portable Workspace (MUST):** Portable configuration and assets live in the workspace directory (`CC_WORKSPACE_DIR`) and are fully recovered from files on boot. SQLite (`CC_DATA_DIR/cc.db`) is a disposable derived cache — deleting it and restarting restores all agents, MCP servers, settings, secret key list, and task templates from workspace files. Secret values and runtime history are intentionally not recovered.
+- **Portable Workspace (MUST):** Portable configuration and assets live in the workspace directory (`CC_WORKSPACE_DIR`) and are fully recovered from files on boot. SQLite (`CC_DATA_DIR/cc.db`) is a disposable derived cache — deleting it and restarting restores all specialists, MCP servers, settings, secret key list, and task templates from workspace files. Secret values and runtime history are intentionally not recovered.
 - **Error Handling Strategy:**
   - Domain errors are typed and intentional (custom error classes or result types).
   - Unhandled exceptions trigger structured logging and graceful degradation — never crash silently.
@@ -326,16 +326,16 @@ We should adhere to following principles while development and maintenance of th
 
 - **Input validation on every boundary** — never trust data from the client, external APIs, or user-configured MCPs.
 - **Parameterised queries only** — no string interpolation in SQL or shell commands.
-- **Least privilege:** Agents and processes run with the minimum permissions required.
+- **Least privilege:** Specialists and processes run with the minimum permissions required.
 - **Secrets management:** No secrets in code or version control. Use `.env` (gitignored) locally and secure secret stores in production.
 - **Dependency auditing:** Run `npm audit` in CI; block merges on critical/high vulnerabilities.
 - **CSP, CORS, and rate limiting** configured from day one on all HTTP endpoints.
 
 ## Performance & Observability
 
-- **Structured logging** (e.g. Pino) with correlation IDs across requests and agent interactions.
+- **Structured logging** (e.g. Pino) with correlation IDs across requests and specialist interactions.
 - **Health checks** on all services — both liveness and readiness probes for containerised deployments.
-- **Graceful shutdown:** Handle `SIGTERM` / `SIGINT` properly — drain connections, stop cron schedulers, terminate agent child processes.
+- **Graceful shutdown:** Handle `SIGTERM` / `SIGINT` properly — drain connections, stop cron schedulers, terminate engine subprocesses.
 - **Lazy loading & code splitting** on the frontend — don't ship what the user hasn't requested.
 
 ## Git & CI/CD
@@ -391,7 +391,7 @@ cc/
 | **Code Editor**       | Monaco Editor (`@monaco-editor/react`)              | VS Code engine — syntax highlighting, IntelliSense, Model-URI virtual file system      |
 | **Terminal Emulator** | xterm.js + `xterm-addon-fit` + `xterm-addon-attach` | WebGL renderer, dynamic resize, WebSocket stream attachment                            |
 | **Server State**      | TanStack Query (`@tanstack/react-query`)            | API data fetching, caching, polling, optimistic updates for all server-derived state   |
-| **Client State**      | Zustand                                             | Lightweight store for UI-only state (active tab, sidebar, selected agent, theme)       |
+| **Client State**      | Zustand                                             | Lightweight store for UI-only state (active tab, sidebar, selected specialist, theme)  |
 
 ## Backend
 
@@ -423,11 +423,11 @@ cc/
 
 ## AI & Integrations
 
-| Category              | Technology                                           | Notes                                                                                                                                                                                  |
-| --------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Agent Engine**      | `opencode-ai` (binary) + `@opencode-ai/sdk` (JS SDK) | Official JS SDK (`createOpencodeClient`) for type-safe programmatic interaction + single persistent `opencode serve` daemon managed by the orchestrator                                |
-| **Tool Protocol**     | MCP SDK (`@modelcontextprotocol/sdk`)                | `StdioServerTransport` / `SSEServerTransport`, dynamic tool registration, `listChanged` notifications                                                                                  |
-| **External API Auth** | Composio (MCP mode)                                  | Built-in MCP suggestion: user-provided API key or OAuth, global auth via OpenCode, per-agent tool permissions via workspace config. Enterprise multi-profile planned for future phase. |
+| Category              | Technology                                           | Notes                                                                                                                                                                                       |
+| --------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **AI Engine**         | `opencode-ai` (binary) + `@opencode-ai/sdk` (JS SDK) | Official JS SDK (`createOpencodeClient`) for type-safe programmatic interaction + single persistent `opencode serve` daemon managed by the orchestrator                                     |
+| **Tool Protocol**     | MCP SDK (`@modelcontextprotocol/sdk`)                | `StdioServerTransport` / `SSEServerTransport`, dynamic tool registration, `listChanged` notifications                                                                                       |
+| **External API Auth** | Composio (MCP mode)                                  | Built-in MCP suggestion: user-provided API key or OAuth, global auth via OpenCode, per-specialist tool permissions via workspace config. Enterprise multi-profile planned for future phase. |
 
 ## Testing & Quality
 
@@ -528,10 +528,10 @@ All runtime configuration is managed through environment variables. Validated at
 
 ## Tasks
 
-| Variable              | Default | Required | Description                                                                                      |
-| --------------------- | ------- | -------- | ------------------------------------------------------------------------------------------------ |
-| `CC_MAX_TASKS`        | `0`     | No       | Max active tasks. `0` = unlimited                                                                |
-| `CC_CRON_CONCURRENCY` | `1`     | No       | Max cron jobs executing simultaneously (prevents resource exhaustion from parallel agent spawns) |
+| Variable              | Default | Required | Description                                                                                           |
+| --------------------- | ------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `CC_MAX_TASKS`        | `0`     | No       | Max active tasks. `0` = unlimited                                                                     |
+| `CC_CRON_CONCURRENCY` | `1`     | No       | Max cron jobs executing simultaneously (prevents resource exhaustion from parallel specialist spawns) |
 
 ## Integrations
 
@@ -570,7 +570,7 @@ All runtime configuration is managed through environment variables. Validated at
 | ----------- | -------- | ---------------------------------------------------------------- |
 | Node.js     | ≥ 24 LTS | Required runtime. Enforced via `engines` field in `package.json` |
 | npm or pnpm | Latest   | Package manager                                                  |
-| Git         | Any      | Required for bare-metal updates and agent workflows              |
+| Git         | Any      | Required for bare-metal updates and specialist workflows         |
 
 The app runs on SQLite — zero additional database infrastructure needed.
 
@@ -600,7 +600,7 @@ The app launches at `http://localhost:3000`. All state lives inside the current 
 1. Creates `.cc/` data directory
 2. Generates `.env` with documented defaults (edit as needed)
 3. Initializes SQLite database at `.cc/data/cc.db`
-4. Creates `workspaces/` directory for agent folders
+4. Creates `workspaces/` directory for specialist folders
 5. Starts the server
 
 ### Development mode (contributors)
@@ -714,7 +714,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Long-running connections for SSE / agent streams
+        # Long-running connections for SSE / specialist streams
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
     }

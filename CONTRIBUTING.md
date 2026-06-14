@@ -136,7 +136,7 @@ TypeScript type checking runs before push.
 
 ### Branch naming
 
-Use descriptive branch names: `feat/agent-chat`, `fix/terminal-resize`, `chore/update-deps`.
+Use descriptive branch names: `feat/specialist-chat`, `fix/terminal-resize`, `chore/update-deps`.
 
 ## Coding Standards
 

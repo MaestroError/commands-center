@@ -241,19 +241,19 @@ describe("createSpecialistService", () => {
             {
               name: "add_secret",
               description:
-                "Ask the CommandsCenter operator to securely enter a workspace secret while the agent waits.",
+                "Ask the CommandsCenter operator to securely enter a workspace secret while the specialist waits.",
               context: "chat",
             },
             {
               name: "show_file_to_user",
               description:
-                "Open a file from this agent workspace in the CommandsCenter operator's preview tab while the agent waits. Accepts either an agent-relative path or an absolute path inside this agent workspace.",
+                "Open a file from this specialist workspace in the CommandsCenter operator's preview tab while the specialist waits. Accepts either a specialist-relative path or an absolute path inside this specialist workspace.",
               context: "chat",
             },
             {
               name: "create_custom_tool",
               description:
-                "Create a blank CommandsCenter custom tool and return the folder path the agent should edit.",
+                "Create a blank CommandsCenter custom tool and return the folder path the specialist should edit.",
               context: "chat",
             },
             {

@@ -65,7 +65,7 @@ To test session invalidation, sign in from two browsers or one normal window plu
 
 ## Production Claiming
 
-Production runs usually use `ccenter` and an env file. Keep `CC_WORKSPACE_DIR` stable, because the workspace directory is the source of truth for auth, database, agents, settings, and history.
+Production runs usually use `ccenter` and an env file. Keep `CC_WORKSPACE_DIR` stable, because the workspace directory is the source of truth for auth, database, specialists, settings, and history.
 
 `ccenter start` and `ccenter serve` create the env file on first run when it is missing. `ccenter claim` and `ccenter claim-code` require an existing env file; they do not create one.
 

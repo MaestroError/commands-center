@@ -1,6 +1,6 @@
 # CommandsCenter (cc)
 
-A single-user, workspace-centric application for creating, managing, and interacting with isolated AI agents through persistent direct chat. Built with Node.js, TypeScript, React, and the OpenCode AI engine.
+A single-user, workspace-centric application for creating, managing, and interacting with isolated AI specialists through persistent direct chat. Built with Node.js, TypeScript, React, and the OpenCode AI engine.
 
 No auth, no multi-tenancy. You install it, you run it, you own it.
 

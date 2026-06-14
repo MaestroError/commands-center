@@ -281,7 +281,7 @@ export function createSpecialistLiveToolDefinitions(options: SpecialistManagemen
             throw new Error("Specialist not found.");
           }
 
-          // Only surface the fields the agent proposed to change so the operator
+          // Only surface the fields the specialist proposed to change so the operator
           // reviews a focused diff; fall back to the full editable set when none
           // were proposed.
           const suggested = parsed.input;

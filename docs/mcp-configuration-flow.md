@@ -5,17 +5,17 @@
 OpenCode supports a two-layer MCP configuration model:
 
 1. **Global layer** — MCP servers are defined once (root `opencode.jsonc` or the `mcp_servers` DB table) with full connection details and authentication.
-2. **Workspace layer** — Each Agent workspace contains its own `opencode.jsonc` that overrides only what's needed: enable/disable servers and set per-tool permission rules.
+2. **Workspace layer** — Each specialist workspace contains its own `opencode.jsonc` that overrides only what's needed: enable/disable servers and set per-tool permission rules.
 
-This separation means CC manages authentication and connection setup globally (provider connections, Composio OAuth, API keys), while the Agent editor controls which tools each Agent can access.
+This separation means CC manages authentication and connection setup globally (provider connections, Composio OAuth, API keys), while the Specialist editor controls which tools each specialist can access.
 
 ## Workspace File Layout
 
-Each Agent workspace is a directory with three entries:
+Each specialist workspace is a directory with three entries:
 
 ```
-agents/<agent-slug>/
-├── AGENTS.md              # Agent system prompt (name, role, instructions)
+specialists/<specialist-slug>/
+├── AGENTS.md              # OpenCode system prompt (name, role, instructions)
 ├── opencode.jsonc         # Model, MCP overrides, permission rules
 └── .opencode/skills/      # Copied skill files
 ```
@@ -103,7 +103,7 @@ This naming convention is what makes wildcard permission patterns work.
 
 ### Case 1: MCP Server Disabled Entirely
 
-The Agent cannot use any tools from this server. OpenCode will not even connect to the server for this workspace.
+The specialist cannot use any tools from this server. OpenCode will not even connect to the server for this workspace.
 
 ```jsonc
 {
@@ -126,11 +126,11 @@ The Agent cannot use any tools from this server. OpenCode will not even connect 
 
 The `enabled: false` in `mcp` prevents the server from connecting. The `"deny"` permission is a defense-in-depth rule — even if the server somehow connects, the tools are denied.
 
-> **Convention:** Every globally-defined MCP server must appear explicitly in the workspace `mcp` section. This makes the Agent's access surface auditable at a glance.
+> **Convention:** Every globally-defined MCP server must appear explicitly in the workspace `mcp` section. This makes the specialist's access surface auditable at a glance.
 
 ### Case 2: MCP Server Fully Enabled
 
-The Agent can use all tools from the server without confirmation prompts.
+The specialist can use all tools from the server without confirmation prompts.
 
 ```jsonc
 {
@@ -155,7 +155,7 @@ The `"allow"` permission means the LLM can invoke any tool from the server witho
 
 ### Case 3: Selective Tool Access from an MCP Server
 
-The Agent can use some tools from the server but not others. Permission rules are evaluated in order — the last matching rule wins.
+The specialist can use some tools from the server but not others. Permission rules are evaluated in order — the last matching rule wins.
 
 ```jsonc
 {
@@ -192,10 +192,10 @@ In this example:
 
 ## How CC Backend Renders Workspace Config
 
-The `renderOpenCodeWorkspace` function in `workspace-contract.ts` converts the Agent's `capabilities` object into a valid `opencode.jsonc`. The Agent schema provides two fields for control:
+The `renderOpenCodeWorkspace` function in `workspace-contract.ts` converts the specialist's `capabilities` object into a valid `opencode.jsonc`. The Specialist schema provides two fields for control:
 
 ```ts
-// Agent capability selection (from schemas/agents.ts)
+// Specialist capability selection (from schemas/specialists.ts)
 capabilities: {
   mcpServers: [
     { name: "github", enabled: true, action: "allow" },    // server-level toggle + default action
@@ -238,11 +238,11 @@ Composio-provided MCP servers follow the same model:
 
 1. **Global auth** — CC connects to Composio globally using API keys or OAuth (managed via provider connections, same as existing provider connection flow).
 2. **Composio MCP definition** — Registered once in the global `opencode.jsonc` or `mcp_servers` DB table with the Composio MCP endpoint and credentials.
-3. **Per-Agent tool selection** — The Agent editor lists available Composio tools (discovered via the MCP `tools/list` call) and the user selects which tools this Agent can use. The backend writes the appropriate `permission` rules to the workspace `opencode.jsonc`.
+3. **Per-specialist tool selection** — The Specialist editor lists available Composio tools (discovered via the MCP `tools/list` call) and the user selects which tools this specialist can use. The backend writes the appropriate `permission` rules to the workspace `opencode.jsonc`.
 
-The Agent editor UI should:
+The Specialist editor UI should:
 
-- Show all globally-registered MCP servers with a toggle (enabled/disabled) per Agent
+- Show all globally-registered MCP servers with a toggle (enabled/disabled) per specialist
 - For enabled servers, list the available tools with per-tool permission control (allow / ask / deny)
 - Default to `"deny"` for all tools of a newly-enabled server, requiring explicit opt-in
 
@@ -256,12 +256,12 @@ The Agent editor UI should:
 
 ## Key Source Files
 
-| File                                                  | Purpose                                                       |
-| ----------------------------------------------------- | ------------------------------------------------------------- |
-| `opencode.jsonc` (root)                               | Global MCP server definitions with auth                       |
-| `packages/backend/src/opencode/workspace-contract.ts` | Workspace schema, rendering, and validation                   |
-| `packages/backend/src/schemas/agents.ts`              | Agent capability schema (`mcpServers`, `toolPermissions`)     |
-| `packages/backend/src/services/agent-workspace.ts`    | Writes workspace files on agent create/update                 |
-| `examples/opencode/.../src/config/config.ts`          | OpenCode engine config schema (full `Mcp` union type)         |
-| `examples/opencode/.../src/mcp/index.ts`              | MCP connection logic, `enabled` check, tool naming            |
-| `examples/opencode/.../src/permission/index.ts`       | Permission evaluation, `disabled()` filter, wildcard matching |
+| File                                                    | Purpose                                                        |
+| ------------------------------------------------------- | -------------------------------------------------------------- |
+| `opencode.jsonc` (root)                                 | Global MCP server definitions with auth                        |
+| `packages/backend/src/opencode/workspace-contract.ts`   | Workspace schema, rendering, and validation                    |
+| `packages/shared/src/schemas/specialists.ts`            | Specialist capability schema (`mcpServers`, `toolPermissions`) |
+| `packages/backend/src/services/specialist-workspace.ts` | Writes workspace files on specialist create/update             |
+| `examples/opencode/.../src/config/config.ts`            | OpenCode engine config schema (full `Mcp` union type)          |
+| `examples/opencode/.../src/mcp/index.ts`                | MCP connection logic, `enabled` check, tool naming             |
+| `examples/opencode/.../src/permission/index.ts`         | Permission evaluation, `disabled()` filter, wildcard matching  |

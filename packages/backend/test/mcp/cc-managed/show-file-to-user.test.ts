@@ -1,39 +1,42 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeAgentFilePath } from "../../../src/mcp/cc-managed/groups/cc-app/tools/show-file-to-user";
+import { normalizeSpecialistFilePath } from "../../../src/mcp/cc-managed/groups/cc-app/tools/show-file-to-user";
 
-describe("normalizeAgentFilePath", () => {
+describe("normalizeSpecialistFilePath", () => {
   const options = {
-    agentSlug: "testing-agent",
+    specialistSlug: "testing-agent",
     workspaceDir: "/Users/revazgh/cc-dev/.cc/workspace",
-    agentsDir: "/Users/revazgh/cc-dev/.cc/workspace/agents",
+    specialistsDir: "/Users/revazgh/cc-dev/.cc/workspace/specialists",
   };
 
-  it("keeps agent-relative paths unchanged", () => {
-    expect(normalizeAgentFilePath({ ...options, path: "mermaid.png" })).toBe("mermaid.png");
+  it("keeps specialist-relative paths unchanged", () => {
+    expect(normalizeSpecialistFilePath({ ...options, path: "mermaid.png" })).toBe("mermaid.png");
   });
 
-  it("converts workspace-relative agent paths to agent-relative paths", () => {
+  it("converts workspace-relative specialist paths to specialist-relative paths", () => {
     expect(
-      normalizeAgentFilePath({ ...options, path: "agents/testing-agent/reports/mermaid.png" }),
+      normalizeSpecialistFilePath({
+        ...options,
+        path: "specialists/testing-agent/reports/mermaid.png",
+      }),
     ).toBe("reports/mermaid.png");
   });
 
-  it("converts absolute paths inside the agent workspace to agent-relative paths", () => {
+  it("converts absolute paths inside the specialist workspace to specialist-relative paths", () => {
     expect(
-      normalizeAgentFilePath({
+      normalizeSpecialistFilePath({
         ...options,
         path: "/Users/revazgh/cc-dev/.cc/workspace/specialists/testing-agent/mermaid.png",
       }),
     ).toBe("mermaid.png");
   });
 
-  it("rejects absolute paths outside the agent workspace", () => {
+  it("rejects absolute paths outside the specialist workspace", () => {
     expect(() =>
-      normalizeAgentFilePath({
+      normalizeSpecialistFilePath({
         ...options,
         path: "/Users/revazgh/cc-dev/.cc/workspace/specialists/other-agent/secret.md",
       }),
-    ).toThrow("Absolute paths must point inside this agent workspace.");
+    ).toThrow("Absolute paths must point inside this specialist workspace.");
   });
 });

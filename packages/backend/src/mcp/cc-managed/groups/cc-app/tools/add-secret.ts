@@ -23,7 +23,7 @@ const addSecretOutputSchema = z.object({
 export const addSecretToolMetadata = {
   name: "add_secret",
   description:
-    "Ask the CommandsCenter operator to securely enter a workspace secret while the agent waits.",
+    "Ask the CommandsCenter operator to securely enter a workspace secret while the specialist waits.",
   context: "chat",
 } as const;
 
@@ -76,7 +76,7 @@ export function createAddSecretDefinition(options: {
             title: parsed.title ?? "Add secret",
             description:
               parsed.description ??
-              "The agent is waiting for you to add this secret. The value is stored encrypted and is never shown to the agent.",
+              "The specialist is waiting for you to add this secret. The value is stored encrypted and is never shown to the specialist.",
             submitLabel: parsed.submitLabel ?? "Add secret",
             cancelLabel: "Cancel",
           },
@@ -85,7 +85,8 @@ export function createAddSecretDefinition(options: {
               type: "text" as const,
               name: "key",
               label: "Secret key",
-              description: "Environment variable name exposed to agents, for example GITHUB_TOKEN.",
+              description:
+                "Environment variable name exposed to specialists, for example GITHUB_TOKEN.",
               placeholder: "SECRET_KEY",
               required: true,
               defaultValue: parsed.key,

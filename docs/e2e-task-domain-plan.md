@@ -69,15 +69,15 @@ section tab bar, `LoadingState`); adding a `testId` prop there covers many rows 
 
 ### A3. Feedback (`TasksPage.tsx` panel + `TaskDetailPage.tsx`)
 
-| Element                 | testid                                 |
-| ----------------------- | -------------------------------------- |
-| Feedback section        | `task-feedback-section`                |
-| "Leave comment" trigger | `task-feedback-open`                   |
-| Composer textarea       | `task-feedback-input`                  |
-| Submit button           | `task-feedback-submit`                 |
-| Rendered comment item   | `task-feedback-comment-${id}`          |
-| Agent mention option    | `task-agent-mention-option-${agentId}` |
-| Agent mention chip      | `task-agent-mention-chip-${agentId}`   |
+| Element                   | testid                                           |
+| ------------------------- | ------------------------------------------------ |
+| Feedback section          | `task-feedback-section`                          |
+| "Leave comment" trigger   | `task-feedback-open`                             |
+| Composer textarea         | `task-feedback-input`                            |
+| Submit button             | `task-feedback-submit`                           |
+| Rendered comment item     | `task-feedback-comment-${id}`                    |
+| Specialist mention option | `task-specialist-mention-option-${specialistId}` |
+| Specialist mention chip   | `task-specialist-mention-chip-${specialistId}`   |
 
 ### A4. Templates view (`TasksPage.tsx`, `TaskTemplatesView`)
 
@@ -109,7 +109,7 @@ Directory layout:
 ```
 packages/frontend/e2e/
   fixtures.ts                  # shared base fixture
-  agents.spec.ts               # non-task (unchanged)
+  specialists.spec.ts          # non-task specialist flows
   custom-tools.spec.ts         # non-task (unchanged)
   provider-connections.spec.ts # non-task (unchanged)
   terminal/…                   # non-task (unchanged)
@@ -143,7 +143,7 @@ Root `package.json` pass-throughs:
 ## Part C — New spec files & scenarios
 
 Each spec mocks the relevant `/api/tasks*` routes via a stateful `tasks/fixtures.ts`
-helper (mirroring `agents.spec.ts`'s `mockAgentApi` + in-memory `state`). Selectors use
+helper (mirroring `specialists.spec.ts`'s specialist API mock + in-memory `state`). Selectors use
 the new testids exclusively.
 
 - **`tasks/board.spec.ts`** — columns render with correct counts; free-text + suggestion
@@ -216,11 +216,11 @@ only. 17 tests, all green on chromium; the existing 26 non-task tests remain gre
 
 `tasks/fixtures.ts` — re-exports the base `test`/`expect`, plus:
 
-- `createTaskState()` — fresh in-memory backend state per test (agents, catalog, tasks
+- `createTaskState()` — fresh in-memory backend state per test (specialists, catalog, tasks
   across statuses, archived task, recurring + manual templates, a completed run with
   session inspection).
 - `mockTaskApi(page, state)` — one broad `**/api/tasks**` handler (branches on method +
-  pathname, mutates state so re-fetches observe writes) plus agent/mcp/custom-tool/
+  pathname, mutates state so re-fetches observe writes) plus specialist/MCP/custom-tool/
   workspace-skill stubs.
 - `dragCard(page, cardTestId, columnTestId)` — dispatches the synthetic HTML5
   `dragstart/dragenter/dragover/drop/dragend` sequence with one shared `DataTransfer`
@@ -235,8 +235,8 @@ Scenarios:
   dialog → opens generated task; edit form → PATCH; delete.
 - `runs.spec.ts` (3) — full-page run history; row → inspector navigation; session-log
   toggle + Session/Details sub-tab switch.
-- `feedback.spec.ts` (2) — submit → comment renders; submit with `@agent` mention →
-  asserts `mentionedAgentIds` in the POST body.
+- `feedback.spec.ts` (2) — submit → comment renders; submit with `@specialist` mention →
+  asserts the specialist mention IDs in the POST body.
 
 ### Behaviours worth noting (discovered while writing specs)
 
@@ -278,7 +278,7 @@ Feedback (both `TasksPage.tsx` panel and `TaskDetailPage.tsx`):
 
 - `task-feedback-section`, `task-feedback-open`, `task-feedback-input`,
   `task-feedback-submit`, `task-feedback-comment-{id}`
-- `task-agent-mention-option-{agentId}`, `task-agent-mention-chip-{agentId}`
+- `task-specialist-mention-option-{specialistId}`, `task-specialist-mention-chip-{specialistId}`
 
 Templates (`TasksPage.tsx`):
 
@@ -299,7 +299,7 @@ Shared component changes:
 
 - `TabBar` gained an optional `testIdPrefix` prop → emits `data-testid="{prefix}-{tab.id}"`.
 - `TaskPromptComposer` gained an optional `testId` prop applied to its textarea.
-- `TaskPromptComposer` exposes stable agent mention option/chip testids for e2e flows.
+- `TaskPromptComposer` exposes stable specialist mention option/chip test IDs for e2e flows.
 
 ## Deviations from the original inventory
 
@@ -312,4 +312,4 @@ Shared component changes:
 - Extra convenience testids added beyond the original table: `task-card-title-{id}`,
   `task-template-title-{id}`, `task-template-title-input`, `task-template-detail-panel`,
   `task-run-context-submit`, `task-run-inspect-{runId}`,
-  `task-agent-mention-option-{agentId}`, `task-agent-mention-chip-{agentId}`.
+  `task-specialist-mention-option-{specialistId}`, `task-specialist-mention-chip-{specialistId}`.

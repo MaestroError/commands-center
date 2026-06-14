@@ -15,14 +15,14 @@ Use this skill when creating or updating custom OpenCode tools for CommandsCente
 
 - Before creating or editing a custom tool, check whether you have the required CommandsCenter MCP tools available.
 - Custom tool creation must use the `cc_tool_management` MCP server. Do not create tool metadata or starter directories manually when the MCP tool is available.
-- If the required MCP server or tool is missing, stop and ask the user to enable the needed MCP server and tools for this agent. Be specific: ask for `cc_tool_management_*` and the required tool, such as `create_custom_tool`.
+- If the required MCP server or tool is missing, stop and ask the user to enable the needed MCP server and tools for this specialist. Be specific: ask for `cc_tool_management_*` and the required tool, such as `create_custom_tool`.
 - If the requested tool needs stored credentials or tokens, check if you have `cc_app_add_secret` tool available. If not, ask the user to enable that tool too.
 
 ## Scope
 
 - Create only global CommandsCenter custom tools, only using `cc_tool_management_*` MCP server tools.
 - `create_custom_tool` creates a global tool scaffold under and returns directory you should use for further development.
-- Do not offer agent-local tool creation as an option.
+- Do not offer specialist-local tool creation as an option.
 - When a global tool needs to be assigned to a specialist, use CommandsCenter's managed copy flow from `cc_tool_management_*` instead of writing into a specialist workspace manually.
 
 ## Required Creation Flow
@@ -33,7 +33,7 @@ Use this skill when creating or updating custom OpenCode tools for CommandsCente
 4. Implement `tool.ts` with a default OpenCode tool export.
 5. Keep helper files next to `tool.ts` inside the global tool directory.
 6. Do not manage CommandsCenter metadata fields, IDs, timestamps, or fingerprints manually.
-7. When finished, ask the user whether they want this tool enabled for any existing agent now.
+7. When finished, ask the user whether they want this tool enabled for any existing specialist now.
 8. If the user wants it enabled, use the CommandsCenter managed flow, such as `cc_tool_management_copy_custom_tool_to_specialist`, when that tool is available. When not, Do not write directly into a specialist workspace, Ask user to enable the tool for specific specialists from CC's Tools page.
 
 ## Global Tool Layout
@@ -76,7 +76,7 @@ export default tool({
 ```
 
 - Use one default export per tool.
-- The default export creates a tool named after the file used by OpenCode after CommandsCenter copies it to an agent.
+- The default export creates a tool named after the file used by OpenCode after CommandsCenter copies it to a specialist.
 - OpenCode also supports multiple named exports from one file, named `<filename>_<exportName>`, but CommandsCenter tools should use one default export per tool unless the user explicitly asks otherwise.
 - Custom tools can override built-in OpenCode tools if they use the same name. Avoid built-in names such as `bash`, `read`, `write`, `edit`, `grep`, `glob`, `webfetch`, `task`, `todo`, `skill`, or `apply_patch` unless the user explicitly wants an override.
 
@@ -111,7 +111,7 @@ export default {
 - Tools must read secrets from environment variables, for example `process.env.LINEAR_API_KEY`.
 - Document required environment variable names in the tool description or a nearby README.
 - If the tool needs a secret that is not already available, use `cc_app_add_secret` to ask the operator for it and store it through CommandsCenter.
-- If `cc_app_add_secret` is unavailable, stop and ask the user to enable the `cc_app` MCP server and the `add_secret` tool for this agent or instruct to add the secret manually from settings.
+- If `cc_app_add_secret` is unavailable, stop and ask the user to enable the `cc_app` MCP server and the `add_secret` tool for this specialist or instruct to add the secret manually from settings.
 - Keep test fixtures secret-free. Use fake tokens like `test-token` only when a real external call is not made.
 
 ## Execution Context
@@ -153,18 +153,18 @@ The `execute(args, context)` function receives OpenCode session context.
 
 - The tool was created through `cc_tool_management_create_custom_tool`.
 - The tool lives under `.cc/workspace/custom-tools/<slug>/`.
-- No files were written directly under an agent `.opencode/tools/` directory.
+- No files were written directly under a specialist `.opencode/tools/` directory.
 - Argument schemas are narrow, described, and safe for model-provided input.
 - The tool name does not accidentally collide with a built-in OpenCode tool.
 - Helper files and scripts are portable with the workspace.
 - Secrets are referenced through environment variables, not written into source.
 - Required secrets are collected with `cc_app_add_secret` when needed.
 - The tool was tested when a safe local test path was clear, or the user was asked for test data when it was not clear.
-- The user was asked whether to enable the finished tool for one or more agents.
+- The user was asked whether to enable the finished tool for one or more specialists.
 
 ## Output Style
 
 - Be explicit about required MCP capabilities when they are missing.
 - Include the exact global paths created or edited.
 - Include a compact summary of the tool arguments, environment variables, and test result.
-- At the end, ask whether the user wants to enable the finished global tool for any agent unless they already answered that.
+- At the end, ask whether the user wants to enable the finished global tool for any specialist unless they already answered that.

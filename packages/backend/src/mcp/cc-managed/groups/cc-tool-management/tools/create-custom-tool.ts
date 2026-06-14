@@ -17,7 +17,7 @@ export const createCustomToolOutputSchema = z.object({
 export const createCustomToolMetadata = {
   name: "create_custom_tool",
   description:
-    "Create a blank CommandsCenter custom tool and return the folder path the agent should edit.",
+    "Create a blank CommandsCenter custom tool and return the folder path the specialist should edit.",
   context: "chat",
 } as const;
 

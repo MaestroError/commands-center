@@ -77,7 +77,7 @@ const createManagedTaskTemplateInputSchema = createTaskTemplateInputSchema.exten
   defaultAgentId: z.string().trim().min(1).optional(),
 });
 
-// Draft tools accept partial input so the agent can pre-fill what it knows and let
+// Draft tools accept partial input so the specialist can pre-fill what it knows and let
 // the operator complete the rest in the form.
 const draftTaskInputSchema = createManagedTaskInputSchema.partial();
 
@@ -382,7 +382,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
 }
 
 // Persistent task-context tools for the current task run. These live in the cc_default
-// group so every task-run agent gets them by default.
+// group so every task-run specialist gets them by default.
 export function createTaskContextToolDefinitions(options: { taskService: TaskService }) {
   return [
     {
@@ -449,7 +449,7 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
               textField("title", "Title", draft.title, true),
               textareaField("description", "Description", draft.description),
               textField("agentId", "Specialist ID", draft.agentId ?? callingAgentId, true),
-              textField("defaultAgentId", "Default agent ID", draft.defaultAgentId),
+              textField("defaultAgentId", "Default specialist ID", draft.defaultAgentId),
               textField("scheduledAt", "Scheduled at", draft.scheduledAt ?? undefined),
               textField("dueAt", "Due at", draft.dueAt ?? undefined),
               textareaField("contextText", "Context", draft.context?.text),
@@ -491,7 +491,7 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
           }
 
           const callingAgentId = await requireCallingAgentId(options.db, context.agentSlug);
-          // Only surface the fields the agent proposed to change; fall back to the
+          // Only surface the fields the specialist proposed to change; fall back to the
           // full editable set when none were proposed.
           const suggested = parsed.input;
           const changed = suggested ? Object.keys(suggested) : [];
