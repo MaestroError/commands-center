@@ -11,19 +11,34 @@ import {
   createLogger,
   createOwnerAccessService,
   createSystemVersionService,
+  bootstrapWorkspaceRoot,
   loadEnvFile,
   loadRuntimeConfig,
   readPackageInfo,
+  rollbackLatestWorkspaceMigration,
   runClaimCodeCommand,
+  runWorkspaceMigrations,
   startServerRuntime,
 } from "@cc/backend";
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "0.0.0.0";
 const ENV_FILE_CREATING_COMMANDS = new Set(["start", "serve"]);
-const ENV_FILE_REQUIRING_COMMANDS = new Set(["claim", "claim-code"]);
+const ENV_FILE_REQUIRING_COMMANDS = new Set([
+  "claim",
+  "claim-code",
+  "filesystem-migrate",
+  "filesystem-rollback",
+]);
 
-export type CliCommand = "start" | "serve" | "upgrade" | "claim" | "claim-code";
+export type CliCommand =
+  | "start"
+  | "serve"
+  | "upgrade"
+  | "claim"
+  | "claim-code"
+  | "filesystem-migrate"
+  | "filesystem-rollback";
 
 export type CliArgs = {
   command: string;
@@ -48,6 +63,10 @@ export function printHelp(): void {
     ccenter claim [options]    Generate a workspace claim/reclaim code
     ccenter claim-code [options]
                                Alias for claim
+    ccenter filesystem-migrate [options]
+                               Run pending workspace filesystem migrations
+    ccenter filesystem-rollback [options]
+                               Roll back the latest workspace filesystem migration
     ccenter --help             Show this help
     ccenter --version          Show version
 
@@ -122,7 +141,17 @@ export async function runCli(args: string[]): Promise<void> {
     return;
   }
 
-  if (!["start", "serve", "upgrade", "claim", "claim-code"].includes(parsedArgs.command)) {
+  if (
+    ![
+      "start",
+      "serve",
+      "upgrade",
+      "claim",
+      "claim-code",
+      "filesystem-migrate",
+      "filesystem-rollback",
+    ].includes(parsedArgs.command)
+  ) {
     console.error(`Unknown command: ${parsedArgs.command}`);
     printHelp();
     process.exitCode = 1;
@@ -139,6 +168,16 @@ export async function runCli(args: string[]): Promise<void> {
 
   if (parsedArgs.command === "claim" || parsedArgs.command === "claim-code") {
     await runClaim({ yes: parsedArgs.yes, format: parsedArgs.format });
+    return;
+  }
+
+  if (parsedArgs.command === "filesystem-migrate") {
+    await runFilesystemMigrate();
+    return;
+  }
+
+  if (parsedArgs.command === "filesystem-rollback") {
+    await runFilesystemRollback();
     return;
   }
 
@@ -168,6 +207,38 @@ export async function runCli(args: string[]): Promise<void> {
           }
         : undefined,
   });
+}
+
+async function runFilesystemMigrate(): Promise<void> {
+  const config = loadRuntimeConfig();
+  const logger = createLogger(config);
+  await bootstrapWorkspaceRoot(config);
+
+  const result = await runWorkspaceMigrations({ config, logger });
+
+  if (result.applied.length === 0) {
+    console.log("No pending workspace filesystem migrations.");
+    return;
+  }
+
+  for (const migration of result.applied) {
+    console.log(`Applied workspace filesystem migration: ${migration.id}`);
+  }
+}
+
+async function runFilesystemRollback(): Promise<void> {
+  const config = loadRuntimeConfig();
+  const logger = createLogger(config);
+  await bootstrapWorkspaceRoot(config);
+
+  const result = await rollbackLatestWorkspaceMigration({ config, logger });
+
+  if (!result.rolledBack) {
+    console.log("No applied workspace filesystem migrations to roll back.");
+    return;
+  }
+
+  console.log(`Rolled back workspace filesystem migration: ${result.rolledBack.id}`);
 }
 
 async function runClaim(options: { yes: boolean; format: "text" | "json" }): Promise<void> {

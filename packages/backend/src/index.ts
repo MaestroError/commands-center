@@ -80,7 +80,7 @@ export {
 } from "./lib/drain-protocol.js";
 export { createLogger, flushLogger } from "./lib/logger.js";
 export { resolveOpencodeBinary, type OpenCodeBinary } from "./lib/opencode-binary.js";
-export { bootstrapRuntimePaths } from "./lib/runtime-paths.js";
+export { bootstrapRuntimePaths, bootstrapWorkspaceRoot } from "./lib/runtime-paths.js";
 export {
   getStartupLogContext,
   loadRuntimeConfig,
@@ -93,3 +93,9 @@ export {
   type StartedServerRuntime,
   type StartServerRuntimeOptions,
 } from "./lib/start-server-runtime.js";
+export {
+  rollbackLatestWorkspaceMigration,
+  runWorkspaceMigrations,
+  type RollbackWorkspaceMigrationResult,
+  type RunWorkspaceMigrationsResult,
+} from "./workspace-migrations/service.js";

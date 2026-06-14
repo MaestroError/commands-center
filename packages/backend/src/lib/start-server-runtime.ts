@@ -45,8 +45,9 @@ import { mcpServerReconciler } from "../services/mcp-server-service.js";
 import { secretsManifestReconciler } from "../services/secret-service.js";
 import { agentReconciler } from "../services/agent-file.js";
 import { taskTemplateReconciler } from "../services/task-service.js";
-import { bootstrapRuntimePaths } from "./runtime-paths.js";
+import { bootstrapRuntimePaths, bootstrapWorkspaceRoot } from "./runtime-paths.js";
 import { runBootReconcile } from "./workspace-reconciler.js";
+import { runWorkspaceMigrations } from "../workspace-migrations/service.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
 import { createLogger, flushLogger } from "./logger.js";
 import { readPackageInfo } from "./package-info.js";
@@ -108,10 +109,12 @@ export async function startServerRuntime(
     overrides: options?.overrides,
   });
 
-  await bootstrapRuntimePaths(config);
-
+  await bootstrapWorkspaceRoot(config);
   const logger = createLogger(config);
   logger.info(getStartupLogContext(config), "runtime configuration loaded");
+  await runWorkspaceMigrations({ config, logger });
+  await bootstrapRuntimePaths(config);
+
   const database = createDatabaseClient(config);
   migrateDatabase(database.db);
   await runBootReconcile(
