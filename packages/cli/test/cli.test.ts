@@ -162,4 +162,30 @@ describe("parseCliArgs", () => {
       yes: false,
     });
   });
+
+  it("parses filesystem migration commands", () => {
+    expect(parseCliArgs(["filesystem-migrate", "--cc-env-file", "/opt/cc/.env"])).toEqual({
+      command: "filesystem-migrate",
+      host: undefined,
+      port: undefined,
+      envFile: "/opt/cc/.env",
+      format: "text",
+      help: false,
+      version: false,
+      rollback: false,
+      yes: false,
+    });
+
+    expect(parseCliArgs(["filesystem-rollback", "--cc-env-file", "/opt/cc/.env"])).toEqual({
+      command: "filesystem-rollback",
+      host: undefined,
+      port: undefined,
+      envFile: "/opt/cc/.env",
+      format: "text",
+      help: false,
+      version: false,
+      rollback: false,
+      yes: false,
+    });
+  });
 });

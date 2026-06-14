@@ -5,6 +5,7 @@ const {
   createLoggerMock,
   createOwnerAccessServiceMock,
   createSystemVersionServiceMock,
+  bootstrapWorkspaceRootMock,
   chmodSyncMock,
   existsSyncMock,
   loadEnvFileMock,
@@ -12,12 +13,15 @@ const {
   mkdirSyncMock,
   readFileSyncMock,
   readPackageInfoMock,
+  rollbackLatestWorkspaceMigrationMock,
   rollbackMock,
   runClaimCodeCommandMock,
+  runWorkspaceMigrationsMock,
   startServerRuntimeMock,
   updateMock,
   writeFileSyncMock,
 } = vi.hoisted(() => ({
+  bootstrapWorkspaceRootMock: vi.fn(),
   chmodSyncMock: vi.fn(),
   existsSyncMock: vi.fn(),
   loadEnvFileMock: vi.fn(),
@@ -31,7 +35,9 @@ const {
   createSystemVersionServiceMock: vi.fn(),
   updateMock: vi.fn(),
   rollbackMock: vi.fn(),
+  rollbackLatestWorkspaceMigrationMock: vi.fn(),
   runClaimCodeCommandMock: vi.fn(),
+  runWorkspaceMigrationsMock: vi.fn(),
   writeFileSyncMock: vi.fn(),
 }));
 
@@ -48,13 +54,16 @@ vi.mock("node:os", () => ({
 }));
 
 vi.mock("@cc/backend", () => ({
+  bootstrapWorkspaceRoot: bootstrapWorkspaceRootMock,
   createLogger: createLoggerMock,
   createOwnerAccessService: createOwnerAccessServiceMock,
   createSystemVersionService: createSystemVersionServiceMock,
   loadEnvFile: loadEnvFileMock,
   loadRuntimeConfig: loadRuntimeConfigMock,
   readPackageInfo: readPackageInfoMock,
+  rollbackLatestWorkspaceMigration: rollbackLatestWorkspaceMigrationMock,
   runClaimCodeCommand: runClaimCodeCommandMock,
+  runWorkspaceMigrations: runWorkspaceMigrationsMock,
   startServerRuntime: startServerRuntimeMock,
 }));
 
@@ -92,6 +101,9 @@ describe("runCli", () => {
       "CLAIM code: claim-code",
       "temporary owner recovery power",
     ]);
+    bootstrapWorkspaceRootMock.mockResolvedValue(undefined);
+    runWorkspaceMigrationsMock.mockResolvedValue({ applied: [] });
+    rollbackLatestWorkspaceMigrationMock.mockResolvedValue({});
     updateMock.mockResolvedValue({ message: "Updated", instructions: ["Restart shell"] });
     rollbackMock.mockResolvedValue({ message: "Rolled back", instructions: ["Retry publish"] });
     createSystemVersionServiceMock.mockReturnValue({
@@ -453,6 +465,91 @@ describe("runCli", () => {
     expect(writeFileSyncMock).not.toHaveBeenCalled();
     expect(loadEnvFileMock).not.toHaveBeenCalled();
     expect(runClaimCodeCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("runs pending workspace filesystem migrations", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
+    runWorkspaceMigrationsMock.mockResolvedValue({
+      applied: [
+        {
+          id: "0001-example",
+          description: "Example",
+          appliedAt: "2026-06-14T00:00:00.000Z",
+        },
+      ],
+    });
+
+    await runCli(["filesystem-migrate"]);
+
+    expect(loadEnvFileMock).toHaveBeenCalledWith("/home/test/.cc/.env");
+    expect(bootstrapWorkspaceRootMock).toHaveBeenCalledWith({ workspaceRoot: "/tmp/workspace" });
+    expect(runWorkspaceMigrationsMock).toHaveBeenCalledWith({
+      config: { workspaceRoot: "/tmp/workspace" },
+      logger: { info: expect.any(Function) },
+    });
+    expect(consoleLog).toHaveBeenCalledWith("Applied workspace filesystem migration: 0001-example");
+    expect(startServerRuntimeMock).not.toHaveBeenCalled();
+  });
+
+  it("prints when there are no pending workspace filesystem migrations", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
+
+    await runCli(["filesystem-migrate"]);
+
+    expect(consoleLog).toHaveBeenCalledWith("No pending workspace filesystem migrations.");
+    expect(startServerRuntimeMock).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the latest workspace filesystem migration", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
+    rollbackLatestWorkspaceMigrationMock.mockResolvedValue({
+      rolledBack: {
+        id: "0001-example",
+        description: "Example",
+        appliedAt: "2026-06-14T00:00:00.000Z",
+      },
+    });
+
+    await runCli(["filesystem-rollback"]);
+
+    expect(loadEnvFileMock).toHaveBeenCalledWith("/home/test/.cc/.env");
+    expect(bootstrapWorkspaceRootMock).toHaveBeenCalledWith({ workspaceRoot: "/tmp/workspace" });
+    expect(rollbackLatestWorkspaceMigrationMock).toHaveBeenCalledWith({
+      config: { workspaceRoot: "/tmp/workspace" },
+      logger: { info: expect.any(Function) },
+    });
+    expect(consoleLog).toHaveBeenCalledWith(
+      "Rolled back workspace filesystem migration: 0001-example",
+    );
+    expect(startServerRuntimeMock).not.toHaveBeenCalled();
+  });
+
+  it("prints when there are no applied workspace filesystem migrations to roll back", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    existsSyncMock.mockImplementation((path: string) => path === "/home/test/.cc/.env");
+
+    await runCli(["filesystem-rollback"]);
+
+    expect(consoleLog).toHaveBeenCalledWith(
+      "No applied workspace filesystem migrations to roll back.",
+    );
+    expect(startServerRuntimeMock).not.toHaveBeenCalled();
+  });
+
+  it("requires the default env file before filesystem migration commands", async () => {
+    await expect(runCli(["filesystem-migrate"])).rejects.toThrow(
+      "No CommandsCenter env file found at /home/test/.cc/.env. Start CommandsCenter first with ccenter start, or pass --cc-env-file to an existing env file.",
+    );
+    await expect(runCli(["filesystem-rollback"])).rejects.toThrow(
+      "No CommandsCenter env file found at /home/test/.cc/.env. Start CommandsCenter first with ccenter start, or pass --cc-env-file to an existing env file.",
+    );
+
+    expect(writeFileSyncMock).not.toHaveBeenCalled();
+    expect(runWorkspaceMigrationsMock).not.toHaveBeenCalled();
+    expect(rollbackLatestWorkspaceMigrationMock).not.toHaveBeenCalled();
   });
 
   it("explains reclaim codes do not invalidate the current password immediately", async () => {
