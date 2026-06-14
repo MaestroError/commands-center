@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, rmdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import type { WorkspaceMigration } from "../types.js";
@@ -18,7 +18,7 @@ export const createMigrationSmokeTestDirectoryMigration = {
       recursive: true,
       force: true,
     });
-    await rm(directory).catch((error: unknown) => {
+    await rmdir(directory).catch((error: unknown) => {
       const code = (error as NodeJS.ErrnoException).code;
 
       if (code === "ENOENT" || code === "ENOTEMPTY") {
