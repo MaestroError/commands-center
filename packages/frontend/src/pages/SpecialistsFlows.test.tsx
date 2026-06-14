@@ -202,7 +202,10 @@ describe("agent flows", () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe("/specialists");
     });
-    expect(screen.getByRole("heading", { name: "Planner", level: 2 })).toBeInTheDocument();
+    // The specialists list renders after its query resolves, which can land
+    // after the route change — wait for the heading instead of reading it
+    // synchronously.
+    expect(await screen.findByRole("heading", { name: "Planner", level: 2 })).toBeInTheDocument();
   });
 
   it("renders the built-in skills browser and detail pane", async () => {
@@ -236,7 +239,8 @@ describe("agent flows", () => {
     await user.type(screen.getByLabelText(/Name/i), "Writer");
     await user.click(screen.getByRole("button", { name: "Create specialist" }));
 
-    expect(screen.getByText("Identifier 'writer' is already in use.")).toBeInTheDocument();
+    // The error surfaces after the create mutation rejects, so wait for it.
+    expect(await screen.findByText("Identifier 'writer' is already in use.")).toBeInTheDocument();
   });
 });
 
