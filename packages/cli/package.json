@@ -47,7 +47,7 @@
   "devDependencies": {
     "@cc/backend": "workspace:*",
     "@types/node": "^22.0.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.1",
     "typescript": "catalog:",
     "tsx": "^4.19.0"
   }
