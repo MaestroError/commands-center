@@ -96,11 +96,15 @@ ccenter serve --cc-env-file /opt/commandscenter/.env
 ccenter claim --cc-env-file /opt/commandscenter/.env
 ccenter claim-code --cc-env-file /opt/commandscenter/.env
 ccenter claim --cc-env-file /opt/commandscenter/.env --format json --yes
+ccenter filesystem-migrate --cc-env-file /opt/commandscenter/.env
+ccenter filesystem-rollback --cc-env-file /opt/commandscenter/.env
 ccenter upgrade
 ccenter upgrade --rollback
 ```
 
 On first start for an unclaimed workspace, startup logs print a one-time claim code and the `/claim` URL. After the workspace is claimed, startup logs do not print old claim codes. If you miss or rotate the code, run `ccenter claim` or `ccenter claim-code` with the same env file/workspace context.
+
+Filesystem migrations upgrade portable workspace files when a new CommandsCenter version needs a new workspace structure. `ccenter start` runs pending filesystem migrations automatically before rebuilding SQLite from workspace files. Use `ccenter filesystem-migrate` for manual intervention while the service is stopped. Use `ccenter filesystem-rollback` to roll back the latest applied filesystem migration by one step, then run it again only if another rollback is needed.
 
 Remove the global install:
 
