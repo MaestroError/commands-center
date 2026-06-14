@@ -16,7 +16,7 @@ describe("createCustomToolService", () => {
       db: testDb.client.db,
       opencodeService: createMockOpenCodeService(),
     });
-    const agentWorkspacePath = join(testDb.config.paths.subdirectories.agents, "writer");
+    const agentWorkspacePath = join(testDb.config.paths.subdirectories.specialists, "writer");
 
     try {
       await mkdir(agentWorkspacePath, { recursive: true });
@@ -26,7 +26,7 @@ describe("createCustomToolService", () => {
         description: "Draft release notes.",
       });
 
-      await service.syncAgentAssignments({
+      await service.syncSpecialistAssignments({
         workspacePath: agentWorkspacePath,
         selectedToolSlugs: [created.tool.slug],
       });
@@ -66,7 +66,7 @@ describe("createCustomToolService", () => {
 
   it("copies tools with renamed destinations and removes agent-local tools", async () => {
     const testDb = await createTestDatabase();
-    const agentWorkspacePath = join(testDb.config.paths.subdirectories.agents, "writer");
+    const agentWorkspacePath = join(testDb.config.paths.subdirectories.specialists, "writer");
     const service = createCustomToolService({
       config: testDb.config,
       db: testDb.client.db,
@@ -120,7 +120,7 @@ describe("createCustomToolService", () => {
       db: testDb.client.db,
       opencodeService: createMockOpenCodeService(),
     });
-    const agentWorkspacePath = join(testDb.config.paths.subdirectories.agents, "writer");
+    const agentWorkspacePath = join(testDb.config.paths.subdirectories.specialists, "writer");
 
     try {
       await mkdir(join(agentWorkspacePath, ".opencode", "tools", "legacy-tool"), {
@@ -158,7 +158,7 @@ describe("createCustomToolService", () => {
         name: "Release Helper",
         description: "Draft release notes.",
       });
-      await service.syncAgentAssignments({
+      await service.syncSpecialistAssignments({
         workspacePath: agentWorkspacePath,
         selectedToolSlugs: [created.tool.slug],
       });
@@ -182,7 +182,7 @@ describe("createCustomToolService", () => {
       db: testDb.client.db,
       opencodeService: createMockOpenCodeService(),
     });
-    const agentWorkspacePath = join(testDb.config.paths.subdirectories.agents, "writer");
+    const agentWorkspacePath = join(testDb.config.paths.subdirectories.specialists, "writer");
 
     try {
       await mkdir(agentWorkspacePath, { recursive: true });
@@ -191,7 +191,7 @@ describe("createCustomToolService", () => {
         description: "Draft release notes.",
       });
 
-      await service.syncAgentAssignments({
+      await service.syncSpecialistAssignments({
         workspacePath: agentWorkspacePath,
         selectedToolSlugs: [created.tool.slug],
       });
@@ -203,14 +203,14 @@ describe("createCustomToolService", () => {
       );
 
       await expect(
-        service.syncAgentAssignments({
+        service.syncSpecialistAssignments({
           workspacePath: agentWorkspacePath,
           selectedToolSlugs: [created.tool.slug],
         }),
       ).rejects.toBeInstanceOf(ConflictError);
 
       await expect(
-        service.syncAgentAssignments({
+        service.syncSpecialistAssignments({
           workspacePath: agentWorkspacePath,
           selectedToolSlugs: [created.tool.slug],
           overwriteSlugs: [created.tool.slug],

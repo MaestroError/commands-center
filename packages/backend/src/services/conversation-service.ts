@@ -38,8 +38,8 @@ import type { RuntimeConfig } from "../lib/runtime-config.js";
 import {
   getBuiltInSkillRoot,
   getWorkspaceSkillRoot,
-  resolveAgentWorkspacePath,
-} from "./agent-workspace.js";
+  resolveSpecialistWorkspacePath,
+} from "./specialist-workspace.js";
 import type { OpenCodeService, OpenCodeSessionPermissionRule } from "./opencode-service.js";
 import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
 import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
@@ -558,7 +558,7 @@ export function createConversationService(options: {
   function withResolvedWorkspacePath(agent: AgentRow): AgentRuntimeRow {
     return {
       ...agent,
-      workspace_path: resolveAgentWorkspacePath({
+      workspace_path: resolveSpecialistWorkspacePath({
         config: options.config,
         slug: agent.slug,
         status: agent.status === "archived" ? "archived" : "active",

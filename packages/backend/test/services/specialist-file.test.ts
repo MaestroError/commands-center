@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { agents, task_templates } from "../../src/db/schema/index";
-import { createAgentService } from "../../src/services/agent-service";
-import { agentReconciler, agentFilePath } from "../../src/services/agent-file";
+import { createSpecialistService } from "../../src/services/specialist-service";
+import { specialistReconciler, specialistFilePath } from "../../src/services/specialist-file";
 import { createTaskService } from "../../src/services/task-service";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
@@ -20,7 +20,7 @@ function createMockOpenCodeService(): OpenCodeService {
 }
 
 function makeService(testDb: Awaited<ReturnType<typeof createTestDatabase>>) {
-  return createAgentService({
+  return createSpecialistService({
     db: testDb.client.db,
     config: testDb.config,
     opencodeService: createMockOpenCodeService(),
@@ -43,7 +43,7 @@ const baseCreate = {
 };
 
 async function readAgentJson(testDb: Awaited<ReturnType<typeof createTestDatabase>>, slug: string) {
-  return JSON.parse(await readFile(agentFilePath(testDb.config, slug, "active"), "utf8")) as {
+  return JSON.parse(await readFile(specialistFilePath(testDb.config, slug, "active"), "utf8")) as {
     version: number;
     id: string;
     name: string;
@@ -58,8 +58,8 @@ async function readAgentJson(testDb: Awaited<ReturnType<typeof createTestDatabas
 // Write-through
 // ---------------------------------------------------------------------------
 
-describe("agent.json write-through", () => {
-  it("create writes agent.json matching the returned agent", async () => {
+describe("specialist.json write-through", () => {
+  it("create writes specialist.json matching the returned agent", async () => {
     const testDb = await createTestDatabase();
     const service = makeService(testDb);
 
@@ -76,7 +76,7 @@ describe("agent.json write-through", () => {
     }
   });
 
-  it("update rewrites agent.json with new values", async () => {
+  it("update rewrites specialist.json with new values", async () => {
     const testDb = await createTestDatabase();
     const service = makeService(testDb);
 
@@ -105,7 +105,7 @@ describe("agent.json write-through", () => {
       // Default: AGENTS.md preserved even though instructions changed.
       await service.update(agent.id, { instructions: "Brand new instructions." });
       expect(await readFile(rulesPath, "utf8")).toBe(original);
-      // But agent.json (the source) did update.
+      // But specialist.json (the source) did update.
       expect((await readAgentJson(testDb, agent.slug)).instructions).toBe(
         "Brand new instructions.",
       );
@@ -121,7 +121,7 @@ describe("agent.json write-through", () => {
     }
   });
 
-  it("update with rename moves agent.json and keeps the id", async () => {
+  it("update with rename moves specialist.json and keeps the id", async () => {
     const testDb = await createTestDatabase();
     const service = makeService(testDb);
 
@@ -131,7 +131,7 @@ describe("agent.json write-through", () => {
 
       expect(updated?.slug).toBe("auditor");
       // Old slug file is gone, new slug file exists with the same id.
-      await expect(stat(agentFilePath(testDb.config, "reviewer", "active"))).rejects.toThrow();
+      await expect(stat(specialistFilePath(testDb.config, "reviewer", "active"))).rejects.toThrow();
       const file = await readAgentJson(testDb, "auditor");
       expect(file.id).toBe(agent.id);
     } finally {
@@ -139,7 +139,7 @@ describe("agent.json write-through", () => {
     }
   });
 
-  it("archive keeps agent.json under .archived with the same id", async () => {
+  it("archive keeps specialist.json under .archived with the same id", async () => {
     const testDb = await createTestDatabase();
     const service = makeService(testDb);
 
@@ -148,7 +148,7 @@ describe("agent.json write-through", () => {
       await service.archive(agent.id);
 
       const archived = JSON.parse(
-        await readFile(agentFilePath(testDb.config, agent.slug, "archived"), "utf8"),
+        await readFile(specialistFilePath(testDb.config, agent.slug, "archived"), "utf8"),
       ) as { id: string };
       expect(archived.id).toBe(agent.id);
     } finally {
@@ -161,7 +161,7 @@ describe("agent.json write-through", () => {
 // Boot reconciler
 // ---------------------------------------------------------------------------
 
-describe("agentReconciler", () => {
+describe("specialistReconciler", () => {
   it("CC-native round-trip: restores an identical row after a DB wipe", async () => {
     const testDb = await createTestDatabase();
     const service = makeService(testDb);
@@ -179,7 +179,7 @@ describe("agentReconciler", () => {
       await testDb.client.db.delete(agents);
       expect(await service.list()).toHaveLength(0);
 
-      await agentReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
+      await specialistReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
 
       const [restored] = await service.list();
       expect(restored?.id).toBe(agent.id);
@@ -193,12 +193,12 @@ describe("agentReconciler", () => {
     }
   });
 
-  it("infers an OpenCode-style folder (AGENTS.md + opencode.jsonc) and writes agent.json", async () => {
+  it("infers an OpenCode-style folder (AGENTS.md + opencode.jsonc) and writes specialist.json", async () => {
     const testDb = await createTestDatabase();
     const service = makeService(testDb);
 
     try {
-      const dir = join(testDb.config.paths.subdirectories.agents, "dropped");
+      const dir = join(testDb.config.paths.subdirectories.specialists, "dropped");
       await mkdir(dir, { recursive: true });
       await writeFile(
         join(dir, "AGENTS.md"),
@@ -211,7 +211,7 @@ describe("agentReconciler", () => {
         "utf8",
       );
 
-      await agentReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
+      await specialistReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
 
       const agent = await service.getBySlug("dropped");
       expect(agent?.name).toBe("Dropped Specialist");
@@ -219,7 +219,7 @@ describe("agentReconciler", () => {
       expect(agent?.instructions).toContain("Be helpful.");
       expect(agent?.defaultModel).toBe("openai/gpt-4.1");
 
-      // agent.json was generated so the next boot is CC-native.
+      // specialist.json was generated so the next boot is CC-native.
       const file = await readAgentJson(testDb, "dropped");
       expect(file.id).toBe(agent?.id);
     } finally {
@@ -232,16 +232,18 @@ describe("agentReconciler", () => {
     const service = makeService(testDb);
 
     try {
-      await mkdir(join(testDb.config.paths.subdirectories.agents, "scratch"), { recursive: true });
+      await mkdir(join(testDb.config.paths.subdirectories.specialists, "scratch"), {
+        recursive: true,
+      });
 
-      await agentReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
+      await specialistReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
 
       const agent = await service.getBySlug("scratch");
       expect(agent).toBeDefined();
       expect(agent?.name).toBe("scratch");
       expect(agent?.role.length).toBeGreaterThan(0);
       expect(agent?.defaultModel.length).toBeGreaterThan(0);
-      // mapAgent (specialistSchema) did not throw — listing works.
+      // mapSpecialist (specialistSchema) did not throw — listing works.
       expect(await service.list()).toHaveLength(1);
     } finally {
       await testDb.cleanup();
@@ -256,7 +258,7 @@ describe("agentReconciler", () => {
       const agent = await service.create({ name: "Reviewer", ...baseCreate });
       await rm(agent.workspacePath, { recursive: true, force: true });
 
-      await agentReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
+      await specialistReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
 
       expect(await service.list()).toHaveLength(0);
     } finally {
@@ -270,11 +272,11 @@ describe("agentReconciler", () => {
 
     try {
       const agent = await service.create({ name: "Reviewer", ...baseCreate });
-      const oldPath = join(testDb.config.paths.subdirectories.agents, "reviewer");
-      const newPath = join(testDb.config.paths.subdirectories.agents, "renamed");
+      const oldPath = join(testDb.config.paths.subdirectories.specialists, "reviewer");
+      const newPath = join(testDb.config.paths.subdirectories.specialists, "renamed");
       await rename(oldPath, newPath);
 
-      await agentReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
+      await specialistReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
 
       const rows = await service.list();
       expect(rows).toHaveLength(1);
@@ -294,7 +296,7 @@ describe("agentReconciler", () => {
       await service.archive(agent.id);
       await testDb.client.db.delete(agents);
 
-      await agentReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
+      await specialistReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
 
       const [restored] = await service.list(true);
       expect(restored?.id).toBe(agent.id);
@@ -312,8 +314,8 @@ describe("agentReconciler", () => {
       await service.create({ name: "Reviewer", ...baseCreate });
       await testDb.client.db.delete(agents);
 
-      await agentReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
-      await agentReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
+      await specialistReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
+      await specialistReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
 
       expect(await service.list()).toHaveLength(1);
     } finally {
@@ -325,8 +327,8 @@ describe("agentReconciler", () => {
     const testDb = await createTestDatabase();
 
     try {
-      await rm(testDb.config.paths.subdirectories.agents, { recursive: true, force: true });
-      await agentReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
+      await rm(testDb.config.paths.subdirectories.specialists, { recursive: true, force: true });
+      await specialistReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
       expect(await testDb.client.db.select().from(agents)).toHaveLength(0);
     } finally {
       await testDb.cleanup();
@@ -352,7 +354,7 @@ describe("agentReconciler", () => {
       await testDb.client.db.delete(agents);
 
       // Reconcile in boot order.
-      await agentReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
+      await specialistReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
       await taskTemplateReconciler.reconcile({
         config: testDb.config,
         db: testDb.client.db,

@@ -200,7 +200,9 @@ describe("loadRuntimeConfig", () => {
 
     expect(config.paths.workspaceDir).toBe("/srv/commandscenter-workspace");
     expect(config.paths.dataDir).toBe("/tmp/workspace-root/.cc/data");
-    expect(config.paths.subdirectories.agents).toBe("/srv/commandscenter-workspace/agents");
+    expect(config.paths.subdirectories.specialists).toBe(
+      "/srv/commandscenter-workspace/specialists",
+    );
     expect(config.paths.subdirectories.configuration).toBe(
       "/srv/commandscenter-workspace/configuration",
     );

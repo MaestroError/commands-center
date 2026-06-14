@@ -22,7 +22,7 @@ import {
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { NotFoundError } from "../lib/api-error.js";
-import { createAgentService } from "../services/agent-service.js";
+import { createSpecialistService } from "../services/specialist-service.js";
 import { createCustomToolService } from "../services/custom-tool-service.js";
 import {
   createFileManagerService,
@@ -58,7 +58,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
       }));
     },
   });
-  const service = createAgentService({
+  const service = createSpecialistService({
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,
@@ -315,12 +315,12 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
       const agent = await requireAgent(request.params.id);
       const root = resolveFileManagerRoot({ kind: "workspace", config: context.config });
       const listing = await fileManagerService.listDirectory(root, {
-        path: joinAgentWorkspacePath(agent.slug, request.query.path),
+        path: joinSpecialistWorkspacePath(agent.slug, request.query.path),
       });
 
       return listing.nodes.map((node) => ({
         name: node.name,
-        path: trimAgentWorkspacePrefix(agent.slug, node.path),
+        path: trimSpecialistWorkspacePrefix(agent.slug, node.path),
         absolute: node.absolutePath,
         type: node.type,
         ignored: false,
@@ -423,15 +423,15 @@ function writeSseEvent(
   raw.write(`data: ${JSON.stringify(event)}\n\n`);
 }
 
-function joinAgentWorkspacePath(agentSlug: string, path?: string): string {
+function joinSpecialistWorkspacePath(specialistSlug: string, path?: string): string {
   const normalizedPath = !path || path === "." ? "" : path.replace(/^\/+/, "");
   return normalizedPath.length === 0
-    ? `agents/${agentSlug}`
-    : `agents/${agentSlug}/${normalizedPath}`;
+    ? `specialists/${specialistSlug}`
+    : `specialists/${specialistSlug}/${normalizedPath}`;
 }
 
-function trimAgentWorkspacePrefix(agentSlug: string, path: string): string {
-  const rootPath = `agents/${agentSlug}`;
+function trimSpecialistWorkspacePrefix(specialistSlug: string, path: string): string {
+  const rootPath = `specialists/${specialistSlug}`;
   const prefix = `${rootPath}/`;
 
   if (path === rootPath) {

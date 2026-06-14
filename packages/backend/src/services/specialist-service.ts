@@ -23,7 +23,7 @@ import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { AppDb } from "../db/client.js";
 import { ConflictError } from "../lib/api-error.js";
 import type { OpenCodeService } from "./opencode-service.js";
-import { normalizeAgentCapabilities } from "./agent-capability-sync.js";
+import { normalizeSpecialistCapabilities } from "./specialist-capability-sync.js";
 import { createCustomToolService, type CustomToolService } from "./custom-tool-service.js";
 import { createProviderService } from "./provider-service.js";
 import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
@@ -41,13 +41,13 @@ import {
   listBuiltInSkills,
   moveWorkspace,
   prepareWorkspace,
-  resolveAgentWorkspacePath,
-} from "./agent-workspace.js";
-import { writeAgentFile } from "./agent-file.js";
+  resolveSpecialistWorkspacePath,
+} from "./specialist-workspace.js";
+import { writeSpecialistFile } from "./specialist-file.js";
 
-export type AgentService = ReturnType<typeof createAgentService>;
+export type SpecialistService = ReturnType<typeof createSpecialistService>;
 
-export function createAgentService(options: {
+export function createSpecialistService(options: {
   db: AppDb;
   config: RuntimeConfig;
   opencodeService: OpenCodeService;
@@ -91,7 +91,7 @@ export function createAgentService(options: {
         orderBy: (table, operators) => [operators.desc(table.updated_at)],
       });
 
-      return rows.map(mapAgent);
+      return rows.map(mapSpecialist);
     },
 
     async getBySlug(slug: string): Promise<Specialist | undefined> {
@@ -99,7 +99,7 @@ export function createAgentService(options: {
         where: (table, operators) => operators.eq(table.slug, slug),
       });
 
-      return row ? mapAgent(row) : undefined;
+      return row ? mapSpecialist(row) : undefined;
     },
 
     async get(id: string): Promise<Specialist | undefined> {
@@ -107,7 +107,7 @@ export function createAgentService(options: {
         where: (table, operators) => operators.eq(table.id, id),
       });
 
-      return row ? mapAgent(row) : undefined;
+      return row ? mapSpecialist(row) : undefined;
     },
 
     async create(input: CreateSpecialistInput): Promise<Specialist> {
@@ -137,14 +137,14 @@ export function createAgentService(options: {
         workspaceSkillRoot,
       });
 
-      await customToolService.syncAgentAssignments({
+      await customToolService.syncSpecialistAssignments({
         workspacePath,
         selectedToolSlugs: capabilities.customTools ?? [],
         overwriteSlugs: parsed.customToolOverwriteSlugs,
       });
 
-      // File-first: agent.json is the source of record for the derived row.
-      await writeAgentFile(options.config, slug, "active", {
+      // File-first: specialist.json is the source of record for the derived row.
+      await writeSpecialistFile(options.config, slug, "active", {
         id,
         name: parsed.name,
         role: parsed.role,
@@ -175,10 +175,10 @@ export function createAgentService(options: {
         .returning();
 
       if (!row) {
-        throw new Error("Failed to create agent record.");
+        throw new Error("Failed to create specialist record.");
       }
 
-      return mapAgent(row);
+      return mapSpecialist(row);
     },
 
     async update(id: string, input: UpdateSpecialistInput): Promise<Specialist | undefined> {
@@ -226,7 +226,7 @@ export function createAgentService(options: {
         writeRules: parsed.rewriteAgentsMd,
       });
 
-      await customToolService.syncAgentAssignments({
+      await customToolService.syncSpecialistAssignments({
         workspacePath: nextWorkspacePath,
         selectedToolSlugs: normalizedCapabilities.customTools ?? [],
         overwriteSlugs: parsed.customToolOverwriteSlugs,
@@ -237,8 +237,8 @@ export function createAgentService(options: {
       const updatedAt = now();
       const nextIconPath = parsed.iconPath ?? existing.icon_path;
 
-      // File-first: agent.json is the source of record for the derived row.
-      await writeAgentFile(options.config, nextSlug, "active", {
+      // File-first: specialist.json is the source of record for the derived row.
+      await writeSpecialistFile(options.config, nextSlug, "active", {
         id,
         name: workspaceInput.name,
         role: workspaceInput.role,
@@ -266,10 +266,10 @@ export function createAgentService(options: {
         .returning();
 
       if (!row) {
-        throw new Error("Failed to update agent record.");
+        throw new Error("Failed to update specialist record.");
       }
 
-      return mapAgent(row);
+      return mapSpecialist(row);
     },
 
     async archive(id: string): Promise<Specialist | undefined> {
@@ -282,7 +282,7 @@ export function createAgentService(options: {
       }
 
       if (existing.status === "archived") {
-        return mapAgent(existing);
+        return mapSpecialist(existing);
       }
 
       const workspacePath = resolveWorkspacePath(existing);
@@ -302,10 +302,10 @@ export function createAgentService(options: {
         .returning();
 
       if (!row) {
-        throw new Error("Failed to archive agent record.");
+        throw new Error("Failed to archive specialist record.");
       }
 
-      return mapAgent(row);
+      return mapSpecialist(row);
     },
 
     async getCatalog(): Promise<SpecialistCatalog> {
@@ -355,11 +355,11 @@ export function createAgentService(options: {
   };
 
   function buildWorkspacePath(slug: string): string {
-    return join(options.config.paths.subdirectories.agents, slug);
+    return join(options.config.paths.subdirectories.specialists, slug);
   }
 
   function buildArchiveRoot(): string {
-    return join(options.config.paths.subdirectories.agents, ".archived");
+    return join(options.config.paths.subdirectories.specialists, ".archived");
   }
 
   async function isSlugTaken(slug: string, excludeId?: string): Promise<boolean> {
@@ -375,7 +375,7 @@ export function createAgentService(options: {
       return true;
     }
 
-    // If we're updating an agent, check whether the directory belongs to it
+    // If we're updating a specialist, check whether the directory belongs to it.
     if (excludeId) {
       const self = await options.db.query.agents.findFirst({
         where: (table, operators) => operators.eq(table.id, excludeId),
@@ -408,7 +408,7 @@ export function createAgentService(options: {
   ): Promise<SpecialistCapabilitySelection> {
     const rows = await options.db.select({ name: mcp_servers.name }).from(mcp_servers);
     return specialistCapabilitySelectionSchema.parse(
-      normalizeAgentCapabilities(
+      normalizeSpecialistCapabilities(
         capabilities,
         rows.map((row) => row.name),
         listCcManagedMcpServers(appMcpRegistry).map((row) => row.name),
@@ -417,14 +417,14 @@ export function createAgentService(options: {
   }
 
   function resolveWorkspacePath(row: typeof agents.$inferSelect): string {
-    return resolveAgentWorkspacePath({
+    return resolveSpecialistWorkspacePath({
       config: options.config,
       slug: row.slug,
       status: row.status === "archived" ? "archived" : "active",
     });
   }
 
-  function mapAgent(row: typeof agents.$inferSelect): Specialist {
+  function mapSpecialist(row: typeof agents.$inferSelect): Specialist {
     return specialistSchema.parse({
       id: row.id,
       slug: row.slug,
@@ -460,5 +460,5 @@ function slugify(value: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
 
-  return slug || "agent";
+  return slug || "specialist";
 }

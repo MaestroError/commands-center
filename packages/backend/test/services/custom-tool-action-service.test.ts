@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createAgentService } from "../../src/services/agent-service";
+import { createSpecialistService } from "../../src/services/specialist-service";
 import { createCustomToolActionService } from "../../src/services/custom-tool-action-service";
 import { createCustomToolService } from "../../src/services/custom-tool-service";
 import type { OpenCodeService } from "../../src/services/opencode-service";
@@ -24,7 +24,7 @@ describe("custom tool action service", () => {
         }));
       },
     });
-    const agentService = createAgentService({
+    const agentService = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: openCodeService,

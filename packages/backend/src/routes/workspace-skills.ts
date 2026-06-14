@@ -11,7 +11,7 @@ import {
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
-import { createAgentService } from "../services/agent-service.js";
+import { createSpecialistService } from "../services/specialist-service.js";
 import { createWorkspaceSkillService } from "../services/workspace-skill-service.js";
 
 const workspaceSkillSlugParamsSchema = z.object({
@@ -21,7 +21,7 @@ const workspaceSkillSlugParamsSchema = z.object({
 export function registerWorkspaceSkillRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const workspaceSkillService = createWorkspaceSkillService({ config: context.config });
-  const agentService = createAgentService({
+  const agentService = createSpecialistService({
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,

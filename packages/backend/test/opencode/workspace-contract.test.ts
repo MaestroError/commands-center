@@ -228,7 +228,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       ]);
 
       await writeOpenCodeWorkspace({
-        workspacePath: join(testDb.config.paths.subdirectories.agents, "writer-agent"),
+        workspacePath: join(testDb.config.paths.subdirectories.specialists, "writer-agent"),
         input: {
           name: "Writer",
           role: "write docs",
@@ -249,7 +249,7 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       });
 
       const paths = getOpenCodeWorkspacePaths(
-        join(testDb.config.paths.subdirectories.agents, "writer-agent"),
+        join(testDb.config.paths.subdirectories.specialists, "writer-agent"),
       );
       await expect(
         readFile(join(paths.skillsDir, "writer", "SKILL.md"), "utf8"),

@@ -1,5 +1,8 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
+// CC product code calls this concept "specialists". The SQLite cache keeps the
+// original `agents` table name because it is internal runtime storage, not the
+// portable workspace contract.
 export const agents = sqliteTable("agents", {
   id: text("id").primaryKey(),
   slug: text("slug").notNull().unique(),

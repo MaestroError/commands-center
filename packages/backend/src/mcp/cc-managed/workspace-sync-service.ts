@@ -10,8 +10,8 @@ import { createCustomToolService } from "../../services/custom-tool-service.js";
 import {
   getBuiltInSkillRoot,
   getWorkspaceSkillRoot,
-  resolveAgentWorkspacePath,
-} from "../../services/agent-workspace.js";
+  resolveSpecialistWorkspacePath,
+} from "../../services/specialist-workspace.js";
 import { createCcManagedMcpAuthStateStore } from "./auth-state-store.js";
 import { createCcManagedMcpAuthTokenService } from "./auth-token-service.js";
 import { createCcManagedMcpServerRegistry } from "./server-registry.js";
@@ -19,7 +19,7 @@ import { createCcManagedMcpToolAccessService } from "./tool-access-service.js";
 import { createCcManagedMcpWorkspaceEntryService } from "./workspace-entry-service.js";
 import { writeOpenCodeWorkspace } from "../../opencode/workspace-contract.js";
 
-export async function syncCcManagedMcpAgentWorkspaces(options: {
+export async function syncCcManagedMcpSpecialistWorkspaces(options: {
   db: AppDb;
   config: RuntimeConfig;
   logger: Logger;
@@ -44,7 +44,7 @@ export async function syncCcManagedMcpAgentWorkspaces(options: {
   let updatedCount = 0;
 
   for (const row of rows) {
-    const workspacePath = resolveAgentWorkspacePath({
+    const workspacePath = resolveSpecialistWorkspacePath({
       config: options.config,
       slug: row.slug,
       status: row.status === "archived" ? "archived" : "active",

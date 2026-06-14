@@ -27,7 +27,7 @@ import {
 import { NotFoundError } from "../lib/api-error.js";
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
-import { createAgentService } from "../services/agent-service.js";
+import { createSpecialistService } from "../services/specialist-service.js";
 import { createConversationService } from "../services/conversation-service.js";
 import { createTaskArtifactService } from "../services/task-artifact-service.js";
 import { createTaskArtifactShareLinkService } from "../services/task-artifact-share-link-service.js";
@@ -111,7 +111,7 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
       taskContextAttachmentService,
       logger: context.logger,
     });
-  const agentService = createAgentService({
+  const agentService = createSpecialistService({
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,

@@ -19,7 +19,7 @@ import type {
   TaskSubtaskDetail,
 } from "@cc/shared/schemas";
 
-import type { AgentService } from "./agent-service.js";
+import type { SpecialistService } from "./specialist-service.js";
 import type { TaskContextAttachmentService } from "./task-context-attachment-service.js";
 import type { TaskExecutionService } from "./task-execution-service.js";
 import type { TaskService } from "./task-service.js";
@@ -43,7 +43,7 @@ export function createPublicTaskApiService(deps: {
   taskService: TaskService;
   executionService: TaskExecutionService;
   taskContextAttachmentService: TaskContextAttachmentService;
-  agentService: AgentService;
+  agentService: SpecialistService;
 }) {
   const { taskService, executionService, taskContextAttachmentService, agentService } = deps;
 

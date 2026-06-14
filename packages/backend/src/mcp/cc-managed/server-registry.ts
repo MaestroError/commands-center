@@ -5,7 +5,7 @@ import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { ConversationService } from "../../services/conversation-service.js";
 import type { CustomToolActionService } from "../../services/custom-tool-action-service.js";
 import type { CustomToolService } from "../../services/custom-tool-service.js";
-import type { AgentService } from "../../services/agent-service.js";
+import type { SpecialistService } from "../../services/specialist-service.js";
 import type { LiveRequestService } from "../../services/live-request-service.js";
 import type { OpenCodeService } from "../../services/opencode-service.js";
 import type { SecretService } from "../../services/secret-service.js";
@@ -116,7 +116,7 @@ export function createCcManagedMcpServerRegistry(options: {
   db?: AppDb;
   config?: RuntimeConfig;
   opencodeService?: OpenCodeService;
-  agentService?: AgentService;
+  agentService?: SpecialistService;
   customToolService: CustomToolService;
   customToolActionService?: CustomToolActionService;
   conversationService?: ConversationService;

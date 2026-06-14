@@ -17,18 +17,19 @@ import {
 } from "../schemas/specialists.js";
 
 // Placeholder model for hand-dropped folders that carry no model hint. Non-empty
-// so the agent row satisfies the schema; the owner is expected to set a real one.
-const IMPORTED_AGENT_DEFAULT_MODEL = "unconfigured/model";
-const IMPORTED_AGENT_DEFAULT_ROLE = "Imported agent";
-const IMPORTED_AGENT_DEFAULT_INSTRUCTIONS = "Imported agent. Configure role and instructions.";
+// so the specialist row satisfies the schema; the owner is expected to set a real one.
+const IMPORTED_SPECIALIST_DEFAULT_MODEL = "unconfigured/model";
+const IMPORTED_SPECIALIST_DEFAULT_ROLE = "Imported specialist";
+const IMPORTED_SPECIALIST_DEFAULT_INSTRUCTIONS =
+  "Imported specialist. Configure role and instructions.";
 
 type SpecialistStatus = "active" | "archived";
 
 // ---------------------------------------------------------------------------
-// agent.json file schema  (agents/<slug>/agent.json)
+// specialist.json file schema  (specialists/<slug>/specialist.json)
 // ---------------------------------------------------------------------------
 
-export const agentFileSchema = z.object({
+export const specialistFileSchema = z.object({
   version: z.literal(1),
   id: z.string().min(1),
   name: z.string().min(1),
@@ -41,45 +42,45 @@ export const agentFileSchema = z.object({
   updatedAt: z.string(),
 });
 
-export type AgentFileContent = z.infer<typeof agentFileSchema>;
+export type SpecialistFileContent = z.infer<typeof specialistFileSchema>;
 
-function agentsRoot(config: RuntimeConfig, status: SpecialistStatus): string {
+function specialistsRoot(config: RuntimeConfig, status: SpecialistStatus): string {
   return status === "archived"
-    ? join(config.paths.subdirectories.agents, ".archived")
-    : config.paths.subdirectories.agents;
+    ? join(config.paths.subdirectories.specialists, ".archived")
+    : config.paths.subdirectories.specialists;
 }
 
-export function agentFilePath(
+export function specialistFilePath(
   config: RuntimeConfig,
   slug: string,
   status: SpecialistStatus,
 ): string {
-  return join(agentsRoot(config, status), slug, "agent.json");
+  return join(specialistsRoot(config, status), slug, "specialist.json");
 }
 
 // Accept the input shape for capabilities (optional arrays) since callers pass
 // the not-yet-defaulted selection; the schema fills defaults on read.
-export type AgentFileInput = Omit<AgentFileContent, "version" | "capabilities"> & {
+export type SpecialistFileInput = Omit<SpecialistFileContent, "version" | "capabilities"> & {
   capabilities: SpecialistCapabilitySelection;
 };
 
-export async function writeAgentFile(
+export async function writeSpecialistFile(
   config: RuntimeConfig,
   slug: string,
   status: SpecialistStatus,
-  content: AgentFileInput,
+  content: SpecialistFileInput,
 ): Promise<void> {
-  await writeConfigFileAtomic(agentFilePath(config, slug, status), { version: 1, ...content });
+  await writeConfigFileAtomic(specialistFilePath(config, slug, status), { version: 1, ...content });
 }
 
 // ---------------------------------------------------------------------------
-// Boot reconciler — folder = truth, agents row = derived cache
+// Boot reconciler — folder = truth, specialists row = derived cache
 // ---------------------------------------------------------------------------
 
-type DiscoveredAgent = AgentFileContent & { slug: string; status: SpecialistStatus };
+type DiscoveredSpecialist = SpecialistFileContent & { slug: string; status: SpecialistStatus };
 
-export const agentReconciler: WorkspaceReconciler = {
-  name: "agents",
+export const specialistReconciler: WorkspaceReconciler = {
+  name: "specialists",
 
   async reconcile({ config, db, logger }) {
     const discovered = [
@@ -89,34 +90,34 @@ export const agentReconciler: WorkspaceReconciler = {
 
     const seenIds = new Set<string>();
 
-    for (const agent of discovered) {
-      seenIds.add(agent.id);
+    for (const specialist of discovered) {
+      seenIds.add(specialist.id);
 
-      const archivedAt = agent.status === "archived" ? new Date(agent.updatedAt) : null;
+      const archivedAt = specialist.status === "archived" ? new Date(specialist.updatedAt) : null;
       const payload = {
-        slug: agent.slug,
-        name: agent.name,
-        role: agent.role,
-        instructions: agent.instructions,
-        default_model: agent.defaultModel,
-        icon_path: agent.iconPath ?? null,
-        status: agent.status,
-        capabilities_json: JSON.stringify(agent.capabilities),
-        updated_at: new Date(agent.updatedAt),
+        slug: specialist.slug,
+        name: specialist.name,
+        role: specialist.role,
+        instructions: specialist.instructions,
+        default_model: specialist.defaultModel,
+        icon_path: specialist.iconPath ?? null,
+        status: specialist.status,
+        capabilities_json: JSON.stringify(specialist.capabilities),
+        updated_at: new Date(specialist.updatedAt),
         archived_at: archivedAt,
       };
 
       const existing = await db.query.agents.findFirst({
-        where: (t, { eq: equals }) => equals(t.id, agent.id),
+        where: (t, { eq: equals }) => equals(t.id, specialist.id),
       });
 
       if (existing) {
-        await db.update(agents).set(payload).where(eq(agents.id, agent.id));
+        await db.update(agents).set(payload).where(eq(agents.id, specialist.id));
       } else {
         await db.insert(agents).values({
-          id: agent.id,
+          id: specialist.id,
           ...payload,
-          created_at: new Date(agent.createdAt),
+          created_at: new Date(specialist.createdAt),
         });
       }
     }
@@ -135,10 +136,10 @@ async function scanRoot(
   config: RuntimeConfig,
   status: SpecialistStatus,
   logger: Logger,
-): Promise<DiscoveredAgent[]> {
-  const root = agentsRoot(config, status);
+): Promise<DiscoveredSpecialist[]> {
+  const root = specialistsRoot(config, status);
   const entries = await readDirEntries(root);
-  const discovered: DiscoveredAgent[] = [];
+  const discovered: DiscoveredSpecialist[] = [];
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
@@ -146,7 +147,7 @@ async function scanRoot(
     // hidden directories.
     if (entry.name.startsWith(".")) continue;
 
-    const identity = await resolveAgentIdentity(config, entry.name, status, logger);
+    const identity = await resolveSpecialistIdentity(config, entry.name, status, logger);
     if (identity) {
       discovered.push(identity);
     }
@@ -155,25 +156,29 @@ async function scanRoot(
   return discovered;
 }
 
-async function resolveAgentIdentity(
+async function resolveSpecialistIdentity(
   config: RuntimeConfig,
   slug: string,
   status: SpecialistStatus,
   logger: Logger,
-): Promise<DiscoveredAgent | undefined> {
-  // 1. CC-native: agent.json present and valid.
-  const file = await readConfigFile(agentFilePath(config, slug, status), agentFileSchema, logger);
+): Promise<DiscoveredSpecialist | undefined> {
+  // 1. CC-native: specialist.json present and valid.
+  const file = await readConfigFile(
+    specialistFilePath(config, slug, status),
+    specialistFileSchema,
+    logger,
+  );
   if (file) {
     return { ...file, slug, status };
   }
 
-  // 2/3/4. Infer from render files, generate a stable id, then write agent.json
+  // 2/3/4. Infer from render files, generate a stable id, then write specialist.json
   // so the next boot is CC-native.
-  const folder = join(agentsRoot(config, status), slug);
+  const folder = join(specialistsRoot(config, status), slug);
   const inferred = await inferFromFolder(folder, slug, logger);
 
   const timestamp = now().toISOString();
-  const content: Omit<AgentFileContent, "version"> = {
+  const content: Omit<SpecialistFileContent, "version"> = {
     id: createId(),
     name: inferred.name,
     role: inferred.role,
@@ -185,13 +190,13 @@ async function resolveAgentIdentity(
   };
 
   try {
-    await writeAgentFile(config, slug, status, content);
+    await writeSpecialistFile(config, slug, status, content);
   } catch (err) {
-    // Read-only workspace: keep the agent usable for this boot with an in-memory
+    // Read-only workspace: keep the specialist usable for this boot with an in-memory
     // id and warn that stable identity cannot be persisted yet.
     logger.warn(
       { slug, err },
-      "could not write agent.json; agent usable this boot but identity is not persisted",
+      "could not write specialist.json; specialist usable this boot but identity is not persisted",
     );
   }
 
@@ -212,7 +217,7 @@ async function inferFromFolder(
         name: parsed.title,
         role: parsed.role,
         instructions: parsed.instructions,
-        defaultModel: (await readModelFromConfig(folder)) ?? IMPORTED_AGENT_DEFAULT_MODEL,
+        defaultModel: (await readModelFromConfig(folder)) ?? IMPORTED_SPECIALIST_DEFAULT_MODEL,
       };
     } catch {
       // Malformed AGENTS.md — fall through to other layouts.
@@ -224,22 +229,22 @@ async function inferFromFolder(
   if (claude && claude.trim().length > 0) {
     return {
       name: slug,
-      role: IMPORTED_AGENT_DEFAULT_ROLE,
+      role: IMPORTED_SPECIALIST_DEFAULT_ROLE,
       instructions: claude.trim(),
-      defaultModel: (await readModelFromConfig(folder)) ?? IMPORTED_AGENT_DEFAULT_MODEL,
+      defaultModel: (await readModelFromConfig(folder)) ?? IMPORTED_SPECIALIST_DEFAULT_MODEL,
     };
   }
 
   // Plain folder: defaults derived from the slug.
   logger.warn(
     { slug },
-    "discovered agent folder without recognizable metadata; using placeholder role/model",
+    "discovered specialist folder without recognizable metadata; using placeholder role/model",
   );
   return {
     name: slug,
-    role: IMPORTED_AGENT_DEFAULT_ROLE,
-    instructions: IMPORTED_AGENT_DEFAULT_INSTRUCTIONS,
-    defaultModel: IMPORTED_AGENT_DEFAULT_MODEL,
+    role: IMPORTED_SPECIALIST_DEFAULT_ROLE,
+    instructions: IMPORTED_SPECIALIST_DEFAULT_INSTRUCTIONS,
+    defaultModel: IMPORTED_SPECIALIST_DEFAULT_MODEL,
   };
 }
 

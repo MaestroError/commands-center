@@ -6,7 +6,7 @@ import {
   createOpenCodeOrchestrator,
   type OpenCodeOrchestrator,
 } from "../orchestrator/opencode-orchestrator.js";
-import { syncCcManagedMcpAgentWorkspaces } from "../mcp/cc-managed/workspace-sync-service.js";
+import { syncCcManagedMcpSpecialistWorkspaces } from "../mcp/cc-managed/workspace-sync-service.js";
 import { createOpenCodeClient } from "./opencode-client.js";
 import { createOpenCodeService, type OpenCodeService } from "../services/opencode-service.js";
 import { createConversationService } from "../services/conversation-service.js";
@@ -43,7 +43,7 @@ import { createTaskService, type TaskService } from "../services/task-service.js
 import { settingsReconciler } from "../db/helpers.js";
 import { mcpServerReconciler } from "../services/mcp-server-service.js";
 import { secretsManifestReconciler } from "../services/secret-service.js";
-import { agentReconciler } from "../services/agent-file.js";
+import { specialistReconciler } from "../services/specialist-file.js";
 import { taskTemplateReconciler } from "../services/task-service.js";
 import { bootstrapRuntimePaths, bootstrapWorkspaceRoot } from "./runtime-paths.js";
 import { runBootReconcile } from "./workspace-reconciler.js";
@@ -122,9 +122,9 @@ export async function startServerRuntime(
       settingsReconciler,
       mcpServerReconciler,
       secretsManifestReconciler,
-      // agents must reconcile before task_templates: task_templates.agent_id
-      // references agents.id, which must exist first on a fresh DB.
-      agentReconciler,
+      // Specialists must reconcile before task_templates: the internal
+      // task_templates.agent_id column references agents.id in the SQLite cache.
+      specialistReconciler,
       taskTemplateReconciler,
     ],
     { config, db: database.db, logger },
@@ -221,7 +221,7 @@ export async function startServerRuntime(
     await options.register(server, context);
   }
 
-  await syncCcManagedMcpAgentWorkspaces({
+  await syncCcManagedMcpSpecialistWorkspaces({
     db: database.db,
     config,
     logger,

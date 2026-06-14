@@ -24,8 +24,8 @@ import { settingsReconciler, upsertSettingFilefirst } from "../../src/db/helpers
 import { migrateDatabase } from "../../src/db/migrate";
 import { loadRuntimeConfig } from "../../src/lib/runtime-config";
 import { runBootReconcile } from "../../src/lib/workspace-reconciler";
-import { agentReconciler } from "../../src/services/agent-file";
-import { createAgentService } from "../../src/services/agent-service";
+import { specialistReconciler } from "../../src/services/specialist-file";
+import { createSpecialistService } from "../../src/services/specialist-service";
 import { mcpServerReconciler, createMcpServerService } from "../../src/services/mcp-server-service";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createSecretService, secretsManifestReconciler } from "../../src/services/secret-service";
@@ -43,7 +43,7 @@ const BOOT_RECONCILERS = [
   settingsReconciler,
   mcpServerReconciler,
   secretsManifestReconciler,
-  agentReconciler,
+  specialistReconciler,
   taskTemplateReconciler,
 ];
 
@@ -65,7 +65,7 @@ type TestDb = Awaited<ReturnType<typeof createTestDatabase>>;
 async function populateWorkspace(testDb: TestDb) {
   const opencodeService = createMockOpenCodeService();
   const secretService = createSecretService({ db: testDb.client.db, config: testDb.config });
-  const agentService = createAgentService({
+  const agentService = createSpecialistService({
     db: testDb.client.db,
     config: testDb.config,
     opencodeService,
@@ -145,7 +145,7 @@ describe("rebuild guarantee", () => {
 
       const opencodeService = createMockOpenCodeService();
       const secretService = createSecretService({ db: freshClient.db, config: testDb.config });
-      const agentService = createAgentService({
+      const agentService = createSpecialistService({
         db: freshClient.db,
         config: testDb.config,
         opencodeService,
@@ -232,7 +232,7 @@ describe("rebuild guarantee", () => {
 
       const opencodeService = createMockOpenCodeService();
       const secretService = createSecretService({ db: freshClient.db, config: freshConfig });
-      const agentService = createAgentService({
+      const agentService = createSpecialistService({
         db: freshClient.db,
         config: freshConfig,
         opencodeService,

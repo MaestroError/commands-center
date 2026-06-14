@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createAgentService } from "../../src/services/agent-service";
+import { createSpecialistService } from "../../src/services/specialist-service";
 import { createConversationService } from "../../src/services/conversation-service";
 import type {
   OpenCodeService,
@@ -13,7 +13,7 @@ describe("createConversationService", () => {
   it("resolves the current conversation, persists prompt history, and start fresh preserves previous conversations", async () => {
     const testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();
-    const agentService = createAgentService({
+    const agentService = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,
@@ -89,7 +89,7 @@ describe("createConversationService", () => {
   it("uses the per-prompt model override and falls back to the agent default", async () => {
     const testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();
-    const agentService = createAgentService({
+    const agentService = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,
@@ -171,7 +171,7 @@ describe("createConversationService", () => {
   it("persists tool call parts for command and shell executions", async () => {
     const testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();
-    const agentService = createAgentService({
+    const agentService = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,
@@ -217,7 +217,7 @@ describe("createConversationService", () => {
   it("returns media items from file parts and tool attachments newest first", async () => {
     const testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();
-    const agentService = createAgentService({
+    const agentService = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,
@@ -300,7 +300,7 @@ describe("createConversationService", () => {
   it("re-syncs remote messages when loading a specific conversation", async () => {
     const testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();
-    const agentService = createAgentService({
+    const agentService = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,
@@ -360,7 +360,7 @@ describe("createConversationService", () => {
         },
       },
     });
-    const agentService = createAgentService({
+    const agentService = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,

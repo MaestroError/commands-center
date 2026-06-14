@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createAgentService } from "../../src/services/agent-service";
+import { createSpecialistService } from "../../src/services/specialist-service";
 import { createMcpServerService, mcpServerReconciler } from "../../src/services/mcp-server-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { ConflictError, NotFoundError } from "../../src/lib/api-error";
@@ -118,7 +118,7 @@ describe("mcp-server-service", () => {
       opencodeService,
       secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
-    const agentService = createAgentService({
+    const agentService = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,
@@ -171,7 +171,7 @@ describe("mcp-server-service", () => {
       opencodeService,
       secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
     });
-    const agentService = createAgentService({
+    const agentService = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,

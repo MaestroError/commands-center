@@ -5,11 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { now } from "../../src/db/ids";
 import { mcp_servers } from "../../src/db/schema";
-import { createAgentService } from "../../src/services/agent-service";
+import { createSpecialistService } from "../../src/services/specialist-service";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
 
-describe("createAgentService", () => {
+describe("createSpecialistService", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -18,7 +18,7 @@ describe("createAgentService", () => {
     const testDb = await createTestDatabase();
     const skillRoot = await createSkill(testDb.cwd, "reviewer", "Code review helper");
     const dispose = vi.fn(() => Promise.resolve());
-    const service = createAgentService({
+    const service = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: createMockOpenCodeService({ dispose }),
@@ -62,7 +62,7 @@ describe("createAgentService", () => {
 
       expect(agent.status).toBe("active");
       expect(agent.slug).toBe("reviewer");
-      expect(agent.workspacePath).toMatch(/\/agents\/reviewer$/);
+      expect(agent.workspacePath).toMatch(/\/specialists\/reviewer$/);
       await expect(
         stat(join(agent.workspacePath, ".opencode", "skills", "reviewer", "SKILL.md")),
       ).resolves.toBeDefined();
@@ -83,7 +83,7 @@ describe("createAgentService", () => {
     const testDb = await createTestDatabase();
     const skillRoot = await createSkill(testDb.cwd, "planner", "Planning helper");
     const dispose = vi.fn(() => Promise.resolve());
-    const service = createAgentService({
+    const service = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: createMockOpenCodeService({ dispose }),
@@ -123,7 +123,7 @@ describe("createAgentService", () => {
       });
 
       expect(updated?.slug).toBe("planner");
-      expect(updated?.workspacePath).toMatch(/\/agents\/planner$/);
+      expect(updated?.workspacePath).toMatch(/\/specialists\/planner$/);
       expect(updated?.workspacePath).not.toBe(created.workspacePath);
       await expect(stat(created.workspacePath)).rejects.toThrow();
       await expect(
@@ -144,7 +144,7 @@ describe("createAgentService", () => {
   it("archives agents by moving workspace state instead of orphaning it", async () => {
     const testDb = await createTestDatabase();
     const dispose = vi.fn(() => Promise.resolve());
-    const service = createAgentService({
+    const service = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: createMockOpenCodeService({ dispose }),
@@ -186,7 +186,7 @@ describe("createAgentService", () => {
       "Screen writing helper",
       "area: docs\n  version: 1.0.0",
     );
-    const service = createAgentService({
+    const service = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: createMockOpenCodeService(),
@@ -402,7 +402,7 @@ describe("createAgentService", () => {
 
   it("rejects duplicate agent identifiers instead of auto-suffixing them", async () => {
     const testDb = await createTestDatabase();
-    const service = createAgentService({
+    const service = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: createMockOpenCodeService(),
@@ -450,7 +450,7 @@ describe("createAgentService", () => {
 
   it("drops references to MCP servers that no longer exist while preserving unrelated permissions", async () => {
     const testDb = await createTestDatabase();
-    const service = createAgentService({
+    const service = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: createMockOpenCodeService(),
@@ -491,7 +491,7 @@ describe("createAgentService", () => {
   it("updates agents using the current workspace root even when stored workspace paths are stale", async () => {
     const testDb = await createTestDatabase();
     const dispose = vi.fn(() => Promise.resolve());
-    const service = createAgentService({
+    const service = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: createMockOpenCodeService({ dispose }),
@@ -518,7 +518,7 @@ describe("createAgentService", () => {
       });
 
       expect(updated?.workspacePath).toBe(
-        join(testDb.config.paths.subdirectories.agents, "testing-specialist"),
+        join(testDb.config.paths.subdirectories.specialists, "testing-specialist"),
       );
       await expect(readFile(join(updated!.workspacePath, "AGENTS.md"), "utf8")).resolves.toContain(
         "Still works with CC_WORKSPACE_DIR.",

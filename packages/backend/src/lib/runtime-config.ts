@@ -157,7 +157,7 @@ export type RuntimeConfig = {
     dataDir: string;
     workspaceDir: string;
     subdirectories: {
-      agents: string;
+      specialists: string;
       auth: string;
       configuration: string;
       mcp: string;
@@ -261,7 +261,7 @@ export function loadRuntimeConfig(options?: {
       dataDir,
       workspaceDir,
       subdirectories: {
-        agents: resolve(workspaceDir, "agents"),
+        specialists: resolve(workspaceDir, "specialists"),
         auth: resolve(workspaceDir, "auth"),
         configuration: resolve(workspaceDir, "configuration"),
         mcp: resolve(workspaceDir, "mcp"),

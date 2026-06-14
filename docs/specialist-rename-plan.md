@@ -6,9 +6,10 @@ Rename the CommandsCenter product concept currently called an "agent" to
 "specialist" so CC terminology does not conflict with OpenCode, AI agent
 frameworks, or user projects that create and manage their own agents.
 
-This plan covers CC-owned product language, APIs, MCP tools, storage names, and
-portable workspace structure. It intentionally preserves external protocol names
-and OpenCode-native conventions.
+This plan covers CC-owned product language, APIs, MCP tools, portable workspace
+structure, and domain code names. It intentionally preserves external protocol
+names, OpenCode-native conventions, and internal SQLite storage identifiers that
+do not leak into product surfaces.
 
 ## Preserve
 
@@ -37,12 +38,12 @@ and OpenCode-native conventions.
   - `copy_custom_tool_to_agent` to `copy_custom_tool_to_specialist`
 - Portable workspace path: `workspace/agents` to `workspace/specialists`.
 - Portable metadata file: `agent.json` to `specialist.json`.
-- DB/schema/API fields where they represent CC specialists:
-  - `agents` table to `specialists`
-  - `agent_id` to `specialist_id`
+- API, shared schema, and domain fields where they represent CC specialists:
   - `defaultAgentId` to `defaultSpecialistId`
   - `mentionedAgentIds` to `mentionedSpecialistIds`
   - related task, run, conversation, custom-tool, and live-request fields.
+- TypeScript domain/service names where developers work with the CC product
+  concept.
 
 ## Implementation Sequence
 
@@ -59,13 +60,21 @@ and OpenCode-native conventions.
    - Update task, public API, custom-tool, conversation, and chat schemas that
      reference specialist ownership or specialist mentions.
 
-3. Rename backend persistence and workspace services.
-   - Rename DB schema source files, service modules, runtime config
-     subdirectories, and workspace reconciliation logic.
-   - Generate a Drizzle migration for the derived SQLite cache.
-   - Add or update workspace filesystem migrations for `agents/` to
-     `specialists/` and `agent.json` to `specialist.json`, with rollback logic
-     for the reverse move.
+3. Rename backend domain and workspace services.
+   - Rename backend service modules, runtime config accessors, workspace
+     reconciliation logic, and domain-facing TypeScript names from agent to
+     specialist.
+   - Keep physical SQLite table and column names such as `agents` and
+     `agent_id` unchanged because SQLite is an internal runtime cache and those
+     names are not user-facing.
+   - Add a short comment near the Drizzle schema boundary explaining that the
+     product term is specialist while the internal SQLite storage name remains
+     agent.
+   - Do not generate a Drizzle migration for this step unless a user-facing or
+     portable workspace contract requires it.
+   - Reuse the existing workspace filesystem migration for `agents/` to
+     `specialists/` and `agent.json` to `specialist.json`; only adjust it if the
+     implementation needs a missing case.
 
 4. Rename backend routes and MCP surfaces.
    - Replace `/api/agents` route handlers with `/api/specialists`.

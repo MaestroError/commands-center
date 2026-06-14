@@ -5,7 +5,7 @@ import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-registry.js";
 import { createCcManagedMcpService } from "../mcp/cc-managed/service.js";
-import { createAgentService } from "../services/agent-service.js";
+import { createSpecialistService } from "../services/specialist-service.js";
 import { createConversationService } from "../services/conversation-service.js";
 import { createCustomToolActionService } from "../services/custom-tool-action-service.js";
 import { createCustomToolService } from "../services/custom-tool-service.js";
@@ -34,7 +34,7 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
       }));
     },
   });
-  const agentService = createAgentService({
+  const agentService = createSpecialistService({
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,

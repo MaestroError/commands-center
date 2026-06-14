@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createAgentService } from "../../src/services/agent-service";
+import { createSpecialistService } from "../../src/services/specialist-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { createApiTokenService } from "../../src/services/api-token-service";
@@ -18,7 +18,7 @@ describe("conversation routes", () => {
   beforeAll(async () => {
     testDb = await createTestDatabase();
     const opencodeService = createMockOpenCodeService();
-    const agentService = createAgentService({
+    const agentService = createSpecialistService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,

@@ -64,7 +64,7 @@ export function createShowFileToUserDefinition(options: {
           path: parsed.path,
           agentSlug: context.agentSlug,
           workspaceDir: options.config.paths.workspaceDir,
-          agentsDir: options.config.paths.subdirectories.agents,
+          agentsDir: options.config.paths.subdirectories.specialists,
         });
         const snapshot = await conversationService.resolveCurrent(agent.id);
         const response = await options.liveRequestService.create({

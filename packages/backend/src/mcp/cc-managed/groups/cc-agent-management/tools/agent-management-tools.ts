@@ -5,12 +5,12 @@ import {
   createSpecialistInputSchema,
   updateSpecialistInputSchema,
 } from "../../../../../schemas/specialists.js";
-import type { AgentService } from "../../../../../services/agent-service.js";
+import type { SpecialistService } from "../../../../../services/specialist-service.js";
 import type { ConversationService } from "../../../../../services/conversation-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
 
 type AgentManagementToolOptions = {
-  agentService: AgentService;
+  agentService: SpecialistService;
   conversationService?: ConversationService;
   liveRequestService?: LiveRequestService;
 };
@@ -130,7 +130,7 @@ export const removeAgentToolMetadata = {
   context: "chat",
 } as const;
 
-export function createListAgentsToolDefinition(options: { agentService: AgentService }) {
+export function createListAgentsToolDefinition(options: { agentService: SpecialistService }) {
   return {
     name: listAgentsToolMetadata.name,
     description: listAgentsToolMetadata.description,
@@ -155,7 +155,7 @@ export function createListAgentsToolDefinition(options: { agentService: AgentSer
   };
 }
 
-export function createListModelsToolDefinition(options: { agentService: AgentService }) {
+export function createListModelsToolDefinition(options: { agentService: SpecialistService }) {
   return {
     name: listModelsToolMetadata.name,
     description: listModelsToolMetadata.description,

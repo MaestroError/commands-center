@@ -2,7 +2,7 @@ import { customToolBulkCopyResultSchema, type CustomToolBulkCopyResult } from "@
 
 import { ConflictError, NotFoundError } from "../lib/api-error.js";
 import { slugifyIdentifier } from "../lib/slug.js";
-import type { AgentService } from "./agent-service.js";
+import type { SpecialistService } from "./specialist-service.js";
 import type { CustomToolService } from "./custom-tool-service.js";
 
 type CopyGlobalToolToAgentsInput = {
@@ -43,7 +43,7 @@ export type CustomToolActionService = ReturnType<typeof createCustomToolActionSe
 
 export function createCustomToolActionService(options: {
   customToolService: CustomToolService;
-  agentService: AgentService;
+  agentService: SpecialistService;
 }) {
   return {
     async copyGlobalToolToAgent(

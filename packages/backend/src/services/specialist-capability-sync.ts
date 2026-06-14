@@ -18,12 +18,12 @@ import {
   getBuiltInSkillRoot,
   getWorkspaceSkillRoot,
   prepareWorkspace,
-  resolveAgentWorkspacePath,
-} from "./agent-workspace.js";
+  resolveSpecialistWorkspacePath,
+} from "./specialist-workspace.js";
 import { createCustomToolService } from "./custom-tool-service.js";
 import type { OpenCodeService } from "./opencode-service.js";
 
-export function normalizeAgentCapabilities(
+export function normalizeSpecialistCapabilities(
   capabilities: SpecialistCapabilitySelection,
   availableMcpNames: readonly string[],
   availableAppMcpNames: readonly string[],
@@ -131,7 +131,7 @@ export async function rewriteAgentsForMcpChange(options: {
   for (const row of rows) {
     const capabilities = parseCapabilities(row.capabilities_json);
     const nextCapabilities = options.transform(capabilities);
-    const workspacePath = resolveAgentWorkspacePath({
+    const workspacePath = resolveSpecialistWorkspacePath({
       config: options.config,
       slug: row.slug,
       status: row.status === "archived" ? "archived" : "active",

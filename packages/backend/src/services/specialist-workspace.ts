@@ -10,7 +10,7 @@ import {
   writeOpenCodeWorkspace,
 } from "../opencode/workspace-contract.js";
 
-export type AgentWorkspaceInput = {
+export type SpecialistWorkspaceInput = {
   name: string;
   role: string;
   instructions: string;
@@ -44,7 +44,7 @@ export async function listBuiltInSkills(root: string): Promise<BuiltInSkill[]> {
 export async function prepareWorkspace(options: {
   config: RuntimeConfig;
   workspacePath: string;
-  input: AgentWorkspaceInput;
+  input: SpecialistWorkspaceInput;
   skillRoot?: string;
   workspaceSkillRoot?: string;
   /** Whether to (re)write AGENTS.md. Defaults to true. */
@@ -78,14 +78,14 @@ export async function moveWorkspace(currentPath: string, nextPath: string): Prom
   await rename(currentPath, nextPath);
 }
 
-export function resolveAgentWorkspacePath(options: {
+export function resolveSpecialistWorkspacePath(options: {
   config: RuntimeConfig;
   slug: string;
   status: "active" | "archived";
 }): string {
   if (options.status === "archived") {
-    return join(options.config.paths.subdirectories.agents, ".archived", options.slug);
+    return join(options.config.paths.subdirectories.specialists, ".archived", options.slug);
   }
 
-  return join(options.config.paths.subdirectories.agents, options.slug);
+  return join(options.config.paths.subdirectories.specialists, options.slug);
 }

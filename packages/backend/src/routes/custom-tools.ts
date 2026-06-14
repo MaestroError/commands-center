@@ -13,7 +13,7 @@ import {
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { ConflictError } from "../lib/api-error.js";
-import { createAgentService } from "../services/agent-service.js";
+import { createSpecialistService } from "../services/specialist-service.js";
 import { createCustomToolActionService } from "../services/custom-tool-action-service.js";
 import { createCustomToolService } from "../services/custom-tool-service.js";
 
@@ -37,7 +37,7 @@ export function registerCustomToolRoutes(server: AppServer, context: RuntimeCont
       }));
     },
   });
-  const agentService = createAgentService({
+  const agentService = createSpecialistService({
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,

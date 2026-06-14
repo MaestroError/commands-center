@@ -245,7 +245,7 @@ export function createCustomToolService(options: {
       return result;
     },
 
-    async syncAgentAssignments(input: {
+    async syncSpecialistAssignments(input: {
       workspacePath: string;
       selectedToolSlugs: string[];
       overwriteSlugs?: string[];

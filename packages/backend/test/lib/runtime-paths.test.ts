@@ -22,7 +22,7 @@ describe("bootstrapRuntimePaths", () => {
 
       await expect(stat(config.paths.workspaceDir)).resolves.toBeDefined();
       await expect(stat(join(config.paths.workspaceDir, ".cc-migrations"))).resolves.toBeDefined();
-      await expect(stat(config.paths.subdirectories.agents)).rejects.toMatchObject({
+      await expect(stat(config.paths.subdirectories.specialists)).rejects.toMatchObject({
         code: "ENOENT",
       });
     } finally {

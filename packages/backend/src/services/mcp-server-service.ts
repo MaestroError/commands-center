@@ -34,7 +34,7 @@ import {
   removeMcpReferences,
   renameMcpReferences,
   rewriteAgentsForMcpChange,
-} from "./agent-capability-sync.js";
+} from "./specialist-capability-sync.js";
 
 const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
 

@@ -744,7 +744,7 @@ describe("createTaskExecutionService", () => {
       );
       const agentConfig = JSON.parse(
         await readFile(
-          join(testDb.config.paths.subdirectories.agents, agent.slug, "opencode.jsonc"),
+          join(testDb.config.paths.subdirectories.specialists, agent.slug, "opencode.jsonc"),
           "utf8",
         ),
       ) as { mcp: Record<string, { enabled: boolean }> };

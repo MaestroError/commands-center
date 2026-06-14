@@ -56,7 +56,7 @@ type CriticalWorkspacePathRule = {
   reason: string;
 };
 
-type CriticalAgentPathRule = {
+type CriticalSpecialistPathRule = {
   relativePath: string;
   recursive?: boolean;
   reason: string;
@@ -71,7 +71,7 @@ const CRITICAL_WORKSPACE_PATH_RULES: CriticalWorkspacePathRule[] = [
   {
     resolvePath: (config) => config.paths.subdirectories.preferences,
     recursive: true,
-    reason: "This path contains CommandsCenter preferences used by the app or agents.",
+    reason: "This path contains CommandsCenter preferences used by the app or specialists.",
   },
   {
     resolvePath: (config) => config.paths.subdirectories.auth,
@@ -98,29 +98,29 @@ const CRITICAL_WORKSPACE_PATH_RULES: CriticalWorkspacePathRule[] = [
     reason: "This file stores workspace-level OpenCode configuration managed by CommandsCenter.",
   },
   {
-    resolvePath: (config) => config.paths.subdirectories.agents,
-    reason: "This path contains agent workspaces managed by CommandsCenter.",
+    resolvePath: (config) => config.paths.subdirectories.specialists,
+    reason: "This path contains specialist workspaces managed by CommandsCenter.",
   },
   {
-    resolvePath: (config) => resolve(config.paths.subdirectories.agents, ".archived"),
+    resolvePath: (config) => resolve(config.paths.subdirectories.specialists, ".archived"),
     recursive: true,
-    reason: "This path contains archived agent workspaces managed by CommandsCenter.",
+    reason: "This path contains archived specialist workspaces managed by CommandsCenter.",
   },
 ];
 
-const CRITICAL_AGENT_PATH_RULES: CriticalAgentPathRule[] = [
+const CRITICAL_SPECIALIST_PATH_RULES: CriticalSpecialistPathRule[] = [
   {
     relativePath: "AGENTS.md",
-    reason: "AGENTS.md defines the agent instructions and is required for agent behavior.",
+    reason: "AGENTS.md defines the specialist instructions and is required for behavior.",
   },
   {
     relativePath: "opencode.jsonc",
-    reason: "opencode.jsonc stores the agent workspace configuration and permissions.",
+    reason: "opencode.jsonc stores the specialist workspace configuration and permissions.",
   },
   {
     relativePath: ".opencode",
     recursive: true,
-    reason: "This path is part of the OpenCode workspace runtime data used by the agent.",
+    reason: "This path is part of the OpenCode workspace runtime data used by the specialist.",
   },
 ];
 
@@ -557,7 +557,7 @@ export function resolveFileManagerRoot(options: {
   if (options.kind === "all-agents") {
     return {
       kind: options.kind,
-      basePath: options.config.paths.subdirectories.agents,
+      basePath: options.config.paths.subdirectories.specialists,
     };
   }
 
@@ -728,24 +728,26 @@ function getCriticalReason(
     }
   }
 
-  const agentRootRelative = relative(config.paths.subdirectories.agents, path);
+  const specialistRootRelative = relative(config.paths.subdirectories.specialists, path);
   if (
-    agentRootRelative !== "" &&
-    !agentRootRelative.startsWith("..") &&
-    !agentRootRelative.startsWith(`.archived${sep}`) &&
-    agentRootRelative !== ".archived"
+    specialistRootRelative !== "" &&
+    !specialistRootRelative.startsWith("..") &&
+    !specialistRootRelative.startsWith(`.archived${sep}`) &&
+    specialistRootRelative !== ".archived"
   ) {
-    const segments = agentRootRelative.split(sep).filter(Boolean);
+    const segments = specialistRootRelative.split(sep).filter(Boolean);
 
     if (segments.length === 1 && isDirectory) {
-      return "This folder is an agent workspace managed by CommandsCenter.";
+      return "This folder is a specialist workspace managed by CommandsCenter.";
     }
 
     if (segments.length >= 2) {
-      const agentRelativePath = segments.slice(1).join(sep);
+      const specialistRelativePath = segments.slice(1).join(sep);
 
-      for (const rule of CRITICAL_AGENT_PATH_RULES) {
-        if (matchesCriticalPath(agentRelativePath, rule.relativePath, rule.recursive ?? false)) {
+      for (const rule of CRITICAL_SPECIALIST_PATH_RULES) {
+        if (
+          matchesCriticalPath(specialistRelativePath, rule.relativePath, rule.recursive ?? false)
+        ) {
           return rule.reason;
         }
       }

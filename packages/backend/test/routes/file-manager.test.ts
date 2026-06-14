@@ -74,9 +74,9 @@ describe("file manager routes", () => {
       ).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            name: "agents",
+            name: "specialists",
             isCritical: true,
-            absolutePath: testDb.config.paths.subdirectories.agents,
+            absolutePath: testDb.config.paths.subdirectories.specialists,
           }),
           expect.objectContaining({
             name: "opencode.jsonc",
@@ -134,19 +134,19 @@ describe("file manager routes", () => {
         payload: {
           root: "workspace",
           path: "done.txt",
-          destinationPath: "agents",
+          destinationPath: "specialists",
         },
       });
 
       expect(movedIntoCriticalDestination.statusCode).toBe(200);
-      expect(movedIntoCriticalDestination.json()).toEqual({ path: "agents/done.txt" });
+      expect(movedIntoCriticalDestination.json()).toEqual({ path: "specialists/done.txt" });
 
       const movedBackFromCriticalDestination = await server.inject({
         method: "POST",
         url: "/api/file-manager/entries/move",
         payload: {
           root: "workspace",
-          path: "agents/done.txt",
+          path: "specialists/done.txt",
           destinationPath: ".",
         },
       });
@@ -178,7 +178,7 @@ describe("file manager routes", () => {
         url: "/api/file-manager/entries",
         payload: {
           root: "workspace",
-          path: "agents",
+          path: "specialists",
           name: "agents-renamed",
         },
       });
@@ -187,7 +187,7 @@ describe("file manager routes", () => {
 
       const deleteAgents = await server.inject({
         method: "DELETE",
-        url: `/api/file-manager/entries?root=workspace&path=${encodeURIComponent("agents")}`,
+        url: `/api/file-manager/entries?root=workspace&path=${encodeURIComponent("specialists")}`,
       });
 
       expect(deleteAgents.statusCode).toBe(403);
@@ -535,9 +535,11 @@ describe("file manager content routes", () => {
   it("preserves folder relative paths and rejects overwriting protected files", async () => {
     const { testDb, server } = await bootServer();
     try {
-      await mkdir(join(testDb.config.paths.subdirectories.agents, "agent-a"), { recursive: true });
+      await mkdir(join(testDb.config.paths.subdirectories.specialists, "agent-a"), {
+        recursive: true,
+      });
       await writeFile(
-        join(testDb.config.paths.subdirectories.agents, "agent-a", "AGENTS.md"),
+        join(testDb.config.paths.subdirectories.specialists, "agent-a", "AGENTS.md"),
         "keep",
         "utf8",
       );
@@ -580,13 +582,13 @@ describe("file manager content routes", () => {
       });
       expect(
         await readFile(
-          join(testDb.config.paths.subdirectories.agents, "agent-a", "docs", "todo.md"),
+          join(testDb.config.paths.subdirectories.specialists, "agent-a", "docs", "todo.md"),
           "utf8",
         ),
       ).toBe("next");
       expect(
         await readFile(
-          join(testDb.config.paths.subdirectories.agents, "agent-a", "AGENTS.md"),
+          join(testDb.config.paths.subdirectories.specialists, "agent-a", "AGENTS.md"),
           "utf8",
         ),
       ).toBe("keep");
