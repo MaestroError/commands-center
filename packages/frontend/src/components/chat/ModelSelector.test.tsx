@@ -124,7 +124,7 @@ describe("ModelSelector", () => {
     expect(screen.queryByText(/old-model/)).not.toBeInTheDocument();
   });
 
-  it("offers an specialist-default entry and clears the override when chosen", async () => {
+  it("offers a specialist-default entry and clears the override when chosen", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });

@@ -73,7 +73,7 @@ describe("useCustomToolsQuery", () => {
     });
   });
 
-  it("skips the specialist tools query until an specialist id is available and then loads it", async () => {
+  it("skips the specialist tools query until a specialist id is available and then loads it", async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     vi.mocked(listSpecialistCustomTools).mockResolvedValue([
       {

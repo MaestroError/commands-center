@@ -85,12 +85,12 @@ const reviewActions = [
 ];
 
 describe("isLiveRequestReviewKind", () => {
-  it("matches agent and task review kinds only", () => {
-    expect(isLiveRequestReviewKind("agent_create_review")).toBe(true);
-    expect(isLiveRequestReviewKind("agent_update_review")).toBe(true);
+  it("matches specialist and task review kinds only", () => {
+    expect(isLiveRequestReviewKind("specialist_create_review")).toBe(true);
+    expect(isLiveRequestReviewKind("specialist_update_review")).toBe(true);
     expect(isLiveRequestReviewKind("task_create_review")).toBe(true);
     expect(isLiveRequestReviewKind("task_update_review")).toBe(true);
-    expect(isLiveRequestReviewKind("agent_management_confirmation")).toBe(false);
+    expect(isLiveRequestReviewKind("specialist_management_confirmation")).toBe(false);
     expect(isLiveRequestReviewKind("add_secret")).toBe(false);
   });
 });
@@ -100,7 +100,7 @@ describe("LiveRequestReviewForm — agent create (compact field form)", () => {
     return {
       id: "req-create",
       conversationId: "conv-1",
-      kind: "agent_create_review",
+      kind: "specialist_create_review",
       presentation: { title: "Review agent", cancelLabel: "Cancel" },
       fields: [
         field("name", "Name", "Helper"),
@@ -159,7 +159,7 @@ describe("LiveRequestReviewForm — agent update (compact field form)", () => {
     return {
       id: "req-update",
       conversationId: "conv-1",
-      kind: "agent_update_review",
+      kind: "specialist_update_review",
       presentation: { title: "Review agent update", cancelLabel: "Cancel" },
       fields: [field("role", "Role", "research analyst")],
       actions: reviewActions,

@@ -125,7 +125,7 @@ export function buildTaskApiDocs(baseUrl: string): TaskApiDocs {
   const json = `-H 'Content-Type: application/json'`;
 
   const createBody = {
-    agentId: "<AGENT_ID>",
+    specialistId: "<SPECIALIST_ID>",
     title: "Audit the staging logs",
     description: "Look for 5xx spikes in the last 24h.",
     todos: [{ content: "Pull logs" }, { content: "Summarise anomalies" }],

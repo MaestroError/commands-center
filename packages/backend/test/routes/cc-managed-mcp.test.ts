@@ -1087,7 +1087,7 @@ describe("cc-managed MCP routes", () => {
       });
       expect(liveRequestService.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          kind: "agent_create_review",
+          kind: "specialist_create_review",
           metadata: expect.objectContaining({ operation: "create_specialist" }),
         }),
       );
@@ -1186,7 +1186,7 @@ describe("cc-managed MCP routes", () => {
       });
       expect(liveRequestService.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          kind: "agent_update_review",
+          kind: "specialist_update_review",
           metadata: expect.objectContaining({ agentId: target.id, operation: "update_specialist" }),
         }),
       );
@@ -1268,7 +1268,7 @@ describe("cc-managed MCP routes", () => {
       });
       expect(liveRequestService.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          kind: "agent_management_confirmation",
+          kind: "specialist_management_confirmation",
           metadata: expect.objectContaining({ specialistId: target.id }),
         }),
       );

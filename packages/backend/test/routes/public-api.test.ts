@@ -219,7 +219,7 @@ describe("public task API", () => {
         method: "POST",
         url: "/api/public/v1/tasks",
         headers: auth,
-        payload: { agentId: "x", title: "y" },
+        payload: { specialistId: "x", title: "y" },
       });
       const listForbidden = await server.inject({
         method: "GET",
@@ -267,7 +267,7 @@ describe("public task API", () => {
         url: "/api/public/v1/tasks",
         headers: auth,
         payload: {
-          agentId: agent.id,
+          specialistId: agent.id,
           title: "Audit logs",
           description: "Look for spikes.",
           todos: [{ content: "Pull logs" }],

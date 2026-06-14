@@ -26,7 +26,7 @@ test.describe("task feedback", { tag: "@tasks" }, () => {
     await expect(comment).toContainText("Please retest the release flow.");
   });
 
-  test("submits feedback with an specialist mention", async ({ page }) => {
+  test("submits feedback with a specialist mention", async ({ page }) => {
     const state = createTaskState();
     await mockTaskApi(page, state);
 

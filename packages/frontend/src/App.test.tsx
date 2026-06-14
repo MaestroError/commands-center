@@ -299,9 +299,14 @@ describe("App", () => {
     render(<App />);
 
     await screen.findByRole("link", { name: "CommandsCenter" });
-    fireEvent.keyDown(window, { key: "F", metaKey: true, shiftKey: true });
 
-    const input = await screen.findByRole("textbox", { name: "Search resources" });
+    // The shortcut listener attaches in an effect after mount, and the keydown
+    // is one-shot, so retry the dispatch until the palette actually opens
+    // instead of firing once and racing the listener registration.
+    const input = await waitFor(() => {
+      fireEvent.keyDown(window, { key: "F", metaKey: true, shiftKey: true });
+      return screen.getByRole("textbox", { name: "Search resources" });
+    });
     expect(screen.getByRole("dialog", { name: "Global search" })).toBeInTheDocument();
 
     const user = userEvent.setup();

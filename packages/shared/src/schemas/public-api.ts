@@ -14,7 +14,7 @@ const looseRecordSchema = z.record(z.string(), z.unknown());
 
 /**
  * Minimal, public-safe projection of a task template. Never exposes internal
- * agent IDs, permission profiles, or rendered prompts.
+ * specialist IDs, permission profiles, or rendered prompts.
  */
 export const publicTaskTemplateSummarySchema = z.object({
   id: z.string().min(1),
@@ -132,7 +132,7 @@ export const publicTaskSchema = z.object({
   title: z.string(),
   description: z.string(),
   status: taskStatusSchema,
-  agentId: z.string().min(1),
+  specialistId: z.string().min(1),
   todos: z.array(publicTaskTodoSchema),
   scheduledAt: z.string().datetime().nullable(),
   dueAt: z.string().datetime().nullable(),
@@ -154,7 +154,7 @@ export const publicSpecialistSummarySchema = z.object({
 });
 
 export const publicCreateTaskBodySchema = z.object({
-  agentId: z.string().trim().min(1),
+  specialistId: z.string().trim().min(1),
   title: z.string().trim().min(1),
   description: z.string().trim().optional(),
   todos: z.array(z.object({ content: z.string().trim().min(1) })).optional(),
@@ -191,7 +191,7 @@ export const publicScheduleTaskBodySchema = z
 
 export const listPublicTasksQuerySchema = z.object({
   status: taskStatusSchema.optional(),
-  agentId: z.string().trim().min(1).optional(),
+  specialistId: z.string().trim().min(1).optional(),
   templateId: z.string().trim().min(1).optional(),
 });
 
