@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import type { Logger } from "pino";
 
 import {
   conversationDetailSchema,
@@ -18,13 +19,18 @@ import {
   type SendConversationPromptInput,
   type SendConversationShellInput,
 } from "../schemas/conversations.js";
-import { agentCapabilitySelectionSchema } from "@cc/shared/schemas";
+import { agentCapabilitySelectionSchema, type ConversationMessageError } from "@cc/shared/schemas";
 
 import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
 import { type agents, conversations, messages } from "../db/schema/index.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
-import { cleanTitle, extractMediaItems, mapRemoteMessage } from "../lib/message-mapper.js";
+import {
+  cleanTitle,
+  extractMediaItems,
+  mapRemoteMessage,
+  readModelError,
+} from "../lib/message-mapper.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import {
   getBuiltInSkillRoot,
@@ -59,10 +65,23 @@ export type TaskRunConversationInspection = {
 
 export type ConversationService = ReturnType<typeof createConversationService>;
 
+export class TaskRunPromptError extends Error {
+  readonly modelError: ConversationMessageError;
+  readonly attemptedModel: string;
+
+  constructor(input: { modelError: ConversationMessageError; attemptedModel: string }) {
+    super(input.modelError.message);
+    this.name = "TaskRunPromptError";
+    this.modelError = input.modelError;
+    this.attemptedModel = input.attemptedModel;
+  }
+}
+
 export function createConversationService(options: {
   db: AppDb;
   config: RuntimeConfig;
   opencodeService: OpenCodeService;
+  logger?: Logger;
 }) {
   const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
     config: options.config,
@@ -165,8 +184,7 @@ export function createConversationService(options: {
         parsed.model,
         loaded.agent.default_model,
       );
-
-      await options.opencodeService.promptSession({
+      const message = await options.opencodeService.promptSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
         agent: resolveOpenCodeAgent(loaded.agent.slug),
@@ -174,6 +192,13 @@ export function createConversationService(options: {
         text: parsed.text,
         attachments: parsed.attachments,
       });
+      const modelError = readModelError(message);
+      if (modelError) {
+        throw new TaskRunPromptError({
+          modelError,
+          attemptedModel: qualifyModel(model),
+        });
+      }
       await syncConversation(loaded.agent, loaded.conversation);
       return getConversationDetail(loaded.conversation.id);
     },
@@ -771,6 +796,10 @@ function parseModel(value: string): { providerID: string; modelID: string } {
     providerID: value.slice(0, slash),
     modelID: value.slice(slash + 1),
   };
+}
+
+function qualifyModel(model: { providerID: string; modelID: string }): string {
+  return `${model.providerID}/${model.modelID}`;
 }
 
 const OPENCODE_AGENTS = new Set(["general", "plan", "build", "explore"]);

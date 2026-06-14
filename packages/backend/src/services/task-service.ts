@@ -13,9 +13,11 @@ import {
   createTaskTemplateInputSchema,
   createTaskRunInputSchema,
   addTaskRunArtifactInputSchema,
+  fallbackModelsSchema,
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
   markTaskRunNeedsReviewInputSchema,
+  MAX_FALLBACK_MODELS,
   queueTaskInputSchema,
   recurringTaskScheduleSchema,
   setTaskRunResultInputSchema,
@@ -48,7 +50,6 @@ import {
   type TaskRunArtifact,
   type ListTaskRunsQuery,
   type ListTasksQuery,
-  type QueueTaskInput,
   type Task,
   type TaskContext,
   type TaskFeedbackThread,
@@ -86,6 +87,7 @@ const taskTemplateFileSchema = z.object({
   id: z.string(),
   defaultAgentId: z.string(),
   model: z.string().nullable().optional(),
+  fallbackModels: fallbackModelsSchema,
   title: z.string(),
   description: z.string(),
   todos: z.array(taskTodoSchema),
@@ -148,6 +150,7 @@ export const taskTemplateReconciler: WorkspaceReconciler = {
         agent_id: data.defaultAgentId,
         default_agent_id: data.defaultAgentId,
         model: data.model ?? null,
+        fallback_models: JSON.stringify(data.fallbackModels),
         title: data.title,
         description: data.description,
         todos_json: JSON.stringify(data.todos),
@@ -200,14 +203,18 @@ export const taskTemplateReconciler: WorkspaceReconciler = {
 
 export type TaskService = ReturnType<typeof createTaskService>;
 
-type QueueTaskOptions = QueueTaskInput & {
-  id?: string;
-  model?: string;
-  context?: TaskContext;
-  renderedPrompt?: string;
-  renderedContext?: Record<string, unknown>;
-  effectivePermissions?: CreateTaskRunInput["effectivePermissions"];
-};
+const fallbackModelsOverrideSchema = z.array(z.string().trim().min(1)).max(MAX_FALLBACK_MODELS);
+const queueTaskOptionsSchema = queueTaskInputSchema.extend({
+  id: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
+  fallbackModels: fallbackModelsOverrideSchema.optional(),
+  retryOfRunId: z.string().trim().min(1).optional(),
+  context: taskContextSchema.optional(),
+  renderedPrompt: z.string().optional(),
+  renderedContext: z.record(z.string(), z.unknown()).optional(),
+  effectivePermissions: taskPermissionProfileSchema.optional(),
+});
+type QueueTaskOptions = z.input<typeof queueTaskOptionsSchema>;
 
 type CreateTaskFromTemplateInput = {
   occurrenceAt?: string;
@@ -284,12 +291,17 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const timestamp = now();
       const todos = normalizeTodos(parsed.todos, timestamp);
       const enabled = parsed.enabled ?? true;
+      const fallbackModels = normalizeFallbackModels(
+        parsed.fallbackModels,
+        parsed.model ?? undefined,
+      );
 
       // File-first: persist to configuration/task-templates/<id>.json.
       await writeTemplateFile(options.config, {
         id,
         defaultAgentId: parsed.defaultAgentId,
         model: parsed.model ?? null,
+        fallbackModels,
         title: parsed.title,
         description: parsed.description,
         todos,
@@ -307,6 +319,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           agent_id: parsed.defaultAgentId,
           default_agent_id: parsed.defaultAgentId,
           model: parsed.model ?? null,
+          fallback_models: JSON.stringify(fallbackModels),
           title: parsed.title,
           description: parsed.description,
           todos_json: JSON.stringify(todos),
@@ -368,12 +381,17 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const defaultAgentId =
         parsed.defaultAgentId ?? existing.default_agent_id ?? existing.agent_id;
       const model = parsed.model === undefined ? existing.model : (parsed.model ?? null);
+      const fallbackModels = normalizeFallbackModels(
+        parsed.fallbackModels ?? parseFallbackModels(existing.fallback_models),
+        model ?? undefined,
+      );
 
       // File-first: update configuration/task-templates/<id>.json.
       await writeTemplateFile(options.config, {
         id,
         defaultAgentId,
         model,
+        fallbackModels,
         title: parsed.title ?? existing.title,
         description: parsed.description ?? existing.description,
         todos,
@@ -393,6 +411,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           agent_id: defaultAgentId,
           default_agent_id: defaultAgentId,
           model,
+          fallback_models: JSON.stringify(fallbackModels),
           title: parsed.title ?? existing.title,
           description: parsed.description ?? existing.description,
           todos_json: JSON.stringify(todos),
@@ -433,6 +452,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const defaultAgentId = parsed.defaultAgentId ?? parsed.agentId;
       const todos = normalizeTodos(parsed.todos, timestamp);
       const context = normalizeTaskContext(parsed.context);
+      const fallbackModels = normalizeFallbackModels(
+        parsed.fallbackModels,
+        parsed.model ?? undefined,
+      );
 
       if (parsed.defaultAgentId) {
         await requireActiveAgent(parsed.defaultAgentId);
@@ -446,6 +469,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           agent_id: parsed.agentId,
           default_agent_id: defaultAgentId,
           model: parsed.model ?? null,
+          fallback_models: JSON.stringify(fallbackModels),
           title: parsed.title,
           description: parsed.description,
           context: JSON.stringify(context),
@@ -493,6 +517,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         agentId: task.agentId,
         defaultAgentId: task.defaultAgentId,
         model: task.model,
+        fallbackModels: task.fallbackModels,
         title: `${task.title} copy`,
         description: task.description,
         context: task.context,
@@ -542,13 +567,19 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       const todos = parsed.todos
         ? normalizeTodos(parsed.todos, timestamp)
         : parseTaskTodos(existing.todos_json);
+      const model = parsed.model === undefined ? existing.model : (parsed.model ?? null);
+      const fallbackModels = normalizeFallbackModels(
+        parsed.fallbackModels ?? parseFallbackModels(existing.fallback_models),
+        model ?? undefined,
+      );
 
       const [row] = await options.db
         .update(tasks)
         .set({
           agent_id: parsed.agentId ?? existing.agent_id,
           default_agent_id: parsed.defaultAgentId ?? existing.default_agent_id,
-          model: parsed.model === undefined ? existing.model : (parsed.model ?? null),
+          model,
+          fallback_models: JSON.stringify(fallbackModels),
           title: parsed.title ?? existing.title,
           description: parsed.description ?? existing.description,
           context:
@@ -1037,6 +1068,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           agent_id: template.agent_id,
           default_agent_id: template.default_agent_id,
           model: template.model,
+          fallback_models: template.fallback_models,
           title: template.title,
           description: template.description,
           context: JSON.stringify(normalizeTaskContext(input.context)),
@@ -1297,7 +1329,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
     },
 
     async queueTask(input: QueueTaskOptions): Promise<TaskRun> {
-      const parsed = queueTaskInputSchema.parse(input);
+      const parsed = queueTaskOptionsSchema.parse(input);
       const task = await requireTask(parsed.taskId, { includeArchived: true });
 
       if (task.archived) {
@@ -1330,18 +1362,23 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       }
 
       const run = await this.createRun({
-        id: input.id,
+        id: parsed.id,
         taskId: task.id,
         subtaskId: parsed.subtaskId,
         agentId: parsed.agentId ?? subtask?.agent_id ?? task.default_agent_id ?? task.agent_id,
-        model: input.model ?? task.model ?? undefined,
+        model: parsed.model ?? task.model ?? undefined,
+        fallbackModels: normalizeFallbackModels(
+          parsed.fallbackModels ?? parseFallbackModels(task.fallback_models),
+          parsed.model ?? task.model ?? undefined,
+        ),
+        retryOfRunId: parsed.retryOfRunId,
         status: "queued",
         triggerSource: parsed.triggerSource,
-        context: input.context,
+        context: parsed.context,
         triggerMetadata: parsed.metadata,
-        renderedPrompt: input.renderedPrompt ?? "",
-        renderedContext: input.renderedContext,
-        effectivePermissions: input.effectivePermissions,
+        renderedPrompt: parsed.renderedPrompt ?? "",
+        renderedContext: parsed.renderedContext,
+        effectivePermissions: parsed.effectivePermissions,
       });
       const timestamp = now();
 
@@ -1375,6 +1412,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           subtask_id: parsed.subtaskId ?? null,
           agent_id: parsed.agentId,
           model: parsed.model ?? null,
+          fallback_models: JSON.stringify(
+            normalizeFallbackModels(parsed.fallbackModels, parsed.model ?? undefined),
+          ),
+          retry_of_run_id: parsed.retryOfRunId ?? null,
           opencode_session_id: parsed.opencodeSessionId ?? null,
           status: parsed.status,
           trigger_source: parsed.triggerSource,
@@ -1423,6 +1464,11 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         .set({
           opencode_session_id: parsed.opencodeSessionId ?? existing.opencode_session_id,
           subtask_id: parsed.subtaskId ?? existing.subtask_id,
+          fallback_models:
+            parsed.fallbackModels === undefined
+              ? existing.fallback_models
+              : JSON.stringify(normalizeFallbackModels(parsed.fallbackModels)),
+          retry_of_run_id: parsed.retryOfRunId ?? existing.retry_of_run_id,
           status: parsed.status ?? existing.status,
           outcome: parsed.outcome ?? existing.outcome,
           context_json:
@@ -1669,6 +1715,8 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       await writeTemplateFile(options.config, {
         id,
         defaultAgentId: existingTemplate.default_agent_id ?? existingTemplate.agent_id,
+        model: existingTemplate.model,
+        fallbackModels: parseFallbackModels(existingTemplate.fallback_models),
         title: existingTemplate.title,
         description: existingTemplate.description,
         todos: parseTaskTodos(existingTemplate.todos_json),
@@ -1894,7 +1942,7 @@ function normalizeTodos(input: unknown[], timestamp: Date): TaskTodo[] {
 }
 
 function getTaskStatusAfterTerminalRun(run: TaskRun): TaskStatus | undefined {
-  if (run.status === "failed" || run.status === "cancelled") {
+  if (run.status === "failed" || run.status === "error" || run.status === "cancelled") {
     return "review";
   }
 
@@ -1916,14 +1964,21 @@ function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
 }
 
 function hasFailedSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
-  return runs.some(
-    (run) =>
-      run.subtaskId === subtaskId &&
-      (run.status === "failed" ||
-        run.status === "cancelled" ||
-        run.outcome === "failed" ||
-        run.outcome === "needs_human_review" ||
-        run.needsHumanReview),
+  // `runs` is ordered by created_at desc, so the first match is the latest run.
+  // Only the latest run decides the subtask outcome: a successful fallback retry
+  // must clear a transient model/provider error from an earlier attempt.
+  const latest = runs.find((run) => run.subtaskId === subtaskId);
+  if (!latest) {
+    return false;
+  }
+
+  return (
+    latest.status === "failed" ||
+    latest.status === "error" ||
+    latest.status === "cancelled" ||
+    latest.outcome === "failed" ||
+    latest.outcome === "needs_human_review" ||
+    latest.needsHumanReview
   );
 }
 
@@ -1942,6 +1997,7 @@ function mapTask(row: typeof tasks.$inferSelect): Task {
     agentId: row.agent_id,
     defaultAgentId: row.default_agent_id ?? undefined,
     model: row.model ?? undefined,
+    fallbackModels: parseFallbackModels(row.fallback_models),
     title: row.title,
     description: row.description,
     context: parseTaskContext(row.context),
@@ -1972,6 +2028,7 @@ function mapTemplateAsTask(row: typeof task_templates.$inferSelect): Task {
     agentId: row.agent_id,
     defaultAgentId: row.default_agent_id ?? undefined,
     model: row.model ?? undefined,
+    fallbackModels: parseFallbackModels(row.fallback_models),
     title: row.title,
     description: row.description,
     context: normalizeTaskContext(),
@@ -1992,6 +2049,7 @@ function mapTaskTemplate(row: typeof task_templates.$inferSelect): TaskTemplate 
     id: row.id,
     defaultAgentId: row.default_agent_id ?? row.agent_id,
     model: row.model ?? undefined,
+    fallbackModels: parseFallbackModels(row.fallback_models),
     title: row.title,
     description: row.description,
     todos: parseTaskTodos(row.todos_json),
@@ -2048,6 +2106,7 @@ function deriveRunSubtaskStatus(run: TaskRun): TaskSubtaskDerivedStatus {
 
   if (
     run.status === "failed" ||
+    run.status === "error" ||
     run.status === "cancelled" ||
     run.outcome === "failed" ||
     run.outcome === "needs_human_review" ||
@@ -2070,6 +2129,8 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
     subtaskId: row.subtask_id ?? undefined,
     agentId: row.agent_id,
     model: row.model ?? undefined,
+    fallbackModels: parseFallbackModels(row.fallback_models),
+    retryOfRunId: row.retry_of_run_id ?? undefined,
     opencodeSessionId: row.opencode_session_id ?? undefined,
     status: row.status,
     triggerSource: row.trigger_source,
@@ -2101,6 +2162,41 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
 
 function parseTaskTodos(value: string): TaskTodo[] {
   return taskTodoSchema.array().parse(JSON.parse(value));
+}
+
+function parseFallbackModels(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    return fallbackModelsSchema.parse(JSON.parse(value));
+  } catch {
+    return [];
+  }
+}
+
+function normalizeFallbackModels(models: string[] | undefined, primaryModel?: string): string[] {
+  const seen = new Set<string>();
+  const primary = primaryModel?.trim();
+  if (primary) {
+    seen.add(primary);
+  }
+
+  const normalized: string[] = [];
+  for (const raw of models ?? []) {
+    const model = raw.trim();
+    if (!model || seen.has(model)) {
+      continue;
+    }
+    seen.add(model);
+    normalized.push(model);
+    if (normalized.length >= MAX_FALLBACK_MODELS) {
+      break;
+    }
+  }
+
+  return normalized;
 }
 
 function normalizeTaskContext(input?: unknown): TaskContext {

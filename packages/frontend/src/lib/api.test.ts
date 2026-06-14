@@ -237,6 +237,7 @@ describe("task actions", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         defaultAgentId: "agent-1",
+        fallbackModels: [],
         title: "Weekly release notes",
         description: "Draft notes.",
         todos: [{ content: "Read changelog", status: "pending" }],
@@ -300,6 +301,7 @@ describe("task actions", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         defaultAgentId: "agent-1",
+        fallbackModels: [],
         title: "Reusable release notes",
         description: "Draft notes.",
         todos: [],

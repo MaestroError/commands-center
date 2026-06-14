@@ -154,6 +154,219 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("fails over to the next model when the primary model fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      providers: {
+        all: [
+          { id: "openai", models: { "gpt-4.1": {} } },
+          { id: "anthropic", models: { "claude-haiku": {} } },
+        ],
+        default: {},
+        connected: ["openai", "anthropic"],
+      },
+      onPrompt: (input) => prompts.push(input),
+      // The agent default (openai/gpt-4.1) fails with a transient provider error;
+      // the fallback (anthropic/claude-haiku) succeeds.
+      promptError: ({ model }) =>
+        model?.providerID === "openai"
+          ? { name: "APIError", message: "Provider is overloaded", data: { isRetryable: true } }
+          : undefined,
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        fallbackModels: ["anthropic/claude-haiku"],
+        title: "Failover",
+        description: "Primary model is down.",
+      });
+
+      expect(task.fallbackModels).toEqual(["anthropic/claude-haiku"]);
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      expect(run.fallbackModels).toEqual(["anthropic/claude-haiku"]);
+      await expectRunStatus(taskService, run.id, "error");
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+      const runs = await taskService.listRuns(task.id);
+      const fallbackRun = runs.find((candidate) => candidate.retryOfRunId === run.id);
+
+      expect(fallbackRun?.status).toBe("completed");
+      expect(fallbackRun?.model).toBe("anthropic/claude-haiku");
+      expect(fallbackRun?.renderedPrompt).toContain(
+        "Previous task run ended with a model/provider error.",
+      );
+      expect(fallbackRun?.renderedPrompt).toContain(run.id);
+      expect(prompts.map((prompt) => prompt.model)).toEqual([
+        { providerID: "openai", modelID: "gpt-4.1" },
+        { providerID: "anthropic", modelID: "claude-haiku" },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("errors the run without trying fallbacks on an unknown error", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      providers: {
+        all: [
+          { id: "openai", models: { "gpt-4.1": {} } },
+          { id: "anthropic", models: { "claude-haiku": {} } },
+        ],
+        default: {},
+        connected: ["openai", "anthropic"],
+      },
+      onPrompt: (input) => prompts.push(input),
+      promptError: () => ({ name: "UnknownError", message: "Something failed" }),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        fallbackModels: ["anthropic/claude-haiku"],
+        title: "No failover",
+        description: "Unknown errors are not classified as recoverable.",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      expect(await taskService.listRuns(task.id)).toHaveLength(1);
+      expect(prompts.map((prompt) => prompt.model)).toEqual([
+        { providerID: "openai", modelID: "gpt-4.1" },
+      ]);
+      const failedRun = await taskService.getRunById(run.id);
+      expect(failedRun?.errorMessage).toContain("Something failed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("walks multiple fallbacks in order until one succeeds", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      providers: {
+        all: [
+          { id: "openai", models: { "gpt-4.1": {} } },
+          { id: "anthropic", models: { "claude-haiku": {}, "claude-opus": {} } },
+        ],
+        default: {},
+        connected: ["openai", "anthropic"],
+      },
+      onPrompt: (input) => prompts.push(input),
+      // The default and the first fallback both fail; only the second fallback works.
+      promptError: ({ model }) =>
+        model?.modelID === "claude-opus"
+          ? undefined
+          : { name: "APIError", message: "Provider is overloaded", data: { isRetryable: true } },
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        fallbackModels: ["anthropic/claude-haiku", "anthropic/claude-opus"],
+        title: "Chained failover",
+        description: "Try each model in order.",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(3);
+      const runs = await taskService.listRuns(task.id);
+      expect(runs.filter((candidate) => candidate.status === "completed")).toHaveLength(1);
+      expect(prompts.map((prompt) => prompt.model)).toEqual([
+        { providerID: "openai", modelID: "gpt-4.1" },
+        { providerID: "anthropic", modelID: "claude-haiku" },
+        { providerID: "anthropic", modelID: "claude-opus" },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("fails the run after every model in the chain fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      providers: {
+        all: [
+          { id: "openai", models: { "gpt-4.1": {} } },
+          { id: "anthropic", models: { "claude-haiku": {} } },
+        ],
+        default: {},
+        connected: ["openai", "anthropic"],
+      },
+      onPrompt: (input) => prompts.push(input),
+      // Every model returns a failover-worthy error, so the chain is exhausted.
+      promptError: ({ model }) => ({
+        name: "APIError",
+        message: `Overloaded: ${model?.modelID ?? "unknown"}`,
+        data: { isRetryable: true },
+      }),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        fallbackModels: ["anthropic/claude-haiku"],
+        title: "All down",
+        description: "No model can recover.",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+      expect(prompts.map((prompt) => prompt.model)).toEqual([
+        { providerID: "openai", modelID: "gpt-4.1" },
+        { providerID: "anthropic", modelID: "claude-haiku" },
+      ]);
+      const runs = await taskService.listRuns(task.id);
+      expect(runs.map((candidate) => candidate.status)).toEqual(["error", "error"]);
+      const failedRun = runs.find((candidate) => candidate.model === "anthropic/claude-haiku");
+      expect(failedRun?.errorMessage).toContain("Overloaded: claude-haiku");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("persists and renders context supplied for a specific run", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -399,7 +612,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("marks detached task execution failures as failed runs", async () => {
+  it("marks detached task execution failures as error runs", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const logger = { error: vi.fn() } as unknown as Logger;
@@ -430,7 +643,7 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "failed");
+      await expectRunStatus(taskService, run.id, "error");
       const failed = await taskService.getRunById(run.id);
 
       expect(failed?.errorMessage).toBe("Task run not found.");
@@ -791,6 +1004,12 @@ function createMockOpenCodeService(
     promptGates?: Promise<void>[];
     providers?: MockProviderList;
     onPrompt?: (input: { model?: { providerID: string; modelID: string }; text: string }) => void;
+    // Inject a terminal model error onto the returned assistant message so
+    // fallback behaviour can be exercised. Returning undefined means success.
+    promptError?: (input: {
+      model?: { providerID: string; modelID: string };
+      text: string;
+    }) => { name: string; message: string; data?: Record<string, unknown> } | undefined;
   } = {},
 ): OpenCodeService {
   const sessions = new Map<string, OpenCodeSession>();
@@ -864,12 +1083,16 @@ function createMockOpenCodeService(
         },
         parts: [{ id: `part-${userMessageId}`, type: "text", text }],
       });
-      sessionMessages.push({
+      const error = options.promptError?.({ model, text });
+      const assistantMessage: OpenCodeSessionMessage = {
         info: {
           id: assistantMessageId,
           sessionID,
           role: "assistant",
           time: { created: nextTime(), completed: nextTime() },
+          ...(error
+            ? { error: { name: error.name, message: error.message, data: error.data ?? {} } }
+            : {}),
         },
         parts: [
           {
@@ -878,8 +1101,10 @@ function createMockOpenCodeService(
             text: `Task finished: ${text}`,
           },
         ],
-      });
+      };
+      sessionMessages.push(assistantMessage);
       session.time.updated = nextTime();
+      return assistantMessage;
     },
   } as unknown as OpenCodeService;
 }

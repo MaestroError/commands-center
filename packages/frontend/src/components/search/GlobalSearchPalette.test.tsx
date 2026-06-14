@@ -223,6 +223,7 @@ function mockGlobalSearchSources() {
     {
       id: "task-1",
       agentId: "agent-1",
+      fallbackModels: [],
       title: "Release checklist",
       description: "Prepare the release.",
       context: { attachments: [] },
@@ -239,6 +240,7 @@ function mockGlobalSearchSources() {
     {
       id: "template-1",
       defaultAgentId: "agent-1",
+      fallbackModels: [],
       title: "Release task template",
       description: "Repeatable release work.",
       todos: [],

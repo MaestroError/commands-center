@@ -6,6 +6,8 @@ interface ModelSelectorProps {
   value: string | null;
   onChange: (modelId: string) => void;
   defaultModel?: string;
+  allowEmptySelection?: boolean;
+  placeholder?: string;
   /**
    * When true, the picker offers an explicit "use the agent's default" entry.
    * Choosing it calls `onChange("")` (no override). Used by the task/template
@@ -64,6 +66,8 @@ export function ModelSelector({
   value,
   onChange,
   defaultModel,
+  allowEmptySelection = false,
+  placeholder = "Select model",
   allowAgentDefault = false,
   agentDefaultLabel = "Agent's default",
   placement = "up",
@@ -108,7 +112,9 @@ export function ModelSelector({
       ? value
       : defaultModel && isConnectedKey(defaultModel)
         ? defaultModel
-        : firstKey;
+        : allowEmptySelection
+          ? ""
+          : firstKey;
   const selectedModel = connectedModels.find((model) => uniqueKey(model) === selectedKey);
 
   const modelByKey = useMemo(() => {
@@ -279,12 +285,12 @@ export function ModelSelector({
             ? agentDefaultLabel
             : selectedModel
               ? `${selectedModel.providerName} / ${selectedModel.name}`
-              : "Select model"
+              : placeholder
         }
       >
         <ChipIcon />
         <span className="min-w-0 truncate">
-          {usesAgentDefault ? agentDefaultLabel : (selectedModel?.name ?? "Select model")}
+          {usesAgentDefault ? agentDefaultLabel : (selectedModel?.name ?? placeholder)}
         </span>
         <ChevronIcon />
       </button>

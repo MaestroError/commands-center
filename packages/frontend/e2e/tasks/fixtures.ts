@@ -87,6 +87,7 @@ const catalog: AgentCatalog = {
 function baseTask(overrides: Partial<Task> & Pick<Task, "id" | "title" | "status">): Task {
   return {
     agentId: "agent-1",
+    fallbackModels: [],
     description: "Prepare release notes.",
     context: { attachments: [] },
     todos: [],
@@ -102,6 +103,7 @@ const completedRun: TaskRun = {
   id: "run-1",
   taskId: "task-ready",
   agentId: "agent-1",
+  fallbackModels: [],
   opencodeSessionId: "session-1",
   status: "completed",
   triggerSource: "manual",
@@ -164,6 +166,7 @@ const session: TaskRunSessionInspection = {
 const recurringTemplate: TaskTemplate = {
   id: "template-1",
   defaultAgentId: "agent-1",
+  fallbackModels: [],
   title: "Weekly release notes",
   description: "Generate release note draft every week.",
   todos: [],

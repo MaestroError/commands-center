@@ -120,6 +120,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   return {
     id: "task-1",
     agentId: "agent-1",
+    fallbackModels: [],
     title: "Ship release",
     description: "Prepare release notes.",
     context: { attachments: [] },
@@ -137,6 +138,7 @@ function makeTemplate(overrides: Partial<TaskTemplate> = {}): TaskTemplate {
   return {
     id: "template-1",
     defaultAgentId: "agent-1",
+    fallbackModels: [],
     title: "Weekly release notes",
     description: "Draft release notes.",
     todos: [],
@@ -153,6 +155,7 @@ function makeRun(overrides: Partial<TaskRun> = {}): TaskRun {
     id: "run-1",
     taskId: "task-1",
     agentId: "agent-1",
+    fallbackModels: [],
     status: "queued",
     triggerSource: "manual",
     renderedPrompt: "Do the task.",

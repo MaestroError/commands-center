@@ -476,17 +476,18 @@ function createMockOpenCodeService(): OpenCodeService {
         throw new Error("Session not found.");
       }
       const assistantMessageId = nextMessageId();
-      sessionMessages.push({
+      const assistantMessage = {
         info: {
           id: assistantMessageId,
           sessionID,
-          role: "assistant",
+          role: "assistant" as const,
           time: { created: nextTime(), completed: nextTime() },
         },
         parts: [{ id: `part-${assistantMessageId}`, type: "text", text: `Done: ${text}` }],
-      });
+      };
+      sessionMessages.push(assistantMessage);
       session.time.updated = nextTime();
-      return Promise.resolve();
+      return Promise.resolve(assistantMessage);
     }),
     promptSessionAsync: vi.fn(),
     abortSession: vi.fn(),

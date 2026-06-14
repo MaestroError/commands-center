@@ -353,8 +353,12 @@ export function createOpenCodeService(options: {
       model: SessionModel;
       text: string;
       attachments?: SendConversationAttachmentInput[];
-    }): Promise<void> {
-      await requestSessionJson({
+    }): Promise<OpenCodeSessionMessage> {
+      // The synchronous /message endpoint returns the assistant message once the
+      // turn settles. A terminal model failure (after opencode's own same-model
+      // retries) lands in `info.error` with a 200 response — callers that need
+      // failover must inspect the returned message rather than rely on a throw.
+      const result = await requestSessionJson({
         config: options.config,
         directory: input.directory,
         method: "POST",
@@ -365,6 +369,8 @@ export function createOpenCodeService(options: {
           parts: buildPromptParts(input.text, input.attachments ?? []),
         },
       });
+
+      return openCodeMessageSchema.parse(result);
     },
 
     async commandSession(input: {

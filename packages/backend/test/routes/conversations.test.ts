@@ -258,11 +258,11 @@ function createMockOpenCodeService(): OpenCodeService {
           },
         ],
       });
-      list.push({
+      const assistantMessage = {
         info: {
           id: assistantId,
           sessionID,
-          role: "assistant",
+          role: "assistant" as const,
           time: { created: nextTime(), completed: nextTime() },
         },
         parts: [
@@ -290,11 +290,12 @@ function createMockOpenCodeService(): OpenCodeService {
             },
           },
         ],
-      });
+      };
+      list.push(assistantMessage);
 
       session.title = session.title ?? "Route Agent";
       session.time.updated = nextTime();
-      return Promise.resolve();
+      return Promise.resolve(assistantMessage);
     },
     promptSessionAsync: ({ sessionID, text }) => {
       const session = mustSession(sessionID);

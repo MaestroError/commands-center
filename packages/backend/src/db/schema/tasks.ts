@@ -1,5 +1,12 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  type AnySQLiteColumn,
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 import { agents } from "./agents.js";
 
@@ -12,6 +19,7 @@ export const task_templates = sqliteTable(
       .references(() => agents.id),
     default_agent_id: text("default_agent_id").references(() => agents.id),
     model: text("model"),
+    fallback_models: text("fallback_models").notNull().default("[]"),
     title: text("title").notNull(),
     description: text("description").notNull(),
     todos_json: text("todos_json").notNull(),
@@ -51,6 +59,7 @@ export const tasks = sqliteTable(
       .references(() => agents.id),
     default_agent_id: text("default_agent_id").references(() => agents.id),
     model: text("model"),
+    fallback_models: text("fallback_models").notNull().default("[]"),
     title: text("title").notNull(),
     description: text("description").notNull(),
     context: text("context").notNull(),
@@ -145,6 +154,8 @@ export const task_runs = sqliteTable(
       .notNull()
       .references(() => agents.id),
     model: text("model"),
+    fallback_models: text("fallback_models").notNull().default("[]"),
+    retry_of_run_id: text("retry_of_run_id").references((): AnySQLiteColumn => task_runs.id),
     opencode_session_id: text("opencode_session_id"),
     status: text("status").notNull(),
     trigger_source: text("trigger_source").notNull(),

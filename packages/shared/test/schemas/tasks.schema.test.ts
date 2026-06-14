@@ -268,6 +268,7 @@ describe("task schemas", () => {
       ).toEqual({
         taskId: "task-1",
         agentId: "agent-1",
+        fallbackModels: [],
         status: "queued",
         triggerSource: "manual",
         renderedPrompt: "",

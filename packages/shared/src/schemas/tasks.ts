@@ -37,11 +37,25 @@ export const taskRunStatusSchema = z.enum([
   "running",
   "completed",
   "failed",
+  "error",
   "cancelled",
   "skipped",
 ]);
 
 export const taskRunOutcomeSchema = z.enum(["success", "needs_human_review", "failed"]);
+
+export const MAX_FALLBACK_MODELS = 5;
+// Each fallback entry must be a qualified `provider/model` id (a non-empty
+// provider, a slash, then a non-empty model). Downstream code calls
+// `parseModel()` on these, which throws on unqualified values, so the format is
+// validated at the schema boundary to keep invalid chains out of the DB.
+const qualifiedModelSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .regex(/^[^/]+\/.+$/, "Fallback model must be a qualified 'provider/model' id.");
+const fallbackModelsBaseSchema = z.array(qualifiedModelSchema).max(MAX_FALLBACK_MODELS);
+export const fallbackModelsSchema = fallbackModelsBaseSchema.default([]);
 
 export const taskSubtaskDerivedStatusSchema = z.enum([
   "backlog",
@@ -195,6 +209,7 @@ export const createTaskInputSchema = z.object({
   agentId: z.string().trim().min(1),
   defaultAgentId: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1).nullish(),
+  fallbackModels: fallbackModelsSchema,
   title: z.string().trim().min(1),
   description: z.string().trim().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
@@ -211,6 +226,7 @@ export const updateTaskInputSchema = z.object({
   agentId: z.string().trim().min(1).optional(),
   defaultAgentId: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1).nullish(),
+  fallbackModels: fallbackModelsBaseSchema.optional(),
   title: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
   todos: z.array(taskTodoInputSchema).optional(),
@@ -325,6 +341,7 @@ export const taskSchema = z.object({
   agentId: z.string().min(1),
   defaultAgentId: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
+  fallbackModels: fallbackModelsSchema,
   title: z.string().min(1),
   description: z.string(),
   context: taskContextSchema.default({ attachments: [] }),
@@ -353,6 +370,7 @@ export const taskTemplateSchema = z.object({
   id: z.string().min(1),
   defaultAgentId: z.string().min(1),
   model: z.string().min(1).optional(),
+  fallbackModels: fallbackModelsSchema,
   title: z.string().min(1),
   description: z.string(),
   todos: z.array(taskTodoSchema),
@@ -378,6 +396,7 @@ export const taskTemplateRunNowInputSchema = z.object({
 export const createTaskTemplateInputSchema = z.object({
   defaultAgentId: z.string().trim().min(1),
   model: z.string().trim().min(1).nullish(),
+  fallbackModels: fallbackModelsSchema,
   title: z.string().trim().min(1),
   description: z.string().trim().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
@@ -389,6 +408,7 @@ export const createTaskTemplateInputSchema = z.object({
 export const updateTaskTemplateInputSchema = createTaskTemplateInputSchema.partial().extend({
   recurrence: recurringTaskScheduleSchema.nullish(),
   model: z.string().trim().min(1).nullish(),
+  fallbackModels: fallbackModelsBaseSchema.optional(),
 });
 
 export const createTaskRunInputSchema = z.object({
@@ -397,6 +417,8 @@ export const createTaskRunInputSchema = z.object({
   subtaskId: z.string().trim().min(1).optional(),
   agentId: z.string().trim().min(1),
   model: z.string().trim().min(1).optional(),
+  fallbackModels: fallbackModelsSchema,
+  retryOfRunId: z.string().trim().min(1).optional(),
   status: taskRunStatusSchema.default("queued"),
   triggerSource: taskRunTriggerSourceSchema,
   outcome: taskRunOutcomeSchema.optional(),
@@ -425,6 +447,8 @@ export const updateTaskRunInputSchema = z.object({
   subtaskId: z.string().trim().min(1).optional(),
   outcome: taskRunOutcomeSchema.optional(),
   opencodeSessionId: z.string().trim().min(1).optional(),
+  fallbackModels: fallbackModelsBaseSchema.optional(),
+  retryOfRunId: z.string().trim().min(1).optional(),
   renderedPrompt: z.string().optional(),
   context: looseRecordSchema.optional(),
   triggerMetadata: looseRecordSchema.optional(),
@@ -451,6 +475,8 @@ export const taskRunSchema = z.object({
   agentId: z.string().min(1),
   model: z.string().min(1).optional(),
   opencodeSessionId: z.string().min(1).optional(),
+  fallbackModels: fallbackModelsSchema,
+  retryOfRunId: z.string().min(1).optional(),
   status: taskRunStatusSchema,
   triggerSource: taskRunTriggerSourceSchema,
   outcome: taskRunOutcomeSchema.optional(),
