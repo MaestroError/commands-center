@@ -16,7 +16,7 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type {
-  Agent,
+  Specialist,
   BuiltInSkill,
   CustomTool,
   GlobalSearchWorkspaceFilesResponse,
@@ -25,7 +25,7 @@ import type {
 } from "@cc/shared/schemas";
 
 import {
-  getAgentCatalog,
+  getSpecialistCatalog,
   listAgents,
   listArchivedTasks,
   listCustomTools,
@@ -103,7 +103,7 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
 
   const catalogQuery = useQuery({
     queryKey: queryKeys.agentCatalog,
-    queryFn: () => getAgentCatalog(),
+    queryFn: () => getSpecialistCatalog(),
     enabled: props.open && deferredQuery.length > 0,
   });
 
@@ -363,7 +363,7 @@ function EmptyState(props: { message: string }) {
 }
 
 function buildAgentResult(
-  agent: Agent,
+  agent: Specialist,
   navigate: ReturnType<typeof useNavigate>,
   onClose: () => void,
 ) {
@@ -393,7 +393,7 @@ function buildAgentResult(
 
 function buildTaskResult(
   task: Task,
-  agents: Agent[],
+  agents: Specialist[],
   navigate: ReturnType<typeof useNavigate>,
   onClose: () => void,
 ) {
@@ -427,7 +427,7 @@ function buildTaskResult(
 
 function buildTaskTemplateResult(
   template: TaskTemplate,
-  agents: Agent[],
+  agents: Specialist[],
   navigate: ReturnType<typeof useNavigate>,
   onClose: () => void,
 ) {
@@ -655,7 +655,7 @@ function highlightMatch(value: string, query: string): React.ReactNode {
   );
 }
 
-function matchesTask(task: Task, agents: Agent[], query: string): boolean {
+function matchesTask(task: Task, agents: Specialist[], query: string): boolean {
   const agent = agents.find((entry) => entry.id === task.agentId);
   const values = [
     task.title,
@@ -676,7 +676,7 @@ function matchesTask(task: Task, agents: Agent[], query: string): boolean {
   return normalizeSearchText(values.filter(Boolean).join(" ")).includes(normalizeSearchText(query));
 }
 
-function matchesTaskTemplate(template: TaskTemplate, agents: Agent[], query: string): boolean {
+function matchesTaskTemplate(template: TaskTemplate, agents: Specialist[], query: string): boolean {
   const agent = agents.find((entry) => entry.id === template.defaultAgentId);
   const values = [
     template.title,
@@ -717,7 +717,7 @@ function matchesSkill(
   return normalizeSearchText(values.join(" ")).includes(normalizeSearchText(query));
 }
 
-function readAgentName(agents: Agent[], agentId: string): string {
+function readAgentName(agents: Specialist[], agentId: string): string {
   return agents.find((agent) => agent.id === agentId)?.name ?? agentId;
 }
 

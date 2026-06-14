@@ -162,7 +162,7 @@ async function mockProviderApi(
   const agent = {
     id: "agent-1",
     slug: "demo-agent",
-    name: "Demo Agent",
+    name: "Demo Specialist",
     role: "demo role",
     instructions: "demo instructions",
     defaultModel: "openai/gpt-4.1",

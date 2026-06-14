@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", () => ({
-  getAgentCatalog: vi.fn(),
+  getSpecialistCatalog: vi.fn(),
   listAgents: vi.fn(),
   listArchivedTasks: vi.fn(),
   listCustomTools: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock("@/lib/api", () => ({
 import { GlobalSearchPalette } from "./GlobalSearchPalette";
 
 import {
-  getAgentCatalog,
+  getSpecialistCatalog,
   listAgents,
   listArchivedTasks,
   listCustomTools,
@@ -266,7 +266,7 @@ function mockGlobalSearchSources() {
       usage: [],
     },
   ]);
-  vi.mocked(getAgentCatalog).mockResolvedValue({
+  vi.mocked(getSpecialistCatalog).mockResolvedValue({
     builtInSkills: [
       {
         name: "Release skill",

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import type {
-  Agent,
+  Specialist,
   CustomTool,
   CustomToolAgentCopy,
   CustomToolDriftStatus,
@@ -386,7 +386,7 @@ export function CustomToolsPage() {
         <section className="cc-panel grid gap-4 p-6">
           <div className="flex flex-col gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-text-primary">Agent tools</h2>
+              <h2 className="text-lg font-semibold text-text-primary">Specialist tools</h2>
               <p className="mt-1 text-sm text-text-secondary">
                 Tool changes apply to new chats. Start a fresh chat with this agent to use an
                 updated tool set.
@@ -413,7 +413,7 @@ export function CustomToolsPage() {
           ) : agentToolsQuery.error ? (
             <ErrorState
               description={readError(agentToolsQuery.error)}
-              title="Agent tools could not be loaded."
+              title="Specialist tools could not be loaded."
             />
           ) : agentTools.length === 0 ? (
             <EmptyState description="No local tools in this workspace." title="No agent tools" />
@@ -631,7 +631,7 @@ function buildGlobalToolFileManagerUrl(tool: CustomTool): string {
   return `/files?${params.toString()}`;
 }
 
-function buildAgentToolFileManagerUrl(agent: Agent, tool: CustomToolAgentCopy): string {
+function buildAgentToolFileManagerUrl(agent: Specialist, tool: CustomToolAgentCopy): string {
   const selectedRelativePath = tool.isManaged
     ? `agents/${agent.slug}/.opencode/tools/${tool.slug}/tool.ts`
     : `agents/${agent.slug}/.opencode/tools/${tool.entryFile}`;
@@ -646,7 +646,7 @@ function buildAgentToolFileManagerUrl(agent: Agent, tool: CustomToolAgentCopy): 
 function StatusBadge(props: { status: CustomToolDriftStatus }) {
   const label = {
     global_only: "Global only",
-    agent_only: "Agent only",
+    agent_only: "Specialist only",
     matching: "Matching",
     outdated: "Outdated",
     modified: "Modified",

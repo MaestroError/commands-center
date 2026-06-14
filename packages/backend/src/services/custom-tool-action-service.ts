@@ -52,7 +52,7 @@ export function createCustomToolActionService(options: {
       const agent = await options.agentService.getBySlug(input.agentSlug);
 
       if (!agent) {
-        throw new NotFoundError("Agent not found.");
+        throw new NotFoundError("Specialist not found.");
       }
 
       return copyGlobalToolToAgents({
@@ -91,7 +91,7 @@ export function createCustomToolActionService(options: {
         const agent = await options.agentService.get(agentId);
 
         if (!agent) {
-          throw new NotFoundError("Agent not found.");
+          throw new NotFoundError("Specialist not found.");
         }
 
         const nextCustomTools = agent.capabilities.customTools.includes(tool.slug)
@@ -107,7 +107,7 @@ export function createCustomToolActionService(options: {
         });
 
         if (!updated) {
-          throw new NotFoundError("Agent not found.");
+          throw new NotFoundError("Specialist not found.");
         }
 
         copied.push({
@@ -145,7 +145,7 @@ export function createCustomToolActionService(options: {
     const agent = await options.agentService.get(agentIds[0] ?? "");
 
     if (!agent) {
-      throw new NotFoundError("Agent not found.");
+      throw new NotFoundError("Specialist not found.");
     }
 
     return { id: agent.id, slug: agent.slug };

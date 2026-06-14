@@ -27,7 +27,7 @@ describe("createConversationService", () => {
 
     try {
       const agent = await agentService.create({
-        name: "Chat Agent",
+        name: "Chat Specialist",
         role: "help with implementation",
         instructions: "Be useful.",
         defaultModel: "openai/gpt-4.1",
@@ -117,7 +117,7 @@ describe("createConversationService", () => {
 
     try {
       const agent = await agentService.create({
-        name: "Chat Agent",
+        name: "Chat Specialist",
         role: "help with implementation",
         instructions: "Be useful.",
         defaultModel: "openai/gpt-4.1",
@@ -185,7 +185,7 @@ describe("createConversationService", () => {
 
     try {
       const agent = await agentService.create({
-        name: "Command Agent",
+        name: "Command Specialist",
         role: "execute commands",
         instructions: "Use commands.",
         defaultModel: "openai/gpt-4.1",
@@ -231,7 +231,7 @@ describe("createConversationService", () => {
 
     try {
       const agent = await agentService.create({
-        name: "Media Agent",
+        name: "Media Specialist",
         role: "handles attachments",
         instructions: "Review uploads.",
         defaultModel: "openai/gpt-4.1",
@@ -314,7 +314,7 @@ describe("createConversationService", () => {
 
     try {
       const agent = await agentService.create({
-        name: "Reload Agent",
+        name: "Reload Specialist",
         role: "restore chats",
         instructions: "Be persistent.",
         defaultModel: "openai/gpt-4.1",
@@ -374,7 +374,7 @@ describe("createConversationService", () => {
 
     try {
       const agent = await agentService.create({
-        name: "Errored Agent",
+        name: "Errored Specialist",
         role: "surface failures",
         instructions: "Report provider errors.",
         defaultModel: "openai/gpt-4.1",

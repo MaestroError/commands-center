@@ -1,10 +1,10 @@
-import type { AgentCapabilitySelection } from "../../schemas/agents.js";
+import type { SpecialistCapabilitySelection } from "../../schemas/specialists.js";
 import type { CcManagedMcpServerDefinition, CcManagedToolDefinition } from "./server-registry.js";
 
 export function createCcManagedMcpToolAccessService() {
   return {
     isServerEnabled(
-      capabilities: AgentCapabilitySelection,
+      capabilities: SpecialistCapabilitySelection,
       server: CcManagedMcpServerDefinition,
     ): boolean {
       const selection = capabilities.appMcpServers?.find((entry) => entry.name === server.name);
@@ -17,7 +17,7 @@ export function createCcManagedMcpToolAccessService() {
     },
 
     listEnabledTools(
-      capabilities: AgentCapabilitySelection,
+      capabilities: SpecialistCapabilitySelection,
       server: CcManagedMcpServerDefinition,
       context?: "chat" | "task_run",
     ): readonly CcManagedToolDefinition[] {
@@ -33,7 +33,7 @@ export function createCcManagedMcpToolAccessService() {
     },
 
     getToolAction(
-      capabilities: AgentCapabilitySelection,
+      capabilities: SpecialistCapabilitySelection,
       serverName: string,
       toolName: string,
     ): "allow" | "ask" | "deny" {

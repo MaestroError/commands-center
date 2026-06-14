@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { AGENT_STATUS } from "../../src/constants/index.js";
 import {
-  agentCatalogSchema,
+  specialistCatalogSchema,
   apiErrorCodeSchema,
   apiValidationErrorResponseSchema,
-  createAgentInputSchema,
+  createSpecialistInputSchema,
   healthResponseSchema,
   systemVersionSchema,
-  updateAgentInputSchema,
+  updateSpecialistInputSchema,
 } from "../../src/schemas/index.js";
 import {
   providerApiKeyInputSchema,
@@ -26,8 +26,8 @@ describe("agent and provider schemas", () => {
   });
 
   it("parses create agent input with trimmed values and capability defaults", () => {
-    const result = createAgentInputSchema.parse({
-      name: "  Support Agent  ",
+    const result = createSpecialistInputSchema.parse({
+      name: "  Support Specialist  ",
       role: "  helper  ",
       instructions: "  Be precise.  ",
       defaultModel: "  openai/gpt-5  ",
@@ -35,7 +35,7 @@ describe("agent and provider schemas", () => {
     });
 
     expect(result).toEqual({
-      name: "Support Agent",
+      name: "Support Specialist",
       role: "helper",
       instructions: "Be precise.",
       defaultModel: "openai/gpt-5",
@@ -53,7 +53,7 @@ describe("agent and provider schemas", () => {
   });
 
   it("parses partial agent updates", () => {
-    expect(updateAgentInputSchema.parse({ role: "  reviewer  " })).toEqual({
+    expect(updateSpecialistInputSchema.parse({ role: "  reviewer  " })).toEqual({
       role: "reviewer",
       customToolOverwriteSlugs: [],
       rewriteAgentsMd: false,
@@ -61,7 +61,7 @@ describe("agent and provider schemas", () => {
   });
 
   it("parses the agent catalog and applies nested defaults", () => {
-    const result = agentCatalogSchema.parse({
+    const result = specialistCatalogSchema.parse({
       builtInSkills: [
         {
           name: "Planner",

@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
 
 import {
-  agentCapabilitySelectionSchema,
-  type AgentCapabilitySelection,
-} from "../schemas/agents.js";
+  specialistCapabilitySelectionSchema,
+  type SpecialistCapabilitySelection,
+} from "../schemas/specialists.js";
 
 import { now } from "../db/ids.js";
 import { agents } from "../db/schema/index.js";
@@ -24,10 +24,10 @@ import { createCustomToolService } from "./custom-tool-service.js";
 import type { OpenCodeService } from "./opencode-service.js";
 
 export function normalizeAgentCapabilities(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   availableMcpNames: readonly string[],
   availableAppMcpNames: readonly string[],
-): AgentCapabilitySelection {
+): SpecialistCapabilitySelection {
   const available = new Set(availableMcpNames);
   const availableApp = new Set(availableAppMcpNames);
   const nextMcpServers = (capabilities.mcpServers ?? []).filter((server) =>
@@ -63,9 +63,9 @@ export function normalizeAgentCapabilities(
 }
 
 export function removeMcpReferences(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   mcpName: string,
-): AgentCapabilitySelection {
+): SpecialistCapabilitySelection {
   return {
     builtInSkills: capabilities.builtInSkills,
     workspaceSkills: capabilities.workspaceSkills ?? [],
@@ -80,10 +80,10 @@ export function removeMcpReferences(
 }
 
 export function renameMcpReferences(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   previousName: string,
   nextName: string,
-): AgentCapabilitySelection {
+): SpecialistCapabilitySelection {
   return {
     builtInSkills: capabilities.builtInSkills,
     workspaceSkills: capabilities.workspaceSkills ?? [],
@@ -108,7 +108,7 @@ export async function rewriteAgentsForMcpChange(options: {
   db: AppDb;
   config: RuntimeConfig;
   opencodeService: OpenCodeService;
-  transform: (capabilities: AgentCapabilitySelection) => AgentCapabilitySelection;
+  transform: (capabilities: SpecialistCapabilitySelection) => SpecialistCapabilitySelection;
 }): Promise<number> {
   const registry = createCcManagedMcpServerRegistry({
     customToolService: createCustomToolService({
@@ -179,11 +179,11 @@ export async function rewriteAgentsForMcpChange(options: {
   return updatedCount;
 }
 
-function parseCapabilities(value: string): AgentCapabilitySelection {
-  return agentCapabilitySelectionSchema.parse(JSON.parse(value));
+function parseCapabilities(value: string): SpecialistCapabilitySelection {
+  return specialistCapabilitySelectionSchema.parse(JSON.parse(value));
 }
 
-function dedupeMcpServers(capabilities: AgentCapabilitySelection["mcpServers"]) {
+function dedupeMcpServers(capabilities: SpecialistCapabilitySelection["mcpServers"]) {
   const unique = new Map((capabilities ?? []).map((server) => [server.name, server]));
   return Array.from(unique.values());
 }

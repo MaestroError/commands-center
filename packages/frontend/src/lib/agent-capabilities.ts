@@ -1,22 +1,25 @@
 import type {
-  AgentCapabilitySelection,
-  AgentMcpOverride,
-  AgentMcpServer,
-  AgentPermissionRule,
+  SpecialistCapabilitySelection,
+  SpecialistMcpOverride,
+  SpecialistMcpServer,
+  SpecialistPermissionRule,
 } from "@cc/shared/schemas";
 
 type MutableServerSelection = {
   name: string;
   enabled?: boolean;
-  action: AgentMcpServer["action"];
+  action: SpecialistMcpServer["action"];
 };
 
-export function getMcpServerSelection(capabilities: AgentCapabilitySelection, serverName: string) {
+export function getMcpServerSelection(
+  capabilities: SpecialistCapabilitySelection,
+  serverName: string,
+) {
   return (capabilities.mcpServers ?? []).find((server) => server.name === serverName);
 }
 
 export function getAppMcpServerSelection(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   serverName: string,
 ) {
   return (capabilities.appMcpServers ?? []).find((server) => server.name === serverName);
@@ -31,10 +34,10 @@ export function upsertMcpServerSelection(
 }
 
 export function setMcpServerEnabled(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   serverName: string,
   enabled: boolean,
-): AgentCapabilitySelection {
+): SpecialistCapabilitySelection {
   if (enabled) {
     return {
       ...capabilities,
@@ -58,9 +61,9 @@ export function setMcpServerEnabled(
 }
 
 export function clearMcpServerOverride(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   serverName: string,
-): AgentCapabilitySelection {
+): SpecialistCapabilitySelection {
   return {
     ...capabilities,
     mcpServers: (capabilities.mcpServers ?? []).filter((server) => server.name !== serverName),
@@ -69,10 +72,10 @@ export function clearMcpServerOverride(
 }
 
 export function setMcpServerAction(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   serverName: string,
-  action: AgentMcpOverride,
-): AgentCapabilitySelection {
+  action: SpecialistMcpOverride,
+): SpecialistCapabilitySelection {
   if (action === "none") {
     return clearMcpServerOverride(capabilities, serverName);
   }
@@ -100,10 +103,10 @@ export function setMcpServerAction(
 }
 
 export function setAppMcpServerEnabled(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   serverName: string,
   enabled: boolean,
-): AgentCapabilitySelection {
+): SpecialistCapabilitySelection {
   if (enabled) {
     return {
       ...capabilities,
@@ -127,10 +130,10 @@ export function setAppMcpServerEnabled(
 }
 
 export function setAppMcpServerAction(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   serverName: string,
-  action: AgentMcpServer["action"],
-): AgentCapabilitySelection {
+  action: SpecialistMcpServer["action"],
+): SpecialistCapabilitySelection {
   if (action === "deny") {
     return setAppMcpServerEnabled(capabilities, serverName, false);
   }
@@ -149,7 +152,7 @@ export function setAppMcpServerAction(
 }
 
 export function getAppMcpToolAction(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   serverName: string,
   toolName: string,
 ): "allow" | "deny" {
@@ -160,11 +163,11 @@ export function getAppMcpToolAction(
 }
 
 export function setAppMcpToolEnabled(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   serverName: string,
   toolName: string,
   enabled: boolean,
-): AgentCapabilitySelection {
+): SpecialistCapabilitySelection {
   const pattern = buildAppMcpToolPattern(serverName, toolName);
   const remaining = (capabilities.appToolPermissions ?? []).filter(
     (rule) => rule.pattern !== pattern,
@@ -177,9 +180,9 @@ export function setAppMcpToolEnabled(
 }
 
 export function getMcpServerAction(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   serverName: string,
-): AgentMcpOverride {
+): SpecialistMcpOverride {
   const selection = getMcpServerSelection(capabilities, serverName);
 
   if (!selection) {
@@ -194,17 +197,17 @@ function buildAppMcpToolPattern(serverName: string, toolName: string): string {
 }
 
 function removeMcpToolPermissions(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   serverName: string,
-): NonNullable<AgentCapabilitySelection["toolPermissions"]> {
+): NonNullable<SpecialistCapabilitySelection["toolPermissions"]> {
   return (capabilities.toolPermissions ?? []).filter(
     (rule) => !rule.pattern.startsWith(`${serverName}_`),
   );
 }
 
 export function getAppMcpServerAction(
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   serverName: string,
-): AgentPermissionRule["action"] {
+): SpecialistPermissionRule["action"] {
   return getAppMcpServerSelection(capabilities, serverName)?.action ?? "deny";
 }

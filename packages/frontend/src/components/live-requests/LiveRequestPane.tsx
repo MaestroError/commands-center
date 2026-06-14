@@ -81,7 +81,9 @@ export function LiveRequestPane(props: Props) {
     <div className="flex h-full min-h-[24rem] flex-col bg-background p-6">
       <div className="mx-auto w-full max-w-2xl rounded-xl border border-border bg-surface p-6 shadow-sm">
         <div className="mb-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-accent">Agent waiting</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+            Specialist waiting
+          </p>
           <h2 className="mt-2 text-xl font-semibold text-text-primary">
             {request.presentation.title}
           </h2>

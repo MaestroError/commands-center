@@ -1,7 +1,7 @@
 import { mkdir, rename, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import type { AgentCapabilitySelection, BuiltInSkill } from "../schemas/agents.js";
+import type { SpecialistCapabilitySelection, BuiltInSkill } from "../schemas/specialists.js";
 
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { resolveBuiltInSkillsRoot } from "../lib/builtin-skills.js";
@@ -15,7 +15,7 @@ export type AgentWorkspaceInput = {
   role: string;
   instructions: string;
   defaultModel: string;
-  capabilities: AgentCapabilitySelection;
+  capabilities: SpecialistCapabilitySelection;
   appMcpEntries?: Record<
     string,
     {

@@ -6,14 +6,18 @@ import { WorkspaceSkillUploadRenameError } from "@/lib/api";
 
 import { BuiltInSkillsPage } from "./BuiltInSkillsPage";
 
-import { useAgentCatalogQuery, useAgentMutations, useAgentsQuery } from "@/hooks/use-agents-query";
+import {
+  useSpecialistCatalogQuery,
+  useAgentMutations,
+  useAgentsQuery,
+} from "@/hooks/use-agents-query";
 import { useWorkspaceSkillMutations } from "@/hooks/use-workspace-skills-query";
 import { normalizeUploadableFiles, toFileManagerUploadEntries } from "@/lib/file-transfer";
 
-import type { Agent, AgentCatalog, BuiltInSkill } from "@cc/shared/schemas";
+import type { Specialist, SpecialistCatalog, BuiltInSkill } from "@cc/shared/schemas";
 
 vi.mock("@/hooks/use-agents-query", () => ({
-  useAgentCatalogQuery: vi.fn(),
+  useSpecialistCatalogQuery: vi.fn(),
   useAgentsQuery: vi.fn(),
   useAgentMutations: vi.fn(),
 }));
@@ -100,7 +104,7 @@ const workspaceSkill: BuiltInSkill = {
   compatibility: "cc>=0.1",
 };
 
-const catalog: AgentCatalog = {
+const catalog: SpecialistCatalog = {
   builtInSkills: [builtInSkill],
   workspaceSkills: [workspaceSkill],
   providerModels: [],
@@ -109,7 +113,7 @@ const catalog: AgentCatalog = {
   customTools: [],
 };
 
-const agent: Agent = {
+const agent: Specialist = {
   id: "agent-1",
   slug: "writer",
   name: "Writer",
@@ -144,7 +148,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   confirmSpy.mockReturnValue(true);
 
-  vi.mocked(useAgentCatalogQuery).mockReturnValue({
+  vi.mocked(useSpecialistCatalogQuery).mockReturnValue({
     data: catalog,
     isLoading: false,
     error: null,
@@ -226,7 +230,7 @@ describe("BuiltInSkillsPage", () => {
     fireEvent.click(within(context).getByRole("button", { name: "Details" }));
     expect(within(context).getByText("Built-in details")).toBeInTheDocument();
 
-    vi.mocked(useAgentCatalogQuery).mockReturnValue({
+    vi.mocked(useSpecialistCatalogQuery).mockReturnValue({
       data: {
         ...catalog,
         builtInSkills: [...catalog.builtInSkills],

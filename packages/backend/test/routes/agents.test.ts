@@ -240,7 +240,7 @@ describe("agent routes", () => {
         method: "POST",
         url: "/api/agents",
         payload: {
-          name: "Files Agent",
+          name: "Files Specialist",
           role: "inspect workspace",
           instructions: "Inspect files.",
           defaultModel: "openai/gpt-4.1",

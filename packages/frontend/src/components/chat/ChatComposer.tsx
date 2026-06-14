@@ -32,7 +32,7 @@ type ChatComposerProps = {
   skills?: { slug: string; description?: string }[];
   disabled?: boolean;
   autoFocusKey?: string;
-  /** Agent's default model (qualified `provider/model`); preselected for each new chat. */
+  /** Specialist's default model (qualified `provider/model`); preselected for each new chat. */
   defaultModel?: string;
 };
 

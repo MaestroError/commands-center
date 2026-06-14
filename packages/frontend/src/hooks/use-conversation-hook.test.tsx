@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
-  Agent,
+  Specialist,
   ChatEvent,
   ConversationDetail,
   ConversationSnapshot,
@@ -62,7 +62,7 @@ function createQueryClient(): QueryClient {
   });
 }
 
-function makeAgent(overrides: Partial<Agent> = {}): Agent {
+function makeAgent(overrides: Partial<Specialist> = {}): Specialist {
   return {
     id: "agent-1",
     name: "Writer",

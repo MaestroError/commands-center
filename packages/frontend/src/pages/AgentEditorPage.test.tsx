@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentEditorPage } from "./AgentEditorPage";
 
 import {
-  useAgentCatalogQuery,
+  useSpecialistCatalogQuery,
   useAgentMutations,
   useAgentQuery,
   useAgentsQuery,
@@ -14,7 +14,7 @@ import { useAgentCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custo
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 
 vi.mock("@/hooks/use-agents-query", () => ({
-  useAgentCatalogQuery: vi.fn(),
+  useSpecialistCatalogQuery: vi.fn(),
   useAgentMutations: vi.fn(),
   useAgentQuery: vi.fn(),
   useAgentsQuery: vi.fn(),
@@ -36,7 +36,7 @@ beforeEach(() => {
   createMutateAsync.mockReset();
   updateMutateAsync.mockReset();
 
-  vi.mocked(useAgentCatalogQuery).mockReturnValue({
+  vi.mocked(useSpecialistCatalogQuery).mockReturnValue({
     data: {
       builtInSkills: [],
       workspaceSkills: [],

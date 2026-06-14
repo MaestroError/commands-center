@@ -5,8 +5,8 @@ import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type {
-  Agent,
-  AgentCatalog,
+  Specialist,
+  SpecialistCatalog,
   ConversationDetail,
   Task,
   TaskFeedbackThread,
@@ -20,7 +20,7 @@ import { formatDate } from "@/components/tasks/task-format";
 import { TaskDetailPage } from "@/pages/TaskDetailPage";
 import { TasksPage } from "@/pages/TasksPage";
 
-const agent: Agent = {
+const agent: Specialist = {
   id: "agent-1",
   slug: "planner",
   name: "Planner",
@@ -42,7 +42,7 @@ const agent: Agent = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
-const reviewerAgent: Agent = {
+const reviewerAgent: Specialist = {
   ...agent,
   id: "agent-2",
   slug: "reviewer",
@@ -263,7 +263,7 @@ const conversation: ConversationDetail = {
   ],
 };
 
-const catalog: AgentCatalog = {
+const catalog: SpecialistCatalog = {
   builtInSkills: [
     {
       name: "Code reviewer",
@@ -291,7 +291,7 @@ type MockFetchOptions = {
   };
   taskPayload?: typeof task;
   agentsPayload?: (typeof agent)[];
-  catalogPayload?: AgentCatalog;
+  catalogPayload?: SpecialistCatalog;
   runsPayload?: TaskRun[];
   activeRunsPayload?: TaskRun[];
   schedulerStatePayload?: TaskSchedulerState[];
@@ -474,7 +474,7 @@ describe("TasksPage", () => {
     expect(within(details).queryByRole("heading", { name: "Details" })).not.toBeInTheDocument();
     expect(within(details).getByText("Status")).toBeInTheDocument();
     expect(within(details).getByText("Backlog")).toBeInTheDocument();
-    expect(within(details).getByText("Agent")).toBeInTheDocument();
+    expect(within(details).getByText("Specialist")).toBeInTheDocument();
     expect(within(details).getByText("Planner")).toBeInTheDocument();
     expect(within(details).getByText("Latest run")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open full page" })).toHaveAttribute(
@@ -1946,7 +1946,7 @@ describe("TasksPage", () => {
   });
 
   it("creates a task prompt with selected file and skill mentions", async () => {
-    const skilledAgent: Agent = {
+    const skilledAgent: Specialist = {
       ...agent,
       capabilities: {
         ...agent.capabilities,
@@ -1982,7 +1982,7 @@ describe("TasksPage", () => {
   });
 
   it("prefills task creation from converted user message state", async () => {
-    const skilledAgent: Agent = {
+    const skilledAgent: Specialist = {
       ...agent,
       capabilities: {
         ...agent.capabilities,
@@ -2031,14 +2031,14 @@ describe("TasksPage", () => {
   });
 
   it("clears converted message references when assigned agent changes", async () => {
-    const skilledAgent: Agent = {
+    const skilledAgent: Specialist = {
       ...agent,
       capabilities: {
         ...agent.capabilities,
         builtInSkills: ["code-reviewer"],
       },
     };
-    const otherAgent: Agent = {
+    const otherAgent: Specialist = {
       ...agent,
       id: "agent-2",
       slug: "writer",
@@ -2290,7 +2290,7 @@ describe("TaskDetailPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("tab", { name: "Runs" }));
 
-    expect(screen.getByText("Agent")).toBeInTheDocument();
+    expect(screen.getByText("Specialist")).toBeInTheDocument();
     expect(screen.getByText("Outcome")).toBeInTheDocument();
     expect(screen.getByText("Target")).toBeInTheDocument();
     expect(screen.getByText("Duration")).toBeInTheDocument();

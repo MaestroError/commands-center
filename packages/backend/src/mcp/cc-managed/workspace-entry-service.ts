@@ -1,5 +1,5 @@
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
-import type { AgentCapabilitySelection } from "../../schemas/agents.js";
+import type { SpecialistCapabilitySelection } from "../../schemas/specialists.js";
 import type { CcManagedMcpTokenContextMode } from "./auth-token-service.js";
 import type { CcManagedMcpAuthTokenService } from "./auth-token-service.js";
 import { listCcManagedMcpServers, type CcManagedMcpServerDefinition } from "./server-registry.js";
@@ -18,7 +18,10 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
   registry: readonly CcManagedMcpServerDefinition[];
 }) {
   return {
-    async buildEntries(agent: { slug: string; capabilities: AgentCapabilitySelection }): Promise<
+    async buildEntries(agent: {
+      slug: string;
+      capabilities: SpecialistCapabilitySelection;
+    }): Promise<
       Record<
         string,
         {
@@ -36,7 +39,7 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
 
     async buildEntriesWithOverrides(agent: {
       slug: string;
-      capabilities: AgentCapabilitySelection;
+      capabilities: SpecialistCapabilitySelection;
       enabledServerNames?: readonly string[];
       contextMode?: CcManagedMcpTokenContextMode;
     }): Promise<

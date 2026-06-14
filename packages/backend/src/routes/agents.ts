@@ -14,7 +14,10 @@ import {
   opencodeTextSearchResultSchema,
 } from "@cc/shared/schemas";
 
-import { createAgentInputSchema, updateAgentInputSchema } from "../schemas/agents.js";
+import {
+  createSpecialistInputSchema,
+  updateSpecialistInputSchema,
+} from "../schemas/specialists.js";
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
@@ -67,7 +70,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
     const agent = await service.get(id);
 
     if (!agent) {
-      throw new NotFoundError("Agent not found.");
+      throw new NotFoundError("Specialist not found.");
     }
 
     return agent;
@@ -96,7 +99,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
       const agent = await service.get(request.params.id);
 
       if (!agent) {
-        throw new NotFoundError("Agent not found.");
+        throw new NotFoundError("Specialist not found.");
       }
 
       return agent;
@@ -114,7 +117,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
       const agent = await service.getBySlug(request.params.slug);
 
       if (!agent) {
-        throw new NotFoundError("Agent not found.");
+        throw new NotFoundError("Specialist not found.");
       }
 
       return agent;
@@ -125,7 +128,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
     "/api/agents",
     {
       schema: {
-        body: createAgentInputSchema,
+        body: createSpecialistInputSchema,
       },
     },
     async (request, reply) => {
@@ -139,14 +142,14 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
     {
       schema: {
         params: agentIdParamsSchema,
-        body: updateAgentInputSchema,
+        body: updateSpecialistInputSchema,
       },
     },
     async (request) => {
       const agent = await service.update(request.params.id, request.body);
 
       if (!agent) {
-        throw new NotFoundError("Agent not found.");
+        throw new NotFoundError("Specialist not found.");
       }
 
       return agent;
@@ -164,7 +167,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
       const agent = await service.archive(request.params.id);
 
       if (!agent) {
-        throw new NotFoundError("Agent not found.");
+        throw new NotFoundError("Specialist not found.");
       }
 
       return agent;
@@ -235,7 +238,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
       const target = tools.find((tool) => tool.slug === request.params.slug);
 
       if (!target) {
-        throw new NotFoundError("Agent custom tool not found.");
+        throw new NotFoundError("Specialist custom tool not found.");
       }
 
       if (agent.capabilities.customTools.includes(target.slug)) {
@@ -248,7 +251,7 @@ export function registerAgentRoutes(server: AppServer, context: RuntimeContext):
         });
 
         if (!updated) {
-          throw new NotFoundError("Agent not found.");
+          throw new NotFoundError("Specialist not found.");
         }
       } else {
         await customToolService.removeAgentTool({

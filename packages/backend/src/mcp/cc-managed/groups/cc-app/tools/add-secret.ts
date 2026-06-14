@@ -64,7 +64,7 @@ export function createAddSecretDefinition(options: {
         });
 
         if (!agent) {
-          throw new Error(`Agent '${context.agentSlug}' not found.`);
+          throw new Error(`Specialist '${context.agentSlug}' not found.`);
         }
 
         const snapshot = await conversationService.resolveCurrent(agent.id);

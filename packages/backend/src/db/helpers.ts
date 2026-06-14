@@ -156,7 +156,7 @@ export const settingsReconciler: WorkspaceReconciler = {
 };
 
 // ---------------------------------------------------------------------------
-// Agent helpers (unchanged)
+// Specialist helpers (unchanged)
 // ---------------------------------------------------------------------------
 
 export async function createAgentRecord(

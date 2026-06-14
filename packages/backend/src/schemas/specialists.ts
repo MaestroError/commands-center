@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const permissionActionSchema = z.enum(["allow", "ask", "deny"]);
-export const agentMcpOverrideSchema = z.enum(["none", "allow", "ask", "disabled"]);
+export const specialistMcpOverrideSchema = z.enum(["none", "allow", "ask", "disabled"]);
 export const appMcpToolContextSchema = z.enum(["chat", "task_run", "both"]);
 
 export const builtInSkillSchema = z.object({
@@ -19,7 +19,7 @@ export const builtInSkillSchema = z.object({
 
 export const workspaceSkillSchema = builtInSkillSchema;
 
-export const agentCatalogSchema = z.object({
+export const specialistCatalogSchema = z.object({
   builtInSkills: z.array(builtInSkillSchema),
   workspaceSkills: z.array(workspaceSkillSchema),
   providerModels: z.array(
@@ -60,57 +60,57 @@ export const agentCatalogSchema = z.object({
   ),
 });
 
-export const agentPermissionRuleSchema = z.object({
+export const specialistPermissionRuleSchema = z.object({
   pattern: z.string().min(1),
   action: permissionActionSchema,
 });
 
-export const agentMcpServerSchema = z.object({
+export const specialistMcpServerSchema = z.object({
   name: z.string().min(1),
   enabled: z.boolean().default(true),
   action: permissionActionSchema,
 });
 
-export const agentAppMcpServerSchema = z.object({
+export const specialistAppMcpServerSchema = z.object({
   name: z.string().min(1),
   enabled: z.boolean().default(true),
   action: permissionActionSchema,
 });
 
-export const agentCapabilitySelectionSchema = z.object({
+export const specialistCapabilitySelectionSchema = z.object({
   builtInSkills: z.array(z.string().min(1)).default([]),
   workspaceSkills: z.array(z.string().min(1)).default([]),
   customTools: z.array(z.string().min(1)).default([]),
-  mcpServers: z.array(agentMcpServerSchema).default([]),
-  toolPermissions: z.array(agentPermissionRuleSchema).default([]),
-  appMcpServers: z.array(agentAppMcpServerSchema).default([]),
-  appToolPermissions: z.array(agentPermissionRuleSchema).default([]),
+  mcpServers: z.array(specialistMcpServerSchema).default([]),
+  toolPermissions: z.array(specialistPermissionRuleSchema).default([]),
+  appMcpServers: z.array(specialistAppMcpServerSchema).default([]),
+  appToolPermissions: z.array(specialistPermissionRuleSchema).default([]),
 });
 
-export const createAgentInputSchema = z.object({
+export const createSpecialistInputSchema = z.object({
   name: z.string().trim().min(1),
   role: z.string().trim().min(1),
   instructions: z.string().trim().min(1),
   defaultModel: z.string().trim().min(1),
   iconPath: z.string().trim().min(1).optional(),
   customToolOverwriteSlugs: z.array(z.string().min(1)).default([]),
-  capabilities: agentCapabilitySelectionSchema,
+  capabilities: specialistCapabilitySelectionSchema,
 });
 
-export const updateAgentInputSchema = createAgentInputSchema.partial().extend({
+export const updateSpecialistInputSchema = createSpecialistInputSchema.partial().extend({
   name: z.string().trim().min(1).optional(),
   role: z.string().trim().min(1).optional(),
   instructions: z.string().trim().min(1).optional(),
   defaultModel: z.string().trim().min(1).optional(),
-  capabilities: agentCapabilitySelectionSchema.optional(),
+  capabilities: specialistCapabilitySelectionSchema.optional(),
   // When false (default), AGENTS.md is preserved on update so hand-edited rules
   // survive. opencode.jsonc and skills always re-render from capabilities.
   rewriteAgentsMd: z.boolean().default(false),
 });
 
-export const agentStatusSchema = z.enum(["active", "archived"]);
+export const specialistStatusSchema = z.enum(["active", "archived"]);
 
-export const agentSchema = z.object({
+export const specialistSchema = z.object({
   id: z.string().min(1),
   slug: z.string().min(1),
   name: z.string().min(1),
@@ -119,8 +119,8 @@ export const agentSchema = z.object({
   defaultModel: z.string().min(1),
   iconPath: z.string().min(1).optional(),
   workspacePath: z.string().min(1),
-  status: agentStatusSchema,
-  capabilities: agentCapabilitySelectionSchema,
+  status: specialistStatusSchema,
+  capabilities: specialistCapabilitySelectionSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   archivedAt: z.string().datetime().optional(),
@@ -128,18 +128,12 @@ export const agentSchema = z.object({
 
 export const builtInSkillListSchema = z.array(builtInSkillSchema);
 export const workspaceSkillListSchema = z.array(workspaceSkillSchema);
-export const agentListSchema = z.array(agentSchema);
 
-export type Agent = z.infer<typeof agentSchema>;
-export type AgentCatalog = z.infer<typeof agentCatalogSchema>;
-export type AppMcpToolContext = z.infer<typeof appMcpToolContextSchema>;
-export type AgentMcpOverride = z.infer<typeof agentMcpOverrideSchema>;
-export type AgentCapabilitySelection = z.input<typeof agentCapabilitySelectionSchema>;
-export type AgentPermissionRule = z.infer<typeof agentPermissionRuleSchema>;
-export type AgentMcpServer = z.infer<typeof agentMcpServerSchema>;
-export type AgentAppMcpServer = z.infer<typeof agentAppMcpServerSchema>;
-export type AgentStatus = z.infer<typeof agentStatusSchema>;
-export type CreateAgentInput = z.input<typeof createAgentInputSchema>;
-export type UpdateAgentInput = z.input<typeof updateAgentInputSchema>;
+export type Specialist = z.infer<typeof specialistSchema>;
+export type SpecialistCatalog = z.infer<typeof specialistCatalogSchema>;
+export type SpecialistMcpOverride = z.infer<typeof specialistMcpOverrideSchema>;
+export type SpecialistCapabilitySelection = z.input<typeof specialistCapabilitySelectionSchema>;
 export type BuiltInSkill = z.infer<typeof builtInSkillSchema>;
 export type WorkspaceSkill = z.infer<typeof workspaceSkillSchema>;
+export type CreateSpecialistInput = z.input<typeof createSpecialistInputSchema>;
+export type UpdateSpecialistInput = z.input<typeof updateSpecialistInputSchema>;

@@ -4,12 +4,12 @@ import {
   archiveAgent,
   createAgent,
   getAgentBySlug,
-  getAgentCatalog,
+  getSpecialistCatalog,
   listAgents,
   updateAgent,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import type { Agent, CreateAgentInput, UpdateAgentInput } from "@cc/shared/schemas";
+import type { Specialist, CreateSpecialistInput, UpdateSpecialistInput } from "@cc/shared/schemas";
 
 export function useAgentsQuery() {
   return useQuery({
@@ -26,18 +26,18 @@ export function useAgentQuery(slug?: string) {
   });
 }
 
-export function useAgentCatalogQuery() {
+export function useSpecialistCatalogQuery() {
   return useQuery({
     queryKey: queryKeys.agentCatalog,
-    queryFn: () => getAgentCatalog(),
+    queryFn: () => getSpecialistCatalog(),
   });
 }
 
 export function useAgentMutations() {
   const queryClient = useQueryClient();
 
-  const updateAgentsList = (updater: (agents: Agent[]) => Agent[]) => {
-    queryClient.setQueryData(queryKeys.agents, (current: Agent[] | undefined) =>
+  const updateAgentsList = (updater: (agents: Specialist[]) => Specialist[]) => {
+    queryClient.setQueryData(queryKeys.agents, (current: Specialist[] | undefined) =>
       updater(current ?? []),
     );
   };
@@ -53,7 +53,7 @@ export function useAgentMutations() {
 
   return {
     create: useMutation({
-      mutationFn: (input: CreateAgentInput) => createAgent(input),
+      mutationFn: (input: CreateSpecialistInput) => createAgent(input),
       onSuccess: async (agent) => {
         updateAgentsList((current) => [agent, ...current.filter((entry) => entry.id !== agent.id)]);
         await invalidateAgents();
@@ -61,7 +61,7 @@ export function useAgentMutations() {
       },
     }),
     update: useMutation({
-      mutationFn: ({ id, input }: { id: string; input: UpdateAgentInput }) =>
+      mutationFn: ({ id, input }: { id: string; input: UpdateSpecialistInput }) =>
         updateAgent(id, input),
       onSuccess: async (agent) => {
         updateAgentsList((current) =>

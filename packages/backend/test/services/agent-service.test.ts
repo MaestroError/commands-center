@@ -442,7 +442,7 @@ describe("createAgentService", () => {
             appToolPermissions: [],
           },
         }),
-      ).rejects.toThrow("Agent identifier 'testing-agent' is already in use.");
+      ).rejects.toThrow("Specialist identifier 'testing-agent' is already in use.");
     } finally {
       await testDb.cleanup();
     }
@@ -500,7 +500,7 @@ describe("createAgentService", () => {
 
     try {
       const created = await service.create({
-        name: "Testing Agent",
+        name: "Testing Specialist",
         role: "test",
         instructions: "Test workspace paths.",
         defaultModel: "openai/gpt-4.1",
@@ -518,7 +518,7 @@ describe("createAgentService", () => {
       });
 
       expect(updated?.workspacePath).toBe(
-        join(testDb.config.paths.subdirectories.agents, "testing-agent"),
+        join(testDb.config.paths.subdirectories.agents, "testing-specialist"),
       );
       await expect(readFile(join(updated!.workspacePath, "AGENTS.md"), "utf8")).resolves.toContain(
         "Still works with CC_WORKSPACE_DIR.",

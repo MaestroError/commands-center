@@ -12,7 +12,7 @@ function makeRequest(overrides: Partial<LiveRequest> = {}): LiveRequest {
     kind: "custom-tool",
     presentation: {
       title: "Approve request",
-      description: "Agent needs input",
+      description: "Specialist needs input",
       submitLabel: "Submit",
       cancelLabel: "Cancel",
     },

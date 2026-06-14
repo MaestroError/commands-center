@@ -19,7 +19,10 @@ import {
   type SendConversationPromptInput,
   type SendConversationShellInput,
 } from "../schemas/conversations.js";
-import { agentCapabilitySelectionSchema, type ConversationMessageError } from "@cc/shared/schemas";
+import {
+  specialistCapabilitySelectionSchema,
+  type ConversationMessageError,
+} from "@cc/shared/schemas";
 
 import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
@@ -445,7 +448,7 @@ export function createConversationService(options: {
     });
 
     if (!agent || agent.status !== "active") {
-      throw new NotFoundError("Agent not found.");
+      throw new NotFoundError("Specialist not found.");
     }
 
     return withResolvedWorkspacePath(agent);
@@ -761,7 +764,9 @@ export function createConversationService(options: {
       return;
     }
 
-    const capabilities = agentCapabilitySelectionSchema.parse(JSON.parse(agent.capabilities_json));
+    const capabilities = specialistCapabilitySelectionSchema.parse(
+      JSON.parse(agent.capabilities_json),
+    );
     const appMcpEntries = await appMcpWorkspaceEntryService.buildEntriesWithOverrides({
       slug: agent.slug,
       capabilities,

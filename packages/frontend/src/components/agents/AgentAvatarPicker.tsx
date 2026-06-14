@@ -18,7 +18,7 @@ export function AgentAvatarPicker(props: AgentAvatarPickerProps) {
   return (
     <div className={props.dense ? "grid gap-4" : "grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)]"}>
       <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-surface p-4">
-        <AgentAvatar iconPath={props.value} name={props.name || "Agent"} size="xl" />
+        <AgentAvatar iconPath={props.value} name={props.name || "Specialist"} size="xl" />
         <p className="text-xs text-text-secondary">Preview</p>
       </div>
 

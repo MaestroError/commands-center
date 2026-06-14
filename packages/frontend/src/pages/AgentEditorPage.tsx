@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import type { CreateAgentInput, UpdateAgentInput } from "@cc/shared/schemas";
+import type { CreateSpecialistInput, UpdateSpecialistInput } from "@cc/shared/schemas";
 
 import { AgentForm } from "@/components/agents/AgentForm";
 import {
@@ -17,7 +17,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageSt
 import { PageHeader } from "@/components/common/PageHeader";
 import { useAgentCustomToolsQuery } from "@/hooks/use-custom-tools-query";
 import {
-  useAgentCatalogQuery,
+  useSpecialistCatalogQuery,
   useAgentMutations,
   useAgentQuery,
   useAgentsQuery,
@@ -35,7 +35,7 @@ type AppliedAgentSnapshot = {
 export function AgentEditorPage(props: AgentEditorPageProps) {
   const params = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const catalogQuery = useAgentCatalogQuery();
+  const catalogQuery = useSpecialistCatalogQuery();
   const agentsQuery = useAgentsQuery();
   const agentQuery = useAgentQuery(props.mode === "edit" ? params.slug : undefined);
   const agentMutations = useAgentMutations();
@@ -105,15 +105,15 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
           ) : undefined
         }
         description="Create a new agent or update an existing one using the same reusable workflow and workspace-backed configuration."
-        eyebrow={props.mode === "create" ? "Create Agent" : "Edit Agent"}
+        eyebrow={props.mode === "create" ? "Create Specialist" : "Edit Specialist"}
         title={props.mode === "create" ? "Create agent" : (agent?.name ?? "Edit agent")}
       />
 
       {catalogError ? (
-        <ErrorState description={catalogError} title="Agent catalog could not be loaded." />
+        <ErrorState description={catalogError} title="Specialist catalog could not be loaded." />
       ) : null}
       {agentError ? (
-        <ErrorState description={agentError} title="Agent details could not be loaded." />
+        <ErrorState description={agentError} title="Specialist details could not be loaded." />
       ) : null}
       {catalogQuery.isLoading || (props.mode === "edit" && agentQuery.isLoading) ? (
         <LoadingState />
@@ -126,7 +126,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
       !agentQuery.isLoading ? (
         <EmptyState
           description="The requested agent slug no longer exists."
-          title="Agent not found"
+          title="Specialist not found"
         />
       ) : null}
 
@@ -193,7 +193,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
       return;
     }
 
-    const payload: UpdateAgentInput = {
+    const payload: UpdateSpecialistInput = {
       name: form.name.trim(),
       role: form.role.trim(),
       instructions: form.instructions.trim(),
@@ -206,7 +206,7 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
 
     try {
       if (props.mode === "create") {
-        await agentMutations.create.mutateAsync(payload as CreateAgentInput);
+        await agentMutations.create.mutateAsync(payload as CreateSpecialistInput);
         void navigate("/agents", { replace: true });
         return;
       }
@@ -226,5 +226,5 @@ export function AgentEditorPage(props: AgentEditorPageProps) {
 function readError(error: unknown): string {
   return error instanceof Error && error.message
     ? error.message
-    : "Agent editor could not be loaded.";
+    : "Specialist editor could not be loaded.";
 }

@@ -20,7 +20,7 @@ import {
 import { useAgentQuery } from "@/hooks/use-agents-query";
 import { queryKeys } from "@/lib/query-keys";
 import type {
-  Agent,
+  Specialist,
   ChatEvent,
   ConversationDetail,
   ConversationMessage,
@@ -338,7 +338,7 @@ function applySseEvent(state: ConversationState, event: ChatEvent): Conversation
 export type UseConversationReturn = {
   status: "loading" | "ready" | "error";
   error: string | null;
-  agent: Agent | null;
+  agent: Specialist | null;
   agentStatus: "idle" | "busy" | "retry";
   sessionStatus: SessionStatus;
   sendError: string | null;

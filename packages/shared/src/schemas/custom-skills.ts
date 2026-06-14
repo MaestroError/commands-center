@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { fileManagerUploadEntryInputSchema } from "./file-manager.js";
-import { workspaceSkillSchema } from "./agents.js";
+import { workspaceSkillSchema } from "./specialists.js";
 
 export const createWorkspaceSkillInputSchema = z.object({
   name: z.string().trim().min(1),

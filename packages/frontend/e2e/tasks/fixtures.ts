@@ -1,6 +1,6 @@
 import type {
-  Agent,
-  AgentCatalog,
+  Specialist,
+  SpecialistCatalog,
   Task,
   TaskFeedbackThread,
   TaskRun,
@@ -20,8 +20,8 @@ export { expect, test, type Page, type Route };
  * follow-up reads (after react-query invalidation) reflect the change.
  */
 export type TaskState = {
-  agents: Agent[];
-  catalog: AgentCatalog;
+  agents: Specialist[];
+  catalog: SpecialistCatalog;
   tasks: Task[];
   archivedTasks: Task[];
   templates: TaskTemplate[];
@@ -35,7 +35,7 @@ export type TaskState = {
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
-const plannerAgent: Agent = {
+const plannerAgent: Specialist = {
   id: "agent-1",
   slug: "planner",
   name: "Planner",
@@ -57,7 +57,7 @@ const plannerAgent: Agent = {
   updatedAt: NOW,
 };
 
-const reviewerAgent: Agent = {
+const reviewerAgent: Specialist = {
   ...plannerAgent,
   id: "agent-2",
   slug: "reviewer",
@@ -65,7 +65,7 @@ const reviewerAgent: Agent = {
   workspacePath: "/tmp/reviewer",
 };
 
-const catalog: AgentCatalog = {
+const catalog: SpecialistCatalog = {
   builtInSkills: [
     {
       name: "Code reviewer",

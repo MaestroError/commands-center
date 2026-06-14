@@ -12,9 +12,9 @@ import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { WorkspaceReconciler } from "../lib/workspace-reconciler.js";
 import { parseRulesMarkdown } from "../opencode/workspace-contract.js";
 import {
-  agentCapabilitySelectionSchema,
-  type AgentCapabilitySelection,
-} from "../schemas/agents.js";
+  specialistCapabilitySelectionSchema,
+  type SpecialistCapabilitySelection,
+} from "../schemas/specialists.js";
 
 // Placeholder model for hand-dropped folders that carry no model hint. Non-empty
 // so the agent row satisfies the schema; the owner is expected to set a real one.
@@ -22,7 +22,7 @@ const IMPORTED_AGENT_DEFAULT_MODEL = "unconfigured/model";
 const IMPORTED_AGENT_DEFAULT_ROLE = "Imported agent";
 const IMPORTED_AGENT_DEFAULT_INSTRUCTIONS = "Imported agent. Configure role and instructions.";
 
-type AgentStatus = "active" | "archived";
+type SpecialistStatus = "active" | "archived";
 
 // ---------------------------------------------------------------------------
 // agent.json file schema  (agents/<slug>/agent.json)
@@ -36,33 +36,37 @@ export const agentFileSchema = z.object({
   instructions: z.string().min(1),
   defaultModel: z.string().min(1),
   iconPath: z.string().min(1).optional(),
-  capabilities: agentCapabilitySelectionSchema,
+  capabilities: specialistCapabilitySelectionSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
 export type AgentFileContent = z.infer<typeof agentFileSchema>;
 
-function agentsRoot(config: RuntimeConfig, status: AgentStatus): string {
+function agentsRoot(config: RuntimeConfig, status: SpecialistStatus): string {
   return status === "archived"
     ? join(config.paths.subdirectories.agents, ".archived")
     : config.paths.subdirectories.agents;
 }
 
-export function agentFilePath(config: RuntimeConfig, slug: string, status: AgentStatus): string {
+export function agentFilePath(
+  config: RuntimeConfig,
+  slug: string,
+  status: SpecialistStatus,
+): string {
   return join(agentsRoot(config, status), slug, "agent.json");
 }
 
 // Accept the input shape for capabilities (optional arrays) since callers pass
 // the not-yet-defaulted selection; the schema fills defaults on read.
 export type AgentFileInput = Omit<AgentFileContent, "version" | "capabilities"> & {
-  capabilities: AgentCapabilitySelection;
+  capabilities: SpecialistCapabilitySelection;
 };
 
 export async function writeAgentFile(
   config: RuntimeConfig,
   slug: string,
-  status: AgentStatus,
+  status: SpecialistStatus,
   content: AgentFileInput,
 ): Promise<void> {
   await writeConfigFileAtomic(agentFilePath(config, slug, status), { version: 1, ...content });
@@ -72,7 +76,7 @@ export async function writeAgentFile(
 // Boot reconciler — folder = truth, agents row = derived cache
 // ---------------------------------------------------------------------------
 
-type DiscoveredAgent = AgentFileContent & { slug: string; status: AgentStatus };
+type DiscoveredAgent = AgentFileContent & { slug: string; status: SpecialistStatus };
 
 export const agentReconciler: WorkspaceReconciler = {
   name: "agents",
@@ -129,7 +133,7 @@ export const agentReconciler: WorkspaceReconciler = {
 
 async function scanRoot(
   config: RuntimeConfig,
-  status: AgentStatus,
+  status: SpecialistStatus,
   logger: Logger,
 ): Promise<DiscoveredAgent[]> {
   const root = agentsRoot(config, status);
@@ -154,7 +158,7 @@ async function scanRoot(
 async function resolveAgentIdentity(
   config: RuntimeConfig,
   slug: string,
-  status: AgentStatus,
+  status: SpecialistStatus,
   logger: Logger,
 ): Promise<DiscoveredAgent | undefined> {
   // 1. CC-native: agent.json present and valid.
@@ -175,7 +179,7 @@ async function resolveAgentIdentity(
     role: inferred.role,
     instructions: inferred.instructions,
     defaultModel: inferred.defaultModel,
-    capabilities: agentCapabilitySelectionSchema.parse({}),
+    capabilities: specialistCapabilitySelectionSchema.parse({}),
     createdAt: timestamp,
     updatedAt: timestamp,
   };

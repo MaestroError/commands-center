@@ -130,7 +130,7 @@ async function requireCallingAgentId(db: AppDb, agentSlug: string): Promise<stri
   });
 
   if (!row) {
-    throw new Error(`Agent '${agentSlug}' not found.`);
+    throw new Error(`Specialist '${agentSlug}' not found.`);
   }
 
   return row.id;

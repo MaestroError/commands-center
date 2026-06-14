@@ -18,7 +18,7 @@ import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
 import { useChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useConversation } from "@/hooks/use-conversation";
-import { useAgentCatalogQuery } from "@/hooks/use-agents-query";
+import { useSpecialistCatalogQuery } from "@/hooks/use-agents-query";
 import { resolveAgentWorkspacePath } from "@/lib/agent-workspace-path";
 import { recordRecentAgent } from "@/lib/recent-agents";
 import {
@@ -43,7 +43,7 @@ export function WorkspaceChatPage() {
   }>();
   const navigate = useNavigate();
   const conv = useConversation(agentSlug ?? "", urlConversationId);
-  const { data: catalog } = useAgentCatalogQuery();
+  const { data: catalog } = useSpecialistCatalogQuery();
   const isDesktop = useMediaQuery("(min-width: 1200px)");
   const inspection = useChatInspectionTabs(conv.conversation?.id);
   const resolveLiveRequest = conv.resolveLiveRequest;
@@ -278,7 +278,7 @@ export function WorkspaceChatPage() {
             <ChatHeader
               agentId={conv.agent?.id ?? ""}
               agentIconPath={conv.agent?.iconPath}
-              agentName={conv.agent?.name ?? agentSlug ?? "Agent"}
+              agentName={conv.agent?.name ?? agentSlug ?? "Specialist"}
               agentRole={conv.agent?.role ?? ""}
               currentConversationId={conv.conversation.id}
               onStartFresh={conv.startFresh}

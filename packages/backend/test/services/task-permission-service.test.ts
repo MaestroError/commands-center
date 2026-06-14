@@ -153,7 +153,7 @@ async function insertAgent(
     .values({
       id,
       slug: id,
-      name: "Task Agent",
+      name: "Task Specialist",
       role: "help with tasks",
       instructions: "Be useful.",
       default_model: "openai/gpt-4.1",

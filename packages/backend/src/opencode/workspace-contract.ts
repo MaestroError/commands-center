@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 
 import { z } from "zod";
 
-import type { AgentCapabilitySelection, BuiltInSkill } from "../schemas/agents.js";
+import type { SpecialistCapabilitySelection, BuiltInSkill } from "../schemas/specialists.js";
 
 const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -95,7 +95,7 @@ export type OpenCodeWorkspaceInput = {
   role: string;
   instructions: string;
   defaultModel: string;
-  capabilities: AgentCapabilitySelection;
+  capabilities: SpecialistCapabilitySelection;
   appMcpEntries?: Record<string, z.infer<typeof workspaceRemoteMcpSchema>>;
 };
 

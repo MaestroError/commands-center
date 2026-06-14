@@ -1,12 +1,16 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
-import type { Agent, BuiltInSkill } from "@cc/shared/schemas";
+import type { Specialist, BuiltInSkill } from "@cc/shared/schemas";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
-import { useAgentCatalogQuery, useAgentMutations, useAgentsQuery } from "@/hooks/use-agents-query";
+import {
+  useSpecialistCatalogQuery,
+  useAgentMutations,
+  useAgentsQuery,
+} from "@/hooks/use-agents-query";
 import { useWorkspaceSkillMutations } from "@/hooks/use-workspace-skills-query";
 import { normalizeUploadableFiles, toFileManagerUploadEntries } from "@/lib/file-transfer";
 import { WorkspaceSkillUploadRenameError } from "@/lib/api";
@@ -27,7 +31,7 @@ type UploadRenameDialogState = {
 
 export function BuiltInSkillsPage() {
   const [searchParams] = useSearchParams();
-  const catalogQuery = useAgentCatalogQuery();
+  const catalogQuery = useSpecialistCatalogQuery();
   const agentsQuery = useAgentsQuery();
   const agentMutations = useAgentMutations();
   const workspaceSkillMutations = useWorkspaceSkillMutations();
@@ -493,7 +497,7 @@ export function BuiltInSkillsPage() {
     }
   }
 
-  async function handleAssignSkill(entry: SkillEntry, agent?: Agent) {
+  async function handleAssignSkill(entry: SkillEntry, agent?: Specialist) {
     if (!agent) {
       return;
     }
@@ -542,7 +546,7 @@ export function BuiltInSkillsPage() {
     }
   }
 
-  async function handleRemoveSkill(entry: SkillEntry, agent?: Agent) {
+  async function handleRemoveSkill(entry: SkillEntry, agent?: Specialist) {
     if (!agent) {
       return;
     }
@@ -652,8 +656,8 @@ function SkillDetail(props: { entry: SkillEntry }) {
 
 function SkillActions(props: {
   entry: SkillEntry;
-  agents: Agent[];
-  agent?: Agent;
+  agents: Specialist[];
+  agent?: Specialist;
   selectedAgentId?: string;
   actionBusy: boolean;
   categoryDraft: string;
@@ -673,7 +677,7 @@ function SkillActions(props: {
 
   return (
     <div className="grid gap-3 rounded-lg border border-border bg-surface p-4">
-      <p className="font-medium text-text-primary">Agent assignment</p>
+      <p className="font-medium text-text-primary">Specialist assignment</p>
       <select
         className="cc-input"
         onChange={(event) => props.onSelectAgent(event.target.value || undefined)}

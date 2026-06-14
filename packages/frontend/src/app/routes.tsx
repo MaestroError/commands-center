@@ -58,12 +58,12 @@ export const appRoutes = [
   },
   {
     path: "/agents/new",
-    title: "Create Agent",
+    title: "Create Specialist",
     element: <AgentEditorPage mode="create" />,
   },
   {
     path: "/agents/:slug/edit",
-    title: "Edit Agent",
+    title: "Edit Specialist",
     element: <AgentEditorPage mode="edit" />,
   },
   {

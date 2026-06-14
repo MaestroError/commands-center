@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import type { Logger } from "pino";
 
-import { agentCapabilitySelectionSchema } from "../../schemas/agents.js";
+import { specialistCapabilitySelectionSchema } from "../../schemas/specialists.js";
 import type { AppDb } from "../../db/client.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { OpenCodeService } from "../../services/opencode-service.js";
@@ -49,7 +49,7 @@ export async function syncCcManagedMcpAgentWorkspaces(options: {
       slug: row.slug,
       status: row.status === "archived" ? "archived" : "active",
     });
-    const nextCapabilities = agentCapabilitySelectionSchema.parse(
+    const nextCapabilities = specialistCapabilitySelectionSchema.parse(
       JSON.parse(row.capabilities_json),
     );
     const nextEntries = await workspaceEntryService.buildEntries({

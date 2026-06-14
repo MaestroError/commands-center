@@ -1,5 +1,5 @@
 import {
-  agentCatalogSchema,
+  specialistCatalogSchema,
   apiTokenListResponseSchema,
   cancelTaskRunInputSchema,
   copyCustomToolToAgentsInputSchema,
@@ -10,13 +10,13 @@ import {
   customToolListSchema,
   customToolMutationResultSchema,
   createWorkspaceSkillInputSchema,
-  agentListSchema,
-  agentSchema,
+  specialistListSchema,
+  specialistSchema,
   chatEventSchema,
   conversationDetailSchema,
   conversationListSchema,
   conversationSnapshotSchema,
-  createAgentInputSchema,
+  createSpecialistInputSchema,
   createApiTokenInputSchema,
   createApiTokenResponseSchema,
   createCustomToolInputSchema,
@@ -106,8 +106,8 @@ import {
   workspaceSkillUploadInputSchema,
   uploadTaskContextAttachmentInputSchema,
   uploadTaskContextAttachmentResponseSchema,
-  type Agent,
-  type AgentCatalog,
+  type Specialist,
+  type SpecialistCatalog,
   type ApiTokenListResponse,
   type ApiTokenScope,
   type CancelTaskRunInput,
@@ -118,7 +118,7 @@ import {
   type CustomToolMutationResult,
   type CreateWorkspaceSkillInput,
   type ChatEvent,
-  type CreateAgentInput,
+  type CreateSpecialistInput,
   type CreateApiTokenResponse,
   type CreateMcpServerInput,
   type CreateTaskFeedbackInput,
@@ -190,7 +190,7 @@ import {
   type TerminalCreateInput,
   type TerminalSession,
   type TerminalResizeInput,
-  type UpdateAgentInput,
+  type UpdateSpecialistInput,
   type UpdateMcpServerInput,
   type UpdateTaskInput,
   type UpdateTaskArtifactSharingPreferencesInput,
@@ -204,7 +204,7 @@ import {
   type WorkspaceSkillUploadInput,
   type UploadTaskContextAttachmentInput,
   type UploadTaskContextAttachmentResponse,
-  updateAgentInputSchema,
+  updateSpecialistInputSchema,
   updateMcpServerInputSchema,
   updateTaskInputSchema,
   updateSystemUpdatePreferencesInputSchema,
@@ -505,8 +505,8 @@ export async function cancelLiveRequest(
   );
 }
 
-export async function listAgents(): Promise<Agent[]> {
-  return requestJson<Agent[]>("/api/agents", agentListSchema);
+export async function listAgents(): Promise<Specialist[]> {
+  return requestJson<Specialist[]>("/api/agents", specialistListSchema);
 }
 
 export async function searchWorkspaceFiles(
@@ -522,12 +522,15 @@ export async function searchWorkspaceFiles(
   );
 }
 
-export async function getAgentBySlug(slug: string): Promise<Agent> {
-  return requestJson<Agent>(`/api/agents/by-slug/${encodeURIComponent(slug)}`, agentSchema);
+export async function getAgentBySlug(slug: string): Promise<Specialist> {
+  return requestJson<Specialist>(
+    `/api/agents/by-slug/${encodeURIComponent(slug)}`,
+    specialistSchema,
+  );
 }
 
-export async function getAgentCatalog(): Promise<AgentCatalog> {
-  return requestJson<AgentCatalog>("/api/agents/catalog", agentCatalogSchema);
+export async function getSpecialistCatalog(): Promise<SpecialistCatalog> {
+  return requestJson<SpecialistCatalog>("/api/agents/catalog", specialistCatalogSchema);
 }
 
 export async function listCustomTools(): Promise<CustomTool[]> {
@@ -712,22 +715,22 @@ export async function deleteAgentCustomTool(agentId: string, slug: string): Prom
   }
 }
 
-export async function createAgent(input: CreateAgentInput): Promise<Agent> {
-  return requestJson<Agent>("/api/agents", agentSchema, {
+export async function createAgent(input: CreateSpecialistInput): Promise<Specialist> {
+  return requestJson<Specialist>("/api/agents", specialistSchema, {
     method: "POST",
-    body: createAgentInputSchema.parse(input),
+    body: createSpecialistInputSchema.parse(input),
   });
 }
 
-export async function updateAgent(id: string, input: UpdateAgentInput): Promise<Agent> {
-  return requestJson<Agent>(`/api/agents/${encodeURIComponent(id)}`, agentSchema, {
+export async function updateAgent(id: string, input: UpdateSpecialistInput): Promise<Specialist> {
+  return requestJson<Specialist>(`/api/agents/${encodeURIComponent(id)}`, specialistSchema, {
     method: "PATCH",
-    body: updateAgentInputSchema.parse(input),
+    body: updateSpecialistInputSchema.parse(input),
   });
 }
 
-export async function archiveAgent(id: string): Promise<Agent> {
-  return requestJson<Agent>(`/api/agents/${encodeURIComponent(id)}`, agentSchema, {
+export async function archiveAgent(id: string): Promise<Specialist> {
+  return requestJson<Specialist>(`/api/agents/${encodeURIComponent(id)}`, specialistSchema, {
     method: "DELETE",
   });
 }

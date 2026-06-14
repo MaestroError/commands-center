@@ -92,7 +92,7 @@ describe("WorkspaceLayout", () => {
             {
               id: "settings",
               label: "Settings",
-              ariaLabel: "Agent settings",
+              ariaLabel: "Specialist settings",
               iconOnly: true,
               icon: <span>gear</span>,
               content: <div>Settings content</div>,
@@ -104,7 +104,7 @@ describe("WorkspaceLayout", () => {
     );
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Agent settings" }));
+    await user.click(screen.getByRole("tab", { name: "Specialist settings" }));
 
     expect(screen.getByText("Settings content")).toBeInTheDocument();
   });

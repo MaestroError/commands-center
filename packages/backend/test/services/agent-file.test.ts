@@ -202,7 +202,7 @@ describe("agentReconciler", () => {
       await mkdir(dir, { recursive: true });
       await writeFile(
         join(dir, "AGENTS.md"),
-        "# Dropped Agent\n\n- Role: helper\n\n## Instructions\n\nBe helpful.\n",
+        "# Dropped Specialist\n\n- Role: helper\n\n## Instructions\n\nBe helpful.\n",
         "utf8",
       );
       await writeFile(
@@ -214,7 +214,7 @@ describe("agentReconciler", () => {
       await agentReconciler.reconcile({ config: testDb.config, db: testDb.client.db, logger });
 
       const agent = await service.getBySlug("dropped");
-      expect(agent?.name).toBe("Dropped Agent");
+      expect(agent?.name).toBe("Dropped Specialist");
       expect(agent?.role).toBe("helper");
       expect(agent?.instructions).toContain("Be helpful.");
       expect(agent?.defaultModel).toBe("openai/gpt-4.1");
@@ -241,7 +241,7 @@ describe("agentReconciler", () => {
       expect(agent?.name).toBe("scratch");
       expect(agent?.role.length).toBeGreaterThan(0);
       expect(agent?.defaultModel.length).toBeGreaterThan(0);
-      // mapAgent (agentSchema) did not throw — listing works.
+      // mapAgent (specialistSchema) did not throw — listing works.
       expect(await service.list()).toHaveLength(1);
     } finally {
       await testDb.cleanup();

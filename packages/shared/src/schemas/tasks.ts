@@ -1,11 +1,11 @@
 import { z } from "zod";
 
 import {
-  agentAppMcpServerSchema,
-  agentMcpServerSchema,
-  agentPermissionRuleSchema,
+  specialistAppMcpServerSchema,
+  specialistMcpServerSchema,
+  specialistPermissionRuleSchema,
   permissionActionSchema,
-} from "./agents.js";
+} from "./specialists.js";
 import { conversationDetailSchema } from "./conversations.js";
 
 const looseRecordSchema = z.record(z.string(), z.unknown());
@@ -158,10 +158,10 @@ const nullableDateTimeSchema = z.union([z.string().datetime(), z.null()]);
 
 export const taskPermissionProfileSchema = z.object({
   customTools: z.array(z.string().min(1)).optional(),
-  mcpServers: z.array(agentMcpServerSchema).optional(),
-  appMcpServers: z.array(agentAppMcpServerSchema).optional(),
-  toolPermissions: z.array(agentPermissionRuleSchema).optional(),
-  appToolPermissions: z.array(agentPermissionRuleSchema).optional(),
+  mcpServers: z.array(specialistMcpServerSchema).optional(),
+  appMcpServers: z.array(specialistAppMcpServerSchema).optional(),
+  toolPermissions: z.array(specialistPermissionRuleSchema).optional(),
+  appToolPermissions: z.array(specialistPermissionRuleSchema).optional(),
   approvalPolicy: z.enum(["inherit", "auto_approve", "deny"]).optional(),
   diagnostics: z
     .array(

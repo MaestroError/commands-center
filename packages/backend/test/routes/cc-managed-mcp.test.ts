@@ -835,7 +835,7 @@ describe("cc-managed MCP routes", () => {
         method: "POST",
         url: "/api/agents",
         payload: {
-          name: "Agent Manager",
+          name: "Specialist Manager",
           role: "manage agents",
           instructions: "Maintain agent workspaces.",
           defaultModel: "openai/gpt-4.1",
@@ -989,7 +989,7 @@ describe("cc-managed MCP routes", () => {
         {
           name: "create_agent",
           arguments: {
-            name: "Task Spawned Agent",
+            name: "Task Spawned Specialist",
             role: "spawned in a task",
             instructions: "Do the work.",
             defaultModel: "openai/gpt-4.1",
@@ -1001,7 +1001,7 @@ describe("cc-managed MCP routes", () => {
 
       expect(createResponse.statusCode).toBe(200);
       expect(parseSseJson(createResponse.body)).toMatchObject({
-        result: { structuredContent: { slug: "task-spawned-agent" } },
+        result: { structuredContent: { slug: "task-spawned-specialist" } },
       });
     } finally {
       await server.close();
@@ -1044,7 +1044,7 @@ describe("cc-managed MCP routes", () => {
         method: "POST",
         url: "/api/agents",
         payload: {
-          name: "Interactive Agent Manager",
+          name: "Interactive Specialist Manager",
           role: "manage agents",
           instructions: "Maintain agent workspaces.",
           defaultModel: "openai/gpt-4.1",
@@ -1219,7 +1219,7 @@ describe("cc-managed MCP routes", () => {
         method: "POST",
         url: "/api/agents",
         payload: {
-          name: "Agent Remover",
+          name: "Specialist Remover",
           role: "remove agents",
           instructions: "Archive agents after confirmation.",
           defaultModel: "openai/gpt-4.1",
@@ -1621,7 +1621,7 @@ async function insertAgentWithTasksManagement(db: AppDb) {
     .values({
       id: "agent-task-management",
       slug: "task-agent",
-      name: "Task Agent",
+      name: "Task Specialist",
       role: "manage tasks",
       instructions: "Manage task lifecycle.",
       default_model: "openai/gpt-4.1",

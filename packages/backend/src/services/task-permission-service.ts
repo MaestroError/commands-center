@@ -1,12 +1,12 @@
 import {
-  agentCapabilitySelectionSchema,
-  type Agent,
-  type AgentCapabilitySelection,
-} from "../schemas/agents.js";
+  specialistCapabilitySelectionSchema,
+  type Specialist,
+  type SpecialistCapabilitySelection,
+} from "../schemas/specialists.js";
 
 import {
   taskPermissionProfileSchema,
-  type AgentPermissionRule,
+  type SpecialistPermissionRule,
   type Task,
   type TaskPermissionProfile,
 } from "@cc/shared/schemas";
@@ -31,7 +31,7 @@ export type EffectiveTaskPermissions = TaskPermissionProfile & {
   diagnostics: TaskPermissionDiagnostic[];
 };
 
-export type OpenCodePermissionRule = AgentPermissionRule & {
+export type OpenCodePermissionRule = SpecialistPermissionRule & {
   permission: string;
 };
 
@@ -77,7 +77,7 @@ export function createTaskPermissionService(options: {
     },
   };
 
-  async function loadAgent(agentId: string): Promise<Agent> {
+  async function loadAgent(agentId: string): Promise<Specialist> {
     const row = await options.db.query.agents.findFirst({
       where: (table, operators) => operators.eq(table.id, agentId),
     });
@@ -96,7 +96,7 @@ export function createTaskPermissionService(options: {
       iconPath: row.icon_path ?? undefined,
       workspacePath: "",
       status: row.status,
-      capabilities: agentCapabilitySelectionSchema.parse(JSON.parse(row.capabilities_json)),
+      capabilities: specialistCapabilitySelectionSchema.parse(JSON.parse(row.capabilities_json)),
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
       archivedAt: row.archived_at?.toISOString(),
@@ -105,7 +105,7 @@ export function createTaskPermissionService(options: {
 }
 
 export function mergeTaskPermissions(
-  agentCapabilities: AgentCapabilitySelection,
+  agentCapabilities: SpecialistCapabilitySelection,
   taskProfile: TaskPermissionProfile | undefined,
 ): TaskPermissionProfile {
   return taskPermissionProfileSchema.parse({
@@ -236,9 +236,9 @@ function filterAppToolsForTaskRun(
 }
 
 function normalizeRulesForTask(
-  rules: AgentPermissionRule[],
+  rules: SpecialistPermissionRule[],
   diagnostics: TaskPermissionDiagnostic[],
-): AgentPermissionRule[] {
+): SpecialistPermissionRule[] {
   return rules.map((rule) => {
     if (rule.action !== "ask") {
       return rule;

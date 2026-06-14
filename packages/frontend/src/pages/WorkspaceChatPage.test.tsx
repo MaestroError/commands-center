@@ -6,7 +6,7 @@ import { WorkspaceChatPage } from "./WorkspaceChatPage";
 
 const navigateMock = vi.fn();
 const useConversationMock = vi.fn();
-const useAgentCatalogQueryMock = vi.fn();
+const useSpecialistCatalogQueryMock = vi.fn();
 const useMediaQueryMock = vi.fn();
 
 let mockParams: { agentId?: string; conversationId?: string } = {};
@@ -21,7 +21,7 @@ vi.mock("@/hooks/use-conversation", () => ({
 }));
 
 vi.mock("@/hooks/use-agents-query", () => ({
-  useAgentCatalogQuery: () => useAgentCatalogQueryMock() as unknown,
+  useSpecialistCatalogQuery: () => useSpecialistCatalogQueryMock() as unknown,
 }));
 
 vi.mock("@/hooks/use-media-query", () => ({
@@ -224,7 +224,7 @@ afterEach(() => {
   mockParams = {};
   navigateMock.mockReset();
   useConversationMock.mockReset();
-  useAgentCatalogQueryMock.mockReset();
+  useSpecialistCatalogQueryMock.mockReset();
   useMediaQueryMock.mockReset();
   window.sessionStorage.clear();
 });
@@ -239,7 +239,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-1", messages: [] } }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -251,7 +251,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-2", messages: [] } }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -263,7 +263,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-1", messages: [] } }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -275,7 +275,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ status: "loading", conversation: null }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     const { container } = render(<WorkspaceChatPage />);
 
@@ -287,7 +287,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ status: "error", error: "Boom", conversation: null }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -309,7 +309,7 @@ describe("WorkspaceChatPage", () => {
         },
       }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -328,7 +328,7 @@ describe("WorkspaceChatPage", () => {
         },
       }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -342,7 +342,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ todos: [{ content: "Task", status: "pending" }] }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     const { rerender } = render(<WorkspaceChatPage />);
 
@@ -368,7 +368,7 @@ describe("WorkspaceChatPage", () => {
         },
       }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -384,7 +384,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-1", messages: [] } }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -401,7 +401,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-1", messages: [] } }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -450,7 +450,7 @@ describe("WorkspaceChatPage", () => {
         },
       }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({
+    useSpecialistCatalogQueryMock.mockReturnValue({
       data: {
         builtInSkills: [{ slug: "review", description: "Review code" }],
         workspaceSkills: [],
@@ -513,7 +513,7 @@ describe("WorkspaceChatPage", () => {
         },
       }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: undefined });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: undefined });
 
     render(<WorkspaceChatPage />);
 
@@ -559,7 +559,9 @@ describe("WorkspaceChatPage", () => {
         },
       }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [], workspaceSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({
+      data: { builtInSkills: [], workspaceSkills: [] },
+    });
 
     render(<WorkspaceChatPage />);
 
@@ -594,7 +596,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-1", messages: [] } }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -621,7 +623,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-1", messages: [] } }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -659,7 +661,7 @@ describe("WorkspaceChatPage", () => {
         ],
       }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -680,7 +682,7 @@ describe("WorkspaceChatPage", () => {
         agent: {
           id: "agent-1",
           slug: "testing-agent",
-          name: "Testing Agent",
+          name: "Testing Specialist",
           role: "Tests work",
           iconPath: undefined,
           workspacePath: "/workspace/testing-agent",
@@ -708,7 +710,7 @@ describe("WorkspaceChatPage", () => {
         ],
       }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -727,7 +729,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-1", messages: [] } }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 
@@ -754,7 +756,7 @@ describe("WorkspaceChatPage", () => {
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-1", messages: [] } }),
     );
-    useAgentCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
 
     render(<WorkspaceChatPage />);
 

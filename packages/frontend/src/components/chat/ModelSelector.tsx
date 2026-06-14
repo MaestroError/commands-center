@@ -69,7 +69,7 @@ export function ModelSelector({
   allowEmptySelection = false,
   placeholder = "Select model",
   allowAgentDefault = false,
-  agentDefaultLabel = "Agent's default",
+  agentDefaultLabel = "Specialist's default",
   placement = "up",
 }: ModelSelectorProps) {
   const { data: providers, isLoading } = useProvidersQuery();

@@ -1,20 +1,20 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import type { Agent } from "@cc/shared/schemas";
+import type { Specialist } from "@cc/shared/schemas";
 
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useAgentMutations, useAgentsQuery } from "@/hooks/use-agents-query";
 
-const EMPTY_AGENTS: Agent[] = [];
+const EMPTY_AGENTS: Specialist[] = [];
 
 export function AgentsPage() {
   const agentsQuery = useAgentsQuery();
   const agentMutations = useAgentMutations();
   const [search, setSearch] = useState("");
-  const [pendingDelete, setPendingDelete] = useState<Agent>();
+  const [pendingDelete, setPendingDelete] = useState<Specialist>();
   const deferredSearch = useDeferredValue(search);
   const agents = agentsQuery.data ?? EMPTY_AGENTS;
   const filteredAgents = useMemo(() => {
@@ -46,7 +46,7 @@ export function AgentsPage() {
       <section className="cc-panel p-4 sm:p-6">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">Agent directory</h2>
+            <h2 className="text-lg font-semibold text-text-primary">Specialist directory</h2>
             <p className="mt-1 text-sm text-text-secondary">
               Search by agent name or role, then jump straight into chat or editing.
             </p>

@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 import {
-  agentSchema,
-  createAgentInputSchema,
-  updateAgentInputSchema,
-} from "../../../../../schemas/agents.js";
+  specialistSchema,
+  createSpecialistInputSchema,
+  updateSpecialistInputSchema,
+} from "../../../../../schemas/specialists.js";
 import type { AgentService } from "../../../../../services/agent-service.js";
 import type { ConversationService } from "../../../../../services/conversation-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
@@ -34,7 +34,7 @@ const listAgentsInputSchema = z.object({
 });
 
 const listAgentsOutputSchema = z.object({
-  agents: z.array(agentSchema),
+  agents: z.array(specialistSchema),
 });
 
 const listModelsInputSchema = z.object({
@@ -52,11 +52,11 @@ const listModelsOutputSchema = z.object({
 // `capabilities` (skills/custom tools/MCP selections) is intentionally omitted from the
 // MCP tools: the agent has no reliable way to discover valid slugs yet, so agents are
 // created with empty capabilities and configured later in the editor UI.
-const createAgentToolInputSchema = createAgentInputSchema.omit({ capabilities: true });
+const createAgentToolInputSchema = createSpecialistInputSchema.omit({ capabilities: true });
 
 const updateAgentToolInputSchema = z.object({
   id: z.string().trim().min(1),
-  input: updateAgentInputSchema.omit({ capabilities: true }),
+  input: updateSpecialistInputSchema.omit({ capabilities: true }),
 });
 
 // Draft tools accept partial input so the agent can pre-fill whatever it knows and
@@ -149,7 +149,7 @@ export function createListAgentsToolDefinition(options: { agentService: AgentSer
         const text = lines.length > 0 ? `${header}\n${lines.join("\n")}` : header;
 
         return success(text, {
-          agents: z.array(agentSchema).parse(agents),
+          agents: z.array(specialistSchema).parse(agents),
         });
       }, "Failed to list agents."),
   };
@@ -192,13 +192,13 @@ export function createAgentManagementToolDefinitions(options: AgentManagementToo
       description: createAgentToolMetadata.description,
       context: createAgentToolMetadata.context,
       inputSchema: createAgentToolInputSchema,
-      outputSchema: agentSchema,
+      outputSchema: specialistSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
           const input = createAgentToolInputSchema.parse(args);
           const agent = await options.agentService.create({ ...input, capabilities: {} });
 
-          return success("Agent created.", agentSchema.parse(agent));
+          return success("Specialist created.", specialistSchema.parse(agent));
         }, "Failed to create agent."),
     },
     {
@@ -206,17 +206,17 @@ export function createAgentManagementToolDefinitions(options: AgentManagementToo
       description: updateAgentToolMetadata.description,
       context: updateAgentToolMetadata.context,
       inputSchema: updateAgentToolInputSchema,
-      outputSchema: agentSchema,
+      outputSchema: specialistSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
           const parsed = updateAgentToolInputSchema.parse(args);
           const agent = await options.agentService.update(parsed.id, parsed.input);
 
           if (!agent) {
-            throw new Error("Agent not found.");
+            throw new Error("Specialist not found.");
           }
 
-          return success("Agent updated.", agentSchema.parse(agent));
+          return success("Specialist updated.", specialistSchema.parse(agent));
         }, "Failed to update agent."),
     },
   ] as const;
@@ -231,7 +231,7 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
       description: draftAgentToolMetadata.description,
       context: draftAgentToolMetadata.context,
       inputSchema: draftAgentToolInputSchema,
-      outputSchema: agentSchema,
+      outputSchema: specialistSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const draft = draftAgentToolInputSchema.parse(args);
@@ -251,7 +251,7 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
           });
 
           const agent = await options.agentService.create(
-            createAgentInputSchema.parse({
+            createSpecialistInputSchema.parse({
               name: reviewed["name"],
               role: reviewed["role"],
               instructions: reviewed["instructions"],
@@ -261,7 +261,7 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
             }),
           );
 
-          return success("Agent created.", agentSchema.parse(agent));
+          return success("Specialist created.", specialistSchema.parse(agent));
         }, "Failed to draft agent."),
     },
     {
@@ -269,14 +269,14 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
       description: draftAgentUpdateToolMetadata.description,
       context: draftAgentUpdateToolMetadata.context,
       inputSchema: draftAgentUpdateToolInputSchema,
-      outputSchema: agentSchema,
+      outputSchema: specialistSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = draftAgentUpdateToolInputSchema.parse(args);
           const current = await options.agentService.get(parsed.id);
 
           if (!current) {
-            throw new Error("Agent not found.");
+            throw new Error("Specialist not found.");
           }
 
           // Only surface the fields the agent proposed to change so the operator
@@ -343,14 +343,14 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
 
           const agent = await options.agentService.update(
             parsed.id,
-            updateAgentInputSchema.parse(update),
+            updateSpecialistInputSchema.parse(update),
           );
 
           if (!agent) {
-            throw new Error("Agent not found.");
+            throw new Error("Specialist not found.");
           }
 
-          return success("Agent updated.", agentSchema.parse(agent));
+          return success("Specialist updated.", specialistSchema.parse(agent));
         }, "Failed to draft agent update."),
     },
     {
@@ -358,14 +358,14 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
       description: removeAgentToolMetadata.description,
       context: removeAgentToolMetadata.context,
       inputSchema: removeAgentInputSchema,
-      outputSchema: agentSchema,
+      outputSchema: specialistSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = removeAgentInputSchema.parse(args);
           const target = await options.agentService.get(parsed.id);
 
           if (!target) {
-            throw new Error("Agent not found.");
+            throw new Error("Specialist not found.");
           }
 
           await confirmRemove(options, {
@@ -378,10 +378,10 @@ export function createAgentLiveToolDefinitions(options: AgentManagementToolOptio
           const archived = await options.agentService.archive(parsed.id);
 
           if (!archived) {
-            throw new Error("Agent not found.");
+            throw new Error("Specialist not found.");
           }
 
-          return success("Agent removed from active use.", agentSchema.parse(archived));
+          return success("Specialist removed from active use.", specialistSchema.parse(archived));
         }, "Failed to remove agent."),
     },
   ] as const;
@@ -424,13 +424,13 @@ async function confirmRemove(
   },
 ): Promise<void> {
   if (!options.conversationService || !options.liveRequestService) {
-    throw new Error("Agent removal requires operator confirmation.");
+    throw new Error("Specialist removal requires operator confirmation.");
   }
 
   const callingAgent = await options.agentService.getBySlug(input.callingAgentSlug);
 
   if (!callingAgent) {
-    throw new Error(`Agent '${input.callingAgentSlug}' not found.`);
+    throw new Error(`Specialist '${input.callingAgentSlug}' not found.`);
   }
 
   const snapshot = await options.conversationService.resolveCurrent(callingAgent.id);
@@ -498,7 +498,7 @@ async function reviewAgentMutation(
   const callingAgent = await options.agentService.getBySlug(input.callingAgentSlug);
 
   if (!callingAgent) {
-    throw new Error(`Agent '${input.callingAgentSlug}' not found.`);
+    throw new Error(`Specialist '${input.callingAgentSlug}' not found.`);
   }
 
   const snapshot = await options.conversationService.resolveCurrent(callingAgent.id);

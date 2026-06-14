@@ -140,7 +140,7 @@ describe("ModelSelector", () => {
 
     // With no override, the pill shows the agent-default label.
     const trigger = screen.getByRole("button", { name: "Select model" });
-    expect(trigger).toHaveTextContent("Agent's default");
+    expect(trigger).toHaveTextContent("Specialist's default");
 
     // Picking a concrete model reports it.
     await user.click(trigger);
@@ -166,7 +166,7 @@ describe("ModelSelector", () => {
     expect(trigger).toHaveTextContent("Claude 3");
 
     await user.click(trigger);
-    await user.click(screen.getByRole("option", { name: /Agent's default/ }));
+    await user.click(screen.getByRole("option", { name: /Specialist's default/ }));
     expect(onChange).toHaveBeenCalledWith("");
   });
 

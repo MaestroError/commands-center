@@ -37,7 +37,7 @@ describe("conversation routes", () => {
     });
 
     const agent = await agentService.create({
-      name: "Route Agent",
+      name: "Route Specialist",
       role: "help with routes",
       instructions: "Be useful.",
       defaultModel: "openai/gpt-4.1",
@@ -293,7 +293,7 @@ function createMockOpenCodeService(): OpenCodeService {
       };
       list.push(assistantMessage);
 
-      session.title = session.title ?? "Route Agent";
+      session.title = session.title ?? "Route Specialist";
       session.time.updated = nextTime();
       return Promise.resolve(assistantMessage);
     },
@@ -339,7 +339,7 @@ function createMockOpenCodeService(): OpenCodeService {
         ],
       });
 
-      session.title = session.title ?? "Route Agent";
+      session.title = session.title ?? "Route Specialist";
       session.time.updated = nextTime();
       return Promise.resolve();
     },

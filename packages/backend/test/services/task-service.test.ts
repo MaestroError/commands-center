@@ -1188,7 +1188,7 @@ async function insertAgent(
     .values({
       id: overrides.id ?? `agent-${crypto.randomUUID()}`,
       slug: overrides.slug ?? `agent-${crypto.randomUUID()}`,
-      name: overrides.name ?? "Task Agent",
+      name: overrides.name ?? "Task Specialist",
       role: overrides.role ?? "help with tasks",
       instructions: overrides.instructions ?? "Be useful.",
       default_model: overrides.default_model ?? "openai/gpt-4.1",

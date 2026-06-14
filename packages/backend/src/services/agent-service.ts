@@ -3,19 +3,19 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  agentCapabilitySelectionSchema,
-  agentCatalogSchema,
-  agentSchema,
+  specialistCapabilitySelectionSchema,
+  specialistCatalogSchema,
+  specialistSchema,
   builtInSkillListSchema,
-  createAgentInputSchema,
-  updateAgentInputSchema,
+  createSpecialistInputSchema,
+  updateSpecialistInputSchema,
   workspaceSkillListSchema,
-  type Agent,
-  type AgentCapabilitySelection,
-  type AgentCatalog,
-  type CreateAgentInput,
-  type UpdateAgentInput,
-} from "../schemas/agents.js";
+  type Specialist,
+  type SpecialistCapabilitySelection,
+  type SpecialistCatalog,
+  type CreateSpecialistInput,
+  type UpdateSpecialistInput,
+} from "../schemas/specialists.js";
 
 import { createId, now } from "../db/ids.js";
 import { agents, mcp_servers } from "../db/schema/index.js";
@@ -83,7 +83,7 @@ export function createAgentService(options: {
   });
 
   return {
-    async list(includeArchived = false): Promise<Agent[]> {
+    async list(includeArchived = false): Promise<Specialist[]> {
       const rows = await options.db.query.agents.findMany({
         where: includeArchived
           ? undefined
@@ -94,7 +94,7 @@ export function createAgentService(options: {
       return rows.map(mapAgent);
     },
 
-    async getBySlug(slug: string): Promise<Agent | undefined> {
+    async getBySlug(slug: string): Promise<Specialist | undefined> {
       const row = await options.db.query.agents.findFirst({
         where: (table, operators) => operators.eq(table.slug, slug),
       });
@@ -102,7 +102,7 @@ export function createAgentService(options: {
       return row ? mapAgent(row) : undefined;
     },
 
-    async get(id: string): Promise<Agent | undefined> {
+    async get(id: string): Promise<Specialist | undefined> {
       const row = await options.db.query.agents.findFirst({
         where: (table, operators) => operators.eq(table.id, id),
       });
@@ -110,8 +110,8 @@ export function createAgentService(options: {
       return row ? mapAgent(row) : undefined;
     },
 
-    async create(input: CreateAgentInput): Promise<Agent> {
-      const parsed = createAgentInputSchema.parse(input);
+    async create(input: CreateSpecialistInput): Promise<Specialist> {
+      const parsed = createSpecialistInputSchema.parse(input);
       const id = createId();
       const slug = await reserveSlug(parsed.name);
       const timestamp = now();
@@ -181,8 +181,8 @@ export function createAgentService(options: {
       return mapAgent(row);
     },
 
-    async update(id: string, input: UpdateAgentInput): Promise<Agent | undefined> {
-      const parsed = updateAgentInputSchema.parse(input);
+    async update(id: string, input: UpdateSpecialistInput): Promise<Specialist | undefined> {
+      const parsed = updateSpecialistInputSchema.parse(input);
       const existing = await options.db.query.agents.findFirst({
         where: (table, operators) => operators.eq(table.id, id),
       });
@@ -272,7 +272,7 @@ export function createAgentService(options: {
       return mapAgent(row);
     },
 
-    async archive(id: string): Promise<Agent | undefined> {
+    async archive(id: string): Promise<Specialist | undefined> {
       const existing = await options.db.query.agents.findFirst({
         where: (table, operators) => operators.eq(table.id, id),
       });
@@ -308,7 +308,7 @@ export function createAgentService(options: {
       return mapAgent(row);
     },
 
-    async getCatalog(): Promise<AgentCatalog> {
+    async getCatalog(): Promise<SpecialistCatalog> {
       const [skills, workspaceSkills, mcpRows, toolRows, providerModels] = await Promise.all([
         listBuiltInSkills(skillRoot),
         listBuiltInSkills(workspaceSkillRoot),
@@ -319,7 +319,7 @@ export function createAgentService(options: {
         providerService.listModels(),
       ]);
 
-      return agentCatalogSchema.parse({
+      return specialistCatalogSchema.parse({
         builtInSkills: builtInSkillListSchema.parse(skills),
         workspaceSkills: workspaceSkillListSchema.parse(workspaceSkills),
         providerModels: Array.from(
@@ -397,17 +397,17 @@ export function createAgentService(options: {
     const slug = slugify(name);
 
     if (await isSlugTaken(slug, excludeId)) {
-      throw new ConflictError(`Agent identifier '${slug}' is already in use.`);
+      throw new ConflictError(`Specialist identifier '${slug}' is already in use.`);
     }
 
     return slug;
   }
 
   async function normalizeCapabilities(
-    capabilities: AgentCapabilitySelection,
-  ): Promise<AgentCapabilitySelection> {
+    capabilities: SpecialistCapabilitySelection,
+  ): Promise<SpecialistCapabilitySelection> {
     const rows = await options.db.select({ name: mcp_servers.name }).from(mcp_servers);
-    return agentCapabilitySelectionSchema.parse(
+    return specialistCapabilitySelectionSchema.parse(
       normalizeAgentCapabilities(
         capabilities,
         rows.map((row) => row.name),
@@ -424,8 +424,8 @@ export function createAgentService(options: {
     });
   }
 
-  function mapAgent(row: typeof agents.$inferSelect): Agent {
-    return agentSchema.parse({
+  function mapAgent(row: typeof agents.$inferSelect): Specialist {
+    return specialistSchema.parse({
       id: row.id,
       slug: row.slug,
       name: row.name,
@@ -449,7 +449,7 @@ function qualifyModelId(providerId: string, modelId: string): string {
 }
 
 function parseCapabilities(value: string) {
-  return agentCapabilitySelectionSchema.parse(JSON.parse(value));
+  return specialistCapabilitySelectionSchema.parse(JSON.parse(value));
 }
 
 function slugify(value: string): string {

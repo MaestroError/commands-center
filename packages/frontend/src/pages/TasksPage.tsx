@@ -37,8 +37,8 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 
 import {
   MAX_FALLBACK_MODELS,
-  type Agent,
-  type AgentCatalog,
+  type Specialist,
+  type SpecialistCatalog,
   type BoardTaskStatus,
   type CreateTaskFeedbackInput,
   type CreateTaskInput,
@@ -82,7 +82,7 @@ import {
 } from "@/components/tasks/task-prompt";
 import { StatusBadge } from "@/components/tasks/task-ui";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
-import { useAgentCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
 import {
   useActiveTaskRunsQuery,
   useArchivedTasksQuery,
@@ -630,7 +630,7 @@ function TaskFilterPanel(props: {
 
 function TaskBoard(props: {
   tasks: Task[];
-  agents: Agent[];
+  agents: Specialist[];
   activeRuns: TaskRun[];
   currentSearch: string;
   onAccept: (task: Task) => void;
@@ -773,7 +773,7 @@ function TaskBoard(props: {
 
 function TaskBoardCard(props: {
   task: Task;
-  agent?: Agent;
+  agent?: Specialist;
   activeRun?: TaskRun;
   progress?: TaskSubtaskProgress;
   schedulerState?: TaskSchedulerState;
@@ -1050,7 +1050,7 @@ function TaskSubtaskDot(props: { subtask: TaskSubtaskProgress["subtasks"][number
   );
 }
 
-function BoardAssigneeAvatar(props: { agent?: Agent; fallbackName: string }) {
+function BoardAssigneeAvatar(props: { agent?: Specialist; fallbackName: string }) {
   const name = props.agent?.name ?? props.fallbackName;
 
   return (
@@ -1321,7 +1321,7 @@ function TaskCardIconActionTooltip(props: { label: string }) {
 
 function TaskDetailPanel(props: {
   taskId: string;
-  agents: Agent[];
+  agents: Specialist[];
   activeRun?: TaskRun;
   currentSearch: string;
   onAccept: (task: Task) => void;
@@ -1344,7 +1344,7 @@ function TaskDetailPanel(props: {
   const [promptDraft, setPromptDraft] = useState<TaskPromptValue>(() => createTaskPromptValue());
   const task = taskQuery.data;
   const agent = props.agents.find((entry) => entry.id === task?.agentId);
-  const catalogQuery = useAgentCatalogQuery();
+  const catalogQuery = useSpecialistCatalogQuery();
   const taskSkills = useTaskComposerSkills(agent, catalogQuery.data);
   const activeSectionId = selectedSectionId ?? "overview";
   const latestRunResult = readLatestRunResult(runsQuery.data ?? []);
@@ -1749,8 +1749,8 @@ function TaskDetailSectionContent(props: {
   sectionId: DetailSectionId;
   task: Task;
   taskId: string;
-  agent?: Agent;
-  agents: Agent[];
+  agent?: Specialist;
+  agents: Specialist[];
   activeRun?: TaskRun;
   runs: TaskRun[];
   isRunsLoading: boolean;
@@ -1844,12 +1844,12 @@ function TaskPanelArtifactSection(props: { runs: TaskRun[] }) {
 function TaskFeedbackPanelSection(props: {
   task: Task;
   taskId: string;
-  agent?: Agent;
-  agents: Agent[];
+  agent?: Specialist;
+  agents: Specialist[];
   runs: TaskRun[];
 }) {
   const feedbackQuery = useTaskFeedbackQuery(props.taskId);
-  const catalogQuery = useAgentCatalogQuery();
+  const catalogQuery = useSpecialistCatalogQuery();
   const mutations = useTaskMutations();
   const feedbackSkills = useTaskComposerSkills(props.agent, catalogQuery.data);
 
@@ -1886,8 +1886,8 @@ function TaskFeedbackPanelSection(props: {
 }
 
 function useTaskComposerSkills(
-  agent: Agent | undefined,
-  catalog: AgentCatalog | undefined,
+  agent: Specialist | undefined,
+  catalog: SpecialistCatalog | undefined,
 ): { slug: string; description?: string }[] {
   return useMemo(() => {
     if (!agent || !catalog) return [];
@@ -1912,7 +1912,7 @@ function QueuePreviewSummary(props: { preview: TaskQueuePreview }) {
         <div>
           <p className="font-medium text-text-primary">Next run context preview</p>
           <p className="text-xs text-text-secondary">
-            Agent {props.preview.runAgentId}
+            Specialist {props.preview.runAgentId}
             {props.preview.subtask ? ` · subtask ${props.preview.subtask.id}` : " · parent task"}
           </p>
         </div>
@@ -1950,7 +1950,7 @@ function QueuePreviewSummary(props: { preview: TaskQueuePreview }) {
 
 function TaskFeedbackSection(props: {
   task: Task;
-  agents: Agent[];
+  agents: Specialist[];
   skills: { slug: string; description?: string }[];
   feedback: TaskFeedbackThread[];
   parentRuns: TaskRun[];
@@ -2214,7 +2214,7 @@ function RunArtifactAttachments(props: {
 }
 
 function TaskSubtasksSection(props: {
-  agents: Agent[];
+  agents: Specialist[];
   subtasks: TaskSubtask[];
   runs: TaskRun[];
   taskId: string;
@@ -2288,7 +2288,10 @@ function TaskSubtasksSection(props: {
   );
 }
 
-function FeedbackReplies(props: { agents: Agent[]; subtasks: TaskFeedbackThread["subtasks"] }) {
+function FeedbackReplies(props: {
+  agents: Specialist[];
+  subtasks: TaskFeedbackThread["subtasks"];
+}) {
   const replies = props.subtasks.flatMap((subtask) =>
     subtask.replies.map((reply) => ({ ...reply, agentId: subtask.agentId })),
   );
@@ -2321,10 +2324,10 @@ function FeedbackReplies(props: { agents: Agent[]; subtasks: TaskFeedbackThread[
   );
 }
 
-function TaskOverviewDetails(props: { task: Task; agent?: Agent }) {
+function TaskOverviewDetails(props: { task: Task; agent?: Specialist }) {
   const rows = [
     { label: "Status", value: formatToken(readBoardStatus(props.task)) },
-    { label: "Agent", value: props.agent?.name ?? props.task.agentId },
+    { label: "Specialist", value: props.agent?.name ?? props.task.agentId },
     { label: "Model", value: formatTaskModel(props.task, props.agent) },
     { label: "Schedule", value: formatSchedule(props.task) },
     { label: "Source", value: formatSourceTemplate(props.task) },
@@ -2786,7 +2789,7 @@ function formatTaskContextSummary(task: Task): string {
 
 function TaskTemplatesView(props: {
   templates: TaskTemplate[];
-  agents: Agent[];
+  agents: Specialist[];
   currentSearch: string;
   isCreating: boolean;
   isCreatingBusy: boolean;
@@ -2919,7 +2922,7 @@ function TaskTemplatesView(props: {
 }
 
 function TaskTemplateCreateForm(props: {
-  agents: Agent[];
+  agents: Specialist[];
   isBusy: boolean;
   onCancel: () => void;
   onSubmit: (input: CreateTaskTemplateInput) => void;
@@ -2938,7 +2941,7 @@ function TaskTemplateCreateForm(props: {
 }
 
 function TaskTemplateForm(props: {
-  agents: Agent[];
+  agents: Specialist[];
   cancelLabel: string;
   initialTemplate?: TaskTemplate;
   isBusy: boolean;
@@ -3189,7 +3192,7 @@ function TaskTemplateFormPage() {
 
 function TaskTemplateDetailPanel(props: {
   templateId: string;
-  agents: Agent[];
+  agents: Specialist[];
   currentSearch: string;
   onClose: () => void;
   onCreateTask: (template: TaskTemplate) => void;
@@ -3428,7 +3431,7 @@ function GeneratedTaskHistory(props: {
 
 function TaskArchiveView(props: {
   tasks: Task[];
-  agents: Agent[];
+  agents: Specialist[];
   currentSearch: string;
   onRestore: (task: Task) => void;
   onDelete: (task: Task) => void;
@@ -3462,7 +3465,7 @@ function TaskArchiveView(props: {
           </div>
           <div className="grid gap-3 text-sm text-text-secondary sm:grid-cols-3">
             <Metric
-              label="Agent"
+              label="Specialist"
               value={props.agents.find((entry) => entry.id === task.agentId)?.name ?? task.agentId}
             />
             <Metric label="Archived" value={formatDate(task.archivedAt)} />
@@ -3496,7 +3499,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
   const params = useParams();
   const taskQuery = useTaskQuery(props.mode === "edit" ? params["id"] : undefined);
   const agentsQuery = useAgentsQuery();
-  const catalogQuery = useAgentCatalogQuery();
+  const catalogQuery = useSpecialistCatalogQuery();
   const mutations = useTaskMutations();
   const task = taskQuery.data;
   const agents = agentsQuery.data ?? [];
@@ -3543,7 +3546,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
       {!isLoading ? (
         <WorkspaceLayout
           contextPane={{
-            title: selectedAgent ? `${selectedAgent.name} workspace` : "Agent workspace",
+            title: selectedAgent ? `${selectedAgent.name} workspace` : "Specialist workspace",
             tabs: [
               {
                 id: "files",
@@ -4157,7 +4160,7 @@ function readBoardStatus(task: Task): BoardTaskStatus {
     : "backlog";
 }
 
-function filterTasks(tasks: Task[], agents: Agent[], filterText: string): Task[] {
+function filterTasks(tasks: Task[], agents: Specialist[], filterText: string): Task[] {
   const query = normalizeFilterText(filterText);
 
   if (!query) {
@@ -4169,7 +4172,7 @@ function filterTasks(tasks: Task[], agents: Agent[], filterText: string): Task[]
 
 function filterTemplates(
   templates: TaskTemplate[],
-  agents: Agent[],
+  agents: Specialist[],
   filterText: string,
 ): TaskTemplate[] {
   const query = normalizeFilterText(filterText);
@@ -4181,7 +4184,7 @@ function filterTemplates(
   return templates.filter((template) => buildTemplateFilterText(template, agents).includes(query));
 }
 
-function buildTaskFilterText(task: Task, agents: Agent[]): string {
+function buildTaskFilterText(task: Task, agents: Specialist[]): string {
   const status = readBoardStatus(task);
   const agent = agents.find((entry) => entry.id === task.agentId);
   const values = [
@@ -4202,7 +4205,7 @@ function buildTaskFilterText(task: Task, agents: Agent[]): string {
   return normalizeFilterText(values.filter(Boolean).join(" "));
 }
 
-function buildTemplateFilterText(template: TaskTemplate, agents: Agent[]): string {
+function buildTemplateFilterText(template: TaskTemplate, agents: Specialist[]): string {
   const agent = agents.find((entry) => entry.id === template.defaultAgentId);
   const values = [
     template.title,
@@ -4224,7 +4227,7 @@ function normalizeFilterText(value: string): string {
   return value.trim().toLowerCase().replace(/_/g, " ");
 }
 
-function readAgentName(agents: Agent[], agentId: string): string {
+function readAgentName(agents: Specialist[], agentId: string): string {
   return agents.find((agent) => agent.id === agentId)?.name ?? agentId;
 }
 
@@ -4536,15 +4539,15 @@ function formatSourceTemplate(task: Task): string {
     : "Generated from template";
 }
 
-function formatTaskModel(task: Task, agent?: Agent): string {
+function formatTaskModel(task: Task, agent?: Specialist): string {
   if (task.model) {
     return task.model;
   }
-  return agent?.defaultModel ? `${agent.defaultModel} (agent default)` : "Agent's default";
+  return agent?.defaultModel ? `${agent.defaultModel} (agent default)` : "Specialist's default";
 }
 
 /** True when the task pins a model that differs from its agent's default. */
-function hasTaskModelOverride(task: Task, agent?: Agent): boolean {
+function hasTaskModelOverride(task: Task, agent?: Specialist): boolean {
   return Boolean(task.model && task.model !== agent?.defaultModel);
 }
 

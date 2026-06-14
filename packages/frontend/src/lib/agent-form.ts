@@ -1,7 +1,7 @@
 import type {
-  Agent,
-  AgentCapabilitySelection,
-  AgentCatalog,
+  Specialist,
+  SpecialistCapabilitySelection,
+  SpecialistCatalog,
   CustomToolAgentCopy,
 } from "@cc/shared/schemas";
 
@@ -11,7 +11,7 @@ export type AgentFormState = {
   instructions: string;
   iconPath: string;
   defaultModel: string;
-  capabilities: AgentCapabilitySelection;
+  capabilities: SpecialistCapabilitySelection;
   // Edit mode only: opt in to regenerating AGENTS.md from role/instructions.
   // Off by default so hand-edited rules are preserved on save.
   rewriteAgentsMd: boolean;
@@ -41,7 +41,10 @@ export function createEmptyAgentForm(): AgentFormState {
   };
 }
 
-export function createAgentFormFromAgent(catalog: AgentCatalog, agent?: Agent): AgentFormState {
+export function createAgentFormFromAgent(
+  catalog: SpecialistCatalog,
+  agent?: Specialist,
+): AgentFormState {
   const existingCapabilities = agent?.capabilities ?? createEmptyAgentForm().capabilities;
 
   return {
@@ -113,7 +116,7 @@ export function agentFormSlug(value: string): string {
   return slug || "agent";
 }
 
-export function resolveInitialModelId(catalog: AgentCatalog, currentModel?: string): string {
+export function resolveInitialModelId(catalog: SpecialistCatalog, currentModel?: string): string {
   if (!currentModel) {
     return catalog.providerModels[0]?.id ?? "";
   }

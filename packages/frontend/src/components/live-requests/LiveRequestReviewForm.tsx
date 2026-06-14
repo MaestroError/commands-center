@@ -5,7 +5,7 @@ import type { LiveRequest, LiveRequestAction, LiveRequestFormField } from "@cc/s
 import { AgentAvatarPicker } from "@/components/agents/AgentAvatarPicker";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { SearchableSelect } from "@/components/common/SearchableSelect";
-import { useAgentCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
 
 import {
   getActionClassName,
@@ -43,7 +43,7 @@ export function LiveRequestReviewForm(props: Props) {
   const needsAgents = request.fields.some((field) => AGENT_FIELD_NAMES.has(field.name));
   const needsModels = request.fields.some((field) => MODEL_FIELD_NAMES.has(field.name));
   const agentsQuery = useAgentsQuery();
-  const catalogQuery = useAgentCatalogQuery();
+  const catalogQuery = useSpecialistCatalogQuery();
   const agents = needsAgents ? (agentsQuery.data ?? []) : [];
   const providerModels = needsModels ? (catalogQuery.data?.providerModels ?? []) : [];
 
@@ -114,7 +114,7 @@ export function LiveRequestReviewForm(props: Props) {
         <div className="mx-auto flex w-full max-w-2xl min-w-0 flex-col gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-accent">
-              Agent waiting
+              Specialist waiting
             </p>
             <h2 className="mt-2 text-lg font-semibold text-text-primary">
               {request.presentation.title}

@@ -3,8 +3,8 @@ import { Check, X } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import type {
-  Agent,
-  AgentCatalog,
+  Specialist,
+  SpecialistCatalog,
   CreateTaskFeedbackInput,
   ConversationMessage,
   ConversationPart,
@@ -29,7 +29,7 @@ import {
   type TaskPromptValue,
 } from "@/components/tasks/task-prompt";
 import { StatusBadge } from "@/components/tasks/task-ui";
-import { useAgentCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
 import {
   useTaskMutations,
   useTaskFeedbackQuery,
@@ -80,8 +80,8 @@ export function TaskDetailPage(props: TaskDetailPageProps) {
 
 function TaskOverview(props: {
   task?: Task;
-  agent?: Agent;
-  agents: Agent[];
+  agent?: Specialist;
+  agents: Specialist[];
   isLoading: boolean;
   error: unknown;
 }) {
@@ -278,7 +278,7 @@ function TaskOverview(props: {
 function RunHistory(props: {
   taskId: string;
   runs: TaskRun[];
-  agents?: Agent[];
+  agents?: Specialist[];
   subtasks?: TaskSubtask[];
   isLoading: boolean;
   error: unknown;
@@ -309,7 +309,7 @@ function RunHistory(props: {
             <thead className="text-xs uppercase tracking-wide text-text-secondary">
               <tr className="border-b border-border">
                 <th className="py-3 pr-3">Status</th>
-                <th className="py-3 pr-3">Agent</th>
+                <th className="py-3 pr-3">Specialist</th>
                 <th className="py-3 pr-3">Outcome</th>
                 <th className="py-3 pr-3">Trigger</th>
                 <th className="py-3 pr-3">Target</th>
@@ -489,8 +489,8 @@ function TaskDetailSectionContent(props: {
   task: Task;
   taskId: string;
   latestRunResult?: string;
-  agent?: Agent;
-  agents: Agent[];
+  agent?: Specialist;
+  agents: Specialist[];
   runs: TaskRun[];
   isRunsLoading: boolean;
   runsError: unknown;
@@ -591,12 +591,12 @@ function TaskDetailSectionContent(props: {
 function TaskFeedbackPanelSection(props: {
   task: Task;
   taskId: string;
-  agent?: Agent;
-  agents: Agent[];
+  agent?: Specialist;
+  agents: Specialist[];
   runs: TaskRun[];
 }) {
   const feedbackQuery = useTaskFeedbackQuery(props.taskId);
-  const catalogQuery = useAgentCatalogQuery();
+  const catalogQuery = useSpecialistCatalogQuery();
   const mutations = useTaskMutations();
   const feedbackSkills = useTaskComposerSkills(props.agent, catalogQuery.data);
 
@@ -634,7 +634,7 @@ function TaskFeedbackPanelSection(props: {
 
 function TaskFeedbackSection(props: {
   task: Task;
-  agents: Agent[];
+  agents: Specialist[];
   skills: { slug: string; description?: string }[];
   feedback: TaskFeedbackThread[];
   parentRuns: TaskRun[];
@@ -882,8 +882,8 @@ function RunArtifactAttachments(props: {
 }
 
 function useTaskComposerSkills(
-  agent: Agent | undefined,
-  catalog: AgentCatalog | undefined,
+  agent: Specialist | undefined,
+  catalog: SpecialistCatalog | undefined,
 ): { slug: string; description?: string }[] {
   return useMemo(() => {
     if (!agent || !catalog) return [];
@@ -900,7 +900,7 @@ function useTaskComposerSkills(
 }
 
 function TaskSubtasksSection(props: {
-  agents: Agent[];
+  agents: Specialist[];
   subtasks: TaskSubtask[];
   runs: TaskRun[];
   taskId: string;
@@ -971,7 +971,10 @@ function TaskSubtasksSection(props: {
   );
 }
 
-function FeedbackReplies(props: { agents: Agent[]; subtasks: TaskFeedbackThread["subtasks"] }) {
+function FeedbackReplies(props: {
+  agents: Specialist[];
+  subtasks: TaskFeedbackThread["subtasks"];
+}) {
   const replies = props.subtasks.flatMap((subtask) =>
     subtask.replies.map((reply) => ({ ...reply, agentId: subtask.agentId })),
   );
@@ -1032,7 +1035,12 @@ function TaskTodos(props: { task: Task }) {
   );
 }
 
-function TaskRunDetail(props: { task?: Task; taskId?: string; runId?: string; agents?: Agent[] }) {
+function TaskRunDetail(props: {
+  task?: Task;
+  taskId?: string;
+  runId?: string;
+  agents?: Specialist[];
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const runQuery = useTaskRunQuery(props.taskId, props.runId);
@@ -1549,7 +1557,7 @@ function isRunNewer(candidate: TaskRun, current: TaskRun): boolean {
   );
 }
 
-function readAgentName(agents: Agent[], agentId: string): string {
+function readAgentName(agents: Specialist[], agentId: string): string {
   return agents.find((agent) => agent.id === agentId)?.name ?? agentId;
 }
 

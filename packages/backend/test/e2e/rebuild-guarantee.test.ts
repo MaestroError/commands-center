@@ -79,7 +79,7 @@ async function populateWorkspace(testDb: TestDb) {
   const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
 
   const agent = await agentService.create({
-    name: "Rebuild Agent",
+    name: "Rebuild Specialist",
     role: "verify rebuilds",
     instructions: "Confirm the rebuild guarantee holds.",
     defaultModel: "openai/gpt-4.1",
@@ -162,7 +162,7 @@ describe("rebuild guarantee", () => {
       const restoredAgents = await agentService.list();
       expect(restoredAgents).toHaveLength(1);
       expect(restoredAgents[0]?.id).toBe(agent.id);
-      expect(restoredAgents[0]?.slug).toBe("rebuild-agent");
+      expect(restoredAgents[0]?.slug).toBe("rebuild-specialist");
       expect(restoredAgents[0]?.defaultModel).toBe("openai/gpt-4.1");
       expect(restoredAgents[0]?.capabilities.toolPermissions).toEqual([
         { pattern: "task_*", action: "allow" },

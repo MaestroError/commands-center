@@ -4,7 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Logger } from "pino";
 
-import { agentCapabilitySelectionSchema } from "../../schemas/agents.js";
+import { specialistCapabilitySelectionSchema } from "../../schemas/specialists.js";
 import type { AppDb } from "../../db/client.js";
 import {
   getCcManagedMcpServerByRouteSegment,
@@ -154,7 +154,7 @@ export function createCcManagedMcpService(options: {
     const agent = await loadAgent(agentSlug);
 
     if (!agent) {
-      throw new Error(`Agent '${agentSlug}' not found.`);
+      throw new Error(`Specialist '${agentSlug}' not found.`);
     }
 
     if (!toolAccessService.isServerEnabled(agent.capabilities, definition)) {
@@ -239,7 +239,7 @@ export function createCcManagedMcpService(options: {
   async function loadAgent(slug: string): Promise<
     | {
         slug: string;
-        capabilities: ReturnType<typeof agentCapabilitySelectionSchema.parse>;
+        capabilities: ReturnType<typeof specialistCapabilitySelectionSchema.parse>;
       }
     | undefined
   > {
@@ -257,7 +257,7 @@ export function createCcManagedMcpService(options: {
 
     return {
       slug: row.slug,
-      capabilities: agentCapabilitySelectionSchema.parse(JSON.parse(row.capabilities_json)),
+      capabilities: specialistCapabilitySelectionSchema.parse(JSON.parse(row.capabilities_json)),
     };
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentCapabilitySelection } from "@cc/shared/schemas";
+import type { SpecialistCapabilitySelection } from "@cc/shared/schemas";
 
 import {
   clearMcpServerOverride,
@@ -18,8 +18,8 @@ import {
 } from "./agent-capabilities";
 
 function makeCapabilities(
-  overrides: Partial<AgentCapabilitySelection> = {},
-): AgentCapabilitySelection {
+  overrides: Partial<SpecialistCapabilitySelection> = {},
+): SpecialistCapabilitySelection {
   return {
     builtInSkills: [],
     workspaceSkills: [],

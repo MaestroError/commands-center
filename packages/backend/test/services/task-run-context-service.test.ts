@@ -450,7 +450,7 @@ async function insertAgent(
     .values({
       id,
       slug: overrides.slug ?? id,
-      name: overrides.name ?? "Task Agent",
+      name: overrides.name ?? "Task Specialist",
       role: overrides.role ?? "help with tasks",
       instructions: overrides.instructions ?? "Be useful.",
       default_model: overrides.default_model ?? "openai/gpt-4.1",

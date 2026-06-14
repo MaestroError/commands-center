@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
 import type {
-  Agent,
-  AgentCapabilitySelection,
+  Specialist,
+  SpecialistCapabilitySelection,
   McpServer,
-  UpdateAgentInput,
+  UpdateSpecialistInput,
 } from "@cc/shared/schemas";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
@@ -1165,7 +1165,7 @@ function McpAuthDialog(props: {
 }
 
 function McpServerDialog(props: {
-  agents: Agent[];
+  agents: Specialist[];
   mode: "create" | "edit";
   initialServer?: McpServer;
   prefill?: FormState;
@@ -1375,7 +1375,7 @@ function McpServerDialog(props: {
                   <h3 className="text-sm font-medium text-text-primary">Enable for agents</h3>
                   <p className="mt-1 text-xs text-text-secondary">
                     Assign this MCP to selected agents using the same capability update flow as
-                    Agent Editor.
+                    Specialist Editor.
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
@@ -1868,11 +1868,11 @@ async function copyText(value: string): Promise<void> {
 }
 
 async function syncAgentAssignments(options: {
-  agents: Agent[];
+  agents: Specialist[];
   selectedAgentIds: string[];
   previousServerName?: string;
   nextServerName: string;
-  mutateAgent: (input: { id: string; input: UpdateAgentInput }) => Promise<Agent>;
+  mutateAgent: (input: { id: string; input: UpdateSpecialistInput }) => Promise<Specialist>;
 }) {
   const selectedIds = new Set(options.selectedAgentIds);
   const previousServerName = options.previousServerName;
@@ -1887,7 +1887,7 @@ async function syncAgentAssignments(options: {
       return [];
     }
 
-    let nextCapabilities: AgentCapabilitySelection = agent.capabilities;
+    let nextCapabilities: SpecialistCapabilitySelection = agent.capabilities;
 
     if (previousServerName && previousServerName !== options.nextServerName) {
       nextCapabilities = setMcpServerEnabled(nextCapabilities, previousServerName, false);

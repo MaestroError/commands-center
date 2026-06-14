@@ -6,15 +6,15 @@ export type {
   ApiValidationErrorResponse,
 } from "../schemas/api.js";
 export type {
-  Agent,
-  AgentCapabilitySelection,
-  AgentMcpServer,
-  AgentPermissionRule,
-  AgentStatus,
+  Specialist,
+  SpecialistCapabilitySelection,
+  SpecialistMcpServer,
+  SpecialistPermissionRule,
+  SpecialistStatus,
   BuiltInSkill,
-  CreateAgentInput,
-  UpdateAgentInput,
-} from "../schemas/agents.js";
+  CreateSpecialistInput,
+  UpdateSpecialistInput,
+} from "../schemas/specialists.js";
 export type {
   ConfigProviders,
   Provider,

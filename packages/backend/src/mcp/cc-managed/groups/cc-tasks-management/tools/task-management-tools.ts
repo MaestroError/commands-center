@@ -448,7 +448,7 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
             fields: [
               textField("title", "Title", draft.title, true),
               textareaField("description", "Description", draft.description),
-              textField("agentId", "Agent ID", draft.agentId ?? callingAgentId, true),
+              textField("agentId", "Specialist ID", draft.agentId ?? callingAgentId, true),
               textField("defaultAgentId", "Default agent ID", draft.defaultAgentId),
               textField("scheduledAt", "Scheduled at", draft.scheduledAt ?? undefined),
               textField("dueAt", "Due at", draft.dueAt ?? undefined),
@@ -513,7 +513,7 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
           }
           if (includes("agentId")) {
             fields.push(
-              textField("agentId", "Agent ID", suggested?.agentId ?? current.agentId, true),
+              textField("agentId", "Specialist ID", suggested?.agentId ?? current.agentId, true),
             );
           }
           if (includes("scheduledAt")) {
@@ -607,7 +607,7 @@ async function requireCallingAgentId(db: AppDb, agentSlug: string): Promise<stri
   });
 
   if (!row) {
-    throw new Error(`Agent '${agentSlug}' not found.`);
+    throw new Error(`Specialist '${agentSlug}' not found.`);
   }
 
   return row.id;

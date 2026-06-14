@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LiveRequest } from "@cc/shared/schemas";
 
-import { useAgentCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
 import { useAgentCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 
@@ -12,7 +12,7 @@ import { isLiveRequestReviewKind } from "./live-request-helpers";
 import { LiveRequestReviewForm } from "./LiveRequestReviewForm";
 
 vi.mock("@/hooks/use-agents-query", () => ({
-  useAgentCatalogQuery: vi.fn(),
+  useSpecialistCatalogQuery: vi.fn(),
   useAgentsQuery: vi.fn(),
 }));
 
@@ -42,7 +42,7 @@ function emptyQuery<T>(data: T) {
 }
 
 beforeEach(() => {
-  vi.mocked(useAgentCatalogQuery).mockReturnValue(emptyQuery(catalog));
+  vi.mocked(useSpecialistCatalogQuery).mockReturnValue(emptyQuery(catalog));
   vi.mocked(useAgentsQuery).mockReturnValue(emptyQuery([]));
   vi.mocked(useMcpServersQuery).mockReturnValue(emptyQuery([]));
   vi.mocked(useCustomToolsQuery).mockReturnValue(emptyQuery([]));
@@ -209,7 +209,7 @@ describe("LiveRequestReviewForm — task review", () => {
       presentation: { title: "Review task", cancelLabel: "Cancel" },
       fields: [
         field("title", "Title", "Ship it"),
-        field("agentId", "Agent ID", "agent-2"),
+        field("agentId", "Specialist ID", "agent-2"),
         field("scheduledAt", "Scheduled at", ""),
       ],
       actions: reviewActions,

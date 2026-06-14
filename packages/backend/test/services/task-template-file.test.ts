@@ -19,7 +19,7 @@ async function insertAgent(testDb: Awaited<ReturnType<typeof createTestDatabase>
     .values({
       id: createId(),
       slug: `agent-${crypto.randomUUID()}`,
-      name: "Template Agent",
+      name: "Template Specialist",
       role: "run templates",
       instructions: "Be reliable.",
       default_model: "openai/gpt-4.1",

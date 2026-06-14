@@ -15,7 +15,7 @@ const ICON_TABS = [
   {
     id: "settings",
     label: "Settings",
-    ariaLabel: "Agent settings",
+    ariaLabel: "Specialist settings",
     iconOnly: true,
     icon: <span>gear</span>,
   },
@@ -87,9 +87,9 @@ describe("TabBar", () => {
 
     render(<TabBar tabs={ICON_TABS} activeTabId="files" onTabChange={onTabChange} />);
 
-    await user.click(screen.getByRole("tab", { name: "Agent settings" }));
+    await user.click(screen.getByRole("tab", { name: "Specialist settings" }));
 
     expect(onTabChange).toHaveBeenCalledWith("settings");
-    expect(screen.getByRole("tab", { name: "Agent settings" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Specialist settings" })).toBeInTheDocument();
   });
 });

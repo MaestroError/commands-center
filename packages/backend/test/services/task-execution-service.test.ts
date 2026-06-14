@@ -109,7 +109,7 @@ describe("createTaskExecutionService", () => {
     const executionService = createTaskExecutionService({ taskService, conversationService });
 
     try {
-      // Agent default is openai/gpt-4.1 (see insertAgent).
+      // Specialist default is openai/gpt-4.1 (see insertAgent).
       const agent = await insertAgent(testDb.client.db);
 
       const overrideTask = await taskService.create({
@@ -957,7 +957,7 @@ async function insertAgent(
     .values({
       id,
       slug: id,
-      name: "Task Agent",
+      name: "Task Specialist",
       role: "help with tasks",
       instructions: "Be useful.",
       default_model: "openai/gpt-4.1",

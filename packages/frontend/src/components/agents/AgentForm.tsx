@@ -6,7 +6,7 @@ import { AgentAvatarPicker } from "@/components/agents/AgentAvatarPicker";
 import { EmptyState, LoadingState } from "@/components/common/PageStates";
 import { SearchableSelect } from "@/components/common/SearchableSelect";
 import { useAgentCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
-import { useAgentCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
+import { useSpecialistCatalogQuery, useAgentsQuery } from "@/hooks/use-agents-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 import {
   getAppMcpServerAction,
@@ -19,9 +19,9 @@ import {
 import { agentFormSlug, type AgentFormErrors, type AgentFormState } from "@/lib/agent-form";
 
 import type {
-  AgentCatalog,
-  AgentCapabilitySelection,
-  AgentMcpOverride,
+  SpecialistCatalog,
+  SpecialistCapabilitySelection,
+  SpecialistMcpOverride,
   AppMcpToolContext,
   BuiltInSkill,
   CustomTool,
@@ -57,7 +57,7 @@ export function AgentForm(props: AgentFormProps) {
   const { value, onChange, mode } = props;
   const errors = props.errors ?? {};
 
-  const catalogQuery = useAgentCatalogQuery();
+  const catalogQuery = useSpecialistCatalogQuery();
   const agentsQuery = useAgentsQuery();
   const mcpServersQuery = useMcpServersQuery();
   const customToolsQuery = useCustomToolsQuery();
@@ -89,7 +89,7 @@ export function AgentForm(props: AgentFormProps) {
     onChange({ ...value, [key]: next });
   }
 
-  function updateCapabilities(next: AgentCapabilitySelection) {
+  function updateCapabilities(next: SpecialistCapabilitySelection) {
     onChange({ ...value, capabilities: next });
   }
 
@@ -133,7 +133,7 @@ export function AgentForm(props: AgentFormProps) {
     });
   }
 
-  function setMcpServerPermission(serverName: string, action: AgentMcpOverride) {
+  function setMcpServerPermission(serverName: string, action: SpecialistMcpOverride) {
     updateCapabilities(setMcpServerAction(value.capabilities, serverName, action));
   }
 
@@ -695,8 +695,8 @@ function CustomToolCard(props: { tool: CustomTool; selected: boolean; onClick: (
 
 function McpServerPermissionControl(props: {
   label: string;
-  value: AgentMcpOverride;
-  onChange: (action: AgentMcpOverride) => void;
+  value: SpecialistMcpOverride;
+  onChange: (action: SpecialistMcpOverride) => void;
 }) {
   const options = [
     {
@@ -799,7 +799,7 @@ function AppMcpServerPermissionControl(props: {
 function StatusBadge(props: { status: CustomToolDriftStatus }) {
   const label = {
     global_only: "Global only",
-    agent_only: "Agent only",
+    agent_only: "Specialist only",
     matching: "Matching",
     outdated: "Outdated",
     modified: "Modified",
@@ -834,14 +834,17 @@ function ToolContextBadge(props: { context: AppMcpToolContext }) {
   );
 }
 
-function buildSkillOptions(catalog: AgentCatalog | undefined): SkillOption[] {
+function buildSkillOptions(catalog: SpecialistCatalog | undefined): SkillOption[] {
   return [
     ...(catalog?.builtInSkills ?? []).map((skill) => ({ kind: "built-in" as const, skill })),
     ...(catalog?.workspaceSkills ?? []).map((skill) => ({ kind: "workspace" as const, skill })),
   ];
 }
 
-function isSkillSelected(capabilities: AgentCapabilitySelection, option: SkillOption): boolean {
+function isSkillSelected(
+  capabilities: SpecialistCapabilitySelection,
+  option: SkillOption,
+): boolean {
   if (option.kind === "built-in") {
     return (capabilities.builtInSkills ?? []).includes(option.skill.slug);
   }
@@ -851,7 +854,7 @@ function isSkillSelected(capabilities: AgentCapabilitySelection, option: SkillOp
 
 function filterSkillOptions(
   options: SkillOption[],
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   query: string,
 ): SkillOption[] {
   const normalized = query.trim().toLowerCase();
@@ -872,7 +875,7 @@ function filterSkillOptions(
 
 function filterCustomTools(
   tools: CustomTool[],
-  capabilities: AgentCapabilitySelection,
+  capabilities: SpecialistCapabilitySelection,
   query: string,
 ): CustomTool[] {
   const normalized = query.trim().toLowerCase();

@@ -320,7 +320,7 @@ export function createCustomToolService(options: {
       const agentTool = await readAgentTool(input.workspacePath, input.toolSlug);
 
       if (!agentTool) {
-        throw new NotFoundError("Agent custom tool not found.");
+        throw new NotFoundError("Specialist custom tool not found.");
       }
 
       await removeAgentToolSnapshot(input.workspacePath, agentTool.slug);
@@ -337,7 +337,7 @@ export function createCustomToolService(options: {
     const agentTool = await readAgentTool(input.workspacePath, input.toolSlug);
 
     if (!agentTool) {
-      throw new NotFoundError("Agent custom tool not found.");
+      throw new NotFoundError("Specialist custom tool not found.");
     }
 
     const destinationName = input.destinationName?.trim() || agentTool.name;
@@ -423,7 +423,7 @@ export function createCustomToolService(options: {
 
   async function requireAgents(agentIds: string[]) {
     if (!options.listAgents) {
-      throw new BadRequestError("Agent lookup is unavailable.");
+      throw new BadRequestError("Specialist lookup is unavailable.");
     }
 
     const agents = await options.listAgents();

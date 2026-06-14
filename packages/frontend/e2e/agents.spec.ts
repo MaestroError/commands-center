@@ -148,7 +148,7 @@ async function mockAgentApi(
       const created: AgentRecord = {
         id: `agent-${state.agents.length + 1}`,
         slug,
-        name: payload.name ?? "Agent",
+        name: payload.name ?? "Specialist",
         role: payload.role ?? "role",
         instructions: payload.instructions ?? "instructions",
         defaultModel: payload.defaultModel ?? "openai/gpt-4.1",
