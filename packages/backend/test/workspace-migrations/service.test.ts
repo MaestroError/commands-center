@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -123,6 +123,24 @@ describe("workspace migration registry", () => {
 });
 
 describe("runWorkspaceMigrations", () => {
+  it("runs the registered smoke-test migration", async () => {
+    await withConfig(async (config) => {
+      const logger = createLogger();
+
+      const result = await runWorkspaceMigrations({
+        config,
+        logger: logger as never,
+        now: () => APPLIED_AT,
+      });
+
+      expect(result.applied.map((migration) => migration.id)).toEqual([
+        "0001-create-migration-smoke-test-directory",
+      ]);
+      const stats = await stat(resolve(config.paths.workspaceDir, ".cc", "migration-smoke-test"));
+      expect(stats.isDirectory()).toBe(true);
+    });
+  });
+
   it("runs pending migrations in order", async () => {
     await withConfig(async (config) => {
       const logger = createLogger();
@@ -231,6 +249,29 @@ describe("runWorkspaceMigrations", () => {
 });
 
 describe("rollbackLatestWorkspaceMigration", () => {
+  it("rolls back the registered smoke-test migration", async () => {
+    await withConfig(async (config) => {
+      const logger = createLogger();
+
+      await runWorkspaceMigrations({
+        config,
+        logger: logger as never,
+        now: () => APPLIED_AT,
+      });
+
+      const result = await rollbackLatestWorkspaceMigration({
+        config,
+        logger: logger as never,
+      });
+
+      expect(result.rolledBack?.id).toBe("0001-create-migration-smoke-test-directory");
+      await expect(
+        stat(resolve(config.paths.workspaceDir, ".cc", "migration-smoke-test")),
+      ).rejects.toThrow();
+      await expect(stat(resolve(config.paths.workspaceDir, ".cc"))).rejects.toThrow();
+    });
+  });
+
   it("rolls back only the latest applied migration", async () => {
     await withConfig(async (config) => {
       const logger = createLogger();
