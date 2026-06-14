@@ -3712,7 +3712,7 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
           : {
               ...current.prompt,
               mentionedFiles: [],
-              mentionedSpecialists: [],
+              mentionedAgents: [],
               selectedSkill: null,
             },
     }));

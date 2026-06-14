@@ -267,7 +267,7 @@ describe("CustomToolsPage", () => {
     });
   });
 
-  it("confirms and removes an specialist-local tool", async () => {
+  it("confirms and removes a specialist-local tool", async () => {
     deleteSpecialistToolMutateAsync.mockResolvedValue(undefined);
 
     renderPage();
