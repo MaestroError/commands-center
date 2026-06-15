@@ -31,9 +31,9 @@ export function ToolErrorCard({ part }: ToolErrorCardProps) {
           </span>
           <span className="tool-name">{toolName}</span>
           <span className="tool-spacer" />
-          <span className={`tool-status error ${expanded ? "" : "tool-status--dot"}`} title="Error">
+          <span className="tool-status error tool-status--dot" title="Error">
             <span className="sdot" />
-            <span className={expanded ? "" : "sr-only"}>Error</span>
+            <span className="sr-only">Error</span>
           </span>
           {canExpand ? (
             <span className="tool-chev">
@@ -45,15 +45,25 @@ export function ToolErrorCard({ part }: ToolErrorCardProps) {
       </div>
 
       {expanded && canExpand && (
-        <div className="tool-body relative">
-          <pre className="text-xs bg-surface-elevated rounded-md p-3 overflow-auto max-h-60 text-danger whitespace-pre-wrap">
-            {errorText}
-          </pre>
-          <CopyIdButton
-            className="absolute top-2 right-2 rounded-md bg-surface p-1 text-text-secondary transition hover:text-text-primary"
-            label="error"
-            value={errorText ?? ""}
-          />
+        <div className="tool-body space-y-2">
+          <div>
+            <p className="text-xs font-medium text-text-secondary mb-1">Tool</p>
+            <p className="tool-detail-name">{toolName}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-text-secondary mb-1">Status</p>
+            <p className="tool-detail-status error">Error</p>
+          </div>
+          <div className="relative">
+            <pre className="text-xs bg-surface-elevated rounded-md p-3 overflow-auto max-h-60 text-danger whitespace-pre-wrap">
+              {errorText}
+            </pre>
+            <CopyIdButton
+              className="absolute top-2 right-2 rounded-md bg-surface p-1 text-text-secondary transition hover:text-text-primary"
+              label="error"
+              value={errorText ?? ""}
+            />
+          </div>
         </div>
       )}
     </div>

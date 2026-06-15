@@ -58,12 +58,9 @@ export function BasicTool({
           {subtitle ? <span className="tool-arg">{subtitle}</span> : null}
           <span className="tool-spacer" />
           {pill ? (
-            <span
-              className={`tool-status ${pill.cls} ${expanded ? "" : "tool-status--dot"}`}
-              title={pill.label}
-            >
+            <span className={`tool-status ${pill.cls} tool-status--dot`} title={pill.label}>
               <span className="sdot" />
-              <span className={expanded ? "" : "sr-only"}>{pill.label}</span>
+              <span className="sr-only">{pill.label}</span>
             </span>
           ) : null}
           {canExpand ? (
@@ -75,7 +72,21 @@ export function BasicTool({
         {copyValue ? <CopyIdButton label={`tool id ${title}`} value={copyValue} /> : null}
       </div>
 
-      {expanded && canExpand ? <div className="tool-body space-y-2">{children}</div> : null}
+      {expanded && canExpand ? (
+        <div className="tool-body space-y-2">
+          <div>
+            <p className="text-xs font-medium text-text-secondary mb-1">Tool</p>
+            <p className="tool-detail-name">{title}</p>
+          </div>
+          {pill ? (
+            <div>
+              <p className="text-xs font-medium text-text-secondary mb-1">Status</p>
+              <p className={`tool-detail-status ${pill.cls}`}>{pill.label}</p>
+            </div>
+          ) : null}
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }

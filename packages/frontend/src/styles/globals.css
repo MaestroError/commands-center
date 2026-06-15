@@ -663,12 +663,28 @@ select.cc-input {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* When expanded, reveal the full tool name instead of truncating it. */
-.tool.open .tool-name {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
+/* Expanded body: full (untruncated) tool name + status as colored text. */
+.tool-detail-name {
+  font-family: var(--cc-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 0;
   word-break: break-word;
+}
+.tool-detail-status {
+  font-size: 13px;
+  font-weight: 600;
+}
+.tool-detail-status.completed {
+  color: var(--success);
+}
+.tool-detail-status.running,
+.tool-detail-status.pending {
+  color: var(--info);
+}
+.tool-detail-status.error {
+  color: var(--danger);
 }
 .tool--error .tool-name {
   color: var(--danger);

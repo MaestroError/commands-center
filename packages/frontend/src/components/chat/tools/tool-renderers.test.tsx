@@ -56,7 +56,8 @@ describe("BashTool", () => {
       },
     });
     render(<BashTool part={part} />);
-    expect(screen.getByText("Shell")).toBeInTheDocument();
+    // "Shell" appears both in the collapsed tab and the expanded body header.
+    expect(screen.getAllByText("Shell").length).toBeGreaterThan(0);
     expect(screen.getByText("$ echo hello")).toBeInTheDocument();
     expect(screen.getByText("hello")).toBeInTheDocument();
   });
@@ -68,7 +69,8 @@ describe("BashTool", () => {
     });
     render(<BashTool part={part} />);
     expect(screen.getByText("$ sleep 5")).toBeInTheDocument();
-    expect(screen.getByText("Running")).toBeInTheDocument();
+    // "Running" appears in the tab (sr-only) and the expanded body header.
+    expect(screen.getAllByText("Running").length).toBeGreaterThan(0);
   });
 });
 
