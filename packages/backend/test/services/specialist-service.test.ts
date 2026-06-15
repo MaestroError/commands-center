@@ -300,6 +300,12 @@ describe("createSpecialistService", () => {
           description: "CommandsCenter specialist creation and update.",
           tools: [
             {
+              name: "read_specialist_profile",
+              description:
+                "Read the full profile of a specialist by slug or ID, including its model, instructions, and capabilities. Administrative tool for authorized managers.",
+              context: "both",
+            },
+            {
               name: "list_models",
               description:
                 "List the model IDs available from connected providers. Use one of these IDs as defaultModel when creating or updating a specialist.",

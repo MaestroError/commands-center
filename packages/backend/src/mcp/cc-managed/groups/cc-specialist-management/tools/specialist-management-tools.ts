@@ -33,8 +33,23 @@ const listSpecialistsInputSchema = z.object({
   includeArchived: z.boolean().default(false),
 });
 
+// `list_specialists` is exposed to every specialist via cc_default, so it must not
+// leak other specialists' prompts/configuration. Return only non-sensitive identity
+// fields; detailed fields (instructions, model, capabilities, workspacePath) are
+// available through `read_specialist_profile` in the admin-only cc_specialist_management group.
+const specialistSummarySchema = z.object({
+  id: z.string().min(1),
+  slug: z.string().min(1),
+  name: z.string().min(1),
+  role: z.string().min(1),
+});
+
 const listSpecialistsOutputSchema = z.object({
-  specialists: z.array(specialistSchema),
+  specialists: z.array(specialistSummarySchema),
+});
+
+const readSpecialistProfileInputSchema = z.object({
+  specialist: z.string().trim().min(1).describe("The specialist slug or ID to look up."),
 });
 
 const listModelsInputSchema = z.object({
@@ -84,7 +99,15 @@ const reviewDecisionSchema = z.object({
 
 export const listSpecialistsToolMetadata = {
   name: "list_specialists",
-  description: "List CommandsCenter specialists available in this workspace.",
+  description:
+    "List CommandsCenter specialists available in this workspace (id, slug, name, role only).",
+  context: "both",
+} as const;
+
+export const readSpecialistProfileToolMetadata = {
+  name: "read_specialist_profile",
+  description:
+    "Read the full profile of a specialist by slug or ID, including its model, instructions, and capabilities. Administrative tool for authorized managers.",
   context: "both",
 } as const;
 
@@ -141,17 +164,51 @@ export function createListSpecialistsToolDefinition(options: { agentService: Spe
       executeTool(async () => {
         const parsed = listSpecialistsInputSchema.parse(args);
         const specialists = await options.agentService.list(parsed.includeArchived);
-        const header = `Found ${String(specialists.length)} specialist${specialists.length === 1 ? "" : "s"}.`;
-        const lines = specialists.map(
+        const summaries = specialists.map((specialist) => ({
+          id: specialist.id,
+          slug: specialist.slug,
+          name: specialist.name,
+          role: specialist.role,
+        }));
+        const header = `Found ${String(summaries.length)} specialist${summaries.length === 1 ? "" : "s"}.`;
+        const lines = summaries.map(
           (specialist) =>
-            `- ${specialist.name} (id: ${specialist.id}, slug: ${specialist.slug}) — ${specialist.role} [${specialist.status}, model: ${specialist.defaultModel}]`,
+            `- ${specialist.name} (id: ${specialist.id}, slug: ${specialist.slug}) — ${specialist.role}`,
         );
         const text = lines.length > 0 ? `${header}\n${lines.join("\n")}` : header;
 
         return success(text, {
-          specialists: z.array(specialistSchema).parse(specialists),
+          specialists: z.array(specialistSummarySchema).parse(summaries),
         });
       }, "Failed to list specialists."),
+  };
+}
+
+export function createReadSpecialistProfileToolDefinition(options: {
+  agentService: SpecialistService;
+}) {
+  return {
+    name: readSpecialistProfileToolMetadata.name,
+    description: readSpecialistProfileToolMetadata.description,
+    context: readSpecialistProfileToolMetadata.context,
+    inputSchema: readSpecialistProfileInputSchema,
+    outputSchema: specialistSchema,
+    execute: async (args: unknown) =>
+      executeTool(async () => {
+        const parsed = readSpecialistProfileInputSchema.parse(args);
+        const specialist =
+          (await options.agentService.getBySlug(parsed.specialist)) ??
+          (await options.agentService.get(parsed.specialist));
+
+        if (!specialist) {
+          throw new Error(`Specialist '${parsed.specialist}' not found.`);
+        }
+
+        return success(
+          `Profile for ${specialist.name} (slug: ${specialist.slug}).`,
+          specialistSchema.parse(specialist),
+        );
+      }, "Failed to read specialist profile."),
   };
 }
 
@@ -187,6 +244,7 @@ export function createSpecialistManagementToolDefinitions(
   options: SpecialistManagementToolOptions,
 ) {
   return [
+    createReadSpecialistProfileToolDefinition({ agentService: options.agentService }),
     createListModelsToolDefinition({ agentService: options.agentService }),
     {
       name: createSpecialistToolMetadata.name,

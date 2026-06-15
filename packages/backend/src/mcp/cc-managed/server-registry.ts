@@ -60,6 +60,7 @@ import {
   draftSpecialistUpdateToolMetadata,
   listSpecialistsToolMetadata,
   listModelsToolMetadata,
+  readSpecialistProfileToolMetadata,
   removeSpecialistToolMetadata,
   updateSpecialistToolMetadata,
 } from "./groups/cc-specialist-management/tools/specialist-management-tools.js";
@@ -269,6 +270,7 @@ export function createCcManagedMcpServerRegistry(options: {
       description: "CommandsCenter specialist creation and update.",
       enabledByDefault: false,
       catalogTools: [
+        readSpecialistProfileToolMetadata,
         listModelsToolMetadata,
         createSpecialistToolMetadata,
         updateSpecialistToolMetadata,
