@@ -187,7 +187,6 @@ export function createSpecialistManagementToolDefinitions(
   options: SpecialistManagementToolOptions,
 ) {
   return [
-    createListSpecialistsToolDefinition({ agentService: options.agentService }),
     createListModelsToolDefinition({ agentService: options.agentService }),
     {
       name: createSpecialistToolMetadata.name,

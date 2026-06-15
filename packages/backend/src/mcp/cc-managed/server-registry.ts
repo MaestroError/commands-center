@@ -153,14 +153,10 @@ export function createCcManagedMcpServerRegistry(options: {
   }
 
   // cc_app holds the operator-interactive tools (live requests) plus the custom-tool
-  // authoring helpers and a quick specialist listing. Only cc_app needs the long timeout.
+  // authoring helpers. Only cc_app needs the long timeout.
   ccAppTools.push(
     createCreateCustomToolDefinition({ customToolService: options.customToolService }),
   );
-
-  if (options.agentService) {
-    ccAppTools.push(createListSpecialistsToolDefinition({ agentService: options.agentService }));
-  }
 
   if (options.customToolActionService) {
     ccAppTools.push(
@@ -204,9 +200,6 @@ export function createCcManagedMcpServerRegistry(options: {
             conversationService: options.conversationService,
             liveRequestService: options.liveRequestService,
           }),
-          ...(options.agentService
-            ? [createListSpecialistsToolDefinition({ agentService: options.agentService })]
-            : []),
         ]
       : [];
   const specialistManagementTools: CcManagedToolDefinition[] = options.agentService
@@ -218,8 +211,11 @@ export function createCcManagedMcpServerRegistry(options: {
         }),
       ]
     : [];
-  const taskRunOutcomeTools: CcManagedToolDefinition[] =
-    options.db && options.taskService
+  const defaultTools: CcManagedToolDefinition[] = [
+    ...(options.agentService
+      ? [createListSpecialistsToolDefinition({ agentService: options.agentService })]
+      : []),
+    ...(options.db && options.taskService
       ? [
           ...createTaskRunOutcomeToolDefinitions({
             db: options.db,
@@ -227,23 +223,25 @@ export function createCcManagedMcpServerRegistry(options: {
           }),
           ...createTaskContextToolDefinitions({ taskService: options.taskService }),
         ]
-      : [];
+      : []),
+  ];
 
   return [
     {
       name: "cc_default",
       routeSegment: "cc-default",
-      description: "CommandsCenter default task-run outcome reporting tools.",
+      description: "CommandsCenter default tools available to every specialist.",
       enabledByDefault: true,
       systemManaged: true,
       catalogTools: [
+        listSpecialistsToolMetadata,
         setTaskResultToolMetadata,
         addTaskArtifactToolMetadata,
         markNeedsHumanReviewToolMetadata,
         readTaskContextToolMetadata,
         appendTaskContextToolMetadata,
       ],
-      tools: taskRunOutcomeTools,
+      tools: defaultTools,
     },
     {
       name: "cc_app",
@@ -256,7 +254,6 @@ export function createCcManagedMcpServerRegistry(options: {
         addSecretToolMetadata,
         showFileToUserToolMetadata,
         createCustomToolMetadata,
-        listSpecialistsToolMetadata,
         copyCustomToolToSpecialistMetadata,
         draftSpecialistToolMetadata,
         draftSpecialistUpdateToolMetadata,
@@ -269,10 +266,9 @@ export function createCcManagedMcpServerRegistry(options: {
     {
       name: "cc_specialist_management",
       routeSegment: "cc-specialist-management",
-      description: "CommandsCenter specialist listing, creation, and update.",
+      description: "CommandsCenter specialist creation and update.",
       enabledByDefault: false,
       catalogTools: [
-        listSpecialistsToolMetadata,
         listModelsToolMetadata,
         createSpecialistToolMetadata,
         updateSpecialistToolMetadata,
@@ -295,7 +291,6 @@ export function createCcManagedMcpServerRegistry(options: {
         getTaskRunToolMetadata,
         createTaskTemplateToolMetadata,
         runTaskTemplateNowToolMetadata,
-        listSpecialistsToolMetadata,
       ],
       tools: taskManagementTools,
     },

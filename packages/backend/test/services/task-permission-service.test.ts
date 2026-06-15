@@ -56,10 +56,7 @@ describe("createTaskPermissionService", () => {
 
       const effective = await permissionService.compute(task);
 
-      // cc_app stays enabled in task runs because it exposes list_specialists (context "both");
-      // its chat-only tools are denied individually below.
       expect(effective.appMcpServers).toEqual([
-        { name: "cc_app", enabled: true, action: "allow" },
         { name: "cc_default", enabled: true, action: "allow" },
       ]);
       expect(effective.toolPermissions).toEqual([{ pattern: "bash_*", action: "allow" }]);
@@ -71,6 +68,9 @@ describe("createTaskPermissionService", () => {
         pattern: "cc_default_set_task_result",
         action: "allow",
       });
+      expect(effective.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
+        "chat_only_app_mcp_hidden_from_task_run",
+      );
       expect(effective.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
         "chat_only_tool_hidden_from_task_run",
       );

@@ -312,8 +312,8 @@ describe("cc-managed MCP routes", () => {
 
       expect(listToolsResponse.statusCode).toBe(200);
       expect(listToolsResponse.body).toContain('"name":"create_task"');
-      expect(listToolsResponse.body).toContain('"name":"list_specialists"');
       expect(listToolsResponse.body).toContain('"name":"queue_task"');
+      expect(listToolsResponse.body).not.toContain('"name":"list_specialists"');
 
       const createTaskResponse = await callMcpToolRoute(
         server,
@@ -537,7 +537,6 @@ describe("cc-managed MCP routes", () => {
         "get_task_run",
         "create_task_template",
         "run_task_template_now",
-        "list_specialists",
       ]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
@@ -549,6 +548,7 @@ describe("cc-managed MCP routes", () => {
         "read_task_context",
         "append_task_context",
         "update_task_context",
+        "list_specialists",
       ]) {
         expect(listToolsResponse.body).not.toContain(`"name":"${toolName}"`);
       }
@@ -750,7 +750,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("lists agents through the tool management MCP", async () => {
+  it("lists specialists through cc_default in chat context", async () => {
     const testDb = await createTestDatabase();
     const server = await createServer({
       config: testDb.config,
@@ -769,44 +769,98 @@ describe("cc-managed MCP routes", () => {
         method: "POST",
         url: "/api/specialists",
         payload: {
-          name: "Tool Manager",
-          role: "manage tools",
-          instructions: "Maintain reusable tools.",
+          name: "Default Chat Specialist",
+          role: "chat with default tools",
+          instructions: "Use default tools.",
           defaultModel: "openai/gpt-4.1",
-          capabilities: {
-            appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
-          },
+          capabilities: {},
         },
       });
 
       expect(created.statusCode).toBe(201);
-      const agent = created.json<{ slug: string }>();
-      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_app");
+      const specialist = created.json<{ slug: string }>();
+      const authHeader = await issueAuthHeader(testDb.config, specialist.slug, "cc_default");
       const listToolsResponse = await callMcpToolRouteForServer(
         server,
-        agent.slug,
-        "cc-app",
+        specialist.slug,
+        "cc-default",
         authHeader,
         "tools/list",
         {},
-        25,
+        27,
       );
-      const listAgentsResponse = await callMcpToolRouteForServer(
+      const listSpecialistsResponse = await callMcpToolRouteForServer(
         server,
-        agent.slug,
-        "cc-app",
+        specialist.slug,
+        "cc-default",
         authHeader,
         "tools/call",
         { name: "list_specialists", arguments: {} },
-        26,
+        28,
       );
 
       expect(listToolsResponse.statusCode).toBe(200);
       expect(listToolsResponse.body).toContain('"name":"list_specialists"');
-      expect(parseSseJson(listAgentsResponse.body)).toMatchObject({
+      expect(listToolsResponse.body).not.toContain('"name":"set_task_result"');
+      expect(parseSseJson(listSpecialistsResponse.body)).toMatchObject({
         result: {
           structuredContent: {
-            specialists: [expect.objectContaining({ slug: "tool-manager" })],
+            specialists: [expect.objectContaining({ slug: "default-chat-specialist" })],
+          },
+        },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("lists specialists through cc_default in task-run context", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService: createTaskExecutionService({ taskService }),
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "task_run");
+      const listToolsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/list",
+        {},
+        29,
+      );
+      const listSpecialistsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "list_specialists", arguments: {} },
+        30,
+      );
+
+      expect(listToolsResponse.statusCode).toBe(200);
+      expect(listToolsResponse.body).toContain('"name":"list_specialists"');
+      expect(listToolsResponse.body).toContain('"name":"set_task_result"');
+      expect(parseSseJson(listSpecialistsResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            specialists: [expect.objectContaining({ slug: "task-agent" })],
           },
         },
       });
@@ -973,10 +1027,15 @@ describe("cc-managed MCP routes", () => {
       );
 
       expect(listToolsResponse.statusCode).toBe(200);
-      for (const toolName of ["list_specialists", "create_specialist", "update_specialist"]) {
+      for (const toolName of ["list_models", "create_specialist", "update_specialist"]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
-      for (const toolName of ["draft_specialist", "draft_specialist_update", "remove_specialist"]) {
+      for (const toolName of [
+        "list_specialists",
+        "draft_specialist",
+        "draft_specialist_update",
+        "remove_specialist",
+      ]) {
         expect(listToolsResponse.body).not.toContain(`"name":"${toolName}"`);
       }
 
