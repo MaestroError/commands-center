@@ -55,20 +55,6 @@ export function AppShell() {
   }, [pathname]);
 
   useEffect(() => {
-    if (runningRuns.length === 0) {
-      return;
-    }
-
-    function onBeforeUnload(event: BeforeUnloadEvent) {
-      event.preventDefault();
-      event.returnValue = "Active task runs are still in progress.";
-    }
-
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [runningRuns.length]);
-
-  useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) {
         return;
