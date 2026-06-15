@@ -539,7 +539,7 @@ describe("file manager content routes", () => {
         recursive: true,
       });
       await writeFile(
-        join(testDb.config.paths.subdirectories.specialists, "agent-a", "AGENTS.md"),
+        join(testDb.config.paths.subdirectories.specialists, "agent-a", "specialist.json"),
         "keep",
         "utf8",
       );
@@ -558,8 +558,8 @@ describe("file manager content routes", () => {
               sizeBytes: 4,
             },
             {
-              name: "AGENTS.md",
-              relativePath: "AGENTS.md",
+              name: "specialist.json",
+              relativePath: "specialist.json",
               contentBase64: Buffer.from("replace", "utf8").toString("base64"),
               sizeBytes: 7,
             },
@@ -574,8 +574,8 @@ describe("file manager content routes", () => {
         uploaded: [{ name: "todo.md", relativePath: "docs/todo.md", path: "agent-a/docs/todo.md" }],
         rejected: [
           {
-            name: "AGENTS.md",
-            relativePath: "AGENTS.md",
+            name: "specialist.json",
+            relativePath: "specialist.json",
             reason: "This upload would overwrite a protected CommandsCenter-managed file.",
           },
         ],
@@ -588,7 +588,7 @@ describe("file manager content routes", () => {
       ).toBe("next");
       expect(
         await readFile(
-          join(testDb.config.paths.subdirectories.specialists, "agent-a", "AGENTS.md"),
+          join(testDb.config.paths.subdirectories.specialists, "agent-a", "specialist.json"),
           "utf8",
         ),
       ).toBe("keep");
