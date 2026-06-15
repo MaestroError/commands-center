@@ -5,7 +5,7 @@ sent with **every** chat and task-run message, persist per-conversation toggles,
 and add the two UI surfaces: the right-sidebar **System Prompts** tab and the
 per-message **Show system prompts** modal.
 
-Depends on Phase 1 (`SystemPromptService.compose` / `listResolved`, CRUD API).
+Depends on Phase 1 (`SystemPromptService.resolveAll` / `listResolved`, CRUD API).
 Read [`00-overview.md`](00-overview.md) for the composition + toggle contract.
 
 ---
@@ -44,8 +44,8 @@ Read [`00-overview.md`](00-overview.md) for the composition + toggle contract.
   - **Per-message snapshot:** persist the returned `prompts`
     (`{ id, title, renderedBody, enabled }[]`) on the user message so the modal
     can show exactly what was sent. Store as
-    `conversation_messages.system_prompt_snapshot_json` (new nullable TEXT
-    column; include in the same drizzle migration as 2.2). Populate during
+    `messages.system_prompt_snapshot_json` (new nullable TEXT column; include in
+    the same drizzle migration as 2.2). Populate during
     `syncConversation`/message persistence for the just-sent user message.
 - [ ] New API for conversation-scoped resolution + toggles:
   - `GET  /api/conversations/:conversationId/system-prompts` → `listResolved`

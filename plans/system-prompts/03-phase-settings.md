@@ -71,14 +71,14 @@ every specialist and core behaviour.").
     - `onSaveRequested` → `PUT`; on success update baseline + invalidate
       `isCustomized`.
     - `onReloadRequested` → refetch body.
-    - Conflict props are unused here (single-operator, no revisions) — pass
-      `undefined`; if `MonacoFileEditor`'s required props make this awkward,
-      extract its inner editor into a smaller shared presentational component
-      rather than forking it.
+    - Conflict UI is unused here (single-operator, no revisions) — pass
+      `conflict={undefined}` and `onDiscardConflict={() => undefined}`; if the
+      required props make this awkward, extract its inner editor into a smaller
+      shared presentational component rather than forking it.
   - Variable pills (3.2) shown above the editor.
   - Footer: **Save** (disabled unless dirty), **Reset to default** (danger;
-    confirm dialog — reuse the `ConfirmDialog` pattern already in
-    `SettingsPage.tsx`). After reset, reload shows the shipped default and the
+    confirm dialog — copy the `ConfirmDialog` pattern from `SettingsPage.tsx` (it is not currently exported),
+    or extract a shared dialog component and reuse it here.
     badge flips to "Default".
   - For **Additional**: empty is valid (no non-empty validation); show a hint
     that an empty additional prompt is simply not sent.
