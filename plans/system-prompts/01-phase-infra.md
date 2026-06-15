@@ -17,7 +17,7 @@ Read [`00-overview.md`](00-overview.md) first for the shared contract.
    `additional`) with default bodies and declared variables.
 3. Variable catalog + `{{ VAR }}` renderer.
 4. Workspace persistence (read with default fallback, save, reset).
-5. `compose()` (used by Phase 2/3) — implemented and unit-tested now.
+5. `resolveAll()` (used by Phase 2/3) — implemented and unit-tested now.
 6. Shared Zod schemas + types in `packages/shared`.
 7. CRUD API routes for definitions & bodies (`GET`/`PUT`/`DELETE`).
 8. Filesystem migration `0003-create-system-prompts-directory`.

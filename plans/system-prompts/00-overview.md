@@ -154,7 +154,7 @@ seed** default content into files — see the migration note in Phase 1.
 
 ## Composition (the `system` string)
 
-`SystemPromptService.compose(context, scope, overrides)`:
+`SystemPromptService.resolveAll(scope, ctx, overrides)`:
 
 1. Select definitions where `def.scope === scope || def.scope === "both"`.
 2. Drop ones disabled by `overrides` (per-conversation toggle map; default uses
