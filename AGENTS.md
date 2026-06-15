@@ -12,7 +12,8 @@
 - Always run linters (`eslint --fix`) and tests after finishing changes, before reporting task as done.
 - Always try to use CSS classes influenced by our themes, so that changing colors inside the theme doesn't skip any component in codebase
 - Before writing filesytem migration, always check `skills/write-filesystem-migration/SKILL.md` to learn how.
-- Plans should be persisted as .md filesx under "plans/" directory
+- Plans should be persisted as .md filesx under "plans/" directory.
+- Never git commit without explicitly asking from user.
 
 ---
 
