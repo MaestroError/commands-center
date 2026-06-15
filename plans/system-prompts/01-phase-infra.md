@@ -55,7 +55,7 @@ SPECIALIST_INSTRUCTIONS, CURRENT_DATE]`. Default body introduces the
 ### 1.2 — Variable catalog & renderer
 
 - [ ] `system-prompts/variables.ts`: a `Record<string, { label; description;
-    resolve(ctx): string }>` for every variable in the overview catalog.
+resolve(ctx): string }>` for every variable in the overview catalog.
       Resolvers read from `SystemPromptRenderContext`; task vars return `""` when
       `ctx.task` is absent. `CC_DEFAULT_TOOLS` renders a static list of
       `cc_default_*` tool names + one-line descriptions (source of truth: keep
@@ -90,7 +90,7 @@ SPECIALIST_INSTRUCTIONS, CURRENT_DATE]`. Default body introduces the
 - [ ] `async listResolved(scope, ctx, overrides?): ResolvedSystemPrompt[]` — like
       compose but keeps disabled/empty entries flagged (for the sidebar/Settings
       preview), each `{ id, title, description, scope, danger, optional, enabled,
-    isCustomized, renderedBody }`.
+isCustomized, renderedBody }`.
 
 Path resolution helper:
 `resolve(config.paths.subdirectories.configuration, "system-prompts", "<id>.md")`.
