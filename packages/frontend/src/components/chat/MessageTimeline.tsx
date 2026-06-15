@@ -75,7 +75,11 @@ export function MessageTimeline({
         return (
           <div key={msg.id}>
             <div className={msg.role === "user" ? "flex justify-end" : "flex justify-start"}>
-              <div className={msg.role === "user" ? "group max-w-[80%]" : "group max-w-[90%]"}>
+              <div
+                className={
+                  msg.role === "user" ? "group min-w-0 max-w-[80%]" : "group min-w-0 max-w-[90%]"
+                }
+              >
                 <div className="flex items-start gap-2">
                   {msg.role === "user" ? (
                     <div className="flex gap-1">
@@ -87,15 +91,17 @@ export function MessageTimeline({
                       <MessageCopyButton copyText={copyText} />
                     </div>
                   ) : null}
-                  {msg.role === "user" ? (
-                    <UserMessage
-                      message={msg}
-                      onAttachmentClick={onAttachmentClick}
-                      parts={msgParts}
-                    />
-                  ) : (
-                    <AssistantMessage message={msg} parts={msgParts} />
-                  )}
+                  <div className="min-w-0">
+                    {msg.role === "user" ? (
+                      <UserMessage
+                        message={msg}
+                        onAttachmentClick={onAttachmentClick}
+                        parts={msgParts}
+                      />
+                    ) : (
+                      <AssistantMessage message={msg} parts={msgParts} />
+                    )}
+                  </div>
                   {msg.role !== "user" ? <MessageCopyButton copyText={copyText} /> : null}
                 </div>
               </div>

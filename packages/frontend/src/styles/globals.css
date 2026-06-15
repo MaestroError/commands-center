@@ -659,6 +659,9 @@ select.cc-input {
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tool--error .tool-name {
   color: var(--danger);
