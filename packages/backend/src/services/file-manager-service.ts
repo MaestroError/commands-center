@@ -110,8 +110,9 @@ const CRITICAL_WORKSPACE_PATH_RULES: CriticalWorkspacePathRule[] = [
 
 const CRITICAL_SPECIALIST_PATH_RULES: CriticalSpecialistPathRule[] = [
   {
-    relativePath: "AGENTS.md",
-    reason: "AGENTS.md defines the specialist instructions and is required for behavior.",
+    relativePath: "specialist.json",
+    reason:
+      "specialist.json stores the specialist identity and metadata managed by CommandsCenter.",
   },
   {
     relativePath: "opencode.jsonc",

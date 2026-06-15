@@ -91,7 +91,7 @@ describe("App", () => {
     expect(brandLink.querySelector('[data-testid="app-logo"]')).not.toBeNull();
   });
 
-  it("warns before browser refresh when task runs are active", async () => {
+  it("does not warn before browser refresh when task runs are active", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       if (input === "/api/auth/status") {
         return Promise.resolve(jsonResponse(200, { status: "claimed-authenticated" }));
@@ -134,11 +134,12 @@ describe("App", () => {
     render(<App />);
 
     await screen.findByRole("link", { name: "1 active task" });
+    // Task runs continue server-side regardless of the browser, so reloading
+    // should not be blocked by a beforeunload prompt.
     const event = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
     const prevented = !window.dispatchEvent(event);
 
-    expect(prevented).toBe(true);
-    expect(event.returnValue).toBe(false);
+    expect(prevented).toBe(false);
   });
 
   it("shows queued tasks separately from active task runs", async () => {

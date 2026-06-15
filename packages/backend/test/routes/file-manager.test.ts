@@ -539,7 +539,7 @@ describe("file manager content routes", () => {
         recursive: true,
       });
       await writeFile(
-        join(testDb.config.paths.subdirectories.specialists, "agent-a", "AGENTS.md"),
+        join(testDb.config.paths.subdirectories.specialists, "agent-a", "specialist.json"),
         "keep",
         "utf8",
       );
@@ -558,8 +558,8 @@ describe("file manager content routes", () => {
               sizeBytes: 4,
             },
             {
-              name: "AGENTS.md",
-              relativePath: "AGENTS.md",
+              name: "specialist.json",
+              relativePath: "specialist.json",
               contentBase64: Buffer.from("replace", "utf8").toString("base64"),
               sizeBytes: 7,
             },
@@ -574,8 +574,8 @@ describe("file manager content routes", () => {
         uploaded: [{ name: "todo.md", relativePath: "docs/todo.md", path: "agent-a/docs/todo.md" }],
         rejected: [
           {
-            name: "AGENTS.md",
-            relativePath: "AGENTS.md",
+            name: "specialist.json",
+            relativePath: "specialist.json",
             reason: "This upload would overwrite a protected CommandsCenter-managed file.",
           },
         ],
@@ -588,10 +588,59 @@ describe("file manager content routes", () => {
       ).toBe("next");
       expect(
         await readFile(
-          join(testDb.config.paths.subdirectories.specialists, "agent-a", "AGENTS.md"),
+          join(testDb.config.paths.subdirectories.specialists, "agent-a", "specialist.json"),
           "utf8",
         ),
       ).toBe("keep");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("treats AGENTS.md as editable (unprotected) while specialist.json stays protected", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      const specialistDir = join(testDb.config.paths.subdirectories.specialists, "agent-b");
+      await mkdir(specialistDir, { recursive: true });
+      await writeFile(join(specialistDir, "AGENTS.md"), "rules", "utf8");
+      await writeFile(join(specialistDir, "specialist.json"), "{}", "utf8");
+
+      // AGENTS.md is no longer flagged critical; specialist.json is.
+      const listing = await server.inject({
+        method: "GET",
+        url: "/api/file-manager/nodes?root=all-specialists&path=agent-b",
+      });
+      expect(listing.statusCode).toBe(200);
+      expect(listing.json<{ nodes: Array<{ name: string; isCritical: boolean }> }>().nodes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "AGENTS.md", isCritical: false }),
+          expect.objectContaining({ name: "specialist.json", isCritical: true }),
+        ]),
+      );
+
+      // Renaming AGENTS.md is allowed.
+      const renamed = await server.inject({
+        method: "PATCH",
+        url: "/api/file-manager/entries",
+        payload: { root: "all-specialists", path: "agent-b/AGENTS.md", name: "AGENTS.renamed.md" },
+      });
+      expect(renamed.statusCode).toBe(200);
+
+      // Deleting it is allowed too.
+      const deleted = await server.inject({
+        method: "DELETE",
+        url: `/api/file-manager/entries?root=all-specialists&path=${encodeURIComponent("agent-b/AGENTS.renamed.md")}`,
+      });
+      expect(deleted.statusCode).toBe(204);
+
+      // specialist.json remains protected against rename.
+      const protectedRename = await server.inject({
+        method: "PATCH",
+        url: "/api/file-manager/entries",
+        payload: { root: "all-specialists", path: "agent-b/specialist.json", name: "x.json" },
+      });
+      expect(protectedRename.statusCode).toBe(403);
     } finally {
       await server.close();
       await testDb.cleanup();

@@ -32,6 +32,7 @@ function makePart(overrides: Partial<ConversationPart> = {}): ConversationPart {
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
+  Element.prototype.scrollTo = vi.fn();
 });
 
 let writeClipboardSpy: ReturnType<typeof vi.fn>;

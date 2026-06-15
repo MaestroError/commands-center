@@ -6,6 +6,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { RotateCcw } from "lucide-react";
 
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { TabBar, type TabItem } from "@/components/common/TabBar";
@@ -107,10 +108,18 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
     <div className="flex h-[calc(100vh-5.3rem)] flex-col gap-2" data-testid="workspace-layout">
       {!isDesktop && (props.contextPane || props.bottomPane) ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            aria-label="Reload page"
+            className="cc-button cc-button-secondary"
+            onClick={() => window.location.reload()}
+            type="button"
+          >
+            <RotateCcw size={14} />
+          </button>
           {props.contextPane ? (
             <button
               aria-label="Open context pane"
-              className="cc-button cc-button-secondary ml-auto"
+              className="cc-button cc-button-secondary"
               onClick={() => setMobileContextOpen(true)}
               type="button"
             >

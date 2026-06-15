@@ -103,7 +103,7 @@ export function UserMessage({ message, parts, onAttachmentClick }: UserMessagePr
           ))}
         </div>
       )}
-      {text && <div className="whitespace-pre-wrap">{text}</div>}
+      {text && <div className="whitespace-pre-wrap break-words">{text}</div>}
     </div>
   );
 }

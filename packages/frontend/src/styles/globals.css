@@ -659,6 +659,32 @@ select.cc-input {
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Expanded body: full (untruncated) tool name + status as colored text. */
+.tool-detail-name {
+  font-family: var(--cc-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 0;
+  word-break: break-word;
+}
+.tool-detail-status {
+  font-size: 13px;
+  font-weight: 600;
+}
+.tool-detail-status.completed {
+  color: var(--success);
+}
+.tool-detail-status.running,
+.tool-detail-status.pending {
+  color: var(--info);
+}
+.tool-detail-status.error {
+  color: var(--danger);
 }
 .tool--error .tool-name {
   color: var(--danger);
@@ -725,6 +751,16 @@ select.cc-input {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 24%, transparent);
+}
+/* Collapsed state: show status as a bare colored dot (no pill chrome / label). */
+.tool-status--dot {
+  padding: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.tool-status--dot .sdot {
+  width: 8px;
+  height: 8px;
 }
 @keyframes ccpulse {
   0%,
