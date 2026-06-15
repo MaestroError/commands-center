@@ -257,11 +257,6 @@ describe("createSpecialistService", () => {
               context: "chat",
             },
             {
-              name: "list_specialists",
-              description: "List CommandsCenter specialists available in this workspace.",
-              context: "both",
-            },
-            {
               name: "copy_custom_tool_to_specialist",
               description:
                 "Copy a global CommandsCenter custom tool into a specialist workspace, asking the operator when overwrite or rename is needed.",
@@ -302,11 +297,12 @@ describe("createSpecialistService", () => {
         {
           name: "cc_specialist_management",
           enabledByDefault: false,
-          description: "CommandsCenter specialist listing, creation, and update.",
+          description: "CommandsCenter specialist creation and update.",
           tools: [
             {
-              name: "list_specialists",
-              description: "List CommandsCenter specialists available in this workspace.",
+              name: "read_specialist_profile",
+              description:
+                "Read the full profile of a specialist by slug or ID, including its model, instructions, and capabilities. Administrative tool for authorized managers.",
               context: "both",
             },
             {
@@ -385,11 +381,6 @@ describe("createSpecialistService", () => {
               name: "run_task_template_now",
               description:
                 "Generate and queue a run from a recurring CommandsCenter task template.",
-              context: "both",
-            },
-            {
-              name: "list_specialists",
-              description: "List CommandsCenter specialists available in this workspace.",
               context: "both",
             },
           ],

@@ -312,8 +312,8 @@ describe("cc-managed MCP routes", () => {
 
       expect(listToolsResponse.statusCode).toBe(200);
       expect(listToolsResponse.body).toContain('"name":"create_task"');
-      expect(listToolsResponse.body).toContain('"name":"list_specialists"');
       expect(listToolsResponse.body).toContain('"name":"queue_task"');
+      expect(listToolsResponse.body).not.toContain('"name":"list_specialists"');
 
       const createTaskResponse = await callMcpToolRoute(
         server,
@@ -537,7 +537,6 @@ describe("cc-managed MCP routes", () => {
         "get_task_run",
         "create_task_template",
         "run_task_template_now",
-        "list_specialists",
       ]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
@@ -549,6 +548,7 @@ describe("cc-managed MCP routes", () => {
         "read_task_context",
         "append_task_context",
         "update_task_context",
+        "list_specialists",
       ]) {
         expect(listToolsResponse.body).not.toContain(`"name":"${toolName}"`);
       }
@@ -750,7 +750,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("lists agents through the tool management MCP", async () => {
+  it("lists specialists through cc_default in chat context", async () => {
     const testDb = await createTestDatabase();
     const server = await createServer({
       config: testDb.config,
@@ -769,44 +769,103 @@ describe("cc-managed MCP routes", () => {
         method: "POST",
         url: "/api/specialists",
         payload: {
-          name: "Tool Manager",
-          role: "manage tools",
-          instructions: "Maintain reusable tools.",
+          name: "Default Chat Specialist",
+          role: "chat with default tools",
+          instructions: "Use default tools.",
           defaultModel: "openai/gpt-4.1",
-          capabilities: {
-            appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
-          },
+          capabilities: {},
         },
       });
 
       expect(created.statusCode).toBe(201);
-      const agent = created.json<{ slug: string }>();
-      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_app");
+      const specialist = created.json<{ slug: string }>();
+      const authHeader = await issueAuthHeader(testDb.config, specialist.slug, "cc_default");
       const listToolsResponse = await callMcpToolRouteForServer(
         server,
-        agent.slug,
-        "cc-app",
+        specialist.slug,
+        "cc-default",
         authHeader,
         "tools/list",
         {},
-        25,
+        27,
       );
-      const listAgentsResponse = await callMcpToolRouteForServer(
+      const listSpecialistsResponse = await callMcpToolRouteForServer(
         server,
-        agent.slug,
-        "cc-app",
+        specialist.slug,
+        "cc-default",
         authHeader,
         "tools/call",
         { name: "list_specialists", arguments: {} },
-        26,
+        28,
       );
 
       expect(listToolsResponse.statusCode).toBe(200);
       expect(listToolsResponse.body).toContain('"name":"list_specialists"');
-      expect(parseSseJson(listAgentsResponse.body)).toMatchObject({
+      expect(listToolsResponse.body).not.toContain('"name":"set_task_result"');
+      const listed = parseSseJson(listSpecialistsResponse.body) as {
+        result: { structuredContent: { specialists: Array<Record<string, unknown>> } };
+      };
+      expect(listed.result.structuredContent.specialists[0]).toEqual({
+        id: expect.any(String),
+        slug: "default-chat-specialist",
+        name: "Default Chat Specialist",
+        role: "chat with default tools",
+      });
+      // The default-tools listing must not leak other specialists' prompts/configuration.
+      expect(listSpecialistsResponse.body).not.toContain("instructions");
+      expect(listSpecialistsResponse.body).not.toContain("Use default tools.");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("lists specialists through cc_default in task-run context", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService: createTaskExecutionService({ taskService }),
+    });
+
+    try {
+      const agent = await insertAgentWithTasksManagement(testDb.client.db);
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "task_run");
+      const listToolsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/list",
+        {},
+        29,
+      );
+      const listSpecialistsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "list_specialists", arguments: {} },
+        30,
+      );
+
+      expect(listToolsResponse.statusCode).toBe(200);
+      expect(listToolsResponse.body).toContain('"name":"list_specialists"');
+      expect(listToolsResponse.body).toContain('"name":"set_task_result"');
+      expect(parseSseJson(listSpecialistsResponse.body)).toMatchObject({
         result: {
           structuredContent: {
-            specialists: [expect.objectContaining({ slug: "tool-manager" })],
+            specialists: [expect.objectContaining({ slug: "task-agent" })],
           },
         },
       });
@@ -973,10 +1032,20 @@ describe("cc-managed MCP routes", () => {
       );
 
       expect(listToolsResponse.statusCode).toBe(200);
-      for (const toolName of ["list_specialists", "create_specialist", "update_specialist"]) {
+      for (const toolName of [
+        "read_specialist_profile",
+        "list_models",
+        "create_specialist",
+        "update_specialist",
+      ]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
-      for (const toolName of ["draft_specialist", "draft_specialist_update", "remove_specialist"]) {
+      for (const toolName of [
+        "list_specialists",
+        "draft_specialist",
+        "draft_specialist_update",
+        "remove_specialist",
+      ]) {
         expect(listToolsResponse.body).not.toContain(`"name":"${toolName}"`);
       }
 
@@ -1002,6 +1071,99 @@ describe("cc-managed MCP routes", () => {
       expect(createResponse.statusCode).toBe(200);
       expect(parseSseJson(createResponse.body)).toMatchObject({
         result: { structuredContent: { slug: "task-spawned-specialist" } },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("reads a full specialist profile through cc_specialist_management", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const target = await server.inject({
+        method: "POST",
+        url: "/api/specialists",
+        payload: {
+          name: "Profile Target",
+          role: "carry secret instructions",
+          instructions: "Confidential profile instructions.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {},
+        },
+      });
+
+      expect(target.statusCode).toBe(201);
+      const targetSpecialist = target.json<{ slug: string }>();
+
+      const manager = await server.inject({
+        method: "POST",
+        url: "/api/specialists",
+        payload: {
+          name: "Profile Manager",
+          role: "manage agents",
+          instructions: "Maintain specialist workspaces.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            appMcpServers: [{ name: "cc_specialist_management", enabled: true, action: "allow" }],
+          },
+        },
+      });
+
+      expect(manager.statusCode).toBe(201);
+      const managerSpecialist = manager.json<{ slug: string }>();
+      const authHeader = await issueAuthHeader(
+        testDb.config,
+        managerSpecialist.slug,
+        "cc_specialist_management",
+      );
+
+      const profileResponse = await callMcpToolRouteForServer(
+        server,
+        managerSpecialist.slug,
+        "cc-specialist-management",
+        authHeader,
+        "tools/call",
+        { name: "read_specialist_profile", arguments: { specialist: targetSpecialist.slug } },
+        38,
+      );
+
+      expect(profileResponse.statusCode).toBe(200);
+      expect(parseSseJson(profileResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            slug: "profile-target",
+            instructions: "Confidential profile instructions.",
+            defaultModel: "openai/gpt-4.1",
+          },
+        },
+      });
+
+      const notFoundResponse = await callMcpToolRouteForServer(
+        server,
+        managerSpecialist.slug,
+        "cc-specialist-management",
+        authHeader,
+        "tools/call",
+        { name: "read_specialist_profile", arguments: { specialist: "does-not-exist" } },
+        39,
+      );
+
+      expect(notFoundResponse.statusCode).toBe(200);
+      expect(parseSseJson(notFoundResponse.body)).toMatchObject({
+        result: { isError: true },
       });
     } finally {
       await server.close();
