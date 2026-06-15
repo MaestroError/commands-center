@@ -663,6 +663,13 @@ select.cc-input {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* When expanded, reveal the full tool name instead of truncating it. */
+.tool.open .tool-name {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+}
 .tool--error .tool-name {
   color: var(--danger);
 }
@@ -728,6 +735,16 @@ select.cc-input {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 24%, transparent);
+}
+/* Collapsed state: show status as a bare colored dot (no pill chrome / label). */
+.tool-status--dot {
+  padding: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.tool-status--dot .sdot {
+  width: 8px;
+  height: 8px;
 }
 @keyframes ccpulse {
   0%,

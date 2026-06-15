@@ -1,4 +1,7 @@
+import type { ReactNode } from "react";
+
 import type { ConversationPart } from "@cc/shared/schemas";
+import { CopyIdButton } from "../CopyIdButton";
 import { getToolState } from "./tool-registry";
 import { BasicTool } from "./BasicTool";
 import { getToolIcon } from "./tool-icons";
@@ -6,6 +9,36 @@ import { getToolIcon } from "./tool-icons";
 type GenericToolProps = {
   part: ConversationPart;
 };
+
+function toText(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
+function ToolDetail(props: { label: string; value: unknown; tone?: "default" | "danger" }) {
+  const text = toText(props.value);
+  const labelClass =
+    props.tone === "danger"
+      ? "text-xs font-medium text-danger mb-1"
+      : "text-xs font-medium text-text-secondary mb-1";
+  const preClass =
+    props.tone === "danger"
+      ? "text-xs bg-surface-elevated rounded-md p-3 overflow-auto max-h-60 text-danger"
+      : "text-xs bg-surface-elevated rounded-md p-3 overflow-auto max-h-60 text-text-primary";
+
+  return (
+    <div>
+      <p className={labelClass}>{props.label}</p>
+      <div className="relative">
+        <pre className={preClass}>{text}</pre>
+        <CopyIdButton
+          className="absolute top-2 right-2 rounded-md bg-surface p-1 text-text-secondary transition hover:text-text-primary"
+          label={props.label.toLowerCase()}
+          value={text}
+        />
+      </div>
+    </div>
+  );
+}
 
 export function GenericTool({ part }: GenericToolProps) {
   const toolName =
@@ -16,37 +49,16 @@ export function GenericTool({ part }: GenericToolProps) {
   const output = state?.["output"];
   const error = state?.["error"];
 
-  const hasDetails = input !== undefined || output !== undefined || error !== undefined;
+  const details: ReactNode[] = [];
+  if (input !== undefined) details.push(<ToolDetail key="input" label="Input" value={input} />);
+  if (output !== undefined) details.push(<ToolDetail key="output" label="Output" value={output} />);
+  if (error !== undefined)
+    details.push(<ToolDetail key="error" label="Error" tone="danger" value={error} />);
 
   return (
     <BasicTool copyValue={toolName} icon={getToolIcon(toolName)} title={toolName} status={status}>
-      {hasDetails ? (
-        <>
-          {input !== undefined && (
-            <div>
-              <p className="text-xs font-medium text-text-secondary mb-1">Input</p>
-              <pre className="text-xs bg-surface-elevated rounded-md p-3 overflow-auto max-h-60 text-text-primary">
-                {typeof input === "string" ? input : JSON.stringify(input, null, 2)}
-              </pre>
-            </div>
-          )}
-          {output !== undefined && (
-            <div>
-              <p className="text-xs font-medium text-text-secondary mb-1">Output</p>
-              <pre className="text-xs bg-surface-elevated rounded-md p-3 overflow-auto max-h-60 text-text-primary">
-                {typeof output === "string" ? output : JSON.stringify(output, null, 2)}
-              </pre>
-            </div>
-          )}
-          {error !== undefined && (
-            <div>
-              <p className="text-xs font-medium text-danger mb-1">Error</p>
-              <pre className="text-xs bg-surface-elevated rounded-md p-3 overflow-auto max-h-60 text-danger">
-                {typeof error === "string" ? error : JSON.stringify(error, null, 2)}
-              </pre>
-            </div>
-          )}
-        </>
+      {details.length > 0 ? (
+        details
       ) : (
         <p className="text-xs text-text-secondary">No details available.</p>
       )}

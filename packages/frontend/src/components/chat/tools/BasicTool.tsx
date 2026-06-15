@@ -58,9 +58,12 @@ export function BasicTool({
           {subtitle ? <span className="tool-arg">{subtitle}</span> : null}
           <span className="tool-spacer" />
           {pill ? (
-            <span className={`tool-status ${pill.cls}`}>
+            <span
+              className={`tool-status ${pill.cls} ${expanded ? "" : "tool-status--dot"}`}
+              title={pill.label}
+            >
               <span className="sdot" />
-              {pill.label}
+              <span className={expanded ? "" : "sr-only"}>{pill.label}</span>
             </span>
           ) : null}
           {canExpand ? (
