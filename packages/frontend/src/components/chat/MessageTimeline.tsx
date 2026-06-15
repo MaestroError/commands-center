@@ -26,11 +26,15 @@ export function MessageTimeline({
   onConvertUserMessageToTask,
 }: MessageTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
 
   const scrollToBottom = useCallback(() => {
-    sentinelRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Scroll the timeline container itself rather than scrollIntoView on a
+    // sentinel: scrollIntoView also scrolls every scrollable ancestor (including
+    // the overflow-hidden chat container), which shoves the composer off-screen.
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, []);
 
   const handleScroll = useCallback(() => {
@@ -150,8 +154,6 @@ export function MessageTimeline({
           </div>
         </div>
       ) : null}
-
-      <div ref={sentinelRef} />
     </div>
   );
 }
