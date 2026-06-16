@@ -3508,6 +3508,133 @@ describe("cc-managed MCP routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("get_self_profile returns the calling specialist's own profile in chat and task-run", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      // Create two specialists to confirm the tool only returns the caller's own data.
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/specialists",
+        payload: {
+          name: "Profile Specialist",
+          role: "inspect own profile",
+          instructions: "Read my own profile.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {},
+        },
+      });
+      await server.inject({
+        method: "POST",
+        url: "/api/specialists",
+        payload: {
+          name: "Other Specialist",
+          role: "other role",
+          instructions: "Different specialist.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {},
+        },
+      });
+
+      expect(created.statusCode).toBe(201);
+      const specialist = created.json<{ slug: string; id: string }>();
+
+      for (const contextMode of ["chat", "task_run"] as const) {
+        const authHeader = await issueAuthHeader(
+          testDb.config,
+          specialist.slug,
+          "cc_default",
+          contextMode,
+        );
+        const response = await callMcpToolRouteForServer(
+          server,
+          specialist.slug,
+          "cc-default",
+          authHeader,
+          "tools/call",
+          { name: "get_self_profile", arguments: {} },
+          95,
+        );
+
+        expect(response.statusCode).toBe(200);
+        const body = parseSseJson(response.body) as {
+          result?: {
+            isError?: boolean;
+            structuredContent?: {
+              id?: string;
+              slug?: string;
+              name?: string;
+              role?: string;
+              capabilities?: unknown;
+            };
+          };
+        };
+
+        expect(body.result?.isError).toBeFalsy();
+        expect(body.result?.structuredContent).toMatchObject({
+          id: specialist.id,
+          slug: "profile-specialist",
+          name: "Profile Specialist",
+          role: "inspect own profile",
+        });
+        // Capabilities must be present (verifies the field is included).
+        expect(body.result?.structuredContent?.capabilities).toBeDefined();
+        // Must not return the other specialist's data.
+        expect(JSON.stringify(body.result?.structuredContent)).not.toContain("Other Specialist");
+      }
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("get_self_profile returns a clear error for an unknown specialist slug", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      // Issue a token for a slug that was never created.
+      const authHeader = await issueAuthHeader(testDb.config, "ghost-specialist", "cc_default");
+      const response = await callMcpToolRouteForServer(
+        server,
+        "ghost-specialist",
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "get_self_profile", arguments: {} },
+        96,
+      );
+
+      // Unknown slugs are rejected at the route layer before the tool executes.
+      expect(response.statusCode).toBe(404);
+      expect(response.body).toContain("ghost-specialist");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 function parseSseJson(body: string): unknown {

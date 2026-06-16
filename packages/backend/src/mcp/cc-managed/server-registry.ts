@@ -82,12 +82,14 @@ import {
   listTasksToolMetadata,
 } from "./groups/cc-tasks-management/tools/task-management-tools.js";
 import {
+  createGetSelfProfileToolDefinition,
   createSpecialistLiveToolDefinitions,
   createSpecialistManagementToolDefinitions,
   createSpecialistToolMetadata,
   createListSpecialistsToolDefinition,
   draftSpecialistToolMetadata,
   draftSpecialistUpdateToolMetadata,
+  getSelfProfileToolMetadata,
   listSpecialistsToolMetadata,
   listModelsToolMetadata,
   readSpecialistProfileToolMetadata,
@@ -261,7 +263,10 @@ export function createCcManagedMcpServerRegistry(options: {
 
   const defaultTools: CcManagedToolDefinition[] = [
     ...(options.agentService
-      ? [createListSpecialistsToolDefinition({ agentService: options.agentService })]
+      ? [
+          createListSpecialistsToolDefinition({ agentService: options.agentService }),
+          createGetSelfProfileToolDefinition({ agentService: options.agentService }),
+        ]
       : []),
     ...(options.db && options.taskService
       ? [
@@ -307,6 +312,7 @@ export function createCcManagedMcpServerRegistry(options: {
       toolCallTimeoutMs: 15 * 1000,
       catalogTools: [
         listSpecialistsToolMetadata,
+        getSelfProfileToolMetadata,
         setTaskResultToolMetadata,
         addTaskArtifactToolMetadata,
         markNeedsHumanReviewToolMetadata,
