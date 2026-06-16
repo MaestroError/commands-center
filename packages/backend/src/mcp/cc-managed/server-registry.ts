@@ -26,6 +26,36 @@ import {
   markNeedsHumanReviewToolMetadata,
   setTaskResultToolMetadata,
 } from "./groups/cc-default/tools/task-run-outcome-tools.js";
+import {
+  appendSelfTaskContextToolMetadata,
+  createSelfTaskArtifactToolDefinitions,
+  createSelfTaskContextToolDefinitions,
+  createSelfTaskToolDefinitions,
+  createSelfTaskToolMetadata,
+  getSelfTaskRunToolMetadata,
+  getSelfTaskToolMetadata,
+  listSelfTaskArtifactsToolMetadata,
+  listSelfTaskRunArtifactsToolMetadata,
+  listSelfTaskRunsToolMetadata,
+  listSelfTasksToolMetadata,
+  readSelfTaskContextToolMetadata,
+  scheduleSelfTaskToolMetadata,
+} from "./groups/cc-default/tools/self-task-tools.js";
+import {
+  createSelfTaskLiveToolDefinitions,
+  draftSelfTaskTemplateToolMetadata,
+  draftSelfTaskToolMetadata,
+  draftSelfTaskUpdateToolMetadata,
+  runSelfTaskToolMetadata,
+} from "./groups/cc-default/tools/self-task-live-tools.js";
+import {
+  createSelfTaskTemplateToolDefinitions,
+  createSelfTaskTemplateToolMetadata,
+  createSelfTaskFromTemplateToolMetadata,
+  getSelfTaskTemplateToolMetadata,
+  listSelfTaskTemplatesToolMetadata,
+  runSelfTaskTemplateNowToolMetadata,
+} from "./groups/cc-default/tools/self-task-template-tools.js";
 import { createCopyCustomToolToSpecialistDefinition } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
 import { copyCustomToolToSpecialistMetadata } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
 import {
@@ -52,12 +82,14 @@ import {
   listTasksToolMetadata,
 } from "./groups/cc-tasks-management/tools/task-management-tools.js";
 import {
+  createGetSelfProfileToolDefinition,
   createSpecialistLiveToolDefinitions,
   createSpecialistManagementToolDefinitions,
   createSpecialistToolMetadata,
   createListSpecialistsToolDefinition,
   draftSpecialistToolMetadata,
   draftSpecialistUpdateToolMetadata,
+  getSelfProfileToolMetadata,
   listSpecialistsToolMetadata,
   listModelsToolMetadata,
   readSpecialistProfileToolMetadata,
@@ -109,6 +141,10 @@ export type CcManagedMcpServerDefinition = {
   // for the operator (secrets, file preview, draft reviews, confirmations). These
   // need a much longer MCP client timeout than quick request/response tools.
   interactive?: boolean;
+  // Explicit per-group MCP tool-call timeout in milliseconds. When unset, the
+  // client falls back to the long interactive timeout for interactive groups and
+  // to opencode's own default for everything else.
+  toolCallTimeoutMs?: number;
   catalogTools: readonly CcManagedToolMetadata[];
   tools: readonly CcManagedToolDefinition[];
 };
@@ -212,9 +248,25 @@ export function createCcManagedMcpServerRegistry(options: {
         }),
       ]
     : [];
+  const defaultInteractiveTools: CcManagedToolDefinition[] =
+    options.db && options.taskService && options.taskExecutionService
+      ? [
+          ...createSelfTaskLiveToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+            taskExecutionService: options.taskExecutionService,
+            conversationService: options.conversationService,
+            liveRequestService: options.liveRequestService,
+          }),
+        ]
+      : [];
+
   const defaultTools: CcManagedToolDefinition[] = [
     ...(options.agentService
-      ? [createListSpecialistsToolDefinition({ agentService: options.agentService })]
+      ? [
+          createListSpecialistsToolDefinition({ agentService: options.agentService }),
+          createGetSelfProfileToolDefinition({ agentService: options.agentService }),
+        ]
       : []),
     ...(options.db && options.taskService
       ? [
@@ -223,6 +275,27 @@ export function createCcManagedMcpServerRegistry(options: {
             taskService: options.taskService,
           }),
           ...createTaskContextToolDefinitions({ taskService: options.taskService }),
+          ...createSelfTaskContextToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+          }),
+          ...createSelfTaskArtifactToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+          }),
+        ]
+      : []),
+    ...(options.db && options.taskService && options.taskExecutionService
+      ? [
+          ...createSelfTaskToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+          }),
+          ...createSelfTaskTemplateToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+            taskExecutionService: options.taskExecutionService,
+          }),
         ]
       : []),
   ];
@@ -234,15 +307,52 @@ export function createCcManagedMcpServerRegistry(options: {
       description: "CommandsCenter default tools available to every specialist.",
       enabledByDefault: true,
       systemManaged: true,
+      // Quick request/response tools only. opencode's remote-MCP client defaults
+      // to a 5s tool-call timeout; 15s gives these DB-backed tools a little more
+      // headroom while still failing fast — far below the 10-min interactive window.
+      toolCallTimeoutMs: 15 * 1000,
       catalogTools: [
         listSpecialistsToolMetadata,
+        getSelfProfileToolMetadata,
         setTaskResultToolMetadata,
         addTaskArtifactToolMetadata,
         markNeedsHumanReviewToolMetadata,
         readTaskContextToolMetadata,
         appendTaskContextToolMetadata,
+        createSelfTaskToolMetadata,
+        scheduleSelfTaskToolMetadata,
+        listSelfTasksToolMetadata,
+        getSelfTaskToolMetadata,
+        listSelfTaskRunsToolMetadata,
+        getSelfTaskRunToolMetadata,
+        readSelfTaskContextToolMetadata,
+        appendSelfTaskContextToolMetadata,
+        listSelfTaskTemplatesToolMetadata,
+        getSelfTaskTemplateToolMetadata,
+        createSelfTaskTemplateToolMetadata,
+        runSelfTaskTemplateNowToolMetadata,
+        createSelfTaskFromTemplateToolMetadata,
+        listSelfTaskArtifactsToolMetadata,
+        listSelfTaskRunArtifactsToolMetadata,
       ],
       tools: defaultTools,
+    },
+    {
+      name: "cc_default_interactive",
+      routeSegment: "cc-default-interactive",
+      description:
+        "CommandsCenter interactive self tools for operator-confirmed task creation and updates. Enabled by default; tools pause execution while the operator reviews a form.",
+      enabledByDefault: true,
+      systemManaged: true,
+      interactive: true,
+      toolCallTimeoutMs: 10 * 60 * 1000,
+      catalogTools: [
+        runSelfTaskToolMetadata,
+        draftSelfTaskToolMetadata,
+        draftSelfTaskUpdateToolMetadata,
+        draftSelfTaskTemplateToolMetadata,
+      ],
+      tools: defaultInteractiveTools,
     },
     {
       name: "cc_app",

@@ -268,9 +268,17 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return this.list({ includeArchived: true, status: "archived" });
     },
 
-    async listTemplates(): Promise<TaskTemplate[]> {
+    async listTemplates(filter: { defaultAgentId?: string } = {}): Promise<TaskTemplate[]> {
       const rows = await options.db.query.task_templates.findMany({
-        where: (table, operators) => operators.isNull(table.deleted_at),
+        where: (table, operators) => {
+          const filters = [operators.isNull(table.deleted_at)];
+
+          if (filter.defaultAgentId) {
+            filters.push(operators.eq(table.default_agent_id, filter.defaultAgentId));
+          }
+
+          return operators.and(...filters);
+        },
         orderBy: (table, operators) => [operators.desc(table.updated_at)],
       });
 

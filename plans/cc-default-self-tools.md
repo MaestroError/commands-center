@@ -12,6 +12,26 @@ Conversation history tools are intentionally out of scope for this plan:
 
 Before adding history search, investigate whether OpenCode exposes a session-history search API. If it does, prefer using that API over implementing a separate CommandsCenter search index.
 
+## Implementation Status
+
+- Phase 1 (self task reads + direct self task creation): **done**.
+- Phase 3 (explicit-ID self context tools): **done**.
+- Phases 2, 4, 5, 6: not started.
+
+All Phase 1/3 tools live in `cc_default` in
+`packages/backend/src/mcp/cc-managed/groups/cc-default/tools/self-task-tools.ts`.
+
+Timeout decisions (agreed for the live-draft work in Phase 2):
+
+- `cc_default` carries an explicit 15s tool-call timeout (`toolCallTimeoutMs`) so a
+  hung quick call fails fast. The registry now supports a per-group
+  `toolCallTimeoutMs`; `interactive: true` still implies the long live-request
+  window when no explicit timeout is set.
+- Phase 2 self draft tools live in a dedicated `cc_default_interactive` group
+  (`enabledByDefault: true`, `interactive: true`, `toolCallTimeoutMs` of 10 min),
+  not on `cc_default`, so the default quick-tool timeout stays tight. This group
+  now exists in the server registry, added together with the Phase 2 tools.
+
 ## Principles
 
 - Scope every self tool from the MCP route/token calling specialist. Do not accept arbitrary `agentId` or `specialistId` in `cc_default` self tools.

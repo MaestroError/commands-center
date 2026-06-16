@@ -153,6 +153,33 @@ export const removeSpecialistToolMetadata = {
   context: "chat",
 } as const;
 
+export const getSelfProfileToolMetadata = {
+  name: "get_self_profile",
+  description:
+    "Return your own specialist profile: id, slug, name, role, default model, status, workspace path, and full capabilities. Use this to inspect your own configuration — not to read another specialist's profile. Available in both chat and task-run contexts.",
+  context: "both",
+} as const;
+
+export function createGetSelfProfileToolDefinition(options: { agentService: SpecialistService }) {
+  return {
+    name: getSelfProfileToolMetadata.name,
+    description: getSelfProfileToolMetadata.description,
+    context: getSelfProfileToolMetadata.context,
+    inputSchema: z.object({}).strict(),
+    outputSchema: specialistSchema,
+    execute: async (_args: unknown, context: { agentSlug: string }) =>
+      executeTool(async () => {
+        const specialist = await options.agentService.getBySlug(context.agentSlug);
+
+        if (!specialist) {
+          throw new Error(`Specialist '${context.agentSlug}' not found.`);
+        }
+
+        return success("Profile loaded.", specialistSchema.parse(specialist));
+      }, "Failed to get self profile."),
+  };
+}
+
 export function createListSpecialistsToolDefinition(options: { agentService: SpecialistService }) {
   return {
     name: listSpecialistsToolMetadata.name,

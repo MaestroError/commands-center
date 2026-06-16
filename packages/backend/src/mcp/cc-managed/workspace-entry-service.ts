@@ -76,9 +76,10 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
               headers: {
                 Authorization: `Bearer ${token}`,
               },
-              // Only the interactive groups (which block on operator input) need the
-              // long timeout; quick request/response groups keep opencode's default.
-              ...(server.interactive ? { timeout: CC_MANAGED_MCP_TIMEOUT_MS } : {}),
+              // An explicit per-group timeout wins. Otherwise interactive groups
+              // (which block on operator input) get the long live-request window,
+              // and quick request/response groups keep opencode's own default.
+              ...resolveTimeout(server),
             },
           ] as const;
         }),
@@ -87,6 +88,18 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
       return Object.fromEntries(entries);
     },
   };
+}
+
+function resolveTimeout(server: CcManagedMcpServerDefinition): { timeout?: number } {
+  if (server.toolCallTimeoutMs !== undefined) {
+    return { timeout: server.toolCallTimeoutMs };
+  }
+
+  if (server.interactive) {
+    return { timeout: CC_MANAGED_MCP_TIMEOUT_MS };
+  }
+
+  return {};
 }
 
 function buildServerUrl(config: RuntimeConfig, routeSegment: string, agentSlug: string): string {
