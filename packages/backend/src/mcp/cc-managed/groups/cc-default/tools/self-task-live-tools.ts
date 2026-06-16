@@ -2,8 +2,10 @@ import { z } from "zod";
 
 import {
   createTaskInputSchema,
+  createTaskTemplateInputSchema,
   taskContextSchema,
   taskSchema,
+  taskTemplateSchema,
   updateTaskInputSchema,
 } from "@cc/shared/schemas";
 
@@ -33,6 +35,13 @@ const draftSelfTaskInputSchema = createTaskInputSchema
   .partial()
   .strict();
 
+// Partial input that pre-fills the operator review form for template creation.
+// defaultAgentId is omitted and always forced to the calling specialist.
+const draftSelfTaskTemplateInputSchema = createTaskTemplateInputSchema
+  .omit({ defaultAgentId: true })
+  .partial()
+  .strict();
+
 const draftSelfTaskUpdateInputSchema = z
   .object({
     taskId: z.string().trim().min(1),
@@ -56,6 +65,13 @@ export const draftSelfTaskUpdateToolMetadata = {
   name: "draft_self_task_update",
   description:
     "Open an operator review form to edit one of your own CommandsCenter tasks. Execution pauses until the operator reviews and confirms the proposed changes. Use this only in chat, only when you want to modify a task that is assigned to you and need the operator to approve before the change is saved. Will fail if the specified task belongs to a different specialist. Do not call this to update another specialist's task.",
+  context: "chat",
+} as const;
+
+export const draftSelfTaskTemplateToolMetadata = {
+  name: "draft_self_task_template",
+  description:
+    "Open an operator review form to create a reusable CommandsCenter task template assigned to you. A template captures a task title, description, and todos, and can optionally carry a recurrence schedule to act as a cron job that runs on a fixed interval. Execution pauses until the operator approves. Use this only in chat, only when you want to set up a persistent, reusable task definition for yourself and need operator review before creation. Do not attempt to pass a defaultAgentId — the template is always assigned to you.",
   context: "chat",
 } as const;
 
@@ -202,6 +218,48 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
 
           return success("Task updated.", taskSchema.parse(task));
         }, "Failed to draft task update."),
+    },
+    {
+      name: draftSelfTaskTemplateToolMetadata.name,
+      description: draftSelfTaskTemplateToolMetadata.description,
+      context: draftSelfTaskTemplateToolMetadata.context,
+      inputSchema: draftSelfTaskTemplateInputSchema,
+      outputSchema: taskTemplateSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const draft = draftSelfTaskTemplateInputSchema.parse(args);
+          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+          const reviewed = await openReviewForm(options, {
+            agentId,
+            kind: "self_task_template_create_review",
+            title: "Review task template",
+            description:
+              "Review and edit the template title and description. It will be assigned to you once you confirm. Other settings (recurrence, todos, model) from your input are preserved.",
+            fields: [
+              textField("title", "Title", draft.title, true),
+              textareaField("description", "Description", draft.description),
+            ],
+            metadata: {
+              templateTitle: draft.title,
+              operation: "create_self_task_template",
+              callerAgentId: agentId,
+            },
+          });
+
+          // Merge the operator-reviewed fields over the original draft. Any settings
+          // the specialist passed (recurrence, todos, model, etc.) are preserved; only
+          // title and description go through the review form.
+          const template = await options.taskService.createTemplate(
+            createTaskTemplateInputSchema.parse({
+              ...draft,
+              title: reviewed["title"],
+              description: emptyToUndefined(reviewed["description"]) ?? "",
+              defaultAgentId: agentId,
+            }),
+          );
+
+          return success("Task template created.", taskTemplateSchema.parse(template));
+        }, "Failed to draft task template."),
     },
   ] as const;
 }

@@ -41,9 +41,18 @@ import {
 } from "./groups/cc-default/tools/self-task-tools.js";
 import {
   createSelfTaskLiveToolDefinitions,
+  draftSelfTaskTemplateToolMetadata,
   draftSelfTaskToolMetadata,
   draftSelfTaskUpdateToolMetadata,
 } from "./groups/cc-default/tools/self-task-live-tools.js";
+import {
+  createSelfTaskTemplateToolDefinitions,
+  createSelfTaskTemplateToolMetadata,
+  createSelfTaskFromTemplateToolMetadata,
+  getSelfTaskTemplateToolMetadata,
+  listSelfTaskTemplatesToolMetadata,
+  runSelfTaskTemplateNowToolMetadata,
+} from "./groups/cc-default/tools/self-task-template-tools.js";
 import { createCopyCustomToolToSpecialistDefinition } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
 import { copyCustomToolToSpecialistMetadata } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
 import {
@@ -270,6 +279,11 @@ export function createCcManagedMcpServerRegistry(options: {
             taskService: options.taskService,
             taskExecutionService: options.taskExecutionService,
           }),
+          ...createSelfTaskTemplateToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+            taskExecutionService: options.taskExecutionService,
+          }),
         ]
       : []),
   ];
@@ -300,6 +314,11 @@ export function createCcManagedMcpServerRegistry(options: {
         getSelfTaskRunToolMetadata,
         readSelfTaskContextToolMetadata,
         appendSelfTaskContextToolMetadata,
+        listSelfTaskTemplatesToolMetadata,
+        getSelfTaskTemplateToolMetadata,
+        createSelfTaskTemplateToolMetadata,
+        runSelfTaskTemplateNowToolMetadata,
+        createSelfTaskFromTemplateToolMetadata,
       ],
       tools: defaultTools,
     },
@@ -312,7 +331,11 @@ export function createCcManagedMcpServerRegistry(options: {
       systemManaged: true,
       interactive: true,
       toolCallTimeoutMs: 10 * 60 * 1000,
-      catalogTools: [draftSelfTaskToolMetadata, draftSelfTaskUpdateToolMetadata],
+      catalogTools: [
+        draftSelfTaskToolMetadata,
+        draftSelfTaskUpdateToolMetadata,
+        draftSelfTaskTemplateToolMetadata,
+      ],
       tools: defaultInteractiveTools,
     },
     {
