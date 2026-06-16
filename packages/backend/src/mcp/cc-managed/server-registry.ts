@@ -39,6 +39,11 @@ import {
   readSelfTaskContextToolMetadata,
   scheduleSelfTaskToolMetadata,
 } from "./groups/cc-default/tools/self-task-tools.js";
+import {
+  createSelfTaskLiveToolDefinitions,
+  draftSelfTaskToolMetadata,
+  draftSelfTaskUpdateToolMetadata,
+} from "./groups/cc-default/tools/self-task-live-tools.js";
 import { createCopyCustomToolToSpecialistDefinition } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
 import { copyCustomToolToSpecialistMetadata } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
 import {
@@ -229,6 +234,18 @@ export function createCcManagedMcpServerRegistry(options: {
         }),
       ]
     : [];
+  const defaultInteractiveTools: CcManagedToolDefinition[] =
+    options.db && options.taskService
+      ? [
+          ...createSelfTaskLiveToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+            conversationService: options.conversationService,
+            liveRequestService: options.liveRequestService,
+          }),
+        ]
+      : [];
+
   const defaultTools: CcManagedToolDefinition[] = [
     ...(options.agentService
       ? [createListSpecialistsToolDefinition({ agentService: options.agentService })]
@@ -285,6 +302,18 @@ export function createCcManagedMcpServerRegistry(options: {
         appendSelfTaskContextToolMetadata,
       ],
       tools: defaultTools,
+    },
+    {
+      name: "cc_default_interactive",
+      routeSegment: "cc-default-interactive",
+      description:
+        "CommandsCenter interactive self tools for operator-confirmed task creation and updates. Enabled by default; tools pause execution while the operator reviews a form.",
+      enabledByDefault: true,
+      systemManaged: true,
+      interactive: true,
+      toolCallTimeoutMs: 10 * 60 * 1000,
+      catalogTools: [draftSelfTaskToolMetadata, draftSelfTaskUpdateToolMetadata],
+      tools: defaultInteractiveTools,
     },
     {
       name: "cc_app",

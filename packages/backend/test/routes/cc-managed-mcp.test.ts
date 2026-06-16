@@ -2264,6 +2264,421 @@ describe("cc-managed MCP routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("lists draft self task tools in chat context and hides them in task-run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-draft-ctx",
+        slug: "draft-ctx",
+        name: "Draft Context",
+      });
+
+      const chatAuth = await issueAuthHeader(
+        testDb.config,
+        agent.slug,
+        "cc_default_interactive",
+        "chat",
+      );
+      const chatListResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default-interactive",
+        chatAuth,
+        "tools/list",
+        {},
+        60,
+      );
+
+      expect(chatListResponse.statusCode).toBe(200);
+      expect(chatListResponse.body).toContain('"name":"draft_self_task"');
+      expect(chatListResponse.body).toContain('"name":"draft_self_task_update"');
+
+      const taskRunAuth = await issueAuthHeader(
+        testDb.config,
+        agent.slug,
+        "cc_default_interactive",
+        "task_run",
+      );
+      const taskRunListResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default-interactive",
+        taskRunAuth,
+        "tools/list",
+        {},
+        61,
+      );
+
+      expect(taskRunListResponse.statusCode).toBe(200);
+      expect(taskRunListResponse.body).not.toContain('"name":"draft_self_task"');
+      expect(taskRunListResponse.body).not.toContain('"name":"draft_self_task_update"');
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("drafts self task creation via operator review form", async () => {
+    const testDb = await createTestDatabase();
+    let callerAgentId = "";
+    const liveRequestService = {
+      create: vi.fn(() =>
+        Promise.resolve({
+          action: "submit" as const,
+          values: {
+            title: "Reviewed self task",
+            description: "Operator-approved description.",
+            scheduledAt: "",
+            dueAt: "",
+            contextText: "Operator context.",
+          },
+        }),
+      ),
+    };
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      liveRequestService: liveRequestService as never,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-draft-self",
+        slug: "draft-self",
+        name: "Draft Self",
+      });
+      callerAgentId = agent.id;
+      const authHeader = await issueAuthHeader(
+        testDb.config,
+        agent.slug,
+        "cc_default_interactive",
+        "chat",
+      );
+
+      const createResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default-interactive",
+        authHeader,
+        "tools/call",
+        {
+          name: "draft_self_task",
+          arguments: {
+            title: "Draft self task",
+            description: "Pre-filled by specialist.",
+          },
+        },
+        62,
+      );
+
+      expect(createResponse.statusCode).toBe(200);
+      expect(parseSseJson(createResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            title: "Reviewed self task",
+            agentId: callerAgentId,
+          },
+        },
+      });
+
+      // The review form must not have included an agentId field.
+      expect(liveRequestService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "self_task_create_review",
+          metadata: expect.objectContaining({ operation: "create_self_task", callerAgentId }),
+        }),
+      );
+      const callArgs = liveRequestService.create.mock.calls[0]?.[0] as {
+        fields?: Array<{ name: string }>;
+      };
+      const fieldNames = (callArgs?.fields ?? []).map((f: { name: string }) => f.name);
+      expect(fieldNames).not.toContain("agentId");
+      expect(fieldNames).not.toContain("defaultAgentId");
+
+      // Task was created and belongs to the calling specialist.
+      const listed = await taskService.list({ agentId: callerAgentId });
+      expect(listed).toHaveLength(1);
+      expect(listed[0]).toMatchObject({
+        title: "Reviewed self task",
+        agentId: callerAgentId,
+        context: { text: "Operator context.", attachments: [] },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects agentId in draft_self_task input schema", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-draft-strict",
+        slug: "draft-strict",
+        name: "Draft Strict",
+      });
+      const authHeader = await issueAuthHeader(
+        testDb.config,
+        agent.slug,
+        "cc_default_interactive",
+        "chat",
+      );
+
+      const response = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default-interactive",
+        authHeader,
+        "tools/call",
+        {
+          name: "draft_self_task",
+          arguments: { title: "Attempt to reassign", agentId: "some-other-agent" },
+        },
+        63,
+      );
+
+      expect(parseSseJson(response.body)).toMatchObject({ result: { isError: true } });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("drafts self task update with full form and refuses another specialist's task", async () => {
+    const testDb = await createTestDatabase();
+    const liveRequestService = {
+      create: vi.fn(() =>
+        Promise.resolve({
+          action: "submit" as const,
+          values: {
+            title: "Operator-approved title",
+            description: "Operator-approved description.",
+            scheduledAt: "",
+            dueAt: "",
+            contextText: "",
+          },
+        }),
+      ),
+    };
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      liveRequestService: liveRequestService as never,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const owner = await insertActiveAgent(testDb.client.db, {
+        id: "agent-upd-owner",
+        slug: "upd-owner",
+        name: "Upd Owner",
+      });
+      const intruder = await insertActiveAgent(testDb.client.db, {
+        id: "agent-upd-intruder",
+        slug: "upd-intruder",
+        name: "Upd Intruder",
+      });
+
+      const ownerTask = await taskService.create({
+        agentId: owner.id,
+        title: "Original title",
+        description: "Original description.",
+      });
+      const ownerAuth = await issueAuthHeader(
+        testDb.config,
+        owner.slug,
+        "cc_default_interactive",
+        "chat",
+      );
+
+      // Update with no proposed input shows all fields.
+      const updateResponse = await callMcpToolRouteForServer(
+        server,
+        owner.slug,
+        "cc-default-interactive",
+        ownerAuth,
+        "tools/call",
+        { name: "draft_self_task_update", arguments: { taskId: ownerTask.id } },
+        64,
+      );
+
+      expect(parseSseJson(updateResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            id: ownerTask.id,
+            title: "Operator-approved title",
+          },
+        },
+      });
+
+      // Full form must include title, description, scheduledAt, dueAt, contextText.
+      const callArgs = liveRequestService.create.mock.calls[0]?.[0] as {
+        fields?: Array<{ name: string }>;
+      };
+      const fieldNames = (callArgs?.fields ?? []).map((f: { name: string }) => f.name);
+      expect(fieldNames).toEqual(
+        expect.arrayContaining(["title", "description", "scheduledAt", "dueAt", "contextText"]),
+      );
+      // agentId must never appear in the form.
+      expect(fieldNames).not.toContain("agentId");
+      expect(fieldNames).not.toContain("defaultAgentId");
+
+      // Intruder cannot update owner's task.
+      const intruderAuth = await issueAuthHeader(
+        testDb.config,
+        intruder.slug,
+        "cc_default_interactive",
+        "chat",
+      );
+      const intruderResponse = await callMcpToolRouteForServer(
+        server,
+        intruder.slug,
+        "cc-default-interactive",
+        intruderAuth,
+        "tools/call",
+        { name: "draft_self_task_update", arguments: { taskId: ownerTask.id } },
+        65,
+      );
+
+      const intruderBody = parseSseJson(intruderResponse.body) as {
+        result?: { isError?: boolean; content?: Array<{ text: string }> };
+      };
+      expect(intruderBody.result?.isError).toBe(true);
+      expect(intruderBody.result?.content?.[0]?.text).toContain("Task not found");
+      // Live request must not have been opened for the intruder's attempt.
+      expect(liveRequestService.create).toHaveBeenCalledTimes(1);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("draft_self_task_update only shows changed fields when input is proposed", async () => {
+    const testDb = await createTestDatabase();
+    const liveRequestService = {
+      create: vi.fn(() =>
+        Promise.resolve({
+          action: "submit" as const,
+          values: {
+            title: "Updated title only",
+          },
+        }),
+      ),
+    };
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      liveRequestService: liveRequestService as never,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-partial-upd",
+        slug: "partial-upd",
+        name: "Partial Upd",
+      });
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Original",
+        description: "Unchanged.",
+      });
+      const authHeader = await issueAuthHeader(
+        testDb.config,
+        agent.slug,
+        "cc_default_interactive",
+        "chat",
+      );
+
+      await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default-interactive",
+        authHeader,
+        "tools/call",
+        {
+          name: "draft_self_task_update",
+          arguments: { taskId: task.id, input: { title: "New title proposal" } },
+        },
+        66,
+      );
+
+      // Only the proposed title field should appear in the form.
+      const callArgs = liveRequestService.create.mock.calls[0]?.[0] as {
+        fields?: Array<{ name: string }>;
+      };
+      const fieldNames = (callArgs?.fields ?? []).map((f: { name: string }) => f.name);
+      expect(fieldNames).toEqual(["title"]);
+      expect(fieldNames).not.toContain("description");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 function parseSseJson(body: string): unknown {
