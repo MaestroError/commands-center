@@ -32,16 +32,22 @@ export const createSelfTaskTemplateInputSchema = createTaskTemplateInputSchema
   .omit({ defaultAgentId: true })
   .strict();
 
-const templateIdInputSchema = z.object({
-  templateId: z.string().trim().min(1),
-});
+// Strict so unexpected fields (including any defaultAgentId/specialist id) surface
+// as explicit validation errors rather than being silently ignored.
+const templateIdInputSchema = z
+  .object({
+    templateId: z.string().trim().min(1),
+  })
+  .strict();
 
-const runSelfTaskTemplateNowInputSchema = templateIdInputSchema.extend({
-  // context lets the caller seed task-run context for this one-off run.
-  context: taskContextInputSchema.optional(),
-  // metadata is attached to the task run trigger for observability.
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
+const runSelfTaskTemplateNowInputSchema = templateIdInputSchema
+  .extend({
+    // context lets the caller seed task-run context for this one-off run.
+    context: taskContextInputSchema.optional(),
+    // metadata is attached to the task run trigger for observability.
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
 
 const listSelfTaskTemplatesOutputSchema = z.object({
   templates: taskTemplateListSchema,
@@ -95,8 +101,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       execute: async (_args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
-          const all = await options.taskService.listTemplates();
-          const templates = all.filter((t) => t.defaultAgentId === agentId);
+          const templates = await options.taskService.listTemplates({ defaultAgentId: agentId });
 
           return success(
             `Found ${String(templates.length)} template${templates.length === 1 ? "" : "s"}.`,

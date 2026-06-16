@@ -37,24 +37,37 @@ const createSelfTaskInputSchema = createTaskInputSchema
 
 const listSelfTasksInputSchema = listTasksQuerySchema.omit({ agentId: true }).partial().strict();
 
-const taskIdInputSchema = z.object({
-  taskId: z.string().trim().min(1),
-});
+// Strict everywhere: unexpected fields (including any agent/specialist id) become
+// explicit validation errors instead of being silently dropped, matching the
+// self-tool safety boundary.
+const taskIdInputSchema = z
+  .object({
+    taskId: z.string().trim().min(1),
+  })
+  .strict();
 
-const scheduleSelfTaskInputSchema = taskIdInputSchema.extend({
-  scheduledAt: z.string().datetime(),
-  dueAt: z.string().datetime().optional(),
-});
+const taskRunIdInputSchema = taskIdInputSchema
+  .extend({
+    runId: z.string().trim().min(1),
+  })
+  .strict();
 
-const listSelfTaskRunsInputSchema = taskIdInputSchema.extend({
-  query: listTaskRunsQuerySchema.partial().optional(),
-});
+const scheduleSelfTaskInputSchema = taskIdInputSchema
+  .extend({
+    scheduledAt: z.string().datetime(),
+    dueAt: z.string().datetime().optional(),
+  })
+  .strict();
 
-const getSelfTaskRunInputSchema = taskIdInputSchema.extend({
-  runId: z.string().trim().min(1),
-});
+const listSelfTaskRunsInputSchema = taskIdInputSchema
+  .extend({
+    query: listTaskRunsQuerySchema.partial().optional(),
+  })
+  .strict();
 
-const appendSelfTaskContextInputSchema = taskIdInputSchema.merge(appendTaskContextInputSchema);
+const appendSelfTaskContextInputSchema = taskIdInputSchema
+  .merge(appendTaskContextInputSchema)
+  .strict();
 
 const listSelfTasksOutputSchema = z.object({
   tasks: taskListSchema,
@@ -247,11 +260,11 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
       name: getSelfTaskRunToolMetadata.name,
       description: getSelfTaskRunToolMetadata.description,
       context: getSelfTaskRunToolMetadata.context,
-      inputSchema: getSelfTaskRunInputSchema,
+      inputSchema: taskRunIdInputSchema,
       outputSchema: taskRunSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
-          const parsed = getSelfTaskRunInputSchema.parse(args);
+          const parsed = taskRunIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
           await requireSelfTask(options.taskService, parsed.taskId, agentId);
           const run = await options.taskService.getRun(parsed.taskId, parsed.runId);
@@ -344,11 +357,11 @@ export function createSelfTaskArtifactToolDefinitions(options: SelfTaskToolOptio
       name: listSelfTaskRunArtifactsToolMetadata.name,
       description: listSelfTaskRunArtifactsToolMetadata.description,
       context: listSelfTaskRunArtifactsToolMetadata.context,
-      inputSchema: taskIdInputSchema.extend({ runId: z.string().trim().min(1) }),
+      inputSchema: taskRunIdInputSchema,
       outputSchema: listSelfTaskRunArtifactsOutputSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
-          const parsed = taskIdInputSchema.extend({ runId: z.string().trim().min(1) }).parse(args);
+          const parsed = taskRunIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
           await requireSelfTask(options.taskService, parsed.taskId, agentId);
           const run = await options.taskService.getRun(parsed.taskId, parsed.runId);

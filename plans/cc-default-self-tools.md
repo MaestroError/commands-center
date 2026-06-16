@@ -27,10 +27,10 @@ Timeout decisions (agreed for the live-draft work in Phase 2):
   hung quick call fails fast. The registry now supports a per-group
   `toolCallTimeoutMs`; `interactive: true` still implies the long live-request
   window when no explicit timeout is set.
-- Phase 2 self draft tools should go in a new `cc_default_interactive` group
+- Phase 2 self draft tools live in a dedicated `cc_default_interactive` group
   (`enabledByDefault: true`, `interactive: true`, `toolCallTimeoutMs` of 10 min),
-  not on `cc_default`, so the default quick-tool timeout stays tight. The empty
-  group was intentionally not created yet — add it together with the Phase 2 tools.
+  not on `cc_default`, so the default quick-tool timeout stays tight. This group
+  now exists in the server registry, added together with the Phase 2 tools.
 
 ## Principles
 
