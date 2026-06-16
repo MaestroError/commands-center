@@ -14,13 +14,11 @@ import {
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../../../../../db/client.js";
-import type { TaskExecutionService } from "../../../../../services/task-execution-service.js";
 import type { TaskService } from "../../../../../services/task-service.js";
 
 type SelfTaskToolOptions = {
   db: AppDb;
   taskService: TaskService;
-  taskExecutionService: TaskExecutionService;
 };
 
 type ToolResult = {
@@ -46,10 +44,6 @@ const taskIdInputSchema = z.object({
 const scheduleSelfTaskInputSchema = taskIdInputSchema.extend({
   scheduledAt: z.string().datetime(),
   dueAt: z.string().datetime().optional(),
-});
-
-const queueSelfTaskInputSchema = taskIdInputSchema.extend({
-  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const listSelfTaskRunsInputSchema = taskIdInputSchema.extend({
@@ -80,12 +74,6 @@ export const createSelfTaskToolMetadata = {
 export const scheduleSelfTaskToolMetadata = {
   name: "schedule_self_task",
   description: "Schedule one of your own CommandsCenter tasks for later execution.",
-  context: "both",
-} as const;
-
-export const queueSelfTaskToolMetadata = {
-  name: "queue_self_task",
-  description: "Queue one of your own CommandsCenter tasks for execution now.",
   context: "both",
 } as const;
 
@@ -170,25 +158,6 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
 
           return success("Task scheduled.", taskSchema.parse(task));
         }, "Failed to schedule task."),
-    },
-    {
-      name: queueSelfTaskToolMetadata.name,
-      description: queueSelfTaskToolMetadata.description,
-      context: queueSelfTaskToolMetadata.context,
-      inputSchema: queueSelfTaskInputSchema,
-      outputSchema: taskRunSchema,
-      execute: async (args: unknown, context: { agentSlug: string }) =>
-        executeTool(async () => {
-          const parsed = queueSelfTaskInputSchema.parse(args);
-          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
-          await requireSelfTask(options.taskService, parsed.taskId, agentId);
-          const run = await options.taskExecutionService.queue(parsed.taskId, {
-            triggerSource: "manual",
-            metadata: parsed.metadata,
-          });
-
-          return success("Task queued.", taskRunSchema.parse(run));
-        }, "Failed to queue task."),
     },
     {
       name: listSelfTasksToolMetadata.name,

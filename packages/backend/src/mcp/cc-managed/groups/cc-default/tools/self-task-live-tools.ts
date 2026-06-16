@@ -4,6 +4,7 @@ import {
   createTaskInputSchema,
   createTaskTemplateInputSchema,
   taskContextSchema,
+  taskRunSchema,
   taskSchema,
   taskTemplateSchema,
   updateTaskInputSchema,
@@ -12,15 +13,23 @@ import {
 import type { AppDb } from "../../../../../db/client.js";
 import type { ConversationService } from "../../../../../services/conversation-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
+import type { TaskExecutionService } from "../../../../../services/task-execution-service.js";
 import type { TaskService } from "../../../../../services/task-service.js";
-import type { Task } from "@cc/shared/schemas";
+import type { Task, TaskRun } from "@cc/shared/schemas";
 
 type SelfTaskLiveToolOptions = {
   db: AppDb;
   taskService: TaskService;
+  taskExecutionService: TaskExecutionService;
   conversationService?: ConversationService;
   liveRequestService?: LiveRequestService;
 };
+
+// Terminal run statuses — polling stops when any of these is observed.
+const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "cancelled"]);
+// How often to re-check the run status. 3 s is gentle on the DB; the
+// 10-min cc_default_interactive timeout gives ample room to wait.
+const RUN_POLL_INTERVAL_MS = 3_000;
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -41,6 +50,12 @@ const draftSelfTaskTemplateInputSchema = createTaskTemplateInputSchema
   .omit({ defaultAgentId: true })
   .partial()
   .strict();
+
+const runSelfTaskInputSchema = z.object({
+  taskId: z.string().trim().min(1),
+  // Optional metadata attached to the run trigger for observability.
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
 
 const draftSelfTaskUpdateInputSchema = z
   .object({
@@ -75,11 +90,65 @@ export const draftSelfTaskTemplateToolMetadata = {
   context: "chat",
 } as const;
 
-// Phase 2: operator-blocking self task draft tools. These live in the separate
-// cc_default_interactive group so the interactive timeout applies only to them,
-// keeping the cc_default quick-tool timeout tight.
+export const runSelfTaskToolMetadata = {
+  name: "run_self_task",
+  description:
+    "Queue one of your own CommandsCenter tasks and wait here until it finishes. Returns the completed run including result text, final message, outcome, and artifacts so you can act on the output. Use this only in chat — calling it inside a task run would deadlock because the agent can only execute one task at a time. Will fail if the task is assigned to a different specialist. Times out after approximately 9 minutes if the task has not reached a terminal state.",
+  context: "chat",
+} as const;
+
+// Phase 2: operator-blocking and blocking-wait self task tools. These live in
+// the separate cc_default_interactive group so the interactive timeout applies
+// only to them, keeping the cc_default quick-tool timeout tight.
 export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptions) {
   return [
+    {
+      name: runSelfTaskToolMetadata.name,
+      description: runSelfTaskToolMetadata.description,
+      context: runSelfTaskToolMetadata.context,
+      inputSchema: runSelfTaskInputSchema,
+      outputSchema: taskRunSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const parsed = runSelfTaskInputSchema.parse(args);
+          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+          await requireSelfTask(options.taskService, parsed.taskId, agentId);
+
+          const run = await options.taskExecutionService.queue(parsed.taskId, {
+            triggerSource: "manual",
+            metadata: parsed.metadata,
+          });
+
+          // Poll until the run reaches a terminal state. Using DB polling rather
+          // than a subscribe model — the 10-min cc_default_interactive timeout
+          // gives ample headroom, and 3 s intervals produce negligible DB load.
+          const terminal = await pollForTerminalRun(
+            options.taskService,
+            run.id,
+            9 * 60 * 1_000, // hard deadline just under the 10-min MCP timeout
+          );
+
+          if (terminal.status === "failed") {
+            const msg = terminal.errorMessage ?? "Task run failed.";
+            return {
+              isError: true,
+              structuredContent: { error: { message: msg }, run: taskRunSchema.parse(terminal) },
+              content: [{ type: "text" as const, text: msg }],
+            };
+          }
+
+          if (terminal.status === "cancelled") {
+            const msg = "Task run was cancelled before it could complete.";
+            return {
+              isError: true,
+              structuredContent: { error: { message: msg }, run: taskRunSchema.parse(terminal) },
+              content: [{ type: "text" as const, text: msg }],
+            };
+          }
+
+          return success("Task run completed.", taskRunSchema.parse(terminal));
+        }, "Failed to run task."),
+    },
     {
       name: draftSelfTaskToolMetadata.name,
       description: draftSelfTaskToolMetadata.description,
@@ -399,4 +468,33 @@ function applyContextText(
   text: string,
 ): z.infer<typeof taskContextSchema> {
   return taskContextSchema.parse({ ...context, text: emptyToUndefined(text) });
+}
+
+// Poll until the run reaches a terminal state or the deadline passes.
+// Throws if the deadline is exceeded without a terminal status.
+async function pollForTerminalRun(
+  taskService: TaskService,
+  runId: string,
+  maxWaitMs: number,
+): Promise<TaskRun> {
+  const deadline = Date.now() + maxWaitMs;
+
+  while (Date.now() < deadline) {
+    await sleep(RUN_POLL_INTERVAL_MS);
+    const run = await taskService.getRunById(runId);
+
+    if (!run) {
+      throw new Error("Task run not found while waiting for completion.");
+    }
+
+    if (TERMINAL_RUN_STATUSES.has(run.status)) {
+      return run;
+    }
+  }
+
+  throw new Error("Timed out waiting for the task run to reach a terminal state (limit: 9 min).");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

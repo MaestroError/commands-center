@@ -35,7 +35,6 @@ import {
   getSelfTaskToolMetadata,
   listSelfTaskRunsToolMetadata,
   listSelfTasksToolMetadata,
-  queueSelfTaskToolMetadata,
   readSelfTaskContextToolMetadata,
   scheduleSelfTaskToolMetadata,
 } from "./groups/cc-default/tools/self-task-tools.js";
@@ -44,6 +43,7 @@ import {
   draftSelfTaskTemplateToolMetadata,
   draftSelfTaskToolMetadata,
   draftSelfTaskUpdateToolMetadata,
+  runSelfTaskToolMetadata,
 } from "./groups/cc-default/tools/self-task-live-tools.js";
 import {
   createSelfTaskTemplateToolDefinitions,
@@ -244,11 +244,12 @@ export function createCcManagedMcpServerRegistry(options: {
       ]
     : [];
   const defaultInteractiveTools: CcManagedToolDefinition[] =
-    options.db && options.taskService
+    options.db && options.taskService && options.taskExecutionService
       ? [
           ...createSelfTaskLiveToolDefinitions({
             db: options.db,
             taskService: options.taskService,
+            taskExecutionService: options.taskExecutionService,
             conversationService: options.conversationService,
             liveRequestService: options.liveRequestService,
           }),
@@ -277,7 +278,6 @@ export function createCcManagedMcpServerRegistry(options: {
           ...createSelfTaskToolDefinitions({
             db: options.db,
             taskService: options.taskService,
-            taskExecutionService: options.taskExecutionService,
           }),
           ...createSelfTaskTemplateToolDefinitions({
             db: options.db,
@@ -307,7 +307,6 @@ export function createCcManagedMcpServerRegistry(options: {
         appendTaskContextToolMetadata,
         createSelfTaskToolMetadata,
         scheduleSelfTaskToolMetadata,
-        queueSelfTaskToolMetadata,
         listSelfTasksToolMetadata,
         getSelfTaskToolMetadata,
         listSelfTaskRunsToolMetadata,
@@ -332,6 +331,7 @@ export function createCcManagedMcpServerRegistry(options: {
       interactive: true,
       toolCallTimeoutMs: 10 * 60 * 1000,
       catalogTools: [
+        runSelfTaskToolMetadata,
         draftSelfTaskToolMetadata,
         draftSelfTaskUpdateToolMetadata,
         draftSelfTaskTemplateToolMetadata,

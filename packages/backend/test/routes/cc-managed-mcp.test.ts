@@ -1677,7 +1677,6 @@ describe("cc-managed MCP routes", () => {
       for (const toolName of [
         "create_self_task",
         "schedule_self_task",
-        "queue_self_task",
         "list_self_tasks",
         "get_self_task",
         "list_self_task_runs",
@@ -1687,6 +1686,9 @@ describe("cc-managed MCP routes", () => {
       ]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
+      // run_self_task is chat-only (lives in cc_default_interactive).
+      expect(listToolsResponse.body).not.toContain('"name":"queue_self_task"');
+      expect(listToolsResponse.body).not.toContain('"name":"run_self_task"');
 
       const createResponse = await callMcpToolRouteForServer(
         server,
@@ -1829,7 +1831,6 @@ describe("cc-managed MCP routes", () => {
           name: "schedule_self_task",
           arguments: { taskId: ownerTask.id, scheduledAt: "2026-06-10T12:00:00.000Z" },
         },
-        { name: "queue_self_task", arguments: { taskId: ownerTask.id } },
         { name: "read_self_task_context", arguments: { taskId: ownerTask.id } },
         {
           name: "append_self_task_context",
@@ -1931,30 +1932,13 @@ describe("cc-managed MCP routes", () => {
         },
       });
 
-      // queue_self_task
-      const queueResponse = await callMcpToolRouteForServer(
-        server,
-        agent.slug,
-        "cc-default",
-        authHeader,
-        "tools/call",
-        { name: "queue_self_task", arguments: { taskId: queueTask.id } },
-        51,
-      );
-
-      const queueJson = parseSseJson(queueResponse.body) as {
-        result?: { structuredContent?: { id?: string; taskId?: string; status?: string } };
-      };
-
-      expect(queueJson.result?.structuredContent).toMatchObject({
+      // Create a run via the service directly (run_self_task blocks until completion
+      // and is tested in its own dedicated test case).
+      const queuedRun = await taskService.queueTask({
         taskId: queueTask.id,
-        status: "queued",
+        triggerSource: "manual",
       });
-      const runId = queueJson.result?.structuredContent?.id;
-
-      if (!runId) {
-        throw new Error("Expected queue_self_task to return a run id.");
-      }
+      const runId = queuedRun.id;
 
       // list_self_task_runs
       const listRunsResponse = await callMcpToolRouteForServer(
@@ -2120,7 +2104,6 @@ describe("cc-managed MCP routes", () => {
       // `both`-context self tools are available in chat.
       for (const toolName of [
         "schedule_self_task",
-        "queue_self_task",
         "list_self_tasks",
         "get_self_task",
         "list_self_task_runs",
@@ -2136,6 +2119,9 @@ describe("cc-managed MCP routes", () => {
       ]) {
         expect(listToolsResponse.body).not.toContain(`"name":"${toolName}"`);
       }
+      // run_self_task is in cc_default_interactive, not cc_default.
+      expect(listToolsResponse.body).not.toContain('"name":"run_self_task"');
+      expect(listToolsResponse.body).not.toContain('"name":"queue_self_task"');
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -2329,6 +2315,144 @@ describe("cc-managed MCP routes", () => {
       expect(taskRunListResponse.statusCode).toBe(200);
       expect(taskRunListResponse.body).not.toContain('"name":"draft_self_task"');
       expect(taskRunListResponse.body).not.toContain('"name":"draft_self_task_update"');
+      // run_self_task is chat-only and must not appear in task_run.
+      expect(chatListResponse.body).toContain('"name":"run_self_task"');
+      expect(taskRunListResponse.body).not.toContain('"name":"run_self_task"');
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("run_self_task queues a task and returns the completed run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-run-wait",
+        slug: "run-wait",
+        name: "Run Wait",
+      });
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Quick background task",
+        description: "Should complete fast in test.",
+      });
+      const authHeader = await issueAuthHeader(
+        testDb.config,
+        agent.slug,
+        "cc_default_interactive",
+        "chat",
+      );
+
+      const response = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default-interactive",
+        authHeader,
+        "tools/call",
+        { name: "run_self_task", arguments: { taskId: task.id } },
+        67,
+      );
+
+      expect(response.statusCode).toBe(200);
+      const body = parseSseJson(response.body) as {
+        result?: {
+          isError?: boolean;
+          structuredContent?: { taskId?: string; status?: string; outcome?: string };
+        };
+      };
+
+      // The tool should have waited until the run completed.
+      expect(body.result?.isError).toBeFalsy();
+      expect(body.result?.structuredContent).toMatchObject({
+        taskId: task.id,
+        status: "completed",
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("run_self_task rejects another specialist's task without queuing", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const owner = await insertActiveAgent(testDb.client.db, {
+        id: "agent-run-owner",
+        slug: "run-owner",
+        name: "Run Owner",
+      });
+      const intruder = await insertActiveAgent(testDb.client.db, {
+        id: "agent-run-intruder2",
+        slug: "run-intruder2",
+        name: "Run Intruder",
+      });
+
+      const ownerTask = await taskService.create({
+        agentId: owner.id,
+        title: "Owner's task",
+        description: "Not yours.",
+      });
+
+      const intruderAuth = await issueAuthHeader(
+        testDb.config,
+        intruder.slug,
+        "cc_default_interactive",
+        "chat",
+      );
+
+      const response = await callMcpToolRouteForServer(
+        server,
+        intruder.slug,
+        "cc-default-interactive",
+        intruderAuth,
+        "tools/call",
+        { name: "run_self_task", arguments: { taskId: ownerTask.id } },
+        68,
+      );
+
+      const body = parseSseJson(response.body) as {
+        result?: { isError?: boolean; content?: Array<{ text: string }> };
+      };
+
+      expect(body.result?.isError).toBe(true);
+      expect(body.result?.content?.[0]?.text).toContain("Task not found");
+
+      // No run was created for the owner's task.
+      const runs = await taskService.listRuns(ownerTask.id);
+      expect(runs).toHaveLength(0);
     } finally {
       await server.close();
       await testDb.cleanup();
