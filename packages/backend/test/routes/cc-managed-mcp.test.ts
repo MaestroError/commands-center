@@ -1637,6 +1637,576 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
+  it("serves self task tools and creates self-owned tasks through cc_default", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-self-a",
+        slug: "self-a",
+        name: "Self A",
+      });
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "task_run");
+
+      const listToolsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/list",
+        {},
+        40,
+      );
+
+      expect(listToolsResponse.statusCode).toBe(200);
+      for (const toolName of [
+        "create_self_task",
+        "schedule_self_task",
+        "queue_self_task",
+        "list_self_tasks",
+        "get_self_task",
+        "list_self_task_runs",
+        "get_self_task_run",
+        "read_self_task_context",
+        "append_self_task_context",
+      ]) {
+        expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
+      }
+
+      const createResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        {
+          name: "create_self_task",
+          arguments: {
+            title: "Self-owned task",
+            description: "Created by the calling specialist.",
+          },
+        },
+        41,
+      );
+
+      expect(createResponse.statusCode).toBe(200);
+      const createJson = parseSseJson(createResponse.body) as {
+        result?: { structuredContent?: { id?: string; agentId?: string } };
+      };
+
+      expect(createJson.result?.structuredContent).toMatchObject({ agentId: agent.id });
+      const taskId = createJson.result?.structuredContent?.id;
+
+      if (!taskId) {
+        throw new Error("Expected create_self_task to return a task id.");
+      }
+
+      const listResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "list_self_tasks", arguments: {} },
+        42,
+      );
+
+      expect(parseSseJson(listResponse.body)).toMatchObject({
+        result: { structuredContent: { tasks: [expect.objectContaining({ id: taskId })] } },
+      });
+
+      const getResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "get_self_task", arguments: { taskId } },
+        43,
+      );
+
+      expect(parseSseJson(getResponse.body)).toMatchObject({
+        result: { structuredContent: { id: taskId, agentId: agent.id } },
+      });
+
+      // The task is now owned by the caller, so it cannot be assigned elsewhere.
+      const rejectAgentIdResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        {
+          name: "create_self_task",
+          arguments: { title: "Reassigned", agentId: "agent-self-a" },
+        },
+        44,
+      );
+
+      expect(parseSseJson(rejectAgentIdResponse.body)).toMatchObject({
+        result: { isError: true },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("scopes self task tools to the calling specialist", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const owner = await insertActiveAgent(testDb.client.db, {
+        id: "agent-owner",
+        slug: "owner",
+        name: "Owner",
+      });
+      const intruder = await insertActiveAgent(testDb.client.db, {
+        id: "agent-intruder",
+        slug: "intruder",
+        name: "Intruder",
+      });
+      const ownerTask = await taskService.create({
+        agentId: owner.id,
+        title: "Owner task",
+        description: "Belongs to owner.",
+      });
+      const intruderAuth = await issueAuthHeader(
+        testDb.config,
+        intruder.slug,
+        "cc_default",
+        "task_run",
+      );
+
+      // The intruder owns no tasks, so list returns an empty set.
+      const intruderList = await callMcpToolRouteForServer(
+        server,
+        intruder.slug,
+        "cc-default",
+        intruderAuth,
+        "tools/call",
+        { name: "list_self_tasks", arguments: {} },
+        45,
+      );
+
+      expect(parseSseJson(intruderList.body)).toMatchObject({
+        result: { structuredContent: { tasks: [] } },
+      });
+
+      for (const call of [
+        { name: "get_self_task", arguments: { taskId: ownerTask.id } },
+        {
+          name: "schedule_self_task",
+          arguments: { taskId: ownerTask.id, scheduledAt: "2026-06-10T12:00:00.000Z" },
+        },
+        { name: "queue_self_task", arguments: { taskId: ownerTask.id } },
+        { name: "read_self_task_context", arguments: { taskId: ownerTask.id } },
+        {
+          name: "append_self_task_context",
+          arguments: { taskId: ownerTask.id, text: "Sneaky note." },
+        },
+      ]) {
+        const response = await callMcpToolRouteForServer(
+          server,
+          intruder.slug,
+          "cc-default",
+          intruderAuth,
+          "tools/call",
+          call,
+          46,
+        );
+
+        const body = parseSseJson(response.body) as {
+          result?: { isError?: boolean; content?: Array<{ text: string }> };
+        };
+
+        expect(body.result?.isError, `${call.name} should be rejected`).toBe(true);
+        expect(body.result?.content?.[0]?.text).toContain("Task not found");
+      }
+
+      // The owner's task was never mutated by the intruder's attempts.
+      const reloaded = await taskService.get(ownerTask.id);
+      expect(reloaded?.status).toBe(ownerTask.status);
+      expect(reloaded?.context.text).toBeUndefined();
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("schedules and queues self tasks and lists/reads their runs", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-sched",
+        slug: "self-sched",
+        name: "Self Sched",
+      });
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "task_run");
+
+      // Create two tasks: one to schedule, one to queue.
+      const schedTask = await taskService.create({
+        agentId: agent.id,
+        title: "Schedule me",
+        description: "Will be scheduled.",
+      });
+      const queueTask = await taskService.create({
+        agentId: agent.id,
+        title: "Queue me",
+        description: "Will be queued.",
+      });
+
+      // schedule_self_task
+      const schedResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        {
+          name: "schedule_self_task",
+          arguments: {
+            taskId: schedTask.id,
+            scheduledAt: "2026-12-01T09:00:00.000Z",
+            dueAt: "2026-12-01T17:00:00.000Z",
+          },
+        },
+        50,
+      );
+
+      expect(parseSseJson(schedResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            id: schedTask.id,
+            status: "scheduled",
+            scheduledAt: "2026-12-01T09:00:00.000Z",
+            dueAt: "2026-12-01T17:00:00.000Z",
+          },
+        },
+      });
+
+      // queue_self_task
+      const queueResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "queue_self_task", arguments: { taskId: queueTask.id } },
+        51,
+      );
+
+      const queueJson = parseSseJson(queueResponse.body) as {
+        result?: { structuredContent?: { id?: string; taskId?: string; status?: string } };
+      };
+
+      expect(queueJson.result?.structuredContent).toMatchObject({
+        taskId: queueTask.id,
+        status: "queued",
+      });
+      const runId = queueJson.result?.structuredContent?.id;
+
+      if (!runId) {
+        throw new Error("Expected queue_self_task to return a run id.");
+      }
+
+      // list_self_task_runs
+      const listRunsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "list_self_task_runs", arguments: { taskId: queueTask.id } },
+        52,
+      );
+
+      expect(parseSseJson(listRunsResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            runs: [expect.objectContaining({ id: runId, taskId: queueTask.id })],
+          },
+        },
+      });
+
+      // get_self_task_run
+      const getRunResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "get_self_task_run", arguments: { taskId: queueTask.id, runId } },
+        53,
+      );
+
+      expect(parseSseJson(getRunResponse.body)).toMatchObject({
+        result: { structuredContent: { id: runId, taskId: queueTask.id } },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects list_self_task_runs and get_self_task_run for another specialist's task", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const owner = await insertActiveAgent(testDb.client.db, {
+        id: "agent-runs-owner",
+        slug: "runs-owner",
+        name: "Runs Owner",
+      });
+      const intruder = await insertActiveAgent(testDb.client.db, {
+        id: "agent-runs-intruder",
+        slug: "runs-intruder",
+        name: "Runs Intruder",
+      });
+
+      const ownerTask = await taskService.create({
+        agentId: owner.id,
+        title: "Owner's task with runs",
+        description: "Only owner may see runs.",
+      });
+      const ownerRun = await taskService.queueTask({
+        taskId: ownerTask.id,
+        triggerSource: "manual",
+      });
+
+      const intruderAuth = await issueAuthHeader(
+        testDb.config,
+        intruder.slug,
+        "cc_default",
+        "task_run",
+      );
+
+      const listRunsResponse = await callMcpToolRouteForServer(
+        server,
+        intruder.slug,
+        "cc-default",
+        intruderAuth,
+        "tools/call",
+        { name: "list_self_task_runs", arguments: { taskId: ownerTask.id } },
+        54,
+      );
+
+      const listBody = parseSseJson(listRunsResponse.body) as {
+        result?: { isError?: boolean; content?: Array<{ text: string }> };
+      };
+
+      expect(listBody.result?.isError).toBe(true);
+      expect(listBody.result?.content?.[0]?.text).toContain("Task not found");
+
+      const getRunResponse = await callMcpToolRouteForServer(
+        server,
+        intruder.slug,
+        "cc-default",
+        intruderAuth,
+        "tools/call",
+        { name: "get_self_task_run", arguments: { taskId: ownerTask.id, runId: ownerRun.id } },
+        55,
+      );
+
+      const getBody = parseSseJson(getRunResponse.body) as {
+        result?: { isError?: boolean; content?: Array<{ text: string }> };
+      };
+
+      expect(getBody.result?.isError).toBe(true);
+      expect(getBody.result?.content?.[0]?.text).toContain("Task not found");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("exposes create_self_task and self context tools only in task-run context", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-self-chat",
+        slug: "self-chat",
+        name: "Self Chat",
+      });
+      const chatAuth = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "chat");
+      const listToolsResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        chatAuth,
+        "tools/list",
+        {},
+        47,
+      );
+
+      expect(listToolsResponse.statusCode).toBe(200);
+      // `both`-context self tools are available in chat.
+      for (const toolName of [
+        "schedule_self_task",
+        "queue_self_task",
+        "list_self_tasks",
+        "get_self_task",
+        "list_self_task_runs",
+        "get_self_task_run",
+      ]) {
+        expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
+      }
+      // task-run-only self tools must not appear in chat.
+      for (const toolName of [
+        "create_self_task",
+        "read_self_task_context",
+        "append_self_task_context",
+      ]) {
+        expect(listToolsResponse.body).not.toContain(`"name":"${toolName}"`);
+      }
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("reads and appends self task context with self ownership", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-self-ctx",
+        slug: "self-ctx",
+        name: "Self Context",
+      });
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Context task",
+        description: "Holds self context.",
+      });
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "task_run");
+
+      const appendResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        {
+          name: "append_self_task_context",
+          arguments: { taskId: task.id, text: "Self observation." },
+        },
+        48,
+      );
+      const readResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "read_self_task_context", arguments: { taskId: task.id } },
+        49,
+      );
+
+      expect(parseSseJson(appendResponse.body)).toMatchObject({
+        result: { structuredContent: { text: "Self observation.", attachments: [] } },
+      });
+      expect(parseSseJson(readResponse.body)).toMatchObject({
+        result: { structuredContent: { text: "Self observation.", attachments: [] } },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("keeps task management MCP disabled unless the agent enables it", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -1804,6 +2374,32 @@ async function insertAgentWithTasksManagement(db: AppDb) {
 
   if (!agent) {
     throw new Error("Failed to insert task management agent.");
+  }
+
+  return agent;
+}
+
+async function insertActiveAgent(db: AppDb, input: { id: string; slug: string; name: string }) {
+  const [agent] = await db
+    .insert(agents)
+    .values({
+      id: input.id,
+      slug: input.slug,
+      name: input.name,
+      role: "self tools",
+      instructions: "Manage own tasks.",
+      default_model: "openai/gpt-4.1",
+      icon_path: null,
+      status: "active",
+      capabilities_json: JSON.stringify({ appMcpServers: [], appToolPermissions: [] }),
+      created_at: new Date(),
+      updated_at: new Date(),
+      archived_at: null,
+    })
+    .returning();
+
+  if (!agent) {
+    throw new Error("Failed to insert active agent.");
   }
 
   return agent;

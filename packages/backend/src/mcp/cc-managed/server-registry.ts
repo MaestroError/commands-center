@@ -26,6 +26,19 @@ import {
   markNeedsHumanReviewToolMetadata,
   setTaskResultToolMetadata,
 } from "./groups/cc-default/tools/task-run-outcome-tools.js";
+import {
+  appendSelfTaskContextToolMetadata,
+  createSelfTaskContextToolDefinitions,
+  createSelfTaskToolDefinitions,
+  createSelfTaskToolMetadata,
+  getSelfTaskRunToolMetadata,
+  getSelfTaskToolMetadata,
+  listSelfTaskRunsToolMetadata,
+  listSelfTasksToolMetadata,
+  queueSelfTaskToolMetadata,
+  readSelfTaskContextToolMetadata,
+  scheduleSelfTaskToolMetadata,
+} from "./groups/cc-default/tools/self-task-tools.js";
 import { createCopyCustomToolToSpecialistDefinition } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
 import { copyCustomToolToSpecialistMetadata } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
 import {
@@ -109,6 +122,10 @@ export type CcManagedMcpServerDefinition = {
   // for the operator (secrets, file preview, draft reviews, confirmations). These
   // need a much longer MCP client timeout than quick request/response tools.
   interactive?: boolean;
+  // Explicit per-group MCP tool-call timeout in milliseconds. When unset, the
+  // client falls back to the long interactive timeout for interactive groups and
+  // to opencode's own default for everything else.
+  toolCallTimeoutMs?: number;
   catalogTools: readonly CcManagedToolMetadata[];
   tools: readonly CcManagedToolDefinition[];
 };
@@ -223,6 +240,19 @@ export function createCcManagedMcpServerRegistry(options: {
             taskService: options.taskService,
           }),
           ...createTaskContextToolDefinitions({ taskService: options.taskService }),
+          ...createSelfTaskContextToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+          }),
+        ]
+      : []),
+    ...(options.db && options.taskService && options.taskExecutionService
+      ? [
+          ...createSelfTaskToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+            taskExecutionService: options.taskExecutionService,
+          }),
         ]
       : []),
   ];
@@ -234,6 +264,9 @@ export function createCcManagedMcpServerRegistry(options: {
       description: "CommandsCenter default tools available to every specialist.",
       enabledByDefault: true,
       systemManaged: true,
+      // Quick request/response tools only; keep a tight timeout so a hung call
+      // fails fast instead of waiting on opencode's longer default.
+      toolCallTimeoutMs: 15 * 1000,
       catalogTools: [
         listSpecialistsToolMetadata,
         setTaskResultToolMetadata,
@@ -241,6 +274,15 @@ export function createCcManagedMcpServerRegistry(options: {
         markNeedsHumanReviewToolMetadata,
         readTaskContextToolMetadata,
         appendTaskContextToolMetadata,
+        createSelfTaskToolMetadata,
+        scheduleSelfTaskToolMetadata,
+        queueSelfTaskToolMetadata,
+        listSelfTasksToolMetadata,
+        getSelfTaskToolMetadata,
+        listSelfTaskRunsToolMetadata,
+        getSelfTaskRunToolMetadata,
+        readSelfTaskContextToolMetadata,
+        appendSelfTaskContextToolMetadata,
       ],
       tools: defaultTools,
     },

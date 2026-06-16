@@ -73,6 +73,9 @@ describe("createSpecialistService", () => {
       expect(config).toContain('"custom_review": "ask"');
       expect(config).toContain('"cc_app": {');
       expect(config).not.toContain('"cc_app_*"');
+      // cc_default is enabled by default and carries an explicit 15s tool-call timeout.
+      expect(config).toContain('"cc_default": {');
+      expect(config).toContain('"timeout": 15000');
       expect(dispose).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
