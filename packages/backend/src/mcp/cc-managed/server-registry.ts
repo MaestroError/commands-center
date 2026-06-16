@@ -28,11 +28,14 @@ import {
 } from "./groups/cc-default/tools/task-run-outcome-tools.js";
 import {
   appendSelfTaskContextToolMetadata,
+  createSelfTaskArtifactToolDefinitions,
   createSelfTaskContextToolDefinitions,
   createSelfTaskToolDefinitions,
   createSelfTaskToolMetadata,
   getSelfTaskRunToolMetadata,
   getSelfTaskToolMetadata,
+  listSelfTaskArtifactsToolMetadata,
+  listSelfTaskRunArtifactsToolMetadata,
   listSelfTaskRunsToolMetadata,
   listSelfTasksToolMetadata,
   readSelfTaskContextToolMetadata,
@@ -271,6 +274,10 @@ export function createCcManagedMcpServerRegistry(options: {
             db: options.db,
             taskService: options.taskService,
           }),
+          ...createSelfTaskArtifactToolDefinitions({
+            db: options.db,
+            taskService: options.taskService,
+          }),
         ]
       : []),
     ...(options.db && options.taskService && options.taskExecutionService
@@ -318,6 +325,8 @@ export function createCcManagedMcpServerRegistry(options: {
         createSelfTaskTemplateToolMetadata,
         runSelfTaskTemplateNowToolMetadata,
         createSelfTaskFromTemplateToolMetadata,
+        listSelfTaskArtifactsToolMetadata,
+        listSelfTaskRunArtifactsToolMetadata,
       ],
       tools: defaultTools,
     },

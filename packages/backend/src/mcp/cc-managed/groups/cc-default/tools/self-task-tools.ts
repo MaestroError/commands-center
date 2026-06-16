@@ -64,6 +64,26 @@ const listSelfTaskRunsOutputSchema = z.object({
   runs: taskRunListSchema,
 });
 
+// Artifact entry: the raw taskRunArtifactSchema fields plus which run produced it.
+const selfTaskArtifactEntrySchema = z.object({
+  title: z.string(),
+  description: z.string().optional(),
+  url: z.string().url().optional(),
+  path: z.string().optional(),
+  sourceRunId: z.string(),
+});
+
+const listSelfTaskArtifactsOutputSchema = z.object({
+  taskId: z.string(),
+  artifacts: z.array(selfTaskArtifactEntrySchema),
+});
+
+const listSelfTaskRunArtifactsOutputSchema = z.object({
+  taskId: z.string(),
+  runId: z.string(),
+  artifacts: z.array(selfTaskArtifactEntrySchema),
+});
+
 export const createSelfTaskToolMetadata = {
   name: "create_self_task",
   description:
@@ -111,6 +131,20 @@ export const appendSelfTaskContextToolMetadata = {
   name: "append_self_task_context",
   description: "Append text to persistent context for one of your own CommandsCenter tasks.",
   context: "task_run",
+} as const;
+
+export const listSelfTaskArtifactsToolMetadata = {
+  name: "list_self_task_artifacts",
+  description:
+    "List all file and URL artifacts produced across every run of one of your own CommandsCenter tasks. Each entry includes the artifact title, description, path or URL, and the id of the run that produced it. Returns an empty list when no runs have produced artifacts yet. Will fail if the task belongs to a different specialist.",
+  context: "both",
+} as const;
+
+export const listSelfTaskRunArtifactsToolMetadata = {
+  name: "list_self_task_run_artifacts",
+  description:
+    "List the file and URL artifacts produced by a single run of one of your own CommandsCenter tasks. Each entry includes the artifact title, description, and path or URL. Returns an empty list when the run produced no artifacts. Will fail if the task belongs to a different specialist.",
+  context: "both",
 } as const;
 
 // Phase 1: self task reads and direct self task creation. These live in the
@@ -276,6 +310,64 @@ export function createSelfTaskContextToolDefinitions(options: {
 
           return success("Task context appended.", taskContextSchema.parse(task.context));
         }, "Failed to append task context."),
+    },
+  ] as const;
+}
+
+// Phase 5: self artifact read tools. Use the artifacts already stored on each
+// TaskRun object; no filesystem or TaskArtifactService access required.
+export function createSelfTaskArtifactToolDefinitions(options: SelfTaskToolOptions) {
+  return [
+    {
+      name: listSelfTaskArtifactsToolMetadata.name,
+      description: listSelfTaskArtifactsToolMetadata.description,
+      context: listSelfTaskArtifactsToolMetadata.context,
+      inputSchema: taskIdInputSchema,
+      outputSchema: listSelfTaskArtifactsOutputSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const parsed = taskIdInputSchema.parse(args);
+          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+          await requireSelfTask(options.taskService, parsed.taskId, agentId);
+          const runs = await options.taskService.listRuns(parsed.taskId, {});
+          const artifacts = runs.flatMap((run) =>
+            run.artifacts.map((a) => ({ ...a, sourceRunId: run.id })),
+          );
+
+          return success(
+            `Found ${String(artifacts.length)} artifact${artifacts.length === 1 ? "" : "s"}.`,
+            listSelfTaskArtifactsOutputSchema.parse({ taskId: parsed.taskId, artifacts }),
+          );
+        }, "Failed to list task artifacts."),
+    },
+    {
+      name: listSelfTaskRunArtifactsToolMetadata.name,
+      description: listSelfTaskRunArtifactsToolMetadata.description,
+      context: listSelfTaskRunArtifactsToolMetadata.context,
+      inputSchema: taskIdInputSchema.extend({ runId: z.string().trim().min(1) }),
+      outputSchema: listSelfTaskRunArtifactsOutputSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const parsed = taskIdInputSchema.extend({ runId: z.string().trim().min(1) }).parse(args);
+          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+          await requireSelfTask(options.taskService, parsed.taskId, agentId);
+          const run = await options.taskService.getRun(parsed.taskId, parsed.runId);
+
+          if (!run) {
+            throw new Error("Task run not found.");
+          }
+
+          const artifacts = run.artifacts.map((a) => ({ ...a, sourceRunId: run.id }));
+
+          return success(
+            `Found ${String(artifacts.length)} artifact${artifacts.length === 1 ? "" : "s"}.`,
+            listSelfTaskRunArtifactsOutputSchema.parse({
+              taskId: parsed.taskId,
+              runId: parsed.runId,
+              artifacts,
+            }),
+          );
+        }, "Failed to list task run artifacts."),
     },
   ] as const;
 }

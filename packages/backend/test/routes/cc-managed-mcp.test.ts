@@ -3250,6 +3250,264 @@ describe("cc-managed MCP routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("lists self task artifacts across runs and per-run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-artifacts",
+        slug: "artifact-owner",
+        name: "Artifact Owner",
+      });
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "task_run");
+
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Artifact task",
+        description: "Produces artifacts.",
+      });
+
+      // Create a run and add an artifact to it.
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Run it.",
+      });
+      await taskService.addRunArtifact(run.id, agent.id, {
+        title: "Report",
+        description: "Weekly summary.",
+        path: ".cc/artifacts/report.md",
+      });
+
+      // list_self_task_artifacts: aggregates across all runs
+      const listAllResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "list_self_task_artifacts", arguments: { taskId: task.id } },
+        90,
+      );
+
+      expect(parseSseJson(listAllResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            taskId: task.id,
+            artifacts: [
+              expect.objectContaining({
+                title: "Report",
+                path: ".cc/artifacts/report.md",
+                sourceRunId: run.id,
+              }),
+            ],
+          },
+        },
+      });
+
+      // list_self_task_run_artifacts: artifacts for one specific run
+      const listRunResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "list_self_task_run_artifacts", arguments: { taskId: task.id, runId: run.id } },
+        91,
+      );
+
+      expect(parseSseJson(listRunResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            taskId: task.id,
+            runId: run.id,
+            artifacts: [expect.objectContaining({ title: "Report", sourceRunId: run.id })],
+          },
+        },
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns empty artifact lists without error", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-no-artifacts",
+        slug: "no-artifacts",
+        name: "No Artifacts",
+      });
+      const authHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "task_run");
+
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Empty artifact task",
+        description: "No runs yet.",
+      });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Run it.",
+      });
+
+      // No artifacts added. Both tools should return empty arrays cleanly.
+      const listAllResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "list_self_task_artifacts", arguments: { taskId: task.id } },
+        92,
+      );
+      const listRunResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "list_self_task_run_artifacts", arguments: { taskId: task.id, runId: run.id } },
+        93,
+      );
+
+      const allBody = parseSseJson(listAllResponse.body) as {
+        result?: { isError?: boolean; structuredContent?: { artifacts?: unknown[] } };
+      };
+      expect(allBody.result?.isError).toBeFalsy();
+      expect(allBody.result?.structuredContent?.artifacts).toEqual([]);
+
+      const runBody = parseSseJson(listRunResponse.body) as {
+        result?: { isError?: boolean; structuredContent?: { artifacts?: unknown[] } };
+      };
+      expect(runBody.result?.isError).toBeFalsy();
+      expect(runBody.result?.structuredContent?.artifacts).toEqual([]);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("blocks artifact access for tasks owned by another specialist", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const owner = await insertActiveAgent(testDb.client.db, {
+        id: "agent-art-owner",
+        slug: "art-owner",
+        name: "Art Owner",
+      });
+      const intruder = await insertActiveAgent(testDb.client.db, {
+        id: "agent-art-intruder",
+        slug: "art-intruder",
+        name: "Art Intruder",
+      });
+
+      const ownerTask = await taskService.create({
+        agentId: owner.id,
+        title: "Owner's artifact task",
+        description: "Has artifacts.",
+      });
+      const ownerRun = await taskService.createRun({
+        taskId: ownerTask.id,
+        agentId: owner.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Do it.",
+      });
+      await taskService.addRunArtifact(ownerRun.id, owner.id, {
+        title: "Secret report",
+        path: ".cc/artifacts/secret.md",
+      });
+
+      const intruderAuth = await issueAuthHeader(
+        testDb.config,
+        intruder.slug,
+        "cc_default",
+        "task_run",
+      );
+
+      for (const call of [
+        { name: "list_self_task_artifacts", arguments: { taskId: ownerTask.id } },
+        {
+          name: "list_self_task_run_artifacts",
+          arguments: { taskId: ownerTask.id, runId: ownerRun.id },
+        },
+      ]) {
+        const response = await callMcpToolRouteForServer(
+          server,
+          intruder.slug,
+          "cc-default",
+          intruderAuth,
+          "tools/call",
+          call,
+          94,
+        );
+
+        const body = parseSseJson(response.body) as {
+          result?: { isError?: boolean; content?: Array<{ text: string }> };
+        };
+
+        expect(body.result?.isError, `${call.name} should be rejected`).toBe(true);
+        expect(body.result?.content?.[0]?.text).toContain("Task not found");
+      }
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 function parseSseJson(body: string): unknown {
