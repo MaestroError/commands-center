@@ -448,7 +448,10 @@ describe("createConversationService", () => {
         },
       });
       const opened = await service.resolveCurrent(agent.id);
-      await service.sendPrompt(opened.current.id, { text: "Archive this please." });
+      await service.sendPrompt(opened.current.id, {
+        text: "Archive this please.",
+        attachments: [],
+      });
       await archiveService.flush();
 
       const archivePath = archiveService.resolveChatArchivePath({
@@ -509,7 +512,10 @@ describe("createConversationService", () => {
         },
       });
       const opened = await service.resolveCurrent(agent.id);
-      const prompted = await service.sendPrompt(opened.current.id, { text: "Still works?" });
+      const prompted = await service.sendPrompt(opened.current.id, {
+        text: "Still works?",
+        attachments: [],
+      });
       expect(prompted.messages).toHaveLength(2);
     } finally {
       await testDb.cleanup();

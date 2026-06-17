@@ -101,6 +101,10 @@ export function createSessionArchiveService(options: {
       version: 1,
       kind,
       ...base,
+      // Status/outcome are sticky once set (e.g. a completed task run): re-ensuring
+      // during a later sync or inspection must not revert terminal state.
+      status: existing?.status ?? base.status,
+      outcome: existing?.outcome ?? base.outcome,
       // Preserve append/materialize progress and creation time across re-ensures.
       messageCount: existing?.messageCount ?? 0,
       lastAppendedAt: existing?.lastAppendedAt ?? null,

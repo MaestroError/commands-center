@@ -82,6 +82,8 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
     orchestrator: context.orchestrator,
     taskService,
     taskExecutionService,
+    sessionArchiveService: context.sessionArchiveService,
+    sessionArchiveSettingsService: context.sessionArchiveSettingsService,
   });
   const service = createCcManagedMcpService({
     db: context.database.db,

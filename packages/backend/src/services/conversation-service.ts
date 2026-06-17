@@ -131,6 +131,45 @@ export function createConversationService(options: {
       return listConversationSummaries(agent.id);
     },
 
+    // Owner-scoped listing for self-history tools. Unlike `list`, this includes
+    // task-run sessions and supports a source filter and a capped limit.
+    async listForAgent(
+      agentId: string,
+      query: { limit?: number; source?: "chat" | "task_run" | "all" } = {},
+    ): Promise<ConversationSummary[]> {
+      const limit = Math.min(Math.max(query.limit ?? 10, 1), 50);
+      const source = query.source ?? "all";
+      const rows = await options.db.query.conversations.findMany({
+        where: (table, ops) => {
+          const conditions = [ops.eq(table.agent_id, agentId), ops.eq(table.status, "active")];
+
+          if (source !== "all") {
+            conditions.push(ops.eq(table.source, source));
+          }
+
+          return ops.and(...conditions);
+        },
+        orderBy: (table) => [desc(table.updated_at), desc(table.created_at)],
+        limit,
+      });
+
+      return Promise.all(rows.map((conversation) => mapConversationSummary(conversation)));
+    },
+
+    // Owner-scoped single-summary lookup. Returns undefined when the conversation
+    // does not exist or is owned by another specialist.
+    async getSummaryForAgent(
+      agentId: string,
+      conversationId: string,
+    ): Promise<ConversationSummary | undefined> {
+      const conversation = await options.db.query.conversations.findFirst({
+        where: (table, ops) =>
+          ops.and(ops.eq(table.id, conversationId), ops.eq(table.agent_id, agentId)),
+      });
+
+      return conversation ? mapConversationSummary(conversation) : undefined;
+    },
+
     async get(agentId: string, conversationId: string): Promise<ConversationDetail> {
       const agent = await getAgent(agentId);
       const conversation = await getConversationRow(agent.id, conversationId);

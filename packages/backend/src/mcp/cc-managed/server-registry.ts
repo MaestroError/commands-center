@@ -3,6 +3,8 @@ import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat";
 import type { AppDb } from "../../db/client.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { ConversationService } from "../../services/conversation-service.js";
+import type { SessionArchiveService } from "../../services/session-archive-service.js";
+import type { SessionArchiveSettingsService } from "../../services/session-archive-settings-service.js";
 import type { CustomToolActionService } from "../../services/custom-tool-action-service.js";
 import type { CustomToolService } from "../../services/custom-tool-service.js";
 import type { SpecialistService } from "../../services/specialist-service.js";
@@ -56,6 +58,11 @@ import {
   listSelfTaskTemplatesToolMetadata,
   runSelfTaskTemplateNowToolMetadata,
 } from "./groups/cc-default/tools/self-task-template-tools.js";
+import {
+  createSelfConversationToolDefinitions,
+  getSelfConversationToolMetadata,
+  listSelfConversationsToolMetadata,
+} from "./groups/cc-default/tools/self-conversation-tools.js";
 import { createCopyCustomToolToSpecialistDefinition } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
 import { copyCustomToolToSpecialistMetadata } from "./groups/cc-tool-management/tools/copy-custom-tool-to-specialist.js";
 import {
@@ -162,6 +169,8 @@ export function createCcManagedMcpServerRegistry(options: {
   orchestrator?: OpenCodeOrchestrator;
   taskService?: TaskService;
   taskExecutionService?: TaskExecutionService;
+  sessionArchiveService?: SessionArchiveService;
+  sessionArchiveSettingsService?: SessionArchiveSettingsService;
 }): readonly CcManagedMcpServerDefinition[] {
   const ccAppTools: CcManagedToolDefinition[] = [];
 
@@ -298,6 +307,14 @@ export function createCcManagedMcpServerRegistry(options: {
           }),
         ]
       : []),
+    ...(options.db && options.conversationService
+      ? createSelfConversationToolDefinitions({
+          db: options.db,
+          conversationService: options.conversationService,
+          archiveService: options.sessionArchiveService,
+          archiveSettingsService: options.sessionArchiveSettingsService,
+        })
+      : []),
   ];
 
   return [
@@ -334,6 +351,8 @@ export function createCcManagedMcpServerRegistry(options: {
         createSelfTaskFromTemplateToolMetadata,
         listSelfTaskArtifactsToolMetadata,
         listSelfTaskRunArtifactsToolMetadata,
+        listSelfConversationsToolMetadata,
+        getSelfConversationToolMetadata,
       ],
       tools: defaultTools,
     },
