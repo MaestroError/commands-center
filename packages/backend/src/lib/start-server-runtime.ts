@@ -35,6 +35,15 @@ import {
 } from "../services/task-execution-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import {
+  createSessionArchiveService,
+  type SessionArchiveService,
+} from "../services/session-archive-service.js";
+import {
+  createSessionArchiveSettingsService,
+  type SessionArchiveSettingsService,
+} from "../services/session-archive-settings-service.js";
+import { createSessionArchiveScheduler } from "../services/session-archive-scheduler.js";
+import {
   createTaskSchedulerService,
   type TaskSchedulerService,
 } from "../services/task-scheduler-service.js";
@@ -92,6 +101,8 @@ export type RuntimeContext = {
   taskExecutionService?: TaskExecutionService;
   taskSchedulerService?: TaskSchedulerService;
   systemVersionService?: SystemVersionService;
+  sessionArchiveService?: SessionArchiveService;
+  sessionArchiveSettingsService?: SessionArchiveSettingsService;
   shutdownRuntime?: () => Promise<void>;
 };
 
@@ -153,11 +164,20 @@ export async function startServerRuntime(
   const liveRequestService = createLiveRequestService();
   const taskService = createTaskService({ db: database.db, config });
   const taskContextAttachmentService = createTaskContextAttachmentService({ config, taskService });
+  const sessionArchiveService = createSessionArchiveService({ config, logger });
+  const sessionArchiveSettingsService = createSessionArchiveSettingsService({ config, logger });
+  const sessionArchiveScheduler = createSessionArchiveScheduler({
+    archiveService: sessionArchiveService,
+    settingsService: sessionArchiveSettingsService,
+    logger,
+  });
   const conversationService = createConversationService({
     db: database.db,
     config,
     opencodeService,
     logger,
+    archiveService: sessionArchiveService,
+    archiveSettingsService: sessionArchiveSettingsService,
   });
   const taskPermissionService = createTaskPermissionService({
     db: database.db,
@@ -172,6 +192,8 @@ export async function startServerRuntime(
     taskContextAttachmentService,
     taskPermissionService,
     logger,
+    archiveService: sessionArchiveService,
+    archiveSettingsService: sessionArchiveSettingsService,
     onRunTerminal: (run) => taskSchedulerServiceRef.current?.handleRunTerminal(run),
   });
   const taskSchedulerService = createTaskSchedulerService({
@@ -214,6 +236,8 @@ export async function startServerRuntime(
     taskExecutionService,
     taskSchedulerService,
     systemVersionService,
+    sessionArchiveService,
+    sessionArchiveSettingsService,
   };
   const server = await createServer(context);
 
@@ -237,6 +261,8 @@ export async function startServerRuntime(
       terminateChildProcesses: async () => {
         systemVersionService.stop();
         taskSchedulerService.stop();
+        sessionArchiveScheduler.stop();
+        await sessionArchiveService.dispose();
         await orchestrator.stop();
         liveRequestService.dispose();
         workspaceWatchService.dispose();
@@ -252,6 +278,7 @@ export async function startServerRuntime(
   context.shutdownRuntime = () => drainController.drain("manual");
   systemVersionService.start();
   taskSchedulerService.start();
+  void sessionArchiveScheduler.start();
 
   if (options?.installSignalHandlers !== false) {
     installSignalHandlers(drainController.drain, logger);

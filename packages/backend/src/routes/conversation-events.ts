@@ -16,6 +16,9 @@ export function registerConversationEventRoutes(server: AppServer, context: Runt
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,
+    logger: context.logger,
+    archiveService: context.sessionArchiveService,
+    archiveSettingsService: context.sessionArchiveSettingsService,
   });
 
   app.get(

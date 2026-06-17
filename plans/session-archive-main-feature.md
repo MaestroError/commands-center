@@ -43,19 +43,19 @@ The service owns:
 - stale metadata tracking
 - archive cleanup on conversation deletion
 
+## Identity & Naming Decision
+
+Consistent with `plans/session-archive-initialization.md`, all archive folders are keyed by **`agentId`** (the specialist id stored on the conversation/task/run), NOT the mutable `slug`. The folder layout is `sessions/specialists/<agentId>/...`, matching where task context attachments and published artifacts already write. Wherever this plan says `specialistSlug` in a path resolver, read it as `agentId`. `metadata.json` still records the specialist `id`, `slug`, and `name` for human/agent readability, but only `id` (agentId) determines the path.
+
 ## Public Service Shape
 
 Suggested methods:
 
 ```ts
 type SessionArchiveService = {
-  resolveChatArchivePath(input: { specialistSlug: string; conversationId: string }): string;
+  resolveChatArchivePath(input: { agentId: string; conversationId: string }): string;
 
-  resolveTaskRunArchivePath(input: {
-    specialistSlug: string;
-    taskId: string;
-    taskRunId: string;
-  }): string;
+  resolveTaskRunArchivePath(input: { agentId: string; taskId: string; taskRunId: string }): string;
 
   ensureChatArchive(input: ChatArchiveInput): Promise<SessionArchiveMetadata>;
   ensureTaskRunArchive(input: TaskRunArchiveInput): Promise<SessionArchiveMetadata>;
@@ -275,6 +275,8 @@ After `syncConversation(...)`:
 - pass the current conversation summary and messages to `SessionArchiveService`.
 - append only messages not already archived.
 - update metadata `messageCount` and `updatedAt`.
+
+Note: `syncConversation(...)` fully deletes and re-inserts the SQLite `messages` rows from OpenCode on every sync. Archive append dedupe by message id (against `messages.jsonl`/metadata) is therefore load-bearing, not optional — never assume SQLite holds an incremental delta.
 
 For `sendPromptAsync(...)`:
 

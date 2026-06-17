@@ -41,6 +41,8 @@ import {
   resolveSpecialistWorkspacePath,
 } from "./specialist-workspace.js";
 import type { OpenCodeService, OpenCodeSessionPermissionRule } from "./opencode-service.js";
+import type { SessionArchiveService } from "./session-archive-service.js";
+import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
 import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
 import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
 import { createCustomToolService } from "./custom-tool-service.js";
@@ -85,6 +87,8 @@ export function createConversationService(options: {
   config: RuntimeConfig;
   opencodeService: OpenCodeService;
   logger?: Logger;
+  archiveService?: SessionArchiveService;
+  archiveSettingsService?: SessionArchiveSettingsService;
 }) {
   const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
     config: options.config,
@@ -437,10 +441,106 @@ export function createConversationService(options: {
         // ignore
       }
 
+      await removeConversationArchive(agent, conversation);
+
       await options.db.delete(messages).where(eq(messages.conversation_id, conversation.id));
       await options.db.delete(conversations).where(eq(conversations.id, conversation.id));
     },
   };
+
+  async function archiveConversation(
+    agent: AgentRuntimeRow,
+    conversation: ConversationRow,
+    conversationMessages: ConversationMessage[],
+  ): Promise<void> {
+    const archiveService = options.archiveService;
+
+    if (!archiveService) {
+      return;
+    }
+
+    try {
+      const settings = await options.archiveSettingsService?.get();
+
+      if (settings && !settings.sessionArchiveEnabled) {
+        return;
+      }
+
+      const appendMode = settings?.sessionArchiveAppendMode ?? "debounced";
+      const specialist = { id: agent.id, slug: agent.slug, name: agent.name };
+      const title = conversation.title ?? null;
+      let archivePath: string;
+
+      if (conversation.source === "task_run" && conversation.task_id && conversation.task_run_id) {
+        await archiveService.ensureTaskRunArchive({
+          specialist,
+          conversationId: conversation.id,
+          opencodeSessionId: conversation.opencode_session_id,
+          taskId: conversation.task_id,
+          taskRunId: conversation.task_run_id,
+          title,
+        });
+        archivePath = archiveService.resolveTaskRunArchivePath({
+          agentId: agent.id,
+          taskId: conversation.task_id,
+          taskRunId: conversation.task_run_id,
+        });
+      } else {
+        await archiveService.ensureChatArchive({
+          specialist,
+          conversationId: conversation.id,
+          opencodeSessionId: conversation.opencode_session_id,
+          title,
+        });
+        archivePath = archiveService.resolveChatArchivePath({
+          agentId: agent.id,
+          conversationId: conversation.id,
+        });
+      }
+
+      if (appendMode === "off" || conversationMessages.length === 0) {
+        return;
+      }
+
+      archiveService.enqueueMessages({ archivePath, messages: conversationMessages });
+    } catch (error) {
+      options.logger?.warn(
+        { err: error, conversationId: conversation.id },
+        "session archive update failed",
+      );
+    }
+  }
+
+  async function removeConversationArchive(
+    agent: AgentRuntimeRow,
+    conversation: ConversationRow,
+  ): Promise<void> {
+    const archiveService = options.archiveService;
+
+    if (!archiveService) {
+      return;
+    }
+
+    try {
+      const archivePath =
+        conversation.source === "task_run" && conversation.task_id && conversation.task_run_id
+          ? archiveService.resolveTaskRunArchivePath({
+              agentId: agent.id,
+              taskId: conversation.task_id,
+              taskRunId: conversation.task_run_id,
+            })
+          : archiveService.resolveChatArchivePath({
+              agentId: agent.id,
+              conversationId: conversation.id,
+            });
+      await archiveService.removeArchive({ archivePath });
+    } catch (error) {
+      options.logger?.warn(
+        { err: error, conversationId: conversation.id },
+        "session archive removal failed",
+      );
+    }
+  }
 
   async function getAgent(agentId: string): Promise<AgentRuntimeRow> {
     const agent = await options.db.query.agents.findFirst({
@@ -647,13 +747,23 @@ export function createConversationService(options: {
       session.time.updated ?? nextMessages.at(-1)?.updatedAtMs ?? conversation.updated_at.getTime(),
     );
 
+    const nextTitle = cleanTitle(session.title);
     await options.db
       .update(conversations)
       .set({
-        title: cleanTitle(session.title),
+        title: nextTitle,
         updated_at: updatedAt,
       })
       .where(eq(conversations.id, conversation.id));
+
+    const archiveMessages: ConversationMessage[] = nextMessages.map(
+      ({ createdAtMs: _createdAtMs, updatedAtMs: _updatedAtMs, ...message }) => message,
+    );
+    await archiveConversation(
+      agent,
+      { ...conversation, title: nextTitle ?? conversation.title },
+      archiveMessages,
+    );
 
     await options.db.delete(messages).where(eq(messages.conversation_id, conversation.id));
 

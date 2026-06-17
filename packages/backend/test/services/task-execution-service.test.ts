@@ -7,6 +7,7 @@ import type { Logger } from "pino";
 import type { AppDb } from "../../src/db/client";
 import { agents } from "../../src/db/schema/index";
 import { createConversationService } from "../../src/services/conversation-service";
+import { createSessionArchiveService } from "../../src/services/session-archive-service";
 import { createTaskPermissionService } from "../../src/services/task-permission-service";
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskService } from "../../src/services/task-service";
@@ -81,6 +82,66 @@ describe("createTaskExecutionService", () => {
       expect(inspection.conversation?.source).toBe("task_run");
       expect(inspection.conversation?.messages).toHaveLength(2);
       expect(conversations).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("materializes the task-run transcript when the run completes", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const archiveService = createSessionArchiveService({ config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      archiveService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      archiveService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Archive task",
+        description: "Use OpenCode.",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, run.id, "completed");
+
+      const archivePath = archiveService.resolveTaskRunArchivePath({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+      });
+
+      await expect
+        .poll(async () => {
+          try {
+            await readFile(join(archivePath, "transcript.md"), "utf8");
+            return true;
+          } catch {
+            return false;
+          }
+        })
+        .toBe(true);
+
+      const transcript = await readFile(join(archivePath, "transcript.md"), "utf8");
+      expect(transcript).toContain("# Session:");
+      const metadata = JSON.parse(await readFile(join(archivePath, "metadata.json"), "utf8")) as {
+        kind: string;
+        status: string;
+        lastMaterializedMessageCount: number;
+      };
+      expect(metadata.kind).toBe("task_run");
+      expect(metadata.status).toBe("completed");
+      expect(metadata.lastMaterializedMessageCount).toBeGreaterThan(0);
     } finally {
       await testDb.cleanup();
     }

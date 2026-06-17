@@ -97,6 +97,9 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,
+    logger: context.logger,
+    archiveService: context.sessionArchiveService,
+    archiveSettingsService: context.sessionArchiveSettingsService,
   });
   const taskContextAttachmentService = createTaskContextAttachmentService({
     config: context.config,
@@ -110,6 +113,8 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
       conversationService,
       taskContextAttachmentService,
       logger: context.logger,
+      archiveService: context.sessionArchiveService,
+      archiveSettingsService: context.sessionArchiveSettingsService,
     });
   const agentService = createSpecialistService({
     db: context.database.db,
