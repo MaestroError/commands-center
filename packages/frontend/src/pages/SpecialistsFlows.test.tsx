@@ -113,6 +113,23 @@ describe("agent flows", () => {
     expect(screen.getByRole("heading", { name: "Reviewer", level: 2 })).toBeInTheDocument();
   });
 
+  it("links the session archive button to the file manager keyed by specialist id", async () => {
+    mockApi({
+      "GET /api/specialists": [jsonResponse(200, agents)],
+    });
+    window.history.replaceState({}, "", "/specialists");
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Writer", level: 2 });
+
+    const archiveLinks = screen.getAllByRole("link", { name: "Session archive" });
+    expect(archiveLinks).toHaveLength(agents.length);
+    expect(archiveLinks[0]).toHaveAttribute(
+      "href",
+      `/files?root=workspace&path=${encodeURIComponent("sessions/specialists/agent-1")}`,
+    );
+  });
+
   it("creates a specialist and navigates to the specialists page", async () => {
     mockApi({
       "GET /api/specialists/catalog": [jsonResponse(200, catalog), jsonResponse(200, catalog)],

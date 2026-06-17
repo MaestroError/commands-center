@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { basename, extname, join, relative, resolve, sep } from "node:path";
 
 import {
   taskContextSchema,
@@ -82,20 +82,10 @@ export function createTaskContextAttachmentService(options: {
     },
 
     async removeForTask(task: Task): Promise<void> {
-      const directories = new Set(
-        task.context.attachments
-          .map((attachment) => attachment.storageKey.split("/")[0])
-          .filter((directory): directory is string => Boolean(directory)),
-      );
-
-      await Promise.all(
-        [...directories].map((directory) =>
-          rm(join(options.config.paths.subdirectories.taskContextAttachments, directory), {
-            force: true,
-            recursive: true,
-          }),
-        ),
-      );
+      await rm(resolveTaskAttachmentDirectory(options.config, task.agentId, task.id), {
+        force: true,
+        recursive: true,
+      });
     },
 
     async readConversationAttachments(
@@ -142,9 +132,8 @@ async function storeAttachment(
 
   const id = createId();
   const ext = extname(filename).toLowerCase();
-  const taskDirectoryName = createTaskDirectoryName(task);
-  const storageKey = `${taskDirectoryName}/${id}${ext}`;
-  const taskDirectory = join(config.paths.subdirectories.taskContextAttachments, taskDirectoryName);
+  const storageKey = `specialists/${task.agentId}/tasks/${task.id}/context-attachments/${id}${ext}`;
+  const taskDirectory = resolveTaskAttachmentDirectory(config, task.agentId, task.id);
   await mkdir(taskDirectory, { recursive: true });
   await writeFile(join(taskDirectory, `${id}${ext}`), buffer, { mode: 0o600 });
 
@@ -156,16 +145,6 @@ async function storeAttachment(
     storageKey,
     createdAt: new Date().toISOString(),
   };
-}
-
-function createTaskDirectoryName(task: Task): string {
-  const titleSlug = task.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 80);
-
-  return `${titleSlug || "task"}-${task.id}`;
 }
 
 function validateFilename(input: string): string {
@@ -199,12 +178,45 @@ function decodeDataUrl(dataUrl: string, mimeType: string): Buffer {
   return Buffer.from(dataUrl.slice(prefix.length), "base64");
 }
 
-function resolveStoragePath(config: RuntimeConfig, storageKey: string): string {
-  const [taskId, filename] = storageKey.split("/");
+function resolveTaskAttachmentDirectory(
+  config: RuntimeConfig,
+  agentId: string,
+  taskId: string,
+): string {
+  const directory = resolve(
+    config.paths.subdirectories.sessions,
+    "specialists",
+    agentId,
+    "tasks",
+    taskId,
+    "context-attachments",
+  );
+  ensureDescendant(directory, config.paths.subdirectories.sessions);
+  return directory;
+}
 
-  if (!taskId || !filename || storageKey.split("/").length !== 2) {
+function resolveStoragePath(config: RuntimeConfig, storageKey: string): string {
+  const parts = storageKey.split("/");
+
+  if (
+    parts.length !== 6 ||
+    parts[0] !== "specialists" ||
+    parts[2] !== "tasks" ||
+    parts[4] !== "context-attachments" ||
+    parts.some((part) => part.length === 0 || part === "." || part === "..")
+  ) {
     throw new BadRequestError("Attachment storage key is invalid.");
   }
 
-  return join(config.paths.subdirectories.taskContextAttachments, taskId, filename);
+  const path = resolve(config.paths.subdirectories.sessions, ...parts);
+  ensureDescendant(path, config.paths.subdirectories.sessions);
+  return path;
+}
+
+function ensureDescendant(candidatePath: string, rootPath: string): void {
+  const rel = relative(rootPath, candidatePath);
+
+  if (rel === "" || rel.startsWith("..") || rel.startsWith(sep)) {
+    throw new BadRequestError("Attachment storage key is invalid.");
+  }
 }
