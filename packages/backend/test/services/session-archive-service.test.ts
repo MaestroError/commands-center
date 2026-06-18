@@ -139,6 +139,33 @@ describe("createSessionArchiveService", () => {
     });
   });
 
+  it("respects the batch limit in materializeDueSessions", async () => {
+    await withService(async (service) => {
+      for (const id of ["conv-a", "conv-b", "conv-c"]) {
+        await service.ensureChatArchive({
+          specialist: SPECIALIST,
+          conversationId: id,
+          opencodeSessionId: null,
+        });
+        const archivePath = service.resolveChatArchivePath({
+          agentId: "agent-1",
+          conversationId: id,
+        });
+        await service.appendMessages({ archivePath, messages: [message({ id: `msg-${id}` })] });
+      }
+
+      const first = await service.materializeDueSessions({ limit: 2 });
+      expect(first.materialized).toBe(2);
+      expect(first.skipped).toBe(0);
+      expect(first.failed).toBe(0);
+
+      // One session is still stale.
+      const second = await service.materializeDueSessions({});
+      expect(second.materialized).toBe(1);
+      expect(second.skipped).toBe(2);
+    });
+  });
+
   it("removes an archive folder", async () => {
     await withService(async (service) => {
       await service.ensureChatArchive({

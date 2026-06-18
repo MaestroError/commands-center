@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createSpecialistService } from "../../src/services/specialist-service";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSessionArchiveService } from "../../src/services/session-archive-service";
+import type { SessionArchiveSettingsService } from "../../src/services/session-archive-settings-service";
 import type {
   OpenCodeService,
   OpenCodeSession,
@@ -469,6 +470,62 @@ describe("createConversationService", () => {
 
       await service.deleteConversation(agent.id, opened.current.id);
       await expect(stat(archivePath)).rejects.toThrow();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("skips message writes when archive append mode is off", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const archiveService = createSessionArchiveService({ config: testDb.config });
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const offSettingsService: SessionArchiveSettingsService = {
+      get: () =>
+        Promise.resolve({
+          sessionArchiveEnabled: true,
+          sessionArchiveAppendMode: "off" as const,
+          sessionArchiveMaterializeIntervalMinutes: 1440,
+        }),
+      update: () => Promise.reject(new Error("unexpected update call")),
+    };
+    const service = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      archiveService,
+      archiveSettingsService: offSettingsService,
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "Off Mode Specialist",
+        role: "test append-mode off",
+        instructions: "Be useful.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+      const opened = await service.resolveCurrent(agent.id);
+      await service.sendPrompt(opened.current.id, { text: "Test off mode.", attachments: [] });
+      await archiveService.flush();
+
+      const archivePath = archiveService.resolveChatArchivePath({
+        agentId: agent.id,
+        conversationId: opened.current.id,
+      });
+      // Archive folder and metadata exist, but no messages.jsonl because appending is off.
+      await expect(stat(join(archivePath, "metadata.json"))).resolves.toBeTruthy();
+      await expect(stat(join(archivePath, "messages.jsonl"))).rejects.toThrow();
     } finally {
       await testDb.cleanup();
     }
