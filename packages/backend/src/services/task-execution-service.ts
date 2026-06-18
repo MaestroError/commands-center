@@ -344,10 +344,81 @@ export function createTaskExecutionService(options: {
       };
     }
 
-    return {
+    const details: Record<string, unknown> = {
       errorName: error instanceof Error ? error.name : "UnknownError",
       stage: run.opencodeSessionId ? "task_session_prompt" : "task_session_create",
     };
+
+    if (error instanceof Error) {
+      details["message"] = error.message;
+      appendCauseDetails(details, error);
+    }
+
+    if (run.opencodeSessionId) {
+      details["opencodeSessionId"] = run.opencodeSessionId;
+    }
+
+    const elapsedRunMs = readElapsedRunMs(run);
+    if (elapsedRunMs !== undefined) {
+      details["elapsedRunMs"] = elapsedRunMs;
+    }
+
+    return details;
+  }
+
+  function appendCauseDetails(details: Record<string, unknown>, error: Error): void {
+    const cause = (error as Error & { cause?: unknown }).cause;
+
+    if (!cause) {
+      return;
+    }
+
+    if (cause instanceof Error) {
+      details["causeName"] = cause.name;
+      details["causeMessage"] = cause.message;
+      appendCauseCode(details, cause);
+      return;
+    }
+
+    if (isRecord(cause)) {
+      const name = readString(cause, "name");
+      const message = readString(cause, "message");
+      const code = readString(cause, "code");
+
+      if (name) {
+        details["causeName"] = name;
+      }
+
+      if (message) {
+        details["causeMessage"] = message;
+      }
+
+      if (code) {
+        details["causeCode"] = code;
+      }
+    }
+  }
+
+  function appendCauseCode(details: Record<string, unknown>, error: Error): void {
+    const code = (error as Error & { code?: unknown }).code;
+
+    if (typeof code === "string" && code.trim()) {
+      details["causeCode"] = code;
+    }
+  }
+
+  function readElapsedRunMs(run: TaskRun): number | undefined {
+    if (!run.startedAt) {
+      return undefined;
+    }
+
+    const startedAtMs = Date.parse(run.startedAt);
+
+    if (Number.isNaN(startedAtMs)) {
+      return undefined;
+    }
+
+    return Math.max(0, Date.now() - startedAtMs);
   }
 
   function buildFallbackRunInput(
@@ -772,4 +843,13 @@ function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
   return runs.some(
     (run) => run.subtaskId === subtaskId && run.status !== "queued" && run.status !== "running",
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
 }

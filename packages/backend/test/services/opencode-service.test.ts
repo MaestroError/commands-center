@@ -112,6 +112,64 @@ describe("opencode-service", () => {
     });
   });
 
+  describe("session status", () => {
+    it("lists session statuses from /session/status", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, {
+          "sess-busy": { type: "busy" },
+          "sess-retry": { type: "retry", attempt: 1, message: "Rate limited", next: 5000 },
+        }),
+      );
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      const statuses = await service.listSessionStatuses("/work/agent-a");
+
+      expect(statuses["sess-busy"]).toEqual({ type: "busy" });
+      expect(statuses["sess-retry"]).toEqual({
+        type: "retry",
+        attempt: 1,
+        message: "Rate limited",
+        next: 5000,
+      });
+
+      const url = fetchMock.mock.calls[0]?.[0] as URL;
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      expect(url.pathname).toBe("/session/status");
+      expect(url.searchParams.get("directory")).toBe("/work/agent-a");
+      expect(init.method).toBe("GET");
+    });
+
+    it("treats a missing session status entry as idle", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { "other-session": { type: "busy" } }));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await expect(service.getSessionStatus("/work/agent-a", "sess-idle")).resolves.toEqual({
+        type: "idle",
+      });
+    });
+
+    it("rejects malformed session status payloads", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, { "sess-bad": { type: "retry", message: "missing fields" } }),
+      );
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await expect(service.listSessionStatuses("/work/agent-a")).rejects.toThrow();
+    });
+  });
+
   describe("disposeGlobal", () => {
     it("posts to /global/dispose", async () => {
       fetchMock.mockResolvedValue(jsonResponse(200, true));

@@ -322,6 +322,52 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("stores transport cause details when a task prompt fetch fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const promptError = new TypeError("fetch failed") as TypeError & { cause?: unknown };
+    promptError.cause = {
+      name: "HeadersTimeoutError",
+      message: "Headers Timeout Error",
+      code: "UND_ERR_HEADERS_TIMEOUT",
+    };
+    const opencodeService = createMockOpenCodeService({ promptTransportError: promptError });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({ taskService, conversationService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Transport failure",
+        description: "Prompt will lose its local connection.",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      const failedRun = await taskService.getRunById(run.id);
+
+      expect(failedRun?.errorMessage).toBe("fetch failed");
+      expect(failedRun?.errorDetails).toMatchObject({
+        errorName: "TypeError",
+        message: "fetch failed",
+        stage: "task_session_prompt",
+        opencodeSessionId: "session-1",
+        causeName: "HeadersTimeoutError",
+        causeMessage: "Headers Timeout Error",
+        causeCode: "UND_ERR_HEADERS_TIMEOUT",
+      });
+      expect(failedRun?.errorDetails?.["elapsedRunMs"]).toEqual(expect.any(Number));
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("walks multiple fallbacks in order until one succeeds", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -708,7 +754,11 @@ describe("createTaskExecutionService", () => {
       const failed = await taskService.getRunById(run.id);
 
       expect(failed?.errorMessage).toBe("Task run not found.");
-      expect(failed?.errorDetails).toEqual({ errorName: "ApiError", stage: "task_session_create" });
+      expect(failed?.errorDetails).toMatchObject({
+        errorName: "ApiError",
+        message: "Task run not found.",
+        stage: "task_session_create",
+      });
       expect(logger.error).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
@@ -1071,6 +1121,7 @@ function createMockOpenCodeService(
       model?: { providerID: string; modelID: string };
       text: string;
     }) => { name: string; message: string; data?: Record<string, unknown> } | undefined;
+    promptTransportError?: Error;
   } = {},
 ): OpenCodeService {
   const sessions = new Map<string, OpenCodeSession>();
@@ -1125,6 +1176,10 @@ function createMockOpenCodeService(
     }) => {
       options.onPrompt?.({ model, text });
       await (options.promptGates?.shift() ?? options.promptGate);
+
+      if (options.promptTransportError) {
+        throw options.promptTransportError;
+      }
 
       const sessionMessages = messages.get(sessionID);
       const session = sessions.get(sessionID);

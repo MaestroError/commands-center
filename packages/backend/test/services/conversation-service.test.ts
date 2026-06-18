@@ -654,6 +654,8 @@ function createMockOpenCodeService(
 
       return Promise.resolve(session);
     },
+    listSessionStatuses: () => Promise.resolve({}),
+    getSessionStatus: () => Promise.resolve({ type: "idle" as const }),
     listSessionMessages: (_directory, sessionID) => Promise.resolve(messages.get(sessionID) ?? []),
     promptSession: ({ sessionID, text, attachments }) => {
       const session = mustSession(sessionID);

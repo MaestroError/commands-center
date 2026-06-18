@@ -343,6 +343,8 @@ function createMockOpenCodeService(): OpenCodeService {
       session.time.updated = nextTime();
       return Promise.resolve();
     },
+    listSessionStatuses: () => Promise.resolve({}),
+    getSessionStatus: () => Promise.resolve({ type: "idle" }),
     commandSession: () => Promise.resolve(),
     summarizeSession: () => Promise.resolve(),
     shellSession: () => Promise.resolve(),
@@ -413,6 +415,8 @@ function createBaseOpenCodeService() {
       }),
     completeOauth: () => Promise.resolve(true),
     disconnectProvider: () => Promise.resolve(true),
+    listSessionStatuses: () => Promise.resolve({}),
+    getSessionStatus: () => Promise.resolve({ type: "idle" as const }),
     replyPermission: async () => {},
     replyQuestion: async () => {},
     rejectQuestion: async () => {},
