@@ -7,6 +7,7 @@ import {
   taskQueuePreviewSchema,
   uploadTaskContextAttachmentInputSchema,
   type CancelTaskRunInput,
+  type ConversationMessage,
   type QueueTaskInput,
   type TaskContext,
   type Task,
@@ -67,6 +68,35 @@ type OpencodeMonitorMetadata = {
   promptAcceptedAt: string;
 };
 
+type TaskRunMonitorOptions = {
+  autoStart?: boolean;
+  initialPollMs?: number;
+  maxPollMs?: number;
+  idlePolls?: number;
+  maxLifetimeMs?: number;
+};
+
+type TaskRunMonitorConfig = Required<TaskRunMonitorOptions>;
+
+type TaskRunMonitorHandle = {
+  runId: string;
+  startedAtMs: number;
+  delayMs: number;
+  idleCount: number;
+  lastStatus?: string;
+  lastAssistantMessageId?: string;
+  stopped: boolean;
+  timer?: ReturnType<typeof setTimeout>;
+};
+
+const DEFAULT_TASK_RUN_MONITOR_CONFIG: TaskRunMonitorConfig = {
+  autoStart: true,
+  initialPollMs: 2_000,
+  maxPollMs: 10_000,
+  idlePolls: 2,
+  maxLifetimeMs: 6 * 60 * 60 * 1_000,
+};
+
 export function createTaskExecutionService(options: {
   db?: AppDb;
   taskService: TaskService;
@@ -77,8 +107,14 @@ export function createTaskExecutionService(options: {
   archiveSettingsService?: SessionArchiveSettingsService;
   onRunTerminal?: (run: TaskRun) => void | Promise<void>;
   logger?: Logger;
+  monitor?: TaskRunMonitorOptions;
 }) {
   const taskRunContextService = createTaskRunContextService({ db: options.db });
+  const monitorConfig: TaskRunMonitorConfig = {
+    ...DEFAULT_TASK_RUN_MONITOR_CONFIG,
+    ...(options.monitor ?? {}),
+  };
+  const monitors = new Map<string, TaskRunMonitorHandle>();
 
   return {
     async trigger(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
@@ -95,6 +131,28 @@ export function createTaskExecutionService(options: {
 
     async runQueuedTask(runId: string): Promise<TaskRun> {
       return runQueuedTask(runId);
+    },
+
+    startTaskRunMonitor(runId: string): void {
+      startTaskRunMonitor(runId);
+    },
+
+    async resumeRunningTaskRuns(): Promise<void> {
+      const runs = await options.taskService.listActiveRuns();
+
+      for (const run of runs) {
+        if (run.status !== "running") {
+          continue;
+        }
+
+        if (run.opencodeSessionId) {
+          startTaskRunMonitor(run.id);
+          continue;
+        }
+
+        await options.taskService.updateRun(run.id, { status: "queued" });
+        scheduleAgentDrain(run.agentId);
+      }
     },
 
     async cancel(runId: string, input: CancelTaskRunInput = {}): Promise<TaskRun> {
@@ -121,6 +179,14 @@ export function createTaskExecutionService(options: {
 
     async listActiveRuns(): Promise<TaskRun[]> {
       return options.taskService.listActiveRuns();
+    },
+
+    dispose(): void {
+      for (const handle of monitors.values()) {
+        stopTaskRunMonitor(handle);
+      }
+
+      monitors.clear();
     },
   };
 
@@ -285,6 +351,10 @@ export function createTaskExecutionService(options: {
           return accepted;
         }
 
+        if (monitorConfig.autoStart) {
+          startTaskRunMonitor(accepted.id);
+        }
+
         return accepted;
       }
 
@@ -336,6 +406,270 @@ export function createTaskExecutionService(options: {
       await handleTerminalRun(errored, { triggerContext: readRunContext(running) });
       return errored;
     }
+  }
+
+  function startTaskRunMonitor(runId: string): void {
+    if (!options.conversationService || monitors.has(runId)) {
+      return;
+    }
+
+    const handle: TaskRunMonitorHandle = {
+      runId,
+      startedAtMs: Date.now(),
+      delayMs: monitorConfig.initialPollMs,
+      idleCount: 0,
+      stopped: false,
+    };
+    monitors.set(runId, handle);
+    scheduleTaskRunMonitor(handle, 0);
+  }
+
+  function stopTaskRunMonitor(handle: TaskRunMonitorHandle): void {
+    handle.stopped = true;
+
+    if (handle.timer) {
+      clearTimeout(handle.timer);
+      handle.timer = undefined;
+    }
+  }
+
+  function scheduleTaskRunMonitor(handle: TaskRunMonitorHandle, delayMs: number): void {
+    if (handle.stopped) {
+      return;
+    }
+
+    handle.timer = setTimeout(() => {
+      void runTaskRunMonitorTick(handle);
+    }, delayMs);
+    handle.timer.unref?.();
+  }
+
+  async function runTaskRunMonitorTick(handle: TaskRunMonitorHandle): Promise<void> {
+    if (handle.stopped) {
+      return;
+    }
+
+    try {
+      const done = await pollTaskRunMonitor(handle);
+
+      if (done) {
+        monitors.delete(handle.runId);
+        stopTaskRunMonitor(handle);
+        return;
+      }
+
+      scheduleTaskRunMonitor(handle, handle.delayMs);
+    } catch (error) {
+      options.logger?.warn(
+        { err: error, runId: handle.runId },
+        "task run monitor poll failed; will retry",
+      );
+      handle.idleCount = 0;
+      handle.delayMs = nextMonitorDelay(handle.delayMs);
+      scheduleTaskRunMonitor(handle, handle.delayMs);
+    }
+  }
+
+  async function pollTaskRunMonitor(handle: TaskRunMonitorHandle): Promise<boolean> {
+    const run = await options.taskService.getRunById(handle.runId);
+
+    if (!run || run.status !== "running") {
+      return true;
+    }
+
+    if (!options.conversationService || !run.opencodeSessionId) {
+      return true;
+    }
+
+    if (isMonitorTimedOut(handle, run)) {
+      return finalizeTaskRunMonitorTimeout(handle, run);
+    }
+
+    let statusType: string | undefined;
+
+    try {
+      const status = await options.conversationService.getTaskRunSessionStatus(run.taskId, run.id);
+      statusType = status.type;
+      handle.lastStatus = status.type;
+    } catch (error) {
+      options.logger?.warn(
+        { err: error, runId: run.id, opencodeSessionId: run.opencodeSessionId },
+        "task run monitor status read failed; falling back to synced messages",
+      );
+    }
+
+    const conversation = await options.conversationService.syncTaskRunConversation(
+      run.taskId,
+      run.id,
+    );
+    const monitorMetadata = readOpencodeMonitorMetadata(run);
+    const latestAssistant = readLatestAssistantMessage(
+      conversation.messages.slice(monitorMetadata.baselineMessageCount),
+    );
+
+    if (latestAssistant?.id) {
+      handle.lastAssistantMessageId = latestAssistant.id;
+    }
+
+    if (latestAssistant?.error) {
+      return finalizeTaskRunModelError(run, latestAssistant.error, monitorMetadata.attemptedModel);
+    }
+
+    if (statusType === "busy" || statusType === "retry") {
+      handle.idleCount = 0;
+      handle.delayMs = nextMonitorDelay(handle.delayMs);
+      return false;
+    }
+
+    if (!latestAssistant) {
+      handle.idleCount = 0;
+      handle.delayMs = monitorConfig.initialPollMs;
+      return false;
+    }
+
+    handle.idleCount += 1;
+    handle.delayMs = monitorConfig.initialPollMs;
+
+    if (handle.idleCount < monitorConfig.idlePolls) {
+      return false;
+    }
+
+    return finalizeTaskRunCompletion(run, conversation);
+  }
+
+  async function finalizeTaskRunCompletion(
+    run: TaskRun,
+    conversation: { id: string; messageCount: number; messages: ConversationMessage[] },
+  ): Promise<boolean> {
+    const latest = await options.taskService.getRunById(run.id);
+
+    if (!latest || latest.status !== "running") {
+      return true;
+    }
+
+    const completed = await options.taskService.setRunStatus(latest.id, "completed", {
+      completedAt: new Date().toISOString(),
+      finalMessage: summarizeTaskRunConversation(conversation),
+      result: {
+        conversationId: conversation.id,
+        messageCount: conversation.messageCount,
+      },
+    });
+
+    if (!completed) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    await handleTerminalRun(completed, { triggerContext: readRunContext(completed) });
+    return true;
+  }
+
+  async function finalizeTaskRunModelError(
+    run: TaskRun,
+    modelError: TaskRunPromptError["modelError"],
+    attemptedModel: string,
+  ): Promise<boolean> {
+    const latest = await options.taskService.getRunById(run.id);
+
+    if (!latest || latest.status !== "running") {
+      return true;
+    }
+
+    const error = new TaskRunPromptError({ modelError, attemptedModel });
+    const errored = await options.taskService.setRunStatus(latest.id, "error", {
+      completedAt: new Date().toISOString(),
+      errorMessage: error.message,
+      errorDetails: buildTaskRunErrorDetails(error, latest),
+    });
+
+    if (!errored) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    const fallback = buildFallbackRunInput(errored, error);
+    if (fallback) {
+      notifyRunTerminal(errored);
+      const fallbackRun = await queueTask(errored.taskId, fallback);
+      options.logger?.warn(
+        {
+          taskId: errored.taskId,
+          previousRunId: errored.id,
+          fallbackRunId: fallbackRun.id,
+          model: fallback.model,
+        },
+        "task run monitor observed provider error, queued fallback model run",
+      );
+      return true;
+    }
+
+    await handleTerminalRun(errored, { triggerContext: readRunContext(errored) });
+    return true;
+  }
+
+  async function finalizeTaskRunMonitorTimeout(
+    handle: TaskRunMonitorHandle,
+    run: TaskRun,
+  ): Promise<boolean> {
+    let conversation:
+      | { id: string; messageCount: number; messages: ConversationMessage[] }
+      | undefined;
+
+    try {
+      conversation = await options.conversationService?.syncTaskRunConversation(run.taskId, run.id);
+      const monitorMetadata = readOpencodeMonitorMetadata(run);
+      const latestAssistant = readLatestAssistantMessage(
+        conversation?.messages.slice(monitorMetadata.baselineMessageCount) ?? [],
+      );
+
+      if (latestAssistant?.id) {
+        handle.lastAssistantMessageId = latestAssistant.id;
+      }
+    } catch (error) {
+      options.logger?.warn({ err: error, runId: run.id }, "task run monitor timeout sync failed");
+    }
+
+    const latest = await options.taskService.getRunById(run.id);
+
+    if (!latest || latest.status !== "running") {
+      return true;
+    }
+
+    const errored = await options.taskService.setRunStatus(latest.id, "error", {
+      completedAt: new Date().toISOString(),
+      errorMessage: "Task monitor timed out before OpenCode session settled.",
+      errorDetails: {
+        errorName: "TaskRunMonitorTimeout",
+        stage: "monitor_timeout",
+        opencodeSessionId: latest.opencodeSessionId,
+        elapsedRunMs: readElapsedRunMs(latest),
+        monitorElapsedMs: Date.now() - handle.startedAtMs,
+        lastStatus: handle.lastStatus,
+        lastAssistantMessageId: handle.lastAssistantMessageId,
+        conversationId: conversation?.id,
+        messageCount: conversation?.messageCount,
+      },
+    });
+
+    if (!errored) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    await handleTerminalRun(errored, { triggerContext: readRunContext(errored) });
+    return true;
+  }
+
+  function isMonitorTimedOut(handle: TaskRunMonitorHandle, run: TaskRun): boolean {
+    const startedAtMs = run.startedAt ? Date.parse(run.startedAt) : handle.startedAtMs;
+    const elapsedMs = Date.now() - (Number.isNaN(startedAtMs) ? handle.startedAtMs : startedAtMs);
+
+    return elapsedMs >= monitorConfig.maxLifetimeMs;
+  }
+
+  function nextMonitorDelay(currentDelayMs: number): number {
+    return Math.min(
+      monitorConfig.maxPollMs,
+      Math.max(monitorConfig.initialPollMs, currentDelayMs * 2),
+    );
   }
 
   function buildTaskRunErrorDetails(error: unknown, run: TaskRun): Record<string, unknown> {
@@ -830,6 +1164,60 @@ function mergeOpencodeMonitorMetadata(
     ...(triggerMetadata ?? {}),
     opencodeMonitor,
   };
+}
+
+function readOpencodeMonitorMetadata(run: TaskRun): OpencodeMonitorMetadata {
+  const value = run.triggerMetadata?.["opencodeMonitor"];
+
+  if (!isRecord(value)) {
+    throw new BadRequestError("Task run is missing OpenCode monitor metadata.");
+  }
+
+  const conversationId = readString(value, "conversationId");
+  const opencodeSessionId = readString(value, "opencodeSessionId");
+  const attemptedModel = readString(value, "attemptedModel");
+  const promptAcceptedAt = readString(value, "promptAcceptedAt");
+  const baselineMessageCount =
+    typeof value["baselineMessageCount"] === "number" &&
+    Number.isInteger(value["baselineMessageCount"]) &&
+    value["baselineMessageCount"] >= 0
+      ? value["baselineMessageCount"]
+      : undefined;
+
+  if (
+    !conversationId ||
+    !opencodeSessionId ||
+    !attemptedModel ||
+    !promptAcceptedAt ||
+    baselineMessageCount === undefined
+  ) {
+    throw new BadRequestError("Task run has invalid OpenCode monitor metadata.");
+  }
+
+  return {
+    conversationId,
+    opencodeSessionId,
+    attemptedModel,
+    baselineMessageCount,
+    promptAcceptedAt,
+  };
+}
+
+function readLatestAssistantMessage(
+  messages: ConversationMessage[],
+): ConversationMessage | undefined {
+  return messages.findLast((message) => message.role === "assistant");
+}
+
+function summarizeTaskRunConversation(conversation: { messages: ConversationMessage[] }): string {
+  const latestAssistant = readLatestAssistantMessage(conversation.messages);
+
+  if (!latestAssistant) {
+    return "Task completed. No assistant summary was recorded.";
+  }
+
+  const content = latestAssistant.content.trim();
+  return content.length > 0 ? content : "Task completed.";
 }
 
 function hasSuccessfulSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {

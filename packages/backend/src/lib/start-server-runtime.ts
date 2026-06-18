@@ -259,6 +259,7 @@ export async function startServerRuntime(
         await server.close();
       },
       terminateChildProcesses: async () => {
+        taskExecutionService.dispose();
         systemVersionService.stop();
         taskSchedulerService.stop();
         sessionArchiveScheduler.stop();
@@ -285,6 +286,9 @@ export async function startServerRuntime(
   }
 
   await orchestrator.start();
+  void taskExecutionService.resumeRunningTaskRuns().catch((error: unknown) => {
+    logger.error({ err: error }, "task run monitor resume failed");
+  });
 
   try {
     await server.listen({

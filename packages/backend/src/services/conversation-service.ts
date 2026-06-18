@@ -40,7 +40,11 @@ import {
   getWorkspaceSkillRoot,
   resolveSpecialistWorkspacePath,
 } from "./specialist-workspace.js";
-import type { OpenCodeService, OpenCodeSessionPermissionRule } from "./opencode-service.js";
+import type {
+  OpenCodeService,
+  OpenCodeSessionPermissionRule,
+  OpenCodeSessionStatus,
+} from "./opencode-service.js";
 import type { SessionArchiveService } from "./session-archive-service.js";
 import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
 import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
@@ -331,6 +335,35 @@ export function createConversationService(options: {
         diagnostics,
         canOpenInChat: diagnostics.length === 0,
       };
+    },
+
+    async syncTaskRunConversation(taskId: string, taskRunId: string): Promise<ConversationDetail> {
+      const conversation = await getTaskRunConversationRow(taskId, taskRunId);
+
+      if (!conversation) {
+        throw new NotFoundError("Task run session not found.");
+      }
+
+      const agent = await getAgent(conversation.agent_id);
+      await syncConversation(agent, conversation);
+      return getConversationDetail(conversation.id);
+    },
+
+    async getTaskRunSessionStatus(
+      taskId: string,
+      taskRunId: string,
+    ): Promise<OpenCodeSessionStatus> {
+      const conversation = await getTaskRunConversationRow(taskId, taskRunId);
+
+      if (!conversation) {
+        throw new NotFoundError("Task run session not found.");
+      }
+
+      const agent = await getAgent(conversation.agent_id);
+      return options.opencodeService.getSessionStatus(
+        agent.workspace_path,
+        conversation.opencode_session_id,
+      );
     },
 
     async openTaskRunConversationInChat(
