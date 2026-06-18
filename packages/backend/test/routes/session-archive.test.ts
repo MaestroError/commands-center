@@ -26,6 +26,41 @@ async function setup() {
 }
 
 describe("session archive settings routes", () => {
+  it("partial PUT preserves unspecified fields", async () => {
+    const { testDb, server } = await setup();
+
+    try {
+      // First set everything to non-default values.
+      await server.inject({
+        method: "PUT",
+        url: "/api/session-archive/settings",
+        payload: {
+          sessionArchiveEnabled: false,
+          sessionArchiveAppendMode: "off",
+          sessionArchiveMaterializeIntervalMinutes: 60,
+        },
+      });
+
+      // Then send only one field — the other two must not revert to defaults.
+      const partial = await server.inject({
+        method: "PUT",
+        url: "/api/session-archive/settings",
+        payload: { sessionArchiveEnabled: true },
+      });
+      expect(partial.statusCode).toBe(200);
+
+      const reloaded = await server.inject({ method: "GET", url: "/api/session-archive/settings" });
+      expect(reloaded.json()).toEqual({
+        sessionArchiveEnabled: true,
+        sessionArchiveAppendMode: "off",
+        sessionArchiveMaterializeIntervalMinutes: 60,
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("returns defaults and persists updates", async () => {
     const { testDb, server } = await setup();
 

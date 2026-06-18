@@ -3998,7 +3998,7 @@ function normalizeTaskFallbackModels(models: string[], primaryModel: string): st
 function buildTaskContextAttachmentHref(storageKey: string): string {
   return buildFileManagerHref({
     root: "workspace",
-    path: `task-context-attachments/${storageKey}`,
+    path: `sessions/${storageKey}`,
     openInEditor: true,
   });
 }

@@ -170,4 +170,24 @@ describe("sessionArchiveLayoutMigration", () => {
       ).resolves.toBe(true);
     });
   });
+
+  it("refuses to roll back when sessions/ has non-specialists content and makes no partial deletions", async () => {
+    await withConfig(async (config) => {
+      await run(config);
+      // Simulate a published-artifacts manifest written by the artifact service after migration.
+      await writeWorkspaceFile(config, "sessions/published-artifacts.json", "{}");
+
+      await expect(
+        rollbackLatestWorkspaceMigration({
+          config,
+          logger: createLogger() as never,
+          migrations: [sessionArchiveLayoutMigration],
+        }),
+      ).rejects.toThrow("published-artifacts.json");
+      // sessions/specialists/ must still exist — no partial deletion occurred.
+      await expect(
+        exists(resolve(config.paths.workspaceDir, "sessions/specialists")),
+      ).resolves.toBe(true);
+    });
+  });
 });

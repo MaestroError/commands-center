@@ -1558,7 +1558,7 @@ describe("TasksPage", () => {
               filename: "notes.txt",
               mimeType: "text/plain",
               sizeBytes: 5,
-              storageKey: "ship-release-task-1/attachment-1.txt",
+              storageKey: "specialists/agent-1/tasks/task-1/context-attachments/attachment-1.txt",
               createdAt: "2026-01-01T00:00:00.000Z",
             },
           ],
@@ -1577,9 +1577,11 @@ describe("TasksPage", () => {
 
     expect(link).toHaveAttribute("target", "_blank");
     expect(params.get("root")).toBe("workspace");
-    expect(params.get("path")).toBe("task-context-attachments/ship-release-task-1");
+    expect(params.get("path")).toBe(
+      "sessions/specialists/agent-1/tasks/task-1/context-attachments",
+    );
     expect(params.get("select")).toBe(
-      "task-context-attachments/ship-release-task-1/attachment-1.txt",
+      "sessions/specialists/agent-1/tasks/task-1/context-attachments/attachment-1.txt",
     );
   });
 
@@ -1595,7 +1597,7 @@ describe("TasksPage", () => {
               filename: "notes.txt",
               mimeType: "text/plain",
               sizeBytes: 5,
-              storageKey: "ship-release-task-1/attachment-1.txt",
+              storageKey: "specialists/agent-1/tasks/task-1/context-attachments/attachment-1.txt",
               createdAt: "2026-01-01T00:00:00.000Z",
             },
           ],
@@ -2383,7 +2385,7 @@ describe("TaskDetailPage", () => {
               filename: "notes.txt",
               mimeType: "text/plain",
               sizeBytes: 5,
-              storageKey: "ship-release-task-1/attachment-1.txt",
+              storageKey: "specialists/agent-1/tasks/task-1/context-attachments/attachment-1.txt",
               createdAt: "2026-01-01T00:00:00.000Z",
             },
           ],
@@ -2401,9 +2403,11 @@ describe("TaskDetailPage", () => {
 
     expect(link).toHaveAttribute("target", "_blank");
     expect(params.get("root")).toBe("workspace");
-    expect(params.get("path")).toBe("task-context-attachments/ship-release-task-1");
+    expect(params.get("path")).toBe(
+      "sessions/specialists/agent-1/tasks/task-1/context-attachments",
+    );
     expect(params.get("select")).toBe(
-      "task-context-attachments/ship-release-task-1/attachment-1.txt",
+      "sessions/specialists/agent-1/tasks/task-1/context-attachments/attachment-1.txt",
     );
   });
 
