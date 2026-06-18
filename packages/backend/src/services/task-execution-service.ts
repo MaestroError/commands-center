@@ -59,6 +59,14 @@ type QueueSingleRunInput = Pick<
   | "triggerSource"
 >;
 
+type OpencodeMonitorMetadata = {
+  conversationId: string;
+  opencodeSessionId: string;
+  attemptedModel: string;
+  baselineMessageCount: number;
+  promptAcceptedAt: string;
+};
+
 export function createTaskExecutionService(options: {
   db?: AppDb;
   taskService: TaskService;
@@ -253,35 +261,31 @@ export function createTaskExecutionService(options: {
         const attachments = options.taskContextAttachmentService
           ? await options.taskContextAttachmentService.readConversationAttachments(task.context)
           : [];
-        const synced = await options.conversationService.sendTaskRunPrompt(conversation.id, {
+        const promptStart = await options.conversationService.startTaskRunPrompt(conversation.id, {
           text: running.renderedPrompt,
           attachments,
           model: running.model,
         });
-        const latest = await findRun(running.id);
-
-        if (latest.status !== "running") {
-          await handleTerminalRun(latest, { triggerContext: readRunContext(latest) });
-          return latest;
-        }
-
-        const finalMessage = summarizeTaskRunConversation(synced);
-
-        const completed = await options.taskService.setRunStatus(latest.id, "completed", {
-          completedAt: new Date().toISOString(),
-          finalMessage,
-          result: {
-            conversationId: synced.id,
-            messageCount: synced.messageCount,
-          },
+        const accepted = await options.taskService.updateRun(running.id, {
+          triggerMetadata: mergeOpencodeMonitorMetadata(running.triggerMetadata, {
+            conversationId: promptStart.conversationId,
+            opencodeSessionId: promptStart.opencodeSessionId,
+            attemptedModel: promptStart.attemptedModel,
+            baselineMessageCount: promptStart.baselineMessageCount,
+            promptAcceptedAt: promptStart.promptAcceptedAt,
+          }),
         });
 
-        if (!completed) {
+        if (!accepted) {
           throw new NotFoundError("Task run not found.");
         }
 
-        await handleTerminalRun(completed, { triggerContext: readRunContext(running) });
-        return completed;
+        if (accepted.status !== "running") {
+          await handleTerminalRun(accepted, { triggerContext: readRunContext(accepted) });
+          return accepted;
+        }
+
+        return accepted;
       }
 
       const completed = await options.taskService.setRunStatus(running.id, "completed", {
@@ -818,14 +822,14 @@ function readScheduledAtFromTrigger(trigger: QueueTaskInput): string | undefined
   return typeof scheduledAt === "string" ? scheduledAt : undefined;
 }
 
-function summarizeTaskRunConversation(conversation: {
-  messages: { role: string; content: string }[];
-}): string {
-  const assistantMessage = [...conversation.messages]
-    .reverse()
-    .find((message) => message.role === "assistant" && message.content.trim());
-
-  return assistantMessage?.content.trim() ?? "Task completed without an assistant summary.";
+function mergeOpencodeMonitorMetadata(
+  triggerMetadata: Record<string, unknown> | undefined,
+  opencodeMonitor: OpencodeMonitorMetadata,
+): Record<string, unknown> {
+  return {
+    ...(triggerMetadata ?? {}),
+    opencodeMonitor,
+  };
 }
 
 function hasSuccessfulSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {

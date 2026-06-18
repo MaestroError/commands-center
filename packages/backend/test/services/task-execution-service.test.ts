@@ -7,7 +7,6 @@ import type { Logger } from "pino";
 import type { AppDb } from "../../src/db/client";
 import { agents } from "../../src/db/schema/index";
 import { createConversationService } from "../../src/services/conversation-service";
-import { createSessionArchiveService } from "../../src/services/session-archive-service";
 import { createTaskPermissionService } from "../../src/services/task-permission-service";
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskService } from "../../src/services/task-service";
@@ -50,7 +49,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("creates a task-owned OpenCode session and stores the result summary", async () => {
+  it("creates a task-owned OpenCode session and stores async monitor metadata", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const opencodeService = createMockOpenCodeService();
@@ -71,77 +70,28 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "completed");
-      const completedRun = await taskService.getRunById(run.id);
+      await expectRunStatus(taskService, run.id, "running");
+      const runningRun = await taskService.getRunById(run.id);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
 
-      expect(completedRun?.opencodeSessionId).toBe("session-1");
+      expect(runningRun?.opencodeSessionId).toBe("session-1");
       expect(run.renderedPrompt).toContain("<AssignedAgentId>");
-      expect(completedRun?.finalMessage).toContain("Task finished:");
+      expect(runningRun?.finalMessage).toBeUndefined();
+      expect(runningRun?.triggerMetadata?.["opencodeMonitor"]).toMatchObject({
+        conversationId: inspection.conversation?.id,
+        opencodeSessionId: "session-1",
+        attemptedModel: "openai/gpt-4.1",
+        baselineMessageCount: 0,
+      });
+      expect(
+        (runningRun?.triggerMetadata?.["opencodeMonitor"] as Record<string, unknown>)?.[
+          "promptAcceptedAt"
+        ],
+      ).toEqual(expect.any(String));
       expect(inspection.conversation?.source).toBe("task_run");
-      expect(inspection.conversation?.messages).toHaveLength(2);
+      expect(inspection.conversation?.messages).toHaveLength(1);
       expect(conversations).toEqual([]);
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("materializes the task-run transcript when the run completes", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const opencodeService = createMockOpenCodeService();
-    const archiveService = createSessionArchiveService({ config: testDb.config });
-    const conversationService = createConversationService({
-      db: testDb.client.db,
-      config: testDb.config,
-      opencodeService,
-      archiveService,
-    });
-    const executionService = createTaskExecutionService({
-      taskService,
-      conversationService,
-      archiveService,
-    });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({
-        agentId: agent.id,
-        title: "Archive task",
-        description: "Use OpenCode.",
-      });
-
-      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
-      await expectRunStatus(taskService, run.id, "completed");
-
-      const archivePath = archiveService.resolveTaskRunArchivePath({
-        agentId: agent.id,
-        taskId: task.id,
-        taskRunId: run.id,
-      });
-
-      await expect
-        .poll(async () => {
-          try {
-            await readFile(join(archivePath, "transcript.md"), "utf8");
-            return true;
-          } catch {
-            return false;
-          }
-        })
-        .toBe(true);
-
-      const transcript = await readFile(join(archivePath, "transcript.md"), "utf8");
-      expect(transcript).toContain("# Session:");
-      const metadata = JSON.parse(await readFile(join(archivePath, "metadata.json"), "utf8")) as {
-        kind: string;
-        status: string;
-        lastMaterializedMessageCount: number;
-      };
-      expect(metadata.kind).toBe("task_run");
-      expect(metadata.status).toBe("completed");
-      expect(metadata.lastMaterializedMessageCount).toBeGreaterThan(0);
     } finally {
       await testDb.cleanup();
     }
@@ -171,10 +121,12 @@ describe("createTaskExecutionService", () => {
 
     try {
       // Specialist default is openai/gpt-4.1 (see insertAgent).
-      const agent = await insertAgent(testDb.client.db);
+      const overrideAgent = await insertAgent(testDb.client.db);
+      const unavailableAgent = await insertAgent(testDb.client.db);
+      const defaultAgent = await insertAgent(testDb.client.db);
 
       const overrideTask = await taskService.create({
-        agentId: agent.id,
+        agentId: overrideAgent.id,
         model: "anthropic/claude-haiku",
         title: "Override",
         description: "Use the smaller model.",
@@ -182,10 +134,10 @@ describe("createTaskExecutionService", () => {
       const overrideRun = await executionService.trigger(overrideTask.id, {
         triggerSource: "manual",
       });
-      await expectRunStatus(taskService, overrideRun.id, "completed");
+      await expectRunStatus(taskService, overrideRun.id, "running");
 
       const unavailableTask = await taskService.create({
-        agentId: agent.id,
+        agentId: unavailableAgent.id,
         model: "ghost/removed-model",
         title: "Unavailable",
         description: "Model no longer exists.",
@@ -193,29 +145,31 @@ describe("createTaskExecutionService", () => {
       const unavailableRun = await executionService.trigger(unavailableTask.id, {
         triggerSource: "manual",
       });
-      await expectRunStatus(taskService, unavailableRun.id, "completed");
+      await expectRunStatus(taskService, unavailableRun.id, "running");
 
       const defaultTask = await taskService.create({
-        agentId: agent.id,
+        agentId: defaultAgent.id,
         title: "Default",
         description: "No override.",
       });
       const defaultRun = await executionService.trigger(defaultTask.id, {
         triggerSource: "manual",
       });
-      await expectRunStatus(taskService, defaultRun.id, "completed");
+      await expectRunStatus(taskService, defaultRun.id, "running");
 
       expect(prompts[0]?.model).toEqual({ providerID: "anthropic", modelID: "claude-haiku" });
       expect(prompts[1]?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
       expect(prompts[2]?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
-      // The override model is snapshotted onto the run.
       expect((await taskService.getRunById(overrideRun.id))?.model).toBe("anthropic/claude-haiku");
+      expect(
+        (await taskService.getRunById(unavailableRun.id))?.triggerMetadata?.["opencodeMonitor"],
+      ).toMatchObject({ attemptedModel: "openai/gpt-4.1" });
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("fails over to the next model when the primary model fails", async () => {
+  it("does not queue fallback runs before the async monitor observes a provider error", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
@@ -229,8 +183,8 @@ describe("createTaskExecutionService", () => {
         connected: ["openai", "anthropic"],
       },
       onPrompt: (input) => prompts.push(input),
-      // The agent default (openai/gpt-4.1) fails with a transient provider error;
-      // the fallback (anthropic/claude-haiku) succeeds.
+      // Async prompt start only accepts work. Phase 4 monitor will read this
+      // provider error from the later assistant message and queue fallback runs.
       promptError: ({ model }) =>
         model?.providerID === "openai"
           ? { name: "APIError", message: "Provider is overloaded", data: { isRetryable: true } }
@@ -256,73 +210,19 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
       expect(run.fallbackModels).toEqual(["anthropic/claude-haiku"]);
-      await expectRunStatus(taskService, run.id, "error");
-      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+      await expectRunStatus(taskService, run.id, "running");
       const runs = await taskService.listRuns(task.id);
-      const fallbackRun = runs.find((candidate) => candidate.retryOfRunId === run.id);
 
-      expect(fallbackRun?.status).toBe("completed");
-      expect(fallbackRun?.model).toBe("anthropic/claude-haiku");
-      expect(fallbackRun?.renderedPrompt).toContain(
-        "Previous task run ended with a model/provider error.",
-      );
-      expect(fallbackRun?.renderedPrompt).toContain(run.id);
+      expect(runs).toHaveLength(1);
       expect(prompts.map((prompt) => prompt.model)).toEqual([
         { providerID: "openai", modelID: "gpt-4.1" },
-        { providerID: "anthropic", modelID: "claude-haiku" },
       ]);
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("errors the run without trying fallbacks on an unknown error", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
-    const opencodeService = createMockOpenCodeService({
-      providers: {
-        all: [
-          { id: "openai", models: { "gpt-4.1": {} } },
-          { id: "anthropic", models: { "claude-haiku": {} } },
-        ],
-        default: {},
-        connected: ["openai", "anthropic"],
-      },
-      onPrompt: (input) => prompts.push(input),
-      promptError: () => ({ name: "UnknownError", message: "Something failed" }),
-    });
-    const conversationService = createConversationService({
-      db: testDb.client.db,
-      config: testDb.config,
-      opencodeService,
-    });
-    const executionService = createTaskExecutionService({ taskService, conversationService });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({
-        agentId: agent.id,
-        fallbackModels: ["anthropic/claude-haiku"],
-        title: "No failover",
-        description: "Unknown errors are not classified as recoverable.",
-      });
-
-      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
-
-      await expectRunStatus(taskService, run.id, "error");
-      expect(await taskService.listRuns(task.id)).toHaveLength(1);
-      expect(prompts.map((prompt) => prompt.model)).toEqual([
-        { providerID: "openai", modelID: "gpt-4.1" },
-      ]);
-      const failedRun = await taskService.getRunById(run.id);
-      expect(failedRun?.errorMessage).toContain("Something failed");
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("stores transport cause details when a task prompt fetch fails", async () => {
+  it("stores transport cause details when async prompt acceptance fails", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const promptError = new TypeError("fetch failed") as TypeError & { cause?: unknown };
@@ -363,112 +263,6 @@ describe("createTaskExecutionService", () => {
         causeCode: "UND_ERR_HEADERS_TIMEOUT",
       });
       expect(failedRun?.errorDetails?.["elapsedRunMs"]).toEqual(expect.any(Number));
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("walks multiple fallbacks in order until one succeeds", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
-    const opencodeService = createMockOpenCodeService({
-      providers: {
-        all: [
-          { id: "openai", models: { "gpt-4.1": {} } },
-          { id: "anthropic", models: { "claude-haiku": {}, "claude-opus": {} } },
-        ],
-        default: {},
-        connected: ["openai", "anthropic"],
-      },
-      onPrompt: (input) => prompts.push(input),
-      // The default and the first fallback both fail; only the second fallback works.
-      promptError: ({ model }) =>
-        model?.modelID === "claude-opus"
-          ? undefined
-          : { name: "APIError", message: "Provider is overloaded", data: { isRetryable: true } },
-    });
-    const conversationService = createConversationService({
-      db: testDb.client.db,
-      config: testDb.config,
-      opencodeService,
-    });
-    const executionService = createTaskExecutionService({ taskService, conversationService });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({
-        agentId: agent.id,
-        fallbackModels: ["anthropic/claude-haiku", "anthropic/claude-opus"],
-        title: "Chained failover",
-        description: "Try each model in order.",
-      });
-
-      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
-
-      await expectRunStatus(taskService, run.id, "error");
-      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(3);
-      const runs = await taskService.listRuns(task.id);
-      expect(runs.filter((candidate) => candidate.status === "completed")).toHaveLength(1);
-      expect(prompts.map((prompt) => prompt.model)).toEqual([
-        { providerID: "openai", modelID: "gpt-4.1" },
-        { providerID: "anthropic", modelID: "claude-haiku" },
-        { providerID: "anthropic", modelID: "claude-opus" },
-      ]);
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("fails the run after every model in the chain fails", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
-    const opencodeService = createMockOpenCodeService({
-      providers: {
-        all: [
-          { id: "openai", models: { "gpt-4.1": {} } },
-          { id: "anthropic", models: { "claude-haiku": {} } },
-        ],
-        default: {},
-        connected: ["openai", "anthropic"],
-      },
-      onPrompt: (input) => prompts.push(input),
-      // Every model returns a failover-worthy error, so the chain is exhausted.
-      promptError: ({ model }) => ({
-        name: "APIError",
-        message: `Overloaded: ${model?.modelID ?? "unknown"}`,
-        data: { isRetryable: true },
-      }),
-    });
-    const conversationService = createConversationService({
-      db: testDb.client.db,
-      config: testDb.config,
-      opencodeService,
-    });
-    const executionService = createTaskExecutionService({ taskService, conversationService });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({
-        agentId: agent.id,
-        fallbackModels: ["anthropic/claude-haiku"],
-        title: "All down",
-        description: "No model can recover.",
-      });
-
-      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
-
-      await expectRunStatus(taskService, run.id, "error");
-      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
-      expect(prompts.map((prompt) => prompt.model)).toEqual([
-        { providerID: "openai", modelID: "gpt-4.1" },
-        { providerID: "anthropic", modelID: "claude-haiku" },
-      ]);
-      const runs = await taskService.listRuns(task.id);
-      expect(runs.map((candidate) => candidate.status)).toEqual(["error", "error"]);
-      const failedRun = runs.find((candidate) => candidate.model === "anthropic/claude-haiku");
-      expect(failedRun?.errorMessage).toContain("Overloaded: claude-haiku");
     } finally {
       await testDb.cleanup();
     }
@@ -583,16 +377,15 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("starts the next feedback subtask after the previous one completes", async () => {
+  it("keeps later feedback subtasks queued while the previous async run is running", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const firstGate = createDeferred<void>();
-    const secondGate = createDeferred<void>();
     const conversationService = createConversationService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: createMockOpenCodeService({
-        promptGates: [firstGate.promise, secondGate.promise],
+        promptGates: [firstGate.promise],
       }),
     });
     const executionService = createTaskExecutionService({
@@ -625,32 +418,16 @@ describe("createTaskExecutionService", () => {
 
       firstGate.resolve();
 
-      await expectRunStatus(taskService, firstRun.id, "completed");
-      await expect.poll(async () => (await taskService.listRuns(task.id)).length).toBe(2);
-
-      const runsAfterFirst = await taskService.listRuns(task.id);
-      const secondRun = runsAfterFirst.find((run) => run.id !== firstRun.id);
+      await expectRunStatus(taskService, firstRun.id, "running");
+      const runsAfterAcceptance = await taskService.listRuns(task.id);
       const taskAfterFirst = await taskService.get(task.id);
 
-      expect(secondRun).toMatchObject({
-        subtaskId: secondFeedback.subtasks[0]?.id,
-        agentId: secondSubtaskAgent.id,
-        status: "running",
-      });
+      expect(runsAfterAcceptance).toHaveLength(1);
       expect(firstRun.subtaskId).toBe(firstFeedback.subtasks[0]?.id);
-      expect(runsAfterFirst).toHaveLength(2);
       expect(taskAfterFirst?.status).toBe("queued");
-
-      secondGate.resolve();
-
-      await expectRunStatus(taskService, secondRun?.id ?? "", "completed");
-
-      const taskAfterSecond = await taskService.get(task.id);
-
-      expect(taskAfterSecond?.status).toBe("ready_to_check");
+      expect(secondFeedback.subtasks[0]?.agentId).toBe(secondSubtaskAgent.id);
     } finally {
       firstGate.resolve();
-      secondGate.resolve();
       await testDb.cleanup();
     }
   });
@@ -784,7 +561,7 @@ describe("createTaskExecutionService", () => {
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
-      await expectRunStatus(taskService, run.id, "completed");
+      await expectRunStatus(taskService, run.id, "running");
       const opened = await conversationService.openTaskRunConversationInChat(task.id, run.id);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
@@ -792,7 +569,7 @@ describe("createTaskExecutionService", () => {
       expect(opened.current.id).toBe(inspection.conversation?.id);
       expect(inspection.canOpenInChat).toBe(true);
       expect(inspection.conversation?.source).toBe("chat");
-      expect(inspection.conversation?.messages).toHaveLength(2);
+      expect(inspection.conversation?.messages).toHaveLength(1);
       expect(conversations).toHaveLength(1);
       expect(conversations[0]?.taskRunId).toBe(run.id);
     } finally {
@@ -832,16 +609,16 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
       expect(run.status).toBe("queued");
-      await expectRunStatus(taskService, run.id, "completed");
-      const completedRun = await taskService.getRunById(run.id);
+      await expectRunStatus(taskService, run.id, "running");
+      const runningRun = await taskService.getRunById(run.id);
 
-      expect(completedRun?.effectivePermissions?.toolPermissions).toEqual([
+      expect(runningRun?.effectivePermissions?.toolPermissions).toEqual([
         { pattern: "bash_*", action: "allow" },
       ]);
       expect(
-        completedRun?.effectivePermissions?.diagnostics?.map((diagnostic) => diagnostic.code),
+        runningRun?.effectivePermissions?.diagnostics?.map((diagnostic) => diagnostic.code),
       ).toContain("ask_mode_not_allowed_for_task_run");
-      expect(completedRun?.effectivePermissions?.diagnostics).toContainEqual(
+      expect(runningRun?.effectivePermissions?.diagnostics).toContainEqual(
         expect.objectContaining({ details: { pattern: "bash_*" } }),
       );
       expect(opencodeService.createSession).toHaveBeenCalledWith(
@@ -897,8 +674,8 @@ describe("createTaskExecutionService", () => {
 
       promptGate.resolve();
 
-      await expectRunStatus(taskService, firstRun.id, "completed");
-      await expectRunStatus(taskService, secondRun.id, "completed");
+      await expectRunStatus(taskService, firstRun.id, "running");
+      await expectRunStatus(taskService, secondRun.id, "queued");
     } finally {
       await testDb.cleanup();
     }
@@ -933,8 +710,8 @@ describe("createTaskExecutionService", () => {
 
       promptGate.resolve();
 
-      await expectRunStatus(taskService, firstRun.id, "completed");
-      await expectRunStatus(taskService, secondRun.id, "completed");
+      await expectRunStatus(taskService, firstRun.id, "running");
+      await expectRunStatus(taskService, secondRun.id, "running");
     } finally {
       await testDb.cleanup();
     }
@@ -970,7 +747,7 @@ describe("createTaskExecutionService", () => {
       promptGate.resolve();
 
       await expectRunStatus(taskService, firstRun.id, "cancelled");
-      await expectRunStatus(taskService, secondRun.id, "completed");
+      await expectRunStatus(taskService, secondRun.id, "running");
     } finally {
       await testDb.cleanup();
     }
@@ -1221,6 +998,41 @@ function createMockOpenCodeService(
       sessionMessages.push(assistantMessage);
       session.time.updated = nextTime();
       return assistantMessage;
+    },
+    promptSessionAsync: async ({
+      sessionID,
+      text,
+      model,
+    }: {
+      sessionID: string;
+      text: string;
+      model?: { providerID: string; modelID: string };
+    }) => {
+      options.onPrompt?.({ model, text });
+      await (options.promptGates?.shift() ?? options.promptGate);
+
+      if (options.promptTransportError) {
+        throw options.promptTransportError;
+      }
+
+      const sessionMessages = messages.get(sessionID);
+      const session = sessions.get(sessionID);
+
+      if (!sessionMessages || !session) {
+        throw new Error("Session not found.");
+      }
+
+      const userMessageId = nextMessageId();
+      sessionMessages.push({
+        info: {
+          id: userMessageId,
+          sessionID,
+          role: "user",
+          time: { created: nextTime() },
+        },
+        parts: [{ id: `part-${userMessageId}`, type: "text", text }],
+      });
+      session.time.updated = nextTime();
     },
   } as unknown as OpenCodeService;
 }

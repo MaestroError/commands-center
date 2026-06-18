@@ -68,6 +68,14 @@ export type TaskRunConversationInspection = {
   canOpenInChat: boolean;
 };
 
+export type TaskRunPromptStart = {
+  conversationId: string;
+  opencodeSessionId: string;
+  attemptedModel: string;
+  baselineMessageCount: number;
+  promptAcceptedAt: string;
+};
+
 export type ConversationService = ReturnType<typeof createConversationService>;
 
 export class TaskRunPromptError extends Error {
@@ -247,6 +255,44 @@ export function createConversationService(options: {
       }
       await syncConversation(loaded.agent, loaded.conversation);
       return getConversationDetail(loaded.conversation.id);
+    },
+
+    async startTaskRunPrompt(
+      conversationId: string,
+      input: SendConversationPromptInput,
+    ): Promise<TaskRunPromptStart> {
+      const parsed = sendConversationPromptInputSchema.parse(input);
+      const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
+
+      if (loaded.conversation.source !== "task_run") {
+        throw new BadRequestError("Conversation is not a task run session.");
+      }
+
+      const [model, baselineMessages] = await Promise.all([
+        resolveRunModel(loaded.agent.workspace_path, parsed.model, loaded.agent.default_model),
+        options.opencodeService.listSessionMessages(
+          loaded.agent.workspace_path,
+          loaded.conversation.opencode_session_id,
+        ),
+      ]);
+      const baselineMessageCount = baselineMessages.length;
+
+      await options.opencodeService.promptSessionAsync({
+        directory: loaded.agent.workspace_path,
+        sessionID: loaded.conversation.opencode_session_id,
+        agent: resolveOpenCodeAgent(loaded.agent.slug),
+        model,
+        text: parsed.text,
+        attachments: parsed.attachments,
+      });
+
+      return {
+        conversationId: loaded.conversation.id,
+        opencodeSessionId: loaded.conversation.opencode_session_id,
+        attemptedModel: qualifyModel(model),
+        baselineMessageCount,
+        promptAcceptedAt: new Date().toISOString(),
+      };
     },
 
     async inspectTaskRunConversation(
