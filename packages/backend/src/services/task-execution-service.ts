@@ -22,6 +22,8 @@ import type { AppDb } from "../db/client.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
 import { TaskRunPromptError, type ConversationService } from "./conversation-service.js";
 import type { TaskContextAttachmentService } from "./task-context-attachment-service.js";
+import type { SessionArchiveService } from "./session-archive-service.js";
+import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
 import { createTaskRunContextService } from "./task-run-context-service.js";
 import {
   buildOpenCodeSessionPermissions,
@@ -63,6 +65,8 @@ export function createTaskExecutionService(options: {
   conversationService?: ConversationService;
   taskContextAttachmentService?: TaskContextAttachmentService;
   taskPermissionService?: TaskPermissionService;
+  archiveService?: SessionArchiveService;
+  archiveSettingsService?: SessionArchiveSettingsService;
   onRunTerminal?: (run: TaskRun) => void | Promise<void>;
   logger?: Logger;
 }) {
@@ -672,7 +676,43 @@ export function createTaskExecutionService(options: {
   }
 
   function notifyRunTerminal(run: TaskRun): void {
+    void finalizeRunArchive(run);
     void options.onRunTerminal?.(run);
+  }
+
+  async function finalizeRunArchive(run: TaskRun): Promise<void> {
+    const archiveService = options.archiveService;
+
+    if (!archiveService) {
+      return;
+    }
+
+    try {
+      const settings = await options.archiveSettingsService?.get();
+
+      if (settings && !settings.sessionArchiveEnabled) {
+        return;
+      }
+
+      const archivePath = archiveService.resolveTaskRunArchivePath({
+        agentId: run.agentId,
+        taskId: run.taskId,
+        taskRunId: run.id,
+      });
+      // Drain any debounced appends from the run's conversation sync first.
+      await archiveService.flush();
+      await archiveService.setStatus({
+        archivePath,
+        status: "completed",
+        outcome: run.outcome ?? null,
+      });
+      await archiveService.materialize({ archivePath, force: true });
+    } catch (error) {
+      options.logger?.warn(
+        { err: error, runId: run.id },
+        "session archive task-run finalization failed",
+      );
+    }
   }
 
   function scheduleAgentDrain(agentId: string): void {

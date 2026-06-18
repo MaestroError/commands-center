@@ -204,6 +204,22 @@ export {
   type SendConversationShellInput,
 } from "./conversations.js";
 export {
+  sessionArchiveKindSchema,
+  sessionArchiveMaterializeResultSchema,
+  sessionArchiveMessageSchema,
+  sessionArchiveMetadataSchema,
+  sessionArchiveSettingsSchema,
+  sessionArchiveSpecialistSchema,
+  sessionArchiveStatusSchema,
+  type SessionArchiveKind,
+  type SessionArchiveMaterializeResult,
+  type SessionArchiveMessage,
+  type SessionArchiveMetadata,
+  type SessionArchiveSettings,
+  type SessionArchiveSpecialist,
+  type SessionArchiveStatus,
+} from "./session-archive.js";
+export {
   configProvidersSchema,
   providerApiKeyInputSchema,
   providerAuthMethodSchema,

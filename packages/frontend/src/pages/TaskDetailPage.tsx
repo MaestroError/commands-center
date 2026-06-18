@@ -1009,7 +1009,7 @@ function FeedbackReplies(props: {
 function buildTaskContextAttachmentHref(storageKey: string): string {
   return buildFileManagerHref({
     root: "workspace",
-    path: `task-context-attachments/${storageKey}`,
+    path: `sessions/${storageKey}`,
     openInEditor: true,
   });
 }

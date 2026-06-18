@@ -163,10 +163,9 @@ export type RuntimeConfig = {
       mcp: string;
       preferences: string;
       sessions: string;
+      sessionSpecialists: string;
       skills: string;
       tools: string;
-      taskContextAttachments: string;
-      taskArtifacts: string;
       tmp: string;
     };
   };
@@ -267,9 +266,8 @@ export function loadRuntimeConfig(options?: {
         mcp: resolve(workspaceDir, "mcp"),
         preferences: resolve(workspaceDir, "preferences"),
         sessions: resolve(workspaceDir, "sessions"),
+        sessionSpecialists: resolve(workspaceDir, "sessions", "specialists"),
         skills: resolve(workspaceDir, "skills"),
-        taskContextAttachments: resolve(workspaceDir, "task-context-attachments"),
-        taskArtifacts: resolve(workspaceDir, "task-artifacts"),
         tools: resolve(workspaceDir, "custom-tools"),
         tmp: resolve(workspaceDir, "tmp"),
       },

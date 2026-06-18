@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createLogger } from "../../src/lib/logger";
-import { agents } from "../../src/db/schema/index";
+import { agents, conversations, task_runs } from "../../src/db/schema/index";
 import type { AppDb } from "../../src/db/client";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
 import { createServer } from "../../src/server";
@@ -14,6 +14,8 @@ import { createSecretService } from "../../src/services/secret-service";
 import { createApiTokenService } from "../../src/services/api-token-service";
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskService } from "../../src/services/task-service";
+import { createSessionArchiveService } from "../../src/services/session-archive-service";
+import { createSessionArchiveSettingsService } from "../../src/services/session-archive-settings-service";
 import { createCcManagedMcpAuthStateStore } from "../../src/mcp/cc-managed/auth-state-store";
 import { createCcManagedMcpAuthTokenService } from "../../src/mcp/cc-managed/auth-token-service";
 import type { CcManagedMcpTokenContextMode } from "../../src/mcp/cc-managed/auth-token-service";
@@ -3635,6 +3637,421 @@ describe("cc-managed MCP routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("exposes self-conversation tools and lists only the caller's sessions", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-self-conv",
+        slug: "self-conv",
+        name: "Self Conversation Specialist",
+      });
+      const other = await insertActiveAgent(testDb.client.db, {
+        id: "agent-other",
+        slug: "other",
+        name: "Other Specialist",
+      });
+      for (let index = 0; index < 12; index += 1) {
+        await insertConversation(testDb.client.db, {
+          id: `conv-${String(index)}`,
+          agentId: agent.id,
+          updatedAt: new Date(1_700_000_000_000 + index * 1_000),
+        });
+      }
+      await insertConversation(testDb.client.db, { id: "conv-other", agentId: other.id });
+
+      const chatHeader = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "chat");
+      const list = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        chatHeader,
+        "tools/list",
+        {},
+        1,
+      );
+      expect(list.body).toContain('"name":"list_self_conversations"');
+      expect(list.body).toContain('"name":"get_self_conversation"');
+
+      const taskRunHeader = await issueAuthHeader(
+        testDb.config,
+        agent.slug,
+        "cc_default",
+        "task_run",
+      );
+      const taskRunList = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        taskRunHeader,
+        "tools/list",
+        {},
+        2,
+      );
+      expect(taskRunList.body).toContain('"name":"get_self_conversation"');
+
+      const called = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        chatHeader,
+        "tools/call",
+        { name: "list_self_conversations", arguments: {} },
+        3,
+      );
+      const result = parseSseJson(called.body) as {
+        result?: { structuredContent?: { conversations?: Array<{ id: string }> } };
+      };
+      const listed = result.result?.structuredContent?.conversations ?? [];
+      expect(listed).toHaveLength(10);
+      expect(listed[0]?.id).toBe("conv-11");
+      expect(listed.some((entry) => entry.id === "conv-other")).toBe(false);
+      // List output must not leak archive folder paths.
+      expect(called.body).not.toContain('"path"');
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns the archive folder path for an owned conversation and refuses others", async () => {
+    const testDb = await createTestDatabase();
+    const archiveService = createSessionArchiveService({ config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      sessionArchiveService: archiveService,
+      sessionArchiveSettingsService: createSessionArchiveSettingsService({ config: testDb.config }),
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-archive",
+        slug: "archive-self",
+        name: "Archive Specialist",
+      });
+      const other = await insertActiveAgent(testDb.client.db, {
+        id: "agent-archive-other",
+        slug: "archive-other",
+        name: "Other",
+      });
+      await insertConversation(testDb.client.db, { id: "conv-owned", agentId: agent.id });
+      await insertConversation(testDb.client.db, { id: "conv-foreign", agentId: other.id });
+
+      const header = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "chat");
+
+      const owned = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        header,
+        "tools/call",
+        { name: "get_self_conversation", arguments: { conversationId: "conv-owned" } },
+        1,
+      );
+      const ownedResult = parseSseJson(owned.body) as {
+        result?: { structuredContent?: { archive?: { enabled?: boolean; path?: string } } };
+      };
+      expect(ownedResult.result?.structuredContent?.archive?.enabled).toBe(true);
+      expect(ownedResult.result?.structuredContent?.archive?.path).toContain(
+        "sessions/specialists/agent-archive/chats/conv-owned",
+      );
+
+      const foreign = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        header,
+        "tools/call",
+        { name: "get_self_conversation", arguments: { conversationId: "conv-foreign" } },
+        2,
+      );
+      const foreignResult = parseSseJson(foreign.body) as {
+        result?: { isError?: boolean; structuredContent?: { error?: { message?: string } } };
+      };
+      expect(foreignResult.result?.isError).toBe(true);
+      expect(foreignResult.result?.structuredContent?.error?.message).toContain("not found");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("reports stale transcript metadata and materializes on demand", async () => {
+    const testDb = await createTestDatabase();
+    const archiveService = createSessionArchiveService({ config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      sessionArchiveService: archiveService,
+      sessionArchiveSettingsService: createSessionArchiveSettingsService({ config: testDb.config }),
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-stale",
+        slug: "stale-self",
+        name: "Stale Specialist",
+      });
+      await insertConversation(testDb.client.db, { id: "conv-stale", agentId: agent.id });
+
+      const archivePath = archiveService.resolveChatArchivePath({
+        agentId: agent.id,
+        conversationId: "conv-stale",
+      });
+      await archiveService.ensureChatArchive({
+        specialist: { id: agent.id, slug: agent.slug, name: agent.name },
+        conversationId: "conv-stale",
+        opencodeSessionId: "oc-conv-stale",
+      });
+      await archiveService.appendMessages({
+        archivePath,
+        messages: [
+          {
+            id: "m1",
+            conversationId: "conv-stale",
+            role: "user",
+            content: "hi",
+            parts: [],
+            attachments: [],
+            createdAt: "2026-06-18T10:00:00.000Z",
+            updatedAt: "2026-06-18T10:00:00.000Z",
+          },
+        ],
+      });
+
+      const header = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "chat");
+      const stale = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        header,
+        "tools/call",
+        { name: "get_self_conversation", arguments: { conversationId: "conv-stale" } },
+        1,
+      );
+      const staleResult = parseSseJson(stale.body) as {
+        result?: { structuredContent?: { archive?: { isTranscriptStale?: boolean } } };
+      };
+      expect(staleResult.result?.structuredContent?.archive?.isTranscriptStale).toBe(true);
+
+      const refreshed = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        header,
+        "tools/call",
+        {
+          name: "get_self_conversation",
+          arguments: { conversationId: "conv-stale", materialize: true },
+        },
+        2,
+      );
+      const refreshedResult = parseSseJson(refreshed.body) as {
+        result?: {
+          structuredContent?: {
+            archive?: { isTranscriptStale?: boolean; lastMaterializedMessageCount?: number };
+          };
+        };
+      };
+      expect(refreshedResult.result?.structuredContent?.archive?.isTranscriptStale).toBe(false);
+      expect(refreshedResult.result?.structuredContent?.archive?.lastMaterializedMessageCount).toBe(
+        1,
+      );
+      await expect(readFile(join(archivePath, "transcript.md"), "utf8")).resolves.toContain(
+        "# Session:",
+      );
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("reports archive disabled when no archive service is wired", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-disabled",
+        slug: "disabled-self",
+        name: "Disabled Specialist",
+      });
+      await insertConversation(testDb.client.db, { id: "conv-disabled", agentId: agent.id });
+
+      const header = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "chat");
+      const response = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        header,
+        "tools/call",
+        { name: "get_self_conversation", arguments: { conversationId: "conv-disabled" } },
+        1,
+      );
+      const result = parseSseJson(response.body) as {
+        result?: { structuredContent?: { archive?: { enabled?: boolean } } };
+      };
+      expect(result.result?.structuredContent?.archive?.enabled).toBe(false);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("caps list_self_conversations at 50 when a larger limit is requested", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-limit-clamp",
+        slug: "limit-clamp",
+        name: "Limit Clamp Specialist",
+      });
+      for (let index = 0; index < 52; index += 1) {
+        await insertConversation(testDb.client.db, {
+          id: `conv-lc-${String(index)}`,
+          agentId: agent.id,
+        });
+      }
+
+      const header = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "chat");
+      const response = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        header,
+        "tools/call",
+        { name: "list_self_conversations", arguments: { limit: 100 } },
+        1,
+      );
+      const result = parseSseJson(response.body) as {
+        result?: { structuredContent?: { conversations?: unknown[] } };
+      };
+      expect(result.result?.structuredContent?.conversations).toHaveLength(50);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns the task-run archive folder path for an owned task-run conversation", async () => {
+    const testDb = await createTestDatabase();
+    const archiveService = createSessionArchiveService({ config: testDb.config });
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      sessionArchiveService: archiveService,
+      sessionArchiveSettingsService: createSessionArchiveSettingsService({ config: testDb.config }),
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-taskrun-path",
+        slug: "taskrun-path",
+        name: "Task Run Path Specialist",
+      });
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Archive task run",
+        description: "Test task for archive path.",
+      });
+      const runId = "run-test-y";
+      await testDb.client.db.insert(task_runs).values({
+        id: runId,
+        task_id: task.id,
+        agent_id: agent.id,
+        status: "completed",
+        trigger_source: "manual",
+        rendered_prompt: "",
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+      await insertConversation(testDb.client.db, {
+        id: "conv-taskrun-path",
+        agentId: agent.id,
+        source: "task_run",
+        taskId: task.id,
+        taskRunId: runId,
+      });
+
+      const header = await issueAuthHeader(testDb.config, agent.slug, "cc_default", "task_run");
+      const response = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        header,
+        "tools/call",
+        { name: "get_self_conversation", arguments: { conversationId: "conv-taskrun-path" } },
+        1,
+      );
+      const result = parseSseJson(response.body) as {
+        result?: { structuredContent?: { archive?: { enabled?: boolean; path?: string } } };
+      };
+      expect(result.result?.structuredContent?.archive?.enabled).toBe(true);
+      expect(result.result?.structuredContent?.archive?.path).toContain(
+        `sessions/specialists/agent-taskrun-path/tasks/${task.id}/runs/${runId}`,
+      );
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 function parseSseJson(body: string): unknown {
@@ -3748,6 +4165,35 @@ async function insertAgentWithTasksManagement(db: AppDb) {
   }
 
   return agent;
+}
+
+async function insertConversation(
+  db: AppDb,
+  input: {
+    id: string;
+    agentId: string;
+    source?: "chat" | "task_run";
+    taskId?: string;
+    taskRunId?: string;
+    title?: string;
+    updatedAt?: Date;
+  },
+) {
+  const timestamp = input.updatedAt ?? new Date();
+  await db.insert(conversations).values({
+    id: input.id,
+    agent_id: input.agentId,
+    opencode_session_id: `oc-${input.id}`,
+    title: input.title ?? null,
+    status: "active",
+    source: input.source ?? "chat",
+    is_current: false,
+    task_id: input.taskId ?? null,
+    task_run_id: input.taskRunId ?? null,
+    created_at: timestamp,
+    updated_at: timestamp,
+    converted_at: null,
+  });
 }
 
 async function insertActiveAgent(db: AppDb, input: { id: string; slug: string; name: string }) {

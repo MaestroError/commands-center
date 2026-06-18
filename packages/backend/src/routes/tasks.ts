@@ -83,6 +83,9 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,
+    logger: context.logger,
+    archiveService: context.sessionArchiveService,
+    archiveSettingsService: context.sessionArchiveSettingsService,
   });
   const taskContextAttachmentService = createTaskContextAttachmentService({
     config: context.config,
@@ -99,6 +102,8 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       conversationService,
       taskContextAttachmentService,
       logger: context.logger,
+      archiveService: context.sessionArchiveService,
+      archiveSettingsService: context.sessionArchiveSettingsService,
       onRunTerminal: (run) => fallbackTaskSchedulerServiceRef.current?.handleRunTerminal(run),
     });
   const taskSchedulerService =

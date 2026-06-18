@@ -15,7 +15,7 @@ import { writeConfigFileAtomic } from "../lib/config-file.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { TaskService } from "./task-service.js";
 
-const ARTIFACT_MANIFEST_FILE = "artifacts.json";
+const ARTIFACT_MANIFEST_FILE = "published-artifacts.json";
 
 const ARTIFACT_MIME_TYPES = {
   ".csv": "text/csv",
@@ -133,7 +133,7 @@ export function createTaskArtifactService(options: {
 
       const content = await readFile(sourcePath);
       const checksum = createHash("sha256").update(content).digest("hex");
-      const storageKey = `${taskId}/${runId}/${artifactId}/${filename}`;
+      const storageKey = `specialists/${run.agentId}/tasks/${taskId}/runs/${runId}/published-artifacts/${artifactId}/${filename}`;
       const destinationPath = resolveArtifactStoragePath(options.config, storageKey);
 
       await mkdir(dirname(destinationPath), { recursive: true });
@@ -201,7 +201,7 @@ async function requireRun(
 }
 
 function manifestPath(config: RuntimeConfig): string {
-  return resolve(config.paths.subdirectories.taskArtifacts, ARTIFACT_MANIFEST_FILE);
+  return resolve(config.paths.subdirectories.sessions, ARTIFACT_MANIFEST_FILE);
 }
 
 async function readManifest(
@@ -270,14 +270,21 @@ function resolveWorkspaceSourcePath(config: RuntimeConfig, path: string | undefi
 function resolveArtifactStoragePath(config: RuntimeConfig, storageKey: string): string {
   const parts = storageKey.split("/");
 
-  if (parts.length !== 4 || parts.some((part) => part.length === 0)) {
+  if (
+    parts.length !== 9 ||
+    parts[0] !== "specialists" ||
+    parts[2] !== "tasks" ||
+    parts[4] !== "runs" ||
+    parts[6] !== "published-artifacts" ||
+    parts.some((part) => part.length === 0 || part === "." || part === "..")
+  ) {
     throw new BadRequestError("Task artifact storage key is invalid.");
   }
 
-  const path = resolve(config.paths.subdirectories.taskArtifacts, ...parts);
+  const path = resolve(config.paths.subdirectories.sessions, ...parts);
   ensureDescendant(
     path,
-    config.paths.subdirectories.taskArtifacts,
+    config.paths.subdirectories.sessions,
     "Task artifact storage key is invalid.",
   );
   return path;

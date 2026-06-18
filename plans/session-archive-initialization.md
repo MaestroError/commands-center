@@ -37,14 +37,23 @@ Chat attachments:
 - Synced messages store attachment metadata in SQLite `messages.attachments_json`.
 - CC does not currently copy chat attachments into a managed attachment folder.
 
+## Identity & Naming Decisions
+
+- Session archive paths identify the specialist by **`agentId`** (the specialist id stored on the task/run), NOT the mutable `slug`. This keeps archive paths stable across specialist renames and avoids a new `specialistService` dependency in the attachment/artifact services. Wherever this plan says `<specialist-slug>`, read it as `<agentId>`.
+- The published-artifact registry stays a **single session-local manifest** (one `artifacts.json` under `sessions/`), so `TaskArtifactService.getRegisteredArtifact(artifactId)` keeps its lookup-by-id contract and the share-link service needs no signature change. Only the published artifact _files_ move to the per-run `published-artifacts/` folder.
+
+### Follow-up UI scope (agents list page)
+
+Add an "Open session archive" action on the agents list page that resolves a specialist's `sessions/specialists/<agentId>/` path and opens it in the OS file manager. (Tracked as part of this work but is the UI/endpoint layer on top of the path changes below.)
+
 ## Target Workspace Shape
 
-New session archive root:
+New session archive root (`<specialist-slug>` folders are named by `agentId` per the decision above):
 
 ```text
 sessions/
   specialists/
-    <specialist-slug>/
+    <agentId>/
       chats/
         <conversation-id>/
           metadata.json
@@ -119,8 +128,9 @@ Update `RuntimeConfig.paths.subdirectories`:
 - Add or derive:
   - `sessionSpecialists: resolve(workspaceDir, "sessions", "specialists")`
 - Change canonical future paths:
-  - task context attachments: under `sessions/specialists/<slug>/tasks/<taskId>/context-attachments`
-  - published task artifacts: under `sessions/specialists/<slug>/tasks/<taskId>/runs/<runId>/published-artifacts`
+  - task context attachments: under `sessions/specialists/<agentId>/tasks/<taskId>/context-attachments`
+  - published task artifacts: under `sessions/specialists/<agentId>/tasks/<taskId>/runs/<runId>/published-artifacts`
+- The old `taskContextAttachments` and `taskArtifacts` subdirectory entries are no longer used for new writes. Remove them (now that the migration deletes the dirs) or leave them only if still referenced; prefer removing once all references are migrated.
 
 ## Service Path Changes
 
@@ -132,17 +142,22 @@ Update `TaskContextAttachmentService` path behavior:
 - Reads resolve only the new session task attachment storage keys.
 - `removeForTask` removes the new task-level context attachment folder.
 
-Storage key recommendation for new task context attachments:
+Storage key for new task context attachments:
 
 ```text
-specialists/<specialist-slug>/tasks/<task-id>/context-attachments/<attachment-id>.<ext>
+specialists/<agentId>/tasks/<task-id>/context-attachments/<attachment-id>.<ext>
 ```
+
+Notes:
+
+- `resolveStoragePath` currently asserts exactly 2 path segments; rewrite it for the new 5-segment key and resolve relative to `sessions/`.
+- `removeForTask` currently keys off `storageKey.split("/")[0]`; update it to remove the new per-task `context-attachments` folder.
 
 The service should derive the full absolute path from `sessions/`, not duplicate `.cc/workspace` path strings.
 
 ### Task Run Prompt Paths
 
-Update `TaskRunContextService` so rendered attachment paths use the new session path.
+Update `TaskRunContextService` so rendered attachment paths use the new session path. The `TASK_CONTEXT_ATTACHMENT_PATH_PREFIX` constant changes from `.cc/workspace/task-context-attachments` to `.cc/workspace/sessions` (the new storageKey already begins with `specialists/<agentId>/...`).
 
 Do not hardcode `.cc/workspace/task-context-attachments`.
 
@@ -151,13 +166,14 @@ Do not hardcode `.cc/workspace/task-context-attachments`.
 Update `TaskArtifactService` path behavior:
 
 - New public-share copies go under the run's `published-artifacts/` folder.
-- New artifact manifest path should be run-local or session-local, not global.
-- Reads resolve only the new run-local/session-local published artifact paths.
+- The artifact manifest stays a single **session-local** `artifacts.json` (under `sessions/`), NOT global `task-artifacts/` and NOT run-local. `getRegisteredArtifact(artifactId)` keeps its lookup-by-id signature.
+- Reads resolve only the new session-local published artifact storage keys.
+- `resolveArtifactStoragePath` currently asserts exactly 4 segments and resolves relative to `subdirectories.taskArtifacts`; rewrite it for the new 6-segment key resolved relative to `sessions/`.
 
-Recommended new storage key:
+New storage key:
 
 ```text
-specialists/<specialist-slug>/tasks/<task-id>/runs/<run-id>/published-artifacts/<artifact-id>/<filename>
+specialists/<agentId>/tasks/<task-id>/runs/<run-id>/published-artifacts/<artifact-id>/<filename>
 ```
 
 ## Tests

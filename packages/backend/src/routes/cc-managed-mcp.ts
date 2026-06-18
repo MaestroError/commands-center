@@ -44,6 +44,9 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
     db: context.database.db,
     config: context.config,
     opencodeService: context.opencodeService,
+    logger: context.logger,
+    archiveService: context.sessionArchiveService,
+    archiveSettingsService: context.sessionArchiveSettingsService,
   });
   const taskService =
     context.taskService ?? createTaskService({ db: context.database.db, config: context.config });
@@ -59,6 +62,8 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
       conversationService,
       taskContextAttachmentService,
       logger: context.logger,
+      archiveService: context.sessionArchiveService,
+      archiveSettingsService: context.sessionArchiveSettingsService,
     });
   const customToolActionService = createCustomToolActionService({
     customToolService,
@@ -77,6 +82,8 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
     orchestrator: context.orchestrator,
     taskService,
     taskExecutionService,
+    sessionArchiveService: context.sessionArchiveService,
+    sessionArchiveSettingsService: context.sessionArchiveSettingsService,
   });
   const service = createCcManagedMcpService({
     db: context.database.db,

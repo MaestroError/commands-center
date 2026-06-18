@@ -15,6 +15,7 @@ import { registerProviderRoutes } from "./providers.js";
 import { registerPublicApiRoutes } from "./public-api.js";
 import { registerSearchRoutes } from "./search.js";
 import { registerSecretRoutes } from "./secrets.js";
+import { registerSessionArchiveRoutes } from "./session-archive.js";
 import { registerTerminalRoutes } from "./terminal.js";
 import { registerSystemRoutes } from "./system.js";
 import { registerTaskRoutes } from "./tasks.js";
@@ -36,6 +37,7 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerMcpServerRoutes(server, context);
   registerProviderRoutes(server, context);
   registerSecretRoutes(server, context);
+  registerSessionArchiveRoutes(server, context);
   registerSystemRoutes(server, context);
   registerTaskRoutes(server, context);
   registerPublicApiRoutes(server, context);

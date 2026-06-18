@@ -77,12 +77,12 @@ describe("createTaskRunContextService", () => {
           {
             id: "task-attachment",
             filename: "notes.md",
-            path: ".cc/workspace/task-context-attachments/context-task/task-attachment.md",
+            path: ".cc/workspace/sessions/context-task/task-attachment.md",
           },
           {
             id: "run-attachment",
             filename: "build.txt",
-            path: ".cc/workspace/task-context-attachments/context-task/run-attachment.txt",
+            path: ".cc/workspace/sessions/context-task/run-attachment.txt",
           },
         ],
       });
@@ -92,7 +92,7 @@ describe("createTaskRunContextService", () => {
       expect(built.renderedPrompt).toContain("<additional_untrusted_context>");
       expect(built.renderedPrompt).toContain("<attachments>");
       expect(built.renderedPrompt).toContain(
-        "path: .cc/workspace/task-context-attachments/context-task/run-attachment.txt",
+        "path: .cc/workspace/sessions/context-task/run-attachment.txt",
       );
       expect(built.renderedPrompt.indexOf("<Instructions>")).toBeLessThan(
         built.renderedPrompt.indexOf("<Context>"),

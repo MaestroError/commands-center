@@ -148,6 +148,14 @@ export function SpecialistsPage() {
                 >
                   Edit
                 </Link>
+                <Link
+                  className="cc-button cc-button-secondary"
+                  to={`/files?root=workspace&path=${encodeURIComponent(
+                    `sessions/specialists/${specialist.id}`,
+                  )}`}
+                >
+                  Session archive
+                </Link>
                 <button
                   className="cc-button cc-button-danger"
                   onClick={() => setPendingDelete(specialist)}

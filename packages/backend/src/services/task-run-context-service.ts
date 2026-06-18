@@ -13,7 +13,7 @@ import {
 import type { AppDb } from "../db/client.js";
 import type { task_subtasks } from "../db/schema/index.js";
 
-const TASK_CONTEXT_ATTACHMENT_PATH_PREFIX = ".cc/workspace/task-context-attachments";
+const TASK_CONTEXT_ATTACHMENT_PATH_PREFIX = ".cc/workspace/sessions";
 
 type TaskRunContextTrigger = {
   triggerSource: TaskRunTriggerSource;

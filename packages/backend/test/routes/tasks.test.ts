@@ -158,14 +158,17 @@ describe("task routes", () => {
         mimeType: "text/plain",
         sizeBytes: 5,
       });
-      const attachmentDirectory = String(
+      const attachmentStorageKey = String(
         uploadedContext.json<{ attachment: { storageKey: string } }>().attachment.storageKey,
-      ).split("/")[0];
-      if (!attachmentDirectory) {
-        throw new Error("Expected task context attachment storage directory.");
+      );
+      const attachmentKeyParts = attachmentStorageKey.split("/");
+      if (attachmentKeyParts.length !== 6) {
+        throw new Error("Expected task context attachment storage key.");
       }
-      expect(attachmentDirectory).toContain("ship-stable-release");
-      expect(attachmentDirectory).toContain(task.id);
+      expect(attachmentKeyParts[0]).toBe("specialists");
+      expect(attachmentKeyParts[2]).toBe("tasks");
+      expect(attachmentKeyParts[3]).toBe(task.id);
+      expect(attachmentKeyParts[4]).toBe("context-attachments");
       expect(rejectedContext.statusCode).toBe(400);
       expect(runs.statusCode).toBe(200);
       expect(runs.json()).toHaveLength(1);
@@ -210,7 +213,7 @@ describe("task routes", () => {
       expect(afterDelete.statusCode).toBe(404);
       await expect(
         access(
-          join(testDb.config.paths.subdirectories.taskContextAttachments, attachmentDirectory),
+          join(testDb.config.paths.subdirectories.sessions, ...attachmentKeyParts.slice(0, 5)),
         ),
       ).rejects.toThrow();
     } finally {
@@ -485,10 +488,12 @@ describe("task routes", () => {
           ],
         },
       });
-      const runNowAttachmentDirectory =
-        runNowTask?.context.attachments[0]?.storageKey.split("/")[0];
-      expect(runNowAttachmentDirectory).toContain("daily-template");
-      expect(runNowAttachmentDirectory).toContain(runNow.json<{ taskId: string }>().taskId);
+      const runNowAttachmentKeyParts =
+        runNowTask?.context.attachments[0]?.storageKey.split("/") ?? [];
+      expect(runNowAttachmentKeyParts[0]).toBe("specialists");
+      expect(runNowAttachmentKeyParts[2]).toBe("tasks");
+      expect(runNowAttachmentKeyParts[3]).toBe(runNow.json<{ taskId: string }>().taskId);
+      expect(runNowAttachmentKeyParts[4]).toBe("context-attachments");
     } finally {
       taskSchedulerService.stop();
       await server.close();
