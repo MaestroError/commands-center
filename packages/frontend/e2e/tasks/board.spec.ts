@@ -69,7 +69,7 @@ test.describe("tasks board", { tag: "@tasks" }, () => {
     await panel.getByTestId("task-prompt-save").click();
     await patch;
 
-    await expect(panel.getByTestId("task-prompt-edit")).toContainText("Draft v2 release notes.");
+    await expect(panel.getByTestId("task-prompt-display")).toContainText("Draft v2 release notes.");
   });
 
   test("queues a backlog task from the card action", async ({ page }) => {

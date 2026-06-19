@@ -698,6 +698,65 @@ describe("TasksPage", () => {
     });
   });
 
+  it("renders markdown formatting in the board panel task prompt", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        description: "## Review plan\n- Check logs\n- Verify UI\n\nFinal line",
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    expect(within(panel).getByRole("button", { name: "Edit task prompt" })).toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: "Review plan" })).toBeInTheDocument();
+    expect(within(panel).getByText("Check logs")).toBeInTheDocument();
+    expect(within(panel).getByText("Verify UI")).toBeInTheDocument();
+    expect(within(panel).getByText("Final line")).toBeInTheDocument();
+  });
+
+  it("keeps nested markdown links clickable in the board panel task prompt", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        description: "[Jump to details](#details)",
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    fireEvent.click(within(panel).getByRole("link", { name: "Jump to details" }));
+
+    expect(within(panel).queryByLabelText("Task prompt")).not.toBeInTheDocument();
+  });
+
+  it("ignores nested markdown button keyboard events in the board panel task prompt", async () => {
+    mockFetch({
+      taskPayload: {
+        ...task,
+        description: "```ts\nconst value = 1;\n```",
+      },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    fireEvent.keyDown(within(panel).getByRole("button", { name: "Copy" }), { key: "Enter" });
+
+    expect(within(panel).queryByLabelText("Task prompt")).not.toBeInTheDocument();
+  });
+
   it("cancels board panel task prompt edits without saving", async () => {
     const fetchMock = mockFetch();
 
