@@ -37,6 +37,7 @@ import {
   type TaskRunMonitorConfig,
   type TaskRunMonitorOptions,
   type TaskRunMonitorRuntimeConfig,
+  type TaskRunStallDetails,
 } from "./task-run-monitor-service.js";
 import type { TaskRunMonitorSettingsService } from "./task-run-monitor-settings-service.js";
 import {
@@ -155,7 +156,7 @@ export function createTaskExecutionService(options: {
     hooks: {
       handleTerminalRun: (run) => handleTerminalRun(run, { triggerContext: readRunContext(run) }),
       queueFallbackRun,
-      abortSession: abortOpenCodeTaskRun,
+      finalizeStalledRun,
     },
   });
 
@@ -733,6 +734,115 @@ export function createTaskExecutionService(options: {
         "task run cancellation could not abort OpenCode session",
       );
     }
+  }
+
+  // Finalize a run the monitor detected as stalled: abort the wedged session,
+  // cancel the run with a clear reason, and — when enabled in settings — queue a
+  // fresh run of the same task/subtask.
+  async function finalizeStalledRun(run: TaskRun, details: TaskRunStallDetails): Promise<void> {
+    const latest = await options.taskService.getRunById(run.id);
+
+    if (!latest || latest.status !== "running") {
+      return;
+    }
+
+    await abortOpenCodeTaskRun(latest);
+
+    const minutes = Math.max(1, Math.round(details.noProgressMs / 60_000));
+    const cancellationReason =
+      `Automatically cancelled: OpenCode produced no new output for ${String(minutes)} ` +
+      `minute(s) (stall timeout)` +
+      `${latest.opencodeSessionId ? `; session ${latest.opencodeSessionId}` : ""}.`;
+
+    const cancelled = await options.taskService.setRunStatus(latest.id, "cancelled", {
+      cancelledAt: new Date().toISOString(),
+      cancellationReason,
+    });
+
+    if (!cancelled) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    notifyRunTerminal(cancelled);
+
+    if (await resolveRequeueAfterStall()) {
+      try {
+        const requeued = await requeueStalledRun(cancelled);
+        options.logger?.warn(
+          {
+            taskId: cancelled.taskId,
+            cancelledRunId: cancelled.id,
+            requeuedRunId: requeued.id,
+            opencodeSessionId: cancelled.opencodeSessionId,
+            noProgressMs: details.noProgressMs,
+            lastStatus: details.lastStatus,
+          },
+          "stalled task run cancelled and requeued",
+        );
+        return;
+      } catch (error) {
+        options.logger?.error(
+          { err: error, taskId: cancelled.taskId, cancelledRunId: cancelled.id },
+          "failed to requeue stalled task run; leaving it cancelled",
+        );
+      }
+    } else {
+      options.logger?.warn(
+        {
+          taskId: cancelled.taskId,
+          taskRunId: cancelled.id,
+          opencodeSessionId: cancelled.opencodeSessionId,
+          noProgressMs: details.noProgressMs,
+          lastStatus: details.lastStatus,
+        },
+        "stalled task run cancelled",
+      );
+    }
+
+    scheduleAgentDrain(cancelled.agentId);
+  }
+
+  async function resolveRequeueAfterStall(): Promise<boolean> {
+    if (!options.monitorSettingsService) {
+      return false;
+    }
+
+    try {
+      const settings = await options.monitorSettingsService.get();
+      return settings.taskRunMonitorRequeueAfterStall;
+    } catch (error) {
+      options.logger?.warn(
+        { err: error },
+        "task run monitor requeue setting read failed; defaulting to no requeue",
+      );
+      return false;
+    }
+  }
+
+  // Queue a fresh run of the same task/subtask after a stall cancellation. A new
+  // run (not the cancelled row) is created so it gets a clean OpenCode session
+  // instead of re-attaching to the wedged one via duplicate-prevention.
+  async function requeueStalledRun(cancelled: TaskRun): Promise<TaskRun> {
+    return queueTask(cancelled.taskId, {
+      agentId: cancelled.agentId,
+      subtaskId: cancelled.subtaskId,
+      triggerSource: "system",
+      model: cancelled.model,
+      fallbackModels: cancelled.fallbackModels,
+      retryOfRunId: cancelled.id,
+      context: {
+        text: [
+          "The previous run of this task was cancelled automatically because the OpenCode session stalled (it stopped producing output).",
+          `Previous run id: ${cancelled.id}`,
+          "It may have already changed workspace files. Inspect the current state before continuing, avoid redoing completed work, and finish the original task goal.",
+        ].join("\n"),
+        attachments: [],
+      },
+      metadata: {
+        requeuedFromRunId: cancelled.id,
+        requeueReason: "stall_timeout",
+      },
+    });
   }
 
   /**

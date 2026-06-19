@@ -68,32 +68,39 @@ Use the checks above to separate these cases:
 
 A `running` task is finalized by the async monitor through one of:
 
-- `stage: "monitor_stalled"` (`errorName: TaskRunMonitorStalled`) — OpenCode
-  produced no new messages within the **no-progress timeout**. The monitor
-  best-effort aborts the wedged session and fails the run. This is the wedged
-  agent-loop case above.
-- `stage: "monitor_timeout"` (`errorName: TaskRunMonitorTimeout`) — the run
-  exceeded the **max run lifetime** hard cap.
+- **No-progress (stall) timeout** — OpenCode produced no new messages within the
+  window. The monitor best-effort aborts the wedged session and **cancels** the
+  run (status `cancelled`) with a `cancellationReason` like
+  `Automatically cancelled: OpenCode produced no new output for N minute(s) (stall
+timeout); session ses_...`. This is the wedged agent-loop case above. If
+  **requeue after stall** is enabled, a fresh run of the same task/subtask is
+  queued automatically (the cancelled run is kept as history; the new run gets a
+  clean session and carries `triggerMetadata.requeueReason = "stall_timeout"`).
+- `stage: "monitor_timeout"` (`errorName: TaskRunMonitorTimeout`, status `error`)
+  — the run exceeded the **max run lifetime** hard cap.
 
-Both timeouts are operator-configurable (no restart required), live under
+These are operator-configurable (no restart required), live under
 **Settings → Tasks**, or via the API:
 
 ```bash
 curl -sS http://127.0.0.1:3000/api/task-run-monitor/settings
 curl -sS -X PUT http://127.0.0.1:3000/api/task-run-monitor/settings \
   -H 'Content-Type: application/json' \
-  -d '{"taskRunMonitorNoProgressTimeoutMinutes":30,"taskRunMonitorMaxLifetimeMinutes":360}'
+  -d '{"taskRunMonitorNoProgressTimeoutMinutes":30,"taskRunMonitorMaxLifetimeMinutes":360,"taskRunMonitorRequeueAfterStall":false}'
 ```
 
 Defaults: no-progress `30` minutes (set `0` to disable stall detection), max
-lifetime `360` minutes. Persisted in `<preferences>/task-run-monitor.json`.
+lifetime `360` minutes, requeue-after-stall `false`. Persisted in
+`<preferences>/task-run-monitor.json`. Note: with requeue enabled, a task that
+keeps stalling will keep requeuing — watch for repeated `stall_timeout`
+cancellations on the same task.
 
 ## Expected CommandsCenter Behavior
 
 - Long-running task prompts should be started asynchronously.
 - Running tasks should be finalized by the monitor after OpenCode settles.
-- A run whose OpenCode session stops making progress should be failed as
-  `monitor_stalled` within the no-progress timeout, not held until the
+- A run whose OpenCode session stops making progress should be cancelled within
+  the no-progress timeout (and optionally requeued), not held until the
   max-lifetime cap.
 - Short local OpenCode transport failures should retry without duplicating an
   accepted prompt.

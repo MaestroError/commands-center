@@ -60,6 +60,13 @@ type TaskRunMonitorHandle = {
  * settles. The monitor owns the polling/settle-detection state machine; the
  * execution service owns terminal task handling and fallback-model queueing.
  */
+export type TaskRunStallDetails = {
+  noProgressMs: number;
+  monitorElapsedMs: number;
+  lastStatus?: string;
+  lastAssistantMessageId?: string;
+};
+
 export type TaskRunMonitorHooks = {
   /** Run terminal handling (archive finalization, feedback subtasks, queue drain). */
   handleTerminalRun(run: TaskRun): Promise<void>;
@@ -69,8 +76,12 @@ export type TaskRunMonitorHooks = {
    * normal terminal handling for the errored run).
    */
   queueFallbackRun(errored: TaskRun, error: TaskRunPromptError): Promise<TaskRun | undefined>;
-  /** Best-effort abort of the linked OpenCode session (used when finalizing a stall). */
-  abortSession(run: TaskRun): Promise<void>;
+  /**
+   * Finalize a stalled run: best-effort abort the wedged session, cancel the run
+   * with a clear reason, and optionally requeue it (per settings). Owns all the
+   * cancel/requeue policy; the monitor only detects the stall.
+   */
+  finalizeStalledRun(run: TaskRun, details: TaskRunStallDetails): Promise<void>;
 };
 
 export type TaskRunMonitorService = ReturnType<typeof createTaskRunMonitorService>;
@@ -439,47 +450,14 @@ export function createTaskRunMonitorService(deps: {
     run: TaskRun,
     noProgressMs: number,
   ): Promise<boolean> {
-    // Best-effort: stop the wedged OpenCode session so it stops consuming the
-    // engine. Ignore failures (the run is being finalized regardless).
-    await hooks.abortSession(run);
-
-    const latest = await taskService.getRunById(run.id);
-
-    if (!latest || latest.status !== "running") {
-      return true;
-    }
-
-    const errored = await taskService.setRunStatus(latest.id, "error", {
-      completedAt: new Date().toISOString(),
-      errorMessage: "OpenCode session stopped making progress.",
-      errorDetails: {
-        errorName: "TaskRunMonitorStalled",
-        stage: "monitor_stalled",
-        opencodeSessionId: latest.opencodeSessionId,
-        elapsedRunMs: readElapsedRunMs(latest),
-        monitorElapsedMs: Date.now() - handle.startedAtMs,
-        noProgressMs,
-        lastStatus: handle.lastStatus,
-        lastAssistantMessageId: handle.lastAssistantMessageId,
-      },
+    // The execution service owns the cancel + optional-requeue policy; the monitor
+    // only reports the stall and the diagnostics it observed.
+    await hooks.finalizeStalledRun(run, {
+      noProgressMs,
+      monitorElapsedMs: Date.now() - handle.startedAtMs,
+      lastStatus: handle.lastStatus,
+      lastAssistantMessageId: handle.lastAssistantMessageId,
     });
-
-    if (!errored) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    logger?.warn(
-      {
-        taskId: errored.taskId,
-        taskRunId: errored.id,
-        opencodeSessionId: errored.opencodeSessionId,
-        noProgressMs,
-        lastStatus: handle.lastStatus,
-        lastAssistantMessageId: handle.lastAssistantMessageId,
-      },
-      "task run monitor finalized a stalled OpenCode session",
-    );
-    await hooks.handleTerminalRun(errored);
     return true;
   }
 

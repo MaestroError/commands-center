@@ -5,16 +5,30 @@
 ## Completion Audit
 
 - Phase 1 (stall detection): `task-run-monitor-service.ts` tracks a per-poll
-  progress signature (`messageCount|lastAssistantMessageId`), and `finalizeStalled`
-  best-effort aborts the session and fails the run with `stage: "monitor_stalled"`
-  when no progress is seen within the window. `noProgressMs <= 0` disables it.
+  progress signature (`messageCount|lastAssistantMessageId`) and detects a stall
+  when it stays constant past the window. `noProgressMs <= 0` disables it.
 - Phase 2 (configurable timeouts): `taskRunMonitorSettingsSchema`,
   `task-run-monitor-settings-service.ts`, and `GET`/`PUT
 /api/task-run-monitor/settings`; the execution service feeds the monitor a
   cached (10s), error-safe runtime-config resolver so both timeouts apply live.
 - Phase 3 (frontend): Settings → **Tasks** tab edits both timeouts.
-- Phase 4 (docs): runbook documents `monitor_stalled`, the settings, and the
+- Phase 4 (docs): runbook documents the stall handling, the settings, and the
   silent-stall signature.
+
+## Follow-up: cancel + optional requeue (implemented)
+
+Stall handling was changed from a terminal `error` to a **cancellation** with a
+clear reason, plus an opt-in auto-requeue:
+
+- The monitor delegates stall finalization to a `finalizeStalledRun` hook. The
+  execution service aborts the wedged session, sets the run `cancelled` with a
+  `cancellationReason` naming the stall timeout and session id, then archives it.
+- New setting `taskRunMonitorRequeueAfterStall` (default `false`, in Settings →
+  Tasks). When enabled, a **fresh** run of the same task/subtask is queued
+  (`triggerMetadata.requeueReason = "stall_timeout"`, `retryOfRunId` set) so it
+  gets a clean OpenCode session instead of re-attaching to the wedged one.
+- Caveat: a persistently stalling task will keep requeuing; intentional and
+  operator-controlled via the checkbox.
 
 ## Problem
 

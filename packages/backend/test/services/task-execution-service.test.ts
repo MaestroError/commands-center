@@ -1544,7 +1544,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("marks a stalled OpenCode session as error and aborts it", async () => {
+  it("cancels and aborts a stalled OpenCode session with a clear reason", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     // No completeAsyncPrompt: the session accepts the prompt but never produces an
@@ -1573,15 +1573,66 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "error");
-      expect((await taskService.getRunById(run.id))?.errorDetails).toMatchObject({
-        errorName: "TaskRunMonitorStalled",
-        stage: "monitor_stalled",
-        opencodeSessionId: "session-1",
-        noProgressMs: 15,
-      });
+      await expectRunStatus(taskService, run.id, "cancelled");
+      const cancelled = await taskService.getRunById(run.id);
+      expect(cancelled?.cancellationReason).toContain("stall timeout");
+      expect(cancelled?.cancellationReason).toContain("session-1");
       expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+      // Requeue is off by default, so no additional run is created.
+      expect(await taskService.listRuns(task.id)).toHaveLength(1);
     } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("requeues a fresh run after a stall cancellation when enabled in settings", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // First prompt never produces an assistant message (stalls); the requeued run
+    // (second prompt) completes so the requeue loop terminates.
+    const opencodeService = createMockOpenCodeService({ completeAsyncPromptAfter: 1 });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    // Mock settings: requeue enabled, and a sub-minute stall window for the test
+    // (the resolver multiplies minutes by 60_000; the mock bypasses schema).
+    const monitorSettingsService = {
+      get: vi.fn(() =>
+        Promise.resolve({
+          taskRunMonitorMaxLifetimeMinutes: 5,
+          taskRunMonitorNoProgressTimeoutMinutes: 15 / 60_000,
+          taskRunMonitorRequeueAfterStall: true,
+        }),
+      ),
+      update: vi.fn(),
+    } as unknown as TaskRunMonitorSettingsService;
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitorSettingsService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Requeue on stall" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "cancelled");
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+
+      const runs = await taskService.listRuns(task.id);
+      const requeued = runs.find((entry) => entry.retryOfRunId === run.id);
+      expect(requeued).toBeDefined();
+      if (!requeued) throw new Error("Expected a requeued run.");
+
+      await expectRunStatus(taskService, requeued.id, "completed");
+      expect(requeued.triggerMetadata).toMatchObject({ requeueReason: "stall_timeout" });
+    } finally {
+      executionService.dispose();
       await testDb.cleanup();
     }
   });
@@ -2100,6 +2151,9 @@ function createMockOpenCodeService(
     listSessionMessagesErrors?: Error[];
     sessionStatusErrors?: Error[];
     completeAsyncPrompt?: boolean;
+    // Complete async prompts only once this many have been accepted (0-indexed).
+    // Lets a test stall the first run but let a requeued run finish.
+    completeAsyncPromptAfter?: number;
     statusSequence?: OpenCodeSessionStatus[];
     onStatus?: () => void;
     abortError?: Error;
@@ -2115,6 +2169,7 @@ function createMockOpenCodeService(
   const sessionStatusErrors = [...(options.sessionStatusErrors ?? [])];
   let sessionCount = 0;
   let messageCount = 0;
+  let asyncPromptCount = 0;
   let time = Date.parse("2026-06-01T12:00:00.000Z");
 
   function nextTime(): number {
@@ -2255,6 +2310,8 @@ function createMockOpenCodeService(
         throw new Error("Session not found.");
       }
 
+      const promptIndex = asyncPromptCount;
+      asyncPromptCount += 1;
       const userMessageId = nextMessageId();
       sessionMessages.push({
         info: {
@@ -2266,7 +2323,11 @@ function createMockOpenCodeService(
         parts: [{ id: `part-${userMessageId}`, type: "text", text }],
       });
 
-      if (options.completeAsyncPrompt) {
+      const shouldComplete =
+        options.completeAsyncPrompt === true ||
+        (options.completeAsyncPromptAfter !== undefined &&
+          promptIndex >= options.completeAsyncPromptAfter);
+      if (shouldComplete) {
         const assistantMessageId = nextMessageId();
         const error = options.promptError?.({ model, text });
         sessionMessages.push(

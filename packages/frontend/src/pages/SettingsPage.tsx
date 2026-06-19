@@ -654,6 +654,7 @@ function SharingTab() {
 function TasksTab() {
   const [maxLifetimeMinutes, setMaxLifetimeMinutes] = useState(360);
   const [noProgressMinutes, setNoProgressMinutes] = useState(30);
+  const [requeueAfterStall, setRequeueAfterStall] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -665,6 +666,7 @@ function TasksTab() {
         if (cancelled) return;
         setMaxLifetimeMinutes(settings.taskRunMonitorMaxLifetimeMinutes);
         setNoProgressMinutes(settings.taskRunMonitorNoProgressTimeoutMinutes);
+        setRequeueAfterStall(settings.taskRunMonitorRequeueAfterStall);
         setLoading(false);
       })
       .catch((nextError: unknown) => {
@@ -684,9 +686,11 @@ function TasksTab() {
       const settings = await updateTaskRunMonitorSettings({
         taskRunMonitorMaxLifetimeMinutes: maxLifetimeMinutes,
         taskRunMonitorNoProgressTimeoutMinutes: noProgressMinutes,
+        taskRunMonitorRequeueAfterStall: requeueAfterStall,
       });
       setMaxLifetimeMinutes(settings.taskRunMonitorMaxLifetimeMinutes);
       setNoProgressMinutes(settings.taskRunMonitorNoProgressTimeoutMinutes);
+      setRequeueAfterStall(settings.taskRunMonitorRequeueAfterStall);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to save settings.");
     } finally {
@@ -722,8 +726,25 @@ function TasksTab() {
           value={noProgressMinutes}
         />
         <span className="text-text-secondary">
-          Fail a run after OpenCode stops producing new messages for this long (status
-          <code>monitor_stalled</code>). Use 0 to disable stall detection.
+          Cancel a run after OpenCode stops producing new messages for this long. Use 0 to disable
+          stall detection.
+        </span>
+      </label>
+      <label className="flex items-start gap-3 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
+        <input
+          checked={requeueAfterStall}
+          className="mt-0.5"
+          disabled={saving}
+          onChange={(event) => setRequeueAfterStall(event.target.checked)}
+          type="checkbox"
+        />
+        <span className="grid gap-1">
+          <span className="font-medium">Requeue task after stall timeout</span>
+          <span className="text-text-secondary">
+            When a run is cancelled by the stall timeout, automatically queue a fresh run of the
+            same task. Leave off to require a manual retry. A persistently stalling task will keep
+            requeuing.
+          </span>
         </span>
       </label>
       <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">

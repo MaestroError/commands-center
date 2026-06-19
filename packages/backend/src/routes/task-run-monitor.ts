@@ -11,6 +11,7 @@ import { createTaskRunMonitorSettingsService } from "../services/task-run-monito
 const taskRunMonitorSettingsPatchSchema = z.object({
   taskRunMonitorMaxLifetimeMinutes: z.number().int().positive().optional(),
   taskRunMonitorNoProgressTimeoutMinutes: z.number().int().nonnegative().optional(),
+  taskRunMonitorRequeueAfterStall: z.boolean().optional(),
 });
 
 export function registerTaskRunMonitorRoutes(server: AppServer, context: RuntimeContext): void {

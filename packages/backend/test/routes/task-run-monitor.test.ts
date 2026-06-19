@@ -38,6 +38,7 @@ describe("task run monitor settings routes", () => {
       expect(initial.json()).toEqual({
         taskRunMonitorMaxLifetimeMinutes: 360,
         taskRunMonitorNoProgressTimeoutMinutes: 30,
+        taskRunMonitorRequeueAfterStall: false,
       });
 
       const updated = await server.inject({
@@ -46,6 +47,7 @@ describe("task run monitor settings routes", () => {
         payload: {
           taskRunMonitorMaxLifetimeMinutes: 120,
           taskRunMonitorNoProgressTimeoutMinutes: 0,
+          taskRunMonitorRequeueAfterStall: true,
         },
       });
       expect(updated.statusCode).toBe(200);
@@ -57,6 +59,7 @@ describe("task run monitor settings routes", () => {
       expect(reloaded.json()).toEqual({
         taskRunMonitorMaxLifetimeMinutes: 120,
         taskRunMonitorNoProgressTimeoutMinutes: 0,
+        taskRunMonitorRequeueAfterStall: true,
       });
     } finally {
       await server.close();
@@ -74,6 +77,7 @@ describe("task run monitor settings routes", () => {
         payload: {
           taskRunMonitorMaxLifetimeMinutes: 90,
           taskRunMonitorNoProgressTimeoutMinutes: 15,
+          taskRunMonitorRequeueAfterStall: true,
         },
       });
 
@@ -91,6 +95,7 @@ describe("task run monitor settings routes", () => {
       expect(reloaded.json()).toEqual({
         taskRunMonitorMaxLifetimeMinutes: 90,
         taskRunMonitorNoProgressTimeoutMinutes: 45,
+        taskRunMonitorRequeueAfterStall: true,
       });
     } finally {
       await server.close();

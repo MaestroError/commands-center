@@ -182,6 +182,7 @@ beforeEach(() => {
   vi.mocked(getTaskRunMonitorSettings).mockResolvedValue({
     taskRunMonitorMaxLifetimeMinutes: 360,
     taskRunMonitorNoProgressTimeoutMinutes: 30,
+    taskRunMonitorRequeueAfterStall: false,
   });
   vi.mocked(updateTaskRunMonitorSettings).mockImplementation((input) => Promise.resolve(input));
   vi.mocked(updateTaskArtifactSharingPreferences).mockImplementation((input) =>
@@ -487,12 +488,14 @@ describe("SettingsPage", () => {
     fireEvent.change(screen.getByLabelText(/Max run lifetime/i), {
       target: { value: "120" },
     });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Requeue task after stall timeout/i }));
     fireEvent.click(screen.getByRole("button", { name: "Save task settings" }));
 
     await waitFor(() => {
       expect(updateTaskRunMonitorSettings).toHaveBeenCalledWith({
         taskRunMonitorMaxLifetimeMinutes: 120,
         taskRunMonitorNoProgressTimeoutMinutes: 10,
+        taskRunMonitorRequeueAfterStall: true,
       });
     });
   });
