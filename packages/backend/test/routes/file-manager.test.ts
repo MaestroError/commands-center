@@ -463,6 +463,39 @@ describe("file manager content routes", () => {
     }
   });
 
+  it("marks host-filesystem file content writable after preference toggle", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      const filePath = join(testDb.config.paths.workspaceDir, "host-readable.txt");
+      await writeFile(filePath, "x", "utf8");
+      const contentUrl = `/api/file-manager/files/content?root=host-filesystem&path=${encodeURIComponent(filePath)}`;
+
+      const blockedRead = await server.inject({
+        method: "GET",
+        url: contentUrl,
+      });
+      expect(blockedRead.statusCode).toBe(200);
+      expect(blockedRead.json<{ isWritable: boolean }>().isWritable).toBe(false);
+
+      const enabled = await server.inject({
+        method: "PUT",
+        url: "/api/file-manager/preferences",
+        payload: { allowHostFilesystemEdits: true },
+      });
+      expect(enabled.statusCode).toBe(200);
+
+      const allowedRead = await server.inject({
+        method: "GET",
+        url: contentUrl,
+      });
+      expect(allowedRead.statusCode).toBe(200);
+      expect(allowedRead.json<{ isWritable: boolean }>().isWritable).toBe(true);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("returns default preferences via GET /api/file-manager/preferences", async () => {
     const { testDb, server } = await bootServer();
     try {
