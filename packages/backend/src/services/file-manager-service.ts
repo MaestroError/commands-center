@@ -326,6 +326,7 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
     async readFileContent(
       root: RootReference,
       path: string,
+      readOptions: { allowHostFilesystemEdits: boolean } = { allowHostFilesystemEdits: false },
     ): Promise<FileManagerFileContentResponse> {
       const absolutePath = resolveEntryPath(root, path);
       const stats = await statOrNotFound(absolutePath);
@@ -337,7 +338,7 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
       const buffer = await readFile(absolutePath);
       const sizeBytes = buffer.byteLength;
       const mtimeMs = stats.mtimeMs;
-      const isWritable = root.kind !== "host-filesystem";
+      const isWritable = root.kind !== "host-filesystem" || readOptions.allowHostFilesystemEdits;
       const relativePath = toRelativePath(root, absolutePath);
       const name = basename(absolutePath);
       const mimeType = guessMimeType(name);
