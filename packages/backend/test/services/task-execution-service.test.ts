@@ -1604,6 +1604,7 @@ describe("createTaskExecutionService", () => {
           taskRunMonitorMaxLifetimeMinutes: 5,
           taskRunMonitorNoProgressTimeoutMinutes: 15 / 60_000,
           taskRunMonitorRequeueAfterStall: true,
+          taskRunMonitorRequeueLimit: 10,
         }),
       ),
       update: vi.fn(),
@@ -1631,6 +1632,62 @@ describe("createTaskExecutionService", () => {
 
       await expectRunStatus(taskService, requeued.id, "completed");
       expect(requeued.triggerMetadata).toMatchObject({ requeueReason: "stall_timeout" });
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("stops requeuing stalled runs once the requeue limit is reached", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // Every run stalls (no assistant message ever), so requeues continue until the
+    // limit caps the chain.
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const monitorSettingsService = {
+      get: vi.fn(() =>
+        Promise.resolve({
+          taskRunMonitorMaxLifetimeMinutes: 5,
+          taskRunMonitorNoProgressTimeoutMinutes: 15 / 60_000,
+          taskRunMonitorRequeueAfterStall: true,
+          taskRunMonitorRequeueLimit: 2,
+        }),
+      ),
+      update: vi.fn(),
+    } as unknown as TaskRunMonitorSettingsService;
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitorSettingsService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Requeue limit" });
+
+      await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      // 1 original + 2 requeues = 3 runs, all cancelled, then the chain stops.
+      await expect
+        .poll(async () => {
+          const runs = await taskService.listRuns(task.id);
+          return runs.length === 3 && runs.every((entry) => entry.status === "cancelled");
+        })
+        .toBe(true);
+
+      executionService.dispose();
+      const runs = await taskService.listRuns(task.id);
+      expect(runs).toHaveLength(3);
+      const lastReason = runs
+        .map((entry) => entry.cancellationReason ?? "")
+        .find((reason) => reason.includes("Requeue limit"));
+      expect(lastReason).toContain("Requeue limit (2) reached");
     } finally {
       executionService.dispose();
       await testDb.cleanup();

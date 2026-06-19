@@ -748,11 +748,17 @@ export function createTaskExecutionService(options: {
 
     await abortOpenCodeTaskRun(latest);
 
+    const requeue = await resolveRequeueSettings();
+    const nextRequeueCount = readRequeueCount(latest) + 1;
+    const willRequeue = requeue.enabled && nextRequeueCount <= requeue.limit;
+    const limitReached = requeue.enabled && !willRequeue;
+
     const minutes = Math.max(1, Math.round(details.noProgressMs / 60_000));
     const cancellationReason =
       `Automatically cancelled: OpenCode produced no new output for ${String(minutes)} ` +
       `minute(s) (stall timeout)` +
-      `${latest.opencodeSessionId ? `; session ${latest.opencodeSessionId}` : ""}.`;
+      `${latest.opencodeSessionId ? `; session ${latest.opencodeSessionId}` : ""}.` +
+      `${limitReached ? ` Requeue limit (${String(requeue.limit)}) reached; not requeued.` : ""}`;
 
     const cancelled = await options.taskService.setRunStatus(latest.id, "cancelled", {
       cancelledAt: new Date().toISOString(),
@@ -765,14 +771,16 @@ export function createTaskExecutionService(options: {
 
     notifyRunTerminal(cancelled);
 
-    if (await resolveRequeueAfterStall()) {
+    if (willRequeue) {
       try {
-        const requeued = await requeueStalledRun(cancelled);
+        const requeued = await requeueStalledRun(cancelled, nextRequeueCount);
         options.logger?.warn(
           {
             taskId: cancelled.taskId,
             cancelledRunId: cancelled.id,
             requeuedRunId: requeued.id,
+            requeueAttempt: nextRequeueCount,
+            requeueLimit: requeue.limit,
             opencodeSessionId: cancelled.opencodeSessionId,
             noProgressMs: details.noProgressMs,
             lastStatus: details.lastStatus,
@@ -794,35 +802,50 @@ export function createTaskExecutionService(options: {
           opencodeSessionId: cancelled.opencodeSessionId,
           noProgressMs: details.noProgressMs,
           lastStatus: details.lastStatus,
+          requeueLimitReached: limitReached,
+          requeueLimit: limitReached ? requeue.limit : undefined,
         },
-        "stalled task run cancelled",
+        limitReached
+          ? "stalled task run cancelled; requeue limit reached"
+          : "stalled task run cancelled",
       );
     }
 
     scheduleAgentDrain(cancelled.agentId);
   }
 
-  async function resolveRequeueAfterStall(): Promise<boolean> {
+  async function resolveRequeueSettings(): Promise<{ enabled: boolean; limit: number }> {
+    const fallback = { enabled: false, limit: 10 };
+
     if (!options.monitorSettingsService) {
-      return false;
+      return fallback;
     }
 
     try {
       const settings = await options.monitorSettingsService.get();
-      return settings.taskRunMonitorRequeueAfterStall;
+      return {
+        enabled: settings.taskRunMonitorRequeueAfterStall,
+        limit: settings.taskRunMonitorRequeueLimit,
+      };
     } catch (error) {
       options.logger?.warn(
         { err: error },
         "task run monitor requeue setting read failed; defaulting to no requeue",
       );
-      return false;
+      return fallback;
     }
+  }
+
+  function readRequeueCount(run: TaskRun): number {
+    const value = run.triggerMetadata?.["requeueCount"];
+    return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
   }
 
   // Queue a fresh run of the same task/subtask after a stall cancellation. A new
   // run (not the cancelled row) is created so it gets a clean OpenCode session
-  // instead of re-attaching to the wedged one via duplicate-prevention.
-  async function requeueStalledRun(cancelled: TaskRun): Promise<TaskRun> {
+  // instead of re-attaching to the wedged one via duplicate-prevention. The
+  // requeue count carries forward so the chain stops at the configured limit.
+  async function requeueStalledRun(cancelled: TaskRun, requeueCount: number): Promise<TaskRun> {
     return queueTask(cancelled.taskId, {
       agentId: cancelled.agentId,
       subtaskId: cancelled.subtaskId,
@@ -841,6 +864,7 @@ export function createTaskExecutionService(options: {
       metadata: {
         requeuedFromRunId: cancelled.id,
         requeueReason: "stall_timeout",
+        requeueCount,
       },
     });
   }

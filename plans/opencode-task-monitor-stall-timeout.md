@@ -27,8 +27,10 @@ clear reason, plus an opt-in auto-requeue:
   Tasks). When enabled, a **fresh** run of the same task/subtask is queued
   (`triggerMetadata.requeueReason = "stall_timeout"`, `retryOfRunId` set) so it
   gets a clean OpenCode session instead of re-attaching to the wedged one.
-- Caveat: a persistently stalling task will keep requeuing; intentional and
-  operator-controlled via the checkbox.
+- Bounded by `taskRunMonitorRequeueLimit` (default `10`, required when requeue is
+  enabled): the chain carries `triggerMetadata.requeueCount`, and once it would
+  exceed the limit the run is cancelled without requeue and the reason notes
+  `Requeue limit (N) reached`.
 
 ## Problem
 

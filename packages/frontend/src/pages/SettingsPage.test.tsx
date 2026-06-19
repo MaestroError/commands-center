@@ -183,6 +183,7 @@ beforeEach(() => {
     taskRunMonitorMaxLifetimeMinutes: 360,
     taskRunMonitorNoProgressTimeoutMinutes: 30,
     taskRunMonitorRequeueAfterStall: false,
+    taskRunMonitorRequeueLimit: 10,
   });
   vi.mocked(updateTaskRunMonitorSettings).mockImplementation((input) => Promise.resolve(input));
   vi.mocked(updateTaskArtifactSharingPreferences).mockImplementation((input) =>
@@ -489,6 +490,10 @@ describe("SettingsPage", () => {
       target: { value: "120" },
     });
     fireEvent.click(screen.getByRole("checkbox", { name: /Requeue task after stall timeout/i }));
+    // The requeue limit field appears only once requeue is enabled.
+    fireEvent.change(await screen.findByLabelText(/Requeue limit/i), {
+      target: { value: "5" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save task settings" }));
 
     await waitFor(() => {
@@ -496,6 +501,7 @@ describe("SettingsPage", () => {
         taskRunMonitorMaxLifetimeMinutes: 120,
         taskRunMonitorNoProgressTimeoutMinutes: 10,
         taskRunMonitorRequeueAfterStall: true,
+        taskRunMonitorRequeueLimit: 5,
       });
     });
   });

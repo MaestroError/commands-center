@@ -10,11 +10,14 @@ import { z } from "zod";
  *   disables stall detection.
  * - `taskRunMonitorRequeueAfterStall`: when a run is cancelled by the stall
  *   timeout, automatically queue a fresh run of the same task/subtask.
+ * - `taskRunMonitorRequeueLimit`: max number of automatic stall requeues per task
+ *   chain before it stops requeuing (only used when requeue is enabled).
  */
 export const taskRunMonitorSettingsSchema = z.object({
   taskRunMonitorMaxLifetimeMinutes: z.number().int().positive().default(360),
   taskRunMonitorNoProgressTimeoutMinutes: z.number().int().nonnegative().default(30),
   taskRunMonitorRequeueAfterStall: z.boolean().default(false),
+  taskRunMonitorRequeueLimit: z.number().int().positive().default(10),
 });
 
 export type TaskRunMonitorSettings = z.infer<typeof taskRunMonitorSettingsSchema>;

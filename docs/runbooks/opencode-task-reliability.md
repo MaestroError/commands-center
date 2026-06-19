@@ -86,14 +86,15 @@ These are operator-configurable (no restart required), live under
 curl -sS http://127.0.0.1:3000/api/task-run-monitor/settings
 curl -sS -X PUT http://127.0.0.1:3000/api/task-run-monitor/settings \
   -H 'Content-Type: application/json' \
-  -d '{"taskRunMonitorNoProgressTimeoutMinutes":30,"taskRunMonitorMaxLifetimeMinutes":360,"taskRunMonitorRequeueAfterStall":false}'
+  -d '{"taskRunMonitorNoProgressTimeoutMinutes":30,"taskRunMonitorMaxLifetimeMinutes":360,"taskRunMonitorRequeueAfterStall":false,"taskRunMonitorRequeueLimit":10}'
 ```
 
 Defaults: no-progress `30` minutes (set `0` to disable stall detection), max
-lifetime `360` minutes, requeue-after-stall `false`. Persisted in
-`<preferences>/task-run-monitor.json`. Note: with requeue enabled, a task that
-keeps stalling will keep requeuing — watch for repeated `stall_timeout`
-cancellations on the same task.
+lifetime `360` minutes, requeue-after-stall `false`, requeue limit `10`.
+Persisted in `<preferences>/task-run-monitor.json`. With requeue enabled, a task
+that keeps stalling is requeued at most `taskRunMonitorRequeueLimit` times
+(tracked via `triggerMetadata.requeueCount`); the final cancellation reason then
+notes `Requeue limit (N) reached`.
 
 ## Expected CommandsCenter Behavior
 

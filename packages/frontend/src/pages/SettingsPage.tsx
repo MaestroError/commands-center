@@ -655,9 +655,13 @@ function TasksTab() {
   const [maxLifetimeMinutes, setMaxLifetimeMinutes] = useState(360);
   const [noProgressMinutes, setNoProgressMinutes] = useState(30);
   const [requeueAfterStall, setRequeueAfterStall] = useState(false);
+  const [requeueLimit, setRequeueLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+
+  const requeueLimitInvalid =
+    requeueAfterStall && (!Number.isInteger(requeueLimit) || requeueLimit < 1);
 
   useEffect(() => {
     let cancelled = false;
@@ -667,6 +671,7 @@ function TasksTab() {
         setMaxLifetimeMinutes(settings.taskRunMonitorMaxLifetimeMinutes);
         setNoProgressMinutes(settings.taskRunMonitorNoProgressTimeoutMinutes);
         setRequeueAfterStall(settings.taskRunMonitorRequeueAfterStall);
+        setRequeueLimit(settings.taskRunMonitorRequeueLimit);
         setLoading(false);
       })
       .catch((nextError: unknown) => {
@@ -687,10 +692,12 @@ function TasksTab() {
         taskRunMonitorMaxLifetimeMinutes: maxLifetimeMinutes,
         taskRunMonitorNoProgressTimeoutMinutes: noProgressMinutes,
         taskRunMonitorRequeueAfterStall: requeueAfterStall,
+        taskRunMonitorRequeueLimit: requeueLimit,
       });
       setMaxLifetimeMinutes(settings.taskRunMonitorMaxLifetimeMinutes);
       setNoProgressMinutes(settings.taskRunMonitorNoProgressTimeoutMinutes);
       setRequeueAfterStall(settings.taskRunMonitorRequeueAfterStall);
+      setRequeueLimit(settings.taskRunMonitorRequeueLimit);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to save settings.");
     } finally {
@@ -742,11 +749,31 @@ function TasksTab() {
           <span className="font-medium">Requeue task after stall timeout</span>
           <span className="text-text-secondary">
             When a run is cancelled by the stall timeout, automatically queue a fresh run of the
-            same task. Leave off to require a manual retry. A persistently stalling task will keep
-            requeuing.
+            same task. Leave off to require a manual retry.
           </span>
         </span>
       </label>
+      {requeueAfterStall ? (
+        <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
+          <span className="font-medium">Requeue limit</span>
+          <input
+            className="cc-input"
+            disabled={saving}
+            min={1}
+            onChange={(event) => setRequeueLimit(Number(event.target.value))}
+            required
+            type="number"
+            value={requeueLimit}
+          />
+          <span className="text-text-secondary">
+            Maximum automatic requeues before a persistently stalling task stops requeuing. Must be
+            at least 1.
+          </span>
+          {requeueLimitInvalid ? (
+            <span className="text-danger">Enter a requeue limit of 1 or more.</span>
+          ) : null}
+        </label>
+      ) : null}
       <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
         <span className="font-medium">Max run lifetime (minutes)</span>
         <input
@@ -765,7 +792,7 @@ function TasksTab() {
       <div className="flex justify-end">
         <button
           className="cc-button"
-          disabled={saving}
+          disabled={saving || requeueLimitInvalid}
           onClick={() => void saveSettings()}
           type="button"
         >
