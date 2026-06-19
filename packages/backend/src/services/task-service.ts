@@ -1,7 +1,7 @@
 import { readdir, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { and, count, eq, isNull } from "drizzle-orm";
+import { and, count, eq, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { readConfigFile, writeConfigFileAtomic } from "../lib/config-file.js";
@@ -220,6 +220,7 @@ type CreateTaskFromTemplateInput = {
   occurrenceAt?: string;
   scheduledFor?: string;
   triggerSource?: TaskRun["triggerSource"];
+  generatedByAgentId?: string;
   context?: TaskContext;
 };
 
@@ -490,6 +491,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           latest_final_message: null,
           latest_run_id: null,
           source_template_id: null,
+          generated_by_agent_id: null,
           source_occurrence_at: null,
           scheduled_at: parsed.scheduledAt ? new Date(parsed.scheduledAt) : null,
           scheduled_for: null,
@@ -519,7 +521,31 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         return undefined;
       }
 
-      const task = existing ? mapTask(existing) : mapTemplateAsTask(existingTemplate!);
+      if (existing) {
+        const task = mapTask(existing);
+
+        return this.create({
+          agentId: task.agentId,
+          defaultAgentId: task.defaultAgentId,
+          model: task.model,
+          fallbackModels: task.fallbackModels,
+          title: `${task.title} copy`,
+          description: task.description,
+          context: task.context,
+          todos: task.todos.map((todo) => ({
+            content: todo.content,
+            status: todo.status,
+          })),
+          permissionProfile: task.permissionProfile,
+          enabled: false,
+        });
+      }
+
+      if (!existingTemplate) {
+        return undefined;
+      }
+
+      const task = mapTemplateAsTask(existingTemplate);
 
       return this.create({
         agentId: task.agentId,
@@ -529,7 +555,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         title: `${task.title} copy`,
         description: task.description,
         context: task.context,
-        todos: task.todos.map((todo) => ({ content: todo.content, status: todo.status })),
+        todos: task.todos.map((todo) => ({
+          content: todo.content,
+          status: todo.status,
+        })),
         permissionProfile: task.permissionProfile,
         enabled: false,
       });
@@ -1050,69 +1079,87 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         return undefined;
       }
 
-      const timestamp = now();
-      const scheduledFor = input.scheduledFor ? new Date(input.scheduledFor) : null;
-      const occurrenceAt = input.occurrenceAt
-        ? new Date(input.occurrenceAt)
-        : (scheduledFor ?? timestamp);
-      const existing = await options.db.query.tasks.findFirst({
-        where: (table, operators) =>
-          operators.and(
-            operators.eq(table.source_template_id, template.id),
-            operators.eq(table.source_occurrence_at, occurrenceAt),
-            operators.isNull(table.deleted_at),
-          ),
+      const row = options.db.transaction((tx) => {
+        const timestamp = now();
+        const scheduledFor = input.scheduledFor ? new Date(input.scheduledFor) : null;
+        const occurrenceAt = input.occurrenceAt
+          ? new Date(input.occurrenceAt)
+          : (scheduledFor ?? timestamp);
+        const existing = tx
+          .select()
+          .from(tasks)
+          .where(
+            and(
+              eq(tasks.source_template_id, template.id),
+              eq(tasks.source_occurrence_at, occurrenceAt),
+              isNull(tasks.deleted_at),
+            ),
+          )
+          .get();
+
+        if (existing) {
+          return existing;
+        }
+
+        const triggerSource = input.triggerSource ?? "scheduled";
+        const generatedTitle = `${template.title} #${taskGenerationSourceLetter(triggerSource)}${
+          countGeneratedTasksForTemplate(tx, template.id) + 1
+        }`;
+
+        const inserted = tx
+          .insert(tasks)
+          .values({
+            id: createId(),
+            template_id: null,
+            agent_id: template.agent_id,
+            default_agent_id: template.default_agent_id,
+            model: template.model,
+            fallback_models: template.fallback_models,
+            title: generatedTitle,
+            description: template.description,
+            context: JSON.stringify(normalizeTaskContext(input.context)),
+            todos_json: template.todos_json,
+            status: scheduledFor ? "scheduled" : "backlog",
+            trigger_source: triggerSource,
+            permission_profile_json: template.permission_profile_json,
+            enabled: true,
+            archived: false,
+            latest_final_message: null,
+            latest_run_id: null,
+            source_template_id: template.id,
+            generated_by_agent_id: input.generatedByAgentId ?? null,
+            source_occurrence_at: occurrenceAt,
+            scheduled_at: scheduledFor,
+            scheduled_for: scheduledFor,
+            due_at: scheduledFor,
+            done_at: null,
+            created_at: timestamp,
+            updated_at: timestamp,
+            archived_at: null,
+            deleted_at: null,
+          })
+          .returning()
+          .get();
+
+        if (!inserted) {
+          throw new Error("Failed to create task occurrence record.");
+        }
+
+        tx.update(task_templates)
+          .set({
+            latest_task_id: inserted.id,
+            last_generated_occurrence_at: occurrenceAt,
+            updated_at: timestamp,
+          })
+          .where(eq(task_templates.id, template.id))
+          .run();
+
+        return inserted;
       });
-
-      if (existing) {
-        return mapTask(existing);
-      }
-
-      const [row] = await options.db
-        .insert(tasks)
-        .values({
-          id: createId(),
-          template_id: null,
-          agent_id: template.agent_id,
-          default_agent_id: template.default_agent_id,
-          model: template.model,
-          fallback_models: template.fallback_models,
-          title: template.title,
-          description: template.description,
-          context: JSON.stringify(normalizeTaskContext(input.context)),
-          todos_json: template.todos_json,
-          status: scheduledFor ? "scheduled" : "backlog",
-          trigger_source: input.triggerSource ?? "scheduled",
-          permission_profile_json: template.permission_profile_json,
-          enabled: true,
-          archived: false,
-          latest_final_message: null,
-          latest_run_id: null,
-          source_template_id: template.id,
-          source_occurrence_at: occurrenceAt,
-          scheduled_at: scheduledFor,
-          scheduled_for: scheduledFor,
-          due_at: scheduledFor,
-          done_at: null,
-          created_at: timestamp,
-          updated_at: timestamp,
-          archived_at: null,
-          deleted_at: null,
-        })
-        .returning();
 
       if (!row) {
         throw new Error("Failed to create task occurrence record.");
       }
-
-      await options.db
-        .update(task_templates)
-        .set({
-          latest_task_id: row.id,
-          last_generated_occurrence_at: occurrenceAt,
-          updated_at: timestamp,
-        })
-        .where(eq(task_templates.id, template.id));
 
       return mapTask(row);
     },
@@ -1890,6 +1937,34 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
     return rows.map((row) => row.id);
   }
+
+  function countGeneratedTasksForTemplate(db: Pick<AppDb, "select">, templateId: string): number {
+    const row = db
+      .select({ value: count() })
+      .from(tasks)
+      .where(generatedTasksForTemplateFilter(templateId))
+      .get();
+
+    return row?.value ?? 0;
+  }
+}
+
+function generatedTasksForTemplateFilter(templateId: string) {
+  return and(
+    or(
+      and(eq(tasks.template_id, templateId), ne(tasks.id, templateId)),
+      eq(tasks.source_template_id, templateId),
+    ),
+    isNull(tasks.deleted_at),
+  );
+}
+
+function taskGenerationSourceLetter(triggerSource: TaskRun["triggerSource"]): string {
+  if (triggerSource === "manual") return "M";
+  if (triggerSource === "api") return "A";
+  if (triggerSource === "scheduled" || triggerSource === "template") return "S";
+  if (triggerSource === "agent") return "G";
+  return "Y";
 }
 
 function normalizeTaskStatus(input: {
@@ -2018,6 +2093,7 @@ function mapTask(row: typeof tasks.$inferSelect): Task {
     latestResultText: row.latest_result_text ?? undefined,
     latestRunId: row.latest_run_id ?? undefined,
     sourceTemplateId: row.source_template_id ?? undefined,
+    generatedByAgentId: row.generated_by_agent_id ?? undefined,
     sourceOccurrenceAt: row.source_occurrence_at?.toISOString(),
     scheduledAt: row.scheduled_at?.toISOString(),
     scheduledFor: row.scheduled_for?.toISOString(),

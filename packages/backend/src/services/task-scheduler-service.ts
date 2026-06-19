@@ -241,7 +241,7 @@ export function createTaskSchedulerService(options: {
     try {
       const generatedTask = await options.taskService.createTaskFromTemplate(template.id, {
         occurrenceAt: scheduledAt.toISOString(),
-        triggerSource: "template",
+        triggerSource: "scheduled",
       });
 
       if (!generatedTask) {

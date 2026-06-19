@@ -22,8 +22,9 @@ export interface TriggerTemplateRunServices {
 
 export interface TriggerTemplateRunInput {
   templateId: string;
-  /** Tags the created task/run — `"template"` for the internal UI, `"api"` for the public API. */
+  /** Tags the created task/run, e.g. `"manual"`, `"api"`, or `"agent"`. */
   triggerSource: TaskRun["triggerSource"];
+  generatedByAgentId?: string;
   context?: TaskContext;
   contextAttachmentUploads?: UploadTaskContextAttachmentInput[];
   metadata?: Record<string, unknown>;
@@ -52,6 +53,7 @@ export async function triggerTemplateRun(
 
   let task = await taskService.createTaskFromTemplate(input.templateId, {
     triggerSource: input.triggerSource,
+    generatedByAgentId: input.generatedByAgentId,
     context: input.context,
     scheduledFor: input.scheduledFor,
   });

@@ -232,6 +232,8 @@ describe("createTaskSchedulerService", () => {
       expect(runs).toHaveLength(1);
       expect(occurrences).toHaveLength(1);
       expect(runs[0]?.taskId).toBe(occurrences[0]?.id);
+      expect(runs[0]?.triggerSource).toBe("template");
+      expect(occurrences[0]?.title).toBe("Recurring #S1");
       expect(occurrences[0]?.sourceTemplateId).toBe(template.id);
       expect(occurrences[0]?.sourceOccurrenceAt).toBe("2026-06-02T12:00:00.000Z");
     } finally {

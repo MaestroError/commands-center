@@ -357,11 +357,13 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       context: runTaskTemplateNowToolMetadata.context,
       inputSchema: runTaskTemplateNowToolInputSchema,
       outputSchema: taskRunSchema,
-      execute: async (args: unknown) =>
+      execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = runTaskTemplateNowToolInputSchema.parse(args);
+          const callingAgentId = await requireCallingAgentId(options.db, context.agentSlug);
           const task = await options.taskService.createTaskFromTemplate(parsed.taskId, {
-            triggerSource: "template",
+            triggerSource: "agent",
+            generatedByAgentId: callingAgentId,
             context: parsed.context,
           });
 
@@ -370,7 +372,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
           }
 
           const run = await options.taskExecutionService.queue(task.id, {
-            triggerSource: "template",
+            triggerSource: "agent",
             context: parsed.context,
             metadata: parsed.metadata,
           });

@@ -169,6 +169,13 @@
       "when": 1781277625853,
       "tag": "0023_flowery_bulldozer",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1781873072376,
+      "tag": "0024_pink_sharon_carter",
+      "breakpoints": true
     }
   ]
 }

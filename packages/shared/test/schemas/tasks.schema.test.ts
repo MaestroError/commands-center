@@ -30,6 +30,7 @@ describe("task schemas", () => {
 
     it("accepts task run trigger sources for future queue paths", () => {
       expect(taskRunTriggerSourceSchema.parse("api")).toBe("api");
+      expect(taskRunTriggerSourceSchema.parse("agent")).toBe("agent");
       expect(taskRunTriggerSourceSchema.parse("template")).toBe("template");
     });
 

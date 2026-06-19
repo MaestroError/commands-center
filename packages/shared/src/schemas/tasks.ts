@@ -78,6 +78,7 @@ export const taskRunTriggerSourceSchema = z.enum([
   "manual",
   "scheduled",
   "api",
+  "agent",
   "template",
   "system",
 ]);
@@ -362,6 +363,7 @@ export const taskSchema = z.object({
   latestResultText: z.string().optional(),
   latestRunId: z.string().min(1).optional(),
   sourceTemplateId: z.string().min(1).optional(),
+  generatedByAgentId: z.string().min(1).optional(),
   sourceOccurrenceAt: z.string().datetime().optional(),
   scheduledAt: z.string().datetime().optional(),
   scheduledFor: z.string().datetime().optional(),
