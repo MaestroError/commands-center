@@ -2131,6 +2131,7 @@ function deriveRunSubtaskStatus(run: TaskRun): TaskSubtaskDerivedStatus {
 }
 
 function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
+  const triggerMetadata = parseJsonRecord(row.trigger_metadata_json);
   return taskRunSchema.parse({
     id: row.id,
     taskId: row.task_id,
@@ -2141,11 +2142,12 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
     retryOfRunId: row.retry_of_run_id ?? undefined,
     opencodeSessionId: row.opencode_session_id ?? undefined,
     status: row.status,
+    runtimeState: deriveTaskRunRuntimeState(row.status, triggerMetadata),
     triggerSource: row.trigger_source,
     outcome: row.outcome ?? undefined,
     renderedPrompt: row.rendered_prompt,
     context: parseJsonRecord(row.context_json),
-    triggerMetadata: parseJsonRecord(row.trigger_metadata_json),
+    triggerMetadata,
     renderedContext: parseJsonRecord(row.rendered_context_json),
     effectivePermissions: parseOptional(
       row.effective_permissions_json,
@@ -2166,6 +2168,27 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   });
+}
+
+/**
+ * Derive the `waiting_for_opencode` sub-state for a running task run. Once the
+ * async OpenCode prompt is accepted the executor persists `opencodeMonitor`
+ * metadata and keeps the run `running` while the monitor polls, so a running run
+ * carrying that metadata is waiting on OpenCode rather than holding a request.
+ */
+function deriveTaskRunRuntimeState(
+  status: string,
+  triggerMetadata: Record<string, unknown> | undefined,
+): "waiting_for_opencode" | undefined {
+  if (status !== "running") {
+    return undefined;
+  }
+
+  const monitor = triggerMetadata?.["opencodeMonitor"];
+  const hasAcceptedPrompt =
+    typeof monitor === "object" && monitor !== null && !Array.isArray(monitor);
+
+  return hasAcceptedPrompt ? "waiting_for_opencode" : undefined;
 }
 
 function parseTaskTodos(value: string): TaskTodo[] {

@@ -44,6 +44,14 @@ export const taskRunStatusSchema = z.enum([
 
 export const taskRunOutcomeSchema = z.enum(["success", "needs_human_review", "failed"]);
 
+/**
+ * Sub-state of a `running` task run. `waiting_for_opencode` means CommandsCenter
+ * has accepted the OpenCode prompt asynchronously and is monitoring the session
+ * until it settles, rather than actively holding a request open. Derived from run
+ * state at read time, so it is only present while the run is `running`.
+ */
+export const taskRunRuntimeStateSchema = z.enum(["waiting_for_opencode"]);
+
 export const MAX_FALLBACK_MODELS = 5;
 // Each fallback entry must be a qualified `provider/model` id (a non-empty
 // provider, a slash, then a non-empty model). Downstream code calls
@@ -478,6 +486,7 @@ export const taskRunSchema = z.object({
   fallbackModels: fallbackModelsSchema,
   retryOfRunId: z.string().min(1).optional(),
   status: taskRunStatusSchema,
+  runtimeState: taskRunRuntimeStateSchema.optional(),
   triggerSource: taskRunTriggerSourceSchema,
   outcome: taskRunOutcomeSchema.optional(),
   renderedPrompt: z.string(),
@@ -619,6 +628,7 @@ export type TaskQueuePreview = z.infer<typeof taskQueuePreviewSchema>;
 export type TaskRegisteredArtifact = z.infer<typeof taskRegisteredArtifactSchema>;
 export type TaskRunSessionDiagnostic = z.infer<typeof taskRunSessionDiagnosticSchema>;
 export type TaskRunSessionInspection = z.infer<typeof taskRunSessionInspectionSchema>;
+export type TaskRunRuntimeState = z.infer<typeof taskRunRuntimeStateSchema>;
 export type TaskRunStatus = z.infer<typeof taskRunStatusSchema>;
 export type TaskRunTriggerSource = z.infer<typeof taskRunTriggerSourceSchema>;
 export type TaskSchedulerState = z.infer<typeof taskSchedulerStateSchema>;

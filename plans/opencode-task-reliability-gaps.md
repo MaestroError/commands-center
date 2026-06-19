@@ -1,6 +1,6 @@
 # Plan: OpenCode Task Reliability — Follow-up Gaps
 
-**Status:** Proposed.
+**Status:** Complete.
 
 Follow-up to `plans/opencode-task-reliability.md`. The 9-phase reliability work is
 complete and the goal (decoupling task success from a single long-lived HTTP
@@ -8,6 +8,19 @@ request) is reached. This plan closes the remaining minor gaps found during the
 implementation audit. None of these affect the reliability guarantee; they
 reconcile the implementation with decisions recorded in the original plan's
 resolved Open Questions.
+
+## Completion Audit
+
+- Gap 1 (split monitor): the async monitor/finalizer is now its own
+  `task-run-monitor-service.ts`, with shared pure helpers + the local-transport
+  retry factory in `task-run-support.ts`. `task-execution-service.ts` keeps
+  queueing/drain/cancel and drives the monitor through injected hooks
+  (`handleTerminalRun`, `queueFallbackRun`). No behavior change; all existing
+  monitor tests stayed green against the new seam.
+- Gap 2 (`waiting_for_opencode` substate): `taskRunSchema` gained an optional
+  `runtimeState` enum, derived at read time in `task-service.mapTaskRun` from a
+  `running` status plus persisted `opencodeMonitor` metadata. No migration, no
+  monitor lifecycle changes, no stale-state risk.
 
 ## Gap 1: Split the monitor into its own service
 

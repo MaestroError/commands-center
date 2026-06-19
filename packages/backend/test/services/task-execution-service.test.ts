@@ -102,6 +102,7 @@ describe("createTaskExecutionService", () => {
       const conversations = await conversationService.list(agent.id);
 
       expect(runningRun?.opencodeSessionId).toBe("session-1");
+      expect(runningRun?.runtimeState).toBe("waiting_for_opencode");
       expect(run.renderedPrompt).toContain("<AssignedAgentId>");
       expect(runningRun?.finalMessage).toBeUndefined();
       expect(runningRun?.triggerMetadata?.["opencodeMonitor"]).toMatchObject({
@@ -118,6 +119,52 @@ describe("createTaskExecutionService", () => {
       expect(inspection.conversation?.source).toBe("task_run");
       expect(inspection.conversation?.messages).toHaveLength(1);
       expect(conversations).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("exposes the waiting_for_opencode runtime substate only while monitoring", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      statusSequence: [{ type: "idle" }, { type: "idle" }],
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false, initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Runtime substate" });
+
+      const queued = await taskService.createRun({
+        id: `run-${crypto.randomUUID()}`,
+        taskId: task.id,
+        agentId: agent.id,
+        status: "queued",
+        triggerSource: "manual",
+        renderedPrompt: "Run.",
+      });
+      // A queued run has not accepted an OpenCode prompt yet.
+      expect(queued.runtimeState).toBeUndefined();
+
+      const running = await executionService.runQueuedTask(queued.id);
+      expect(running.status).toBe("running");
+      expect(running.runtimeState).toBe("waiting_for_opencode");
+
+      // Once the monitor settles the run, the substate is gone.
+      executionService.startTaskRunMonitor(queued.id);
+      await expectRunStatus(taskService, queued.id, "completed");
+      expect((await taskService.getRunById(queued.id))?.runtimeState).toBeUndefined();
     } finally {
       await testDb.cleanup();
     }

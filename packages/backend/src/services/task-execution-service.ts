@@ -8,7 +8,6 @@ import {
   uploadTaskContextAttachmentInputSchema,
   type CancelTaskRunInput,
   type ConversationDetail,
-  type ConversationMessage,
   type QueueTaskInput,
   type TaskContext,
   type Task,
@@ -32,6 +31,21 @@ import type { TaskContextAttachmentService } from "./task-context-attachment-ser
 import type { SessionArchiveService } from "./session-archive-service.js";
 import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
 import { createTaskRunContextService } from "./task-run-context-service.js";
+import {
+  createTaskRunMonitorService,
+  DEFAULT_TASK_RUN_MONITOR_CONFIG,
+  type TaskRunMonitorConfig,
+  type TaskRunMonitorOptions,
+} from "./task-run-monitor-service.js";
+import {
+  buildTaskRunErrorDetails,
+  createTaskRunTransport,
+  DEFAULT_TRANSPORT_RETRY_CONFIG,
+  mergeOpencodeMonitorMetadata,
+  readOptionalOpencodeMonitorMetadata,
+  type TaskRunTransportRetryConfig,
+  type TaskRunTransportRetryOptions,
+} from "./task-run-support.js";
 import {
   buildOpenCodeSessionPermissions,
   type TaskPermissionService,
@@ -66,49 +80,11 @@ type QueueSingleRunInput = Pick<
   | "triggerSource"
 >;
 
-type OpencodeMonitorMetadata = {
-  conversationId: string;
-  opencodeSessionId: string;
-  attemptedModel: string;
-  baselineMessageCount: number;
-  promptAcceptedAt: string;
-};
-
-type TaskRunMonitorOptions = {
-  autoStart?: boolean;
-  initialPollMs?: number;
-  maxPollMs?: number;
-  idlePolls?: number;
-  maxLifetimeMs?: number;
-};
-
-type TaskRunMonitorConfig = Required<TaskRunMonitorOptions>;
-
-type TaskRunMonitorHandle = {
-  runId: string;
-  startedAtMs: number;
-  delayMs: number;
-  idleCount: number;
-  lastStatus?: string;
-  lastAssistantMessageId?: string;
-  stopped: boolean;
-  timer?: ReturnType<typeof setTimeout>;
-};
-
 type AcceptedPromptEvidence = {
   conversation: ConversationDetail;
   reason: "monitor_metadata" | "messages" | "status";
   statusType?: string;
 };
-
-type TaskRunTransportRetryOptions = {
-  initialDelayMs?: number;
-  maxDelayMs?: number;
-  maxElapsedMs?: number;
-  jitterRatio?: number;
-};
-
-type TaskRunTransportRetryConfig = Required<TaskRunTransportRetryOptions>;
 
 type TaskRunDeferOptions = {
   initialDelayMs?: number;
@@ -121,27 +97,6 @@ type TaskRunDeferConfig = Required<TaskRunDeferOptions>;
 type AgentDrainDeferral = {
   delayMs: number;
   timer?: ReturnType<typeof setTimeout>;
-};
-
-type RetryStage =
-  | "task_session_create"
-  | "task_session_prompt"
-  | "task_session_status"
-  | "task_session_sync";
-
-const DEFAULT_TASK_RUN_MONITOR_CONFIG: TaskRunMonitorConfig = {
-  autoStart: true,
-  initialPollMs: 2_000,
-  maxPollMs: 10_000,
-  idlePolls: 2,
-  maxLifetimeMs: 6 * 60 * 60 * 1_000,
-};
-
-const DEFAULT_TRANSPORT_RETRY_CONFIG: TaskRunTransportRetryConfig = {
-  initialDelayMs: 500,
-  maxDelayMs: 10_000,
-  maxElapsedMs: 2 * 60 * 1_000,
-  jitterRatio: 0.2,
 };
 
 const DEFAULT_TASK_RUN_DEFER_CONFIG: TaskRunDeferConfig = {
@@ -178,8 +133,23 @@ export function createTaskExecutionService(options: {
     ...DEFAULT_TASK_RUN_DEFER_CONFIG,
     ...(options.defer ?? {}),
   };
-  const monitors = new Map<string, TaskRunMonitorHandle>();
   const agentDrainDeferrals = new Map<string, AgentDrainDeferral>();
+  const transport = createTaskRunTransport({
+    conversationService: options.conversationService,
+    logger: options.logger,
+    config: transportRetryConfig,
+  });
+  const monitorService = createTaskRunMonitorService({
+    taskService: options.taskService,
+    conversationService: options.conversationService,
+    transport,
+    config: monitorConfig,
+    logger: options.logger,
+    hooks: {
+      handleTerminalRun: (run) => handleTerminalRun(run, { triggerContext: readRunContext(run) }),
+      queueFallbackRun,
+    },
+  });
 
   return {
     async trigger(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
@@ -199,7 +169,7 @@ export function createTaskExecutionService(options: {
     },
 
     startTaskRunMonitor(runId: string): void {
-      startTaskRunMonitor(runId);
+      monitorService.start(runId);
     },
 
     async resumeRunningTaskRuns(): Promise<void> {
@@ -248,9 +218,7 @@ export function createTaskExecutionService(options: {
     },
 
     dispose(): void {
-      for (const handle of monitors.values()) {
-        stopTaskRunMonitor(handle);
-      }
+      monitorService.dispose();
 
       for (const deferral of agentDrainDeferrals.values()) {
         if (deferral.timer) {
@@ -258,7 +226,6 @@ export function createTaskExecutionService(options: {
         }
       }
 
-      monitors.clear();
       agentDrainDeferrals.clear();
     },
   };
@@ -366,7 +333,7 @@ export function createTaskExecutionService(options: {
         return resumeAcceptedPromptRun(run, existingEvidence);
       }
 
-      startTaskRunMonitor(run.id);
+      monitorService.start(run.id);
       options.logger?.info(
         {
           taskId: run.taskId,
@@ -455,7 +422,7 @@ export function createTaskExecutionService(options: {
         }
 
         if (monitorConfig.autoStart) {
-          startTaskRunMonitor(accepted.id);
+          monitorService.start(accepted.id);
         }
 
         return accepted;
@@ -490,19 +457,10 @@ export function createTaskExecutionService(options: {
         throw new NotFoundError("Task run not found.");
       }
 
-      const fallback = buildFallbackRunInput(errored, error);
-      if (fallback) {
-        notifyRunTerminal(errored);
-        const fallbackRun = await queueTask(errored.taskId, fallback);
-        options.logger?.warn(
-          {
-            taskId: errored.taskId,
-            previousRunId: errored.id,
-            fallbackRunId: fallbackRun.id,
-            model: fallback.model,
-          },
-          "task run errored, queued fallback model run",
-        );
+      const fallbackRun = await queueFallbackRun(errored, error, {
+        logMessage: "task run errored, queued fallback model run",
+      });
+      if (fallbackRun) {
         return fallbackRun;
       }
 
@@ -540,7 +498,7 @@ export function createTaskExecutionService(options: {
       throw new Error("Conversation service is required to create task run conversations.");
     }
 
-    return retryLocalOpenCodeCall(run, "task_session_create", () =>
+    return transport.retry(run, "task_session_create", () =>
       options.conversationService!.createTaskRunConversation({
         agentId: run.agentId,
         taskId: task.id,
@@ -565,7 +523,7 @@ export function createTaskExecutionService(options: {
     | { type: "started"; promptStart: TaskRunPromptStart }
     | { type: "accepted"; evidence: AcceptedPromptEvidence }
   > {
-    return retryLocalOpenCodeCall(run, "task_session_prompt", async (error) => {
+    return transport.retry(run, "task_session_prompt", async (error) => {
       if (error) {
         const latest = await findRun(run.id);
         const evidence = await readAcceptedPromptEvidence(latest);
@@ -593,7 +551,7 @@ export function createTaskExecutionService(options: {
     let conversation: ConversationDetail;
 
     try {
-      conversation = await syncTaskRunConversationWithRetry(run);
+      conversation = await transport.syncConversation(run);
     } catch (error) {
       if (error instanceof NotFoundError) {
         return undefined;
@@ -611,7 +569,7 @@ export function createTaskExecutionService(options: {
     let statusType: string | undefined;
 
     try {
-      const status = await getTaskRunSessionStatusWithRetry(run);
+      const status = await transport.getSessionStatus(run);
       statusType = status.type;
     } catch (error) {
       options.logger?.warn(
@@ -676,7 +634,7 @@ export function createTaskExecutionService(options: {
       },
       "task run prompt already appears accepted; resumed monitor instead of sending duplicate prompt",
     );
-    startTaskRunMonitor(accepted.id);
+    monitorService.start(accepted.id);
     return accepted;
   }
 
@@ -688,7 +646,7 @@ export function createTaskExecutionService(options: {
       return;
     }
 
-    startTaskRunMonitor(run.id);
+    monitorService.start(run.id);
   }
 
   async function abortOpenCodeTaskRun(run: TaskRun): Promise<void> {
@@ -711,491 +669,34 @@ export function createTaskExecutionService(options: {
     }
   }
 
-  async function getTaskRunSessionStatusWithRetry(
-    run: TaskRun,
-  ): Promise<Awaited<ReturnType<ConversationService["getTaskRunSessionStatus"]>>> {
-    return retryLocalOpenCodeCall(run, "task_session_status", () =>
-      options.conversationService!.getTaskRunSessionStatus(run.taskId, run.id),
-    );
-  }
+  /**
+   * Queue a fallback-model run for a provider/model error when one is eligible.
+   * Used by both the synchronous start path and the async monitor. Returns the
+   * queued fallback run, or undefined when no fallback applies.
+   */
+  async function queueFallbackRun(
+    errored: TaskRun,
+    error: unknown,
+    log: { logMessage?: string } = {},
+  ): Promise<TaskRun | undefined> {
+    const fallback = buildFallbackRunInput(errored, error);
 
-  async function syncTaskRunConversationWithRetry(run: TaskRun): Promise<ConversationDetail> {
-    return retryLocalOpenCodeCall(run, "task_session_sync", () =>
-      options.conversationService!.syncTaskRunConversation(run.taskId, run.id),
-    );
-  }
-
-  async function retryLocalOpenCodeCall<T>(
-    run: TaskRun,
-    stage: RetryStage,
-    operation: (previousError?: unknown) => Promise<T>,
-  ): Promise<T> {
-    const startedAtMs = Date.now();
-    let attempt = 1;
-    let previousError: unknown;
-
-    while (true) {
-      try {
-        return await operation(previousError);
-      } catch (error) {
-        if (!isRetryableLocalOpenCodeError(error)) {
-          throw error;
-        }
-
-        const elapsedMs = Date.now() - startedAtMs;
-        const delayMs = computeTransportRetryDelay(attempt, elapsedMs);
-
-        if (delayMs === undefined) {
-          throw error;
-        }
-
-        const cause = readErrorCauseSummary(error);
-        options.logger?.warn(
-          {
-            err: error,
-            taskId: run.taskId,
-            taskRunId: run.id,
-            opencodeSessionId: run.opencodeSessionId,
-            stage,
-            attempt,
-            nextDelayMs: delayMs,
-            errorName: error instanceof Error ? error.name : "UnknownError",
-            causeCode: cause.code,
-            causeMessage: cause.message,
-          },
-          "retrying local OpenCode task run call after transport failure",
-        );
-        previousError = error;
-        await sleep(delayMs);
-        attempt += 1;
-      }
-    }
-  }
-
-  function computeTransportRetryDelay(attempt: number, elapsedMs: number): number | undefined {
-    if (elapsedMs >= transportRetryConfig.maxElapsedMs) {
+    if (!fallback) {
       return undefined;
     }
 
-    const exponentialDelayMs = Math.min(
-      transportRetryConfig.maxDelayMs,
-      transportRetryConfig.initialDelayMs * 2 ** Math.max(0, attempt - 1),
-    );
-    const jitterMs =
-      transportRetryConfig.jitterRatio > 0
-        ? exponentialDelayMs * transportRetryConfig.jitterRatio * Math.random()
-        : 0;
-    const delayMs = Math.max(0, Math.round(exponentialDelayMs + jitterMs));
-    const remainingMs = transportRetryConfig.maxElapsedMs - elapsedMs;
-
-    return Math.min(delayMs, remainingMs);
-  }
-
-  function startTaskRunMonitor(runId: string): void {
-    if (!options.conversationService || monitors.has(runId)) {
-      return;
-    }
-
-    const handle: TaskRunMonitorHandle = {
-      runId,
-      startedAtMs: Date.now(),
-      delayMs: monitorConfig.initialPollMs,
-      idleCount: 0,
-      stopped: false,
-    };
-    monitors.set(runId, handle);
-    scheduleTaskRunMonitor(handle, 0);
-  }
-
-  function stopTaskRunMonitor(handle: TaskRunMonitorHandle): void {
-    handle.stopped = true;
-
-    if (handle.timer) {
-      clearTimeout(handle.timer);
-      handle.timer = undefined;
-    }
-  }
-
-  function scheduleTaskRunMonitor(handle: TaskRunMonitorHandle, delayMs: number): void {
-    if (handle.stopped) {
-      return;
-    }
-
-    handle.timer = setTimeout(() => {
-      void runTaskRunMonitorTick(handle);
-    }, delayMs);
-    handle.timer.unref?.();
-  }
-
-  async function runTaskRunMonitorTick(handle: TaskRunMonitorHandle): Promise<void> {
-    if (handle.stopped) {
-      return;
-    }
-
-    try {
-      const done = await pollTaskRunMonitor(handle);
-
-      if (done) {
-        monitors.delete(handle.runId);
-        stopTaskRunMonitor(handle);
-        return;
-      }
-
-      scheduleTaskRunMonitor(handle, handle.delayMs);
-    } catch (error) {
-      options.logger?.warn(
-        { err: error, runId: handle.runId },
-        "task run monitor poll failed; will retry",
-      );
-      handle.idleCount = 0;
-      handle.delayMs = nextMonitorDelay(handle.delayMs);
-      scheduleTaskRunMonitor(handle, handle.delayMs);
-    }
-  }
-
-  async function pollTaskRunMonitor(handle: TaskRunMonitorHandle): Promise<boolean> {
-    const run = await options.taskService.getRunById(handle.runId);
-
-    if (!run || run.status !== "running") {
-      return true;
-    }
-
-    if (!options.conversationService || !run.opencodeSessionId) {
-      return true;
-    }
-
-    if (isMonitorTimedOut(handle, run)) {
-      return finalizeTaskRunMonitorTimeout(handle, run);
-    }
-
-    let statusType: string | undefined;
-    let statusKnown = false;
-
-    try {
-      const status = await getTaskRunSessionStatusWithRetry(run);
-      statusType = status.type;
-      statusKnown = true;
-      handle.lastStatus = status.type;
-    } catch (error) {
-      options.logger?.warn(
-        { err: error, runId: run.id, opencodeSessionId: run.opencodeSessionId },
-        "task run monitor status read failed; will keep monitoring without advancing idle settle",
-      );
-    }
-
-    const conversation = await syncTaskRunConversationWithRetry(run);
-    const monitorMetadata = await ensureOpencodeMonitorMetadata(run, conversation);
-    const latestAssistant = readLatestAssistantMessage(
-      conversation.messages.slice(monitorMetadata.baselineMessageCount),
-    );
-
-    if (latestAssistant?.id) {
-      handle.lastAssistantMessageId = latestAssistant.id;
-    }
-
-    // A provider error in the assistant message is a definitive terminal signal,
-    // so finalize it regardless of whether the status read succeeded.
-    if (latestAssistant?.error) {
-      return finalizeTaskRunModelError(run, latestAssistant.error, monitorMetadata.attemptedModel);
-    }
-
-    if (statusType === "busy" || statusType === "retry") {
-      handle.idleCount = 0;
-      handle.delayMs = nextMonitorDelay(handle.delayMs);
-      return false;
-    }
-
-    if (!statusKnown) {
-      // OpenCode status is temporarily unavailable. Do not let an existing
-      // assistant message advance idle-settle detection, or the run could be
-      // marked completed while OpenCode is still busy. Keep polling with backoff
-      // until status is known again (or the monitor lifetime times out).
-      handle.idleCount = 0;
-      handle.delayMs = nextMonitorDelay(handle.delayMs);
-      return false;
-    }
-
-    if (!latestAssistant) {
-      handle.idleCount = 0;
-      handle.delayMs = monitorConfig.initialPollMs;
-      return false;
-    }
-
-    handle.idleCount += 1;
-    handle.delayMs = monitorConfig.initialPollMs;
-
-    if (handle.idleCount < monitorConfig.idlePolls) {
-      return false;
-    }
-
-    return finalizeTaskRunCompletion(run, conversation);
-  }
-
-  async function ensureOpencodeMonitorMetadata(
-    run: TaskRun,
-    conversation: ConversationDetail,
-  ): Promise<OpencodeMonitorMetadata> {
-    const existing = readOptionalOpencodeMonitorMetadata(run);
-
-    if (existing) {
-      return existing;
-    }
-
-    // A run can reach the monitor without persisted monitor metadata: startup
-    // resume of a running run, or a duplicate start with no accepted-prompt
-    // evidence. Reconstruct conservative metadata (baseline 0 so every synced
-    // message is in scope, unknown attempted model) and persist it so the monitor
-    // settles deterministically instead of throwing on every tick.
-    const reconstructed: OpencodeMonitorMetadata = {
-      conversationId: conversation.id,
-      opencodeSessionId: run.opencodeSessionId ?? conversation.opencodeSessionId,
-      attemptedModel: "unknown",
-      baselineMessageCount: 0,
-      promptAcceptedAt: new Date().toISOString(),
-    };
-
-    const updated = await options.taskService.updateRun(run.id, {
-      triggerMetadata: mergeOpencodeMonitorMetadata(run.triggerMetadata, reconstructed),
-    });
-
-    if (!updated) {
-      throw new NotFoundError("Task run not found.");
-    }
-
+    notifyRunTerminal(errored);
+    const fallbackRun = await queueTask(errored.taskId, fallback);
     options.logger?.warn(
       {
-        taskId: run.taskId,
-        taskRunId: run.id,
-        opencodeSessionId: reconstructed.opencodeSessionId,
-        conversationId: reconstructed.conversationId,
+        taskId: errored.taskId,
+        previousRunId: errored.id,
+        fallbackRunId: fallbackRun.id,
+        model: fallback.model,
       },
-      "task run monitor recovered missing OpenCode monitor metadata",
+      log.logMessage ?? "task run monitor observed provider error, queued fallback model run",
     );
-    return reconstructed;
-  }
-
-  async function finalizeTaskRunCompletion(
-    run: TaskRun,
-    conversation: { id: string; messageCount: number; messages: ConversationMessage[] },
-  ): Promise<boolean> {
-    const latest = await options.taskService.getRunById(run.id);
-
-    if (!latest || latest.status !== "running") {
-      return true;
-    }
-
-    const completed = await options.taskService.setRunStatus(latest.id, "completed", {
-      completedAt: new Date().toISOString(),
-      finalMessage: summarizeTaskRunConversation(conversation),
-      result: {
-        conversationId: conversation.id,
-        messageCount: conversation.messageCount,
-      },
-    });
-
-    if (!completed) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    await handleTerminalRun(completed, { triggerContext: readRunContext(completed) });
-    return true;
-  }
-
-  async function finalizeTaskRunModelError(
-    run: TaskRun,
-    modelError: TaskRunPromptError["modelError"],
-    attemptedModel: string,
-  ): Promise<boolean> {
-    const latest = await options.taskService.getRunById(run.id);
-
-    if (!latest || latest.status !== "running") {
-      return true;
-    }
-
-    const error = new TaskRunPromptError({ modelError, attemptedModel });
-    const errored = await options.taskService.setRunStatus(latest.id, "error", {
-      completedAt: new Date().toISOString(),
-      errorMessage: error.message,
-      errorDetails: buildTaskRunErrorDetails(error, latest),
-    });
-
-    if (!errored) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    const fallback = buildFallbackRunInput(errored, error);
-    if (fallback) {
-      notifyRunTerminal(errored);
-      const fallbackRun = await queueTask(errored.taskId, fallback);
-      options.logger?.warn(
-        {
-          taskId: errored.taskId,
-          previousRunId: errored.id,
-          fallbackRunId: fallbackRun.id,
-          model: fallback.model,
-        },
-        "task run monitor observed provider error, queued fallback model run",
-      );
-      return true;
-    }
-
-    await handleTerminalRun(errored, { triggerContext: readRunContext(errored) });
-    return true;
-  }
-
-  async function finalizeTaskRunMonitorTimeout(
-    handle: TaskRunMonitorHandle,
-    run: TaskRun,
-  ): Promise<boolean> {
-    let conversation:
-      | { id: string; messageCount: number; messages: ConversationMessage[] }
-      | undefined;
-
-    try {
-      conversation = options.conversationService
-        ? await syncTaskRunConversationWithRetry(run)
-        : undefined;
-      const monitorMetadata = readOptionalOpencodeMonitorMetadata(run);
-      const latestAssistant = readLatestAssistantMessage(
-        conversation?.messages.slice(monitorMetadata?.baselineMessageCount ?? 0) ?? [],
-      );
-
-      if (latestAssistant?.id) {
-        handle.lastAssistantMessageId = latestAssistant.id;
-      }
-    } catch (error) {
-      options.logger?.warn({ err: error, runId: run.id }, "task run monitor timeout sync failed");
-    }
-
-    const latest = await options.taskService.getRunById(run.id);
-
-    if (!latest || latest.status !== "running") {
-      return true;
-    }
-
-    const errored = await options.taskService.setRunStatus(latest.id, "error", {
-      completedAt: new Date().toISOString(),
-      errorMessage: "Task monitor timed out before OpenCode session settled.",
-      errorDetails: {
-        errorName: "TaskRunMonitorTimeout",
-        stage: "monitor_timeout",
-        opencodeSessionId: latest.opencodeSessionId,
-        elapsedRunMs: readElapsedRunMs(latest),
-        monitorElapsedMs: Date.now() - handle.startedAtMs,
-        lastStatus: handle.lastStatus,
-        lastAssistantMessageId: handle.lastAssistantMessageId,
-        conversationId: conversation?.id,
-        messageCount: conversation?.messageCount,
-      },
-    });
-
-    if (!errored) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    await handleTerminalRun(errored, { triggerContext: readRunContext(errored) });
-    return true;
-  }
-
-  function isMonitorTimedOut(handle: TaskRunMonitorHandle, run: TaskRun): boolean {
-    const startedAtMs = run.startedAt ? Date.parse(run.startedAt) : handle.startedAtMs;
-    const elapsedMs = Date.now() - (Number.isNaN(startedAtMs) ? handle.startedAtMs : startedAtMs);
-
-    return elapsedMs >= monitorConfig.maxLifetimeMs;
-  }
-
-  function nextMonitorDelay(currentDelayMs: number): number {
-    return Math.min(
-      monitorConfig.maxPollMs,
-      Math.max(monitorConfig.initialPollMs, currentDelayMs * 2),
-    );
-  }
-
-  function buildTaskRunErrorDetails(error: unknown, run: TaskRun): Record<string, unknown> {
-    if (error instanceof TaskRunPromptError) {
-      return {
-        errorName: error.modelError.name,
-        attemptedModel: error.attemptedModel,
-        modelError: error.modelError,
-        stage: "task_session_prompt",
-      };
-    }
-
-    const details: Record<string, unknown> = {
-      errorName: error instanceof Error ? error.name : "UnknownError",
-      stage: run.opencodeSessionId ? "task_session_prompt" : "task_session_create",
-    };
-
-    if (error instanceof Error) {
-      details["message"] = error.message;
-      appendCauseDetails(details, error);
-    }
-
-    if (run.opencodeSessionId) {
-      details["opencodeSessionId"] = run.opencodeSessionId;
-    }
-
-    const elapsedRunMs = readElapsedRunMs(run);
-    if (elapsedRunMs !== undefined) {
-      details["elapsedRunMs"] = elapsedRunMs;
-    }
-
-    return details;
-  }
-
-  function appendCauseDetails(details: Record<string, unknown>, error: Error): void {
-    const cause = (error as Error & { cause?: unknown }).cause;
-
-    if (!cause) {
-      return;
-    }
-
-    if (cause instanceof Error) {
-      details["causeName"] = cause.name;
-      details["causeMessage"] = cause.message;
-      appendCauseCode(details, cause);
-      return;
-    }
-
-    if (isRecord(cause)) {
-      const name = readString(cause, "name");
-      const message = readString(cause, "message");
-      const code = readString(cause, "code");
-
-      if (name) {
-        details["causeName"] = name;
-      }
-
-      if (message) {
-        details["causeMessage"] = message;
-      }
-
-      if (code) {
-        details["causeCode"] = code;
-      }
-    }
-  }
-
-  function appendCauseCode(details: Record<string, unknown>, error: Error): void {
-    const code = (error as Error & { code?: unknown }).code;
-
-    if (typeof code === "string" && code.trim()) {
-      details["causeCode"] = code;
-    }
-  }
-
-  function readElapsedRunMs(run: TaskRun): number | undefined {
-    if (!run.startedAt) {
-      return undefined;
-    }
-
-    const startedAtMs = Date.parse(run.startedAt);
-
-    if (Number.isNaN(startedAtMs)) {
-      return undefined;
-    }
-
-    return Math.max(0, Date.now() - startedAtMs);
+    return fallbackRun;
   }
 
   function buildFallbackRunInput(
@@ -1675,179 +1176,6 @@ function readScheduledAtFromTrigger(trigger: QueueTaskInput): string | undefined
   return typeof scheduledAt === "string" ? scheduledAt : undefined;
 }
 
-function mergeOpencodeMonitorMetadata(
-  triggerMetadata: Record<string, unknown> | undefined,
-  opencodeMonitor: OpencodeMonitorMetadata,
-): Record<string, unknown> {
-  return {
-    ...(triggerMetadata ?? {}),
-    opencodeMonitor,
-  };
-}
-
-function readOptionalOpencodeMonitorMetadata(run: TaskRun): OpencodeMonitorMetadata | undefined {
-  const value = run.triggerMetadata?.["opencodeMonitor"];
-
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const conversationId = readString(value, "conversationId");
-  const opencodeSessionId = readString(value, "opencodeSessionId");
-  const attemptedModel = readString(value, "attemptedModel");
-  const promptAcceptedAt = readString(value, "promptAcceptedAt");
-  const baselineMessageCount =
-    typeof value["baselineMessageCount"] === "number" &&
-    Number.isInteger(value["baselineMessageCount"]) &&
-    value["baselineMessageCount"] >= 0
-      ? value["baselineMessageCount"]
-      : undefined;
-
-  if (
-    !conversationId ||
-    !opencodeSessionId ||
-    !attemptedModel ||
-    !promptAcceptedAt ||
-    baselineMessageCount === undefined
-  ) {
-    return undefined;
-  }
-
-  return {
-    conversationId,
-    opencodeSessionId,
-    attemptedModel,
-    baselineMessageCount,
-    promptAcceptedAt,
-  };
-}
-
-function readLatestAssistantMessage(
-  messages: ConversationMessage[],
-): ConversationMessage | undefined {
-  return messages.findLast((message) => message.role === "assistant");
-}
-
-function summarizeTaskRunConversation(conversation: { messages: ConversationMessage[] }): string {
-  const latestAssistant = readLatestAssistantMessage(conversation.messages);
-
-  if (!latestAssistant) {
-    return "Task completed. No assistant summary was recorded.";
-  }
-
-  const content = latestAssistant.content.trim();
-  return content.length > 0 ? content : "Task completed.";
-}
-
-function isRetryableLocalOpenCodeError(error: unknown): boolean {
-  if (error instanceof TaskRunPromptError) {
-    return false;
-  }
-
-  const statusCode = readErrorStatusCode(error);
-  if (statusCode === 502 || statusCode === 503 || statusCode === 504) {
-    return true;
-  }
-
-  const text = collectErrorText(error).join(" ").toLowerCase();
-
-  return [
-    "fetch failed",
-    "econnrefused",
-    "econnreset",
-    "epipe",
-    "und_err_socket",
-    "und_err_headers_timeout",
-    "headers timeout",
-    "header timeout",
-    "socket closed",
-    "socket hang up",
-    "aborted",
-    "aborterror",
-    "timeout",
-    "timed out",
-  ].some((marker) => text.includes(marker));
-}
-
-function collectErrorText(error: unknown, seen = new Set<unknown>()): string[] {
-  if (!error || seen.has(error)) {
-    return [];
-  }
-
-  seen.add(error);
-
-  if (error instanceof Error) {
-    return [
-      error.name,
-      error.message,
-      ...collectErrorText((error as Error & { cause?: unknown }).cause, seen),
-    ];
-  }
-
-  if (!isRecord(error)) {
-    return typeof error === "string" ? [error] : [];
-  }
-
-  const values: string[] = [];
-  for (const key of ["name", "message", "code", "statusText"]) {
-    const value = error[key];
-
-    if (typeof value === "string") {
-      values.push(value);
-    }
-  }
-
-  values.push(...collectErrorText(error["cause"], seen));
-  values.push(...collectErrorText(error["data"], seen));
-  return values;
-}
-
-function readErrorStatusCode(error: unknown): number | undefined {
-  if (!isRecord(error)) {
-    return undefined;
-  }
-
-  for (const key of ["statusCode", "status"]) {
-    const value = error[key];
-
-    if (typeof value === "number") {
-      return value;
-    }
-  }
-
-  return readErrorStatusCode(error["cause"]) ?? readErrorStatusCode(error["data"]);
-}
-
-function readErrorCauseSummary(error: unknown): { code?: string; message?: string } {
-  const cause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
-
-  if (cause instanceof Error) {
-    return {
-      code:
-        typeof (cause as Error & { code?: unknown }).code === "string"
-          ? (cause as Error & { code: string }).code
-          : undefined,
-      message: cause.message,
-    };
-  }
-
-  if (isRecord(cause)) {
-    return {
-      code: readString(cause, "code"),
-      message: readString(cause, "message"),
-    };
-  }
-
-  return {};
-}
-
-async function sleep(delayMs: number): Promise<void> {
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, delayMs);
-    timer.unref?.();
-  });
-}
-
 function hasSuccessfulSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
   return runs.some(
     (run) =>
@@ -1863,13 +1191,4 @@ function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
   return runs.some(
     (run) => run.subtaskId === subtaskId && run.status !== "queued" && run.status !== "running",
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readString(record: Record<string, unknown>, key: string): string | undefined {
-  const value = record[key];
-  return typeof value === "string" && value.trim() ? value : undefined;
 }
