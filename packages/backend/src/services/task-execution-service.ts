@@ -753,10 +753,9 @@ export function createTaskExecutionService(options: {
     const willRequeue = requeue.enabled && nextRequeueCount <= requeue.limit;
     const limitReached = requeue.enabled && !willRequeue;
 
-    const minutes = Math.max(1, Math.round(details.noProgressMs / 60_000));
     const cancellationReason =
-      `Automatically cancelled: OpenCode produced no new output for ${String(minutes)} ` +
-      `minute(s) (stall timeout)` +
+      `Automatically cancelled: OpenCode produced no new output for ` +
+      `${formatStallDuration(details.noProgressMs)} (stall timeout)` +
       `${latest.opencodeSessionId ? `; session ${latest.opencodeSessionId}` : ""}.` +
       `${limitReached ? ` Requeue limit (${String(requeue.limit)}) reached; not requeued.` : ""}`;
 
@@ -1369,6 +1368,20 @@ export function createTaskExecutionService(options: {
 
     return Math.max(0, Math.round(cappedDelayMs + jitterMs));
   }
+}
+
+// Render a stall window for the operator-facing cancellation reason. Production
+// values are whole minutes, but the monitor config is in milliseconds and may be
+// sub-minute (or non-integer minutes), so report what was actually configured.
+function formatStallDuration(ms: number): string {
+  if (ms < 60_000) {
+    const seconds = Math.max(1, Math.round(ms / 1_000));
+    return `${String(seconds)} second(s)`;
+  }
+
+  const minutes = ms / 60_000;
+  const rounded = Number.isInteger(minutes) ? minutes : Math.round(minutes * 10) / 10;
+  return `${String(rounded)} minute(s)`;
 }
 
 function readScheduledAtFromTrigger(trigger: QueueTaskInput): string | undefined {

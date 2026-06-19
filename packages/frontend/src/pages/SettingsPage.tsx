@@ -658,7 +658,7 @@ function TasksTab() {
   const [requeueLimit, setRequeueLimit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<{ title: string; description: string }>();
 
   const requeueLimitInvalid =
     requeueAfterStall && (!Number.isInteger(requeueLimit) || requeueLimit < 1);
@@ -676,7 +676,10 @@ function TasksTab() {
       })
       .catch((nextError: unknown) => {
         if (cancelled) return;
-        setError(nextError instanceof Error ? nextError.message : "Failed to load settings.");
+        setError({
+          title: "Could not load task execution settings.",
+          description: nextError instanceof Error ? nextError.message : "Failed to load settings.",
+        });
         setLoading(false);
       });
     return () => {
@@ -699,7 +702,10 @@ function TasksTab() {
       setRequeueAfterStall(settings.taskRunMonitorRequeueAfterStall);
       setRequeueLimit(settings.taskRunMonitorRequeueLimit);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Failed to save settings.");
+      setError({
+        title: "Could not save task execution settings.",
+        description: nextError instanceof Error ? nextError.message : "Failed to save settings.",
+      });
     } finally {
       setSaving(false);
     }
@@ -719,9 +725,7 @@ function TasksTab() {
           &ldquo;running&rdquo; indefinitely.
         </p>
       </div>
-      {error ? (
-        <ErrorState description={error} title="Could not save task execution settings." />
-      ) : null}
+      {error ? <ErrorState description={error.description} title={error.title} /> : null}
       <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
         <span className="font-medium">No-progress (stall) timeout (minutes)</span>
         <input
