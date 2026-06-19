@@ -1537,7 +1537,7 @@ function TaskDetailPanel(props: {
                     </div>
                   </form>
                 ) : (
-                  <button
+                  <div
                     aria-label="Edit task prompt"
                     className="w-full min-w-0 break-words rounded-md border border-transparent p-3 text-left text-sm leading-6 text-text-secondary transition hover:border-border hover:bg-surface hover:text-text-primary focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 [overflow-wrap:anywhere]"
                     data-testid="task-prompt-edit"
@@ -1545,10 +1545,27 @@ function TaskDetailPanel(props: {
                       setPromptDraft(createTaskPromptValue(task.description));
                       setIsPromptEditing(true);
                     }}
-                    type="button"
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") {
+                        return;
+                      }
+
+                      event.preventDefault();
+                      setPromptDraft(createTaskPromptValue(task.description));
+                      setIsPromptEditing(true);
+                    }}
+                    role="button"
+                    tabIndex={0}
                   >
-                    {task.description || "No description provided."}
-                  </button>
+                    {task.description ? (
+                      <Markdown
+                        className="text-inherit [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
+                        content={task.description}
+                      />
+                    ) : (
+                      "No description provided."
+                    )}
+                  </div>
                 )}
                 {latestRunResult ? (
                   <div className={readResultClassName(readBoardStatus(task))}>
