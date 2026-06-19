@@ -1,5 +1,32 @@
 # Plan: OpenCode Task Reliability
 
+**Status:** Complete.
+
+## Completion Audit
+
+- Phase 1 diagnostics: implemented in `buildTaskRunErrorDetails()` with transport
+  cause details and provider/model error preservation.
+- Phase 2 session status: implemented through `opencodeService.listSessionStatuses()`
+  and `getSessionStatus()`.
+- Phase 3 async task starts: task runs now use `startTaskRunPrompt()` and
+  `promptSessionAsync()` with persisted `opencodeMonitor` metadata.
+- Phase 4 monitor/finalizer: task monitors poll OpenCode status, sync messages,
+  debounce idle completion, handle provider errors/fallbacks, enforce monitor
+  timeout, resume running runs, finalize archives, and drain the next queued run.
+- Phase 5 duplicate prompt prevention: accepted-prompt evidence and the
+  per-run monitor registry prevent duplicate in-flight prompts.
+- Phase 6 cancellation abort: cancelling a running task best-effort aborts the
+  linked OpenCode session and cancelled runs are not overwritten by monitors.
+- Phase 7 local retries: short local OpenCode transport calls retry with bounded
+  backoff and accepted-prompt inspection before any prompt resend.
+- Phase 8 unhealthy deferral: queued runs stay queued while OpenCode is unhealthy
+  and resume draining after the engine is healthy again.
+- Phase 9 startup decoupling: CommandsCenter starts in degraded mode if OpenCode
+  startup fails, exposes the engine state, and retries OpenCode startup in the
+  background within the restart budget.
+- Operational diagnostics: extracted to
+  `docs/runbooks/opencode-task-reliability.md`.
+
 ## Goal
 
 Make task execution reliable for long-running OpenCode sessions.
@@ -486,9 +513,9 @@ blast radius than the task monitor change.
 
 ## Operational Diagnostics
 
-Document a short operator checklist for the next incident. Keep this in the plan
-for implementation, then extract it into a runbook doc before the reliability PR
-is considered complete:
+Document a short operator checklist for the next incident. The reusable runbook
+now lives at `docs/runbooks/opencode-task-reliability.md`; this copy remains as
+implementation context for the reliability plan:
 
 ```bash
 date

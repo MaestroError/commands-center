@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   logOwnerClaimStartupInstructions,
   logPublicBindingGuidance,
+  startOpenCodeEngineBestEffort,
 } from "../../src/lib/start-server-runtime";
 import { loadRuntimeConfig } from "../../src/lib/runtime-config";
 
@@ -120,9 +121,80 @@ describe("startup public binding guidance", () => {
   });
 });
 
+describe("best-effort OpenCode startup", () => {
+  it("keeps CommandsCenter startup non-blocking when OpenCode start fails", async () => {
+    const logger = createLoggerMock();
+    const orchestrator = {
+      start: vi.fn().mockRejectedValue(new Error("OpenCode did not become healthy.")),
+      getStatus: vi.fn(() => ({
+        state: "unhealthy" as const,
+        healthy: false,
+        url: "http://127.0.0.1:4100",
+        workspaceDir: "/tmp/project/.cc/workspace",
+        restartCount: 3,
+        maxRestarts: 3,
+      })),
+    };
+
+    const handle = startOpenCodeEngineBestEffort({
+      orchestrator,
+      logger: logger as never,
+      retryDelayMs: 1,
+    });
+
+    try {
+      await vi.waitFor(() => expect(logger.error).toHaveBeenCalled());
+
+      expect(orchestrator.start).toHaveBeenCalledOnce();
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          err: expect.any(Error),
+          engineState: "unhealthy",
+        }),
+        "opencode startup failed; CommandsCenter will continue running in degraded mode",
+      );
+    } finally {
+      handle.dispose();
+    }
+  });
+
+  it("retries failed OpenCode startup within the configured restart budget", async () => {
+    const logger = createLoggerMock();
+    const orchestrator = {
+      start: vi.fn().mockRejectedValueOnce(new Error("OpenCode did not become healthy.")),
+      getStatus: vi.fn(() => ({
+        state: "unhealthy" as const,
+        healthy: false,
+        url: "http://127.0.0.1:4100",
+        workspaceDir: "/tmp/project/.cc/workspace",
+        restartCount: 0,
+        maxRestarts: 3,
+      })),
+    };
+
+    const handle = startOpenCodeEngineBestEffort({
+      orchestrator,
+      logger: logger as never,
+      retryDelayMs: 1,
+    });
+
+    try {
+      await vi.waitFor(() => expect(orchestrator.start).toHaveBeenCalledTimes(2));
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ retryAttempts: 0 }),
+        "opencode startup failed; CommandsCenter will continue running in degraded mode",
+      );
+    } finally {
+      handle.dispose();
+    }
+  });
+});
+
 function createLoggerMock() {
   return {
     info: vi.fn(),
     warn: vi.fn(),
+    error: vi.fn(),
   };
 }

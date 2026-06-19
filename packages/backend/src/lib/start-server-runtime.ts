@@ -111,6 +111,10 @@ export type StartedServerRuntime = RuntimeContext & {
   drain: (signal: NodeJS.Signals | "manual") => Promise<void>;
 };
 
+export type OpenCodeStartupHandle = {
+  dispose(): void;
+};
+
 export async function startServerRuntime(
   options?: StartServerRuntimeOptions,
 ): Promise<StartedServerRuntime> {
@@ -252,6 +256,7 @@ export async function startServerRuntime(
     logger,
   });
 
+  const openCodeStartupRef: { current?: OpenCodeStartupHandle } = {};
   const drainController = createDrainController({
     logger,
     timeoutMs: config.timeouts.drainMs,
@@ -260,6 +265,7 @@ export async function startServerRuntime(
         await server.close();
       },
       terminateChildProcesses: async () => {
+        openCodeStartupRef.current?.dispose();
         taskExecutionService.dispose();
         systemVersionService.stop();
         taskSchedulerService.stop();
@@ -286,7 +292,11 @@ export async function startServerRuntime(
     installSignalHandlers(drainController.drain, logger);
   }
 
-  await orchestrator.start();
+  openCodeStartupRef.current = startOpenCodeEngineBestEffort({
+    orchestrator,
+    logger,
+    retryDelayMs: config.timeouts.opencodeHealthPollMs,
+  });
   void taskExecutionService.resumeRunningTaskRuns().catch((error: unknown) => {
     logger.error({ err: error }, "task run monitor resume failed");
   });
@@ -316,6 +326,82 @@ export async function startServerRuntime(
     ...context,
     server,
     drain: drainController.drain,
+  };
+}
+
+export function startOpenCodeEngineBestEffort(options: {
+  orchestrator: Pick<OpenCodeOrchestrator, "start" | "getStatus">;
+  logger: Logger;
+  retryDelayMs: number;
+}): OpenCodeStartupHandle {
+  let disposed = false;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let retryAttempts = 0;
+
+  const scheduleRetry = (): void => {
+    if (disposed || retryTimer) {
+      return;
+    }
+
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      void start();
+    }, options.retryDelayMs);
+    retryTimer.unref?.();
+  };
+
+  const start = async (): Promise<void> => {
+    try {
+      await options.orchestrator.start();
+      retryAttempts = 0;
+    } catch (error) {
+      if (disposed) {
+        return;
+      }
+
+      const status = options.orchestrator.getStatus();
+      const remainingRestartBudget = Math.max(0, status.maxRestarts - status.restartCount);
+
+      options.logger.error(
+        {
+          err: error,
+          engineState: status.state,
+          restartCount: status.restartCount,
+          maxRestarts: status.maxRestarts,
+          retryAttempts,
+        },
+        "opencode startup failed; CommandsCenter will continue running in degraded mode",
+      );
+
+      if (retryAttempts >= remainingRestartBudget) {
+        options.logger.error(
+          {
+            engineState: status.state,
+            restartCount: status.restartCount,
+            maxRestarts: status.maxRestarts,
+            retryAttempts,
+          },
+          "opencode startup retry limit reached",
+        );
+        return;
+      }
+
+      retryAttempts += 1;
+      scheduleRetry();
+    }
+  };
+
+  void start();
+
+  return {
+    dispose(): void {
+      disposed = true;
+
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = undefined;
+      }
+    },
   };
 }
 
