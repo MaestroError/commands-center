@@ -6,7 +6,14 @@ import type { Logger } from "pino";
 
 import type { AppDb } from "../../src/db/client";
 import { agents } from "../../src/db/schema/index";
-import { createConversationService } from "../../src/services/conversation-service";
+import type {
+  EngineStatus,
+  OpenCodeOrchestrator,
+} from "../../src/orchestrator/opencode-orchestrator";
+import {
+  createConversationService,
+  TaskRunPromptError,
+} from "../../src/services/conversation-service";
 import { createTaskPermissionService } from "../../src/services/task-permission-service";
 import { createTaskExecutionService as createBaseTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskService } from "../../src/services/task-service";
@@ -356,7 +363,11 @@ describe("createTaskExecutionService", () => {
       config: testDb.config,
       opencodeService,
     });
-    const executionService = createTaskExecutionService({ taskService, conversationService });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 5, jitterRatio: 0 },
+    });
 
     try {
       const agent = await insertAgent(testDb.client.db);
@@ -382,6 +393,166 @@ describe("createTaskExecutionService", () => {
         causeCode: "UND_ERR_HEADERS_TIMEOUT",
       });
       expect(failedRun?.errorDetails?.["elapsedRunMs"]).toEqual(expect.any(Number));
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not retry model prompt errors through the local transport retry path", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const baseConversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const promptError = new TaskRunPromptError({
+      attemptedModel: "openai/gpt-4.1",
+      modelError: {
+        name: "APIError",
+        message: "Provider rejected the request.",
+        data: { statusCode: 400, isRetryable: false },
+      },
+    });
+    const startTaskRunPrompt = vi.fn(() => Promise.reject(promptError));
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService: {
+        ...baseConversationService,
+        startTaskRunPrompt,
+      },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Provider prompt failure",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      expect(startTaskRunPrompt).toHaveBeenCalledTimes(1);
+      expect((await taskService.getRunById(run.id))?.errorDetails).toMatchObject({
+        errorName: "APIError",
+        attemptedModel: "openai/gpt-4.1",
+        stage: "task_session_prompt",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("retries local transport failures while creating task OpenCode sessions", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      createSessionErrors: [createLocalTransportError("ECONNREFUSED")],
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Retry session create",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      expect(opencodeService.createSession).toHaveBeenCalledTimes(2);
+      expect((await taskService.getRunById(run.id))?.opencodeSessionId).toBe("session-1");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("retries async prompt start when local transport fails before acceptance", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      promptTransportErrors: [createLocalTransportError("ECONNRESET")],
+      onPrompt: (input) => prompts.push(input),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Retry prompt start",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(prompts).toHaveLength(2);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("resumes monitoring when async prompt response is lost after acceptance", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      promptPostAcceptErrors: [createLocalTransportError("UND_ERR_SOCKET")],
+      onPrompt: (input) => prompts.push(input),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Lost prompt response",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(prompts).toHaveLength(1);
+      expect((await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"]).toEqual(
+        expect.objectContaining({ opencodeSessionId: "session-1" }),
+      );
     } finally {
       await testDb.cleanup();
     }
@@ -982,6 +1153,43 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("retries transient local status failures while monitoring task sessions", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const statusReads = vi.fn();
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      sessionStatusErrors: [createLocalTransportError("UND_ERR_SOCKET")],
+      onStatus: statusReads,
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Retry monitor status",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(statusReads).toHaveBeenCalledTimes(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("queues fallback runs when the monitor observes a provider error", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -1185,6 +1393,121 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("keeps queued task runs queued while OpenCode is unhealthy", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ onPrompt: (input) => prompts.push(input) }),
+    });
+    const orchestrator = createMockOrchestrator({ healthy: false });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      orchestrator,
+      defer: { initialDelayMs: 10, maxDelayMs: 10, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Deferred task",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expect.poll(() => orchestrator.getStatus.mock.calls.length).toBeGreaterThan(0);
+      expect((await taskService.getRunById(run.id))?.status).toBe("queued");
+      expect(prompts).toHaveLength(0);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("starts deferred queued task runs after OpenCode becomes healthy", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        completeAsyncPrompt: true,
+        onPrompt: (input) => prompts.push(input),
+      }),
+    });
+    const orchestrator = createMockOrchestrator({ healthy: false });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      orchestrator,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+      defer: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Deferred then healthy",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expect.poll(() => orchestrator.getStatus.mock.calls.length).toBeGreaterThan(0);
+      expect((await taskService.getRunById(run.id))?.status).toBe("queued");
+
+      orchestrator.setHealthy(true);
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(prompts).toHaveLength(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps deferred queued task runs cancellable", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ onPrompt: (input) => prompts.push(input) }),
+    });
+    const orchestrator = createMockOrchestrator({ healthy: false });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      orchestrator,
+      defer: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Deferred cancel",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expect.poll(() => orchestrator.getStatus.mock.calls.length).toBeGreaterThan(0);
+      const cancelled = await executionService.cancel(run.id, { reason: "Stop before engine." });
+
+      orchestrator.setHealthy(true);
+
+      expect(cancelled.status).toBe("cancelled");
+      await expectRunStatus(taskService, run.id, "cancelled");
+      expect(prompts).toHaveLength(0);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("rejects manual triggers for disabled tasks", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -1312,6 +1635,42 @@ function createDeferred<T>(): {
   return { promise, resolve, reject };
 }
 
+function createLocalTransportError(
+  code = "ECONNRESET",
+): TypeError & { cause: Error & { code: string } } {
+  const cause = new Error(`${code} while calling OpenCode`) as Error & { code: string };
+  cause.code = code;
+  const error = new TypeError("fetch failed") as TypeError & { cause: Error & { code: string } };
+  error.cause = cause;
+  return error;
+}
+
+function createMockOrchestrator(input: { healthy: boolean }): Pick<
+  OpenCodeOrchestrator,
+  "getStatus"
+> & {
+  getStatus: ReturnType<typeof vi.fn<() => EngineStatus>>;
+  setHealthy: (nextHealthy: boolean) => void;
+} {
+  let healthy = input.healthy;
+  const getStatus = vi.fn<() => EngineStatus>(() => ({
+    state: healthy ? "healthy" : "unhealthy",
+    healthy,
+    url: "http://127.0.0.1:4100",
+    workspaceDir: "/tmp/cc-test-workspace",
+    lastError: healthy ? undefined : "OpenCode is not healthy.",
+    restartCount: 0,
+    maxRestarts: 3,
+  }));
+
+  return {
+    getStatus,
+    setHealthy(nextHealthy: boolean): void {
+      healthy = nextHealthy;
+    },
+  };
+}
+
 type MockProviderList = {
   all: { id: string; models: Record<string, unknown> }[];
   default: Record<string, string>;
@@ -1331,6 +1690,11 @@ function createMockOpenCodeService(
       text: string;
     }) => { name: string; message: string; data?: Record<string, unknown> } | undefined;
     promptTransportError?: Error;
+    promptTransportErrors?: Error[];
+    promptPostAcceptErrors?: Error[];
+    createSessionErrors?: Error[];
+    listSessionMessagesErrors?: Error[];
+    sessionStatusErrors?: Error[];
     completeAsyncPrompt?: boolean;
     statusSequence?: OpenCodeSessionStatus[];
     onStatus?: () => void;
@@ -1340,6 +1704,11 @@ function createMockOpenCodeService(
   const sessions = new Map<string, OpenCodeSession>();
   const messages = new Map<string, OpenCodeSessionMessage[]>();
   const statusSequence = [...(options.statusSequence ?? [])];
+  const promptTransportErrors = [...(options.promptTransportErrors ?? [])];
+  const promptPostAcceptErrors = [...(options.promptPostAcceptErrors ?? [])];
+  const createSessionErrors = [...(options.createSessionErrors ?? [])];
+  const listSessionMessagesErrors = [...(options.listSessionMessagesErrors ?? [])];
+  const sessionStatusErrors = [...(options.sessionStatusErrors ?? [])];
   let sessionCount = 0;
   let messageCount = 0;
   let time = Date.parse("2026-06-01T12:00:00.000Z");
@@ -1356,6 +1725,12 @@ function createMockOpenCodeService(
 
   return {
     createSession: vi.fn((_directory: string, sessionOptions?: CreateOpenCodeSessionOptions) => {
+      const error = createSessionErrors.shift();
+
+      if (error) {
+        throw error;
+      }
+
       sessionCount += 1;
       const session: OpenCodeSession = {
         id: `session-${String(sessionCount)}`,
@@ -1375,10 +1750,23 @@ function createMockOpenCodeService(
 
       return Promise.resolve(session);
     },
-    listSessionMessages: (_directory: string, sessionID: string) =>
-      Promise.resolve(messages.get(sessionID) ?? []),
+    listSessionMessages: (_directory: string, sessionID: string) => {
+      const error = listSessionMessagesErrors.shift();
+
+      if (error) {
+        throw error;
+      }
+
+      return Promise.resolve(messages.get(sessionID) ?? []);
+    },
     listSessionStatuses: () => Promise.resolve({}),
     getSessionStatus: () => {
+      const error = sessionStatusErrors.shift();
+
+      if (error) {
+        throw error;
+      }
+
       options.onStatus?.();
       return Promise.resolve(statusSequence.shift() ?? { type: "idle" });
     },
@@ -1403,8 +1791,10 @@ function createMockOpenCodeService(
       options.onPrompt?.({ model, text });
       await (options.promptGates?.shift() ?? options.promptGate);
 
-      if (options.promptTransportError) {
-        throw options.promptTransportError;
+      const transportError = promptTransportErrors.shift() ?? options.promptTransportError;
+
+      if (transportError) {
+        throw transportError;
       }
 
       const sessionMessages = messages.get(sessionID);
@@ -1448,8 +1838,10 @@ function createMockOpenCodeService(
       options.onPrompt?.({ model, text });
       await (options.promptGates?.shift() ?? options.promptGate);
 
-      if (options.promptTransportError) {
-        throw options.promptTransportError;
+      const transportError = promptTransportErrors.shift() ?? options.promptTransportError;
+
+      if (transportError) {
+        throw transportError;
       }
 
       const sessionMessages = messages.get(sessionID);
@@ -1484,6 +1876,12 @@ function createMockOpenCodeService(
       }
 
       session.time.updated = nextTime();
+
+      const postAcceptError = promptPostAcceptErrors.shift();
+
+      if (postAcceptError) {
+        throw postAcceptError;
+      }
     },
   } as unknown as OpenCodeService;
 

@@ -100,6 +100,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       db: context.database.db,
       taskService: service,
       conversationService,
+      orchestrator: context.orchestrator,
       taskContextAttachmentService,
       logger: context.logger,
       archiveService: context.sessionArchiveService,

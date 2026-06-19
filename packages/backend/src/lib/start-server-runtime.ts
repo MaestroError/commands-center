@@ -189,6 +189,7 @@ export async function startServerRuntime(
     db: database.db,
     taskService,
     conversationService,
+    orchestrator,
     taskContextAttachmentService,
     taskPermissionService,
     logger,
