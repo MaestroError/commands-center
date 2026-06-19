@@ -527,6 +527,20 @@ export function createConversationService(options: {
       );
     },
 
+    async abortTaskRunConversation(taskId: string, taskRunId: string): Promise<void> {
+      const conversation = await getTaskRunConversationRow(taskId, taskRunId);
+
+      if (!conversation) {
+        throw new NotFoundError("Task run session not found.");
+      }
+
+      const agent = await getAgent(conversation.agent_id);
+      await options.opencodeService.abortSession(
+        agent.workspace_path,
+        conversation.opencode_session_id,
+      );
+    },
+
     async updateTitle(conversationId: string, title: string): Promise<void> {
       const cleaned = cleanTitle(title);
       if (!cleaned) return;

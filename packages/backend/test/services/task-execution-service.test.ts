@@ -241,6 +241,106 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("does not send a duplicate async prompt when a running run is started again", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      onPrompt: (input) => prompts.push(input),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Duplicate start",
+        description: "Only prompt once.",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      const restarted = await executionService.runQueuedTask(run.id);
+
+      expect(restarted.status).toBe("running");
+      expect(prompts).toHaveLength(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("resumes monitoring instead of prompting when a queued run already has session messages", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Existing session",
+        description: "Prompt was already accepted.",
+      });
+      const run = await taskService.createRun({
+        id: `run-${crypto.randomUUID()}`,
+        taskId: task.id,
+        agentId: agent.id,
+        status: "queued",
+        triggerSource: "manual",
+        renderedPrompt: "Continue existing session.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Existing session",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await opencodeService.promptSessionAsync({
+        directory: "unused",
+        sessionID: conversation.opencodeSessionId,
+        agent: "agent",
+        model: { providerID: "openai", modelID: "gpt-4.1" },
+        text: "Already accepted.",
+      });
+
+      const resumed = await executionService.runQueuedTask(run.id);
+      const detail = await conversationService.syncTaskRunConversation(task.id, run.id);
+
+      expect(resumed.status).toBe("running");
+      expect(detail.messages).toHaveLength(1);
+      expect((await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"]).toEqual(
+        expect.objectContaining({
+          conversationId: conversation.id,
+          opencodeSessionId: conversation.opencodeSessionId,
+          baselineMessageCount: 0,
+        }),
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("stores transport cause details when async prompt acceptance fails", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -772,6 +872,78 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("aborts the OpenCode session when cancelling a running task", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Abort running task" });
+      const run = await executionService.queue(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      const cancelled = await executionService.cancel(run.id, { reason: "Stop now." });
+
+      expect(cancelled.status).toBe("cancelled");
+      expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps the task cancelled when OpenCode abort fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const logger = { warn: vi.fn() } as unknown as Logger;
+    const opencodeService = createMockOpenCodeService({
+      abortError: new Error("Abort failed."),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      logger,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Abort failure" });
+      const run = await executionService.queue(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      const cancelled = await executionService.cancel(run.id, { reason: "Stop anyway." });
+
+      expect(cancelled.status).toBe("cancelled");
+      await expectRunStatus(taskService, run.id, "cancelled");
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: task.id,
+          taskRunId: run.id,
+          opencodeSessionId: "session-1",
+        }),
+        "task run cancellation could not abort OpenCode session",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("monitors async task sessions and completes after debounced idle", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -938,6 +1110,47 @@ describe("createTaskExecutionService", () => {
 
       expect(cancelled.status).toBe("cancelled");
       await expectRunStatus(taskService, run.id, "cancelled");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("uses one monitor when duplicate starts target the same running run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const statusReads = vi.fn();
+    const onRunTerminal = vi.fn();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        completeAsyncPrompt: true,
+        onStatus: statusReads,
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      onRunTerminal,
+      monitor: { autoStart: false, initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Duplicate monitor",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      executionService.startTaskRunMonitor(run.id);
+      executionService.startTaskRunMonitor(run.id);
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(statusReads).toHaveBeenCalledTimes(1);
+      expect(onRunTerminal).toHaveBeenCalledTimes(1);
     } finally {
       await testDb.cleanup();
     }
@@ -1120,6 +1333,8 @@ function createMockOpenCodeService(
     promptTransportError?: Error;
     completeAsyncPrompt?: boolean;
     statusSequence?: OpenCodeSessionStatus[];
+    onStatus?: () => void;
+    abortError?: Error;
   } = {},
 ): OpenCodeService {
   const sessions = new Map<string, OpenCodeSession>();
@@ -1163,7 +1378,17 @@ function createMockOpenCodeService(
     listSessionMessages: (_directory: string, sessionID: string) =>
       Promise.resolve(messages.get(sessionID) ?? []),
     listSessionStatuses: () => Promise.resolve({}),
-    getSessionStatus: () => Promise.resolve(statusSequence.shift() ?? { type: "idle" }),
+    getSessionStatus: () => {
+      options.onStatus?.();
+      return Promise.resolve(statusSequence.shift() ?? { type: "idle" });
+    },
+    abortSession: vi.fn(() => {
+      if (options.abortError) {
+        throw options.abortError;
+      }
+
+      return Promise.resolve();
+    }),
     listProviders: (_directory: string) =>
       Promise.resolve(options.providers ?? { all: [], default: {}, connected: [] }),
     promptSession: async ({

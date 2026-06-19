@@ -7,6 +7,7 @@ import {
   taskQueuePreviewSchema,
   uploadTaskContextAttachmentInputSchema,
   type CancelTaskRunInput,
+  type ConversationDetail,
   type ConversationMessage,
   type QueueTaskInput,
   type TaskContext,
@@ -89,6 +90,12 @@ type TaskRunMonitorHandle = {
   timer?: ReturnType<typeof setTimeout>;
 };
 
+type AcceptedPromptEvidence = {
+  conversation: ConversationDetail;
+  reason: "monitor_metadata" | "messages" | "status";
+  statusType?: string;
+};
+
 const DEFAULT_TASK_RUN_MONITOR_CONFIG: TaskRunMonitorConfig = {
   autoStart: true,
   initialPollMs: 2_000,
@@ -146,7 +153,7 @@ export function createTaskExecutionService(options: {
         }
 
         if (run.opencodeSessionId) {
-          startTaskRunMonitor(run.id);
+          await resumeRunningTaskRun(run);
           continue;
         }
 
@@ -172,6 +179,7 @@ export function createTaskExecutionService(options: {
         throw new NotFoundError("Task run not found.");
       }
 
+      await abortOpenCodeTaskRun(run);
       notifyRunTerminal(cancelled);
       scheduleAgentDrain(cancelled.agentId);
       return cancelled;
@@ -286,6 +294,25 @@ export function createTaskExecutionService(options: {
       return run;
     }
 
+    if (run.status === "running" && run.opencodeSessionId) {
+      const existingEvidence = await readAcceptedPromptEvidence(run);
+
+      if (existingEvidence) {
+        return resumeAcceptedPromptRun(run, existingEvidence);
+      }
+
+      startTaskRunMonitor(run.id);
+      options.logger?.info(
+        {
+          taskId: run.taskId,
+          taskRunId: run.id,
+          opencodeSessionId: run.opencodeSessionId,
+        },
+        "task run already has an OpenCode session; resumed monitor instead of starting prompt",
+      );
+      return run;
+    }
+
     if (run.status !== "queued") {
       throw new BadRequestError("Only queued task runs can be started.");
     }
@@ -306,24 +333,26 @@ export function createTaskExecutionService(options: {
       }
 
       if (options.conversationService) {
-        const conversation = await options.conversationService.createTaskRunConversation({
-          agentId: running.agentId,
-          taskId: task.id,
-          taskRunId: running.id,
-          title: `Task: ${task.title}`,
-          permission: running.effectivePermissions
-            ? buildOpenCodeSessionPermissions(running.effectivePermissions)
-            : undefined,
-        });
-        const sessionLinked = await options.taskService.updateRun(running.id, {
-          opencodeSessionId: conversation.opencodeSessionId,
-        });
+        const existingEvidence = await readAcceptedPromptEvidence(running);
 
-        if (!sessionLinked) {
-          throw new NotFoundError("Task run not found.");
+        if (existingEvidence) {
+          return resumeAcceptedPromptRun(running, existingEvidence);
         }
 
-        running = sessionLinked;
+        const conversation = await getOrCreateTaskRunConversation(task, running);
+
+        if (!running.opencodeSessionId) {
+          const sessionLinked = await options.taskService.updateRun(running.id, {
+            opencodeSessionId: conversation.opencodeSessionId,
+          });
+
+          if (!sessionLinked) {
+            throw new NotFoundError("Task run not found.");
+          }
+
+          running = sessionLinked;
+        }
+
         const attachments = options.taskContextAttachmentService
           ? await options.taskContextAttachmentService.readConversationAttachments(task.context)
           : [];
@@ -405,6 +434,169 @@ export function createTaskExecutionService(options: {
 
       await handleTerminalRun(errored, { triggerContext: readRunContext(running) });
       return errored;
+    }
+  }
+
+  async function getOrCreateTaskRunConversation(
+    task: Task,
+    run: TaskRun,
+  ): Promise<ConversationDetail> {
+    if (run.opencodeSessionId && options.conversationService) {
+      const inspection = await options.conversationService.inspectTaskRunConversation(
+        run.taskId,
+        run.id,
+      );
+
+      if (inspection.conversation) {
+        return inspection.conversation;
+      }
+
+      options.logger?.warn(
+        {
+          taskId: run.taskId,
+          taskRunId: run.id,
+          opencodeSessionId: run.opencodeSessionId,
+          diagnostics: inspection.diagnostics,
+        },
+        "task run had an OpenCode session id but no task-owned conversation; creating a new session",
+      );
+    }
+
+    if (!options.conversationService) {
+      throw new Error("Conversation service is required to create task run conversations.");
+    }
+
+    return options.conversationService.createTaskRunConversation({
+      agentId: run.agentId,
+      taskId: task.id,
+      taskRunId: run.id,
+      title: `Task: ${task.title}`,
+      permission: run.effectivePermissions
+        ? buildOpenCodeSessionPermissions(run.effectivePermissions)
+        : undefined,
+    });
+  }
+
+  async function readAcceptedPromptEvidence(
+    run: TaskRun,
+  ): Promise<AcceptedPromptEvidence | undefined> {
+    if (!options.conversationService || !run.opencodeSessionId) {
+      return undefined;
+    }
+
+    let conversation: ConversationDetail;
+
+    try {
+      conversation = await options.conversationService.syncTaskRunConversation(run.taskId, run.id);
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return undefined;
+      }
+
+      throw error;
+    }
+
+    const monitorMetadata = readOptionalOpencodeMonitorMetadata(run);
+
+    if (monitorMetadata) {
+      return { conversation, reason: "monitor_metadata" };
+    }
+
+    let statusType: string | undefined;
+
+    try {
+      const status = await options.conversationService.getTaskRunSessionStatus(run.taskId, run.id);
+      statusType = status.type;
+    } catch (error) {
+      options.logger?.warn(
+        {
+          err: error,
+          taskId: run.taskId,
+          taskRunId: run.id,
+          opencodeSessionId: run.opencodeSessionId,
+        },
+        "task run duplicate-prevention status read failed; falling back to message count",
+      );
+    }
+
+    if (statusType === "busy" || statusType === "retry") {
+      return { conversation, reason: "status", statusType };
+    }
+
+    if (conversation.messageCount > 0) {
+      return { conversation, reason: "messages", statusType };
+    }
+
+    return undefined;
+  }
+
+  async function resumeAcceptedPromptRun(
+    run: TaskRun,
+    evidence: AcceptedPromptEvidence,
+  ): Promise<TaskRun> {
+    let accepted = run;
+
+    if (!readOptionalOpencodeMonitorMetadata(run)) {
+      const updated = await options.taskService.updateRun(run.id, {
+        triggerMetadata: mergeOpencodeMonitorMetadata(run.triggerMetadata, {
+          conversationId: evidence.conversation.id,
+          opencodeSessionId: evidence.conversation.opencodeSessionId,
+          attemptedModel: run.model ?? "unknown",
+          baselineMessageCount: 0,
+          promptAcceptedAt: new Date().toISOString(),
+        }),
+      });
+
+      if (!updated) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      accepted = updated;
+    }
+
+    options.logger?.info(
+      {
+        taskId: accepted.taskId,
+        taskRunId: accepted.id,
+        opencodeSessionId: accepted.opencodeSessionId,
+        observedStatus: evidence.statusType,
+        messageCount: evidence.conversation.messageCount,
+        reason: evidence.reason,
+      },
+      "task run prompt already appears accepted; resumed monitor instead of sending duplicate prompt",
+    );
+    startTaskRunMonitor(accepted.id);
+    return accepted;
+  }
+
+  async function resumeRunningTaskRun(run: TaskRun): Promise<void> {
+    const evidence = await readAcceptedPromptEvidence(run);
+
+    if (evidence) {
+      await resumeAcceptedPromptRun(run, evidence);
+      return;
+    }
+
+    startTaskRunMonitor(run.id);
+  }
+
+  async function abortOpenCodeTaskRun(run: TaskRun): Promise<void> {
+    if (run.status !== "running" || !run.opencodeSessionId || !options.conversationService) {
+      return;
+    }
+
+    try {
+      await options.conversationService.abortTaskRunConversation(run.taskId, run.id);
+    } catch (error) {
+      options.logger?.warn(
+        {
+          err: error,
+          taskId: run.taskId,
+          taskRunId: run.id,
+          opencodeSessionId: run.opencodeSessionId,
+        },
+        "task run cancellation could not abort OpenCode session",
+      );
     }
   }
 
@@ -1167,10 +1359,20 @@ function mergeOpencodeMonitorMetadata(
 }
 
 function readOpencodeMonitorMetadata(run: TaskRun): OpencodeMonitorMetadata {
+  const metadata = readOptionalOpencodeMonitorMetadata(run);
+
+  if (!metadata) {
+    throw new BadRequestError("Task run is missing OpenCode monitor metadata.");
+  }
+
+  return metadata;
+}
+
+function readOptionalOpencodeMonitorMetadata(run: TaskRun): OpencodeMonitorMetadata | undefined {
   const value = run.triggerMetadata?.["opencodeMonitor"];
 
   if (!isRecord(value)) {
-    throw new BadRequestError("Task run is missing OpenCode monitor metadata.");
+    return undefined;
   }
 
   const conversationId = readString(value, "conversationId");
@@ -1191,7 +1393,7 @@ function readOpencodeMonitorMetadata(run: TaskRun): OpencodeMonitorMetadata {
     !promptAcceptedAt ||
     baselineMessageCount === undefined
   ) {
-    throw new BadRequestError("Task run has invalid OpenCode monitor metadata.");
+    return undefined;
   }
 
   return {
