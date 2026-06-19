@@ -1301,6 +1301,111 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("relinks the run to a fresh OpenCode session when the stored session is stale", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Stale session relink" });
+      const run = await taskService.createRun({
+        id: `run-${crypto.randomUUID()}`,
+        taskId: task.id,
+        agentId: agent.id,
+        status: "queued",
+        triggerSource: "manual",
+        renderedPrompt: "Go.",
+      });
+      // The run points at a session whose conversation/session no longer exists,
+      // so the executor must create a fresh session and relink the run to it.
+      await taskService.updateRun(run.id, { opencodeSessionId: "stale-session" });
+
+      const started = await executionService.runQueuedTask(run.id);
+
+      expect(started.status).toBe("running");
+      const refreshed = await taskService.getRunById(run.id);
+      expect(refreshed?.opencodeSessionId).toBe("session-1");
+      expect(refreshed?.triggerMetadata?.["opencodeMonitor"]).toMatchObject({
+        opencodeSessionId: "session-1",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps resuming remaining running runs when one fails to resume on startup", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const logger = { warn: vi.fn(), info: vi.fn(), error: vi.fn() } as unknown as Logger;
+    const opencodeService = createMockOpenCodeService({
+      listSessionMessagesErrors: [new Error("resume boom one"), new Error("resume boom two")],
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      logger,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      // One running run per agent is a DB invariant, so use two agents/tasks.
+      for (let index = 0; index < 2; index += 1) {
+        const agent = await insertAgent(testDb.client.db);
+        const task = await taskService.create({
+          agentId: agent.id,
+          title: `Resume resilience ${index}`,
+        });
+        const runId = `run-${crypto.randomUUID()}`;
+        await taskService.createRun({
+          id: runId,
+          taskId: task.id,
+          agentId: agent.id,
+          status: "running",
+          triggerSource: "manual",
+          renderedPrompt: "Go.",
+          startedAt: new Date().toISOString(),
+        });
+        // The conversation row references the run, so create the run first.
+        const conversation = await conversationService.createTaskRunConversation({
+          agentId: agent.id,
+          taskId: task.id,
+          taskRunId: runId,
+          title: `Task: Resume resilience ${index}`,
+        });
+        await taskService.updateRun(runId, { opencodeSessionId: conversation.opencodeSessionId });
+      }
+
+      // Both runs throw while reading accepted-prompt evidence; the loop must not
+      // abort after the first failure.
+      await expect(executionService.resumeRunningTaskRuns()).resolves.toBeUndefined();
+      executionService.dispose();
+
+      const resumeFailures = (logger.warn as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([, message]) =>
+          message === "failed to resume running task run on startup; starting monitor best-effort",
+      );
+      expect(resumeFailures).toHaveLength(2);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("retries transient local status failures while monitoring task sessions", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

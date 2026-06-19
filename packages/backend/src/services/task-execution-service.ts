@@ -180,13 +180,34 @@ export function createTaskExecutionService(options: {
           continue;
         }
 
-        if (run.opencodeSessionId) {
-          await resumeRunningTaskRun(run);
-          continue;
-        }
+        // Best-effort startup recovery: one run failing to resume (e.g. a
+        // transient transport error past the retry budget while OpenCode is still
+        // coming up) must not abort recovery for the remaining running runs.
+        try {
+          if (run.opencodeSessionId) {
+            await resumeRunningTaskRun(run);
+            continue;
+          }
 
-        await options.taskService.updateRun(run.id, { status: "queued" });
-        scheduleAgentDrain(run.agentId);
+          await options.taskService.updateRun(run.id, { status: "queued" });
+          scheduleAgentDrain(run.agentId);
+        } catch (error) {
+          options.logger?.warn(
+            {
+              err: error,
+              taskId: run.taskId,
+              taskRunId: run.id,
+              opencodeSessionId: run.opencodeSessionId,
+            },
+            "failed to resume running task run on startup; starting monitor best-effort",
+          );
+
+          // The monitor itself is resilient (polls with retries and reconstructs
+          // missing metadata), so fall back to it when the run has a session.
+          if (run.opencodeSessionId) {
+            monitorService.start(run.id);
+          }
+        }
       }
     },
 
@@ -377,7 +398,11 @@ export function createTaskExecutionService(options: {
 
         const conversation = await getOrCreateTaskRunConversation(task, running);
 
-        if (!running.opencodeSessionId) {
+        // Link (or relink) the run to the conversation's session. The run can
+        // arrive with a stale opencodeSessionId whose conversation/session no
+        // longer exists, in which case getOrCreateTaskRunConversation created a
+        // fresh session — keep task_runs.opencode_session_id consistent with it.
+        if (running.opencodeSessionId !== conversation.opencodeSessionId) {
           const sessionLinked = await options.taskService.updateRun(running.id, {
             opencodeSessionId: conversation.opencodeSessionId,
           });
