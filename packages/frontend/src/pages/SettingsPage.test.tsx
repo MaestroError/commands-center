@@ -22,8 +22,10 @@ import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import {
   getFileManagerPreferences,
   getTaskArtifactSharingPreferences,
+  getTaskRunMonitorSettings,
   updateFileManagerPreferences,
   updateTaskArtifactSharingPreferences,
+  updateTaskRunMonitorSettings,
 } from "@/lib/api";
 import { queryClient } from "@/lib/query-client";
 
@@ -58,6 +60,8 @@ vi.mock("@/lib/api", async () => {
     updateFileManagerPreferences: vi.fn(),
     getTaskArtifactSharingPreferences: vi.fn(),
     updateTaskArtifactSharingPreferences: vi.fn(),
+    getTaskRunMonitorSettings: vi.fn(),
+    updateTaskRunMonitorSettings: vi.fn(),
   };
 });
 
@@ -175,6 +179,11 @@ beforeEach(() => {
   vi.mocked(getTaskArtifactSharingPreferences).mockResolvedValue({
     taskArtifactSignedUrlExpiresInMinutes: 1440,
   });
+  vi.mocked(getTaskRunMonitorSettings).mockResolvedValue({
+    taskRunMonitorMaxLifetimeMinutes: 360,
+    taskRunMonitorNoProgressTimeoutMinutes: 30,
+  });
+  vi.mocked(updateTaskRunMonitorSettings).mockImplementation((input) => Promise.resolve(input));
   vi.mocked(updateTaskArtifactSharingPreferences).mockImplementation((input) =>
     Promise.resolve(input),
   );
@@ -460,6 +469,30 @@ describe("SettingsPage", () => {
           maxUploadSizeBytes: 50 * 1024 * 1024,
           allowDangerousFiles: true,
         },
+      });
+    });
+  });
+
+  it("loads and updates task run monitor settings", async () => {
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
+
+    expect(await screen.findByDisplayValue("30")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("360")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/No-progress \(stall\) timeout/i), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByLabelText(/Max run lifetime/i), {
+      target: { value: "120" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save task settings" }));
+
+    await waitFor(() => {
+      expect(updateTaskRunMonitorSettings).toHaveBeenCalledWith({
+        taskRunMonitorMaxLifetimeMinutes: 120,
+        taskRunMonitorNoProgressTimeoutMinutes: 10,
       });
     });
   });

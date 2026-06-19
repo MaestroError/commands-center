@@ -21,8 +21,10 @@ import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import {
   getFileManagerPreferences,
   getTaskArtifactSharingPreferences,
+  getTaskRunMonitorSettings,
   updateFileManagerPreferences,
   updateTaskArtifactSharingPreferences,
+  updateTaskRunMonitorSettings,
 } from "@/lib/api";
 
 export function SettingsPage() {
@@ -45,6 +47,10 @@ export function SettingsPage() {
         id: "sharing",
         label: "Sharing",
       },
+      {
+        id: "tasks",
+        label: "Tasks",
+      },
     ],
     [],
   );
@@ -64,6 +70,7 @@ export function SettingsPage() {
         ) : null}
         {activeTabId === "file-manager" ? <FileManagerTab /> : null}
         {activeTabId === "sharing" ? <SharingTab /> : null}
+        {activeTabId === "tasks" ? <TasksTab /> : null}
       </section>
     </div>
   );
@@ -638,6 +645,110 @@ function SharingTab() {
           type="button"
         >
           {saving ? "Saving..." : "Save sharing settings"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TasksTab() {
+  const [maxLifetimeMinutes, setMaxLifetimeMinutes] = useState(360);
+  const [noProgressMinutes, setNoProgressMinutes] = useState(30);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    let cancelled = false;
+    void getTaskRunMonitorSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        setMaxLifetimeMinutes(settings.taskRunMonitorMaxLifetimeMinutes);
+        setNoProgressMinutes(settings.taskRunMonitorNoProgressTimeoutMinutes);
+        setLoading(false);
+      })
+      .catch((nextError: unknown) => {
+        if (cancelled) return;
+        setError(nextError instanceof Error ? nextError.message : "Failed to load settings.");
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function saveSettings() {
+    setSaving(true);
+    setError(undefined);
+    try {
+      const settings = await updateTaskRunMonitorSettings({
+        taskRunMonitorMaxLifetimeMinutes: maxLifetimeMinutes,
+        taskRunMonitorNoProgressTimeoutMinutes: noProgressMinutes,
+      });
+      setMaxLifetimeMinutes(settings.taskRunMonitorMaxLifetimeMinutes);
+      setNoProgressMinutes(settings.taskRunMonitorNoProgressTimeoutMinutes);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to save settings.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return <LoadingState testId="task-run-monitor-settings-loading" />;
+  }
+
+  return (
+    <div className="mt-6 grid gap-4">
+      <div>
+        <h2 className="text-xl font-semibold text-text-primary">Task execution</h2>
+        <p className="mt-1 text-sm text-text-secondary">
+          Control how long the monitor waits on a running task before failing it. A task run is held
+          while OpenCode works asynchronously; these limits stop a wedged session from staying
+          &ldquo;running&rdquo; indefinitely.
+        </p>
+      </div>
+      {error ? (
+        <ErrorState description={error} title="Could not save task execution settings." />
+      ) : null}
+      <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
+        <span className="font-medium">No-progress (stall) timeout (minutes)</span>
+        <input
+          className="cc-input"
+          disabled={saving}
+          min={0}
+          onChange={(event) => setNoProgressMinutes(Number(event.target.value))}
+          type="number"
+          value={noProgressMinutes}
+        />
+        <span className="text-text-secondary">
+          Fail a run after OpenCode stops producing new messages for this long (status
+          <code>monitor_stalled</code>). Use 0 to disable stall detection.
+        </span>
+      </label>
+      <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
+        <span className="font-medium">Max run lifetime (minutes)</span>
+        <input
+          className="cc-input"
+          disabled={saving}
+          min={1}
+          onChange={(event) => setMaxLifetimeMinutes(Number(event.target.value))}
+          type="number"
+          value={maxLifetimeMinutes}
+        />
+        <span className="text-text-secondary">
+          Hard cap on how long a single run may stay running before it is force-failed (status
+          <code>monitor_timeout</code>).
+        </span>
+      </label>
+      <div className="flex justify-end">
+        <button
+          className="cc-button"
+          disabled={saving}
+          onClick={() => void saveSettings()}
+          type="button"
+        >
+          {saving ? "Saving..." : "Save task settings"}
         </button>
       </div>
     </div>

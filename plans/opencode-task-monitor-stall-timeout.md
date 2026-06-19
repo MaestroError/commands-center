@@ -1,6 +1,20 @@
 # Plan: OpenCode Task Monitor — Stall Timeout + Configurable Timeouts
 
-**Status:** Proposed.
+**Status:** Complete.
+
+## Completion Audit
+
+- Phase 1 (stall detection): `task-run-monitor-service.ts` tracks a per-poll
+  progress signature (`messageCount|lastAssistantMessageId`), and `finalizeStalled`
+  best-effort aborts the session and fails the run with `stage: "monitor_stalled"`
+  when no progress is seen within the window. `noProgressMs <= 0` disables it.
+- Phase 2 (configurable timeouts): `taskRunMonitorSettingsSchema`,
+  `task-run-monitor-settings-service.ts`, and `GET`/`PUT
+/api/task-run-monitor/settings`; the execution service feeds the monitor a
+  cached (10s), error-safe runtime-config resolver so both timeouts apply live.
+- Phase 3 (frontend): Settings → **Tasks** tab edits both timeouts.
+- Phase 4 (docs): runbook documents `monitor_stalled`, the settings, and the
+  silent-stall signature.
 
 ## Problem
 
