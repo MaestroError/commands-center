@@ -148,6 +148,7 @@ export function createTaskExecutionService(options: {
     hooks: {
       handleTerminalRun: (run) => handleTerminalRun(run, { triggerContext: readRunContext(run) }),
       queueFallbackRun,
+      abortSession: abortOpenCodeTaskRun,
     },
   });
 

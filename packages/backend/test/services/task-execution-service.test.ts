@@ -1543,6 +1543,109 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("marks a stalled OpenCode session as error and aborts it", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // No completeAsyncPrompt: the session accepts the prompt but never produces an
+    // assistant message, so the synced signature stays constant -> stalled.
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        idlePolls: 1,
+        noProgressMs: 15,
+        maxLifetimeMs: 5 * 60 * 1_000,
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Stalled session" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      expect((await taskService.getRunById(run.id))?.errorDetails).toMatchObject({
+        errorName: "TaskRunMonitorStalled",
+        stage: "monitor_stalled",
+        opencodeSessionId: "session-1",
+        noProgressMs: 15,
+      });
+      expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not stall a healthy run that keeps completing", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        completeAsyncPrompt: true,
+        statusSequence: [{ type: "idle" }],
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      // Tiny stall window, but the run produces an assistant message and settles
+      // idle first, so it completes instead of being flagged as stalled.
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1, noProgressMs: 5 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Healthy run" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("disables stall detection when the no-progress timeout is zero", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      // noProgressMs 0 disables the stall path; the max-lifetime cap still applies.
+      monitor: { initialPollMs: 1, maxPollMs: 1, noProgressMs: 0, maxLifetimeMs: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "No stall" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      expect((await taskService.getRunById(run.id))?.errorDetails).toMatchObject({
+        stage: "monitor_timeout",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("does not complete a cancelled task when a monitor is started later", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
