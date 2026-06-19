@@ -40,7 +40,11 @@ import {
   getWorkspaceSkillRoot,
   resolveSpecialistWorkspacePath,
 } from "./specialist-workspace.js";
-import type { OpenCodeService, OpenCodeSessionPermissionRule } from "./opencode-service.js";
+import type {
+  OpenCodeService,
+  OpenCodeSessionPermissionRule,
+  OpenCodeSessionStatus,
+} from "./opencode-service.js";
 import type { SessionArchiveService } from "./session-archive-service.js";
 import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
 import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
@@ -66,6 +70,14 @@ export type TaskRunConversationInspection = {
   conversation?: ConversationDetail;
   diagnostics: TaskRunSessionDiagnostic[];
   canOpenInChat: boolean;
+};
+
+export type TaskRunPromptStart = {
+  conversationId: string;
+  opencodeSessionId: string;
+  attemptedModel: string;
+  baselineMessageCount: number;
+  promptAcceptedAt: string;
 };
 
 export type ConversationService = ReturnType<typeof createConversationService>;
@@ -249,6 +261,44 @@ export function createConversationService(options: {
       return getConversationDetail(loaded.conversation.id);
     },
 
+    async startTaskRunPrompt(
+      conversationId: string,
+      input: SendConversationPromptInput,
+    ): Promise<TaskRunPromptStart> {
+      const parsed = sendConversationPromptInputSchema.parse(input);
+      const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
+
+      if (loaded.conversation.source !== "task_run") {
+        throw new BadRequestError("Conversation is not a task run session.");
+      }
+
+      const [model, baselineMessages] = await Promise.all([
+        resolveRunModel(loaded.agent.workspace_path, parsed.model, loaded.agent.default_model),
+        options.opencodeService.listSessionMessages(
+          loaded.agent.workspace_path,
+          loaded.conversation.opencode_session_id,
+        ),
+      ]);
+      const baselineMessageCount = baselineMessages.length;
+
+      await options.opencodeService.promptSessionAsync({
+        directory: loaded.agent.workspace_path,
+        sessionID: loaded.conversation.opencode_session_id,
+        agent: resolveOpenCodeAgent(loaded.agent.slug),
+        model,
+        text: parsed.text,
+        attachments: parsed.attachments,
+      });
+
+      return {
+        conversationId: loaded.conversation.id,
+        opencodeSessionId: loaded.conversation.opencode_session_id,
+        attemptedModel: qualifyModel(model),
+        baselineMessageCount,
+        promptAcceptedAt: new Date().toISOString(),
+      };
+    },
+
     async inspectTaskRunConversation(
       taskId: string,
       taskRunId: string,
@@ -285,6 +335,35 @@ export function createConversationService(options: {
         diagnostics,
         canOpenInChat: diagnostics.length === 0,
       };
+    },
+
+    async syncTaskRunConversation(taskId: string, taskRunId: string): Promise<ConversationDetail> {
+      const conversation = await getTaskRunConversationRow(taskId, taskRunId);
+
+      if (!conversation) {
+        throw new NotFoundError("Task run session not found.");
+      }
+
+      const agent = await getAgent(conversation.agent_id);
+      await syncConversation(agent, conversation);
+      return getConversationDetail(conversation.id);
+    },
+
+    async getTaskRunSessionStatus(
+      taskId: string,
+      taskRunId: string,
+    ): Promise<OpenCodeSessionStatus> {
+      const conversation = await getTaskRunConversationRow(taskId, taskRunId);
+
+      if (!conversation) {
+        throw new NotFoundError("Task run session not found.");
+      }
+
+      const agent = await getAgent(conversation.agent_id);
+      return options.opencodeService.getSessionStatus(
+        agent.workspace_path,
+        conversation.opencode_session_id,
+      );
     },
 
     async openTaskRunConversationInChat(
@@ -445,6 +524,20 @@ export function createConversationService(options: {
       await options.opencodeService.abortSession(
         loaded.agent.workspace_path,
         loaded.conversation.opencode_session_id,
+      );
+    },
+
+    async abortTaskRunConversation(taskId: string, taskRunId: string): Promise<void> {
+      const conversation = await getTaskRunConversationRow(taskId, taskRunId);
+
+      if (!conversation) {
+        throw new NotFoundError("Task run session not found.");
+      }
+
+      const agent = await getAgent(conversation.agent_id);
+      await options.opencodeService.abortSession(
+        agent.workspace_path,
+        conversation.opencode_session_id,
       );
     },
 

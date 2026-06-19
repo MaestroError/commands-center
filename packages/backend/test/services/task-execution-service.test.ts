@@ -1,23 +1,48 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Logger } from "pino";
 
 import type { AppDb } from "../../src/db/client";
 import { agents } from "../../src/db/schema/index";
-import { createConversationService } from "../../src/services/conversation-service";
-import { createSessionArchiveService } from "../../src/services/session-archive-service";
+import type {
+  EngineStatus,
+  OpenCodeOrchestrator,
+} from "../../src/orchestrator/opencode-orchestrator";
+import {
+  createConversationService,
+  TaskRunPromptError,
+} from "../../src/services/conversation-service";
 import { createTaskPermissionService } from "../../src/services/task-permission-service";
-import { createTaskExecutionService } from "../../src/services/task-execution-service";
+import { createTaskExecutionService as createBaseTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskService } from "../../src/services/task-service";
 import type {
   CreateOpenCodeSessionOptions,
   OpenCodeService,
   OpenCodeSession,
   OpenCodeSessionMessage,
+  OpenCodeSessionStatus,
 } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
+
+const taskExecutionServices: Array<ReturnType<typeof createBaseTaskExecutionService>> = [];
+
+afterEach(() => {
+  for (const service of taskExecutionServices) {
+    service.dispose();
+  }
+
+  taskExecutionServices.length = 0;
+});
+
+function createTaskExecutionService(
+  ...args: Parameters<typeof createBaseTaskExecutionService>
+): ReturnType<typeof createBaseTaskExecutionService> {
+  const service = createBaseTaskExecutionService(...args);
+  taskExecutionServices.push(service);
+  return service;
+}
 
 describe("createTaskExecutionService", () => {
   it("runs manual tasks through queued, running, and completed states", async () => {
@@ -50,7 +75,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("creates a task-owned OpenCode session and stores the result summary", async () => {
+  it("creates a task-owned OpenCode session and stores async monitor metadata", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const opencodeService = createMockOpenCodeService();
@@ -71,77 +96,75 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "completed");
-      const completedRun = await taskService.getRunById(run.id);
+      await expectRunStatus(taskService, run.id, "running");
+      const runningRun = await taskService.getRunById(run.id);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
 
-      expect(completedRun?.opencodeSessionId).toBe("session-1");
+      expect(runningRun?.opencodeSessionId).toBe("session-1");
+      expect(runningRun?.runtimeState).toBe("waiting_for_opencode");
       expect(run.renderedPrompt).toContain("<AssignedAgentId>");
-      expect(completedRun?.finalMessage).toContain("Task finished:");
+      expect(runningRun?.finalMessage).toBeUndefined();
+      expect(runningRun?.triggerMetadata?.["opencodeMonitor"]).toMatchObject({
+        conversationId: inspection.conversation?.id,
+        opencodeSessionId: "session-1",
+        attemptedModel: "openai/gpt-4.1",
+        baselineMessageCount: 0,
+      });
+      expect(
+        (runningRun?.triggerMetadata?.["opencodeMonitor"] as Record<string, unknown>)?.[
+          "promptAcceptedAt"
+        ],
+      ).toEqual(expect.any(String));
       expect(inspection.conversation?.source).toBe("task_run");
-      expect(inspection.conversation?.messages).toHaveLength(2);
+      expect(inspection.conversation?.messages).toHaveLength(1);
       expect(conversations).toEqual([]);
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("materializes the task-run transcript when the run completes", async () => {
+  it("exposes the waiting_for_opencode runtime substate only while monitoring", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const opencodeService = createMockOpenCodeService();
-    const archiveService = createSessionArchiveService({ config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      statusSequence: [{ type: "idle" }, { type: "idle" }],
+    });
     const conversationService = createConversationService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,
-      archiveService,
     });
     const executionService = createTaskExecutionService({
       taskService,
       conversationService,
-      archiveService,
+      monitor: { autoStart: false, initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
     });
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({
-        agentId: agent.id,
-        title: "Archive task",
-        description: "Use OpenCode.",
-      });
+      const task = await taskService.create({ agentId: agent.id, title: "Runtime substate" });
 
-      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
-      await expectRunStatus(taskService, run.id, "completed");
-
-      const archivePath = archiveService.resolveTaskRunArchivePath({
-        agentId: agent.id,
+      const queued = await taskService.createRun({
+        id: `run-${crypto.randomUUID()}`,
         taskId: task.id,
-        taskRunId: run.id,
+        agentId: agent.id,
+        status: "queued",
+        triggerSource: "manual",
+        renderedPrompt: "Run.",
       });
+      // A queued run has not accepted an OpenCode prompt yet.
+      expect(queued.runtimeState).toBeUndefined();
 
-      await expect
-        .poll(async () => {
-          try {
-            await readFile(join(archivePath, "transcript.md"), "utf8");
-            return true;
-          } catch {
-            return false;
-          }
-        })
-        .toBe(true);
+      const running = await executionService.runQueuedTask(queued.id);
+      expect(running.status).toBe("running");
+      expect(running.runtimeState).toBe("waiting_for_opencode");
 
-      const transcript = await readFile(join(archivePath, "transcript.md"), "utf8");
-      expect(transcript).toContain("# Session:");
-      const metadata = JSON.parse(await readFile(join(archivePath, "metadata.json"), "utf8")) as {
-        kind: string;
-        status: string;
-        lastMaterializedMessageCount: number;
-      };
-      expect(metadata.kind).toBe("task_run");
-      expect(metadata.status).toBe("completed");
-      expect(metadata.lastMaterializedMessageCount).toBeGreaterThan(0);
+      // Once the monitor settles the run, the substate is gone.
+      executionService.startTaskRunMonitor(queued.id);
+      await expectRunStatus(taskService, queued.id, "completed");
+      expect((await taskService.getRunById(queued.id))?.runtimeState).toBeUndefined();
     } finally {
       await testDb.cleanup();
     }
@@ -171,10 +194,12 @@ describe("createTaskExecutionService", () => {
 
     try {
       // Specialist default is openai/gpt-4.1 (see insertAgent).
-      const agent = await insertAgent(testDb.client.db);
+      const overrideAgent = await insertAgent(testDb.client.db);
+      const unavailableAgent = await insertAgent(testDb.client.db);
+      const defaultAgent = await insertAgent(testDb.client.db);
 
       const overrideTask = await taskService.create({
-        agentId: agent.id,
+        agentId: overrideAgent.id,
         model: "anthropic/claude-haiku",
         title: "Override",
         description: "Use the smaller model.",
@@ -182,10 +207,10 @@ describe("createTaskExecutionService", () => {
       const overrideRun = await executionService.trigger(overrideTask.id, {
         triggerSource: "manual",
       });
-      await expectRunStatus(taskService, overrideRun.id, "completed");
+      await expectRunStatus(taskService, overrideRun.id, "running");
 
       const unavailableTask = await taskService.create({
-        agentId: agent.id,
+        agentId: unavailableAgent.id,
         model: "ghost/removed-model",
         title: "Unavailable",
         description: "Model no longer exists.",
@@ -193,29 +218,31 @@ describe("createTaskExecutionService", () => {
       const unavailableRun = await executionService.trigger(unavailableTask.id, {
         triggerSource: "manual",
       });
-      await expectRunStatus(taskService, unavailableRun.id, "completed");
+      await expectRunStatus(taskService, unavailableRun.id, "running");
 
       const defaultTask = await taskService.create({
-        agentId: agent.id,
+        agentId: defaultAgent.id,
         title: "Default",
         description: "No override.",
       });
       const defaultRun = await executionService.trigger(defaultTask.id, {
         triggerSource: "manual",
       });
-      await expectRunStatus(taskService, defaultRun.id, "completed");
+      await expectRunStatus(taskService, defaultRun.id, "running");
 
       expect(prompts[0]?.model).toEqual({ providerID: "anthropic", modelID: "claude-haiku" });
       expect(prompts[1]?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
       expect(prompts[2]?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
-      // The override model is snapshotted onto the run.
       expect((await taskService.getRunById(overrideRun.id))?.model).toBe("anthropic/claude-haiku");
+      expect(
+        (await taskService.getRunById(unavailableRun.id))?.triggerMetadata?.["opencodeMonitor"],
+      ).toMatchObject({ attemptedModel: "openai/gpt-4.1" });
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("fails over to the next model when the primary model fails", async () => {
+  it("does not queue fallback runs before the async monitor observes a provider error", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
@@ -229,8 +256,8 @@ describe("createTaskExecutionService", () => {
         connected: ["openai", "anthropic"],
       },
       onPrompt: (input) => prompts.push(input),
-      // The agent default (openai/gpt-4.1) fails with a transient provider error;
-      // the fallback (anthropic/claude-haiku) succeeds.
+      // Async prompt start only accepts work. Phase 4 monitor will read this
+      // provider error from the later assistant message and queue fallback runs.
       promptError: ({ model }) =>
         model?.providerID === "openai"
           ? { name: "APIError", message: "Provider is overloaded", data: { isRetryable: true } }
@@ -256,173 +283,323 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
       expect(run.fallbackModels).toEqual(["anthropic/claude-haiku"]);
-      await expectRunStatus(taskService, run.id, "error");
-      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+      await expectRunStatus(taskService, run.id, "running");
       const runs = await taskService.listRuns(task.id);
-      const fallbackRun = runs.find((candidate) => candidate.retryOfRunId === run.id);
 
-      expect(fallbackRun?.status).toBe("completed");
-      expect(fallbackRun?.model).toBe("anthropic/claude-haiku");
-      expect(fallbackRun?.renderedPrompt).toContain(
-        "Previous task run ended with a model/provider error.",
+      expect(runs).toHaveLength(1);
+      expect(prompts.map((prompt) => prompt.model)).toEqual([
+        { providerID: "openai", modelID: "gpt-4.1" },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not send a duplicate async prompt when a running run is started again", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      onPrompt: (input) => prompts.push(input),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Duplicate start",
+        description: "Only prompt once.",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      const restarted = await executionService.runQueuedTask(run.id);
+
+      expect(restarted.status).toBe("running");
+      expect(prompts).toHaveLength(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("resumes monitoring instead of prompting when a queued run already has session messages", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Existing session",
+        description: "Prompt was already accepted.",
+      });
+      const run = await taskService.createRun({
+        id: `run-${crypto.randomUUID()}`,
+        taskId: task.id,
+        agentId: agent.id,
+        status: "queued",
+        triggerSource: "manual",
+        renderedPrompt: "Continue existing session.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Existing session",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await opencodeService.promptSessionAsync({
+        directory: "unused",
+        sessionID: conversation.opencodeSessionId,
+        agent: "agent",
+        model: { providerID: "openai", modelID: "gpt-4.1" },
+        text: "Already accepted.",
+      });
+
+      const resumed = await executionService.runQueuedTask(run.id);
+      const detail = await conversationService.syncTaskRunConversation(task.id, run.id);
+
+      expect(resumed.status).toBe("running");
+      expect(detail.messages).toHaveLength(1);
+      expect((await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"]).toEqual(
+        expect.objectContaining({
+          conversationId: conversation.id,
+          opencodeSessionId: conversation.opencodeSessionId,
+          baselineMessageCount: 0,
+        }),
       );
-      expect(fallbackRun?.renderedPrompt).toContain(run.id);
-      expect(prompts.map((prompt) => prompt.model)).toEqual([
-        { providerID: "openai", modelID: "gpt-4.1" },
-        { providerID: "anthropic", modelID: "claude-haiku" },
-      ]);
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("errors the run without trying fallbacks on an unknown error", async () => {
+  it("stores transport cause details when async prompt acceptance fails", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
-    const opencodeService = createMockOpenCodeService({
-      providers: {
-        all: [
-          { id: "openai", models: { "gpt-4.1": {} } },
-          { id: "anthropic", models: { "claude-haiku": {} } },
-        ],
-        default: {},
-        connected: ["openai", "anthropic"],
-      },
-      onPrompt: (input) => prompts.push(input),
-      promptError: () => ({ name: "UnknownError", message: "Something failed" }),
-    });
+    const promptError = new TypeError("fetch failed") as TypeError & { cause?: unknown };
+    promptError.cause = {
+      name: "HeadersTimeoutError",
+      message: "Headers Timeout Error",
+      code: "UND_ERR_HEADERS_TIMEOUT",
+    };
+    const opencodeService = createMockOpenCodeService({ promptTransportError: promptError });
     const conversationService = createConversationService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,
     });
-    const executionService = createTaskExecutionService({ taskService, conversationService });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 5, jitterRatio: 0 },
+    });
 
     try {
       const agent = await insertAgent(testDb.client.db);
       const task = await taskService.create({
         agentId: agent.id,
-        fallbackModels: ["anthropic/claude-haiku"],
-        title: "No failover",
-        description: "Unknown errors are not classified as recoverable.",
+        title: "Transport failure",
+        description: "Prompt will lose its local connection.",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
       await expectRunStatus(taskService, run.id, "error");
-      expect(await taskService.listRuns(task.id)).toHaveLength(1);
-      expect(prompts.map((prompt) => prompt.model)).toEqual([
-        { providerID: "openai", modelID: "gpt-4.1" },
-      ]);
       const failedRun = await taskService.getRunById(run.id);
-      expect(failedRun?.errorMessage).toContain("Something failed");
+
+      expect(failedRun?.errorMessage).toBe("fetch failed");
+      expect(failedRun?.errorDetails).toMatchObject({
+        errorName: "TypeError",
+        message: "fetch failed",
+        stage: "task_session_prompt",
+        opencodeSessionId: "session-1",
+        causeName: "HeadersTimeoutError",
+        causeMessage: "Headers Timeout Error",
+        causeCode: "UND_ERR_HEADERS_TIMEOUT",
+      });
+      expect(failedRun?.errorDetails?.["elapsedRunMs"]).toEqual(expect.any(Number));
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("walks multiple fallbacks in order until one succeeds", async () => {
+  it("does not retry model prompt errors through the local transport retry path", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
-    const opencodeService = createMockOpenCodeService({
-      providers: {
-        all: [
-          { id: "openai", models: { "gpt-4.1": {} } },
-          { id: "anthropic", models: { "claude-haiku": {}, "claude-opus": {} } },
-        ],
-        default: {},
-        connected: ["openai", "anthropic"],
-      },
-      onPrompt: (input) => prompts.push(input),
-      // The default and the first fallback both fail; only the second fallback works.
-      promptError: ({ model }) =>
-        model?.modelID === "claude-opus"
-          ? undefined
-          : { name: "APIError", message: "Provider is overloaded", data: { isRetryable: true } },
-    });
-    const conversationService = createConversationService({
+    const opencodeService = createMockOpenCodeService();
+    const baseConversationService = createConversationService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,
     });
-    const executionService = createTaskExecutionService({ taskService, conversationService });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await taskService.create({
-        agentId: agent.id,
-        fallbackModels: ["anthropic/claude-haiku", "anthropic/claude-opus"],
-        title: "Chained failover",
-        description: "Try each model in order.",
-      });
-
-      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
-
-      await expectRunStatus(taskService, run.id, "error");
-      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(3);
-      const runs = await taskService.listRuns(task.id);
-      expect(runs.filter((candidate) => candidate.status === "completed")).toHaveLength(1);
-      expect(prompts.map((prompt) => prompt.model)).toEqual([
-        { providerID: "openai", modelID: "gpt-4.1" },
-        { providerID: "anthropic", modelID: "claude-haiku" },
-        { providerID: "anthropic", modelID: "claude-opus" },
-      ]);
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("fails the run after every model in the chain fails", async () => {
-    const testDb = await createTestDatabase();
-    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
-    const opencodeService = createMockOpenCodeService({
-      providers: {
-        all: [
-          { id: "openai", models: { "gpt-4.1": {} } },
-          { id: "anthropic", models: { "claude-haiku": {} } },
-        ],
-        default: {},
-        connected: ["openai", "anthropic"],
-      },
-      onPrompt: (input) => prompts.push(input),
-      // Every model returns a failover-worthy error, so the chain is exhausted.
-      promptError: ({ model }) => ({
+    const promptError = new TaskRunPromptError({
+      attemptedModel: "openai/gpt-4.1",
+      modelError: {
         name: "APIError",
-        message: `Overloaded: ${model?.modelID ?? "unknown"}`,
-        data: { isRetryable: true },
-      }),
+        message: "Provider rejected the request.",
+        data: { statusCode: 400, isRetryable: false },
+      },
+    });
+    const startTaskRunPrompt = vi.fn(() => Promise.reject(promptError));
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService: {
+        ...baseConversationService,
+        startTaskRunPrompt,
+      },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Provider prompt failure",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      expect(startTaskRunPrompt).toHaveBeenCalledTimes(1);
+      expect((await taskService.getRunById(run.id))?.errorDetails).toMatchObject({
+        errorName: "APIError",
+        attemptedModel: "openai/gpt-4.1",
+        stage: "task_session_prompt",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("retries local transport failures while creating task OpenCode sessions", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      createSessionErrors: [createLocalTransportError("ECONNREFUSED")],
     });
     const conversationService = createConversationService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService,
     });
-    const executionService = createTaskExecutionService({ taskService, conversationService });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+    });
 
     try {
       const agent = await insertAgent(testDb.client.db);
       const task = await taskService.create({
         agentId: agent.id,
-        fallbackModels: ["anthropic/claude-haiku"],
-        title: "All down",
-        description: "No model can recover.",
+        title: "Retry session create",
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
-      await expectRunStatus(taskService, run.id, "error");
-      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
-      expect(prompts.map((prompt) => prompt.model)).toEqual([
-        { providerID: "openai", modelID: "gpt-4.1" },
-        { providerID: "anthropic", modelID: "claude-haiku" },
-      ]);
-      const runs = await taskService.listRuns(task.id);
-      expect(runs.map((candidate) => candidate.status)).toEqual(["error", "error"]);
-      const failedRun = runs.find((candidate) => candidate.model === "anthropic/claude-haiku");
-      expect(failedRun?.errorMessage).toContain("Overloaded: claude-haiku");
+      await expectRunStatus(taskService, run.id, "running");
+      expect(opencodeService.createSession).toHaveBeenCalledTimes(2);
+      expect((await taskService.getRunById(run.id))?.opencodeSessionId).toBe("session-1");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("retries async prompt start when local transport fails before acceptance", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      promptTransportErrors: [createLocalTransportError("ECONNRESET")],
+      onPrompt: (input) => prompts.push(input),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Retry prompt start",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(prompts).toHaveLength(2);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("resumes monitoring when async prompt response is lost after acceptance", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      promptPostAcceptErrors: [createLocalTransportError("UND_ERR_SOCKET")],
+      onPrompt: (input) => prompts.push(input),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Lost prompt response",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(prompts).toHaveLength(1);
+      expect((await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"]).toEqual(
+        expect.objectContaining({ opencodeSessionId: "session-1" }),
+      );
     } finally {
       await testDb.cleanup();
     }
@@ -537,16 +714,15 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("starts the next feedback subtask after the previous one completes", async () => {
+  it("keeps later feedback subtasks queued while the previous async run is running", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const firstGate = createDeferred<void>();
-    const secondGate = createDeferred<void>();
     const conversationService = createConversationService({
       db: testDb.client.db,
       config: testDb.config,
       opencodeService: createMockOpenCodeService({
-        promptGates: [firstGate.promise, secondGate.promise],
+        promptGates: [firstGate.promise],
       }),
     });
     const executionService = createTaskExecutionService({
@@ -579,32 +755,16 @@ describe("createTaskExecutionService", () => {
 
       firstGate.resolve();
 
-      await expectRunStatus(taskService, firstRun.id, "completed");
-      await expect.poll(async () => (await taskService.listRuns(task.id)).length).toBe(2);
-
-      const runsAfterFirst = await taskService.listRuns(task.id);
-      const secondRun = runsAfterFirst.find((run) => run.id !== firstRun.id);
+      await expectRunStatus(taskService, firstRun.id, "running");
+      const runsAfterAcceptance = await taskService.listRuns(task.id);
       const taskAfterFirst = await taskService.get(task.id);
 
-      expect(secondRun).toMatchObject({
-        subtaskId: secondFeedback.subtasks[0]?.id,
-        agentId: secondSubtaskAgent.id,
-        status: "running",
-      });
+      expect(runsAfterAcceptance).toHaveLength(1);
       expect(firstRun.subtaskId).toBe(firstFeedback.subtasks[0]?.id);
-      expect(runsAfterFirst).toHaveLength(2);
       expect(taskAfterFirst?.status).toBe("queued");
-
-      secondGate.resolve();
-
-      await expectRunStatus(taskService, secondRun?.id ?? "", "completed");
-
-      const taskAfterSecond = await taskService.get(task.id);
-
-      expect(taskAfterSecond?.status).toBe("ready_to_check");
+      expect(secondFeedback.subtasks[0]?.agentId).toBe(secondSubtaskAgent.id);
     } finally {
       firstGate.resolve();
-      secondGate.resolve();
       await testDb.cleanup();
     }
   });
@@ -708,7 +868,11 @@ describe("createTaskExecutionService", () => {
       const failed = await taskService.getRunById(run.id);
 
       expect(failed?.errorMessage).toBe("Task run not found.");
-      expect(failed?.errorDetails).toEqual({ errorName: "ApiError", stage: "task_session_create" });
+      expect(failed?.errorDetails).toMatchObject({
+        errorName: "ApiError",
+        message: "Task run not found.",
+        stage: "task_session_create",
+      });
       expect(logger.error).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
@@ -734,7 +898,7 @@ describe("createTaskExecutionService", () => {
       });
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
-      await expectRunStatus(taskService, run.id, "completed");
+      await expectRunStatus(taskService, run.id, "running");
       const opened = await conversationService.openTaskRunConversationInChat(task.id, run.id);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
@@ -742,7 +906,7 @@ describe("createTaskExecutionService", () => {
       expect(opened.current.id).toBe(inspection.conversation?.id);
       expect(inspection.canOpenInChat).toBe(true);
       expect(inspection.conversation?.source).toBe("chat");
-      expect(inspection.conversation?.messages).toHaveLength(2);
+      expect(inspection.conversation?.messages).toHaveLength(1);
       expect(conversations).toHaveLength(1);
       expect(conversations[0]?.taskRunId).toBe(run.id);
     } finally {
@@ -782,16 +946,16 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
       expect(run.status).toBe("queued");
-      await expectRunStatus(taskService, run.id, "completed");
-      const completedRun = await taskService.getRunById(run.id);
+      await expectRunStatus(taskService, run.id, "running");
+      const runningRun = await taskService.getRunById(run.id);
 
-      expect(completedRun?.effectivePermissions?.toolPermissions).toEqual([
+      expect(runningRun?.effectivePermissions?.toolPermissions).toEqual([
         { pattern: "bash_*", action: "allow" },
       ]);
       expect(
-        completedRun?.effectivePermissions?.diagnostics?.map((diagnostic) => diagnostic.code),
+        runningRun?.effectivePermissions?.diagnostics?.map((diagnostic) => diagnostic.code),
       ).toContain("ask_mode_not_allowed_for_task_run");
-      expect(completedRun?.effectivePermissions?.diagnostics).toContainEqual(
+      expect(runningRun?.effectivePermissions?.diagnostics).toContainEqual(
         expect.objectContaining({ details: { pattern: "bash_*" } }),
       );
       expect(opencodeService.createSession).toHaveBeenCalledWith(
@@ -847,8 +1011,8 @@ describe("createTaskExecutionService", () => {
 
       promptGate.resolve();
 
-      await expectRunStatus(taskService, firstRun.id, "completed");
-      await expectRunStatus(taskService, secondRun.id, "completed");
+      await expectRunStatus(taskService, firstRun.id, "running");
+      await expectRunStatus(taskService, secondRun.id, "queued");
     } finally {
       await testDb.cleanup();
     }
@@ -883,8 +1047,8 @@ describe("createTaskExecutionService", () => {
 
       promptGate.resolve();
 
-      await expectRunStatus(taskService, firstRun.id, "completed");
-      await expectRunStatus(taskService, secondRun.id, "completed");
+      await expectRunStatus(taskService, firstRun.id, "running");
+      await expectRunStatus(taskService, secondRun.id, "running");
     } finally {
       await testDb.cleanup();
     }
@@ -920,7 +1084,678 @@ describe("createTaskExecutionService", () => {
       promptGate.resolve();
 
       await expectRunStatus(taskService, firstRun.id, "cancelled");
+      await expectRunStatus(taskService, secondRun.id, "running");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("aborts the OpenCode session when cancelling a running task", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Abort running task" });
+      const run = await executionService.queue(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      const cancelled = await executionService.cancel(run.id, { reason: "Stop now." });
+
+      expect(cancelled.status).toBe("cancelled");
+      expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps the task cancelled when OpenCode abort fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const logger = { warn: vi.fn() } as unknown as Logger;
+    const opencodeService = createMockOpenCodeService({
+      abortError: new Error("Abort failed."),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      logger,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Abort failure" });
+      const run = await executionService.queue(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      const cancelled = await executionService.cancel(run.id, { reason: "Stop anyway." });
+
+      expect(cancelled.status).toBe("cancelled");
+      await expectRunStatus(taskService, run.id, "cancelled");
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: task.id,
+          taskRunId: run.id,
+          opencodeSessionId: "session-1",
+        }),
+        "task run cancellation could not abort OpenCode session",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("monitors async task sessions and completes after debounced idle", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      statusSequence: [{ type: "busy" }, { type: "idle" }, { type: "idle" }],
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 2 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Async completion",
+        description: "Run longer than the request timeout.",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+      const completed = await taskService.getRunById(run.id);
+
+      expect(completed?.finalMessage).toContain("Task finished:");
+      expect(completed?.result).toMatchObject({ messageCount: 2 });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("recovers missing monitor metadata when a running run is resumed", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({ completeAsyncPrompt: true });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false, initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Resumed running run" });
+      const run = await taskService.createRun({
+        id: `run-${crypto.randomUUID()}`,
+        taskId: task.id,
+        agentId: agent.id,
+        status: "queued",
+        triggerSource: "manual",
+        renderedPrompt: "Continue.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Resumed running run",
+      });
+      // Prompt accepted out of band, then the process "restarts": the run is
+      // running with a session id but never persisted opencodeMonitor metadata.
+      await opencodeService.promptSessionAsync({
+        directory: "unused",
+        sessionID: conversation.opencodeSessionId,
+        agent: "agent",
+        model: { providerID: "openai", modelID: "gpt-4.1" },
+        text: "Already accepted.",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await taskService.tryStartQueuedRun(run.id, { startedAt: new Date().toISOString() });
+
+      executionService.startTaskRunMonitor(run.id);
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect((await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"]).toEqual(
+        expect.objectContaining({
+          conversationId: conversation.id,
+          opencodeSessionId: conversation.opencodeSessionId,
+          attemptedModel: "unknown",
+          baselineMessageCount: 0,
+        }),
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("requeues a running run that has no OpenCode session on resume", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ onPrompt: (input) => prompts.push(input) }),
+    });
+    // OpenCode is unhealthy so the re-drain after requeue defers, letting us
+    // observe the run settled back in the queued state deterministically.
+    const orchestrator = createMockOrchestrator({ healthy: false });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      orchestrator,
+      defer: { initialDelayMs: 10, maxDelayMs: 10, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Stale running run" });
+      const run = await taskService.createRun({
+        id: `run-${crypto.randomUUID()}`,
+        taskId: task.id,
+        agentId: agent.id,
+        status: "queued",
+        triggerSource: "manual",
+        renderedPrompt: "No accepted prompt.",
+      });
+      await taskService.tryStartQueuedRun(run.id, { startedAt: new Date().toISOString() });
+
+      await executionService.resumeRunningTaskRuns();
+
+      await expectRunStatus(taskService, run.id, "queued");
+      expect(prompts).toHaveLength(0);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("relinks the run to a fresh OpenCode session when the stored session is stale", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Stale session relink" });
+      const run = await taskService.createRun({
+        id: `run-${crypto.randomUUID()}`,
+        taskId: task.id,
+        agentId: agent.id,
+        status: "queued",
+        triggerSource: "manual",
+        renderedPrompt: "Go.",
+      });
+      // The run points at a session whose conversation/session no longer exists,
+      // so the executor must create a fresh session and relink the run to it.
+      await taskService.updateRun(run.id, { opencodeSessionId: "stale-session" });
+
+      const started = await executionService.runQueuedTask(run.id);
+
+      expect(started.status).toBe("running");
+      const refreshed = await taskService.getRunById(run.id);
+      expect(refreshed?.opencodeSessionId).toBe("session-1");
+      expect(refreshed?.triggerMetadata?.["opencodeMonitor"]).toMatchObject({
+        opencodeSessionId: "session-1",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps resuming remaining running runs when one fails to resume on startup", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const logger = { warn: vi.fn(), info: vi.fn(), error: vi.fn() } as unknown as Logger;
+    const opencodeService = createMockOpenCodeService({
+      listSessionMessagesErrors: [new Error("resume boom one"), new Error("resume boom two")],
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      logger,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      // One running run per agent is a DB invariant, so use two agents/tasks.
+      for (let index = 0; index < 2; index += 1) {
+        const agent = await insertAgent(testDb.client.db);
+        const task = await taskService.create({
+          agentId: agent.id,
+          title: `Resume resilience ${index}`,
+        });
+        const runId = `run-${crypto.randomUUID()}`;
+        await taskService.createRun({
+          id: runId,
+          taskId: task.id,
+          agentId: agent.id,
+          status: "running",
+          triggerSource: "manual",
+          renderedPrompt: "Go.",
+          startedAt: new Date().toISOString(),
+        });
+        // The conversation row references the run, so create the run first.
+        const conversation = await conversationService.createTaskRunConversation({
+          agentId: agent.id,
+          taskId: task.id,
+          taskRunId: runId,
+          title: `Task: Resume resilience ${index}`,
+        });
+        await taskService.updateRun(runId, { opencodeSessionId: conversation.opencodeSessionId });
+      }
+
+      // Both runs throw while reading accepted-prompt evidence; the loop must not
+      // abort after the first failure.
+      await expect(executionService.resumeRunningTaskRuns()).resolves.toBeUndefined();
+      executionService.dispose();
+
+      const resumeFailures = (logger.warn as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([, message]) =>
+          message === "failed to resume running task run on startup; starting monitor best-effort",
+      );
+      expect(resumeFailures).toHaveLength(2);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("retries transient local status failures while monitoring task sessions", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const statusReads = vi.fn();
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      sessionStatusErrors: [createLocalTransportError("UND_ERR_SOCKET")],
+      onStatus: statusReads,
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Retry monitor status",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(statusReads).toHaveBeenCalledTimes(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("queues fallback runs when the monitor observes a provider error", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      providers: {
+        all: [
+          { id: "openai", models: { "gpt-4.1": {} } },
+          { id: "anthropic", models: { "claude-haiku": {} } },
+        ],
+        default: {},
+        connected: ["openai", "anthropic"],
+      },
+      onPrompt: (input) => prompts.push(input),
+      promptError: ({ model }) =>
+        model?.providerID === "openai"
+          ? { name: "APIError", message: "Provider is overloaded", data: { isRetryable: true } }
+          : undefined,
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        fallbackModels: ["anthropic/claude-haiku"],
+        title: "Monitored fallback",
+        description: "Primary model is down.",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+      const runs = await taskService.listRuns(task.id);
+      const fallbackRun = runs.find((entry) => entry.retryOfRunId === run.id);
+
+      expect(fallbackRun).toBeDefined();
+      if (!fallbackRun) throw new Error("Expected fallback run.");
+
+      await expectRunStatus(taskService, fallbackRun.id, "completed");
+      expect((await taskService.getRunById(run.id))?.errorDetails).toMatchObject({
+        errorName: "APIError",
+        attemptedModel: "openai/gpt-4.1",
+        stage: "task_session_prompt",
+      });
+      expect(prompts.map((prompt) => prompt.model)).toEqual([
+        { providerID: "openai", modelID: "gpt-4.1" },
+        { providerID: "anthropic", modelID: "claude-haiku" },
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("times out monitors for stuck async task sessions", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ statusSequence: [{ type: "busy" }] }),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, maxLifetimeMs: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Stuck task",
+        description: "Never settles.",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      expect((await taskService.getRunById(run.id))?.errorDetails).toMatchObject({
+        errorName: "TaskRunMonitorTimeout",
+        stage: "monitor_timeout",
+        opencodeSessionId: "session-1",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not complete a cancelled task when a monitor is started later", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ completeAsyncPrompt: true }),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false, initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Cancelled monitor",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+      const cancelled = await executionService.cancel(run.id, { reason: "Stop." });
+
+      executionService.startTaskRunMonitor(run.id);
+
+      expect(cancelled.status).toBe("cancelled");
+      await expectRunStatus(taskService, run.id, "cancelled");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("uses one monitor when duplicate starts target the same running run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const statusReads = vi.fn();
+    const onRunTerminal = vi.fn();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        completeAsyncPrompt: true,
+        onStatus: statusReads,
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      onRunTerminal,
+      monitor: { autoStart: false, initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Duplicate monitor",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "running");
+      executionService.startTaskRunMonitor(run.id);
+      executionService.startTaskRunMonitor(run.id);
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(statusReads).toHaveBeenCalledTimes(1);
+      expect(onRunTerminal).toHaveBeenCalledTimes(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("drains the next queued task after monitored completion", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ completeAsyncPrompt: true }),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const firstTask = await taskService.create({ agentId: agent.id, title: "First monitored" });
+      const secondTask = await taskService.create({ agentId: agent.id, title: "Second monitored" });
+
+      const firstRun = await executionService.queue(firstTask.id, { triggerSource: "manual" });
+      const secondRun = await executionService.queue(secondTask.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, firstRun.id, "completed");
       await expectRunStatus(taskService, secondRun.id, "completed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps queued task runs queued while OpenCode is unhealthy", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ onPrompt: (input) => prompts.push(input) }),
+    });
+    const orchestrator = createMockOrchestrator({ healthy: false });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      orchestrator,
+      defer: { initialDelayMs: 10, maxDelayMs: 10, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Deferred task",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expect.poll(() => orchestrator.getStatus.mock.calls.length).toBeGreaterThan(0);
+      expect((await taskService.getRunById(run.id))?.status).toBe("queued");
+      expect(prompts).toHaveLength(0);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("starts deferred queued task runs after OpenCode becomes healthy", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        completeAsyncPrompt: true,
+        onPrompt: (input) => prompts.push(input),
+      }),
+    });
+    const orchestrator = createMockOrchestrator({ healthy: false });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      orchestrator,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+      defer: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Deferred then healthy",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expect.poll(() => orchestrator.getStatus.mock.calls.length).toBeGreaterThan(0);
+      expect((await taskService.getRunById(run.id))?.status).toBe("queued");
+
+      orchestrator.setHealthy(true);
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect(prompts).toHaveLength(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps deferred queued task runs cancellable", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ onPrompt: (input) => prompts.push(input) }),
+    });
+    const orchestrator = createMockOrchestrator({ healthy: false });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      orchestrator,
+      defer: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Deferred cancel",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expect.poll(() => orchestrator.getStatus.mock.calls.length).toBeGreaterThan(0);
+      const cancelled = await executionService.cancel(run.id, { reason: "Stop before engine." });
+
+      orchestrator.setHealthy(true);
+
+      expect(cancelled.status).toBe("cancelled");
+      await expectRunStatus(taskService, run.id, "cancelled");
+      expect(prompts).toHaveLength(0);
     } finally {
       await testDb.cleanup();
     }
@@ -1053,6 +1888,42 @@ function createDeferred<T>(): {
   return { promise, resolve, reject };
 }
 
+function createLocalTransportError(
+  code = "ECONNRESET",
+): TypeError & { cause: Error & { code: string } } {
+  const cause = new Error(`${code} while calling OpenCode`) as Error & { code: string };
+  cause.code = code;
+  const error = new TypeError("fetch failed") as TypeError & { cause: Error & { code: string } };
+  error.cause = cause;
+  return error;
+}
+
+function createMockOrchestrator(input: { healthy: boolean }): Pick<
+  OpenCodeOrchestrator,
+  "getStatus"
+> & {
+  getStatus: ReturnType<typeof vi.fn<() => EngineStatus>>;
+  setHealthy: (nextHealthy: boolean) => void;
+} {
+  let healthy = input.healthy;
+  const getStatus = vi.fn<() => EngineStatus>(() => ({
+    state: healthy ? "healthy" : "unhealthy",
+    healthy,
+    url: "http://127.0.0.1:4100",
+    workspaceDir: "/tmp/cc-test-workspace",
+    lastError: healthy ? undefined : "OpenCode is not healthy.",
+    restartCount: 0,
+    maxRestarts: 3,
+  }));
+
+  return {
+    getStatus,
+    setHealthy(nextHealthy: boolean): void {
+      healthy = nextHealthy;
+    },
+  };
+}
+
 type MockProviderList = {
   all: { id: string; models: Record<string, unknown> }[];
   default: Record<string, string>;
@@ -1071,10 +1942,26 @@ function createMockOpenCodeService(
       model?: { providerID: string; modelID: string };
       text: string;
     }) => { name: string; message: string; data?: Record<string, unknown> } | undefined;
+    promptTransportError?: Error;
+    promptTransportErrors?: Error[];
+    promptPostAcceptErrors?: Error[];
+    createSessionErrors?: Error[];
+    listSessionMessagesErrors?: Error[];
+    sessionStatusErrors?: Error[];
+    completeAsyncPrompt?: boolean;
+    statusSequence?: OpenCodeSessionStatus[];
+    onStatus?: () => void;
+    abortError?: Error;
   } = {},
 ): OpenCodeService {
   const sessions = new Map<string, OpenCodeSession>();
   const messages = new Map<string, OpenCodeSessionMessage[]>();
+  const statusSequence = [...(options.statusSequence ?? [])];
+  const promptTransportErrors = [...(options.promptTransportErrors ?? [])];
+  const promptPostAcceptErrors = [...(options.promptPostAcceptErrors ?? [])];
+  const createSessionErrors = [...(options.createSessionErrors ?? [])];
+  const listSessionMessagesErrors = [...(options.listSessionMessagesErrors ?? [])];
+  const sessionStatusErrors = [...(options.sessionStatusErrors ?? [])];
   let sessionCount = 0;
   let messageCount = 0;
   let time = Date.parse("2026-06-01T12:00:00.000Z");
@@ -1091,6 +1978,12 @@ function createMockOpenCodeService(
 
   return {
     createSession: vi.fn((_directory: string, sessionOptions?: CreateOpenCodeSessionOptions) => {
+      const error = createSessionErrors.shift();
+
+      if (error) {
+        throw error;
+      }
+
       sessionCount += 1;
       const session: OpenCodeSession = {
         id: `session-${String(sessionCount)}`,
@@ -1110,8 +2003,33 @@ function createMockOpenCodeService(
 
       return Promise.resolve(session);
     },
-    listSessionMessages: (_directory: string, sessionID: string) =>
-      Promise.resolve(messages.get(sessionID) ?? []),
+    listSessionMessages: (_directory: string, sessionID: string) => {
+      const error = listSessionMessagesErrors.shift();
+
+      if (error) {
+        throw error;
+      }
+
+      return Promise.resolve(messages.get(sessionID) ?? []);
+    },
+    listSessionStatuses: () => Promise.resolve({}),
+    getSessionStatus: () => {
+      const error = sessionStatusErrors.shift();
+
+      if (error) {
+        throw error;
+      }
+
+      options.onStatus?.();
+      return Promise.resolve(statusSequence.shift() ?? { type: "idle" });
+    },
+    abortSession: vi.fn(() => {
+      if (options.abortError) {
+        throw options.abortError;
+      }
+
+      return Promise.resolve();
+    }),
     listProviders: (_directory: string) =>
       Promise.resolve(options.providers ?? { all: [], default: {}, connected: [] }),
     promptSession: async ({
@@ -1125,6 +2043,12 @@ function createMockOpenCodeService(
     }) => {
       options.onPrompt?.({ model, text });
       await (options.promptGates?.shift() ?? options.promptGate);
+
+      const transportError = promptTransportErrors.shift() ?? options.promptTransportError;
+
+      if (transportError) {
+        throw transportError;
+      }
 
       const sessionMessages = messages.get(sessionID);
       const session = sessions.get(sessionID);
@@ -1145,27 +2069,104 @@ function createMockOpenCodeService(
         parts: [{ id: `part-${userMessageId}`, type: "text", text }],
       });
       const error = options.promptError?.({ model, text });
-      const assistantMessage: OpenCodeSessionMessage = {
-        info: {
-          id: assistantMessageId,
-          sessionID,
-          role: "assistant",
-          time: { created: nextTime(), completed: nextTime() },
-          ...(error
-            ? { error: { name: error.name, message: error.message, data: error.data ?? {} } }
-            : {}),
-        },
-        parts: [
-          {
-            id: `part-${assistantMessageId}`,
-            type: "text",
-            text: `Task finished: ${text}`,
-          },
-        ],
-      };
+      const assistantMessage = createAssistantMessage({
+        sessionID,
+        assistantMessageId,
+        text,
+        error,
+      });
       sessionMessages.push(assistantMessage);
       session.time.updated = nextTime();
       return assistantMessage;
     },
+    promptSessionAsync: async ({
+      sessionID,
+      text,
+      model,
+    }: {
+      sessionID: string;
+      text: string;
+      model?: { providerID: string; modelID: string };
+    }) => {
+      options.onPrompt?.({ model, text });
+      await (options.promptGates?.shift() ?? options.promptGate);
+
+      const transportError = promptTransportErrors.shift() ?? options.promptTransportError;
+
+      if (transportError) {
+        throw transportError;
+      }
+
+      const sessionMessages = messages.get(sessionID);
+      const session = sessions.get(sessionID);
+
+      if (!sessionMessages || !session) {
+        throw new Error("Session not found.");
+      }
+
+      const userMessageId = nextMessageId();
+      sessionMessages.push({
+        info: {
+          id: userMessageId,
+          sessionID,
+          role: "user",
+          time: { created: nextTime() },
+        },
+        parts: [{ id: `part-${userMessageId}`, type: "text", text }],
+      });
+
+      if (options.completeAsyncPrompt) {
+        const assistantMessageId = nextMessageId();
+        const error = options.promptError?.({ model, text });
+        sessionMessages.push(
+          createAssistantMessage({
+            sessionID,
+            assistantMessageId,
+            text,
+            error,
+          }),
+        );
+      }
+
+      session.time.updated = nextTime();
+
+      const postAcceptError = promptPostAcceptErrors.shift();
+
+      if (postAcceptError) {
+        throw postAcceptError;
+      }
+    },
   } as unknown as OpenCodeService;
+
+  function createAssistantMessage(input: {
+    sessionID: string;
+    assistantMessageId: string;
+    text: string;
+    error?: { name: string; message: string; data?: Record<string, unknown> };
+  }): OpenCodeSessionMessage {
+    return {
+      info: {
+        id: input.assistantMessageId,
+        sessionID: input.sessionID,
+        role: "assistant",
+        time: { created: nextTime(), completed: nextTime() },
+        ...(input.error
+          ? {
+              error: {
+                name: input.error.name,
+                message: input.error.message,
+                data: input.error.data ?? {},
+              },
+            }
+          : {}),
+      },
+      parts: [
+        {
+          id: `part-${input.assistantMessageId}`,
+          type: "text",
+          text: `Task finished: ${input.text}`,
+        },
+      ],
+    };
+  }
 }

@@ -183,7 +183,7 @@ describe("task routes", () => {
           });
           return response.json<{ status?: string }>().status;
         })
-        .toBe("completed");
+        .toBe("running");
       const session = await server.inject({
         method: "GET",
         url: `/api/tasks/${task.id}/runs/${String(runId)}/session`,
@@ -191,6 +191,10 @@ describe("task routes", () => {
       const openInChat = await server.inject({
         method: "POST",
         url: `/api/tasks/${task.id}/runs/${String(runId)}/open-in-chat`,
+      });
+      await taskService.setRunStatus(String(runId), "completed", {
+        completedAt: new Date().toISOString(),
+        finalMessage: "Task completed by monitor.",
       });
       const activeRuns = await server.inject({ method: "GET", url: "/api/tasks/runs/active" });
       const accepted = await server.inject({ method: "POST", url: `/api/tasks/${task.id}/accept` });

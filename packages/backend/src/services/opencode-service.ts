@@ -70,8 +70,25 @@ const openCodeSessionSchema = z
   })
   .catchall(z.unknown());
 
+const openCodeSessionStatusSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("idle") }).catchall(z.unknown()),
+  z.object({ type: z.literal("busy") }).catchall(z.unknown()),
+  z
+    .object({
+      type: z.literal("retry"),
+      attempt: z.number().int().nonnegative(),
+      message: z.string(),
+      next: z.number().int().nonnegative(),
+    })
+    .catchall(z.unknown()),
+]);
+
+const openCodeSessionStatusMapSchema = z.record(z.string().min(1), openCodeSessionStatusSchema);
+
 export type OpenCodeSession = z.infer<typeof openCodeSessionSchema>;
 export type OpenCodeSessionMessage = z.infer<typeof openCodeMessageSchema>;
+export type OpenCodeSessionStatus = z.infer<typeof openCodeSessionStatusSchema>;
+export type OpenCodeSessionStatusMap = z.infer<typeof openCodeSessionStatusMapSchema>;
 
 export type OpenCodeSessionPermissionRule = {
   permission: string;
@@ -344,6 +361,27 @@ export function createOpenCodeService(options: {
         path: `/session/${encodeURIComponent(sessionID)}/message`,
       });
       return z.array(openCodeMessageSchema).parse(result);
+    },
+
+    async listSessionStatuses(directory: string): Promise<OpenCodeSessionStatusMap> {
+      const result = await requestSessionJson({
+        config: options.config,
+        directory,
+        method: "GET",
+        path: "/session/status",
+      });
+      return openCodeSessionStatusMapSchema.parse(result);
+    },
+
+    async getSessionStatus(directory: string, sessionID: string): Promise<OpenCodeSessionStatus> {
+      const result = await requestSessionJson({
+        config: options.config,
+        directory,
+        method: "GET",
+        path: "/session/status",
+      });
+      const statuses = openCodeSessionStatusMapSchema.parse(result);
+      return statuses[sessionID] ?? { type: "idle" };
     },
 
     async promptSession(input: {

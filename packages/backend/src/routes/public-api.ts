@@ -111,6 +111,7 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
       db: context.database.db,
       taskService,
       conversationService,
+      orchestrator: context.orchestrator,
       taskContextAttachmentService,
       logger: context.logger,
       archiveService: context.sessionArchiveService,

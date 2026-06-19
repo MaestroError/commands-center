@@ -25,6 +25,10 @@ export function createServer(context: RuntimeContext) {
 
   server.addHook("preHandler", registerOwnerAuthGuard(context));
 
+  server.addHook("onClose", () => {
+    context.taskExecutionService?.dispose();
+  });
+
   server.setErrorHandler((error, request, reply) => {
     registerApiErrorHandler(request, reply, error);
   });

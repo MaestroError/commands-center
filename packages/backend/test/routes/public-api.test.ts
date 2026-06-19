@@ -313,10 +313,14 @@ describe("public task API", () => {
           });
           return response.json<{ status?: string }>().status;
         })
-        .toBe("completed");
+        .toBe("running");
       await testDb.client.db
         .update(task_runs)
-        .set({ artifacts_json: JSON.stringify([{ title: "Private report", path: "report.md" }]) })
+        .set({
+          status: "completed",
+          completed_at: new Date(),
+          artifacts_json: JSON.stringify([{ title: "Private report", path: "report.md" }]),
+        })
         .where(eq(task_runs.id, triggerBody.runId));
       const runDetail = await server.inject({
         method: "GET",
