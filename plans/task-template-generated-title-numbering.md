@@ -12,13 +12,13 @@
 
 ## Proposed Source Letters
 
-| Creation path | Current code path | Proposed suffix letter |
-| --- | --- | --- |
-| User clicks Create task / Run now from template UI | Internal task routes | `M` |
-| Public API triggers/schedules template | Public API service | `A` |
-| Recurring scheduler generates from template | Scheduler service | `S` |
-| Specialist/agent MCP tool creates/runs template | MCP task-template tools | `G` |
-| Internal/system-generated template task, if any later appears | System source | `Y` |
+| Creation path                                                 | Current code path       | Proposed suffix letter |
+| ------------------------------------------------------------- | ----------------------- | ---------------------- |
+| User clicks Create task / Run now from template UI            | Internal task routes    | `M`                    |
+| Public API triggers/schedules template                        | Public API service      | `A`                    |
+| Recurring scheduler generates from template                   | Scheduler service       | `S`                    |
+| Specialist/agent MCP tool creates/runs template               | MCP task-template tools | `G`                    |
+| Internal/system-generated template task, if any later appears | System source           | `Y`                    |
 
 Open decision: if you specifically want AI-generated tasks to show `I` or `AI` semantics, I would add an explicit `agent` or `ai` trigger source to the shared schema. Since the requested format has one character, I recommend `G` for agent-generated to avoid colliding with `A` for API.
 

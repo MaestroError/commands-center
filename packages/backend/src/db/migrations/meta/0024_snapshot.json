@@ -95,9 +95,7 @@
       "indexes": {
         "agents_slug_unique": {
           "name": "agents_slug_unique",
-          "columns": [
-            "slug"
-          ],
+          "columns": ["slug"],
           "isUnique": true
         }
       },
@@ -169,9 +167,7 @@
       "indexes": {
         "api_tokens_token_hash_unique": {
           "name": "api_tokens_token_hash_unique",
-          "columns": [
-            "token_hash"
-          ],
+          "columns": ["token_hash"],
           "isUnique": true
         }
       },
@@ -273,46 +269,32 @@
       "indexes": {
         "conversations_opencode_session_id_unique": {
           "name": "conversations_opencode_session_id_unique",
-          "columns": [
-            "opencode_session_id"
-          ],
+          "columns": ["opencode_session_id"],
           "isUnique": true
         },
         "conversations_task_run_id_unique": {
           "name": "conversations_task_run_id_unique",
-          "columns": [
-            "task_run_id"
-          ],
+          "columns": ["task_run_id"],
           "isUnique": true
         },
         "conversations_agent_id_idx": {
           "name": "conversations_agent_id_idx",
-          "columns": [
-            "agent_id"
-          ],
+          "columns": ["agent_id"],
           "isUnique": false
         },
         "conversations_agent_current_idx": {
           "name": "conversations_agent_current_idx",
-          "columns": [
-            "agent_id",
-            "is_current"
-          ],
+          "columns": ["agent_id", "is_current"],
           "isUnique": false
         },
         "conversations_agent_source_idx": {
           "name": "conversations_agent_source_idx",
-          "columns": [
-            "agent_id",
-            "source"
-          ],
+          "columns": ["agent_id", "source"],
           "isUnique": false
         },
         "conversations_task_id_idx": {
           "name": "conversations_task_id_idx",
-          "columns": [
-            "task_id"
-          ],
+          "columns": ["task_id"],
           "isUnique": false
         }
       },
@@ -321,12 +303,8 @@
           "name": "conversations_agent_id_agents_id_fk",
           "tableFrom": "conversations",
           "tableTo": "agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -334,12 +312,8 @@
           "name": "conversations_task_id_tasks_id_fk",
           "tableFrom": "conversations",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -347,12 +321,8 @@
           "name": "conversations_task_run_id_task_runs_id_fk",
           "tableFrom": "conversations",
           "tableTo": "task_runs",
-          "columnsFrom": [
-            "task_run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_run_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -431,16 +401,12 @@
       "indexes": {
         "custom_tools_slug_unique": {
           "name": "custom_tools_slug_unique",
-          "columns": [
-            "slug"
-          ],
+          "columns": ["slug"],
           "isUnique": true
         },
         "custom_tools_name_unique": {
           "name": "custom_tools_name_unique",
-          "columns": [
-            "name"
-          ],
+          "columns": ["name"],
           "isUnique": true
         }
       },
@@ -505,9 +471,7 @@
       "indexes": {
         "mcp_servers_name_unique": {
           "name": "mcp_servers_name_unique",
-          "columns": [
-            "name"
-          ],
+          "columns": ["name"],
           "isUnique": true
         }
       },
@@ -586,9 +550,7 @@
       "indexes": {
         "messages_conversation_id_idx": {
           "name": "messages_conversation_id_idx",
-          "columns": [
-            "conversation_id"
-          ],
+          "columns": ["conversation_id"],
           "isUnique": false
         }
       },
@@ -597,12 +559,8 @@
           "name": "messages_conversation_id_conversations_id_fk",
           "tableFrom": "messages",
           "tableTo": "conversations",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["conversation_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -667,9 +625,7 @@
       "indexes": {
         "providers_provider_key_unique": {
           "name": "providers_provider_key_unique",
-          "columns": [
-            "provider_key"
-          ],
+          "columns": ["provider_key"],
           "isUnique": true
         }
       },
@@ -720,9 +676,7 @@
       "indexes": {
         "secrets_key_unique": {
           "name": "secrets_key_unique",
-          "columns": [
-            "key"
-          ],
+          "columns": ["key"],
           "isUnique": true
         }
       },
@@ -773,9 +727,7 @@
       "indexes": {
         "settings_key_unique": {
           "name": "settings_key_unique",
-          "columns": [
-            "key"
-          ],
+          "columns": ["key"],
           "isUnique": true
         }
       },
@@ -869,31 +821,22 @@
       "indexes": {
         "task_artifact_share_links_token_hash_unique": {
           "name": "task_artifact_share_links_token_hash_unique",
-          "columns": [
-            "token_hash"
-          ],
+          "columns": ["token_hash"],
           "isUnique": true
         },
         "task_artifact_share_links_artifact_id_idx": {
           "name": "task_artifact_share_links_artifact_id_idx",
-          "columns": [
-            "artifact_id"
-          ],
+          "columns": ["artifact_id"],
           "isUnique": false
         },
         "task_artifact_share_links_task_run_idx": {
           "name": "task_artifact_share_links_task_run_idx",
-          "columns": [
-            "task_id",
-            "run_id"
-          ],
+          "columns": ["task_id", "run_id"],
           "isUnique": false
         },
         "task_artifact_share_links_expires_at_idx": {
           "name": "task_artifact_share_links_expires_at_idx",
-          "columns": [
-            "expires_at"
-          ],
+          "columns": ["expires_at"],
           "isUnique": false
         }
       },
@@ -902,12 +845,8 @@
           "name": "task_artifact_share_links_task_id_tasks_id_fk",
           "tableFrom": "task_artifact_share_links",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -915,12 +854,8 @@
           "name": "task_artifact_share_links_run_id_task_runs_id_fk",
           "tableFrom": "task_artifact_share_links",
           "tableTo": "task_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -978,16 +913,12 @@
       "indexes": {
         "task_feedback_task_id_idx": {
           "name": "task_feedback_task_id_idx",
-          "columns": [
-            "task_id"
-          ],
+          "columns": ["task_id"],
           "isUnique": false
         },
         "task_feedback_deleted_at_idx": {
           "name": "task_feedback_deleted_at_idx",
-          "columns": [
-            "deleted_at"
-          ],
+          "columns": ["deleted_at"],
           "isUnique": false
         }
       },
@@ -996,12 +927,8 @@
           "name": "task_feedback_task_id_tasks_id_fk",
           "tableFrom": "task_feedback",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1230,52 +1157,38 @@
       "indexes": {
         "task_runs_task_id_idx": {
           "name": "task_runs_task_id_idx",
-          "columns": [
-            "task_id"
-          ],
+          "columns": ["task_id"],
           "isUnique": false
         },
         "task_runs_subtask_id_idx": {
           "name": "task_runs_subtask_id_idx",
-          "columns": [
-            "subtask_id"
-          ],
+          "columns": ["subtask_id"],
           "isUnique": false
         },
         "task_runs_agent_id_idx": {
           "name": "task_runs_agent_id_idx",
-          "columns": [
-            "agent_id"
-          ],
+          "columns": ["agent_id"],
           "isUnique": false
         },
         "task_runs_status_idx": {
           "name": "task_runs_status_idx",
-          "columns": [
-            "status"
-          ],
+          "columns": ["status"],
           "isUnique": false
         },
         "task_runs_agent_running_unique_idx": {
           "name": "task_runs_agent_running_unique_idx",
-          "columns": [
-            "agent_id"
-          ],
+          "columns": ["agent_id"],
           "isUnique": true,
           "where": "\"task_runs\".\"status\" = 'running'"
         },
         "task_runs_outcome_idx": {
           "name": "task_runs_outcome_idx",
-          "columns": [
-            "outcome"
-          ],
+          "columns": ["outcome"],
           "isUnique": false
         },
         "task_runs_created_at_idx": {
           "name": "task_runs_created_at_idx",
-          "columns": [
-            "created_at"
-          ],
+          "columns": ["created_at"],
           "isUnique": false
         }
       },
@@ -1284,12 +1197,8 @@
           "name": "task_runs_task_id_tasks_id_fk",
           "tableFrom": "task_runs",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1297,12 +1206,8 @@
           "name": "task_runs_subtask_id_task_subtasks_id_fk",
           "tableFrom": "task_runs",
           "tableTo": "task_subtasks",
-          "columnsFrom": [
-            "subtask_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["subtask_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1310,12 +1215,8 @@
           "name": "task_runs_agent_id_agents_id_fk",
           "tableFrom": "task_runs",
           "tableTo": "agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1323,12 +1224,8 @@
           "name": "task_runs_retry_of_run_id_task_runs_id_fk",
           "tableFrom": "task_runs",
           "tableTo": "task_runs",
-          "columnsFrom": [
-            "retry_of_run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["retry_of_run_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1386,9 +1283,7 @@
       "indexes": {
         "task_scheduler_state_next_run_at_idx": {
           "name": "task_scheduler_state_next_run_at_idx",
-          "columns": [
-            "next_run_at"
-          ],
+          "columns": ["next_run_at"],
           "isUnique": false
         }
       },
@@ -1460,30 +1355,22 @@
       "indexes": {
         "task_subtasks_task_id_idx": {
           "name": "task_subtasks_task_id_idx",
-          "columns": [
-            "task_id"
-          ],
+          "columns": ["task_id"],
           "isUnique": false
         },
         "task_subtasks_feedback_id_idx": {
           "name": "task_subtasks_feedback_id_idx",
-          "columns": [
-            "feedback_id"
-          ],
+          "columns": ["feedback_id"],
           "isUnique": false
         },
         "task_subtasks_agent_id_idx": {
           "name": "task_subtasks_agent_id_idx",
-          "columns": [
-            "agent_id"
-          ],
+          "columns": ["agent_id"],
           "isUnique": false
         },
         "task_subtasks_deleted_at_idx": {
           "name": "task_subtasks_deleted_at_idx",
-          "columns": [
-            "deleted_at"
-          ],
+          "columns": ["deleted_at"],
           "isUnique": false
         }
       },
@@ -1492,12 +1379,8 @@
           "name": "task_subtasks_task_id_tasks_id_fk",
           "tableFrom": "task_subtasks",
           "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["task_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1505,12 +1388,8 @@
           "name": "task_subtasks_feedback_id_task_feedback_id_fk",
           "tableFrom": "task_subtasks",
           "tableTo": "task_feedback",
-          "columnsFrom": [
-            "feedback_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["feedback_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1518,12 +1397,8 @@
           "name": "task_subtasks_agent_id_agents_id_fk",
           "tableFrom": "task_subtasks",
           "tableTo": "agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1687,44 +1562,32 @@
       "indexes": {
         "task_templates_agent_id_idx": {
           "name": "task_templates_agent_id_idx",
-          "columns": [
-            "agent_id"
-          ],
+          "columns": ["agent_id"],
           "isUnique": false
         },
         "task_templates_default_agent_id_idx": {
           "name": "task_templates_default_agent_id_idx",
-          "columns": [
-            "default_agent_id"
-          ],
+          "columns": ["default_agent_id"],
           "isUnique": false
         },
         "task_templates_status_idx": {
           "name": "task_templates_status_idx",
-          "columns": [
-            "status"
-          ],
+          "columns": ["status"],
           "isUnique": false
         },
         "task_templates_next_occurrence_at_idx": {
           "name": "task_templates_next_occurrence_at_idx",
-          "columns": [
-            "next_occurrence_at"
-          ],
+          "columns": ["next_occurrence_at"],
           "isUnique": false
         },
         "task_templates_archived_idx": {
           "name": "task_templates_archived_idx",
-          "columns": [
-            "archived"
-          ],
+          "columns": ["archived"],
           "isUnique": false
         },
         "task_templates_deleted_at_idx": {
           "name": "task_templates_deleted_at_idx",
-          "columns": [
-            "deleted_at"
-          ],
+          "columns": ["deleted_at"],
           "isUnique": false
         }
       },
@@ -1733,12 +1596,8 @@
           "name": "task_templates_agent_id_agents_id_fk",
           "tableFrom": "task_templates",
           "tableTo": "agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1746,12 +1605,8 @@
           "name": "task_templates_default_agent_id_agents_id_fk",
           "tableFrom": "task_templates",
           "tableTo": "agents",
-          "columnsFrom": [
-            "default_agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["default_agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1971,80 +1826,57 @@
       "indexes": {
         "tasks_template_id_idx": {
           "name": "tasks_template_id_idx",
-          "columns": [
-            "template_id"
-          ],
+          "columns": ["template_id"],
           "isUnique": false
         },
         "tasks_agent_id_idx": {
           "name": "tasks_agent_id_idx",
-          "columns": [
-            "agent_id"
-          ],
+          "columns": ["agent_id"],
           "isUnique": false
         },
         "tasks_default_agent_id_idx": {
           "name": "tasks_default_agent_id_idx",
-          "columns": [
-            "default_agent_id"
-          ],
+          "columns": ["default_agent_id"],
           "isUnique": false
         },
         "tasks_status_idx": {
           "name": "tasks_status_idx",
-          "columns": [
-            "status"
-          ],
+          "columns": ["status"],
           "isUnique": false
         },
         "tasks_source_template_id_idx": {
           "name": "tasks_source_template_id_idx",
-          "columns": [
-            "source_template_id"
-          ],
+          "columns": ["source_template_id"],
           "isUnique": false
         },
         "tasks_generated_by_agent_id_idx": {
           "name": "tasks_generated_by_agent_id_idx",
-          "columns": [
-            "generated_by_agent_id"
-          ],
+          "columns": ["generated_by_agent_id"],
           "isUnique": false
         },
         "tasks_source_template_occurrence_unique_idx": {
           "name": "tasks_source_template_occurrence_unique_idx",
-          "columns": [
-            "source_template_id",
-            "source_occurrence_at"
-          ],
+          "columns": ["source_template_id", "source_occurrence_at"],
           "isUnique": true
         },
         "tasks_scheduled_at_idx": {
           "name": "tasks_scheduled_at_idx",
-          "columns": [
-            "scheduled_at"
-          ],
+          "columns": ["scheduled_at"],
           "isUnique": false
         },
         "tasks_done_at_idx": {
           "name": "tasks_done_at_idx",
-          "columns": [
-            "done_at"
-          ],
+          "columns": ["done_at"],
           "isUnique": false
         },
         "tasks_archived_idx": {
           "name": "tasks_archived_idx",
-          "columns": [
-            "archived"
-          ],
+          "columns": ["archived"],
           "isUnique": false
         },
         "tasks_deleted_at_idx": {
           "name": "tasks_deleted_at_idx",
-          "columns": [
-            "deleted_at"
-          ],
+          "columns": ["deleted_at"],
           "isUnique": false
         }
       },
@@ -2053,12 +1885,8 @@
           "name": "tasks_template_id_task_templates_id_fk",
           "tableFrom": "tasks",
           "tableTo": "task_templates",
-          "columnsFrom": [
-            "template_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["template_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2066,12 +1894,8 @@
           "name": "tasks_agent_id_agents_id_fk",
           "tableFrom": "tasks",
           "tableTo": "agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2079,12 +1903,8 @@
           "name": "tasks_default_agent_id_agents_id_fk",
           "tableFrom": "tasks",
           "tableTo": "agents",
-          "columnsFrom": [
-            "default_agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["default_agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2092,12 +1912,8 @@
           "name": "tasks_source_template_id_task_templates_id_fk",
           "tableFrom": "tasks",
           "tableTo": "task_templates",
-          "columnsFrom": [
-            "source_template_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["source_template_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2105,12 +1921,8 @@
           "name": "tasks_generated_by_agent_id_agents_id_fk",
           "tableFrom": "tasks",
           "tableTo": "agents",
-          "columnsFrom": [
-            "generated_by_agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["generated_by_agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }

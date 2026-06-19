@@ -521,7 +521,31 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         return undefined;
       }
 
-      const task = existing ? mapTask(existing) : mapTemplateAsTask(existingTemplate);
+      if (existing) {
+        const task = mapTask(existing);
+
+        return this.create({
+          agentId: task.agentId,
+          defaultAgentId: task.defaultAgentId,
+          model: task.model,
+          fallbackModels: task.fallbackModels,
+          title: `${task.title} copy`,
+          description: task.description,
+          context: task.context,
+          todos: task.todos.map((todo) => ({
+            content: todo.content,
+            status: todo.status,
+          })),
+          permissionProfile: task.permissionProfile,
+          enabled: false,
+        });
+      }
+
+      if (!existingTemplate) {
+        return undefined;
+      }
+
+      const task = mapTemplateAsTask(existingTemplate);
 
       return this.create({
         agentId: task.agentId,
@@ -531,7 +555,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         title: `${task.title} copy`,
         description: task.description,
         context: task.context,
-        todos: task.todos.map((todo) => ({ content: todo.content, status: todo.status })),
+        todos: task.todos.map((todo) => ({
+          content: todo.content,
+          status: todo.status,
+        })),
         permissionProfile: task.permissionProfile,
         enabled: false,
       });

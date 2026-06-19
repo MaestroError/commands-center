@@ -144,9 +144,9 @@ describe("public task API", () => {
       expect(triggerBody.status).toBe("queued");
       expect(triggerBody.runId).toMatch(/.+/);
       expect(triggerBody.scheduledFor).toBeNull();
-      await expect.poll(async () => (await taskService.get(triggerBody.taskId))?.title).toBe(
-        "Weekly report #A1",
-      );
+      await expect
+        .poll(async () => (await taskService.get(triggerBody.taskId))?.title)
+        .toBe("Weekly report #A1");
 
       // The created run is tagged as an API run.
       const run = await testDb.client.db.query.task_runs.findFirst({
@@ -181,7 +181,9 @@ describe("public task API", () => {
         scheduledFor: "2999-01-01T00:00:00.000Z",
       });
       await expect
-        .poll(async () => (await taskService.get(scheduled.json<{ taskId: string }>().taskId))?.title)
+        .poll(
+          async () => (await taskService.get(scheduled.json<{ taskId: string }>().taskId))?.title,
+        )
         .toBe("Weekly report #A2");
 
       // Past schedule is rejected.
