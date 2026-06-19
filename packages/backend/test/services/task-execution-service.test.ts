@@ -16,6 +16,7 @@ import {
 } from "../../src/services/conversation-service";
 import { createTaskPermissionService } from "../../src/services/task-permission-service";
 import { createTaskExecutionService as createBaseTaskExecutionService } from "../../src/services/task-execution-service";
+import type { TaskRunMonitorSettingsService } from "../../src/services/task-run-monitor-settings-service";
 import { createTaskService } from "../../src/services/task-service";
 import type {
   CreateOpenCodeSessionOptions,
@@ -1612,6 +1613,53 @@ describe("createTaskExecutionService", () => {
 
       await expectRunStatus(taskService, run.id, "completed");
     } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("honors monitor timeouts from settings over the static config", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // Settings disable stall detection (0); the static config would have stalled
+    // the wedged run almost immediately, so it proves the resolver takes priority.
+    const monitorSettingsService = {
+      get: vi.fn(() =>
+        Promise.resolve({
+          taskRunMonitorMaxLifetimeMinutes: 360,
+          taskRunMonitorNoProgressTimeoutMinutes: 0,
+        }),
+      ),
+      update: vi.fn(),
+    } as unknown as TaskRunMonitorSettingsService;
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitorSettingsService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, noProgressMs: 5, maxLifetimeMs: 5 * 60 * 1_000 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Settings override" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await vi.waitFor(() =>
+        expect(
+          (monitorSettingsService.get as ReturnType<typeof vi.fn>).mock.calls.length,
+        ).toBeGreaterThan(0),
+      );
+      // Give the tiny static stall window time to (wrongly) fire if the resolver
+      // were ignored, then confirm the run is still monitored rather than stalled.
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 40));
+      expect((await taskService.getRunById(run.id))?.status).toBe("running");
+    } finally {
+      executionService.dispose();
       await testDb.cleanup();
     }
   });

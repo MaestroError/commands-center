@@ -36,7 +36,9 @@ import {
   DEFAULT_TASK_RUN_MONITOR_CONFIG,
   type TaskRunMonitorConfig,
   type TaskRunMonitorOptions,
+  type TaskRunMonitorRuntimeConfig,
 } from "./task-run-monitor-service.js";
+import type { TaskRunMonitorSettingsService } from "./task-run-monitor-settings-service.js";
 import {
   buildTaskRunErrorDetails,
   createTaskRunTransport,
@@ -105,6 +107,8 @@ const DEFAULT_TASK_RUN_DEFER_CONFIG: TaskRunDeferConfig = {
   jitterRatio: 0.2,
 };
 
+const MONITOR_RUNTIME_CACHE_MS = 10_000;
+
 export function createTaskExecutionService(options: {
   db?: AppDb;
   taskService: TaskService;
@@ -114,6 +118,7 @@ export function createTaskExecutionService(options: {
   taskPermissionService?: TaskPermissionService;
   archiveService?: SessionArchiveService;
   archiveSettingsService?: SessionArchiveSettingsService;
+  monitorSettingsService?: TaskRunMonitorSettingsService;
   onRunTerminal?: (run: TaskRun) => void | Promise<void>;
   logger?: Logger;
   monitor?: TaskRunMonitorOptions;
@@ -134,6 +139,7 @@ export function createTaskExecutionService(options: {
     ...(options.defer ?? {}),
   };
   const agentDrainDeferrals = new Map<string, AgentDrainDeferral>();
+  let monitorRuntimeCache: { atMs: number; value: TaskRunMonitorRuntimeConfig } | undefined;
   const transport = createTaskRunTransport({
     conversationService: options.conversationService,
     logger: options.logger,
@@ -144,6 +150,7 @@ export function createTaskExecutionService(options: {
     conversationService: options.conversationService,
     transport,
     config: monitorConfig,
+    resolveRuntimeConfig: options.monitorSettingsService ? resolveMonitorRuntimeConfig : undefined,
     logger: options.logger,
     hooks: {
       handleTerminalRun: (run) => handleTerminalRun(run, { triggerContext: readRunContext(run) }),
@@ -251,6 +258,39 @@ export function createTaskExecutionService(options: {
       agentDrainDeferrals.clear();
     },
   };
+
+  // Resolve the monitor's timeouts from settings, cached briefly so many active
+  // monitors polling every couple of seconds don't each re-read the file. Falls
+  // back to the static monitor config on any read/parse failure.
+  async function resolveMonitorRuntimeConfig(): Promise<TaskRunMonitorRuntimeConfig> {
+    const now = Date.now();
+
+    if (monitorRuntimeCache && now - monitorRuntimeCache.atMs < MONITOR_RUNTIME_CACHE_MS) {
+      return monitorRuntimeCache.value;
+    }
+
+    const fallback: TaskRunMonitorRuntimeConfig = {
+      maxLifetimeMs: monitorConfig.maxLifetimeMs,
+      noProgressMs: monitorConfig.noProgressMs,
+    };
+
+    try {
+      const settings = await options.monitorSettingsService!.get();
+      const value: TaskRunMonitorRuntimeConfig = {
+        maxLifetimeMs: settings.taskRunMonitorMaxLifetimeMinutes * 60_000,
+        noProgressMs: settings.taskRunMonitorNoProgressTimeoutMinutes * 60_000,
+      };
+      monitorRuntimeCache = { atMs: now, value };
+      return value;
+    } catch (error) {
+      options.logger?.warn(
+        { err: error },
+        "task run monitor settings read failed; using static monitor config",
+      );
+      monitorRuntimeCache = { atMs: now, value: fallback };
+      return fallback;
+    }
+  }
 
   async function queueTask(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
     const parsed = queueTaskExecutionInputSchema.parse({ taskId, ...input });
