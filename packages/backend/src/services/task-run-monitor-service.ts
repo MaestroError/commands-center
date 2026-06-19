@@ -21,6 +21,8 @@ export type TaskRunMonitorOptions = {
   maxPollMs?: number;
   idlePolls?: number;
   maxLifetimeMs?: number;
+  /** No-progress (stall) timeout. `<= 0` disables stall detection. */
+  noProgressMs?: number;
 };
 
 export type TaskRunMonitorConfig = Required<TaskRunMonitorOptions>;
@@ -31,6 +33,13 @@ export const DEFAULT_TASK_RUN_MONITOR_CONFIG: TaskRunMonitorConfig = {
   maxPollMs: 10_000,
   idlePolls: 2,
   maxLifetimeMs: 6 * 60 * 60 * 1_000,
+  noProgressMs: 30 * 60 * 1_000,
+};
+
+/** Runtime-resolvable timeouts; can change between polls (e.g. from settings). */
+export type TaskRunMonitorRuntimeConfig = {
+  maxLifetimeMs: number;
+  noProgressMs: number;
 };
 
 type TaskRunMonitorHandle = {
@@ -40,6 +49,8 @@ type TaskRunMonitorHandle = {
   idleCount: number;
   lastStatus?: string;
   lastAssistantMessageId?: string;
+  lastProgressAtMs: number;
+  lastSignature?: string;
   stopped: boolean;
   timer?: ReturnType<typeof setTimeout>;
 };
@@ -49,6 +60,13 @@ type TaskRunMonitorHandle = {
  * settles. The monitor owns the polling/settle-detection state machine; the
  * execution service owns terminal task handling and fallback-model queueing.
  */
+export type TaskRunStallDetails = {
+  noProgressMs: number;
+  monitorElapsedMs: number;
+  lastStatus?: string;
+  lastAssistantMessageId?: string;
+};
+
 export type TaskRunMonitorHooks = {
   /** Run terminal handling (archive finalization, feedback subtasks, queue drain). */
   handleTerminalRun(run: TaskRun): Promise<void>;
@@ -58,6 +76,12 @@ export type TaskRunMonitorHooks = {
    * normal terminal handling for the errored run).
    */
   queueFallbackRun(errored: TaskRun, error: TaskRunPromptError): Promise<TaskRun | undefined>;
+  /**
+   * Finalize a stalled run: best-effort abort the wedged session, cancel the run
+   * with a clear reason, and optionally requeue it (per settings). Owns all the
+   * cancel/requeue policy; the monitor only detects the stall.
+   */
+  finalizeStalledRun(run: TaskRun, details: TaskRunStallDetails): Promise<void>;
 };
 
 export type TaskRunMonitorService = ReturnType<typeof createTaskRunMonitorService>;
@@ -68,6 +92,11 @@ export function createTaskRunMonitorService(deps: {
   transport: TaskRunTransport;
   config: TaskRunMonitorConfig;
   hooks: TaskRunMonitorHooks;
+  /**
+   * Resolve the current timeouts each poll so settings changes apply to in-flight
+   * monitors. Falls back to the static config defaults when omitted or on error.
+   */
+  resolveRuntimeConfig?: () => Promise<TaskRunMonitorRuntimeConfig>;
   logger?: Logger;
 }) {
   const { taskService, transport, config, hooks, logger } = deps;
@@ -80,11 +109,13 @@ export function createTaskRunMonitorService(deps: {
         return;
       }
 
+      const now = Date.now();
       const handle: TaskRunMonitorHandle = {
         runId,
-        startedAtMs: Date.now(),
+        startedAtMs: now,
         delayMs: config.initialPollMs,
         idleCount: 0,
+        lastProgressAtMs: now,
         stopped: false,
       };
       monitors.set(runId, handle);
@@ -158,7 +189,9 @@ export function createTaskRunMonitorService(deps: {
       return true;
     }
 
-    if (isMonitorTimedOut(handle, run)) {
+    const runtime = await resolveRuntimeConfig();
+
+    if (isMonitorTimedOut(handle, run, runtime.maxLifetimeMs)) {
       return finalizeTimeout(handle, run);
     }
 
@@ -187,10 +220,26 @@ export function createTaskRunMonitorService(deps: {
       handle.lastAssistantMessageId = latestAssistant.id;
     }
 
+    // Progress = the session produced new content. Deliberately excludes session
+    // status, so a wedged-but-busy session (no new messages) trips the stall
+    // timeout while status flapping does not reset it.
+    const signature = `${String(conversation.messageCount)}|${latestAssistant?.id ?? ""}`;
+    if (signature !== handle.lastSignature) {
+      handle.lastSignature = signature;
+      handle.lastProgressAtMs = Date.now();
+    }
+
     // A provider error in the assistant message is a definitive terminal signal,
     // so finalize it regardless of whether the status read succeeded.
     if (latestAssistant?.error) {
       return finalizeModelError(run, latestAssistant.error, monitorMetadata.attemptedModel);
+    }
+
+    // OpenCode stopped making progress (e.g. the agent loop wedged on a provider
+    // or tool). Finalize as a stall instead of holding the run until the much
+    // larger max-lifetime cap.
+    if (runtime.noProgressMs > 0 && Date.now() - handle.lastProgressAtMs >= runtime.noProgressMs) {
+      return finalizeStalled(handle, run, runtime.noProgressMs);
     }
 
     if (statusType === "busy" || statusType === "retry") {
@@ -375,11 +424,52 @@ export function createTaskRunMonitorService(deps: {
     return true;
   }
 
-  function isMonitorTimedOut(handle: TaskRunMonitorHandle, run: TaskRun): boolean {
+  async function resolveRuntimeConfig(): Promise<TaskRunMonitorRuntimeConfig> {
+    const fallback: TaskRunMonitorRuntimeConfig = {
+      maxLifetimeMs: config.maxLifetimeMs,
+      noProgressMs: config.noProgressMs,
+    };
+
+    if (!deps.resolveRuntimeConfig) {
+      return fallback;
+    }
+
+    try {
+      return await deps.resolveRuntimeConfig();
+    } catch (error) {
+      logger?.warn(
+        { err: error },
+        "task run monitor runtime config resolve failed; using static defaults",
+      );
+      return fallback;
+    }
+  }
+
+  async function finalizeStalled(
+    handle: TaskRunMonitorHandle,
+    run: TaskRun,
+    noProgressMs: number,
+  ): Promise<boolean> {
+    // The execution service owns the cancel + optional-requeue policy; the monitor
+    // only reports the stall and the diagnostics it observed.
+    await hooks.finalizeStalledRun(run, {
+      noProgressMs,
+      monitorElapsedMs: Date.now() - handle.startedAtMs,
+      lastStatus: handle.lastStatus,
+      lastAssistantMessageId: handle.lastAssistantMessageId,
+    });
+    return true;
+  }
+
+  function isMonitorTimedOut(
+    handle: TaskRunMonitorHandle,
+    run: TaskRun,
+    maxLifetimeMs: number,
+  ): boolean {
     const startedAtMs = run.startedAt ? Date.parse(run.startedAt) : handle.startedAtMs;
     const elapsedMs = Date.now() - (Number.isNaN(startedAtMs) ? handle.startedAtMs : startedAtMs);
 
-    return elapsedMs >= config.maxLifetimeMs;
+    return elapsedMs >= maxLifetimeMs;
   }
 
   function nextMonitorDelay(currentDelayMs: number): number {

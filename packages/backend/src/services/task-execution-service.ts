@@ -36,7 +36,10 @@ import {
   DEFAULT_TASK_RUN_MONITOR_CONFIG,
   type TaskRunMonitorConfig,
   type TaskRunMonitorOptions,
+  type TaskRunMonitorRuntimeConfig,
+  type TaskRunStallDetails,
 } from "./task-run-monitor-service.js";
+import type { TaskRunMonitorSettingsService } from "./task-run-monitor-settings-service.js";
 import {
   buildTaskRunErrorDetails,
   createTaskRunTransport,
@@ -105,6 +108,8 @@ const DEFAULT_TASK_RUN_DEFER_CONFIG: TaskRunDeferConfig = {
   jitterRatio: 0.2,
 };
 
+const MONITOR_RUNTIME_CACHE_MS = 10_000;
+
 export function createTaskExecutionService(options: {
   db?: AppDb;
   taskService: TaskService;
@@ -114,6 +119,7 @@ export function createTaskExecutionService(options: {
   taskPermissionService?: TaskPermissionService;
   archiveService?: SessionArchiveService;
   archiveSettingsService?: SessionArchiveSettingsService;
+  monitorSettingsService?: TaskRunMonitorSettingsService;
   onRunTerminal?: (run: TaskRun) => void | Promise<void>;
   logger?: Logger;
   monitor?: TaskRunMonitorOptions;
@@ -134,6 +140,7 @@ export function createTaskExecutionService(options: {
     ...(options.defer ?? {}),
   };
   const agentDrainDeferrals = new Map<string, AgentDrainDeferral>();
+  let monitorRuntimeCache: { atMs: number; value: TaskRunMonitorRuntimeConfig } | undefined;
   const transport = createTaskRunTransport({
     conversationService: options.conversationService,
     logger: options.logger,
@@ -144,10 +151,12 @@ export function createTaskExecutionService(options: {
     conversationService: options.conversationService,
     transport,
     config: monitorConfig,
+    resolveRuntimeConfig: options.monitorSettingsService ? resolveMonitorRuntimeConfig : undefined,
     logger: options.logger,
     hooks: {
       handleTerminalRun: (run) => handleTerminalRun(run, { triggerContext: readRunContext(run) }),
       queueFallbackRun,
+      finalizeStalledRun,
     },
   });
 
@@ -250,6 +259,39 @@ export function createTaskExecutionService(options: {
       agentDrainDeferrals.clear();
     },
   };
+
+  // Resolve the monitor's timeouts from settings, cached briefly so many active
+  // monitors polling every couple of seconds don't each re-read the file. Falls
+  // back to the static monitor config on any read/parse failure.
+  async function resolveMonitorRuntimeConfig(): Promise<TaskRunMonitorRuntimeConfig> {
+    const now = Date.now();
+
+    if (monitorRuntimeCache && now - monitorRuntimeCache.atMs < MONITOR_RUNTIME_CACHE_MS) {
+      return monitorRuntimeCache.value;
+    }
+
+    const fallback: TaskRunMonitorRuntimeConfig = {
+      maxLifetimeMs: monitorConfig.maxLifetimeMs,
+      noProgressMs: monitorConfig.noProgressMs,
+    };
+
+    try {
+      const settings = await options.monitorSettingsService!.get();
+      const value: TaskRunMonitorRuntimeConfig = {
+        maxLifetimeMs: settings.taskRunMonitorMaxLifetimeMinutes * 60_000,
+        noProgressMs: settings.taskRunMonitorNoProgressTimeoutMinutes * 60_000,
+      };
+      monitorRuntimeCache = { atMs: now, value };
+      return value;
+    } catch (error) {
+      options.logger?.warn(
+        { err: error },
+        "task run monitor settings read failed; using static monitor config",
+      );
+      monitorRuntimeCache = { atMs: now, value: fallback };
+      return fallback;
+    }
+  }
 
   async function queueTask(taskId: string, input: QueueTaskExecutionInput = {}): Promise<TaskRun> {
     const parsed = queueTaskExecutionInputSchema.parse({ taskId, ...input });
@@ -692,6 +734,138 @@ export function createTaskExecutionService(options: {
         "task run cancellation could not abort OpenCode session",
       );
     }
+  }
+
+  // Finalize a run the monitor detected as stalled: abort the wedged session,
+  // cancel the run with a clear reason, and — when enabled in settings — queue a
+  // fresh run of the same task/subtask.
+  async function finalizeStalledRun(run: TaskRun, details: TaskRunStallDetails): Promise<void> {
+    const latest = await options.taskService.getRunById(run.id);
+
+    if (!latest || latest.status !== "running") {
+      return;
+    }
+
+    await abortOpenCodeTaskRun(latest);
+
+    const requeue = await resolveRequeueSettings();
+    const nextRequeueCount = readRequeueCount(latest) + 1;
+    const willRequeue = requeue.enabled && nextRequeueCount <= requeue.limit;
+    const limitReached = requeue.enabled && !willRequeue;
+
+    const cancellationReason =
+      `Automatically cancelled: OpenCode produced no new output for ` +
+      `${formatStallDuration(details.noProgressMs)} (stall timeout)` +
+      `${latest.opencodeSessionId ? `; session ${latest.opencodeSessionId}` : ""}.` +
+      `${limitReached ? ` Requeue limit (${String(requeue.limit)}) reached; not requeued.` : ""}`;
+
+    const cancelled = await options.taskService.setRunStatus(latest.id, "cancelled", {
+      cancelledAt: new Date().toISOString(),
+      cancellationReason,
+    });
+
+    if (!cancelled) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    notifyRunTerminal(cancelled);
+
+    if (willRequeue) {
+      try {
+        const requeued = await requeueStalledRun(cancelled, nextRequeueCount);
+        options.logger?.warn(
+          {
+            taskId: cancelled.taskId,
+            cancelledRunId: cancelled.id,
+            requeuedRunId: requeued.id,
+            requeueAttempt: nextRequeueCount,
+            requeueLimit: requeue.limit,
+            opencodeSessionId: cancelled.opencodeSessionId,
+            noProgressMs: details.noProgressMs,
+            lastStatus: details.lastStatus,
+          },
+          "stalled task run cancelled and requeued",
+        );
+        return;
+      } catch (error) {
+        options.logger?.error(
+          { err: error, taskId: cancelled.taskId, cancelledRunId: cancelled.id },
+          "failed to requeue stalled task run; leaving it cancelled",
+        );
+      }
+    } else {
+      options.logger?.warn(
+        {
+          taskId: cancelled.taskId,
+          taskRunId: cancelled.id,
+          opencodeSessionId: cancelled.opencodeSessionId,
+          noProgressMs: details.noProgressMs,
+          lastStatus: details.lastStatus,
+          requeueLimitReached: limitReached,
+          requeueLimit: limitReached ? requeue.limit : undefined,
+        },
+        limitReached
+          ? "stalled task run cancelled; requeue limit reached"
+          : "stalled task run cancelled",
+      );
+    }
+
+    scheduleAgentDrain(cancelled.agentId);
+  }
+
+  async function resolveRequeueSettings(): Promise<{ enabled: boolean; limit: number }> {
+    const fallback = { enabled: false, limit: 10 };
+
+    if (!options.monitorSettingsService) {
+      return fallback;
+    }
+
+    try {
+      const settings = await options.monitorSettingsService.get();
+      return {
+        enabled: settings.taskRunMonitorRequeueAfterStall,
+        limit: settings.taskRunMonitorRequeueLimit,
+      };
+    } catch (error) {
+      options.logger?.warn(
+        { err: error },
+        "task run monitor requeue setting read failed; defaulting to no requeue",
+      );
+      return fallback;
+    }
+  }
+
+  function readRequeueCount(run: TaskRun): number {
+    const value = run.triggerMetadata?.["requeueCount"];
+    return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
+  }
+
+  // Queue a fresh run of the same task/subtask after a stall cancellation. A new
+  // run (not the cancelled row) is created so it gets a clean OpenCode session
+  // instead of re-attaching to the wedged one via duplicate-prevention. The
+  // requeue count carries forward so the chain stops at the configured limit.
+  async function requeueStalledRun(cancelled: TaskRun, requeueCount: number): Promise<TaskRun> {
+    return queueTask(cancelled.taskId, {
+      agentId: cancelled.agentId,
+      subtaskId: cancelled.subtaskId,
+      triggerSource: "system",
+      model: cancelled.model,
+      fallbackModels: cancelled.fallbackModels,
+      retryOfRunId: cancelled.id,
+      context: {
+        text: [
+          "The previous run of this task was cancelled automatically because the OpenCode session stalled (it stopped producing output).",
+          `Previous run id: ${cancelled.id}`,
+          "It may have already changed workspace files. Inspect the current state before continuing, avoid redoing completed work, and finish the original task goal.",
+        ].join("\n"),
+        attachments: [],
+      },
+      metadata: {
+        requeuedFromRunId: cancelled.id,
+        requeueReason: "stall_timeout",
+        requeueCount,
+      },
+    });
   }
 
   /**
@@ -1194,6 +1368,20 @@ export function createTaskExecutionService(options: {
 
     return Math.max(0, Math.round(cappedDelayMs + jitterMs));
   }
+}
+
+// Render a stall window for the operator-facing cancellation reason. Production
+// values are whole minutes, but the monitor config is in milliseconds and may be
+// sub-minute (or non-integer minutes), so report what was actually configured.
+function formatStallDuration(ms: number): string {
+  if (ms < 60_000) {
+    const seconds = Math.max(1, Math.round(ms / 1_000));
+    return `${String(seconds)} second(s)`;
+  }
+
+  const minutes = ms / 60_000;
+  const rounded = Number.isInteger(minutes) ? minutes : Math.round(minutes * 10) / 10;
+  return `${String(rounded)} minute(s)`;
 }
 
 function readScheduledAtFromTrigger(trigger: QueueTaskInput): string | undefined {

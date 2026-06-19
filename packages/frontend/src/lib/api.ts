@@ -79,6 +79,7 @@ import {
   systemVersionSchema,
   taskArtifactListResponseSchema,
   taskArtifactSharingPreferencesSchema,
+  taskRunMonitorSettingsSchema,
   taskListSchema,
   taskFeedbackThreadListSchema,
   taskFeedbackThreadSchema,
@@ -183,6 +184,7 @@ import {
   type TaskTemplate,
   type TaskTemplateRunNowInput,
   type TaskRun,
+  type TaskRunMonitorSettings,
   type TaskRunSessionInspection,
   type TaskSchedulerState,
   type TaskSubtask,
@@ -326,6 +328,26 @@ export async function updateTaskArtifactSharingPreferences(
     {
       method: "PUT",
       body: updateTaskArtifactSharingPreferencesInputSchema.parse(input),
+    },
+  );
+}
+
+export async function getTaskRunMonitorSettings(): Promise<TaskRunMonitorSettings> {
+  return requestJson<TaskRunMonitorSettings>(
+    "/api/task-run-monitor/settings",
+    taskRunMonitorSettingsSchema,
+  );
+}
+
+export async function updateTaskRunMonitorSettings(
+  input: TaskRunMonitorSettings,
+): Promise<TaskRunMonitorSettings> {
+  return requestJson<TaskRunMonitorSettings>(
+    "/api/task-run-monitor/settings",
+    taskRunMonitorSettingsSchema,
+    {
+      method: "PUT",
+      body: taskRunMonitorSettingsSchema.parse(input),
     },
   );
 }

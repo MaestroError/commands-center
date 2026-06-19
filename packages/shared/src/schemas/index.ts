@@ -219,6 +219,7 @@ export {
   type SessionArchiveSpecialist,
   type SessionArchiveStatus,
 } from "./session-archive.js";
+export { taskRunMonitorSettingsSchema, type TaskRunMonitorSettings } from "./task-run-monitor.js";
 export {
   configProvidersSchema,
   providerApiKeyInputSchema,

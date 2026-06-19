@@ -16,6 +16,7 @@ import {
 } from "../../src/services/conversation-service";
 import { createTaskPermissionService } from "../../src/services/task-permission-service";
 import { createTaskExecutionService as createBaseTaskExecutionService } from "../../src/services/task-execution-service";
+import type { TaskRunMonitorSettingsService } from "../../src/services/task-run-monitor-settings-service";
 import { createTaskService } from "../../src/services/task-service";
 import type {
   CreateOpenCodeSessionOptions,
@@ -1543,6 +1544,264 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("cancels and aborts a stalled OpenCode session with a clear reason", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // No completeAsyncPrompt: the session accepts the prompt but never produces an
+    // assistant message, so the synced signature stays constant -> stalled.
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        idlePolls: 1,
+        noProgressMs: 15,
+        maxLifetimeMs: 5 * 60 * 1_000,
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Stalled session" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "cancelled");
+      const cancelled = await taskService.getRunById(run.id);
+      expect(cancelled?.cancellationReason).toContain("stall timeout");
+      expect(cancelled?.cancellationReason).toContain("session-1");
+      expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+      // Requeue is off by default, so no additional run is created.
+      expect(await taskService.listRuns(task.id)).toHaveLength(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("requeues a fresh run after a stall cancellation when enabled in settings", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // First prompt never produces an assistant message (stalls); the requeued run
+    // (second prompt) completes so the requeue loop terminates.
+    const opencodeService = createMockOpenCodeService({ completeAsyncPromptAfter: 1 });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    // Mock settings: requeue enabled, and a sub-minute stall window for the test
+    // (the resolver multiplies minutes by 60_000; the mock bypasses schema).
+    const monitorSettingsService = {
+      get: vi.fn(() =>
+        Promise.resolve({
+          taskRunMonitorMaxLifetimeMinutes: 5,
+          taskRunMonitorNoProgressTimeoutMinutes: 15 / 60_000,
+          taskRunMonitorRequeueAfterStall: true,
+          taskRunMonitorRequeueLimit: 10,
+        }),
+      ),
+      update: vi.fn(),
+    } as unknown as TaskRunMonitorSettingsService;
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitorSettingsService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Requeue on stall" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "cancelled");
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+
+      const runs = await taskService.listRuns(task.id);
+      const requeued = runs.find((entry) => entry.retryOfRunId === run.id);
+      expect(requeued).toBeDefined();
+      if (!requeued) throw new Error("Expected a requeued run.");
+
+      await expectRunStatus(taskService, requeued.id, "completed");
+      expect(requeued.triggerMetadata).toMatchObject({ requeueReason: "stall_timeout" });
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("stops requeuing stalled runs once the requeue limit is reached", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // Every run stalls (no assistant message ever), so requeues continue until the
+    // limit caps the chain.
+    const opencodeService = createMockOpenCodeService();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const monitorSettingsService = {
+      get: vi.fn(() =>
+        Promise.resolve({
+          taskRunMonitorMaxLifetimeMinutes: 5,
+          taskRunMonitorNoProgressTimeoutMinutes: 15 / 60_000,
+          taskRunMonitorRequeueAfterStall: true,
+          taskRunMonitorRequeueLimit: 2,
+        }),
+      ),
+      update: vi.fn(),
+    } as unknown as TaskRunMonitorSettingsService;
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitorSettingsService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Requeue limit" });
+
+      await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      // 1 original + 2 requeues = 3 runs, all cancelled, then the chain stops.
+      await expect
+        .poll(async () => {
+          const runs = await taskService.listRuns(task.id);
+          return runs.length === 3 && runs.every((entry) => entry.status === "cancelled");
+        })
+        .toBe(true);
+
+      executionService.dispose();
+      const runs = await taskService.listRuns(task.id);
+      expect(runs).toHaveLength(3);
+      const lastReason = runs
+        .map((entry) => entry.cancellationReason ?? "")
+        .find((reason) => reason.includes("Requeue limit"));
+      expect(lastReason).toContain("Requeue limit (2) reached");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not stall a healthy run that keeps completing", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        completeAsyncPrompt: true,
+        statusSequence: [{ type: "idle" }],
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      // Tiny stall window, but the run produces an assistant message and settles
+      // idle first, so it completes instead of being flagged as stalled.
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1, noProgressMs: 5 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Healthy run" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("honors monitor timeouts from settings over the static config", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // Settings disable stall detection (0); the static config would have stalled
+    // the wedged run almost immediately, so it proves the resolver takes priority.
+    const monitorSettingsService = {
+      get: vi.fn(() =>
+        Promise.resolve({
+          taskRunMonitorMaxLifetimeMinutes: 360,
+          taskRunMonitorNoProgressTimeoutMinutes: 0,
+        }),
+      ),
+      update: vi.fn(),
+    } as unknown as TaskRunMonitorSettingsService;
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitorSettingsService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, noProgressMs: 5, maxLifetimeMs: 5 * 60 * 1_000 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Settings override" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await vi.waitFor(() =>
+        expect(
+          (monitorSettingsService.get as ReturnType<typeof vi.fn>).mock.calls.length,
+        ).toBeGreaterThan(0),
+      );
+      // Give the tiny static stall window time to (wrongly) fire if the resolver
+      // were ignored, then confirm the run is still monitored rather than stalled.
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 40));
+      expect((await taskService.getRunById(run.id))?.status).toBe("running");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("disables stall detection when the no-progress timeout is zero", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      // noProgressMs 0 disables the stall path; the max-lifetime cap still applies.
+      monitor: { initialPollMs: 1, maxPollMs: 1, noProgressMs: 0, maxLifetimeMs: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "No stall" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      expect((await taskService.getRunById(run.id))?.errorDetails).toMatchObject({
+        stage: "monitor_timeout",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("does not complete a cancelled task when a monitor is started later", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -1949,6 +2208,9 @@ function createMockOpenCodeService(
     listSessionMessagesErrors?: Error[];
     sessionStatusErrors?: Error[];
     completeAsyncPrompt?: boolean;
+    // Complete async prompts only once this many have been accepted (0-indexed).
+    // Lets a test stall the first run but let a requeued run finish.
+    completeAsyncPromptAfter?: number;
     statusSequence?: OpenCodeSessionStatus[];
     onStatus?: () => void;
     abortError?: Error;
@@ -1964,6 +2226,7 @@ function createMockOpenCodeService(
   const sessionStatusErrors = [...(options.sessionStatusErrors ?? [])];
   let sessionCount = 0;
   let messageCount = 0;
+  let asyncPromptCount = 0;
   let time = Date.parse("2026-06-01T12:00:00.000Z");
 
   function nextTime(): number {
@@ -2104,6 +2367,8 @@ function createMockOpenCodeService(
         throw new Error("Session not found.");
       }
 
+      const promptIndex = asyncPromptCount;
+      asyncPromptCount += 1;
       const userMessageId = nextMessageId();
       sessionMessages.push({
         info: {
@@ -2115,7 +2380,11 @@ function createMockOpenCodeService(
         parts: [{ id: `part-${userMessageId}`, type: "text", text }],
       });
 
-      if (options.completeAsyncPrompt) {
+      const shouldComplete =
+        options.completeAsyncPrompt === true ||
+        (options.completeAsyncPromptAfter !== undefined &&
+          promptIndex >= options.completeAsyncPromptAfter);
+      if (shouldComplete) {
         const assistantMessageId = nextMessageId();
         const error = options.promptError?.({ model, text });
         sessionMessages.push(

@@ -42,6 +42,10 @@ import {
   createSessionArchiveSettingsService,
   type SessionArchiveSettingsService,
 } from "../services/session-archive-settings-service.js";
+import {
+  createTaskRunMonitorSettingsService,
+  type TaskRunMonitorSettingsService,
+} from "../services/task-run-monitor-settings-service.js";
 import { createSessionArchiveScheduler } from "../services/session-archive-scheduler.js";
 import {
   createTaskSchedulerService,
@@ -103,6 +107,7 @@ export type RuntimeContext = {
   systemVersionService?: SystemVersionService;
   sessionArchiveService?: SessionArchiveService;
   sessionArchiveSettingsService?: SessionArchiveSettingsService;
+  taskRunMonitorSettingsService?: TaskRunMonitorSettingsService;
   shutdownRuntime?: () => Promise<void>;
 };
 
@@ -170,6 +175,7 @@ export async function startServerRuntime(
   const taskContextAttachmentService = createTaskContextAttachmentService({ config, taskService });
   const sessionArchiveService = createSessionArchiveService({ config, logger });
   const sessionArchiveSettingsService = createSessionArchiveSettingsService({ config, logger });
+  const taskRunMonitorSettingsService = createTaskRunMonitorSettingsService({ config, logger });
   const sessionArchiveScheduler = createSessionArchiveScheduler({
     archiveService: sessionArchiveService,
     settingsService: sessionArchiveSettingsService,
@@ -199,6 +205,7 @@ export async function startServerRuntime(
     logger,
     archiveService: sessionArchiveService,
     archiveSettingsService: sessionArchiveSettingsService,
+    monitorSettingsService: taskRunMonitorSettingsService,
     onRunTerminal: (run) => taskSchedulerServiceRef.current?.handleRunTerminal(run),
   });
   const taskSchedulerService = createTaskSchedulerService({
@@ -243,6 +250,7 @@ export async function startServerRuntime(
     systemVersionService,
     sessionArchiveService,
     sessionArchiveSettingsService,
+    taskRunMonitorSettingsService,
   };
   const server = await createServer(context);
 
