@@ -701,7 +701,88 @@ describe("createTaskService", () => {
       const occurrences = await service.listTemplateTasks(template.id);
 
       expect(second?.id).toBe(first?.id);
+      expect(second?.title).toBe("Weekly report #S1");
       expect(occurrences).toHaveLength(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("increments generated task titles for a task template", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Write post",
+      });
+
+      const first = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-08T09:00:00.000Z",
+        triggerSource: "manual",
+      });
+      const second = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-09T09:00:00.000Z",
+        triggerSource: "manual",
+      });
+
+      expect(first?.title).toBe("Write post #M1");
+      expect(second?.title).toBe("Write post #M2");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("uses the trigger source letter in generated task titles", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Write post",
+      });
+
+      const apiTask = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-08T09:00:00.000Z",
+        triggerSource: "api",
+      });
+      const agentTask = await service.createTaskFromTemplate(template.id, {
+        occurrenceAt: "2026-06-09T09:00:00.000Z",
+        triggerSource: "agent",
+      });
+
+      expect(apiTask?.title).toBe("Write post #A1");
+      expect(agentTask?.title).toBe("Write post #G2");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("maps the generating specialist on generated tasks", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const generatingAgent = await insertAgent(testDb.client.db, {
+        id: "agent-generator",
+        slug: "generator",
+      });
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Write post",
+      });
+
+      const generated = await service.createTaskFromTemplate(template.id, {
+        triggerSource: "agent",
+        generatedByAgentId: generatingAgent.id,
+      });
+
+      expect(generated?.generatedByAgentId).toBe(generatingAgent.id);
     } finally {
       await testDb.cleanup();
     }

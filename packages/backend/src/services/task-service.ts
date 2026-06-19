@@ -220,6 +220,7 @@ type CreateTaskFromTemplateInput = {
   occurrenceAt?: string;
   scheduledFor?: string;
   triggerSource?: TaskRun["triggerSource"];
+  generatedByAgentId?: string;
   context?: TaskContext;
 };
 
@@ -490,6 +491,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           latest_final_message: null,
           latest_run_id: null,
           source_template_id: null,
+          generated_by_agent_id: null,
           source_occurrence_at: null,
           scheduled_at: parsed.scheduledAt ? new Date(parsed.scheduledAt) : null,
           scheduled_for: null,
@@ -519,7 +521,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         return undefined;
       }
 
-      const task = existing ? mapTask(existing) : mapTemplateAsTask(existingTemplate!);
+      const task = existing ? mapTask(existing) : mapTemplateAsTask(existingTemplate);
 
       return this.create({
         agentId: task.agentId,
@@ -1068,6 +1070,11 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         return mapTask(existing);
       }
 
+      const triggerSource = input.triggerSource ?? "scheduled";
+      const generatedTitle = `${template.title} #${taskGenerationSourceLetter(triggerSource)}${
+        (await countGeneratedTasksForTemplate(template.id)) + 1
+      }`;
+
       const [row] = await options.db
         .insert(tasks)
         .values({
@@ -1077,18 +1084,19 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           default_agent_id: template.default_agent_id,
           model: template.model,
           fallback_models: template.fallback_models,
-          title: template.title,
+          title: generatedTitle,
           description: template.description,
           context: JSON.stringify(normalizeTaskContext(input.context)),
           todos_json: template.todos_json,
           status: scheduledFor ? "scheduled" : "backlog",
-          trigger_source: input.triggerSource ?? "scheduled",
+          trigger_source: triggerSource,
           permission_profile_json: template.permission_profile_json,
           enabled: true,
           archived: false,
           latest_final_message: null,
           latest_run_id: null,
           source_template_id: template.id,
+          generated_by_agent_id: input.generatedByAgentId ?? null,
           source_occurrence_at: occurrenceAt,
           scheduled_at: scheduledFor,
           scheduled_for: scheduledFor,
@@ -1890,6 +1898,33 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
     return rows.map((row) => row.id);
   }
+
+  async function countGeneratedTasksForTemplate(templateId: string): Promise<number> {
+    const rows = await options.db.query.tasks.findMany({
+      where: (table, operators) =>
+        operators.and(
+          operators.or(
+            operators.and(
+              operators.eq(table.template_id, templateId),
+              operators.ne(table.id, templateId),
+            ),
+            operators.eq(table.source_template_id, templateId),
+          ),
+          operators.isNull(table.deleted_at),
+        ),
+      columns: { id: true },
+    });
+
+    return rows.length;
+  }
+}
+
+function taskGenerationSourceLetter(triggerSource: TaskRun["triggerSource"]): string {
+  if (triggerSource === "manual") return "M";
+  if (triggerSource === "api") return "A";
+  if (triggerSource === "scheduled" || triggerSource === "template") return "S";
+  if (triggerSource === "agent") return "G";
+  return "Y";
 }
 
 function normalizeTaskStatus(input: {
@@ -2018,6 +2053,7 @@ function mapTask(row: typeof tasks.$inferSelect): Task {
     latestResultText: row.latest_result_text ?? undefined,
     latestRunId: row.latest_run_id ?? undefined,
     sourceTemplateId: row.source_template_id ?? undefined,
+    generatedByAgentId: row.generated_by_agent_id ?? undefined,
     sourceOccurrenceAt: row.source_occurrence_at?.toISOString(),
     scheduledAt: row.scheduled_at?.toISOString(),
     scheduledFor: row.scheduled_for?.toISOString(),

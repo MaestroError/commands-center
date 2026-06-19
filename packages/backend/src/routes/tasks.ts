@@ -308,7 +308,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     },
     async (request, reply) => {
       const task = await service.createTaskFromTemplate(request.params.id, {
-        triggerSource: "template",
+        triggerSource: "manual",
       });
 
       if (!task) {
@@ -336,7 +336,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
         { taskService: service, executionService, taskContextAttachmentService },
         {
           templateId: request.params.id,
-          triggerSource: "template",
+          triggerSource: "manual",
           context: request.body.context,
           contextAttachmentUploads: request.body.contextAttachmentUploads,
           metadata: request.body.metadata,

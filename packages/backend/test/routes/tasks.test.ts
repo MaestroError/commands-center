@@ -473,13 +473,15 @@ describe("task routes", () => {
       expect(updatedTemplate.json()).not.toHaveProperty("recurrence");
       expect(createdFromTemplate.statusCode).toBe(201);
       expect(createdFromTemplate.json().sourceTemplateId).toBe(template.json<{ id: string }>().id);
+      expect(createdFromTemplate.json().title).toBe("Updated daily template #M1");
       expect(templateTasks.statusCode).toBe(200);
       expect(templateTasks.json().length).toBeGreaterThan(0);
       expect(runNow.statusCode).toBe(200);
       expect(runNow.json().status).toBe("queued");
-      expect(runNow.json().triggerSource).toBe("template");
+      expect(runNow.json().triggerSource).toBe("manual");
       expect(runNow.json().context).toEqual({ text: "manual check", attachments: [] });
       const runNowTask = await taskService.get(runNow.json<{ taskId: string }>().taskId);
+      expect(runNowTask?.title).toBe("Updated daily template #M2");
       expect(runNowTask).toMatchObject({
         context: {
           text: "manual check",

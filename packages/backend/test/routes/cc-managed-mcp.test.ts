@@ -666,8 +666,18 @@ describe("cc-managed MCP routes", () => {
           },
         },
       });
-      expect(parseSseJson(runTemplateResponse.body)).toMatchObject({
-        result: { structuredContent: { status: "queued", triggerSource: "template" } },
+      const runTemplateJson = parseSseJson(runTemplateResponse.body) as {
+        result?: { structuredContent?: { taskId?: string } };
+      };
+      expect(runTemplateJson).toMatchObject({
+        result: { structuredContent: { status: "queued", triggerSource: "agent" } },
+      });
+      const generatedByManagedTool = await taskService.get(
+        runTemplateJson.result?.structuredContent?.taskId ?? "",
+      );
+      expect(generatedByManagedTool).toMatchObject({
+        title: "Recurring MCP task #G1",
+        generatedByAgentId: agent.id,
       });
     } finally {
       await server.close();
@@ -2912,11 +2922,19 @@ describe("cc-managed MCP routes", () => {
       );
 
       const instantiateJson = parseSseJson(instantiateResponse.body) as {
-        result?: { structuredContent?: { id?: string; title?: string; status?: string } };
+        result?: {
+          structuredContent?: {
+            generatedByAgentId?: string;
+            id?: string;
+            title?: string;
+            status?: string;
+          };
+        };
       };
 
       expect(instantiateJson.result?.structuredContent).toMatchObject({
-        title: "Daily report template",
+        generatedByAgentId: agent.id,
+        title: "Daily report template #G1",
         status: "backlog",
       });
 
@@ -2933,8 +2951,16 @@ describe("cc-managed MCP routes", () => {
 
       expect(parseSseJson(runNowResponse.body)).toMatchObject({
         result: {
-          structuredContent: { status: "queued", triggerSource: "template" },
+          structuredContent: { status: "queued", triggerSource: "agent" },
         },
+      });
+      const runNowJson = parseSseJson(runNowResponse.body) as {
+        result?: { structuredContent?: { taskId?: string } };
+      };
+      const runNowTask = await taskService.get(runNowJson.result?.structuredContent?.taskId ?? "");
+      expect(runNowTask).toMatchObject({
+        generatedByAgentId: agent.id,
+        title: "Daily report template #G2",
       });
     } finally {
       await server.close();

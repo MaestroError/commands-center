@@ -73,6 +73,7 @@ export const tasks = sqliteTable(
     latest_result_text: text("latest_result_text"),
     latest_run_id: text("latest_run_id"),
     source_template_id: text("source_template_id").references(() => task_templates.id),
+    generated_by_agent_id: text("generated_by_agent_id").references(() => agents.id),
     source_occurrence_at: integer("source_occurrence_at", { mode: "timestamp_ms" }),
     scheduled_at: integer("scheduled_at", { mode: "timestamp_ms" }),
     scheduled_for: integer("scheduled_for", { mode: "timestamp_ms" }),
@@ -89,6 +90,7 @@ export const tasks = sqliteTable(
     index("tasks_default_agent_id_idx").on(table.default_agent_id),
     index("tasks_status_idx").on(table.status),
     index("tasks_source_template_id_idx").on(table.source_template_id),
+    index("tasks_generated_by_agent_id_idx").on(table.generated_by_agent_id),
     uniqueIndex("tasks_source_template_occurrence_unique_idx").on(
       table.source_template_id,
       table.source_occurrence_at,

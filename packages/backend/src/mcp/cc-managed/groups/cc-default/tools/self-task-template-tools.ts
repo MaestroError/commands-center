@@ -159,7 +159,8 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
           await requireSelfTemplate(options.taskService, parsed.templateId, agentId);
 
           const task = await options.taskService.createTaskFromTemplate(parsed.templateId, {
-            triggerSource: "template",
+            triggerSource: "agent",
+            generatedByAgentId: agentId,
             context: parsed.context,
           });
 
@@ -168,7 +169,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
           }
 
           const run = await options.taskExecutionService.queue(task.id, {
-            triggerSource: "template",
+            triggerSource: "agent",
             context: parsed.context,
             metadata: parsed.metadata,
           });
@@ -189,7 +190,8 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
           await requireSelfTemplate(options.taskService, parsed.templateId, agentId);
 
           const task = await options.taskService.createTaskFromTemplate(parsed.templateId, {
-            triggerSource: "template",
+            triggerSource: "agent",
+            generatedByAgentId: agentId,
           });
 
           if (!task) {
