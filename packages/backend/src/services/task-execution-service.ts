@@ -647,7 +647,12 @@ export function createTaskExecutionService(options: {
         triggerMetadata: mergeOpencodeMonitorMetadata(run.triggerMetadata, {
           conversationId: evidence.conversation.id,
           opencodeSessionId: evidence.conversation.opencodeSessionId,
-          attemptedModel: run.model ?? "unknown",
+          // The prompt was accepted out of band (transport failure recovery), so
+          // the actually attempted model is unknown here. `run.model` is only the
+          // requested model and may differ from the agent-default fallback that
+          // startTaskRunPrompt resolved, so use an explicit sentinel instead of
+          // guessing — keeps later provider-error fallback selection accurate.
+          attemptedModel: "unknown",
           baselineMessageCount: 0,
           promptAcceptedAt: new Date().toISOString(),
         }),
@@ -864,20 +869,22 @@ export function createTaskExecutionService(options: {
     }
 
     let statusType: string | undefined;
+    let statusKnown = false;
 
     try {
       const status = await getTaskRunSessionStatusWithRetry(run);
       statusType = status.type;
+      statusKnown = true;
       handle.lastStatus = status.type;
     } catch (error) {
       options.logger?.warn(
         { err: error, runId: run.id, opencodeSessionId: run.opencodeSessionId },
-        "task run monitor status read failed; falling back to synced messages",
+        "task run monitor status read failed; will keep monitoring without advancing idle settle",
       );
     }
 
     const conversation = await syncTaskRunConversationWithRetry(run);
-    const monitorMetadata = readOpencodeMonitorMetadata(run);
+    const monitorMetadata = await ensureOpencodeMonitorMetadata(run, conversation);
     const latestAssistant = readLatestAssistantMessage(
       conversation.messages.slice(monitorMetadata.baselineMessageCount),
     );
@@ -886,11 +893,23 @@ export function createTaskExecutionService(options: {
       handle.lastAssistantMessageId = latestAssistant.id;
     }
 
+    // A provider error in the assistant message is a definitive terminal signal,
+    // so finalize it regardless of whether the status read succeeded.
     if (latestAssistant?.error) {
       return finalizeTaskRunModelError(run, latestAssistant.error, monitorMetadata.attemptedModel);
     }
 
     if (statusType === "busy" || statusType === "retry") {
+      handle.idleCount = 0;
+      handle.delayMs = nextMonitorDelay(handle.delayMs);
+      return false;
+    }
+
+    if (!statusKnown) {
+      // OpenCode status is temporarily unavailable. Do not let an existing
+      // assistant message advance idle-settle detection, or the run could be
+      // marked completed while OpenCode is still busy. Keep polling with backoff
+      // until status is known again (or the monitor lifetime times out).
       handle.idleCount = 0;
       handle.delayMs = nextMonitorDelay(handle.delayMs);
       return false;
@@ -910,6 +929,49 @@ export function createTaskExecutionService(options: {
     }
 
     return finalizeTaskRunCompletion(run, conversation);
+  }
+
+  async function ensureOpencodeMonitorMetadata(
+    run: TaskRun,
+    conversation: ConversationDetail,
+  ): Promise<OpencodeMonitorMetadata> {
+    const existing = readOptionalOpencodeMonitorMetadata(run);
+
+    if (existing) {
+      return existing;
+    }
+
+    // A run can reach the monitor without persisted monitor metadata: startup
+    // resume of a running run, or a duplicate start with no accepted-prompt
+    // evidence. Reconstruct conservative metadata (baseline 0 so every synced
+    // message is in scope, unknown attempted model) and persist it so the monitor
+    // settles deterministically instead of throwing on every tick.
+    const reconstructed: OpencodeMonitorMetadata = {
+      conversationId: conversation.id,
+      opencodeSessionId: run.opencodeSessionId ?? conversation.opencodeSessionId,
+      attemptedModel: "unknown",
+      baselineMessageCount: 0,
+      promptAcceptedAt: new Date().toISOString(),
+    };
+
+    const updated = await options.taskService.updateRun(run.id, {
+      triggerMetadata: mergeOpencodeMonitorMetadata(run.triggerMetadata, reconstructed),
+    });
+
+    if (!updated) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    options.logger?.warn(
+      {
+        taskId: run.taskId,
+        taskRunId: run.id,
+        opencodeSessionId: reconstructed.opencodeSessionId,
+        conversationId: reconstructed.conversationId,
+      },
+      "task run monitor recovered missing OpenCode monitor metadata",
+    );
+    return reconstructed;
   }
 
   async function finalizeTaskRunCompletion(
@@ -993,9 +1055,9 @@ export function createTaskExecutionService(options: {
       conversation = options.conversationService
         ? await syncTaskRunConversationWithRetry(run)
         : undefined;
-      const monitorMetadata = readOpencodeMonitorMetadata(run);
+      const monitorMetadata = readOptionalOpencodeMonitorMetadata(run);
       const latestAssistant = readLatestAssistantMessage(
-        conversation?.messages.slice(monitorMetadata.baselineMessageCount) ?? [],
+        conversation?.messages.slice(monitorMetadata?.baselineMessageCount ?? 0) ?? [],
       );
 
       if (latestAssistant?.id) {
@@ -1621,16 +1683,6 @@ function mergeOpencodeMonitorMetadata(
     ...(triggerMetadata ?? {}),
     opencodeMonitor,
   };
-}
-
-function readOpencodeMonitorMetadata(run: TaskRun): OpencodeMonitorMetadata {
-  const metadata = readOptionalOpencodeMonitorMetadata(run);
-
-  if (!metadata) {
-    throw new BadRequestError("Task run is missing OpenCode monitor metadata.");
-  }
-
-  return metadata;
 }
 
 function readOptionalOpencodeMonitorMetadata(run: TaskRun): OpencodeMonitorMetadata | undefined {

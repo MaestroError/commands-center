@@ -1153,6 +1153,107 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("recovers missing monitor metadata when a running run is resumed", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({ completeAsyncPrompt: true });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { autoStart: false, initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Resumed running run" });
+      const run = await taskService.createRun({
+        id: `run-${crypto.randomUUID()}`,
+        taskId: task.id,
+        agentId: agent.id,
+        status: "queued",
+        triggerSource: "manual",
+        renderedPrompt: "Continue.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Resumed running run",
+      });
+      // Prompt accepted out of band, then the process "restarts": the run is
+      // running with a session id but never persisted opencodeMonitor metadata.
+      await opencodeService.promptSessionAsync({
+        directory: "unused",
+        sessionID: conversation.opencodeSessionId,
+        agent: "agent",
+        model: { providerID: "openai", modelID: "gpt-4.1" },
+        text: "Already accepted.",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await taskService.tryStartQueuedRun(run.id, { startedAt: new Date().toISOString() });
+
+      executionService.startTaskRunMonitor(run.id);
+
+      await expectRunStatus(taskService, run.id, "completed");
+      expect((await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"]).toEqual(
+        expect.objectContaining({
+          conversationId: conversation.id,
+          opencodeSessionId: conversation.opencodeSessionId,
+          attemptedModel: "unknown",
+          baselineMessageCount: 0,
+        }),
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("requeues a running run that has no OpenCode session on resume", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({ onPrompt: (input) => prompts.push(input) }),
+    });
+    // OpenCode is unhealthy so the re-drain after requeue defers, letting us
+    // observe the run settled back in the queued state deterministically.
+    const orchestrator = createMockOrchestrator({ healthy: false });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      orchestrator,
+      defer: { initialDelayMs: 10, maxDelayMs: 10, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Stale running run" });
+      const run = await taskService.createRun({
+        id: `run-${crypto.randomUUID()}`,
+        taskId: task.id,
+        agentId: agent.id,
+        status: "queued",
+        triggerSource: "manual",
+        renderedPrompt: "No accepted prompt.",
+      });
+      await taskService.tryStartQueuedRun(run.id, { startedAt: new Date().toISOString() });
+
+      await executionService.resumeRunningTaskRuns();
+
+      await expectRunStatus(taskService, run.id, "queued");
+      expect(prompts).toHaveLength(0);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("retries transient local status failures while monitoring task sessions", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
