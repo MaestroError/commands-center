@@ -205,6 +205,11 @@ export function registerFileManagerRoutes(server: AppServer, context: RuntimeCon
         kind: request.query.root,
         config: context.config,
       });
+
+      if (request.query.root !== "host-filesystem") {
+        return fileManagerService.readFileContent(root, request.query.path);
+      }
+
       const preferences = await preferencesService.get();
 
       return fileManagerService.readFileContent(root, request.query.path, {

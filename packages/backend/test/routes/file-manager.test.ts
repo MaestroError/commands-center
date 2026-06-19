@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -354,6 +354,39 @@ describe("file manager content routes", () => {
       expect(body.kind).toBe("text");
       expect(body.content).toBe("# hi");
       expect(body.revision.sizeBytes).toBe(4);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("reads workspace file content without consulting host edit preferences", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      await mkdir(testDb.config.paths.workspaceDir, { recursive: true });
+      await mkdir(testDb.config.paths.subdirectories.preferences, { recursive: true });
+      await writeFile(join(testDb.config.paths.workspaceDir, "doc.md"), "# hi", "utf8");
+      await writeFile(
+        resolve(testDb.config.paths.subdirectories.preferences, "file-manager.json"),
+        "{ invalid json",
+        "utf8",
+      );
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/file-manager/files/content?root=workspace&path=${encodeURIComponent("doc.md")}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(
+        response.json<{
+          kind: string;
+          content: string;
+        }>(),
+      ).toMatchObject({
+        kind: "text",
+        content: "# hi",
+      });
     } finally {
       await server.close();
       await testDb.cleanup();
