@@ -158,4 +158,43 @@ describe("buildChatToolSummary", () => {
       }),
     ]);
   });
+
+  it("prefers exact external MCP rules over broader wildcard rules", () => {
+    const summary = buildChatToolSummary({
+      agent: {
+        ...agent,
+        capabilities: {
+          ...agent.capabilities,
+          mcpServers: [{ name: "github", enabled: true, action: "allow" }],
+          toolPermissions: [
+            { pattern: "github_*", action: "deny" },
+            { pattern: "github_create_issue", action: "allow" },
+          ],
+        },
+      },
+      catalog,
+      mcpServers: [
+        {
+          id: "mcp-1",
+          name: "github",
+          enabled: true,
+          config: {
+            transport: "streamable-http",
+            url: "https://example.com/mcp",
+            authMethod: "none",
+            headers: [],
+          },
+          missingSecrets: [],
+          runtimeStatus: { status: "connected" },
+          tools: [{ id: "github_create_issue", name: "create_issue" }],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(summary.externalMcp[0]?.tools).toEqual([
+      expect.objectContaining({ id: "github_create_issue", action: "allow" }),
+    ]);
+  });
 });

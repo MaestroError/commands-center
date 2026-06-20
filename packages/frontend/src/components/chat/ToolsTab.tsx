@@ -71,21 +71,16 @@ export function ToolsTabContent({ summary, loading, errors }: ToolsTabContentPro
 
   if (summary.totalCount === 0) {
     return (
-      <div className="flex h-full items-center justify-center p-4 text-center text-sm text-text-secondary">
-        No tools configured for this specialist.
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center text-sm text-text-secondary">
+        <ToolLoadErrors errors={errors} />
+        <p>No tools configured for this specialist.</p>
       </div>
     );
   }
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-4">
-      {errors.length > 0 ? (
-        <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-text-secondary">
-          {errors.map((error) => (
-            <p key={error}>{error}</p>
-          ))}
-        </div>
-      ) : null}
+      <ToolLoadErrors errors={errors} />
 
       {summary.ccManaged.length > 0 ? (
         <ToolSection title="CommandsCenter">
@@ -116,6 +111,20 @@ export function ToolsTabContent({ summary, loading, errors }: ToolsTabContentPro
           </div>
         </ToolSection>
       ) : null}
+    </div>
+  );
+}
+
+function ToolLoadErrors({ errors }: { errors: string[] }) {
+  if (errors.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-text-secondary">
+      {errors.map((error, index) => (
+        <p key={`${String(index)}:${error}`}>{error}</p>
+      ))}
     </div>
   );
 }
@@ -265,11 +274,20 @@ function customToolSourceLabel(tool: CustomToolSummary): string {
 function runtimeStatusLabel(
   status: NonNullable<ExternalMcpServerSummary["runtimeStatus"]>,
 ): string {
-  if (status.status === "needs_client_registration") {
-    return "Needs client registration";
+  switch (status.status) {
+    case "connected":
+      return "Connected";
+    case "disabled":
+      return "Disabled";
+    case "needs_auth":
+      return "Needs auth";
+    case "disconnected":
+      return "Disconnected";
+    case "needs_client_registration":
+      return "Needs client registration";
+    case "failed":
+      return "Failed";
   }
-
-  return status.status.replaceAll("_", " ");
 }
 
 function readError(error: unknown): string {

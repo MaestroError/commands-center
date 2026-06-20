@@ -270,7 +270,26 @@ function findMatchingRule(
   rules: SpecialistPermissionRule[],
   toolId: string,
 ): SpecialistPermissionRule | undefined {
-  return rules.find((rule) => wildcardMatches(rule.pattern, toolId));
+  const exact = rules.find((rule) => rule.pattern === toolId);
+
+  if (exact) {
+    return exact;
+  }
+
+  return rules.reduce<SpecialistPermissionRule | undefined>((best, rule) => {
+    if (rule.pattern === toolId || !wildcardMatches(rule.pattern, toolId)) {
+      return best;
+    }
+
+    if (!best) {
+      return rule;
+    }
+
+    const currentSpecificity = ruleSpecificity(rule.pattern);
+    const bestSpecificity = ruleSpecificity(best.pattern);
+
+    return currentSpecificity >= bestSpecificity ? rule : best;
+  }, undefined);
 }
 
 function wildcardMatches(pattern: string, value: string): boolean {
@@ -280,4 +299,8 @@ function wildcardMatches(pattern: string, value: string): boolean {
 
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
   return new RegExp(`^${escaped}$`).test(value);
+}
+
+function ruleSpecificity(pattern: string): number {
+  return pattern.replaceAll("*", "").length;
 }

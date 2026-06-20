@@ -70,5 +70,19 @@ describe("ToolsTabContent", () => {
     expect(screen.getByText("External MCP")).toBeInTheDocument();
     expect(screen.getByText("create_issue")).toBeInTheDocument();
     expect(screen.getByText("No description available from this MCP server.")).toBeInTheDocument();
+    expect(screen.getByText("Connected")).toBeInTheDocument();
+  });
+
+  it("shows load errors when the tool summary is empty", () => {
+    render(
+      <ToolsTabContent
+        errors={["Failed to load tool details.", "Failed to load tool details."]}
+        loading={false}
+        summary={emptySummary}
+      />,
+    );
+
+    expect(screen.getAllByText("Failed to load tool details.")).toHaveLength(2);
+    expect(screen.getByText("No tools configured for this specialist.")).toBeInTheDocument();
   });
 });
