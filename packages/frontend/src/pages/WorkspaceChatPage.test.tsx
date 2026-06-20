@@ -176,6 +176,10 @@ vi.mock("@/components/chat/MediaTab", () => ({
   ),
 }));
 
+vi.mock("@/components/chat/ToolsTab", () => ({
+  ToolsTab: () => <div data-testid="tools-tab">ToolsTab</div>,
+}));
+
 function makeConversation(overrides: Record<string, unknown> = {}) {
   return {
     status: "ready",
@@ -379,7 +383,7 @@ describe("WorkspaceChatPage", () => {
     );
   });
 
-  it("wires Files, Media, and Settings tabs into the context pane", () => {
+  it("wires Files, Uploads, and Tools tabs into the context pane", () => {
     mockParams = { agentId: "planner", conversationId: "conv-1" };
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-1", messages: [] } }),
@@ -388,9 +392,10 @@ describe("WorkspaceChatPage", () => {
 
     render(<WorkspaceChatPage />);
 
-    expect(screen.getByTestId("context-tabs")).toHaveTextContent("Files,Uploads");
+    expect(screen.getByTestId("context-tabs")).toHaveTextContent("Files,Uploads,Tools");
     expect(screen.getByTestId("workspace-files-tab")).toBeInTheDocument();
     expect(screen.getByTestId("media-tab")).toHaveTextContent("MediaTab:conv-1:");
+    expect(screen.getByTestId("tools-tab")).toBeInTheDocument();
     expect(screen.queryByTestId("session-settings-tab")).not.toBeInTheDocument();
   });
 

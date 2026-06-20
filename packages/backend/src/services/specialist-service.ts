@@ -319,6 +319,18 @@ export function createSpecialistService(options: {
         providerService.listModels(),
       ]);
 
+      const ccManagedMcpServers = listCcManagedMcpServers(appMcpRegistry).map((server) => ({
+        name: server.name,
+        enabledByDefault: server.enabledByDefault,
+        systemManaged: server.systemManaged,
+        description: server.description,
+        tools: server.catalogTools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          context: tool.context,
+        })),
+      }));
+
       return specialistCatalogSchema.parse({
         builtInSkills: builtInSkillListSchema.parse(skills),
         workspaceSkills: workspaceSkillListSchema.parse(workspaceSkills),
@@ -332,18 +344,15 @@ export function createSpecialistService(options: {
           ).values(),
         ),
         mcpServers: mcpRows,
-        appMcpServers: listCcManagedMcpServers(appMcpRegistry)
+        appMcpServers: ccManagedMcpServers
           .filter((server) => !server.systemManaged)
           .map((server) => ({
             name: server.name,
             enabledByDefault: server.enabledByDefault,
             description: server.description,
-            tools: server.catalogTools.map((tool) => ({
-              name: tool.name,
-              description: tool.description,
-              context: tool.context,
-            })),
+            tools: server.tools,
           })),
+        ccManagedMcpServers,
         customTools: toolRows.map((tool) => ({
           slug: tool.slug,
           name: tool.name,

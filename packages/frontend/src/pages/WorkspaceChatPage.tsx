@@ -10,6 +10,7 @@ import { MessageTimeline } from "@/components/chat/MessageTimeline";
 import { PermissionDock } from "@/components/chat/PermissionDock";
 import { QuestionDock } from "@/components/chat/QuestionDock";
 import { TodoDock } from "@/components/chat/TodoDock";
+import { ToolsTab } from "@/components/chat/ToolsTab";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { QuickFileModal } from "@/components/workspace/QuickFileModal";
@@ -239,6 +240,11 @@ export function WorkspaceChatPage() {
                   searchQuery={mediaSearchQuery}
                 />
               ),
+            },
+            {
+              id: "tools",
+              label: "Tools",
+              content: <ToolsTab agent={conv.agent} catalog={catalog} />,
             },
           ],
           defaultTabId: "files",
