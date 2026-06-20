@@ -63,7 +63,8 @@ export function createTaskPermissionService(options: {
       );
       const normalized = taskPermissionProfileSchema.parse({
         ...merged,
-        appMcpServers,
+        mcpServers: normalizeServerActionsForTask(merged.mcpServers ?? [], diagnostics),
+        appMcpServers: normalizeServerActionsForTask(appMcpServers, diagnostics),
         toolPermissions: normalizeRulesForTask(merged.toolPermissions ?? [], diagnostics),
         appToolPermissions: normalizeRulesForTask(appToolPermissions, diagnostics),
         approvalPolicy: "auto_approve",
@@ -122,7 +123,9 @@ export function buildOpenCodeSessionPermissions(
   permissions: TaskPermissionProfile,
 ): OpenCodePermissionRule[] {
   return [
-    { permission: "question", pattern: "*", action: "deny" },
+    ...(permissions.approvalPolicy === "auto_approve"
+      ? [{ permission: "*", pattern: "*", action: "allow" } satisfies OpenCodePermissionRule]
+      : []),
     ...(permissions.mcpServers ?? [])
       .filter((server) => server.enabled !== false)
       .map((server) => ({
@@ -145,6 +148,9 @@ export function buildOpenCodeSessionPermissions(
       pattern: "*",
       action: rule.action,
     })),
+    { permission: "question", pattern: "*", action: "deny" },
+    { permission: "plan_enter", pattern: "*", action: "deny" },
+    { permission: "plan_exit", pattern: "*", action: "deny" },
   ];
 }
 
@@ -250,5 +256,22 @@ function normalizeRulesForTask(
       details: { pattern: rule.pattern },
     });
     return { ...rule, action: "allow" };
+  });
+}
+
+function normalizeServerActionsForTask<
+  T extends { name: string; action: "allow" | "ask" | "deny" },
+>(servers: T[], diagnostics: TaskPermissionDiagnostic[]): T[] {
+  return servers.map((server) => {
+    if (server.action !== "ask") {
+      return server;
+    }
+
+    diagnostics.push({
+      code: "ask_mode_not_allowed_for_task_run",
+      message: `MCP server '${server.name}' used ask mode and was converted to allow for this task run.`,
+      details: { serverName: server.name },
+    });
+    return { ...server, action: "allow" };
   });
 }

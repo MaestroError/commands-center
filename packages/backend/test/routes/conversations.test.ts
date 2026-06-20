@@ -225,6 +225,8 @@ function createMockOpenCodeService(): OpenCodeService {
     },
     getSession: (_directory, sessionID) => Promise.resolve(mustSession(sessionID)),
     listSessionMessages: (_directory, sessionID) => Promise.resolve(mustMessages(sessionID)),
+    listPendingPermissions: () => Promise.resolve([]),
+    listPendingQuestions: () => Promise.resolve([]),
     promptSession: ({ sessionID, text }) => {
       const session = mustSession(sessionID);
       const list = mustMessages(sessionID);

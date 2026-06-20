@@ -37,6 +37,7 @@ import {
   type TaskRunMonitorConfig,
   type TaskRunMonitorOptions,
   type TaskRunMonitorRuntimeConfig,
+  type TaskRunBlockedInteractionDetails,
   type TaskRunStallDetails,
 } from "./task-run-monitor-service.js";
 import type { TaskRunMonitorSettingsService } from "./task-run-monitor-settings-service.js";
@@ -156,6 +157,7 @@ export function createTaskExecutionService(options: {
     hooks: {
       handleTerminalRun: (run) => handleTerminalRun(run, { triggerContext: readRunContext(run) }),
       queueFallbackRun,
+      finalizeBlockedInteraction,
       finalizeStalledRun,
     },
   });
@@ -813,6 +815,45 @@ export function createTaskExecutionService(options: {
     scheduleAgentDrain(cancelled.agentId);
   }
 
+  async function finalizeBlockedInteraction(
+    run: TaskRun,
+    details: TaskRunBlockedInteractionDetails,
+  ): Promise<void> {
+    const latest = await options.taskService.getRunById(run.id);
+
+    if (!latest || latest.status !== "running") {
+      return;
+    }
+
+    await abortOpenCodeTaskRun(latest);
+
+    const errorMessage = formatBlockedInteractionMessage(details);
+    const errored = await options.taskService.setRunStatus(latest.id, "error", {
+      completedAt: new Date().toISOString(),
+      errorMessage,
+      errorDetails: buildBlockedInteractionErrorDetails(latest, details),
+      needsHumanReview: true,
+      humanReviewReason: errorMessage,
+    });
+
+    if (!errored) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    notifyRunTerminal(errored);
+    options.logger?.warn(
+      {
+        taskId: errored.taskId,
+        taskRunId: errored.id,
+        opencodeSessionId: errored.opencodeSessionId,
+        interactionType: details.interaction.type,
+        requestId: details.interaction.id,
+      },
+      "task run blocked by pending OpenCode interaction",
+    );
+    scheduleAgentDrain(errored.agentId);
+  }
+
   async function resolveRequeueSettings(): Promise<{ enabled: boolean; limit: number }> {
     const fallback = { enabled: false, limit: 10 };
 
@@ -1382,6 +1423,50 @@ function formatStallDuration(ms: number): string {
   const minutes = ms / 60_000;
   const rounded = Number.isInteger(minutes) ? minutes : Math.round(minutes * 10) / 10;
   return `${String(rounded)} minute(s)`;
+}
+
+function formatBlockedInteractionMessage(details: TaskRunBlockedInteractionDetails): string {
+  if (details.interaction.type === "permission") {
+    return `Blocked by pending OpenCode permission: ${details.interaction.permission}.`;
+  }
+
+  return "Blocked by pending OpenCode question.";
+}
+
+function buildBlockedInteractionErrorDetails(
+  run: TaskRun,
+  details: TaskRunBlockedInteractionDetails,
+): Record<string, unknown> {
+  const base = {
+    errorName: "TaskRunBlockedByOpenCodeInteraction",
+    stage: "opencode_pending_interaction",
+    taskRunId: run.id,
+    taskId: run.taskId,
+    opencodeSessionId: run.opencodeSessionId,
+    monitorElapsedMs: details.monitorElapsedMs,
+    lastStatus: details.lastStatus,
+    lastAssistantMessageId: details.lastAssistantMessageId,
+    interactionType: details.interaction.type,
+    requestId: details.interaction.id,
+    sessionID: details.interaction.sessionID,
+    tool: details.interaction.tool,
+  };
+
+  if (details.interaction.type === "permission") {
+    return {
+      ...base,
+      permission: details.interaction.permission,
+      patterns: details.interaction.patterns,
+      always: details.interaction.always,
+      metadata: details.interaction.metadata,
+    };
+  }
+
+  return {
+    ...base,
+    questions: details.interaction.questions,
+    questionCount: details.interaction.questions.length,
+  };
 }
 
 function readScheduledAtFromTrigger(trigger: QueueTaskInput): string | undefined {

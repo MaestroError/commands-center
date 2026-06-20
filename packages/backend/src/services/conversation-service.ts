@@ -41,6 +41,8 @@ import {
   resolveSpecialistWorkspacePath,
 } from "./specialist-workspace.js";
 import type {
+  OpenCodePendingPermission,
+  OpenCodePendingQuestion,
   OpenCodeService,
   OpenCodeSessionPermissionRule,
   OpenCodeSessionStatus,
@@ -79,6 +81,25 @@ export type TaskRunPromptStart = {
   baselineMessageCount: number;
   promptAcceptedAt: string;
 };
+
+export type TaskRunPendingInteraction =
+  | {
+      type: "permission";
+      id: string;
+      sessionID: string;
+      permission: string;
+      patterns: string[];
+      always: string[];
+      metadata: Record<string, unknown>;
+      tool?: OpenCodePendingPermission["tool"];
+    }
+  | {
+      type: "question";
+      id: string;
+      sessionID: string;
+      questions: OpenCodePendingQuestion["questions"];
+      tool?: OpenCodePendingQuestion["tool"];
+    };
 
 export type ConversationService = ReturnType<typeof createConversationService>;
 
@@ -539,6 +560,52 @@ export function createConversationService(options: {
         agent.workspace_path,
         conversation.opencode_session_id,
       );
+    },
+
+    async listTaskRunPendingInteractions(
+      taskId: string,
+      taskRunId: string,
+    ): Promise<TaskRunPendingInteraction[]> {
+      const conversation = await getTaskRunConversationRow(taskId, taskRunId);
+
+      if (!conversation) {
+        throw new NotFoundError("Task run session not found.");
+      }
+
+      const agent = await getAgent(conversation.agent_id);
+      const [permissions, questions] = await Promise.all([
+        options.opencodeService.listPendingPermissions(agent.workspace_path),
+        options.opencodeService.listPendingQuestions(agent.workspace_path),
+      ]);
+      const sessionID = conversation.opencode_session_id;
+
+      return [
+        ...permissions
+          .filter((permission) => permission.sessionID === sessionID)
+          .map(
+            (permission): TaskRunPendingInteraction => ({
+              type: "permission",
+              id: permission.id,
+              sessionID: permission.sessionID,
+              permission: permission.permission,
+              patterns: permission.patterns,
+              always: permission.always,
+              metadata: permission.metadata,
+              ...(permission.tool ? { tool: permission.tool } : {}),
+            }),
+          ),
+        ...questions
+          .filter((question) => question.sessionID === sessionID)
+          .map(
+            (question): TaskRunPendingInteraction => ({
+              type: "question",
+              id: question.id,
+              sessionID: question.sessionID,
+              questions: question.questions,
+              ...(question.tool ? { tool: question.tool } : {}),
+            }),
+          ),
+      ];
     },
 
     async updateTitle(conversationId: string, title: string): Promise<void> {
