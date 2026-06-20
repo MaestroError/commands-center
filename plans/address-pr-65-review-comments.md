@@ -8,4 +8,4 @@
 - [x] Render external MCP runtime status labels in consistent title case.
 - [x] Add regression tests for permission precedence and empty-state error rendering.
 - [x] Run format, lint, typecheck, and focused tests.
-- [ ] Reply to and resolve addressed review threads.
+- [x] Reply to and resolve addressed review threads.
