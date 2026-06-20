@@ -1,7 +1,11 @@
 import type { ConversationDetail, ConversationMessage, TaskRun } from "@cc/shared/schemas";
 import type { Logger } from "pino";
 
-import { TaskRunPromptError, type ConversationService } from "./conversation-service.js";
+import {
+  TaskRunPromptError,
+  type ConversationService,
+  type TaskRunPendingInteraction,
+} from "./conversation-service.js";
 
 export type OpencodeMonitorMetadata = {
   conversationId: string;
@@ -15,7 +19,8 @@ export type RetryStage =
   | "task_session_create"
   | "task_session_prompt"
   | "task_session_status"
-  | "task_session_sync";
+  | "task_session_sync"
+  | "task_session_pending_interactions";
 
 export type TaskRunTransportRetryOptions = {
   initialDelayMs?: number;
@@ -43,6 +48,7 @@ export type TaskRunTransport = {
     run: TaskRun,
   ): Promise<Awaited<ReturnType<ConversationService["getTaskRunSessionStatus"]>>>;
   syncConversation(run: TaskRun): Promise<ConversationDetail>;
+  getPendingInteractions(run: TaskRun): Promise<TaskRunPendingInteraction[]>;
 };
 
 /**
@@ -115,6 +121,11 @@ export function createTaskRunTransport(options: {
     async syncConversation(run) {
       return retry(run, "task_session_sync", () =>
         options.conversationService!.syncTaskRunConversation(run.taskId, run.id),
+      );
+    },
+    async getPendingInteractions(run) {
+      return retry(run, "task_session_pending_interactions", () =>
+        options.conversationService!.listTaskRunPendingInteractions(run.taskId, run.id),
       );
     },
   };
