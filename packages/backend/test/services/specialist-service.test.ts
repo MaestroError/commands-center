@@ -389,6 +389,15 @@ describe("createSpecialistService", () => {
           ],
         },
       ]);
+      expect(catalog.appMcpServers.map((server) => server.name)).not.toContain("cc_default");
+      expect(catalog.ccManagedMcpServers?.map((server) => server.name)).toEqual(
+        expect.arrayContaining(["cc_default", "cc_default_interactive", "cc_app"]),
+      );
+      expect(
+        catalog.ccManagedMcpServers
+          ?.find((server) => server.name === "cc_default")
+          ?.tools.map((tool) => tool.name),
+      ).toEqual(expect.arrayContaining(["list_specialists", "get_self_profile"]));
     } finally {
       await testDb.cleanup();
     }

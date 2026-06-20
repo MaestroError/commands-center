@@ -19,6 +19,20 @@ export const builtInSkillSchema = z.object({
 
 export const workspaceSkillSchema = builtInSkillSchema;
 
+const appMcpToolCatalogItemSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  context: appMcpToolContextSchema,
+});
+
+const appMcpServerCatalogItemSchema = z.object({
+  name: z.string().min(1),
+  enabledByDefault: z.boolean().default(false),
+  systemManaged: z.boolean().default(false),
+  description: z.string().min(1),
+  tools: z.array(appMcpToolCatalogItemSchema).default([]),
+});
+
 export const specialistCatalogSchema = z.object({
   builtInSkills: z.array(builtInSkillSchema),
   workspaceSkills: z.array(workspaceSkillSchema),
@@ -39,17 +53,10 @@ export const specialistCatalogSchema = z.object({
       name: z.string().min(1),
       enabledByDefault: z.boolean().default(false),
       description: z.string().min(1),
-      tools: z
-        .array(
-          z.object({
-            name: z.string().min(1),
-            description: z.string().min(1),
-            context: appMcpToolContextSchema,
-          }),
-        )
-        .default([]),
+      tools: z.array(appMcpToolCatalogItemSchema).default([]),
     }),
   ),
+  ccManagedMcpServers: z.array(appMcpServerCatalogItemSchema).optional(),
   customTools: z.array(
     z.object({
       slug: z.string().min(1),
