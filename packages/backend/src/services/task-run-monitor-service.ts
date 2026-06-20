@@ -2,7 +2,11 @@ import type { ConversationDetail, ConversationMessage, TaskRun } from "@cc/share
 import type { Logger } from "pino";
 
 import { NotFoundError } from "../lib/api-error.js";
-import { TaskRunPromptError, type ConversationService } from "./conversation-service.js";
+import {
+  TaskRunPromptError,
+  type ConversationService,
+  type TaskRunPendingInteraction,
+} from "./conversation-service.js";
 import type { TaskService } from "./task-service.js";
 import {
   buildTaskRunErrorDetails,
@@ -67,6 +71,13 @@ export type TaskRunStallDetails = {
   lastAssistantMessageId?: string;
 };
 
+export type TaskRunBlockedInteractionDetails = {
+  interaction: TaskRunPendingInteraction;
+  monitorElapsedMs: number;
+  lastStatus?: string;
+  lastAssistantMessageId?: string;
+};
+
 export type TaskRunMonitorHooks = {
   /** Run terminal handling (archive finalization, feedback subtasks, queue drain). */
   handleTerminalRun(run: TaskRun): Promise<void>;
@@ -82,6 +93,11 @@ export type TaskRunMonitorHooks = {
    * cancel/requeue policy; the monitor only detects the stall.
    */
   finalizeStalledRun(run: TaskRun, details: TaskRunStallDetails): Promise<void>;
+  /** Mark a task run as needing review when OpenCode is waiting for hidden input. */
+  finalizeBlockedInteraction(
+    run: TaskRun,
+    details: TaskRunBlockedInteractionDetails,
+  ): Promise<void>;
 };
 
 export type TaskRunMonitorService = ReturnType<typeof createTaskRunMonitorService>;
@@ -233,6 +249,13 @@ export function createTaskRunMonitorService(deps: {
     // so finalize it regardless of whether the status read succeeded.
     if (latestAssistant?.error) {
       return finalizeModelError(run, latestAssistant.error, monitorMetadata.attemptedModel);
+    }
+
+    const pendingInteractions = await transport.getPendingInteractions(run);
+    const pendingInteraction = pendingInteractions[0];
+
+    if (pendingInteraction) {
+      return finalizeBlockedInteraction(handle, run, pendingInteraction);
     }
 
     // OpenCode stopped making progress (e.g. the agent loop wedged on a provider
@@ -454,6 +477,20 @@ export function createTaskRunMonitorService(deps: {
     // only reports the stall and the diagnostics it observed.
     await hooks.finalizeStalledRun(run, {
       noProgressMs,
+      monitorElapsedMs: Date.now() - handle.startedAtMs,
+      lastStatus: handle.lastStatus,
+      lastAssistantMessageId: handle.lastAssistantMessageId,
+    });
+    return true;
+  }
+
+  async function finalizeBlockedInteraction(
+    handle: TaskRunMonitorHandle,
+    run: TaskRun,
+    interaction: TaskRunPendingInteraction,
+  ): Promise<boolean> {
+    await hooks.finalizeBlockedInteraction(run, {
+      interaction,
       monitorElapsedMs: Date.now() - handle.startedAtMs,
       lastStatus: handle.lastStatus,
       lastAssistantMessageId: handle.lastAssistantMessageId,

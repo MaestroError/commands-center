@@ -170,6 +170,106 @@ describe("opencode-service", () => {
     });
   });
 
+  describe("pending interactions", () => {
+    it("lists pending permissions from /permission", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, [
+          {
+            id: "perm-1",
+            sessionID: "sess-1",
+            permission: "external_directory",
+            patterns: ["/work/*"],
+            always: ["/work"],
+            metadata: { source: "tool" },
+          },
+        ]),
+      );
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      const result = await service.listPendingPermissions("/work/agent-a");
+
+      expect(result).toEqual([
+        {
+          id: "perm-1",
+          sessionID: "sess-1",
+          permission: "external_directory",
+          patterns: ["/work/*"],
+          always: ["/work"],
+          metadata: { source: "tool" },
+        },
+      ]);
+      const url = fetchMock.mock.calls[0]?.[0] as URL;
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      expect(url.pathname).toBe("/permission");
+      expect(url.searchParams.get("directory")).toBe("/work/agent-a");
+      expect(init.method).toBe("GET");
+    });
+
+    it("rejects pending permissions with empty pattern entries", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, [
+          {
+            id: "perm-1",
+            sessionID: "sess-1",
+            permission: "external_directory",
+            patterns: [""],
+          },
+        ]),
+      );
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await expect(service.listPendingPermissions("/work/agent-a")).rejects.toThrow();
+    });
+
+    it("rejects pending permissions with empty always entries", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, [
+          {
+            id: "perm-1",
+            sessionID: "sess-1",
+            permission: "external_directory",
+            patterns: ["/work/*"],
+            always: [""],
+          },
+        ]),
+      );
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await expect(service.listPendingPermissions("/work/agent-a")).rejects.toThrow();
+    });
+
+    it("rejects pending questions without question entries", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, [
+          {
+            id: "question-1",
+            sessionID: "sess-1",
+            questions: [],
+          },
+        ]),
+      );
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await expect(service.listPendingQuestions("/work/agent-a")).rejects.toThrow();
+    });
+  });
+
   describe("disposeGlobal", () => {
     it("posts to /global/dispose", async () => {
       fetchMock.mockResolvedValue(jsonResponse(200, true));

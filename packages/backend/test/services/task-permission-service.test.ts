@@ -59,6 +59,7 @@ describe("createTaskPermissionService", () => {
       expect(effective.appMcpServers).toEqual([
         { name: "cc_default", enabled: true, action: "allow" },
       ]);
+      expect(effective.mcpServers).toEqual([{ name: "github", enabled: true, action: "allow" }]);
       expect(effective.toolPermissions).toEqual([{ pattern: "bash_*", action: "allow" }]);
       expect(effective.appToolPermissions).toContainEqual({
         pattern: "cc_app_show_file_to_user",
@@ -125,6 +126,7 @@ describe("createTaskPermissionService", () => {
 
   it("builds OpenCode session rules from effective permissions", () => {
     const rules = buildOpenCodeSessionPermissions({
+      approvalPolicy: "auto_approve",
       mcpServers: [
         { name: "github", enabled: true, action: "allow" },
         { name: "jira", enabled: false, action: "deny" },
@@ -134,10 +136,36 @@ describe("createTaskPermissionService", () => {
     });
 
     expect(rules).toEqual([
-      { permission: "question", pattern: "*", action: "deny" },
+      { permission: "*", pattern: "*", action: "allow" },
       { permission: "github_*", pattern: "*", action: "allow" },
       { permission: "bash_*", pattern: "*", action: "deny" },
       { permission: "cc_app_add_secret", pattern: "*", action: "deny" },
+      { permission: "question", pattern: "*", action: "deny" },
+      { permission: "plan_enter", pattern: "*", action: "deny" },
+      { permission: "plan_exit", pattern: "*", action: "deny" },
+    ]);
+  });
+
+  it("keeps human-interaction denies last for auto-approved task runs", () => {
+    const rules = buildOpenCodeSessionPermissions({
+      approvalPolicy: "auto_approve",
+      toolPermissions: [
+        { pattern: "external_directory", action: "allow" },
+        { pattern: "bash", action: "deny" },
+      ],
+    });
+
+    expect(rules.at(0)).toEqual({ permission: "*", pattern: "*", action: "allow" });
+    expect(rules).toContainEqual({
+      permission: "external_directory",
+      pattern: "*",
+      action: "allow",
+    });
+    expect(rules).toContainEqual({ permission: "bash", pattern: "*", action: "deny" });
+    expect(rules.slice(-3)).toEqual([
+      { permission: "question", pattern: "*", action: "deny" },
+      { permission: "plan_enter", pattern: "*", action: "deny" },
+      { permission: "plan_exit", pattern: "*", action: "deny" },
     ]);
   });
 });

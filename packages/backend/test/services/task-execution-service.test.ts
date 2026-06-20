@@ -21,6 +21,8 @@ import { createTaskService } from "../../src/services/task-service";
 import type {
   CreateOpenCodeSessionOptions,
   OpenCodeService,
+  OpenCodePendingPermission,
+  OpenCodePendingQuestion,
   OpenCodeSession,
   OpenCodeSessionMessage,
   OpenCodeSessionStatus,
@@ -1585,6 +1587,146 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("marks a run for review when OpenCode is waiting on a pending permission", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      statusSequence: [{ type: "busy" }],
+      pendingPermissions: [
+        {
+          id: "permission-1",
+          sessionID: "session-1",
+          permission: "external_directory",
+          patterns: ["/root/.cc/workspace/*"],
+          always: ["/root/.cc/workspace/*"],
+          metadata: { parentDir: "/root/.cc/workspace" },
+        },
+      ],
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Permission blocked" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      const blocked = await taskService.getRunById(run.id);
+      expect(blocked?.needsHumanReview).toBe(true);
+      expect(blocked?.humanReviewReason).toContain("external_directory");
+      expect(blocked?.errorDetails).toMatchObject({
+        errorName: "TaskRunBlockedByOpenCodeInteraction",
+        stage: "opencode_pending_interaction",
+        interactionType: "permission",
+        requestId: "permission-1",
+        permission: "external_directory",
+        patterns: ["/root/.cc/workspace/*"],
+        opencodeSessionId: "session-1",
+      });
+      expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("marks a run for review when OpenCode is waiting on a pending question", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      statusSequence: [{ type: "busy" }],
+      pendingQuestions: [
+        {
+          id: "question-1",
+          sessionID: "session-1",
+          questions: [{ question: "Continue?", header: "Confirm", options: [] }],
+        },
+      ],
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Question blocked" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      const blocked = await taskService.getRunById(run.id);
+      expect(blocked?.needsHumanReview).toBe(true);
+      expect(blocked?.humanReviewReason).toContain("pending OpenCode question");
+      expect(blocked?.errorDetails).toMatchObject({
+        errorName: "TaskRunBlockedByOpenCodeInteraction",
+        stage: "opencode_pending_interaction",
+        interactionType: "question",
+        requestId: "question-1",
+        questionCount: 1,
+        opencodeSessionId: "session-1",
+      });
+      expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("ignores pending OpenCode interactions from other sessions", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      statusSequence: [{ type: "idle" }],
+      pendingPermissions: [
+        {
+          id: "permission-elsewhere",
+          sessionID: "session-elsewhere",
+          permission: "external_directory",
+          patterns: ["*"],
+          always: ["*"],
+          metadata: {},
+        },
+      ],
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1, noProgressMs: 5 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Ignore elsewhere" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "completed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("requeues a fresh run after a stall cancellation when enabled in settings", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -2212,6 +2354,8 @@ function createMockOpenCodeService(
     // Lets a test stall the first run but let a requeued run finish.
     completeAsyncPromptAfter?: number;
     statusSequence?: OpenCodeSessionStatus[];
+    pendingPermissions?: OpenCodePendingPermission[];
+    pendingQuestions?: OpenCodePendingQuestion[];
     onStatus?: () => void;
     abortError?: Error;
   } = {},
@@ -2286,6 +2430,8 @@ function createMockOpenCodeService(
       options.onStatus?.();
       return Promise.resolve(statusSequence.shift() ?? { type: "idle" });
     },
+    listPendingPermissions: vi.fn(() => Promise.resolve(options.pendingPermissions ?? [])),
+    listPendingQuestions: vi.fn(() => Promise.resolve(options.pendingQuestions ?? [])),
     abortSession: vi.fn(() => {
       if (options.abortError) {
         throw options.abortError;

@@ -85,10 +85,48 @@ const openCodeSessionStatusSchema = z.discriminatedUnion("type", [
 
 const openCodeSessionStatusMapSchema = z.record(z.string().min(1), openCodeSessionStatusSchema);
 
+const openCodePendingPermissionSchema = z
+  .object({
+    id: z.string().min(1),
+    sessionID: z.string().min(1),
+    permission: z.string().min(1),
+    patterns: z.array(z.string().min(1)),
+    always: z.array(z.string().min(1)).default([]),
+    metadata: z.record(z.string(), z.unknown()).default({}),
+    tool: z
+      .object({
+        messageID: z.string().min(1),
+        callID: z.string().min(1),
+      })
+      .catchall(z.unknown())
+      .optional(),
+  })
+  .catchall(z.unknown());
+
+const openCodePendingQuestionSchema = z
+  .object({
+    id: z.string().min(1),
+    sessionID: z.string().min(1),
+    questions: z.array(z.record(z.string(), z.unknown())).min(1),
+    tool: z
+      .object({
+        messageID: z.string().min(1),
+        callID: z.string().min(1),
+      })
+      .catchall(z.unknown())
+      .optional(),
+  })
+  .catchall(z.unknown());
+
+const openCodePendingPermissionListSchema = z.array(openCodePendingPermissionSchema);
+const openCodePendingQuestionListSchema = z.array(openCodePendingQuestionSchema);
+
 export type OpenCodeSession = z.infer<typeof openCodeSessionSchema>;
 export type OpenCodeSessionMessage = z.infer<typeof openCodeMessageSchema>;
 export type OpenCodeSessionStatus = z.infer<typeof openCodeSessionStatusSchema>;
 export type OpenCodeSessionStatusMap = z.infer<typeof openCodeSessionStatusMapSchema>;
+export type OpenCodePendingPermission = z.infer<typeof openCodePendingPermissionSchema>;
+export type OpenCodePendingQuestion = z.infer<typeof openCodePendingQuestionSchema>;
 
 export type OpenCodeSessionPermissionRule = {
   permission: string;
@@ -508,6 +546,16 @@ export function createOpenCodeService(options: {
       });
     },
 
+    async listPendingPermissions(directory: string): Promise<OpenCodePendingPermission[]> {
+      const result = await requestSessionJson({
+        config: options.config,
+        directory,
+        method: "GET",
+        path: "/permission",
+      });
+      return openCodePendingPermissionListSchema.parse(result);
+    },
+
     async replyQuestion(directory: string, requestId: string, answers: string[][]): Promise<void> {
       await requestSessionJson({
         config: options.config,
@@ -516,6 +564,16 @@ export function createOpenCodeService(options: {
         path: `/question/${encodeURIComponent(requestId)}/reply`,
         body: { answers },
       });
+    },
+
+    async listPendingQuestions(directory: string): Promise<OpenCodePendingQuestion[]> {
+      const result = await requestSessionJson({
+        config: options.config,
+        directory,
+        method: "GET",
+        path: "/question",
+      });
+      return openCodePendingQuestionListSchema.parse(result);
     },
 
     async rejectQuestion(directory: string, requestId: string): Promise<void> {
