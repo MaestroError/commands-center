@@ -90,8 +90,8 @@ const openCodePendingPermissionSchema = z
     id: z.string().min(1),
     sessionID: z.string().min(1),
     permission: z.string().min(1),
-    patterns: z.array(z.string()),
-    always: z.array(z.string()).default([]),
+    patterns: z.array(z.string().min(1)),
+    always: z.array(z.string().min(1)).default([]),
     metadata: z.record(z.string(), z.unknown()).default({}),
     tool: z
       .object({
@@ -107,7 +107,7 @@ const openCodePendingQuestionSchema = z
   .object({
     id: z.string().min(1),
     sessionID: z.string().min(1),
-    questions: z.array(z.record(z.string(), z.unknown())),
+    questions: z.array(z.record(z.string(), z.unknown())).min(1),
     tool: z
       .object({
         messageID: z.string().min(1),
