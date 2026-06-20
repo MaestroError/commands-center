@@ -4,6 +4,13 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { ChatComposer } from "./ChatComposer";
 
+// Default to a non-touch (desktop) environment so Enter submits. Individual
+// tests override this to exercise the touch behavior.
+const mockUseMediaQuery = vi.fn((_query: string) => false);
+vi.mock("../../hooks/use-media-query", () => ({
+  useMediaQuery: (query: string) => mockUseMediaQuery(query),
+}));
+
 vi.mock("../../hooks/use-providers-query", () => ({
   useProvidersQuery: () => ({
     data: [
@@ -28,6 +35,7 @@ beforeAll(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  mockUseMediaQuery.mockReturnValue(false);
   localStorage.clear();
 });
 
@@ -64,6 +72,32 @@ describe("ChatComposer", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
 
     expect(props.onSend).toHaveBeenCalledWith({ text: "hello world", attachments: [] });
+  });
+
+  it("submits with Enter on non-touch devices", async () => {
+    const user = userEvent.setup();
+    const { props } = renderComposer();
+
+    const textarea = screen.getByPlaceholderText('Type a message... Use "#" to mention');
+    await user.type(textarea, "hello{enter}");
+
+    expect(props.onSend).toHaveBeenCalledWith({ text: "hello", attachments: [] });
+  });
+
+  it("inserts a newline instead of sending on touch devices when Enter is pressed", async () => {
+    mockUseMediaQuery.mockReturnValue(true);
+    const user = userEvent.setup();
+    const { props } = renderComposer();
+
+    const textarea = screen.getByPlaceholderText('Type a message... Use "#" to mention');
+    await user.type(textarea, "first{enter}second");
+
+    expect(props.onSend).not.toHaveBeenCalled();
+    expect(textarea).toHaveValue("first\nsecond");
+
+    // The Send button still submits the multi-line message.
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(props.onSend).toHaveBeenCalledWith({ text: "first\nsecond", attachments: [] });
   });
 
   it("shows a small hint about composer shortcuts", () => {

@@ -245,6 +245,12 @@ select.cc-input {
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     text-wrap: pretty;
+    /* Break long unbreakable tokens (file paths, URLs, inline code) so they
+       can't force the content box wider than its container. `anywhere` (not
+       `break-word`) is required so the token also shrinks the min-content
+       size — otherwise it expands flex/grid items past the viewport and gets
+       clipped on small screens. */
+    overflow-wrap: anywhere;
   }
   .cc-md > :first-child {
     margin-top: 0 !important;

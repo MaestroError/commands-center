@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SendConversationAttachmentInput } from "@cc/shared/schemas";
 import { usePromptHistory } from "../../hooks/use-prompt-history";
+import { useMediaQuery } from "../../hooks/use-media-query";
 
 import { AutoApproveToggle } from "./AutoApproveToggle";
 import { AttachmentBar } from "./AttachmentBar";
@@ -94,6 +95,11 @@ export function ChatComposer({
   const popoverKeyHandlerRef = useRef<((e: React.KeyboardEvent) => boolean) | null>(null);
 
   const history = usePromptHistory(mode);
+
+  // On touch devices the soft keyboard's return key fires a plain Enter, so
+  // treating Enter as "send" makes multi-line prompts impossible. Detect touch
+  // input and let Enter insert a newline there — the Send button submits.
+  const isTouch = useMediaQuery("(pointer: coarse)");
 
   // Auto-resize textarea
   useEffect(() => {
@@ -297,8 +303,9 @@ export function ChatComposer({
         }
       }
 
-      // Enter to send (Shift+Enter for newline)
-      if (e.key === "Enter" && !e.shiftKey && !activePopover) {
+      // Enter to send (Shift+Enter for newline). Skipped on touch devices where
+      // the return key must insert a newline; the Send button submits instead.
+      if (e.key === "Enter" && !e.shiftKey && !activePopover && !isTouch) {
         e.preventDefault();
         handleSend();
       }
@@ -313,6 +320,7 @@ export function ChatComposer({
       setCursorPosition,
       onAbort,
       handleSend,
+      isTouch,
     ],
   );
 
