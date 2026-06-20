@@ -324,9 +324,9 @@ export function createCcManagedMcpServerRegistry(options: {
       description: "CommandsCenter default tools available to every specialist.",
       enabledByDefault: true,
       systemManaged: true,
-      // Quick request/response tools only. opencode's remote-MCP client defaults
-      // to a 5s tool-call timeout; 15s gives these DB-backed tools a little more
-      // headroom while still failing fast — far below the 10-min interactive window.
+      // Quick request/response tools only. Without an explicit timeout these would
+      // fall back to the MCP SDK's 60s default; 15s makes these DB-backed tools fail
+      // fast while leaving headroom — far below the 10-min interactive window.
       toolCallTimeoutMs: 15 * 1000,
       catalogTools: [
         listSpecialistsToolMetadata,
