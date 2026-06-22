@@ -167,6 +167,34 @@ describe("ToolErrorCard", () => {
     await user.click(screen.getByText("bash"));
     expect(screen.getByText("Permission denied")).toBeInTheDocument();
   });
+
+  it("renders the supplied input arguments on expand", async () => {
+    const user = userEvent.setup();
+    const part = makePart({
+      tool: "cc_default_add_task_artifact",
+      state: {
+        status: "error",
+        error: "Invalid URL",
+        input: { artifact: { title: "PR", url: "not-a-url" } },
+      },
+    });
+    render(<ToolErrorCard part={part} />);
+    await user.click(screen.getByText("cc_default_add_task_artifact"));
+    expect(screen.getByText("Input")).toBeInTheDocument();
+    expect(screen.getByText(/"url": "not-a-url"/)).toBeInTheDocument();
+    expect(screen.getByText("Invalid URL")).toBeInTheDocument();
+  });
+
+  it("can expand to show input even when no error text is present", async () => {
+    const user = userEvent.setup();
+    const part = makePart({
+      tool: "bash",
+      state: { status: "error", input: { command: "ls -la" } },
+    });
+    render(<ToolErrorCard part={part} />);
+    await user.click(screen.getByText("bash"));
+    expect(screen.getByText(/"command": "ls -la"/)).toBeInTheDocument();
+  });
 });
 
 describe("ContextGroup", () => {
