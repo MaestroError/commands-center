@@ -430,6 +430,7 @@ describe("task routes", () => {
           completed: 0,
           active: 0,
           review: 0,
+          failed: 0,
           subtasks: [
             expect.objectContaining({
               description: "Please verify docs.",

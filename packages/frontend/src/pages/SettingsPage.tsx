@@ -656,12 +656,14 @@ function TasksTab() {
   const [noProgressMinutes, setNoProgressMinutes] = useState(30);
   const [requeueAfterStall, setRequeueAfterStall] = useState(false);
   const [requeueLimit, setRequeueLimit] = useState(10);
+  const [maxAutoRetries, setMaxAutoRetries] = useState(10);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<{ title: string; description: string }>();
 
   const requeueLimitInvalid =
     requeueAfterStall && (!Number.isInteger(requeueLimit) || requeueLimit < 1);
+  const maxAutoRetriesInvalid = !Number.isInteger(maxAutoRetries) || maxAutoRetries < 1;
 
   useEffect(() => {
     let cancelled = false;
@@ -672,6 +674,7 @@ function TasksTab() {
         setNoProgressMinutes(settings.taskRunMonitorNoProgressTimeoutMinutes);
         setRequeueAfterStall(settings.taskRunMonitorRequeueAfterStall);
         setRequeueLimit(settings.taskRunMonitorRequeueLimit);
+        setMaxAutoRetries(settings.taskRunMaxAutoRetries);
         setLoading(false);
       })
       .catch((nextError: unknown) => {
@@ -696,11 +699,13 @@ function TasksTab() {
         taskRunMonitorNoProgressTimeoutMinutes: noProgressMinutes,
         taskRunMonitorRequeueAfterStall: requeueAfterStall,
         taskRunMonitorRequeueLimit: requeueLimit,
+        taskRunMaxAutoRetries: maxAutoRetries,
       });
       setMaxLifetimeMinutes(settings.taskRunMonitorMaxLifetimeMinutes);
       setNoProgressMinutes(settings.taskRunMonitorNoProgressTimeoutMinutes);
       setRequeueAfterStall(settings.taskRunMonitorRequeueAfterStall);
       setRequeueLimit(settings.taskRunMonitorRequeueLimit);
+      setMaxAutoRetries(settings.taskRunMaxAutoRetries);
     } catch (nextError) {
       setError({
         title: "Could not save task execution settings.",
@@ -779,6 +784,26 @@ function TasksTab() {
         </label>
       ) : null}
       <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
+        <span className="font-medium">Max automatic retries</span>
+        <input
+          className="cc-input"
+          disabled={saving}
+          min={1}
+          onChange={(event) => setMaxAutoRetries(Number(event.target.value))}
+          required
+          type="number"
+          value={maxAutoRetries}
+        />
+        <span className="text-text-secondary">
+          Maximum times the system automatically re-queues a task after a failure before it stops
+          and lands in the <code>Failed</code> column. Human-review hand-offs are never
+          auto-retried. Must be at least 1.
+        </span>
+        {maxAutoRetriesInvalid ? (
+          <span className="text-danger">Enter a retry limit of 1 or more.</span>
+        ) : null}
+      </label>
+      <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
         <span className="font-medium">Max run lifetime (minutes)</span>
         <input
           className="cc-input"
@@ -796,7 +821,7 @@ function TasksTab() {
       <div className="flex justify-end">
         <button
           className="cc-button"
-          disabled={saving || requeueLimitInvalid}
+          disabled={saving || requeueLimitInvalid || maxAutoRetriesInvalid}
           onClick={() => void saveSettings()}
           type="button"
         >

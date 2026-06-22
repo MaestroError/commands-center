@@ -184,6 +184,7 @@ beforeEach(() => {
     taskRunMonitorNoProgressTimeoutMinutes: 30,
     taskRunMonitorRequeueAfterStall: false,
     taskRunMonitorRequeueLimit: 10,
+    taskRunMaxAutoRetries: 10,
   });
   vi.mocked(updateTaskRunMonitorSettings).mockImplementation((input) => Promise.resolve(input));
   vi.mocked(updateTaskArtifactSharingPreferences).mockImplementation((input) =>
@@ -502,6 +503,7 @@ describe("SettingsPage", () => {
         taskRunMonitorNoProgressTimeoutMinutes: 10,
         taskRunMonitorRequeueAfterStall: true,
         taskRunMonitorRequeueLimit: 5,
+        taskRunMaxAutoRetries: 10,
       });
     });
   });

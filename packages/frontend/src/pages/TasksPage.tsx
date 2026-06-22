@@ -133,10 +133,16 @@ const BOARD_COLUMNS = [
     empty: "Queued and running work appears here while the specialist is active.",
   },
   {
+    status: "failed",
+    title: "Failed",
+    description: "Runs the system stopped due to errors, or after exhausting automatic retries.",
+    empty: "Failed runs appear here when the system cannot complete them.",
+  },
+  {
     status: "review",
     title: "Review",
-    description: "Tasks that failed, need a decision, or need feedback before retry.",
-    empty: "Failures and human-review requests appear here.",
+    description: "Tasks a specialist or you flagged for a human decision or feedback.",
+    empty: "Human-review requests appear here.",
   },
   {
     status: "ready_to_check",
@@ -160,6 +166,7 @@ const FILTER_SUGGESTIONS = [
   "backlog",
   "scheduled",
   "queued",
+  "failed",
   "review",
   "ready to check",
   "done",
@@ -526,6 +533,8 @@ function TaskListPage() {
     }
 
     if (status === "done") {
+      // Only completed or human-review tasks can be accepted; system failures
+      // must be retried, not dismissed as done.
       if (currentStatus === "ready_to_check" || currentStatus === "review") {
         mutations.accept.mutate(task.id);
       }
@@ -1147,9 +1156,37 @@ function TaskCardActions(props: {
     );
   }
 
+  if (props.boardStatus === "failed") {
+    return (
+      <>
+        <TaskCardIconButton
+          icon={RotateCcw}
+          label="Retry"
+          onClick={props.onQueue}
+          variant="warning"
+        />
+        {props.latestRunPath ? (
+          <TaskCardIconLink icon={ExternalLink} label="Open run" to={props.latestRunPath} />
+        ) : null}
+        <TaskCardIconLink
+          icon={Pencil}
+          label="Edit"
+          to={`/tasks/${props.task.id}/edit${props.currentSearch}`}
+        />
+        <TaskCardIconButton icon={Save} label="Save as template" onClick={props.onSaveAsTemplate} />
+      </>
+    );
+  }
+
   if (props.boardStatus === "review") {
     return (
       <>
+        <TaskCardIconButton
+          icon={Check}
+          label="Accept"
+          onClick={props.onAccept}
+          variant="success"
+        />
         <TaskCardIconButton
           icon={RotateCcw}
           label="Retry"
@@ -1733,11 +1770,24 @@ function TaskPanelPrimaryActions(props: {
     );
   }
 
-  if (status === "review") {
+  if (status === "failed") {
     return (
       <button className="cc-button" onClick={props.onQueue} type="button">
         Retry
       </button>
+    );
+  }
+
+  if (status === "review") {
+    return (
+      <>
+        <button className="cc-button" onClick={props.onAccept} type="button">
+          Accept
+        </button>
+        <button className="cc-button cc-button-secondary" onClick={props.onQueue} type="button">
+          Retry
+        </button>
+      </>
     );
   }
 
@@ -4255,9 +4305,11 @@ function readCardClassName(status: BoardTaskStatus, draggable: boolean): string 
       ? "border-accent/40 bg-accent/5"
       : status === "review"
         ? "border-amber-400/40 bg-amber-400/5"
-        : status === "queued"
-          ? "border-accent/30 bg-surface-elevated"
-          : "border-border bg-surface";
+        : status === "failed"
+          ? "border-red-400/40 bg-red-400/5"
+          : status === "queued"
+            ? "border-accent/30 bg-surface-elevated"
+            : "border-border bg-surface";
   const interaction = draggable
     ? "cursor-grab hover:-translate-y-1 hover:shadow-lg active:cursor-grabbing active:shadow-xl"
     : "cursor-default";
@@ -4353,9 +4405,11 @@ function readSubtaskDotClassName(
   const color =
     status === "done"
       ? "border-emerald-500 bg-emerald-500"
-      : status === "review"
+      : status === "failed"
         ? "border-red-500 bg-red-500"
-        : "border-accent bg-accent";
+        : status === "review"
+          ? "border-amber-500 bg-amber-500"
+          : "border-accent bg-accent";
 
   return `block h-3 w-3 rounded-full border-2 ring-2 ring-surface ${color}`;
 }
@@ -4400,7 +4454,9 @@ function readResultClassName(status: BoardTaskStatus): string {
       ? "border-accent/30 bg-accent/10 text-text-primary"
       : status === "review"
         ? "border-amber-400/30 bg-amber-400/10 text-text-primary"
-        : "border-border bg-background text-text-secondary";
+        : status === "failed"
+          ? "border-red-400/30 bg-red-400/10 text-text-primary"
+          : "border-border bg-background text-text-secondary";
 
   return `min-w-0 break-words [overflow-wrap:anywhere] rounded-lg border p-3 text-sm leading-6 ${emphasis}`;
 }

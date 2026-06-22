@@ -84,6 +84,13 @@ type QueueSingleRunInput = Pick<
   | "triggerSource"
 >;
 
+type RunnableSubtasks = {
+  unattempted: TaskSubtask[];
+  retryableErrored: TaskSubtask[];
+  retryableReview: TaskSubtask[];
+  hasActive: boolean;
+};
+
 type AcceptedPromptEvidence = {
   conversation: ConversationDetail;
   reason: "monitor_metadata" | "messages" | "status";
@@ -303,9 +310,10 @@ export function createTaskExecutionService(options: {
 
     if (!parsed.subtaskId) {
       const pending = await listRunnableSubtasks(task.id);
+      const runnable = manualRunnableSubtasks(pending);
 
-      if (pending.runnable.length > 0) {
-        return queueNextSubtaskRun(task, parsed, triggerContext, pending.runnable);
+      if (runnable.length > 0) {
+        return queueNextSubtaskRun(task, parsed, triggerContext, runnable);
       }
 
       if (pending.hasActive) {
@@ -360,7 +368,7 @@ export function createTaskExecutionService(options: {
     const task = await resolveExecutableTask(target, { ...parsed, context: triggerContext });
     const targetSubtask = parsed.subtaskId
       ? await findSubtask(task.id, parsed.subtaskId)
-      : (await listRunnableSubtasks(task.id)).runnable[0];
+      : manualRunnableSubtasks(await listRunnableSubtasks(task.id))[0];
     const subtaskId = parsed.subtaskId ?? targetSubtask?.id;
     const runAgentId =
       targetSubtask?.agentId ?? parsed.agentId ?? task.defaultAgentId ?? task.agentId;
@@ -827,6 +835,11 @@ export function createTaskExecutionService(options: {
 
     await abortOpenCodeTaskRun(latest);
 
+    // A blocked interaction means the agent is parked on a permission/question
+    // that an automatic task run cannot answer — a human genuinely has to step in.
+    // So it ends as an `error` run (it did not complete) but is flagged for human
+    // review, which routes it to `review` and keeps it out of the auto-retry path
+    // (retrying would just re-hit the same wall).
     const errorMessage = formatBlockedInteractionMessage(details);
     const errored = await options.taskService.setRunStatus(latest.id, "error", {
       completedAt: new Date().toISOString(),
@@ -879,6 +892,27 @@ export function createTaskExecutionService(options: {
   function readRequeueCount(run: TaskRun): number {
     const value = run.triggerMetadata?.["requeueCount"];
     return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
+  }
+
+  // Max automatic re-queues per task/subtask chain after a system error/failure.
+  // Bounds the auto-retry path so a repeatedly failing run cannot loop forever.
+  async function resolveAutoRetryLimit(): Promise<number> {
+    const fallback = 10;
+
+    if (!options.monitorSettingsService) {
+      return fallback;
+    }
+
+    try {
+      const settings = await options.monitorSettingsService.get();
+      return settings.taskRunMaxAutoRetries;
+    } catch (error) {
+      options.logger?.warn(
+        { err: error },
+        "task run auto-retry limit read failed; defaulting to 10",
+      );
+      return fallback;
+    }
   }
 
   // Queue a fresh run of the same task/subtask after a stall cancellation. A new
@@ -1091,13 +1125,17 @@ export function createTaskExecutionService(options: {
     return run;
   }
 
-  async function listRunnableSubtasks(
-    taskId: string,
-  ): Promise<{ runnable: TaskSubtask[]; hasActive: boolean }> {
+  // Classify a task's feedback subtasks into the buckets the queue paths care
+  // about. `unattempted` is fresh work; `retryableErrored` is a subtask whose
+  // latest run was a system error/failure; `retryableReview` is one whose latest
+  // run is an intentional human-review hand-off. The buckets are kept separate so
+  // the automatic path can auto-retry failures (bounded by a cap) while never
+  // re-queuing a review hand-off, which is terminal.
+  async function listRunnableSubtasks(taskId: string): Promise<RunnableSubtasks> {
     const subtasks = await options.taskService.listSubtasks(taskId);
 
     if (subtasks.length === 0) {
-      return { runnable: [], hasActive: false };
+      return { unattempted: [], retryableErrored: [], retryableReview: [], hasActive: false };
     }
 
     const runs = await options.taskService.listRuns(taskId);
@@ -1107,17 +1145,25 @@ export function createTaskExecutionService(options: {
         .map((run) => run.subtaskId),
     );
 
-    const unattemptedSubtasks = subtasks.filter(
-      (subtask) => !activeSubtaskIds.has(subtask.id) && !hasTerminalSubtaskRun(subtask.id, runs),
-    );
-    const retryableSubtasks = subtasks.filter(
-      (subtask) => !activeSubtaskIds.has(subtask.id) && !hasSuccessfulSubtaskRun(subtask.id, runs),
-    );
+    const inactive = subtasks.filter((subtask) => !activeSubtaskIds.has(subtask.id));
 
     return {
-      runnable: unattemptedSubtasks.length > 0 ? unattemptedSubtasks : retryableSubtasks,
+      unattempted: inactive.filter((subtask) => !hasTerminalSubtaskRun(subtask.id, runs)),
+      retryableErrored: inactive.filter((subtask) => latestSubtaskRunErrored(subtask.id, runs)),
+      retryableReview: inactive.filter((subtask) => latestSubtaskRunNeedsReview(subtask.id, runs)),
       hasActive: activeSubtaskIds.size > 0,
     };
+  }
+
+  // Subtasks a manual/explicit queue may run: fresh work first, otherwise any
+  // attempted-but-not-successful subtask (failed or awaiting review). A deliberate
+  // user retry is not subject to the auto-retry cap.
+  function manualRunnableSubtasks(pending: RunnableSubtasks): TaskSubtask[] {
+    if (pending.unattempted.length > 0) {
+      return pending.unattempted;
+    }
+
+    return [...pending.retryableErrored, ...pending.retryableReview];
   }
 
   async function handleTerminalRun(
@@ -1129,6 +1175,10 @@ export function createTaskExecutionService(options: {
     scheduleAgentDrain(queued?.agentId ?? run.agentId);
   }
 
+  // Automatic chaining after a terminal feedback run. Fresh subtasks are always
+  // queued next; a failed subtask is auto-retried only while under the configured
+  // cap; a human-review hand-off is terminal and is never re-queued (this is what
+  // prevents the runaway loop).
   async function queueNextFeedbackSubtaskAfter(
     run: TaskRun,
     triggerContext: TaskContext | undefined,
@@ -1145,7 +1195,43 @@ export function createTaskExecutionService(options: {
 
     const pending = await listRunnableSubtasks(task.id);
 
-    if (pending.hasActive || pending.runnable.length === 0) {
+    if (pending.hasActive) {
+      return undefined;
+    }
+
+    // Fresh subtasks are new work: queue the next one with a clean retry chain.
+    if (pending.unattempted.length > 0) {
+      return queueNextSubtaskRun(
+        task,
+        {
+          triggerSource: run.triggerSource,
+          fallbackModels: run.fallbackModels,
+          metadata: { ...run.triggerMetadata, requeueCount: 0 },
+        },
+        triggerContext,
+        pending.unattempted,
+      );
+    }
+
+    // No fresh work left. Auto-retry a failed subtask only while under the cap.
+    if (pending.retryableErrored.length === 0) {
+      return undefined;
+    }
+
+    const limit = await resolveAutoRetryLimit();
+    const nextRequeueCount = readRequeueCount(run) + 1;
+
+    if (nextRequeueCount > limit) {
+      options.logger?.warn(
+        {
+          taskId: task.id,
+          taskRunId: run.id,
+          subtaskId: run.subtaskId,
+          requeueAttempt: nextRequeueCount,
+          autoRetryLimit: limit,
+        },
+        "feedback subtask auto-retry limit reached; leaving task in failed status",
+      );
       return undefined;
     }
 
@@ -1154,10 +1240,15 @@ export function createTaskExecutionService(options: {
       {
         triggerSource: run.triggerSource,
         fallbackModels: run.fallbackModels,
-        metadata: run.triggerMetadata,
+        metadata: {
+          ...run.triggerMetadata,
+          requeuedFromRunId: run.id,
+          requeueReason: "system_failure",
+          requeueCount: nextRequeueCount,
+        },
       },
       triggerContext,
-      pending.runnable,
+      pending.retryableErrored,
     );
   }
 
@@ -1474,19 +1565,42 @@ function readScheduledAtFromTrigger(trigger: QueueTaskInput): string | undefined
   return typeof scheduledAt === "string" ? scheduledAt : undefined;
 }
 
-function hasSuccessfulSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
-  return runs.some(
-    (run) =>
-      run.subtaskId === subtaskId &&
-      run.status === "completed" &&
-      run.outcome !== "failed" &&
-      run.outcome !== "needs_human_review" &&
-      !run.needsHumanReview,
-  );
-}
-
 function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
   return runs.some(
     (run) => run.subtaskId === subtaskId && run.status !== "queued" && run.status !== "running",
+  );
+}
+
+// `runs` is ordered created_at desc, so the first match is the subtask's latest
+// run. Retry eligibility is decided by the latest run only, so a successful retry
+// clears an earlier transient failure.
+function latestSubtaskRun(subtaskId: string, runs: TaskRun[]): TaskRun | undefined {
+  return runs.find((run) => run.subtaskId === subtaskId);
+}
+
+// Latest run is an intentional human-review hand-off. Terminal: never auto-retried.
+function latestSubtaskRunNeedsReview(subtaskId: string, runs: TaskRun[]): boolean {
+  const latest = latestSubtaskRun(subtaskId, runs);
+  if (!latest) {
+    return false;
+  }
+
+  return latest.outcome === "needs_human_review" || latest.needsHumanReview;
+}
+
+// Latest run is a system-defined failure (errored/failed/cancelled, or a `failed`
+// outcome). Eligible for bounded automatic retry. A human-review hand-off wins, so
+// a run flagged for review (e.g. blocked on input) is never treated as retryable.
+function latestSubtaskRunErrored(subtaskId: string, runs: TaskRun[]): boolean {
+  const latest = latestSubtaskRun(subtaskId, runs);
+  if (!latest || latestSubtaskRunNeedsReview(subtaskId, runs)) {
+    return false;
+  }
+
+  return (
+    latest.status === "failed" ||
+    latest.status === "error" ||
+    latest.status === "cancelled" ||
+    latest.outcome === "failed"
   );
 }

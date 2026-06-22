@@ -195,6 +195,7 @@ const subtaskProgress: TaskSubtaskProgress = {
   completed: 1,
   active: 1,
   review: 0,
+  failed: 0,
   subtasks: [
     { id: "subtask-1", description: "Implement the docs updates.", status: "done" },
     {
@@ -345,10 +346,38 @@ describe("TasksPage", () => {
       "Backlog",
       "Scheduled",
       "Queued",
+      "Failed",
       "Review",
       "Ready to Check",
       "Done",
     ]);
+  });
+
+  it("offers Accept and Retry actions on a review task card", async () => {
+    mockFetch({ taskPayload: { ...task, status: "review" } });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const taskLink = await screen.findByRole("link", { name: "Ship release" });
+    const card = taskLink.closest("article");
+    if (!card) throw new Error("Expected task card.");
+
+    expect(within(card).getByRole("button", { name: "Accept" })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("offers a Retry action without Accept on a failed task card", async () => {
+    mockFetch({ taskPayload: { ...task, status: "failed" } });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const taskLink = await screen.findByRole("link", { name: "Ship release" });
+    const card = taskLink.closest("article");
+    if (!card) throw new Error("Expected task card.");
+
+    expect(screen.getByRole("heading", { name: "Failed" })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
   });
 
   it("filters board cards by status suggestions", async () => {

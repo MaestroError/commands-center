@@ -372,6 +372,7 @@ describe("task actions", () => {
           completed: 1,
           active: 1,
           review: 0,
+          failed: 0,
           subtasks: [{ id: "subtask-1", description: "Check docs.", status: "done" }],
         },
       ]),
@@ -384,6 +385,7 @@ describe("task actions", () => {
         completed: 1,
         active: 1,
         review: 0,
+        failed: 0,
         subtasks: [{ id: "subtask-1", description: "Check docs.", status: "done" }],
       },
     ]);

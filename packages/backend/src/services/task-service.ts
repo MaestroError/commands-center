@@ -917,6 +917,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
             completed: statuses.filter((status) => status === "done").length,
             active: statuses.filter((status) => status === "queued" || status === "running").length,
             review: statuses.filter((status) => status === "review").length,
+            failed: statuses.filter((status) => status === "failed").length,
             subtasks,
           };
         }),
@@ -1746,9 +1747,17 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return "queued";
     }
 
-    return subtaskIds.some((subtaskId) => hasFailedSubtaskRun(subtaskId, runs))
-      ? "review"
-      : "ready_to_check";
+    // System failures take precedence (they block acceptance and may auto-retry);
+    // an intentional human-review hand-off is reported only when nothing failed.
+    if (subtaskIds.some((subtaskId) => hasErroredSubtaskRun(subtaskId, runs))) {
+      return "failed";
+    }
+
+    if (subtaskIds.some((subtaskId) => hasReviewSubtaskRun(subtaskId, runs))) {
+      return "review";
+    }
+
+    return "ready_to_check";
   }
 
   async function setEnabled(id: string, enabled: boolean): Promise<Task | undefined> {
@@ -2025,16 +2034,25 @@ function normalizeTodos(input: unknown[], timestamp: Date): TaskTodo[] {
 }
 
 function getTaskStatusAfterTerminalRun(run: TaskRun): TaskStatus | undefined {
-  if (run.status === "failed" || run.status === "error" || run.status === "cancelled") {
+  // A human-review request always wins: it is an explicit "a human must look"
+  // signal and must never be auto-retried, even when the run also errored (e.g. a
+  // task run blocked on a permission/question it cannot answer automatically).
+  if (run.outcome === "needs_human_review" || run.needsHumanReview) {
     return "review";
+  }
+
+  // Otherwise system-defined failures land in `failed` (where they can auto-retry
+  // up to a cap), and successful completions are ready for acceptance.
+  if (run.status === "failed" || run.status === "error" || run.status === "cancelled") {
+    return "failed";
   }
 
   if (run.status !== "completed") {
     return undefined;
   }
 
-  if (run.outcome === "failed" || run.outcome === "needs_human_review" || run.needsHumanReview) {
-    return "review";
+  if (run.outcome === "failed") {
+    return "failed";
   }
 
   return "ready_to_check";
@@ -2046,12 +2064,31 @@ function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
   );
 }
 
-function hasFailedSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
-  // `runs` is ordered by created_at desc, so the first match is the latest run.
-  // Only the latest run decides the subtask outcome: a successful fallback retry
-  // must clear a transient model/provider error from an earlier attempt.
-  const latest = runs.find((run) => run.subtaskId === subtaskId);
+// `runs` is ordered by created_at desc, so the first match is the latest run.
+// Only the latest run decides the subtask outcome: a successful fallback retry
+// must clear a transient model/provider error from an earlier attempt.
+function latestSubtaskRun(subtaskId: string, runs: TaskRun[]): TaskRun | undefined {
+  return runs.find((run) => run.subtaskId === subtaskId);
+}
+
+// An intentional human-review hand-off, set only by the specialist or the user
+// (or the system when a run blocks on input a human must resolve). This is
+// terminal and must never trigger an automatic retry.
+function hasReviewSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
+  const latest = latestSubtaskRun(subtaskId, runs);
   if (!latest) {
+    return false;
+  }
+
+  return latest.outcome === "needs_human_review" || latest.needsHumanReview;
+}
+
+// A system-defined failure: the run errored, failed, or was cancelled, or the
+// agent explicitly reported a `failed` outcome. A human-review hand-off always
+// takes precedence, so a run flagged for review is never counted as a failure.
+function hasErroredSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
+  const latest = latestSubtaskRun(subtaskId, runs);
+  if (!latest || hasReviewSubtaskRun(subtaskId, runs)) {
     return false;
   }
 
@@ -2059,9 +2096,7 @@ function hasFailedSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
     latest.status === "failed" ||
     latest.status === "error" ||
     latest.status === "cancelled" ||
-    latest.outcome === "failed" ||
-    latest.outcome === "needs_human_review" ||
-    latest.needsHumanReview
+    latest.outcome === "failed"
   );
 }
 
@@ -2188,15 +2223,20 @@ function deriveRunSubtaskStatus(run: TaskRun): TaskSubtaskDerivedStatus {
     return run.status;
   }
 
+  // A human-review hand-off wins over a failure classification (e.g. a run that
+  // errored because it blocked on a permission/question a human must resolve).
+  if (run.outcome === "needs_human_review" || run.needsHumanReview) {
+    return "review";
+  }
+
+  // System-defined failure (errored/failed/cancelled run, or a `failed` outcome).
   if (
     run.status === "failed" ||
     run.status === "error" ||
     run.status === "cancelled" ||
-    run.outcome === "failed" ||
-    run.outcome === "needs_human_review" ||
-    run.needsHumanReview
+    run.outcome === "failed"
   ) {
-    return "review";
+    return "failed";
   }
 
   if (run.status === "completed") {

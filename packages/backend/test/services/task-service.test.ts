@@ -1030,12 +1030,13 @@ describe("createTaskService", () => {
           total: 4,
           completed: 1,
           active: 1,
-          review: 1,
+          review: 0,
+          failed: 1,
           subtasks: [
             expect.objectContaining({ id: backlogSubtask.id, status: "backlog" }),
             expect.objectContaining({ id: completedSubtask.id, status: "done" }),
             expect.objectContaining({ id: activeSubtask.id, status: "running" }),
-            expect.objectContaining({ id: reviewSubtask.id, status: "review" }),
+            expect.objectContaining({ id: reviewSubtask.id, status: "failed" }),
           ],
         },
       ]);
@@ -1151,7 +1152,7 @@ describe("createTaskService", () => {
     }
   });
 
-  it("keeps parent task in review when any feedback subtask fails", async () => {
+  it("moves parent task to failed when any feedback subtask fails", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
 
@@ -1188,13 +1189,13 @@ describe("createTaskService", () => {
 
       const updated = await service.get(task.id);
 
-      expect(updated?.status).toBe("review");
+      expect(updated?.status).toBe("failed");
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("moves failed runs to review", async () => {
+  it("moves failed runs to failed", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
 
@@ -1210,7 +1211,7 @@ describe("createTaskService", () => {
       await service.setRunStatus(run.id, "failed", { errorMessage: "Could not finish." });
       const updated = await service.get(task.id);
 
-      expect(updated?.status).toBe("review");
+      expect(updated?.status).toBe("failed");
     } finally {
       await testDb.cleanup();
     }

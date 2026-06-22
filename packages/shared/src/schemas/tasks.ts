@@ -14,6 +14,7 @@ export const boardTaskStatusSchema = z.enum([
   "backlog",
   "scheduled",
   "queued",
+  "failed",
   "ready_to_check",
   "review",
   "done",
@@ -26,7 +27,6 @@ const legacyTaskStatusSchema = z.enum([
   "disabled",
   "running",
   "in_progress",
-  "failed",
   "completed",
 ]);
 
@@ -69,6 +69,7 @@ export const taskSubtaskDerivedStatusSchema = z.enum([
   "backlog",
   "queued",
   "running",
+  "failed",
   "ready_to_check",
   "review",
   "done",
@@ -546,6 +547,7 @@ export const taskSubtaskProgressSchema = z.object({
   completed: z.number().int().nonnegative(),
   active: z.number().int().nonnegative(),
   review: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
   subtasks: z.array(taskSubtaskProgressItemSchema).default([]),
 });
 
