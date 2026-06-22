@@ -1057,7 +1057,7 @@ describe("createTaskExecutionService", () => {
     }
   });
 
-  it("moves cancelled running tasks to review and drains the next queued task", async () => {
+  it("moves cancelled running tasks to failed and drains the next queued task", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const promptGate = createDeferred<void>();
@@ -1081,7 +1081,7 @@ describe("createTaskExecutionService", () => {
       const cancelled = await executionService.cancel(firstRun.id, { reason: "Stop now." });
 
       expect(cancelled.status).toBe("cancelled");
-      expect((await taskService.get(firstTask.id))?.status).toBe("review");
+      expect((await taskService.get(firstTask.id))?.status).toBe("failed");
       await expectRunStatus(taskService, secondRun.id, "running");
 
       promptGate.resolve();
@@ -1622,8 +1622,11 @@ describe("createTaskExecutionService", () => {
 
       await expectRunStatus(taskService, run.id, "error");
       const blocked = await taskService.getRunById(run.id);
+      // A blocked interaction needs a human, so the errored run is flagged for
+      // review and the task lands in `review` rather than the auto-retry path.
       expect(blocked?.needsHumanReview).toBe(true);
       expect(blocked?.humanReviewReason).toContain("external_directory");
+      expect((await taskService.get(task.id))?.status).toBe("review");
       expect(blocked?.errorDetails).toMatchObject({
         errorName: "TaskRunBlockedByOpenCodeInteraction",
         stage: "opencode_pending_interaction",
@@ -1673,6 +1676,7 @@ describe("createTaskExecutionService", () => {
       const blocked = await taskService.getRunById(run.id);
       expect(blocked?.needsHumanReview).toBe(true);
       expect(blocked?.humanReviewReason).toContain("pending OpenCode question");
+      expect((await taskService.get(task.id))?.status).toBe("review");
       expect(blocked?.errorDetails).toMatchObject({
         errorName: "TaskRunBlockedByOpenCodeInteraction",
         stage: "opencode_pending_interaction",
@@ -1830,6 +1834,126 @@ describe("createTaskExecutionService", () => {
         .map((entry) => entry.cancellationReason ?? "")
         .find((reason) => reason.includes("Requeue limit"));
       expect(lastReason).toContain("Requeue limit (2) reached");
+    } finally {
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not auto-requeue a feedback subtask left for human review", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const gate = createDeferred<void>();
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        promptGate: gate.promise,
+        completeAsyncPrompt: true,
+        statusSequence: [{ type: "idle" }],
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const parentAgent = await insertAgent(testDb.client.db);
+      const specialist = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: parentAgent.id, title: "Review hand-off" });
+      const feedback = await taskService.createFeedback(task.id, {
+        body: "Address the PR comments.",
+        mentionedAgentIds: [specialist.id],
+      });
+      const subtaskId = feedback.subtasks[0]?.id;
+      if (!subtaskId) throw new Error("Expected feedback subtask.");
+
+      const run = await executionService.queue(task.id, { triggerSource: "manual" });
+      await expectRunStatus(taskService, run.id, "running");
+      expect(run.subtaskId).toBe(subtaskId);
+
+      // The specialist intentionally hands the task off for human review.
+      await taskService.markRunNeedsHumanReview(run.id, specialist.id, "Please review the PR.");
+      gate.resolve();
+
+      await expectRunStatus(taskService, run.id, "completed");
+
+      // The review hand-off is terminal: the task settles in review and no further
+      // run is queued. This is exactly the runaway loop the separation prevents.
+      await expect.poll(async () => (await taskService.get(task.id))?.status).toBe("review");
+      expect(await taskService.listRuns(task.id)).toHaveLength(1);
+    } finally {
+      gate.resolve();
+      executionService.dispose();
+      await testDb.cleanup();
+    }
+  });
+
+  it("auto-retries a failed feedback subtask up to the cap, then leaves it failed", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // Every run errors (terminal provider error, no fallback models configured),
+    // so the feedback subtask is auto-retried until the cap stops the chain.
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPrompt: true,
+      statusSequence: [{ type: "idle" }],
+      promptError: () => ({ name: "APIError", message: "Provider is overloaded." }),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const monitorSettingsService = {
+      get: vi.fn(() =>
+        Promise.resolve({
+          taskRunMonitorMaxLifetimeMinutes: 5,
+          taskRunMonitorNoProgressTimeoutMinutes: 0,
+          taskRunMonitorRequeueAfterStall: false,
+          taskRunMonitorRequeueLimit: 10,
+          taskRunMaxAutoRetries: 2,
+        }),
+      ),
+      update: vi.fn(),
+    } as unknown as TaskRunMonitorSettingsService;
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitorSettingsService,
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
+    });
+
+    try {
+      const parentAgent = await insertAgent(testDb.client.db);
+      const specialist = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: parentAgent.id, title: "Retry then fail" });
+      await taskService.createFeedback(task.id, {
+        body: "Fix the failing build.",
+        mentionedAgentIds: [specialist.id],
+      });
+
+      await executionService.queue(task.id, { triggerSource: "manual" });
+
+      // 1 original + 2 auto-retries = 3 runs, all errored, then the chain stops.
+      await expect
+        .poll(async () => {
+          const runs = await taskService.listRuns(task.id);
+          return runs.length === 3 && runs.every((entry) => entry.status === "error");
+        })
+        .toBe(true);
+
+      executionService.dispose();
+      const runs = await taskService.listRuns(task.id);
+      expect(runs).toHaveLength(3);
+      const retried = runs.filter(
+        (entry) => entry.triggerMetadata?.["requeueReason"] === "system_failure",
+      );
+      expect(retried).toHaveLength(2);
+      expect((await taskService.get(task.id))?.status).toBe("failed");
     } finally {
       executionService.dispose();
       await testDb.cleanup();

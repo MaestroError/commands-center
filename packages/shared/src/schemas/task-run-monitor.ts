@@ -12,12 +12,17 @@ import { z } from "zod";
  *   timeout, automatically queue a fresh run of the same task/subtask.
  * - `taskRunMonitorRequeueLimit`: max number of automatic stall requeues per task
  *   chain before it stops requeuing (only used when requeue is enabled).
+ * - `taskRunMaxAutoRetries`: max number of automatic re-queues per task/subtask
+ *   chain after a system error/failure before the chain stops and the task settles
+ *   in the `failed` status. Acts as a global safety net against runaway retry loops.
+ *   Human-review hand-offs are terminal and never auto-retry regardless of this value.
  */
 export const taskRunMonitorSettingsSchema = z.object({
   taskRunMonitorMaxLifetimeMinutes: z.number().int().positive().default(360),
   taskRunMonitorNoProgressTimeoutMinutes: z.number().int().nonnegative().default(30),
   taskRunMonitorRequeueAfterStall: z.boolean().default(false),
   taskRunMonitorRequeueLimit: z.number().int().positive().default(10),
+  taskRunMaxAutoRetries: z.number().int().positive().default(10),
 });
 
 export type TaskRunMonitorSettings = z.infer<typeof taskRunMonitorSettingsSchema>;

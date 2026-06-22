@@ -373,18 +373,24 @@ function RunHistory(props: {
 
 function TaskDecisionSummary(props: { latestRunResult?: string; task: Task }) {
   const status = readBoardStatus(props.task);
-  if (status !== "ready_to_check" && status !== "review") return null;
-  const content =
-    props.latestRunResult ??
-    (status === "ready_to_check"
+  if (status !== "ready_to_check" && status !== "review" && status !== "failed") return null;
+  const defaultContent =
+    status === "ready_to_check"
       ? "The latest run completed successfully and is ready for acceptance."
-      : "This task needs feedback or a retry before it can move forward.");
+      : status === "failed"
+        ? "The system could not complete this task. Review the error and retry when ready."
+        : "This task needs feedback or a retry before it can move forward.";
+  const content = props.latestRunResult ?? defaultContent;
+  const heading =
+    status === "ready_to_check"
+      ? "Ready to check"
+      : status === "failed"
+        ? "Failed"
+        : "Review needed";
 
   return (
     <section className="cc-panel p-5">
-      <h2 className="text-xl font-semibold text-text-primary">
-        {status === "ready_to_check" ? "Ready to check" : "Review needed"}
-      </h2>
+      <h2 className="text-xl font-semibold text-text-primary">{heading}</h2>
       <Markdown
         className="mt-2 text-text-secondary [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
         content={content}

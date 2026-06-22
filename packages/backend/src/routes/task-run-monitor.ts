@@ -13,6 +13,7 @@ const taskRunMonitorSettingsPatchSchema = z.object({
   taskRunMonitorNoProgressTimeoutMinutes: z.number().int().nonnegative().optional(),
   taskRunMonitorRequeueAfterStall: z.boolean().optional(),
   taskRunMonitorRequeueLimit: z.number().int().positive().optional(),
+  taskRunMaxAutoRetries: z.number().int().positive().optional(),
 });
 
 export function registerTaskRunMonitorRoutes(server: AppServer, context: RuntimeContext): void {

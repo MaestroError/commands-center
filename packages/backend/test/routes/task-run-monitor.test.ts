@@ -40,6 +40,7 @@ describe("task run monitor settings routes", () => {
         taskRunMonitorNoProgressTimeoutMinutes: 30,
         taskRunMonitorRequeueAfterStall: false,
         taskRunMonitorRequeueLimit: 10,
+        taskRunMaxAutoRetries: 10,
       });
 
       const updated = await server.inject({
@@ -63,6 +64,7 @@ describe("task run monitor settings routes", () => {
         taskRunMonitorNoProgressTimeoutMinutes: 0,
         taskRunMonitorRequeueAfterStall: true,
         taskRunMonitorRequeueLimit: 3,
+        taskRunMaxAutoRetries: 10,
       });
     } finally {
       await server.close();
@@ -100,6 +102,7 @@ describe("task run monitor settings routes", () => {
         taskRunMonitorNoProgressTimeoutMinutes: 45,
         taskRunMonitorRequeueAfterStall: true,
         taskRunMonitorRequeueLimit: 10,
+        taskRunMaxAutoRetries: 10,
       });
     } finally {
       await server.close();
