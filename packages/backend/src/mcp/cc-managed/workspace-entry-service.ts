@@ -5,10 +5,11 @@ import type { CcManagedMcpAuthTokenService } from "./auth-token-service.js";
 import { listCcManagedMcpServers, type CcManagedMcpServerDefinition } from "./server-registry.js";
 import type { CcManagedMcpToolAccessService } from "./tool-access-service.js";
 
-// opencode's MCP remote client times out tool calls after 5s by default. The
-// CommandsCenter app tools include human-in-the-loop tools (add_secret, the
-// draft_* review tools) that intentionally block while waiting for the operator,
-// so we give the client a generous timeout that matches the live-request window.
+// opencode's MCP client falls back to the SDK's 60s tool-call timeout when none is
+// configured. The CommandsCenter app tools include human-in-the-loop tools
+// (add_secret, the draft_* review tools) that intentionally block while waiting for
+// the operator, so we give the client a generous timeout that matches the
+// live-request window.
 const CC_MANAGED_MCP_TIMEOUT_MS = 30 * 60 * 1000;
 
 export function createCcManagedMcpWorkspaceEntryService(options: {

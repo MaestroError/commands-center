@@ -131,7 +131,29 @@ The `execute(args, context)` function receives OpenCode session context.
 - Prefer Node built-ins and dependencies already available to the CommandsCenter/OpenCode runtime.
 - Do not introduce dependency installation steps for MVP tools unless the user explicitly accepts the portability tradeoff.
 - If you need to run another process, use safe argument passing from JavaScript APIs. Do not build shell commands by concatenating untrusted model arguments.
-- For HTTP tools, prefer `fetch`, validate required URL parts, set timeouts where practical, and return a compact response with status and relevant body fields.
+- For HTTP tools, prefer `fetch`, validate required URL parts, and return a compact response with status and relevant body fields.
+
+## External Calls And Timeouts
+
+- Always set an explicit timeout on any call to a third-party service, especially HTTP requests. Custom tools run as free-form OpenCode plugin code with no engine-level timeout, so a slow or hung external call blocks the session — and any task run using the tool — until it is force-cancelled.
+- Define a named timeout constant and pass `AbortSignal.timeout(...)`, then handle a non-OK response and the resulting abort/timeout error:
+
+```typescript
+// External actions (webhooks, uploads, image generation, n8n, …) can be slow,
+// so cap the request. Tune this per endpoint.
+const REQUEST_TIMEOUT_MS = 60_000;
+
+const response = await fetch(endpoint, {
+  signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+});
+if (!response.ok) {
+  throw new Error(`Request to ${endpoint} failed: ${response.status} ${response.statusText}`);
+}
+return await response.text();
+```
+
+- Choose the timeout from the third-party service's real latency — a webhook, upload, or image-generation call may legitimately need minutes — but never leave it unbounded.
+- Apply the same rule to non-HTTP third-party clients (SDKs, sockets, child processes): pass their timeout/abort option so the tool cannot hang indefinitely.
 
 ## Naming Rules
 
@@ -158,6 +180,7 @@ The `execute(args, context)` function receives OpenCode session context.
 - The tool name does not accidentally collide with a built-in OpenCode tool.
 - Helper files and scripts are portable with the workspace.
 - Secrets are referenced through environment variables, not written into source.
+- Calls to third-party services (especially HTTP) set an explicit timeout and handle timeout/abort errors.
 - Required secrets are collected with `cc_app_add_secret` when needed.
 - The tool was tested when a safe local test path was clear, or the user was asked for test data when it was not clear.
 - The user was asked whether to enable the finished tool for one or more specialists.
