@@ -126,6 +126,24 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
 
       <EndpointBlock
         method="POST"
+        path="/api/public/v1/task-templates/:id/enable"
+        scope="Tasks"
+        description="Activate a template so it runs on its schedule and accepts automated triggers again. Leaves the schedule and all other settings unchanged."
+        snippets={[{ label: "curl", code: taskDocs.enableTemplateCurl }]}
+        responseExample={{ id: "01J…", title: "Weekly report", description: "", enabled: true }}
+      />
+
+      <EndpointBlock
+        method="POST"
+        path="/api/public/v1/task-templates/:id/disable"
+        scope="Tasks"
+        description="Deactivate a template without changing its schedule. A disabled template stops generating scheduled runs and is refused by trigger endpoints, but is kept for reference and can be re-enabled."
+        snippets={[{ label: "curl", code: taskDocs.disableTemplateCurl }]}
+        responseExample={{ id: "01J…", title: "Weekly report", description: "", enabled: false }}
+      />
+
+      <EndpointBlock
+        method="POST"
         path="/api/public/v1/tasks"
         scope="Tasks"
         description="Create a task against a specialist. Include scheduledAt to create it in the scheduled state; attachments are inline base64 data URLs (≤10 MB each)."

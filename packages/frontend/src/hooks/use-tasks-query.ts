@@ -26,6 +26,8 @@ import {
   createTaskFeedback,
   createTaskFromTemplate,
   createTaskTemplate,
+  disableTaskTemplate,
+  enableTaskTemplate,
   deleteTask,
   disableTask,
   duplicateTask,
@@ -215,6 +217,28 @@ export function useTaskMutations() {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplates }),
           queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplate(template.id) }),
+        ]);
+      },
+    }),
+    enableTemplate: useMutation({
+      mutationFn: (id: string) => enableTaskTemplate(id),
+      onSuccess: async (template) => {
+        queryClient.setQueryData(queryKeys.taskTemplate(template.id), template);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplates }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplate(template.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskSchedulerState }),
+        ]);
+      },
+    }),
+    disableTemplate: useMutation({
+      mutationFn: (id: string) => disableTaskTemplate(id),
+      onSuccess: async (template) => {
+        queryClient.setQueryData(queryKeys.taskTemplate(template.id), template);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplates }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskTemplate(template.id) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.taskSchedulerState }),
         ]);
       },
     }),

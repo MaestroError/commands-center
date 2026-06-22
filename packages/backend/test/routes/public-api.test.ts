@@ -250,6 +250,74 @@ describe("public task API", () => {
     }
   });
 
+  it("manages template Active status under the tasks scope, not the templates scope", async () => {
+    const { testDb, taskService, server, apiTokenService, taskSchedulerService } = await setup();
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await taskService.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Weekly report",
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+
+      // The trigger-only templates scope cannot manage status.
+      const templatesOnly = apiTokenService.createToken("Templates only", ["templates"]).token;
+      const forbidden = await server.inject({
+        method: "POST",
+        url: `/api/public/v1/task-templates/${template.id}/disable`,
+        headers: { authorization: `Bearer ${templatesOnly}` },
+      });
+      expect(forbidden.statusCode).toBe(403);
+
+      // The broader tasks scope can disable and re-enable.
+      const tasksAuth = {
+        authorization: `Bearer ${apiTokenService.createToken("Tasks", ["tasks"]).token}`,
+      };
+
+      const disabled = await server.inject({
+        method: "POST",
+        url: `/api/public/v1/task-templates/${template.id}/disable`,
+        headers: tasksAuth,
+      });
+      expect(disabled.statusCode).toBe(200);
+      expect(disabled.json()).toEqual({
+        id: template.id,
+        title: "Weekly report",
+        description: "",
+        enabled: false,
+      });
+      // Disabling preserves the schedule.
+      expect((await taskService.getTemplate(template.id))?.recurrence?.anchorAt).toBe(
+        "2026-06-01T09:00:00.000Z",
+      );
+
+      const enabled = await server.inject({
+        method: "POST",
+        url: `/api/public/v1/task-templates/${template.id}/enable`,
+        headers: tasksAuth,
+      });
+      expect(enabled.statusCode).toBe(200);
+      expect(enabled.json<{ enabled: boolean }>().enabled).toBe(true);
+
+      const missing = await server.inject({
+        method: "POST",
+        url: "/api/public/v1/task-templates/missing/disable",
+        headers: tasksAuth,
+      });
+      expect(missing.statusCode).toBe(404);
+    } finally {
+      taskSchedulerService.stop();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("creates, triggers, schedules, lists, and inspects tasks with a tasks-scoped token", async () => {
     const { testDb, server, apiTokenService, taskSchedulerService } = await setup();
 

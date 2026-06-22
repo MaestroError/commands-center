@@ -539,6 +539,8 @@ describe("cc-managed MCP routes", () => {
         "get_task_run",
         "create_task_template",
         "run_task_template_now",
+        "enable_task_template",
+        "disable_task_template",
       ]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
@@ -678,6 +680,42 @@ describe("cc-managed MCP routes", () => {
       expect(generatedByManagedTool).toMatchObject({
         title: "Recurring MCP task #G1",
         generatedByAgentId: agent.id,
+      });
+
+      // Disable the recurring template, then a fresh agent run-now must be refused
+      // while the template's settings remain intact.
+      const disableResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "disable_task_template", arguments: { templateId: recurring.id } },
+        16,
+      );
+      expect(parseSseJson(disableResponse.body)).toMatchObject({
+        result: { structuredContent: { id: recurring.id, enabled: false } },
+      });
+
+      const refusedRun = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "run_task_template_now", arguments: { taskId: recurring.id } },
+        17,
+      );
+      expect(parseSseJson(refusedRun.body)).toMatchObject({
+        result: { isError: true },
+      });
+
+      // The taskId alias is accepted too (matches run_task_template_now's shape).
+      const enableResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "enable_task_template", arguments: { taskId: recurring.id } },
+        18,
+      );
+      expect(parseSseJson(enableResponse.body)).toMatchObject({
+        result: { structuredContent: { id: recurring.id, enabled: true } },
       });
     } finally {
       await server.close();
@@ -2962,6 +3000,45 @@ describe("cc-managed MCP routes", () => {
         generatedByAgentId: agent.id,
         title: "Daily report template #G2",
       });
+
+      // disable_self_task_template flips the status; an agent run-now is then refused.
+      const disableResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "disable_self_task_template", arguments: { templateId } },
+        75,
+      );
+      expect(parseSseJson(disableResponse.body)).toMatchObject({
+        result: { structuredContent: { id: templateId, enabled: false } },
+      });
+
+      const refusedRun = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "run_self_task_template_now", arguments: { templateId } },
+        76,
+      );
+      expect(parseSseJson(refusedRun.body)).toMatchObject({ result: { isError: true } });
+
+      // enable_self_task_template restores it.
+      const enableResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "enable_self_task_template", arguments: { templateId } },
+        77,
+      );
+      expect(parseSseJson(enableResponse.body)).toMatchObject({
+        result: { structuredContent: { id: templateId, enabled: true } },
+      });
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -3026,7 +3103,7 @@ describe("cc-managed MCP routes", () => {
         result: { structuredContent: { templates: [] } },
       });
 
-      // get, run, and instantiate all return "not found" for the intruder.
+      // get, run, instantiate, enable, and disable all return "not found" for the intruder.
       for (const call of [
         { name: "get_self_task_template", arguments: { templateId: ownerTemplate.id } },
         {
@@ -3037,6 +3114,8 @@ describe("cc-managed MCP routes", () => {
           name: "create_self_task_from_template",
           arguments: { templateId: ownerTemplate.id },
         },
+        { name: "enable_self_task_template", arguments: { templateId: ownerTemplate.id } },
+        { name: "disable_self_task_template", arguments: { templateId: ownerTemplate.id } },
       ]) {
         const response = await callMcpToolRouteForServer(
           server,
@@ -3164,12 +3243,14 @@ describe("cc-managed MCP routes", () => {
       // create_self_task_template is task_run only.
       expect(chatListResponse.body).not.toContain('"name":"create_self_task_template"');
       expect(taskRunListResponse.body).toContain('"name":"create_self_task_template"');
-      // list/get/run/instantiate are both-context.
+      // list/get/run/instantiate/enable/disable are both-context.
       for (const toolName of [
         "list_self_task_templates",
         "get_self_task_template",
         "run_self_task_template_now",
         "create_self_task_from_template",
+        "enable_self_task_template",
+        "disable_self_task_template",
       ]) {
         expect(chatListResponse.body).toContain(`"name":"${toolName}"`);
         expect(taskRunListResponse.body).toContain(`"name":"${toolName}"`);

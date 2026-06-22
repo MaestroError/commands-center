@@ -386,6 +386,18 @@ describe("createSpecialistService", () => {
                 "Generate and queue a run from a recurring CommandsCenter task template.",
               context: "both",
             },
+            {
+              name: "enable_task_template",
+              description:
+                "Enable (activate) a CommandsCenter task template. An active template resumes its recurring schedule and can be triggered by automation again. The schedule and all other settings are left unchanged.",
+              context: "both",
+            },
+            {
+              name: "disable_task_template",
+              description:
+                "Disable (deactivate) a CommandsCenter task template without changing its schedule or any other setting. A disabled template stops generating scheduled runs and cannot be triggered by automation or the API, but is kept for future reference and can be re-enabled later.",
+              context: "both",
+            },
           ],
         },
       ]);

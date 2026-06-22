@@ -815,6 +815,22 @@ export async function updateTaskTemplate(
   );
 }
 
+export async function enableTaskTemplate(id: string): Promise<TaskTemplate> {
+  return requestJson<TaskTemplate>(
+    `/api/tasks/templates/${encodeURIComponent(id)}/enable`,
+    taskTemplateSchema,
+    { method: "POST" },
+  );
+}
+
+export async function disableTaskTemplate(id: string): Promise<TaskTemplate> {
+  return requestJson<TaskTemplate>(
+    `/api/tasks/templates/${encodeURIComponent(id)}/disable`,
+    taskTemplateSchema,
+    { method: "POST" },
+  );
+}
+
 export async function createTaskFromTemplate(id: string): Promise<Task> {
   return requestJson<Task>(`/api/tasks/templates/${encodeURIComponent(id)}/tasks`, taskSchema, {
     method: "POST",

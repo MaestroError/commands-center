@@ -54,6 +54,24 @@ const queueTaskToolInputSchema = taskIdInputSchema.extend({
 
 const runTaskTemplateNowToolInputSchema = taskIdInputSchema.merge(taskTemplateRunNowInputSchema);
 
+// Accepts `templateId` (preferred) or `taskId` as an alias, so callers that
+// reuse the `run_task_template_now` shape (which keys the template id as
+// `taskId`) still work. Resolve with resolveTemplateId().
+const templateIdInputSchema = z.object({
+  templateId: z.string().trim().min(1).optional(),
+  taskId: z.string().trim().min(1).optional(),
+});
+
+function resolveTemplateId(input: z.infer<typeof templateIdInputSchema>): string {
+  const templateId = input.templateId ?? input.taskId;
+
+  if (!templateId) {
+    throw new Error("templateId is required.");
+  }
+
+  return templateId;
+}
+
 const appendTaskContextToolInputSchema = taskIdInputSchema.merge(appendTaskContextInputSchema);
 
 const scheduleTaskToolInputSchema = taskIdInputSchema.extend({
@@ -157,6 +175,20 @@ export const createTaskTemplateToolMetadata = {
 export const runTaskTemplateNowToolMetadata = {
   name: "run_task_template_now",
   description: "Generate and queue a run from a recurring CommandsCenter task template.",
+  context: "both",
+} as const;
+
+export const enableTaskTemplateToolMetadata = {
+  name: "enable_task_template",
+  description:
+    "Enable (activate) a CommandsCenter task template. An active template resumes its recurring schedule and can be triggered by automation again. The schedule and all other settings are left unchanged.",
+  context: "both",
+} as const;
+
+export const disableTaskTemplateToolMetadata = {
+  name: "disable_task_template",
+  description:
+    "Disable (deactivate) a CommandsCenter task template without changing its schedule or any other setting. A disabled template stops generating scheduled runs and cannot be triggered by automation or the API, but is kept for future reference and can be re-enabled later.",
   context: "both",
 } as const;
 
@@ -379,6 +411,42 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
 
           return success("Task template queued.", taskRunSchema.parse(run));
         }, "Failed to run task template."),
+    },
+    {
+      name: enableTaskTemplateToolMetadata.name,
+      description: enableTaskTemplateToolMetadata.description,
+      context: enableTaskTemplateToolMetadata.context,
+      inputSchema: templateIdInputSchema,
+      outputSchema: taskTemplateSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const templateId = resolveTemplateId(templateIdInputSchema.parse(args));
+          const template = await options.taskService.enableTemplate(templateId);
+
+          if (!template) {
+            throw new Error("Task template not found.");
+          }
+
+          return success("Task template enabled.", taskTemplateSchema.parse(template));
+        }, "Failed to enable task template."),
+    },
+    {
+      name: disableTaskTemplateToolMetadata.name,
+      description: disableTaskTemplateToolMetadata.description,
+      context: disableTaskTemplateToolMetadata.context,
+      inputSchema: templateIdInputSchema,
+      outputSchema: taskTemplateSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const templateId = resolveTemplateId(templateIdInputSchema.parse(args));
+          const template = await options.taskService.disableTemplate(templateId);
+
+          if (!template) {
+            throw new Error("Task template not found.");
+          }
+
+          return success("Task template disabled.", taskTemplateSchema.parse(template));
+        }, "Failed to disable task template."),
     },
   ] as const;
 }

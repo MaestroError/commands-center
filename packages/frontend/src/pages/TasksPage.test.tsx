@@ -298,6 +298,7 @@ type MockFetchOptions = {
   schedulerStatePayload?: TaskSchedulerState[];
   archivedTasksPayload?: Task[];
   templatesPayload?: TaskTemplate[];
+  templatePayload?: TaskTemplate;
   templateTasksPayload?: Task[];
   feedbackPayload?: TaskFeedbackThread[];
   subtaskProgressPayload?: TaskSubtaskProgress[];
@@ -1253,14 +1254,57 @@ describe("TasksPage", () => {
     });
   });
 
-  it("shows templates without user-visible status badges", async () => {
+  it("shows no disabled badge for an active template", async () => {
     mockFetch({ templatesPayload: [taskTemplate] });
 
     renderWithRouter(<TasksPage />, "/tasks?view=templates");
 
     expect(await screen.findByText("Template")).toBeInTheDocument();
     expect(screen.queryByText("Archived")).not.toBeInTheDocument();
-    expect(screen.queryByText("Enabled")).not.toBeInTheDocument();
+    expect(screen.queryByText("Disabled")).not.toBeInTheDocument();
+  });
+
+  it("shows a disabled badge for an inactive template", async () => {
+    mockFetch({ templatesPayload: [{ ...taskTemplate, enabled: false }] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
+
+    expect(await screen.findByTestId("task-template-disabled-badge")).toBeInTheDocument();
+  });
+
+  it("disables a template from the card toggle", async () => {
+    const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Disable template" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/templates/template-1/disable",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("keeps a disabled template disabled when edited", async () => {
+    const fetchMock = mockFetch({ templatePayload: { ...taskTemplate, enabled: false } });
+
+    renderWithRouter(<TasksPage />, "/tasks/templates/template-1/edit");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Save template" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/templates/template-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining('"enabled":false'),
+        }),
+      );
+    });
   });
 
   it("saves a board task as a reusable template", async () => {
@@ -1598,7 +1642,8 @@ describe("TasksPage", () => {
         "/api/tasks/templates",
         expect.objectContaining({
           method: "POST",
-          body: expect.not.stringContaining("recurrence"),
+          // Repetition off sends an explicit null so an edit clears any prior schedule.
+          body: expect.stringContaining('"recurrence":null'),
         }),
       );
     });
@@ -2847,6 +2892,7 @@ function mockFetch(options: MockFetchOptions = {}) {
   const schedulerStatePayload = options.schedulerStatePayload ?? [];
   const archivedTasksPayload = options.archivedTasksPayload ?? [];
   const templatesPayload = options.templatesPayload ?? [];
+  const templatePayload = options.templatePayload ?? taskTemplate;
   const templateTasksPayload = options.templateTasksPayload ?? [generatedTask];
   const feedbackPayload = options.feedbackPayload ?? [];
   const subtaskProgressPayload = options.subtaskProgressPayload ?? [];
@@ -2886,7 +2932,7 @@ function mockFetch(options: MockFetchOptions = {}) {
       const body =
         typeof init?.body === "string" ? (JSON.parse(init.body) as Partial<TaskTemplate>) : {};
       return Promise.resolve(
-        jsonResponse(200, method === "PATCH" ? { ...taskTemplate, ...body } : taskTemplate),
+        jsonResponse(200, method === "PATCH" ? { ...templatePayload, ...body } : templatePayload),
       );
     }
     if (url === "/api/tasks/templates/template-1/tasks") {
@@ -2904,6 +2950,12 @@ function mockFetch(options: MockFetchOptions = {}) {
       return Promise.resolve(
         jsonResponse(200, { ...run, taskId: "task-1", triggerSource: "template" }),
       );
+    }
+    if (url === "/api/tasks/templates/template-1/enable") {
+      return Promise.resolve(jsonResponse(200, { ...taskTemplate, enabled: true }));
+    }
+    if (url === "/api/tasks/templates/template-1/disable") {
+      return Promise.resolve(jsonResponse(200, { ...taskTemplate, enabled: false }));
     }
     if (url === "/api/tasks/runs/active")
       return Promise.resolve(jsonResponse(200, activeRunsPayload));

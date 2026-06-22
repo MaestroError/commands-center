@@ -126,6 +126,15 @@ function scopeForPublicRoute(
     return "templates";
   }
 
+  // Template Active-status management lives under the broader tasks scope,
+  // not the trigger-only templates scope.
+  if (
+    normalizedMethod === "POST" &&
+    /^\/api\/public\/v1\/task-templates\/[^/]+\/(enable|disable)$/.test(pathname)
+  ) {
+    return "tasks";
+  }
+
   if (normalizedMethod === "GET" && /^\/api\/public\/v1\/task-runs\/[^/]+$/.test(pathname)) {
     return "templates";
   }

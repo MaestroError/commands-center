@@ -26,6 +26,14 @@ export const publicTaskTemplateListResponseSchema = z.object({
   templates: z.array(publicTaskTemplateSummarySchema),
 });
 
+/**
+ * Public projection returned by the template enable/disable management
+ * endpoints. Adds the `enabled` (Active) status to the summary fields.
+ */
+export const publicTaskTemplateStatusSchema = publicTaskTemplateSummarySchema.extend({
+  enabled: z.boolean(),
+});
+
 export const publicTriggerScheduleSchema = z.object({
   runAt: z
     .string()
@@ -73,6 +81,7 @@ export const publicTaskRunStatusSchema = z.object({
 
 export type PublicTaskTemplateSummary = z.infer<typeof publicTaskTemplateSummarySchema>;
 export type PublicTaskTemplateListResponse = z.infer<typeof publicTaskTemplateListResponseSchema>;
+export type PublicTaskTemplateStatus = z.infer<typeof publicTaskTemplateStatusSchema>;
 export type PublicTriggerTemplateBody = z.input<typeof publicTriggerTemplateBodySchema>;
 export type PublicTriggerTemplateResponse = z.infer<typeof publicTriggerTemplateResponseSchema>;
 export type PublicTaskRunStatus = z.infer<typeof publicTaskRunStatusSchema>;
