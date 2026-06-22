@@ -411,7 +411,7 @@ export const createTaskTemplateInputSchema = z.object({
   title: z.string().trim().min(1),
   description: z.string().trim().default(""),
   todos: z.array(taskTodoInputSchema).default([]),
-  recurrence: recurringTaskScheduleSchema.optional(),
+  recurrence: recurringTaskScheduleSchema.nullish(),
   permissionProfile: taskPermissionProfileSchema.optional(),
   enabled: z.boolean().optional(),
 });

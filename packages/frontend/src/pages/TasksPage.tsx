@@ -3949,14 +3949,14 @@ function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
     enabled: true,
   };
 
-  if (form.repeatEnabled) {
-    input.recurrence = {
-      mode: "recurring",
-      anchorAt: new Date(form.anchorAtLocal || Date.now()).toISOString(),
-      timezone: form.timezone || readLocalTimezone(),
-      repeatRule: buildRepeatRule(form),
-    };
-  }
+  input.recurrence = form.repeatEnabled
+    ? {
+        mode: "recurring",
+        anchorAt: new Date(form.anchorAtLocal || Date.now()).toISOString(),
+        timezone: form.timezone || readLocalTimezone(),
+        repeatRule: buildRepeatRule(form),
+      }
+    : null;
 
   return input;
 }

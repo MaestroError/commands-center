@@ -282,6 +282,46 @@ describe("createTaskService", () => {
     }
   });
 
+  it("clears template recurrence when updated with a null schedule", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Weekly report",
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+      expect(template.recurrence?.mode).toBe("recurring");
+      expect(template.nextOccurrenceAt).toBeDefined();
+
+      const updated = await service.updateTemplate(template.id, { recurrence: null });
+
+      expect(updated?.recurrence).toBeUndefined();
+      expect(updated?.nextOccurrenceAt).toBeUndefined();
+
+      // An omitted recurrence still leaves any existing schedule untouched.
+      const reRepeated = await service.updateTemplate(template.id, {
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-07-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+      const titleOnly = await service.updateTemplate(reRepeated!.id, { title: "Renamed" });
+      expect(titleOnly?.recurrence?.anchorAt).toBe("2026-07-01T09:00:00.000Z");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("ignores legacy archived flags on active task templates", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
