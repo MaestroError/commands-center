@@ -3,7 +3,7 @@ import { ChevronRight, TriangleAlert } from "lucide-react";
 
 import type { ConversationPart } from "@cc/shared/schemas";
 import { CopyIdButton } from "../CopyIdButton";
-import { getToolName, getToolState } from "./tool-registry";
+import { getToolInput, getToolName, getToolState } from "./tool-registry";
 
 type ToolErrorCardProps = {
   part: ConversationPart;
@@ -15,7 +15,9 @@ export function ToolErrorCard({ part }: ToolErrorCardProps) {
   const state = getToolState(part);
   const error = state?.["error"];
   const errorText = typeof error === "string" ? error : JSON.stringify(error, null, 2);
-  const canExpand = Boolean(errorText);
+  const input = getToolInput(part);
+  const inputText = input ? JSON.stringify(input, null, 2) : undefined;
+  const canExpand = Boolean(errorText) || Boolean(inputText);
 
   return (
     <div className={`tool tool--error ${expanded ? "open" : ""}`}>
@@ -54,16 +56,33 @@ export function ToolErrorCard({ part }: ToolErrorCardProps) {
             <p className="text-xs font-medium text-text-secondary mb-1">Status</p>
             <p className="tool-detail-status error">Error</p>
           </div>
-          <div className="relative">
-            <pre className="text-xs bg-surface-elevated rounded-md p-3 overflow-auto max-h-60 text-danger whitespace-pre-wrap">
-              {errorText}
-            </pre>
-            <CopyIdButton
-              className="absolute top-2 right-2 rounded-md bg-surface p-1 text-text-secondary transition hover:text-text-primary"
-              label="error"
-              value={errorText ?? ""}
-            />
-          </div>
+          {inputText ? (
+            <div>
+              <p className="text-xs font-medium text-text-secondary mb-1">Input</p>
+              <div className="relative">
+                <pre className="text-xs bg-surface-elevated rounded-md p-3 overflow-auto max-h-60 text-text-primary whitespace-pre-wrap">
+                  {inputText}
+                </pre>
+                <CopyIdButton
+                  className="absolute top-2 right-2 rounded-md bg-surface p-1 text-text-secondary transition hover:text-text-primary"
+                  label="input"
+                  value={inputText}
+                />
+              </div>
+            </div>
+          ) : null}
+          {errorText ? (
+            <div className="relative">
+              <pre className="text-xs bg-surface-elevated rounded-md p-3 overflow-auto max-h-60 text-danger whitespace-pre-wrap">
+                {errorText}
+              </pre>
+              <CopyIdButton
+                className="absolute top-2 right-2 rounded-md bg-surface p-1 text-text-secondary transition hover:text-text-primary"
+                label="error"
+                value={errorText}
+              />
+            </div>
+          ) : null}
         </div>
       )}
     </div>
