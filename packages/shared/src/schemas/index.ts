@@ -382,6 +382,7 @@ export {
 export {
   publicTaskTemplateSummarySchema,
   publicTaskTemplateListResponseSchema,
+  publicTaskTemplateStatusSchema,
   publicTriggerScheduleSchema,
   publicTriggerTemplateBodySchema,
   publicTriggerTemplateResponseSchema,
@@ -404,6 +405,7 @@ export {
   publicSpecialistListResponseSchema,
   type PublicTaskTemplateSummary,
   type PublicTaskTemplateListResponse,
+  type PublicTaskTemplateStatus,
   type PublicTriggerTemplateBody,
   type PublicTriggerTemplateResponse,
   type PublicTaskRunStatus,

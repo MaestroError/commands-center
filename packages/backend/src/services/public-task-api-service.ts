@@ -8,6 +8,7 @@ import type {
   PublicTask,
   PublicTaskRun,
   PublicTaskRunStatus,
+  PublicTaskTemplateStatus,
   PublicTaskTemplateSummary,
   PublicTriggerTaskBody,
   PublicTriggerTaskResponse,
@@ -58,6 +59,29 @@ export function createPublicTaskApiService(deps: {
           title: template.title,
           description: template.description,
         }));
+    },
+
+    // Management (tasks scope): flip a template's Active status without
+    // touching its schedule. Unlike triggering, this also resolves disabled
+    // templates so an integration can re-enable one it previously turned off.
+    async setTemplateEnabled(
+      templateId: string,
+      enabled: boolean,
+    ): Promise<PublicTaskTemplateStatus | undefined> {
+      const updated = enabled
+        ? await taskService.enableTemplate(templateId)
+        : await taskService.disableTemplate(templateId);
+
+      if (!updated) {
+        return undefined;
+      }
+
+      return {
+        id: updated.id,
+        title: updated.title,
+        description: updated.description,
+        enabled: updated.enabled,
+      };
     },
 
     async triggerTemplate(

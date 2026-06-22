@@ -67,6 +67,10 @@ describe("buildTaskApiDocs", () => {
     expect(docs.listByStatusCurl).toContain("/tasks?status=ready_to_check");
     expect(docs.listByTemplateCurl).toContain("templateId=<TEMPLATE_ID>&status=queued");
     expect(docs.getExpandCurl).toContain("?expand=runs,feedback");
+    expect(docs.enableTemplateCurl).toContain(
+      "POST 'https://example.test/api/public/v1/task-templates/<TEMPLATE_ID>/enable'",
+    );
+    expect(docs.disableTemplateCurl).toContain("/task-templates/<TEMPLATE_ID>/disable");
     expect(docs.triggerCurl).toContain("/tasks/<TASK_ID>/trigger");
     expect(docs.scheduleCurl).toContain("/tasks/<TASK_ID>/schedule");
     expect(docs.runDetailCurl).toContain("/tasks/<TASK_ID>/runs/<RUN_ID>");

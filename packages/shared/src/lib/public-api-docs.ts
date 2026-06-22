@@ -106,6 +106,8 @@ export interface TaskApiDocs {
   listByTemplateCurl: string;
   getCurl: string;
   getExpandCurl: string;
+  enableTemplateCurl: string;
+  disableTemplateCurl: string;
   triggerCurl: string;
   scheduleCurl: string;
   runsCurl: string;
@@ -151,6 +153,14 @@ export function buildTaskApiDocs(baseUrl: string): TaskApiDocs {
     getCurl: [`curl '${apiBaseUrl}/tasks/<TASK_ID>' \\`, `  ${auth}`].join("\n"),
     getExpandCurl: [
       `curl '${apiBaseUrl}/tasks/<TASK_ID>?expand=runs,feedback' \\`,
+      `  ${auth}`,
+    ].join("\n"),
+    enableTemplateCurl: [
+      `curl -X POST '${apiBaseUrl}/task-templates/<TEMPLATE_ID>/enable' \\`,
+      `  ${auth}`,
+    ].join("\n"),
+    disableTemplateCurl: [
+      `curl -X POST '${apiBaseUrl}/task-templates/<TEMPLATE_ID>/disable' \\`,
       `  ${auth}`,
     ].join("\n"),
     triggerCurl: [

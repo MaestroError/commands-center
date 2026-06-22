@@ -18,6 +18,7 @@ import {
   publicTaskRunStatusSchema,
   publicTaskSchema,
   publicTaskTemplateListResponseSchema,
+  publicTaskTemplateStatusSchema,
   publicTriggerTaskBodySchema,
   publicTriggerTaskResponseSchema,
   publicTriggerTemplateBodySchema,
@@ -239,6 +240,50 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
   );
 
   // --- Epic 09: direct task operations (tasks scope) -----------------------
+
+  // Template Active-status management. Gated by the broader `tasks` scope
+  // rather than the trigger-only `templates` scope.
+  app.post(
+    "/api/public/v1/task-templates/:id/enable",
+    {
+      schema: {
+        params: templateIdParamsSchema,
+        response: {
+          200: publicTaskTemplateStatusSchema,
+        },
+      },
+    },
+    async (request) => {
+      const template = await service.setTemplateEnabled(request.params.id, true);
+
+      if (!template) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      return template;
+    },
+  );
+
+  app.post(
+    "/api/public/v1/task-templates/:id/disable",
+    {
+      schema: {
+        params: templateIdParamsSchema,
+        response: {
+          200: publicTaskTemplateStatusSchema,
+        },
+      },
+    },
+    async (request) => {
+      const template = await service.setTemplateEnabled(request.params.id, false);
+
+      if (!template) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      return template;
+    },
+  );
 
   app.get(
     "/api/public/v1/specialists",
