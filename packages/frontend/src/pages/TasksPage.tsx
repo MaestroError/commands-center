@@ -533,11 +533,9 @@ function TaskListPage() {
     }
 
     if (status === "done") {
-      if (
-        currentStatus === "ready_to_check" ||
-        currentStatus === "review" ||
-        currentStatus === "failed"
-      ) {
+      // Only completed or human-review tasks can be accepted; system failures
+      // must be retried, not dismissed as done.
+      if (currentStatus === "ready_to_check" || currentStatus === "review") {
         mutations.accept.mutate(task.id);
       }
       return;
@@ -4359,10 +4357,7 @@ function canDropTaskOnStatus(task: Task, status: BoardTaskStatus, activeRuns: Ta
 
   if (currentStatus === status) return false;
   if (activeRuns.some((run) => run.taskId === task.id) || currentStatus === "queued") return false;
-  if (status === "done")
-    return (
-      currentStatus === "ready_to_check" || currentStatus === "review" || currentStatus === "failed"
-    );
+  if (status === "done") return currentStatus === "ready_to_check" || currentStatus === "review";
   return status !== "archived";
 }
 
