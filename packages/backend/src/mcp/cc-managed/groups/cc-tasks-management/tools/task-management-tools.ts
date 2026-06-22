@@ -54,9 +54,23 @@ const queueTaskToolInputSchema = taskIdInputSchema.extend({
 
 const runTaskTemplateNowToolInputSchema = taskIdInputSchema.merge(taskTemplateRunNowInputSchema);
 
+// Accepts `templateId` (preferred) or `taskId` as an alias, so callers that
+// reuse the `run_task_template_now` shape (which keys the template id as
+// `taskId`) still work. Resolve with resolveTemplateId().
 const templateIdInputSchema = z.object({
-  templateId: z.string().trim().min(1),
+  templateId: z.string().trim().min(1).optional(),
+  taskId: z.string().trim().min(1).optional(),
 });
+
+function resolveTemplateId(input: z.infer<typeof templateIdInputSchema>): string {
+  const templateId = input.templateId ?? input.taskId;
+
+  if (!templateId) {
+    throw new Error("templateId is required.");
+  }
+
+  return templateId;
+}
 
 const appendTaskContextToolInputSchema = taskIdInputSchema.merge(appendTaskContextInputSchema);
 
@@ -406,8 +420,8 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       outputSchema: taskTemplateSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
-          const parsed = templateIdInputSchema.parse(args);
-          const template = await options.taskService.enableTemplate(parsed.templateId);
+          const templateId = resolveTemplateId(templateIdInputSchema.parse(args));
+          const template = await options.taskService.enableTemplate(templateId);
 
           if (!template) {
             throw new Error("Task template not found.");
@@ -424,8 +438,8 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       outputSchema: taskTemplateSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
-          const parsed = templateIdInputSchema.parse(args);
-          const template = await options.taskService.disableTemplate(parsed.templateId);
+          const templateId = resolveTemplateId(templateIdInputSchema.parse(args));
+          const template = await options.taskService.disableTemplate(templateId);
 
           if (!template) {
             throw new Error("Task template not found.");

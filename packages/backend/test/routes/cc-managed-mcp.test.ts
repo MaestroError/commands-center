@@ -706,11 +706,12 @@ describe("cc-managed MCP routes", () => {
         result: { isError: true },
       });
 
+      // The taskId alias is accepted too (matches run_task_template_now's shape).
       const enableResponse = await callMcpToolRoute(
         server,
         authHeader,
         "tools/call",
-        { name: "enable_task_template", arguments: { templateId: recurring.id } },
+        { name: "enable_task_template", arguments: { taskId: recurring.id } },
         18,
       );
       expect(parseSseJson(enableResponse.body)).toMatchObject({

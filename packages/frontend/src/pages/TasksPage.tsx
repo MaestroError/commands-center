@@ -4458,7 +4458,7 @@ function readTaskCardIconActionClassName(variant: TaskCardIconActionVariant = "n
           ? "border-red-500/30 bg-red-500/10 text-red-600 hover:border-red-500/60 hover:bg-red-500/15 dark:text-red-400"
           : "border-border bg-surface-elevated text-text-secondary hover:border-accent/50 hover:text-accent";
 
-  return `group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background ${emphasis}`;
+  return `group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 ${emphasis}`;
 }
 
 function formatResultMessagePreview(message: string): string {
