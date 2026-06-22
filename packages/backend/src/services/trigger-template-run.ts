@@ -30,6 +30,8 @@ export interface TriggerTemplateRunInput {
   metadata?: Record<string, unknown>;
   /** When set, the task is created with `scheduled_at` and is NOT queued — the scheduler runs it. */
   scheduledFor?: string;
+  /** Human UI override: allow triggering even when the template is disabled. */
+  allowDisabled?: boolean;
 }
 
 export type TriggerTemplateRunResult =
@@ -56,6 +58,7 @@ export async function triggerTemplateRun(
     generatedByAgentId: input.generatedByAgentId,
     context: input.context,
     scheduledFor: input.scheduledFor,
+    allowDisabled: input.allowDisabled,
   });
 
   if (!task) {

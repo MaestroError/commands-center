@@ -322,6 +322,69 @@ describe("createTaskService", () => {
     }
   });
 
+  it("toggles template active status without touching the schedule", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Weekly report",
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+      expect(template.enabled).toBe(true);
+
+      const disabled = await service.disableTemplate(template.id);
+      expect(disabled?.enabled).toBe(false);
+      // Disabling must preserve recurrence and the next occurrence.
+      expect(disabled?.recurrence?.anchorAt).toBe("2026-06-01T09:00:00.000Z");
+      expect(disabled?.nextOccurrenceAt).toBeDefined();
+
+      const enabled = await service.enableTemplate(template.id);
+      expect(enabled?.enabled).toBe(true);
+      expect(enabled?.recurrence?.anchorAt).toBe("2026-06-01T09:00:00.000Z");
+
+      expect(await service.enableTemplate("missing")).toBeUndefined();
+      expect(await service.disableTemplate("missing")).toBeUndefined();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("refuses to generate from a disabled template unless explicitly allowed", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Weekly report",
+      });
+      await service.disableTemplate(template.id);
+
+      // Automation / agent / API entry points pass no override and are refused.
+      await expect(
+        service.createTaskFromTemplate(template.id, { triggerSource: "agent" }),
+      ).rejects.toThrow(/disabled/i);
+
+      // Human UI override still works.
+      const task = await service.createTaskFromTemplate(template.id, {
+        triggerSource: "manual",
+        allowDisabled: true,
+      });
+      expect(task?.sourceTemplateId).toBe(template.id);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("ignores legacy archived flags on active task templates", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });

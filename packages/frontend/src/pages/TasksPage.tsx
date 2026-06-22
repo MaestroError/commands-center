@@ -26,6 +26,8 @@ import {
   Pencil,
   Plus,
   Play,
+  Power,
+  PowerOff,
   RotateCcw,
   Save,
   Trash2,
@@ -404,6 +406,12 @@ function TaskListPage() {
               onSuccess: (task) => selectGeneratedTask(searchParams, setSearchParams, task.id),
             });
           }}
+          onToggleActive={(template) =>
+            void (template.enabled ? mutations.disableTemplate : mutations.enableTemplate).mutate(
+              template.id,
+            )
+          }
+          toggleBusy={mutations.enableTemplate.isPending || mutations.disableTemplate.isPending}
           onEdit={(template) =>
             void navigate(`/tasks/templates/${template.id}/edit${currentSearch}`)
           }
@@ -1262,6 +1270,7 @@ function TaskCardIconButton(props: {
   onClick: () => void;
   testId?: string;
   variant?: TaskCardIconActionVariant;
+  disabled?: boolean;
 }) {
   const Icon = props.icon;
 
@@ -1270,12 +1279,24 @@ function TaskCardIconButton(props: {
       aria-label={props.label}
       className={readTaskCardIconActionClassName(props.variant)}
       data-testid={props.testId ?? taskCardActionTestId(props.label)}
+      disabled={props.disabled}
       onClick={props.onClick}
       type="button"
     >
       <Icon aria-hidden="true" className="h-4 w-4" />
       <TaskCardIconActionTooltip label={props.label} />
     </button>
+  );
+}
+
+function TemplateDisabledBadge() {
+  return (
+    <span
+      className="rounded-full border border-warning/40 bg-warning/10 px-3 py-1 text-sm text-warning"
+      data-testid="task-template-disabled-badge"
+    >
+      Disabled
+    </span>
   );
 }
 
@@ -2866,6 +2887,8 @@ function TaskTemplatesView(props: {
   onEdit: (template: TaskTemplate) => void;
   onRunNow: (template: TaskTemplate) => void;
   onDelete: (template: TaskTemplate) => void;
+  onToggleActive: (template: TaskTemplate) => void;
+  toggleBusy: boolean;
   onSelect: (template: TaskTemplate) => void;
   onStartCreate: () => void;
 }) {
@@ -2924,9 +2947,12 @@ function TaskTemplatesView(props: {
                     {template.description || "No description provided."}
                   </p>
                 </div>
-                <span className="rounded-full border border-border bg-surface px-3 py-1 text-sm text-text-secondary">
-                  Template
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {template.enabled ? null : <TemplateDisabledBadge />}
+                  <span className="rounded-full border border-border bg-surface px-3 py-1 text-sm text-text-secondary">
+                    Template
+                  </span>
+                </div>
               </div>
               <div className="grid gap-3 text-sm text-text-secondary sm:grid-cols-3">
                 <Metric label="Default specialist" value={agent?.name ?? template.defaultAgentId} />
@@ -2961,6 +2987,12 @@ function TaskTemplatesView(props: {
                   label="Run now"
                   onClick={() => props.onRunNow(template)}
                   variant="success"
+                />
+                <TaskCardIconButton
+                  disabled={props.toggleBusy}
+                  icon={template.enabled ? PowerOff : Power}
+                  label={template.enabled ? "Disable template" : "Enable template"}
+                  onClick={() => props.onToggleActive(template)}
                 />
                 <TaskCardIconButton
                   icon={Pencil}
@@ -3091,6 +3123,22 @@ function TaskTemplateForm(props: {
           onChange={(event) => updateForm({ prompt: createTaskPromptValue(event.target.value) })}
         />
       </label>
+      <section className="grid min-w-0 gap-2 rounded-xl border border-border bg-surface p-4">
+        <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
+          <input
+            checked={form.enabled}
+            data-testid="task-template-active-input"
+            onChange={(event) => updateForm({ enabled: event.target.checked })}
+            type="checkbox"
+          />
+          Active
+        </label>
+        <p className="text-sm text-text-secondary">
+          {form.enabled
+            ? "Active templates run on their schedule and can be triggered by automation."
+            : "Disabled templates keep all settings but never run automatically until re-enabled. You can still Run now manually."}
+        </p>
+      </section>
       <section className="grid min-w-0 gap-3 rounded-xl border border-border bg-surface p-4">
         <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
           <input
@@ -3270,8 +3318,10 @@ function TaskTemplateDetailPanel(props: {
 }) {
   const templateQuery = useTaskTemplateQuery(props.templateId);
   const tasksQuery = useTaskTemplateTasksQuery(props.templateId);
+  const mutations = useTaskMutations();
   const [detailTab, setDetailTab] = useState("details");
   const template = templateQuery.data;
+  const toggleBusy = mutations.enableTemplate.isPending || mutations.disableTemplate.isPending;
   const agent = template
     ? props.agents.find((entry) => entry.id === template.defaultAgentId)
     : undefined;
@@ -3313,6 +3363,16 @@ function TaskTemplateDetailPanel(props: {
                 <span className="rounded-full border border-border bg-surface px-2 py-1 text-xs text-text-secondary">
                   {formatTemplateRepeat(template)}
                 </span>
+                <span
+                  className={
+                    template.enabled
+                      ? "rounded-full border border-success/40 bg-success/10 px-2 py-1 text-xs text-success"
+                      : "rounded-full border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning"
+                  }
+                  data-testid="task-template-detail-status"
+                >
+                  {template.enabled ? "Active" : "Disabled"}
+                </span>
               </div>
               <TextBlock
                 label="Description"
@@ -3347,6 +3407,16 @@ function TaskTemplateDetailPanel(props: {
                   label="Run now"
                   onClick={() => props.onRunNow(template)}
                   variant="success"
+                />
+                <TaskCardIconButton
+                  disabled={toggleBusy}
+                  icon={template.enabled ? PowerOff : Power}
+                  label={template.enabled ? "Disable template" : "Enable template"}
+                  onClick={() =>
+                    void (
+                      template.enabled ? mutations.disableTemplate : mutations.enableTemplate
+                    ).mutate(template.id)
+                  }
                 />
                 {template.latestTaskId ? (
                   <button
@@ -3820,6 +3890,8 @@ type FormState = {
   repeatInterval: string;
   repeatWeekdays: number[];
   repeatEnabled: boolean;
+  /** Template "Active" status. Tasks ignore this field. */
+  enabled: boolean;
   todosText: string;
 };
 
@@ -3845,6 +3917,7 @@ function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormState {
     repeatInterval: "1",
     repeatWeekdays: [],
     repeatEnabled: false,
+    enabled: task?.enabled ?? true,
     todosText: task?.todos.map((todo) => todo.content).join("\n") ?? "",
   };
 }
@@ -3870,6 +3943,7 @@ function templateToForm(template?: TaskTemplate): FormState {
     repeatInterval: String(repeatRule?.interval ?? 1),
     repeatWeekdays: repeatRule?.weekdays ?? (repeatFrequency === "week" ? [1] : []),
     repeatEnabled: Boolean(template?.recurrence),
+    enabled: template?.enabled ?? true,
     todosText: template?.todos.map((todo) => todo.content).join("\n") ?? "",
   };
 }
@@ -3946,7 +4020,7 @@ function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
       .map((line) => line.trim())
       .filter(Boolean)
       .map((content) => ({ content })),
-    enabled: true,
+    enabled: form.enabled,
   };
 
   input.recurrence = form.repeatEnabled

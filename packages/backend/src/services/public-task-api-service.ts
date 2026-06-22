@@ -64,6 +64,14 @@ export function createPublicTaskApiService(deps: {
       templateId: string,
       body: PublicTriggerTemplateBody,
     ): Promise<TriggerTemplateOutcome> {
+      // Disabled templates are hidden from the public listing, so a direct
+      // trigger by id is treated as not found rather than running them.
+      const template = await taskService.getTemplate(templateId);
+
+      if (!template || !template.enabled) {
+        return { kind: "not_found" };
+      }
+
       const text = body.context?.text;
       const result = await triggerTemplateRun(
         { taskService, executionService, taskContextAttachmentService },

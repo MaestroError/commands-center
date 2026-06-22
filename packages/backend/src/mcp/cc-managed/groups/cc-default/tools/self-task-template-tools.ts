@@ -88,6 +88,20 @@ export const createSelfTaskFromTemplateToolMetadata = {
   context: "both",
 } as const;
 
+export const enableSelfTaskTemplateToolMetadata = {
+  name: "enable_self_task_template",
+  description:
+    "Enable (activate) one of your own CommandsCenter task templates. An active template resumes its recurring schedule and can be triggered by automation again. The recurrence schedule and all other settings are left unchanged. Will fail if the template is assigned to a different specialist.",
+  context: "both",
+} as const;
+
+export const disableSelfTaskTemplateToolMetadata = {
+  name: "disable_self_task_template",
+  description:
+    "Disable (deactivate) one of your own CommandsCenter task templates without changing its schedule or any other setting. A disabled template stops generating scheduled runs and cannot be triggered by automation or the API, but is kept for future reference and can be re-enabled later. Will fail if the template is assigned to a different specialist.",
+  context: "both",
+} as const;
+
 // Phase 4: self task template tools (direct, non-interactive). draft_self_task_template
 // lives in self-task-live-tools.ts with the other operator-blocking tools.
 export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateToolOptions) {
@@ -200,6 +214,48 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
 
           return success("Task created from template.", taskSchema.parse(task));
         }, "Failed to create task from template."),
+    },
+    {
+      name: enableSelfTaskTemplateToolMetadata.name,
+      description: enableSelfTaskTemplateToolMetadata.description,
+      context: enableSelfTaskTemplateToolMetadata.context,
+      inputSchema: templateIdInputSchema,
+      outputSchema: taskTemplateSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const parsed = templateIdInputSchema.parse(args);
+          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+          await requireSelfTemplate(options.taskService, parsed.templateId, agentId);
+
+          const template = await options.taskService.enableTemplate(parsed.templateId);
+
+          if (!template) {
+            throw new Error("Task template not found.");
+          }
+
+          return success("Task template enabled.", taskTemplateSchema.parse(template));
+        }, "Failed to enable task template."),
+    },
+    {
+      name: disableSelfTaskTemplateToolMetadata.name,
+      description: disableSelfTaskTemplateToolMetadata.description,
+      context: disableSelfTaskTemplateToolMetadata.context,
+      inputSchema: templateIdInputSchema,
+      outputSchema: taskTemplateSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const parsed = templateIdInputSchema.parse(args);
+          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+          await requireSelfTemplate(options.taskService, parsed.templateId, agentId);
+
+          const template = await options.taskService.disableTemplate(parsed.templateId);
+
+          if (!template) {
+            throw new Error("Task template not found.");
+          }
+
+          return success("Task template disabled.", taskTemplateSchema.parse(template));
+        }, "Failed to disable task template."),
     },
   ] as const;
 }

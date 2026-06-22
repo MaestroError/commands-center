@@ -222,6 +222,9 @@ type CreateTaskFromTemplateInput = {
   triggerSource?: TaskRun["triggerSource"];
   generatedByAgentId?: string;
   context?: TaskContext;
+  // Disabled templates are inert for automation (scheduler, API, agent triggers).
+  // Human UI entry points pass `true` to allow an explicit manual override.
+  allowDisabled?: boolean;
 };
 
 export function createTaskService(options: { db: AppDb; config: RuntimeConfig }) {
@@ -442,6 +445,14 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       }
 
       return mapTaskTemplate(row);
+    },
+
+    async enableTemplate(id: string): Promise<TaskTemplate | undefined> {
+      return this.updateTemplate(id, { enabled: true });
+    },
+
+    async disableTemplate(id: string): Promise<TaskTemplate | undefined> {
+      return this.updateTemplate(id, { enabled: false });
     },
 
     async create(input: unknown): Promise<Task> {
@@ -1078,6 +1089,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
       if (!template) {
         return undefined;
+      }
+
+      if (!template.enabled && !input.allowDisabled) {
+        throw new Error("Task template is disabled.");
       }
 
       const row = options.db.transaction((tx) => {

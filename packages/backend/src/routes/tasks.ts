@@ -283,6 +283,48 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     },
   );
 
+  app.post(
+    "/api/tasks/templates/:id/enable",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskTemplateSchema,
+        },
+      },
+    },
+    async (request) => {
+      const template = await service.enableTemplate(request.params.id);
+
+      if (!template) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      return template;
+    },
+  );
+
+  app.post(
+    "/api/tasks/templates/:id/disable",
+    {
+      schema: {
+        params: taskIdParamsSchema,
+        response: {
+          200: taskTemplateSchema,
+        },
+      },
+    },
+    async (request) => {
+      const template = await service.disableTemplate(request.params.id);
+
+      if (!template) {
+        throw new NotFoundError("Task template not found.");
+      }
+
+      return template;
+    },
+  );
+
   app.get(
     "/api/tasks/templates/:id/tasks",
     {
@@ -309,6 +351,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     async (request, reply) => {
       const task = await service.createTaskFromTemplate(request.params.id, {
         triggerSource: "manual",
+        allowDisabled: true,
       });
 
       if (!task) {
@@ -340,6 +383,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
           context: request.body.context,
           contextAttachmentUploads: request.body.contextAttachmentUploads,
           metadata: request.body.metadata,
+          allowDisabled: true,
         },
       );
 
