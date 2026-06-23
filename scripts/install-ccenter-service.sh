@@ -540,9 +540,26 @@ wait_for_env_file() {
   fail "Timed out waiting for ccenter to create env file: $ENV_FILE. Check service logs, then rerun the installer."
 }
 
+# Poll the health endpoint up to ${1:-60}s. Returns 0 once healthy, 1 on timeout.
+probe_health() {
+  local url attempts
+  url="http://$HOST:$PORT/api/health"
+  attempts="${1:-60}"
+
+  for ((i = 0; i < attempts; i++)); do
+    if curl -fsS -o /dev/null --max-time 3 "$url"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 # Confirm the service actually answers before reporting success. The binary is
 # already verified at this point, so this catches runtime failures (bad env, port
-# conflict, a genuine runtime incompatibility) that a binary check cannot.
+# conflict, a genuine runtime incompatibility) that a binary check cannot. If the
+# new version starts but never becomes healthy, roll the running service back to
+# the previous version so a working instance is not left down.
 healthcheck() {
   local url
   url="http://$HOST:$PORT/api/health"
@@ -553,16 +570,43 @@ healthcheck() {
   fi
 
   info "Waiting for the service to become healthy: $url"
-  for _ in {1..60}; do
-    if curl -fsS -o /dev/null --max-time 3 "$url"; then
-      info "Service is healthy."
-      return 0
-    fi
-    sleep 1
-  done
+  if probe_health 60; then
+    info "Service is healthy."
+    return 0
+  fi
 
   dump_service_logs
-  fail "Service did not become healthy at $url within 60s. The new binary installed correctly, so this is a runtime failure — review the logs above (env, port $PORT conflict, or startup error), then rerun."
+  rollback_running_service "$url"
+}
+
+# Reached only when the freshly-installed version restarted but failed its
+# healthcheck. Reinstall the previous version, rewrite the unit for its binary,
+# restart, and verify health — so the instance ends on a known-good version
+# rather than a broken new one. Aborts with a clear status either way.
+rollback_running_service() {
+  local url restored_health
+  url="$1"
+
+  if [[ -z "$PREV_VERSION" ]]; then
+    fail "Service did not become healthy at $url within 60s, and there is no previous version to roll back to. The new binary installed but the app is unhealthy — review the logs above (env, port $PORT conflict, or startup error), then rerun."
+  fi
+
+  warn "New version is unhealthy. Rolling the service back to commandscenter@$PREV_VERSION."
+  if ! npm install -g --prefer-online "commandscenter@$PREV_VERSION" || ! verify_ccenter_binary; then
+    fail "Service did not become healthy at $url, and the automatic rollback to commandscenter@$PREV_VERSION also failed to install. The instance may be down — reinstall commandscenter@$PREV_VERSION manually and restart $SERVICE_NAME."
+  fi
+
+  resolve_ccenter_path   # re-point CCENTER_PATH at the restored binary
+  install_service        # rewrite the unit for the restored binary/path
+  start_service          # restart onto the previous version
+
+  if probe_health 60; then
+    restored_health="and the previous version is healthy again"
+  else
+    restored_health="but the previous version is ALSO not healthy — check $SERVICE_NAME logs"
+  fi
+
+  fail "Upgrade to $PACKAGE_SPEC failed its healthcheck at $url. Rolled the service back to commandscenter@$PREV_VERSION $restored_health. Review the logs above before retrying the upgrade."
 }
 
 # Surface recent service logs to the operator on a healthcheck failure.

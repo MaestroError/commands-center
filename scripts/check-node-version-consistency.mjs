@@ -7,7 +7,7 @@
 //
 // Run: node scripts/check-node-version-consistency.mjs
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -72,12 +72,18 @@ expect(
   ),
 );
 
-// Workflows: `node-version: 24`
-for (const wf of [".github/workflows/ci.yml", ".github/workflows/publish.yml"]) {
+// Workflows: every `.github/workflows/*.yml` that pins `node-version: 24`.
+// Discovered dynamically so a newly added workflow is covered automatically.
+const workflowsDir = ".github/workflows";
+for (const file of readdirSync(resolve(repoRoot, workflowsDir)).sort()) {
+  if (!/\.ya?ml$/.test(file)) continue;
+  const wf = `${workflowsDir}/${file}`;
+  const content = read(wf);
+  if (!/node-version:/.test(content)) continue;
   expect(
     `workflow ${wf}`,
     wf,
-    singleMajorFromMatches(`workflow ${wf}`, wf, read(wf), /node-version:\s*['"]?(\d+)/g),
+    singleMajorFromMatches(`workflow ${wf}`, wf, content, /node-version:\s*['"]?(\d+)/g),
   );
 }
 
