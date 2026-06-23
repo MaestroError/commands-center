@@ -201,6 +201,11 @@ export async function runCli(args: string[]): Promise<void> {
               wildcard: false,
             });
 
+            server.addHook("onSend", async (_request, reply, payload) => {
+              reply.header("X-Robots-Tag", "noindex, nofollow");
+              return payload;
+            });
+
             server.setNotFoundHandler((_request: FastifyRequest, reply: FastifyReply) => {
               return reply.sendFile("index.html");
             });

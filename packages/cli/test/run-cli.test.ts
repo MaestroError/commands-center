@@ -72,6 +72,7 @@ import { resolveStaticAssetsDir, runCli } from "../src/cli.js";
 
 type StaticRegisterServer = {
   register: (plugin: unknown, options: unknown) => Promise<void>;
+  addHook: (name: string, handler: (...args: unknown[]) => unknown) => void;
   setNotFoundHandler: (handler: (request: FastifyRequest, reply: FastifyReply) => unknown) => void;
 };
 
@@ -326,10 +327,14 @@ describe("runCli", () => {
 
     const register = vi.fn().mockResolvedValue(undefined);
     const sendFile = vi.fn();
+    const hooks = new Map<string, (...args: unknown[]) => unknown>();
     let notFoundHandler: ((request: FastifyRequest, reply: FastifyReply) => unknown) | undefined;
 
     await options.register({
       register,
+      addHook: (name: string, handler: (...args: unknown[]) => unknown) => {
+        hooks.set(name, handler);
+      },
       setNotFoundHandler: (handler: (request: FastifyRequest, reply: FastifyReply) => unknown) => {
         notFoundHandler = handler;
       },
@@ -340,6 +345,13 @@ describe("runCli", () => {
       expect.objectContaining({ wildcard: false, root: expect.stringMatching(/public$/) }),
     );
     expect(notFoundHandler).toBeTypeOf("function");
+
+    const onSend = hooks.get("onSend");
+    expect(onSend).toBeTypeOf("function");
+    const header = vi.fn();
+    const payload = { ok: true };
+    await expect(onSend?.({}, { header }, payload)).resolves.toBe(payload);
+    expect(header).toHaveBeenCalledWith("X-Robots-Tag", "noindex, nofollow");
 
     notFoundHandler?.({} as FastifyRequest, { sendFile } as unknown as FastifyReply);
     expect(sendFile).toHaveBeenCalledWith("index.html");
@@ -355,14 +367,17 @@ describe("runCli", () => {
       throw new Error("Expected start command to provide a register callback.");
     }
     const register = vi.fn().mockResolvedValue(undefined);
+    const addHook = vi.fn();
     const setNotFoundHandler = vi.fn();
 
     await options.register({
       register,
+      addHook,
       setNotFoundHandler,
     });
 
     expect(register).not.toHaveBeenCalled();
+    expect(addHook).not.toHaveBeenCalled();
     expect(setNotFoundHandler).not.toHaveBeenCalled();
   });
 
