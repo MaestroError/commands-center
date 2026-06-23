@@ -143,7 +143,7 @@ describe("runCli", () => {
     expect(startServerRuntimeMock).toHaveBeenCalledWith(
       expect.objectContaining({
         overrides: { host: undefined, port: undefined },
-        register: undefined,
+        register: expect.any(Function),
       }),
     );
   });
@@ -306,10 +306,26 @@ describe("runCli", () => {
       expect.objectContaining({
         overrides: { host: "127.0.0.1", port: 4010 },
         env: process.env,
-        register: undefined,
+        register: expect.any(Function),
       }),
     );
     expect(process.env["NODE_ENV"]).toBe("production");
+
+    // serve is API-only: the X-Robots-Tag hook is still registered, but no
+    // static assets or SPA fallback are served.
+    const options = startServerRuntimeMock.mock.calls[0]?.[0] as StartServerRuntimeCall | undefined;
+    if (!options?.register) {
+      throw new Error("Expected serve command to provide a register callback.");
+    }
+    const register = vi.fn().mockResolvedValue(undefined);
+    const addHook = vi.fn();
+    const setNotFoundHandler = vi.fn();
+
+    await options.register({ register, addHook, setNotFoundHandler });
+
+    expect(addHook).toHaveBeenCalledWith("onSend", expect.any(Function));
+    expect(register).not.toHaveBeenCalled();
+    expect(setNotFoundHandler).not.toHaveBeenCalled();
   });
 
   it("registers static assets and the SPA fallback in start mode", async () => {
