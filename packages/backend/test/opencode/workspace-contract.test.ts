@@ -38,13 +38,13 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
         customTools: [],
         mcpServers: [{ name: "github", enabled: true, action: "allow" }],
         toolPermissions: [{ pattern: "custom_write", action: "ask" }],
-        appMcpServers: [{ name: "cc_tool_management", enabled: true, action: "allow" }],
-        appToolPermissions: [{ pattern: "cc_tool_management_create_custom_tool", action: "ask" }],
+        appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
+        appToolPermissions: [{ pattern: "cc_app_create_custom_tool", action: "ask" }],
       },
       appMcpEntries: {
-        cc_tool_management: {
+        cc_app: {
           type: "remote",
-          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/specialists/writer",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-app/specialists/writer",
           enabled: true,
           oauth: false,
           headers: {
@@ -64,9 +64,9 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       model: "openai/gpt-4.1",
       mcp: {
         github: { enabled: true },
-        cc_tool_management: {
+        cc_app: {
           type: "remote",
-          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/specialists/writer",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-app/specialists/writer",
           enabled: true,
           oauth: false,
           headers: {
@@ -102,9 +102,9 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
         appToolPermissions: [],
       },
       appMcpEntries: {
-        cc_tool_management: {
+        cc_app: {
           type: "remote",
-          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/specialists/writer",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-app/specialists/writer",
           enabled: false,
           oauth: false,
           headers: {
@@ -170,17 +170,17 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
         toolPermissions: [],
         appMcpServers: [
           {
-            name: "cc_tool_management",
+            name: "cc_app",
             enabled: true,
             action: "allow",
           },
         ],
-        appToolPermissions: [{ pattern: "cc_tool_management_create_custom_tool", action: "allow" }],
+        appToolPermissions: [{ pattern: "cc_app_create_custom_tool", action: "allow" }],
       },
       appMcpEntries: {
-        cc_tool_management: {
+        cc_app: {
           type: "remote",
-          url: "http://127.0.0.1:3000/api/mcp/cc/cc-tool-management/specialists/writer",
+          url: "http://127.0.0.1:3000/api/mcp/cc/cc-app/specialists/writer",
           enabled: true,
           oauth: false,
           headers: {
@@ -254,6 +254,117 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
       await expect(
         readFile(join(paths.skillsDir, "writer", "SKILL.md"), "utf8"),
       ).resolves.toContain("description: Writing helper");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("copies renamed built-in skill aliases using the current slug", async () => {
+    const testDb = await createTestDatabase();
+    const skillRoot = join(testDb.cwd, "builtin-skills");
+    const skillDir = join(skillRoot, "global-skill-authoring");
+
+    try {
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(
+        join(skillDir, "SKILL.md"),
+        "---\nname: global-skill-authoring\ndescription: Global skill helper\ncompatibility: opencode\n---\n\n# global-skill-authoring\n",
+        "utf8",
+      );
+
+      await writeOpenCodeWorkspace({
+        workspacePath: join(testDb.config.paths.subdirectories.specialists, "writer-agent"),
+        input: {
+          name: "Writer",
+          role: "write docs",
+          instructions: "Write useful docs.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {
+            builtInSkills: ["custom-skill-authoring"],
+            workspaceSkills: [],
+            customTools: [],
+            mcpServers: [],
+            toolPermissions: [],
+            appMcpServers: [],
+            appToolPermissions: [],
+          },
+        },
+        skillRoot,
+        workspaceSkillRoot: testDb.config.paths.subdirectories.skills,
+      });
+
+      const paths = getOpenCodeWorkspacePaths(
+        join(testDb.config.paths.subdirectories.specialists, "writer-agent"),
+      );
+      await expect(
+        readFile(join(paths.skillsDir, "global-skill-authoring", "SKILL.md"), "utf8"),
+      ).resolves.toContain("description: Global skill helper");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("reports missing built-in skills with an actionable error", async () => {
+    const testDb = await createTestDatabase();
+
+    try {
+      await expect(
+        writeOpenCodeWorkspace({
+          workspacePath: join(testDb.config.paths.subdirectories.specialists, "writer-agent"),
+          input: {
+            name: "Writer",
+            role: "write docs",
+            instructions: "Write useful docs.",
+            defaultModel: "openai/gpt-4.1",
+            capabilities: {
+              builtInSkills: ["missing-skill"],
+              workspaceSkills: [],
+              customTools: [],
+              mcpServers: [],
+              toolPermissions: [],
+              appMcpServers: [],
+              appToolPermissions: [],
+            },
+          },
+          skillRoot: join(testDb.cwd, "builtin-skills"),
+          workspaceSkillRoot: testDb.config.paths.subdirectories.skills,
+        }),
+      ).rejects.toThrow(
+        "Built-in skill 'missing-skill' was not found. Update this specialist's skill capabilities or restore the missing skill directory.",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("reports missing renamed built-in skill aliases with the target slug", async () => {
+    const testDb = await createTestDatabase();
+
+    try {
+      await expect(
+        writeOpenCodeWorkspace({
+          workspacePath: join(testDb.config.paths.subdirectories.specialists, "writer-agent"),
+          input: {
+            name: "Writer",
+            role: "write docs",
+            instructions: "Write useful docs.",
+            defaultModel: "openai/gpt-4.1",
+            capabilities: {
+              builtInSkills: ["custom-skill-authoring"],
+              workspaceSkills: [],
+              customTools: [],
+              mcpServers: [],
+              toolPermissions: [],
+              appMcpServers: [],
+              appToolPermissions: [],
+            },
+          },
+          skillRoot: join(testDb.cwd, "builtin-skills"),
+          workspaceSkillRoot: testDb.config.paths.subdirectories.skills,
+        }),
+      ).rejects.toThrow(
+        "Built-in skill 'custom-skill-authoring' was not found. It maps to 'global-skill-authoring'. Update this specialist's skill capabilities or restore the missing skill directory.",
+      );
     } finally {
       await testDb.cleanup();
     }

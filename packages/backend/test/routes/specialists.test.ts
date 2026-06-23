@@ -91,9 +91,11 @@ describe("agent routes", () => {
       const catalogBody = catalog.json<{ builtInSkills: Array<{ slug: string }> }>();
       expect(catalogBody.builtInSkills.map((skill) => skill.slug)).toEqual([
         "concise-summarizer",
-        "custom-skill-authoring",
-        "custom-tool-authoring",
         "final-review",
+        "global-skill-authoring",
+        "global-tool-authoring",
+        "self-skill-authoring",
+        "self-tool-authoring",
         "task-planner",
       ]);
       expect(updated.statusCode).toBe(200);

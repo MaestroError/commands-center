@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 import { z } from "zod";
 
 import type { SpecialistCapabilitySelection, BuiltInSkill } from "../schemas/specialists.js";
+import { normalizeBuiltInSkillSlug } from "../lib/builtin-skill-aliases.js";
 
 const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -154,11 +155,23 @@ export async function writeOpenCodeWorkspace(options: {
   await mkdir(paths.skillsDir, { recursive: true });
 
   for (const skill of options.input.capabilities.builtInSkills ?? []) {
-    await copySkill(options.skillRoot, paths.skillsDir, skill);
+    await copySkill({
+      root: options.skillRoot,
+      targetRoot: paths.skillsDir,
+      slug: normalizeBuiltInSkillSlug(skill),
+      requestedSlug: skill,
+      kind: "built-in",
+    });
   }
 
   for (const skill of options.input.capabilities.workspaceSkills ?? []) {
-    await copySkill(options.workspaceSkillRoot, paths.skillsDir, skill);
+    await copySkill({
+      root: options.workspaceSkillRoot,
+      targetRoot: paths.skillsDir,
+      slug: skill,
+      requestedSlug: skill,
+      kind: "workspace",
+    });
   }
 
   if (options.writeRules !== false) {
@@ -345,12 +358,36 @@ async function listSkillFiles(root: string, baseRoot = root): Promise<string[]> 
   return files.flat().sort((left, right) => left.localeCompare(right));
 }
 
-async function copySkill(root: string, targetRoot: string, slug: string): Promise<void> {
+async function copySkill(options: {
+  root: string;
+  targetRoot: string;
+  slug: string;
+  requestedSlug: string;
+  kind: "built-in" | "workspace";
+}): Promise<void> {
+  const { root, targetRoot, slug, requestedSlug, kind } = options;
   const source = join(root, slug);
-  await validateSkillDirectory(source, slug);
-  await cp(source, join(targetRoot, slug), { recursive: true });
+
+  try {
+    await validateSkillDirectory(source, slug);
+    await cp(source, join(targetRoot, slug), { recursive: true });
+  } catch (error) {
+    if (isMissingError(error)) {
+      const aliasNote = requestedSlug === slug ? "" : ` It maps to '${slug}'.`;
+
+      throw new Error(
+        `${capitalize(kind)} skill '${requestedSlug}' was not found.${aliasNote} Update this specialist's skill capabilities or restore the missing skill directory.`,
+      );
+    }
+
+    throw error;
+  }
 }
 
 function isMissingError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+function capitalize(value: string): string {
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }

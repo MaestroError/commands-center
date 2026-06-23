@@ -503,6 +503,60 @@ describe("createSpecialistService", () => {
     }
   });
 
+  it("normalizes renamed built-in skill slugs before saving and rendering", async () => {
+    const testDb = await createTestDatabase();
+    const skillRoot = await createSkill(
+      testDb.cwd,
+      "global-skill-authoring",
+      "Global skill authoring helper",
+    );
+    await createSkill(testDb.cwd, "global-tool-authoring", "Global tool authoring helper");
+    const service = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      skillRoot,
+    });
+
+    try {
+      const agent = await service.create({
+        name: "Legacy Author",
+        role: "normalize old skills",
+        instructions: "Keep renamed skills working.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: {
+          builtInSkills: [
+            "custom-skill-authoring",
+            "custom-tool-authoring",
+            "global-skill-authoring",
+          ],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+        },
+      });
+
+      expect(agent.capabilities.builtInSkills).toEqual([
+        "global-skill-authoring",
+        "global-tool-authoring",
+      ]);
+      await expect(
+        readFile(
+          join(agent.workspacePath, ".opencode", "skills", "global-skill-authoring", "SKILL.md"),
+          "utf8",
+        ),
+      ).resolves.toContain("Global skill authoring helper");
+      await expect(
+        readFile(
+          join(agent.workspacePath, ".opencode", "skills", "global-tool-authoring", "SKILL.md"),
+          "utf8",
+        ),
+      ).resolves.toContain("Global tool authoring helper");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("updates agents using the current workspace root even when stored workspace paths are stale", async () => {
     const testDb = await createTestDatabase();
     const dispose = vi.fn(() => Promise.resolve());

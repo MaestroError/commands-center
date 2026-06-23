@@ -9,6 +9,7 @@ import { now } from "../db/ids.js";
 import { agents } from "../db/schema/index.js";
 import type { AppDb } from "../db/client.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
+import { normalizeBuiltInSkillSlugs } from "../lib/builtin-skill-aliases.js";
 import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
 import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
 import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-registry.js";
@@ -48,7 +49,7 @@ export function normalizeSpecialistCapabilities(
   );
 
   return {
-    builtInSkills: capabilities.builtInSkills,
+    builtInSkills: normalizeBuiltInSkillSlugs(capabilities.builtInSkills),
     workspaceSkills: capabilities.workspaceSkills ?? [],
     customTools: capabilities.customTools ?? [],
     mcpServers: dedupeMcpServers(nextMcpServers),
@@ -67,7 +68,7 @@ export function removeMcpReferences(
   mcpName: string,
 ): SpecialistCapabilitySelection {
   return {
-    builtInSkills: capabilities.builtInSkills,
+    builtInSkills: normalizeBuiltInSkillSlugs(capabilities.builtInSkills),
     workspaceSkills: capabilities.workspaceSkills ?? [],
     customTools: capabilities.customTools ?? [],
     mcpServers: (capabilities.mcpServers ?? []).filter((server) => server.name !== mcpName),
@@ -85,7 +86,7 @@ export function renameMcpReferences(
   nextName: string,
 ): SpecialistCapabilitySelection {
   return {
-    builtInSkills: capabilities.builtInSkills,
+    builtInSkills: normalizeBuiltInSkillSlugs(capabilities.builtInSkills),
     workspaceSkills: capabilities.workspaceSkills ?? [],
     customTools: capabilities.customTools ?? [],
     mcpServers: dedupeMcpServers(
