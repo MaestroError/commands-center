@@ -926,6 +926,11 @@ describe("TasksPage", () => {
     expect(screen.queryByRole("button", { name: "Retry subtask" })).not.toBeInTheDocument();
 
     const comments = screen.getByRole("region", { name: "Feedback comments" });
+    const openRunLinks = within(comments).getAllByRole("link", { name: "Open run" });
+    expect(openRunLinks.length).toBeGreaterThanOrEqual(2);
+    expect(
+      openRunLinks.some((link) => link.getAttribute("href") === "/tasks/task-1/runs/run-subtask-1"),
+    ).toBe(true);
     expect(within(comments).queryByText("Latest update:")).not.toBeInTheDocument();
     expect(within(comments).getAllByRole("list", { name: "Run artifacts" })).toHaveLength(2);
     expect(within(comments).getAllByRole("link", { name: "tools-23.md" })).toHaveLength(2);
@@ -955,7 +960,8 @@ describe("TasksPage", () => {
     expect((await screen.findAllByText("Please retest the release flow.")).length).toBeGreaterThan(
       0,
     );
-    expect(screen.getByRole("link", { name: "Open run" })).toHaveAttribute(
+    const subtasksSection = screen.getByRole("region", { name: "Task subtasks" });
+    expect(within(subtasksSection).getByRole("link", { name: "Open run" })).toHaveAttribute(
       "href",
       "/tasks/task-1/runs/run-subtask-1",
     );
@@ -2311,6 +2317,11 @@ describe("TaskDetailPage", () => {
     expect(screen.getByText("Planner commented")).toBeInTheDocument();
     expect(screen.getAllByText("Done.").length).toBeGreaterThan(0);
     const comments = screen.getByRole("region", { name: "Feedback comments" });
+    const openRunLinks = within(comments).getAllByRole("link", { name: "Open run" });
+    expect(openRunLinks.length).toBeGreaterThanOrEqual(2);
+    expect(
+      openRunLinks.some((link) => link.getAttribute("href") === "/tasks/task-1/runs/run-subtask-1"),
+    ).toBe(true);
     expect(within(comments).queryByText("Latest update:")).not.toBeInTheDocument();
     expect(within(comments).getAllByRole("list", { name: "Run artifacts" })).toHaveLength(2);
     expect(within(comments).getAllByRole("link", { name: "tools-23.md" })).toHaveLength(2);

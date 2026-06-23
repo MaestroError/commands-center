@@ -2172,9 +2172,11 @@ function TaskFeedbackSection(props: {
             }
 
             const run = item.run;
+            const agent = props.agents.find((entry) => entry.id === run.agentId);
             return (
               <FeedbackComment
-                author={`${readAgentName(props.agents, run.agentId)} commented`}
+                author={`${agent?.name ?? run.agentId} commented`}
+                agent={agent}
                 body={readRunCommentBody(run)}
                 resultText={run.resultText}
                 key={run.id}
@@ -2205,6 +2207,7 @@ function TaskFeedbackSection(props: {
 
 function FeedbackComment(props: {
   author: string;
+  agent?: Specialist;
   body: string;
   resultText?: string;
   artifacts?: TaskRunArtifact[];
@@ -2215,14 +2218,20 @@ function FeedbackComment(props: {
 }) {
   return (
     <div className="flex gap-3 rounded-lg border border-border bg-surface-elevated p-3 shadow-sm">
-      <div
-        aria-hidden="true"
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-          props.tone === "agent" ? "bg-accent/15 text-accent" : "bg-surface-muted text-text-primary"
-        }`}
-      >
-        {props.author.slice(0, 2).toUpperCase()}
-      </div>
+      {props.agent ? (
+        <SpecialistAvatar iconPath={props.agent.iconPath} name={props.agent.name} size="sm" />
+      ) : (
+        <div
+          aria-hidden="true"
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${
+            props.tone === "agent"
+              ? "bg-accent/15 text-accent"
+              : "bg-surface-muted text-text-primary"
+          }`}
+        >
+          {props.author.slice(0, 2).toUpperCase()}
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
           <span className="font-medium text-text-primary">{props.author}</span>
@@ -2310,7 +2319,7 @@ function TaskSubtasksSection(props: {
   error: unknown;
 }) {
   return (
-    <div className="grid gap-4">
+    <section aria-label="Task subtasks" className="grid gap-4">
       {props.isLoading ? <LoadingState testId="task-subtasks-loading" /> : null}
       {props.error ? (
         <ErrorState
@@ -2372,7 +2381,7 @@ function TaskSubtasksSection(props: {
           })}
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }
 
@@ -2390,24 +2399,34 @@ function FeedbackReplies(props: {
 
   return (
     <div className="ml-6 grid gap-3 border-l border-border pl-4">
-      {replies.map((reply) => (
-        <FeedbackComment
-          author={`${readAgentName(props.agents, reply.agentId)} replied`}
-          body={readRunCommentBody(reply.run)}
-          resultText={reply.run.resultText}
-          key={reply.run.id}
-          meta={
-            <>
-              <StatusBadge status={reply.status} />
-              <span>{formatDate(reply.run.completedAt ?? reply.run.updatedAt)}</span>
-            </>
-          }
-          artifacts={reply.run.artifacts}
-          taskId={reply.run.taskId}
-          runId={reply.run.id}
-          tone="agent"
-        />
-      ))}
+      {replies.map((reply) => {
+        const agent = props.agents.find((entry) => entry.id === reply.agentId);
+        return (
+          <FeedbackComment
+            author={`${agent?.name ?? reply.agentId} replied`}
+            agent={agent}
+            body={readRunCommentBody(reply.run)}
+            resultText={reply.run.resultText}
+            key={reply.run.id}
+            meta={
+              <>
+                <StatusBadge status={reply.status} />
+                <span>{formatDate(reply.run.completedAt ?? reply.run.updatedAt)}</span>
+                <Link
+                  className="font-medium text-accent underline-offset-4 hover:underline"
+                  to={`/tasks/${reply.run.taskId}/runs/${reply.run.id}`}
+                >
+                  Open run
+                </Link>
+              </>
+            }
+            artifacts={reply.run.artifacts}
+            taskId={reply.run.taskId}
+            runId={reply.run.id}
+            tone="agent"
+          />
+        );
+      })}
     </div>
   );
 }
@@ -3472,8 +3491,8 @@ function TemplateDocsTab(props: { template: TaskTemplate }) {
   }
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+    <div className="grid min-w-0 gap-4">
+      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-surface p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="font-semibold text-text-primary">Integration instructions</h3>
@@ -3493,7 +3512,7 @@ function TemplateDocsTab(props: { template: TaskTemplate }) {
             {copiedInstructions ? "Copied" : "Copy integration instructions"}
           </button>
         </div>
-        <div className="rounded-lg border border-border bg-app-bg p-4 text-sm">
+        <div className="min-w-0 rounded-lg border border-border bg-app-bg p-4 text-sm">
           <Markdown content={docs.agentInstructions} />
         </div>
       </div>

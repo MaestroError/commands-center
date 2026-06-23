@@ -29,6 +29,7 @@ import {
   type TaskPromptValue,
 } from "@/components/tasks/task-prompt";
 import { StatusBadge } from "@/components/tasks/task-ui";
+import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import {
   useTaskMutations,
@@ -769,9 +770,11 @@ function TaskFeedbackSection(props: {
             }
 
             const run = item.run;
+            const agent = props.agents.find((entry) => entry.id === run.agentId);
             return (
               <FeedbackComment
-                author={`${readAgentName(props.agents, run.agentId)} commented`}
+                author={`${agent?.name ?? run.agentId} commented`}
+                agent={agent}
                 body={readRunCommentBody(run)}
                 key={run.id}
                 meta={
@@ -801,6 +804,7 @@ function TaskFeedbackSection(props: {
 
 function FeedbackComment(props: {
   author: string;
+  agent?: Specialist;
   body: string;
   artifacts?: TaskRunArtifact[];
   taskId?: string;
@@ -810,14 +814,20 @@ function FeedbackComment(props: {
 }) {
   return (
     <div className="flex gap-3 rounded-lg border border-border bg-surface-elevated p-3 shadow-sm">
-      <div
-        aria-hidden="true"
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-          props.tone === "agent" ? "bg-accent/15 text-accent" : "bg-surface-muted text-text-primary"
-        }`}
-      >
-        {props.author.slice(0, 2).toUpperCase()}
-      </div>
+      {props.agent ? (
+        <SpecialistAvatar iconPath={props.agent.iconPath} name={props.agent.name} size="sm" />
+      ) : (
+        <div
+          aria-hidden="true"
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${
+            props.tone === "agent"
+              ? "bg-accent/15 text-accent"
+              : "bg-surface-muted text-text-primary"
+          }`}
+        >
+          {props.author.slice(0, 2).toUpperCase()}
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
           <span className="font-medium text-text-primary">{props.author}</span>
@@ -991,23 +1001,33 @@ function FeedbackReplies(props: {
 
   return (
     <div className="ml-6 grid gap-3 border-l border-border pl-4">
-      {replies.map((reply) => (
-        <FeedbackComment
-          author={`${readAgentName(props.agents, reply.agentId)} replied`}
-          body={readRunCommentBody(reply.run)}
-          key={reply.run.id}
-          meta={
-            <>
-              <StatusBadge status={reply.status} />
-              <span>{formatDate(reply.run.completedAt ?? reply.run.updatedAt)}</span>
-            </>
-          }
-          artifacts={reply.run.artifacts}
-          taskId={reply.run.taskId}
-          runId={reply.run.id}
-          tone="agent"
-        />
-      ))}
+      {replies.map((reply) => {
+        const agent = props.agents.find((entry) => entry.id === reply.agentId);
+        return (
+          <FeedbackComment
+            author={`${agent?.name ?? reply.agentId} replied`}
+            agent={agent}
+            body={readRunCommentBody(reply.run)}
+            key={reply.run.id}
+            meta={
+              <>
+                <StatusBadge status={reply.status} />
+                <span>{formatDate(reply.run.completedAt ?? reply.run.updatedAt)}</span>
+                <Link
+                  className="font-medium text-accent underline-offset-4 hover:underline"
+                  to={`/tasks/${reply.run.taskId}/runs/${reply.run.id}`}
+                >
+                  Open run
+                </Link>
+              </>
+            }
+            artifacts={reply.run.artifacts}
+            taskId={reply.run.taskId}
+            runId={reply.run.id}
+            tone="agent"
+          />
+        );
+      })}
     </div>
   );
 }
