@@ -817,9 +817,9 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
     const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
-    await user.click(within(panel).getByRole("button", { name: "Edit todos" }));
+    await user.click(within(panel).getByRole("button", { name: "Edit criteria" }));
 
-    const todosInput = await within(panel).findByLabelText("Todo items");
+    const todosInput = await within(panel).findByLabelText("Acceptance criteria");
     await user.clear(todosInput);
     await user.type(todosInput, "Review changelog\nPublish release notes");
     await user.click(within(panel).getByRole("button", { name: "Save" }));
@@ -1149,22 +1149,55 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
 
-    const todosToggle = await screen.findByRole("button", { name: /Todos\s+0\/1/i });
+    const todosToggle = await screen.findByRole("button", { name: /Acceptance criteria\s+0\/1/i });
     expect(todosToggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("[ ] Read changelog")).toBeInTheDocument();
+    expect(screen.getByText("Read changelog")).toBeInTheDocument();
 
     await user.click(todosToggle);
     expect(todosToggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("[ ] Read changelog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Read changelog")).not.toBeInTheDocument();
     expect(window.localStorage.getItem("cc-task-todos-expanded:task-1")).toBe("false");
 
     await user.click(screen.getByRole("button", { name: "Back to board" }));
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
 
-    expect(await screen.findByRole("button", { name: /Todos\s+0\/1/i })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    expect(
+      await screen.findByRole("button", { name: /Acceptance criteria\s+0\/1/i }),
+    ).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("marks an acceptance criterion met from the board panel", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+
+    const checkbox = within(panel).getByRole("checkbox", {
+      name: 'Mark "Read changelog" as met',
+    });
+    expect(checkbox).toHaveAttribute("aria-checked", "false");
+
+    await user.click(checkbox);
+
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find(
+        (call) => call[0] === "/api/tasks/task-1" && (call[1] as RequestInit)?.method === "PATCH",
+      );
+      expect(patch).toBeTruthy();
+      const body = JSON.parse((patch?.[1] as RequestInit).body as string);
+      expect(body.todos).toHaveLength(1);
+      expect(body.todos[0]).toMatchObject({
+        id: "todo-1",
+        content: "Read changelog",
+        status: "completed",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      // completedAt is omitted so the backend stamps it with server time.
+      expect(body.todos[0]).not.toHaveProperty("completedAt");
+    });
   });
 
   it("hides the board panel todos section when a task has no todos", async () => {
@@ -1176,9 +1209,11 @@ describe("TasksPage", () => {
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
 
     const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
-    expect(within(panel).queryByRole("button", { name: /Todos\s+0\/0/i })).not.toBeInTheDocument();
-    expect(within(panel).queryByRole("button", { name: "Edit todos" })).not.toBeInTheDocument();
-    expect(within(panel).queryByText("No todo items.")).not.toBeInTheDocument();
+    expect(
+      within(panel).queryByRole("button", { name: /Acceptance criteria\s+0\/0/i }),
+    ).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Edit criteria" })).not.toBeInTheDocument();
+    expect(within(panel).queryByText("No acceptance criteria.")).not.toBeInTheDocument();
   });
 
   it("shows templates separately from the board", async () => {
@@ -1787,7 +1822,7 @@ describe("TasksPage", () => {
     expect(
       screen.getByLabelText(`Scheduled: ${formatDate("2026-01-02T12:00:00.000Z")}`),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Todos: 0/1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Acceptance criteria: 0/1 met")).toBeInTheDocument();
     expect(screen.queryByText("Updated:")).not.toBeInTheDocument();
   });
 

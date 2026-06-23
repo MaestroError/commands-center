@@ -20,6 +20,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageSt
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
 import { Markdown } from "@/components/chat/Markdown";
+import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
 import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import { formatDate, formatToken } from "@/components/tasks/task-format";
@@ -188,8 +189,8 @@ function TaskOverview(props: {
               </h1>
             )}
             <p className="mt-2 text-sm leading-6 text-text-secondary">
-              Inspect task configuration, todos, permission summary, and every run created by this
-              task.
+              Inspect task configuration, acceptance criteria, permission summary, and every run
+              created by this task.
             </p>
           </div>
           {task ? (
@@ -258,7 +259,7 @@ function TaskOverview(props: {
               <Metric label="Assigned specialist" value={props.agent?.name ?? task.agentId} />
               <Metric label="Schedule" value={formatSchedule(task)} />
               <Metric label="Latest result" value={latestRunResult?.content ?? "No runs yet"} />
-              <Metric label="Todos" value={formatTodoProgress(task)} />
+              <Metric label="Acceptance criteria" value={formatTodoProgress(task)} />
             </aside>
           </section>
 
@@ -1042,21 +1043,16 @@ function buildTaskContextAttachmentHref(storageKey: string): string {
 
 function TaskTodos(props: { task: Task }) {
   if (props.task.todos.length === 0)
-    return <p className="text-sm text-text-secondary">No todo items.</p>;
+    return <p className="text-sm text-text-secondary">No acceptance criteria.</p>;
 
   return (
     <div>
-      <h2 className="font-semibold text-text-primary">Todos</h2>
-      <ul className="mt-3 grid gap-2">
-        {props.task.todos.map((todo) => (
-          <li
-            className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
-            key={todo.id}
-          >
-            {todo.status === "completed" ? "[x]" : "[ ]"} {todo.content}
-          </li>
-        ))}
-      </ul>
+      <h2 className="font-semibold text-text-primary">Acceptance criteria</h2>
+      <p className="mt-1 text-sm text-text-secondary">
+        Your definition of done. The specialist sees these but can&apos;t check them off — verify
+        and tick each one during review.
+      </p>
+      <AcceptanceCriteriaList className="mt-3" interactive task={props.task} />
     </div>
   );
 }

@@ -56,7 +56,7 @@ const listSelfTaskTemplatesOutputSchema = z.object({
 export const listSelfTaskTemplatesToolMetadata = {
   name: "list_self_task_templates",
   description:
-    "List CommandsCenter task templates whose default specialist is you. A task template defines a reusable task configuration — title, description, todos, and optionally a recurrence schedule — that can be run on demand or triggered automatically on a cron-like schedule. Only returns templates assigned to you; templates assigned to other specialists are never visible.",
+    "List CommandsCenter task templates whose default specialist is you. A task template defines a reusable task configuration — title, description, acceptance criteria, and optionally a recurrence schedule — that can be run on demand or triggered automatically on a cron-like schedule. Only returns templates assigned to you; templates assigned to other specialists are never visible.",
   context: "both",
 } as const;
 
@@ -70,7 +70,7 @@ export const getSelfTaskTemplateToolMetadata = {
 export const createSelfTaskTemplateToolMetadata = {
   name: "create_self_task_template",
   description:
-    "Create a reusable CommandsCenter task template assigned to you as the default specialist. A template captures a task title, description, todos, and optionally a recurrence schedule — making it suitable as a cron job for work that repeats on a fixed interval (daily, weekly, and so on). The template is always assigned to you; do not attempt to pass a defaultAgentId. Only available in task-run context; use draft_self_task_template in chat if operator review is needed.",
+    "Create a reusable CommandsCenter task template assigned to you as the default specialist. A template captures a task title, description, acceptance criteria, and optionally a recurrence schedule — making it suitable as a cron job for work that repeats on a fixed interval (daily, weekly, and so on). Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. The template is always assigned to you; do not attempt to pass a defaultAgentId. Only available in task-run context; use draft_self_task_template in chat if operator review is needed.",
   context: "task_run",
 } as const;
 
