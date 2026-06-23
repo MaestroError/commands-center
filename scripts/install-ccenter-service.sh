@@ -540,10 +540,23 @@ wait_for_env_file() {
   fail "Timed out waiting for ccenter to create env file: $ENV_FILE. Check service logs, then rerun the installer."
 }
 
+# Build a connectable health URL. A wildcard bind address ($HOST = 0.0.0.0 or ::)
+# is not connectable, so map it to the matching loopback; otherwise use $HOST as
+# given. Used for both probing and operator-facing messages.
+health_url() {
+  local host
+  host="$HOST"
+  case "$host" in
+    0.0.0.0) host="127.0.0.1" ;;
+    "::" | "[::]") host="[::1]" ;;
+  esac
+  printf 'http://%s:%s/api/health' "$host" "$PORT"
+}
+
 # Poll the health endpoint up to ${1:-60}s. Returns 0 once healthy, 1 on timeout.
 probe_health() {
   local url attempts
-  url="http://$HOST:$PORT/api/health"
+  url="$(health_url)"
   attempts="${1:-60}"
 
   for ((i = 0; i < attempts; i++)); do
@@ -562,7 +575,7 @@ probe_health() {
 # the previous version so a working instance is not left down.
 healthcheck() {
   local url
-  url="http://$HOST:$PORT/api/health"
+  url="$(health_url)"
 
   if ! command_exists curl; then
     warn "curl not found; skipping HTTP healthcheck. Verify manually: $url"
