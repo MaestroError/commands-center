@@ -72,6 +72,7 @@ import { resolveStaticAssetsDir, runCli } from "../src/cli.js";
 
 type StaticRegisterServer = {
   register: (plugin: unknown, options: unknown) => Promise<void>;
+  addHook: (name: string, handler: (...args: unknown[]) => unknown) => void;
   setNotFoundHandler: (handler: (request: FastifyRequest, reply: FastifyReply) => unknown) => void;
 };
 
@@ -142,7 +143,7 @@ describe("runCli", () => {
     expect(startServerRuntimeMock).toHaveBeenCalledWith(
       expect.objectContaining({
         overrides: { host: undefined, port: undefined },
-        register: undefined,
+        register: expect.any(Function),
       }),
     );
   });
@@ -305,10 +306,26 @@ describe("runCli", () => {
       expect.objectContaining({
         overrides: { host: "127.0.0.1", port: 4010 },
         env: process.env,
-        register: undefined,
+        register: expect.any(Function),
       }),
     );
     expect(process.env["NODE_ENV"]).toBe("production");
+
+    // serve is API-only: the X-Robots-Tag hook is still registered, but no
+    // static assets or SPA fallback are served.
+    const options = startServerRuntimeMock.mock.calls[0]?.[0] as StartServerRuntimeCall | undefined;
+    if (!options?.register) {
+      throw new Error("Expected serve command to provide a register callback.");
+    }
+    const register = vi.fn().mockResolvedValue(undefined);
+    const addHook = vi.fn();
+    const setNotFoundHandler = vi.fn();
+
+    await options.register({ register, addHook, setNotFoundHandler });
+
+    expect(addHook).toHaveBeenCalledWith("onSend", expect.any(Function));
+    expect(register).not.toHaveBeenCalled();
+    expect(setNotFoundHandler).not.toHaveBeenCalled();
   });
 
   it("registers static assets and the SPA fallback in start mode", async () => {
@@ -326,10 +343,14 @@ describe("runCli", () => {
 
     const register = vi.fn().mockResolvedValue(undefined);
     const sendFile = vi.fn();
+    const hooks = new Map<string, (...args: unknown[]) => unknown>();
     let notFoundHandler: ((request: FastifyRequest, reply: FastifyReply) => unknown) | undefined;
 
     await options.register({
       register,
+      addHook: (name: string, handler: (...args: unknown[]) => unknown) => {
+        hooks.set(name, handler);
+      },
       setNotFoundHandler: (handler: (request: FastifyRequest, reply: FastifyReply) => unknown) => {
         notFoundHandler = handler;
       },
@@ -340,6 +361,13 @@ describe("runCli", () => {
       expect.objectContaining({ wildcard: false, root: expect.stringMatching(/public$/) }),
     );
     expect(notFoundHandler).toBeTypeOf("function");
+
+    const onSend = hooks.get("onSend");
+    expect(onSend).toBeTypeOf("function");
+    const header = vi.fn();
+    const payload = { ok: true };
+    await expect(onSend?.({}, { header }, payload)).resolves.toBe(payload);
+    expect(header).toHaveBeenCalledWith("X-Robots-Tag", "noindex, nofollow");
 
     notFoundHandler?.({} as FastifyRequest, { sendFile } as unknown as FastifyReply);
     expect(sendFile).toHaveBeenCalledWith("index.html");
@@ -355,13 +383,18 @@ describe("runCli", () => {
       throw new Error("Expected start command to provide a register callback.");
     }
     const register = vi.fn().mockResolvedValue(undefined);
+    const addHook = vi.fn();
     const setNotFoundHandler = vi.fn();
 
     await options.register({
       register,
+      addHook,
       setNotFoundHandler,
     });
 
+    // The X-Robots-Tag hook is registered unconditionally; only the static
+    // asset registration and SPA fallback are skipped when the dir is absent.
+    expect(addHook).toHaveBeenCalledWith("onSend", expect.any(Function));
     expect(register).not.toHaveBeenCalled();
     expect(setNotFoundHandler).not.toHaveBeenCalled();
   });

@@ -190,9 +190,22 @@ export async function runCli(args: string[]): Promise<void> {
       port: parsedArgs.port,
     },
     register:
-      parsedArgs.command === "start"
+      parsedArgs.command === "start" || parsedArgs.command === "serve"
         ? async (server) => {
-            if (!staticAssetsDir || !existsSync(staticAssetsDir)) {
+            // Apply to every response in both start (SPA + API) and serve (API-only)
+            // mode, regardless of whether static assets are present, so non-HTML/API
+            // endpoints stay unindexable too.
+            server.addHook("onSend", async (_request, reply, payload) => {
+              reply.header("X-Robots-Tag", "noindex, nofollow");
+              return payload;
+            });
+
+            // The SPA and its fallback are only served in start mode.
+            if (
+              parsedArgs.command !== "start" ||
+              !staticAssetsDir ||
+              !existsSync(staticAssetsDir)
+            ) {
               return;
             }
 
