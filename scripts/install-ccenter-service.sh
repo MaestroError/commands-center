@@ -540,15 +540,21 @@ wait_for_env_file() {
   fail "Timed out waiting for ccenter to create env file: $ENV_FILE. Check service logs, then rerun the installer."
 }
 
-# Build a connectable health URL. A wildcard bind address ($HOST = 0.0.0.0 or ::)
-# is not connectable, so map it to the matching loopback; otherwise use $HOST as
-# given. Used for both probing and operator-facing messages.
+# Build a connectable health URL from $HOST. A wildcard bind address is not
+# connectable, so map it to the matching loopback (0.0.0.0 -> 127.0.0.1,
+# :: -> [::1]); any other IPv6 literal is bracketed as HTTP URLs require; IPv4
+# and hostnames are used as-is. Used for both probing and operator-facing
+# messages.
 health_url() {
   local host
   host="$HOST"
   case "$host" in
     0.0.0.0) host="127.0.0.1" ;;
     "::" | "[::]") host="[::1]" ;;
+    *:*)
+      # Bracket an IPv6 literal (e.g. ::1, 2001:db8::1) unless already bracketed.
+      [[ "$host" == \[*\] ]] || host="[$host]"
+      ;;
   esac
   printf 'http://%s:%s/api/health' "$host" "$PORT"
 }
