@@ -84,11 +84,11 @@ function buildToggledCriteria(task: Task, todoId: string): NonNullable<UpdateTas
       createdAt: todo.createdAt,
     };
 
-    if (status === "completed") {
-      input.completedAt =
-        todo.id === todoId
-          ? new Date().toISOString()
-          : (todo.completedAt ?? new Date().toISOString());
+    // Preserve an existing completion timestamp, but leave it unset for newly
+    // completed items so the backend stamps completedAt with server time
+    // (avoids client clock skew). The backend clears it when status !== completed.
+    if (status === "completed" && todo.completedAt) {
+      input.completedAt = todo.completedAt;
     }
 
     return input;

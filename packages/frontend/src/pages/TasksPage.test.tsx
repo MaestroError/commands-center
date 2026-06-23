@@ -1195,7 +1195,8 @@ describe("TasksPage", () => {
         status: "completed",
         createdAt: "2026-01-01T00:00:00.000Z",
       });
-      expect(typeof body.todos[0].completedAt).toBe("string");
+      // completedAt is omitted so the backend stamps it with server time.
+      expect(body.todos[0]).not.toHaveProperty("completedAt");
     });
   });
 
