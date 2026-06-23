@@ -511,6 +511,10 @@ EOF
 
 start_service() {
   if [[ "$OS" == "Linux" ]]; then
+    # Clear any prior failed/start-limit-hit state first: with StartLimitBurst a
+    # crash-looped unit refuses `restart` until reset, which would otherwise block
+    # both normal recovery and the rollback restart.
+    sudo systemctl reset-failed "$SERVICE_NAME" 2>/dev/null || true
     sudo systemctl restart "$SERVICE_NAME"
     return
   fi
