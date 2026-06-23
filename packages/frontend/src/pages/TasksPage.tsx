@@ -68,6 +68,7 @@ import { CopyableCode } from "@/components/api/EndpointsTab";
 import { Markdown } from "@/components/chat/Markdown";
 import { ModelSelector } from "@/components/chat/ModelSelector";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
+import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
 import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
@@ -1026,7 +1027,7 @@ function TaskBoardCardMeta(props: { task: Task; progress?: TaskSubtaskProgress }
     <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
       {totalTodos > 0 ? (
         <span
-          aria-label={`Todos: ${completedTodos}/${totalTodos}`}
+          aria-label={`Acceptance criteria: ${completedTodos}/${totalTodos} met`}
           className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1"
         >
           <CheckCheck aria-hidden="true" className="h-3.5 w-3.5 text-accent" />
@@ -2438,7 +2439,7 @@ function TaskOverviewDetails(props: { task: Task; agent?: Specialist }) {
     { label: "Model", value: formatTaskModel(props.task, props.agent) },
     { label: "Schedule", value: formatSchedule(props.task) },
     { label: "Source", value: formatSourceTemplate(props.task) },
-    { label: "Todos", value: formatTodoProgress(props.task) },
+    { label: "Acceptance criteria", value: formatTodoProgress(props.task) },
     { label: "Latest run", value: props.task.latestRunId ?? "No runs yet" },
     { label: "Enabled", value: props.task.enabled ? "Yes" : "No" },
     { label: "Created", value: formatDate(props.task.createdAt) },
@@ -2662,13 +2663,13 @@ function TaskContextPanelSection(props: {
 
 function TaskTodos(props: { task: Task }) {
   if (props.task.todos.length === 0) {
-    return <p className="text-sm text-text-secondary">No todo items.</p>;
+    return <p className="text-sm text-text-secondary">No acceptance criteria.</p>;
   }
 
   return (
     <div>
-      <h3 className="font-semibold text-text-primary">Todos</h3>
-      <TaskTodoItems className="mt-3" task={props.task} />
+      <h3 className="font-semibold text-text-primary">Acceptance criteria</h3>
+      <AcceptanceCriteriaList className="mt-3" task={props.task} />
     </div>
   );
 }
@@ -2700,9 +2701,9 @@ function TaskTodosPanelSection(props: { task: Task }) {
         type="button"
       >
         <span className="min-w-0">
-          <span className="block font-semibold text-text-primary">Todos</span>
+          <span className="block font-semibold text-text-primary">Acceptance criteria</span>
           <span className="mt-1 block text-sm text-text-secondary">
-            {formatTodoProgress(props.task)}
+            {formatTodoProgress(props.task)} met
           </span>
         </span>
         {isOpen ? (
@@ -2728,9 +2729,9 @@ function TaskTodosPanelSection(props: { task: Task }) {
               }}
             >
               <label className="grid gap-1 text-sm text-text-secondary">
-                Todo items, one per line
+                Acceptance criteria, one per line
                 <textarea
-                  aria-label="Todo items"
+                  aria-label="Acceptance criteria"
                   className="cc-input min-h-28 resize-y"
                   value={todosText}
                   onChange={(event) => setTodosText(event.target.value)}
@@ -2759,27 +2760,22 @@ function TaskTodosPanelSection(props: { task: Task }) {
               </div>
             </form>
           ) : (
-            <button
-              aria-label="Edit todos"
-              className="w-full rounded-md border border-transparent p-0 text-left transition hover:border-border hover:bg-surface focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
-              onClick={() => setIsEditing(true)}
-              type="button"
-            >
-              {props.task.todos.length === 0 ? (
-                <span className="block p-3 text-sm text-text-secondary">No todo items.</span>
-              ) : (
-                <span className="grid gap-2">
-                  {props.task.todos.map((todo) => (
-                    <span
-                      className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
-                      key={todo.id}
-                    >
-                      {todo.status === "completed" ? "[x]" : "[ ]"} {todo.content}
-                    </span>
-                  ))}
-                </span>
-              )}
-            </button>
+            <div className="grid gap-3">
+              <p className="text-sm text-text-secondary">
+                Your definition of done. The specialist sees these but can&apos;t check them off —
+                tick each one as you verify it during review.
+              </p>
+              <AcceptanceCriteriaList interactive task={props.task} />
+              <div>
+                <button
+                  className="cc-button cc-button-secondary"
+                  onClick={() => setIsEditing(true)}
+                  type="button"
+                >
+                  Edit criteria
+                </button>
+              </div>
+            </div>
           )}
         </div>
       ) : null}
@@ -2816,21 +2812,6 @@ function buildTaskTodoInputs(text: string, task: Task): NonNullable<UpdateTaskIn
 
       return input;
     });
-}
-
-function TaskTodoItems(props: { task: Task; className?: string }) {
-  return (
-    <ul className={`grid gap-2 ${props.className ?? ""}`}>
-      {props.task.todos.map((todo) => (
-        <li
-          className="rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
-          key={todo.id}
-        >
-          {todo.status === "completed" ? "[x]" : "[ ]"} {todo.content}
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 function usePersistentTaskContextOpen(
@@ -3243,14 +3224,20 @@ function TaskTemplateForm(props: {
           </p>
         )}
       </section>
-      <label className="grid gap-1 text-sm text-text-secondary">
-        Todo items, one per line
-        <textarea
-          className="cc-input min-h-24 resize-y"
-          value={form.todosText}
-          onChange={(event) => updateForm({ todosText: event.target.value })}
-        />
-      </label>
+      <div className="grid gap-1">
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Acceptance criteria, one per line
+          <textarea
+            className="cc-input min-h-24 resize-y"
+            value={form.todosText}
+            onChange={(event) => updateForm({ todosText: event.target.value })}
+          />
+        </label>
+        <p className="text-xs text-text-muted">
+          What &ldquo;done&rdquo; looks like. The assigned specialist sees these in its run context
+          but can&apos;t check them off — you verify each during review.
+        </p>
+      </div>
       <div className="flex flex-wrap gap-2">
         <button
           className="cc-button"
@@ -3814,14 +3801,20 @@ function TaskFormPage(props: { mode: "create" | "edit" }) {
                 </button>
               ) : null}
 
-              <label className="grid gap-1 text-sm text-text-secondary">
-                Todo items, one per line
-                <textarea
-                  className="cc-input min-h-28 resize-y"
-                  value={form.todosText}
-                  onChange={(event) => updateForm({ todosText: event.target.value })}
-                />
-              </label>
+              <div className="grid gap-1">
+                <label className="grid gap-1 text-sm text-text-secondary">
+                  Acceptance criteria, one per line
+                  <textarea
+                    className="cc-input min-h-28 resize-y"
+                    value={form.todosText}
+                    onChange={(event) => updateForm({ todosText: event.target.value })}
+                  />
+                </label>
+                <p className="text-xs text-text-muted">
+                  What &ldquo;done&rdquo; looks like. The assigned specialist sees these in its run
+                  context but can&apos;t check them off — you verify each during review.
+                </p>
+              </div>
 
               <section className="rounded-xl border border-border bg-surface p-4">
                 <h2 className="font-semibold text-text-primary">Permission profile</h2>

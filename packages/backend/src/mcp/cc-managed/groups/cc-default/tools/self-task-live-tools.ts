@@ -86,7 +86,7 @@ export const draftSelfTaskUpdateToolMetadata = {
 export const draftSelfTaskTemplateToolMetadata = {
   name: "draft_self_task_template",
   description:
-    "Open an operator review form to create a reusable CommandsCenter task template assigned to you. A template captures a task title, description, and todos, and can optionally carry a recurrence schedule to act as a cron job that runs on a fixed interval. Execution pauses until the operator approves. Use this only in chat, only when you want to set up a persistent, reusable task definition for yourself and need operator review before creation. Do not attempt to pass a defaultAgentId — the template is always assigned to you.",
+    "Open an operator review form to create a reusable CommandsCenter task template assigned to you. A template captures a task title, description, and acceptance criteria, and can optionally carry a recurrence schedule to act as a cron job that runs on a fixed interval. Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. Execution pauses until the operator approves. Use this only in chat, only when you want to set up a persistent, reusable task definition for yourself and need operator review before creation. Do not attempt to pass a defaultAgentId — the template is always assigned to you.",
   context: "chat",
 } as const;
 
@@ -303,7 +303,7 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
             kind: "self_task_template_create_review",
             title: "Review task template",
             description:
-              "Review and edit the template title and description. It will be assigned to you once you confirm. Other settings (recurrence, todos, model) from your input are preserved.",
+              "Review and edit the template title and description. It will be assigned to you once you confirm. Other settings (recurrence, acceptance criteria, model) from your input are preserved.",
             fields: [
               textField("title", "Title", draft.title, true),
               textareaField("description", "Description", draft.description),
