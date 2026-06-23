@@ -12,7 +12,7 @@ PACKAGE_SPEC="${CCENTER_PACKAGE_SPEC:-commandscenter}"
 INSTALL_DIR="${CCENTER_INSTALL_DIR:-$HOME/.cc}"
 ENV_FILE="${CCENTER_ENV_FILE:-$INSTALL_DIR/.env}"
 PUBLIC_HOST="${CCENTER_PUBLIC_HOST:-127.0.0.1}"
-NODE_MAJOR="${CCENTER_NODE_MAJOR:-22}"
+NODE_MAJOR="${CCENTER_NODE_MAJOR:-24}"
 SERVICE_USER="${CCENTER_SERVICE_USER:-$(id -un)}"
 SERVICE_GROUP="${CCENTER_SERVICE_GROUP:-}"
 CREATE_USER="${CCENTER_CREATE_USER:-false}"
@@ -36,9 +36,17 @@ HOST="$CC_HOST"
 PORT="$CC_PORT"
 WORKSPACE_DIR="$CC_WORKSPACE_DIR"
 CCENTER_PATH=""
+# Version of commandscenter installed before this run, captured so a failed
+# upgrade can roll back to a known-good binary instead of leaving the host with
+# none. Empty when there was no prior install.
+PREV_VERSION=""
 
 OS="$(uname -s)"
 
+# Ordering matters: every feasibility check and the package install + verify run
+# BEFORE the live service is touched. The currently-running service keeps serving
+# the old version until a new, verified binary is in place, so a failed upgrade
+# can never take a working instance down.
 main() {
   require_supported_os
   warn_if_root_service_user
@@ -46,13 +54,15 @@ main() {
   resolve_service_group
   ensure_install_dir
   ensure_ownership
-  ensure_node_and_npm
-  install_commandscenter
+  ensure_node_and_npm        # provision/upgrade to the required Node major
+  preflight_checks           # feasibility gate — no mutation of the existing install
+  install_commandscenter     # atomic install: snapshot, install, verify, roll back on failure
   resolve_ccenter_path
   prepare_env_file
-  install_service
-  start_service
+  install_service            # (re)write the unit only after the binary is verified
+  start_service              # restart the live service only now
   wait_for_env_file
+  healthcheck                # confirm the app actually answers before declaring success
   generate_claim_code
   print_summary
 }
@@ -193,9 +203,129 @@ install_node_macos() {
   fi
 }
 
+# Print the major version Node requires for the install target, parsed from the
+# published package's engines.node (e.g. ">=24.0.0" -> "24"). Empty when it
+# cannot be resolved (offline, registry error, or no engines field).
+target_required_node_major() {
+  local spec engines major
+  spec="$PACKAGE_SPEC"
+  # A bare name means "latest"; npm view resolves the dist-tag for us.
+  engines="$(npm view "$spec" engines.node 2>/dev/null || true)"
+  [[ -n "$engines" ]] || return 0
+  major="$(printf '%s' "$engines" | grep -oE '[0-9]+' | head -n1 || true)"
+  printf '%s' "$major"
+}
+
+# Print the currently-installed global commandscenter version, or empty when not
+# installed. Used to snapshot a rollback target before mutating anything.
+installed_ccenter_version() {
+  npm ls -g --depth=0 commandscenter --json 2>/dev/null \
+    | node -e '
+let raw = "";
+process.stdin.on("data", (c) => (raw += c));
+process.stdin.on("end", () => {
+  try {
+    const parsed = JSON.parse(raw);
+    const version = parsed?.dependencies?.commandscenter?.version;
+    if (typeof version === "string" && version.length > 0) process.stdout.write(version);
+  } catch {
+    /* no installed version */
+  }
+});
+' 2>/dev/null || true
+}
+
+# Feasibility gate. Runs before any destructive action and must not modify the
+# existing install. Refuses clearly when the upgrade cannot succeed, leaving the
+# running service and its binary untouched.
+preflight_checks() {
+  local local_major required_major
+  local_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || printf '0')"
+
+  # Cross-check the install target's real published requirement against the
+  # local runtime. ensure_node_and_npm already enforced NODE_MAJOR; this catches
+  # a target that needs an even newer Node than we provisioned.
+  required_major="$(target_required_node_major)"
+  if [[ -n "$required_major" && "$local_major" -lt "$required_major" ]]; then
+    fail "$PACKAGE_SPEC requires Node >=$required_major, but this host runs Node v$(node -v 2>/dev/null | sed 's/^v//'). Upgrade Node to $required_major (set CCENTER_NODE_MAJOR=$required_major to let this installer do it on Linux), then re-run. Your current install was left untouched."
+  fi
+
+  # The native dependency (better-sqlite3) compiles via node-gyp when no prebuilt
+  # ABI matches. Without a toolchain that install step fails mid-way and can leave
+  # the host with no binary, so ensure it is present up front on Linux.
+  ensure_build_toolchain
+
+  # Snapshot the rollback target before we change anything.
+  PREV_VERSION="$(installed_ccenter_version)"
+  if [[ -n "$PREV_VERSION" ]]; then
+    info "Current install: commandscenter@$PREV_VERSION (rollback target if the upgrade fails)"
+  fi
+}
+
+# Ensure a C toolchain + python3 exist on Linux so a node-gyp fallback build can
+# succeed. Best-effort: only acts when apt-get is available and something is
+# missing.
+ensure_build_toolchain() {
+  [[ "$OS" == "Linux" ]] || return 0
+  if command_exists cc && command_exists make && command_exists python3; then
+    return 0
+  fi
+  if ! command_exists apt-get; then
+    warn "Build tools (cc/make/python3) are missing and apt-get is unavailable. If a native dependency needs compiling, the install may fail; install build-essential and python3 manually."
+    return 0
+  fi
+  info "Installing build toolchain (build-essential, python3) for native dependencies."
+  sudo apt-get update
+  sudo apt-get install -y build-essential python3
+}
+
+# Atomic install: snapshot is already captured by preflight. Install the target,
+# verify the binary runs, and on any failure roll back to the previous version so
+# the host is never left without a working ccenter.
 install_commandscenter() {
   info "Installing $APP_NAME package: $PACKAGE_SPEC"
-  npm install -g --prefer-online "$PACKAGE_SPEC"
+
+  if ! npm install -g --prefer-online "$PACKAGE_SPEC"; then
+    rollback_install "npm install failed"
+  fi
+
+  if ! verify_ccenter_binary; then
+    rollback_install "the installed binary did not verify"
+  fi
+
+  info "Installed and verified: $(ccenter --version 2>/dev/null || printf 'commandscenter')"
+}
+
+# Confirm ccenter resolves to an executable and actually runs.
+verify_ccenter_binary() {
+  local path
+  # Drop any cached command location so a freshly (re)installed binary at a new
+  # npm prefix is resolved, not a stale path.
+  hash -r 2>/dev/null || true
+  path="$(command -v ccenter || true)"
+  [[ -n "$path" && -x "$path" ]] || return 1
+  ccenter --version >/dev/null 2>&1
+}
+
+# Restore the previously-installed version (if any) and abort. Called when an
+# upgrade fails so a working instance is never lost. Does not touch the running
+# service — main() has not reached install_service/start_service yet.
+rollback_install() {
+  local reason restored
+  reason="$1"
+
+  if [[ -z "$PREV_VERSION" ]]; then
+    fail "Install of $PACKAGE_SPEC failed ($reason) and there was no previous version to restore. The service was not modified. Check the npm output above, then re-run."
+  fi
+
+  warn "Install of $PACKAGE_SPEC failed ($reason). Rolling back to commandscenter@$PREV_VERSION."
+  if npm install -g --prefer-online "commandscenter@$PREV_VERSION" && verify_ccenter_binary; then
+    restored="restored"
+  else
+    restored="COULD NOT be restored automatically — reinstall commandscenter@$PREV_VERSION manually"
+  fi
+
+  fail "Upgrade to $PACKAGE_SPEC failed ($reason). Previous version commandscenter@$PREV_VERSION was $restored and the running service was left untouched. Review the npm output above before retrying."
 }
 
 resolve_ccenter_path() {
@@ -275,12 +405,20 @@ install_systemd_service() {
 [Unit]
 Description=CommandsCenter
 After=network.target
+# Backstop the restart loop: after 5 failures within 60s systemd gives up and
+# leaves the unit in 'failed' instead of restarting forever, so a broken binary
+# surfaces as a clear failure rather than a silent crash loop.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=$SERVICE_USER
 Group=$SERVICE_GROUP
 WorkingDirectory=$INSTALL_DIR
+# Fail fast with an obvious reason in the journal if the binary is missing
+# (e.g. a relocated npm prefix) instead of an opaque 203/EXEC.
+ExecStartPre=/usr/bin/test -x $CCENTER_PATH
 ${env_lines}ExecStart=$CCENTER_PATH start --host $HOST --port $PORT --cc-env-file $ENV_FILE
 Restart=on-failure
 RestartSec=5
@@ -400,6 +538,41 @@ wait_for_env_file() {
   done
 
   fail "Timed out waiting for ccenter to create env file: $ENV_FILE. Check service logs, then rerun the installer."
+}
+
+# Confirm the service actually answers before reporting success. The binary is
+# already verified at this point, so this catches runtime failures (bad env, port
+# conflict, a genuine runtime incompatibility) that a binary check cannot.
+healthcheck() {
+  local url
+  url="http://$HOST:$PORT/api/health"
+
+  if ! command_exists curl; then
+    warn "curl not found; skipping HTTP healthcheck. Verify manually: $url"
+    return 0
+  fi
+
+  info "Waiting for the service to become healthy: $url"
+  for _ in {1..60}; do
+    if curl -fsS -o /dev/null --max-time 3 "$url"; then
+      info "Service is healthy."
+      return 0
+    fi
+    sleep 1
+  done
+
+  dump_service_logs
+  fail "Service did not become healthy at $url within 60s. The new binary installed correctly, so this is a runtime failure — review the logs above (env, port $PORT conflict, or startup error), then rerun."
+}
+
+# Surface recent service logs to the operator on a healthcheck failure.
+dump_service_logs() {
+  warn "Recent service logs:"
+  if [[ "$OS" == "Linux" ]]; then
+    sudo journalctl -u "$SERVICE_NAME" -n 50 --no-pager >&2 2>/dev/null || true
+  else
+    tail -n 50 "$INSTALL_DIR/commandscenter.err.log" >&2 2>/dev/null || true
+  fi
 }
 
 generate_claim_code() {
