@@ -2172,10 +2172,11 @@ function TaskFeedbackSection(props: {
             }
 
             const run = item.run;
+            const agent = props.agents.find((entry) => entry.id === run.agentId);
             return (
               <FeedbackComment
-                author={`${readAgentName(props.agents, run.agentId)} commented`}
-                agent={props.agents.find((agent) => agent.id === run.agentId)}
+                author={`${agent?.name ?? run.agentId} commented`}
+                agent={agent}
                 body={readRunCommentBody(run)}
                 resultText={run.resultText}
                 key={run.id}
@@ -2398,31 +2399,34 @@ function FeedbackReplies(props: {
 
   return (
     <div className="ml-6 grid gap-3 border-l border-border pl-4">
-      {replies.map((reply) => (
-        <FeedbackComment
-          author={`${readAgentName(props.agents, reply.agentId)} replied`}
-          agent={props.agents.find((agent) => agent.id === reply.agentId)}
-          body={readRunCommentBody(reply.run)}
-          resultText={reply.run.resultText}
-          key={reply.run.id}
-          meta={
-            <>
-              <StatusBadge status={reply.status} />
-              <span>{formatDate(reply.run.completedAt ?? reply.run.updatedAt)}</span>
-              <Link
-                className="font-medium text-accent underline-offset-4 hover:underline"
-                to={`/tasks/${reply.run.taskId}/runs/${reply.run.id}`}
-              >
-                Open run
-              </Link>
-            </>
-          }
-          artifacts={reply.run.artifacts}
-          taskId={reply.run.taskId}
-          runId={reply.run.id}
-          tone="agent"
-        />
-      ))}
+      {replies.map((reply) => {
+        const agent = props.agents.find((entry) => entry.id === reply.agentId);
+        return (
+          <FeedbackComment
+            author={`${agent?.name ?? reply.agentId} replied`}
+            agent={agent}
+            body={readRunCommentBody(reply.run)}
+            resultText={reply.run.resultText}
+            key={reply.run.id}
+            meta={
+              <>
+                <StatusBadge status={reply.status} />
+                <span>{formatDate(reply.run.completedAt ?? reply.run.updatedAt)}</span>
+                <Link
+                  className="font-medium text-accent underline-offset-4 hover:underline"
+                  to={`/tasks/${reply.run.taskId}/runs/${reply.run.id}`}
+                >
+                  Open run
+                </Link>
+              </>
+            }
+            artifacts={reply.run.artifacts}
+            taskId={reply.run.taskId}
+            runId={reply.run.id}
+            tone="agent"
+          />
+        );
+      })}
     </div>
   );
 }
