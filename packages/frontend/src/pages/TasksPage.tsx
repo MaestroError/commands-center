@@ -3487,8 +3487,8 @@ function TemplateDocsTab(props: { template: TaskTemplate }) {
   }
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+    <div className="grid min-w-0 gap-4">
+      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-surface p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="font-semibold text-text-primary">Integration instructions</h3>
@@ -3508,7 +3508,7 @@ function TemplateDocsTab(props: { template: TaskTemplate }) {
             {copiedInstructions ? "Copied" : "Copy integration instructions"}
           </button>
         </div>
-        <div className="rounded-lg border border-border bg-app-bg p-4 text-sm">
+        <div className="min-w-0 rounded-lg border border-border bg-app-bg p-4 text-sm">
           <Markdown content={docs.agentInstructions} />
         </div>
       </div>
