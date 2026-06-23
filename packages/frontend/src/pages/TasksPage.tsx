@@ -2319,7 +2319,7 @@ function TaskSubtasksSection(props: {
   error: unknown;
 }) {
   return (
-    <div className="grid gap-4">
+    <section aria-label="Task subtasks" className="grid gap-4">
       {props.isLoading ? <LoadingState testId="task-subtasks-loading" /> : null}
       {props.error ? (
         <ErrorState
@@ -2381,7 +2381,7 @@ function TaskSubtasksSection(props: {
           })}
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }
 
