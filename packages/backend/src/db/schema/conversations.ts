@@ -17,6 +17,9 @@ export const conversations = sqliteTable(
     is_current: integer("is_current", { mode: "boolean" }).notNull().default(false),
     task_id: text("task_id").references(() => tasks.id),
     task_run_id: text("task_run_id").references(() => task_runs.id),
+    // Per-conversation system prompt enabled overrides (JSON Record<id, boolean>).
+    // null → every prompt uses its enabledByDefault. Runtime state, not portable.
+    system_prompt_overrides_json: text("system_prompt_overrides_json"),
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     converted_at: integer("converted_at", { mode: "timestamp_ms" }),
@@ -43,6 +46,9 @@ export const messages = sqliteTable(
     parts_json: text("parts_json"),
     attachments_json: text("attachments_json"),
     error_json: text("error_json"),
+    // Snapshot of the system prompts sent with this (user) message. Preserved
+    // across the delete+reinsert resync by keying on the stable OpenCode id.
+    system_prompt_snapshot_json: text("system_prompt_snapshot_json"),
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },

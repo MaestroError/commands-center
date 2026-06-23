@@ -578,6 +578,116 @@ describe("createConversationService", () => {
       await testDb.cleanup();
     }
   });
+
+  it("composes and forwards the system prompt, snapshots it on the user message, and the snapshot survives re-sync", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const service = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    const systems: (string | undefined)[] = [];
+    const originalPromptSession = opencodeService.promptSession;
+    opencodeService.promptSession = (input) => {
+      systems.push(input.system);
+      return originalPromptSession(input);
+    };
+
+    try {
+      const agent = await agentService.create({
+        name: "Ada",
+        role: "engineer",
+        instructions: "Be precise.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
+      });
+      const opened = await service.resolveCurrent(agent.id);
+      const detail = await service.sendPrompt(opened.current.id, { text: "Hi", attachments: [] });
+
+      // The composed system string is forwarded and renders identity + global-chat.
+      expect(systems).toHaveLength(1);
+      expect(systems[0]).toContain("You are Ada");
+      expect(systems[0]).toContain("with a human operator");
+
+      const userMessage = detail.messages.find((message) => message.role === "user");
+      expect(userMessage?.systemPromptSnapshot?.map((prompt) => prompt.id)).toEqual([
+        "identity",
+        "global-chat",
+      ]);
+
+      // A later sync rebuilds messages from OpenCode — the snapshot must persist.
+      const reloaded = await service.get(agent.id, opened.current.id);
+      const reloadedUser = reloaded.messages.find((message) => message.role === "user");
+      expect(reloadedUser?.systemPromptSnapshot?.map((prompt) => prompt.id)).toEqual([
+        "identity",
+        "global-chat",
+      ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("disabling a prompt removes it from the next message and persists the override", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const service = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+
+    const systems: (string | undefined)[] = [];
+    const originalPromptSession = opencodeService.promptSession;
+    opencodeService.promptSession = (input) => {
+      systems.push(input.system);
+      return originalPromptSession(input);
+    };
+
+    try {
+      const agent = await agentService.create({
+        name: "Ada",
+        role: "engineer",
+        instructions: "Be precise.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
+      });
+      const opened = await service.resolveCurrent(agent.id);
+
+      const afterToggle = await service.setConversationSystemPromptEnabled(
+        opened.current.id,
+        "global-chat",
+        false,
+      );
+      expect(afterToggle.find((prompt) => prompt.id === "global-chat")?.enabled).toBe(false);
+
+      const detail = await service.sendPrompt(opened.current.id, { text: "Hi", attachments: [] });
+      expect(systems.at(-1)).toContain("You are Ada");
+      expect(systems.at(-1)).not.toContain("with a human operator");
+
+      const userMessage = detail.messages.find((message) => message.role === "user");
+      expect(userMessage?.systemPromptSnapshot?.map((prompt) => prompt.id)).toEqual(["identity"]);
+
+      // Override persists across reloads.
+      const prompts = await service.getConversationSystemPrompts(opened.current.id);
+      expect(prompts.find((prompt) => prompt.id === "global-chat")?.enabled).toBe(false);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
 });
 
 function createMockOpenCodeService(

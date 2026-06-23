@@ -21,7 +21,10 @@ import {
 } from "../schemas/conversations.js";
 import {
   specialistCapabilitySelectionSchema,
+  systemPromptOverridesSchema,
   type ConversationMessageError,
+  type ResolvedSystemPrompt,
+  type SystemPromptOverrides,
 } from "@cc/shared/schemas";
 
 import { createId } from "../db/ids.js";
@@ -56,6 +59,12 @@ import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-regis
 import { createCcManagedMcpToolAccessService } from "../mcp/cc-managed/tool-access-service.js";
 import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/workspace-entry-service.js";
 import { writeOpenCodeWorkspace } from "../opencode/workspace-contract.js";
+import { APP_NAME } from "../system-prompts/constants.js";
+import {
+  createSystemPromptService,
+  type SystemPromptService,
+} from "../system-prompts/system-prompt-service.js";
+import type { SystemPromptRenderContext, SystemPromptScope } from "../system-prompts/types.js";
 
 type AgentRow = typeof agents.$inferSelect;
 type AgentRuntimeRow = AgentRow & { workspace_path: string };
@@ -122,7 +131,19 @@ export function createConversationService(options: {
   logger?: Logger;
   archiveService?: SessionArchiveService;
   archiveSettingsService?: SessionArchiveSettingsService;
+  systemPromptService?: SystemPromptService;
 }) {
+  const systemPromptService =
+    options.systemPromptService ??
+    createSystemPromptService({ config: options.config, logger: options.logger });
+
+  // The composed snapshot for a just-sent user message, keyed by conversation.
+  // syncConversation attaches it to the new user message once OpenCode echoes it
+  // back (handles both the synchronous and streaming send paths). In-memory:
+  // a lost pending snapshot degrades to the modal's "current configuration"
+  // fallback, which is acceptable per the portable-workspace rules.
+  const pendingSnapshots = new Map<string, ResolvedSystemPrompt[]>();
+
   const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
     config: options.config,
     authTokenService: createCcManagedMcpAuthTokenService({
@@ -263,6 +284,11 @@ export function createConversationService(options: {
         parsed.model,
         loaded.agent.default_model,
       );
+      // Task runs compose with defaults — no per-conversation toggles.
+      const { system, snapshot } = await composeSystem(
+        "task",
+        buildSystemContext(loaded.agent, loaded.conversation),
+      );
       const message = await options.opencodeService.promptSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -270,7 +296,9 @@ export function createConversationService(options: {
         model,
         text: parsed.text,
         attachments: parsed.attachments,
+        system,
       });
+      pendingSnapshots.set(loaded.conversation.id, snapshot);
       const modelError = readModelError(message);
       if (modelError) {
         throw new TaskRunPromptError({
@@ -302,6 +330,10 @@ export function createConversationService(options: {
       ]);
       const baselineMessageCount = baselineMessages.length;
 
+      const { system, snapshot } = await composeSystem(
+        "task",
+        buildSystemContext(loaded.agent, loaded.conversation),
+      );
       await options.opencodeService.promptSessionAsync({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -309,7 +341,9 @@ export function createConversationService(options: {
         model,
         text: parsed.text,
         attachments: parsed.attachments,
+        system,
       });
+      pendingSnapshots.set(loaded.conversation.id, snapshot);
 
       return {
         conversationId: loaded.conversation.id,
@@ -420,6 +454,11 @@ export function createConversationService(options: {
       const loaded = await getConversationAgent(conversationId);
 
       await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+      const { system, snapshot } = await composeSystem(
+        "chat",
+        buildSystemContext(loaded.agent, loaded.conversation),
+        parseOverrides(loaded.conversation),
+      );
       await options.opencodeService.promptSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -431,7 +470,9 @@ export function createConversationService(options: {
         ),
         text: parsed.text,
         attachments: parsed.attachments,
+        system,
       });
+      pendingSnapshots.set(loaded.conversation.id, snapshot);
       await syncConversation(loaded.agent, loaded.conversation);
       return getConversationDetail(loaded.conversation.id);
     },
@@ -499,6 +540,11 @@ export function createConversationService(options: {
       const loaded = await getConversationAgent(conversationId);
 
       await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
+      const { system, snapshot } = await composeSystem(
+        "chat",
+        buildSystemContext(loaded.agent, loaded.conversation),
+        parseOverrides(loaded.conversation),
+      );
       await options.opencodeService.promptSessionAsync({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -510,11 +556,62 @@ export function createConversationService(options: {
         ),
         text: parsed.text,
         attachments: parsed.attachments,
+        system,
       });
+      // Streaming send does not sync here; the snapshot is attached by the next
+      // syncConversation once OpenCode echoes the user message back.
+      pendingSnapshots.set(loaded.conversation.id, snapshot);
     },
 
     async resolveConversationAgent(conversationId: string) {
       return getConversationAgent(conversationId);
+    },
+
+    // Resolved system prompts for a conversation, with its overrides applied —
+    // powers the chat sidebar tab.
+    async getConversationSystemPrompts(conversationId: string): Promise<ResolvedSystemPrompt[]> {
+      const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
+      return systemPromptService.listResolved(
+        scopeFor(loaded.conversation),
+        buildSystemContext(loaded.agent, loaded.conversation),
+        parseOverrides(loaded.conversation),
+      );
+    },
+
+    // Flip a single prompt's enabled override for a conversation and return the
+    // updated resolved list.
+    async setConversationSystemPromptEnabled(
+      conversationId: string,
+      promptId: string,
+      enabled: boolean,
+    ): Promise<ResolvedSystemPrompt[]> {
+      const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
+      const scope = scopeFor(loaded.conversation);
+      const applies = systemPromptService
+        .listDefinitions()
+        .some(
+          (definition) =>
+            definition.id === promptId &&
+            (definition.scope === scope || definition.scope === "both"),
+        );
+      if (!applies) {
+        throw new NotFoundError(`System prompt "${promptId}" does not apply to this conversation.`);
+      }
+
+      const nextOverrides: SystemPromptOverrides = {
+        ...(parseOverrides(loaded.conversation) ?? {}),
+        [promptId]: enabled,
+      };
+      await options.db
+        .update(conversations)
+        .set({ system_prompt_overrides_json: JSON.stringify(nextOverrides) })
+        .where(eq(conversations.id, conversationId));
+
+      return systemPromptService.listResolved(
+        scope,
+        buildSystemContext(loaded.agent, loaded.conversation),
+        nextOverrides,
+      );
     },
 
     async replyPermission(
@@ -865,6 +962,66 @@ export function createConversationService(options: {
     };
   }
 
+  function scopeFor(conversation: ConversationRow): SystemPromptScope {
+    return conversation.source === "task_run" ? "task" : "chat";
+  }
+
+  function buildSystemContext(
+    agent: AgentRuntimeRow,
+    conversation: ConversationRow,
+  ): SystemPromptRenderContext {
+    const isTaskRun = conversation.source === "task_run";
+    return {
+      appName: APP_NAME,
+      currentDate: new Date().toISOString().slice(0, 10),
+      workspaceDir: options.config.paths.workspaceDir,
+      conversationId: conversation.id,
+      specialist: {
+        name: agent.name,
+        slug: agent.slug,
+        role: agent.role,
+        instructions: agent.instructions,
+      },
+      task: isTaskRun
+        ? {
+            id: conversation.task_id ?? "",
+            title: conversation.title ?? "",
+            runId: conversation.task_run_id ?? "",
+          }
+        : undefined,
+    };
+  }
+
+  function parseOverrides(conversation: ConversationRow): SystemPromptOverrides | undefined {
+    if (!conversation.system_prompt_overrides_json) {
+      return undefined;
+    }
+    try {
+      const parsed = systemPromptOverridesSchema.safeParse(
+        JSON.parse(conversation.system_prompt_overrides_json),
+      );
+      return parsed.success ? parsed.data : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Resolve the prompts for a conversation, returning both the `system` string
+  // to forward to OpenCode and the snapshot (exactly the prompts that were
+  // sent) to persist on the user message.
+  async function composeSystem(
+    scope: SystemPromptScope,
+    ctx: SystemPromptRenderContext,
+    overrides?: SystemPromptOverrides,
+  ): Promise<{ system: string | undefined; snapshot: ResolvedSystemPrompt[] }> {
+    const resolved = await systemPromptService.listResolved(scope, ctx, overrides);
+    const sent = resolved.filter(
+      (prompt) => prompt.enabled && prompt.renderedBody.trim().length > 0,
+    );
+    const system = sent.map((prompt) => prompt.renderedBody).join("\n\n");
+    return { system: system.length > 0 ? system : undefined, snapshot: sent };
+  }
+
   async function createConversation(
     agent: AgentRuntimeRow,
     input: {
@@ -964,10 +1121,33 @@ export function createConversationService(options: {
       archiveMessages,
     );
 
+    // Messages are rebuilt from OpenCode on every sync, so capture existing
+    // snapshots (keyed by the stable OpenCode message id) before the delete and
+    // re-apply them on reinsert; otherwise they would be lost each sync.
+    const existingSnapshots = new Map<string, string | null>();
+    const priorRows = await options.db.query.messages.findMany({
+      where: (table, operators) => operators.eq(table.conversation_id, conversation.id),
+      columns: { id: true, system_prompt_snapshot_json: true },
+    });
+    for (const row of priorRows) {
+      existingSnapshots.set(row.id, row.system_prompt_snapshot_json);
+    }
+
     await options.db.delete(messages).where(eq(messages.conversation_id, conversation.id));
 
     if (nextMessages.length === 0) {
       return;
+    }
+
+    // Attach the pending snapshot to the newest user message that OpenCode has
+    // not echoed before (i.e. the one we just sent).
+    const pendingSnapshot = pendingSnapshots.get(conversation.id);
+    let snapshotTargetId: string | undefined;
+    if (pendingSnapshot) {
+      const newUserMessage = [...nextMessages]
+        .reverse()
+        .find((message) => message.role === "user" && !existingSnapshots.has(message.id));
+      snapshotTargetId = newUserMessage?.id;
     }
 
     await options.db.insert(messages).values(
@@ -979,10 +1159,19 @@ export function createConversationService(options: {
         parts_json: JSON.stringify(message.parts),
         attachments_json: JSON.stringify(message.attachments),
         error_json: message.error ? JSON.stringify(message.error) : null,
+        system_prompt_snapshot_json: existingSnapshots.has(message.id)
+          ? existingSnapshots.get(message.id)
+          : message.id === snapshotTargetId && pendingSnapshot
+            ? JSON.stringify(pendingSnapshot)
+            : null,
         created_at: new Date(message.createdAtMs),
         updated_at: new Date(message.updatedAtMs),
       })),
     );
+
+    if (snapshotTargetId) {
+      pendingSnapshots.delete(conversation.id);
+    }
   }
 
   async function getSnapshot(agentId: string, currentId: string): Promise<ConversationSnapshot> {
@@ -1131,6 +1320,7 @@ function mapConversationMessage(row: MessageRow): ConversationMessage {
     parts: parseJson(row.parts_json, []),
     attachments: parseJson(row.attachments_json, []),
     error: parseJson(row.error_json, undefined),
+    systemPromptSnapshot: parseJson(row.system_prompt_snapshot_json, undefined),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   });

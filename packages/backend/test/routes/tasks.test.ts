@@ -446,9 +446,9 @@ describe("task routes", () => {
         subtask: { agentId: mentionedAgent.id, description: "Please verify docs." },
         feedback: { id: feedback.json<{ id: string }>().id },
       });
-      expect(preview.json<{ renderedPrompt: string }>().renderedPrompt).toContain(
-        `<AssignedAgentId>\n${mentionedAgent.id}\n</AssignedAgentId>`,
-      );
+      // Agent assignment is verified via the JSON above; the run prompt no
+      // longer embeds internal IDs like AssignedAgentId.
+      expect(preview.json<{ renderedPrompt: string }>().renderedPrompt).toContain("<Task>");
       expect(subtask.statusCode).toBe(201);
       expect(updatedSubtask.statusCode).toBe(200);
       expect(updatedSubtask.json()).toMatchObject({

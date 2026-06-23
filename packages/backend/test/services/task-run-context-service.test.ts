@@ -380,9 +380,6 @@ describe("createTaskRunContextService", () => {
       expect(built.renderedContext["assignment"]).toEqual(
         expect.objectContaining({ taskAgentId: defaultAgent.id, runAgentId: runAgent.id }),
       );
-      expect(built.renderedPrompt).toContain(
-        `<AssignedAgentId>\n${runAgent.id}\n</AssignedAgentId>`,
-      );
     } finally {
       await testDb.cleanup();
     }

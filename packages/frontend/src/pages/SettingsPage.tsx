@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
+import { SystemPromptsTab } from "@/components/settings/SystemPromptsTab";
 import { PasswordInput } from "@/components/common/PasswordInput";
 import { TabBar } from "@/components/common/TabBar";
 import {
@@ -27,8 +29,16 @@ import {
   updateTaskRunMonitorSettings,
 } from "@/lib/api";
 
+const TAB_IDS = ["system", "secrets", "file-manager", "sharing", "tasks", "system-prompts"];
+
 export function SettingsPage() {
-  const [activeTabId, setActiveTabId] = useState("system");
+  // Read the deep-link tab once at mount (e.g. chat's "Edit in Settings" →
+  // /settings?tab=system-prompts). Initial-only, so no router hook is needed.
+  const [activeTabId, setActiveTabId] = useState(() => {
+    const requestedTab =
+      typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("tab");
+    return requestedTab && TAB_IDS.includes(requestedTab) ? requestedTab : "system";
+  });
   const tabs = useMemo(
     () => [
       {
@@ -51,6 +61,10 @@ export function SettingsPage() {
         id: "tasks",
         label: "Tasks",
       },
+      {
+        id: "system-prompts",
+        label: "System Prompts",
+      },
     ],
     [],
   );
@@ -71,60 +85,7 @@ export function SettingsPage() {
         {activeTabId === "file-manager" ? <FileManagerTab /> : null}
         {activeTabId === "sharing" ? <SharingTab /> : null}
         {activeTabId === "tasks" ? <TasksTab /> : null}
-      </section>
-    </div>
-  );
-}
-
-function ConfirmDialog(props: {
-  title: string;
-  description: ReactNode;
-  confirmLabel: string;
-  confirmVariant?: "primary" | "danger";
-  onConfirm: () => void;
-  onCancel: () => void;
-  secondaryLabel?: string;
-  onSecondary?: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6"
-      onClick={props.onCancel}
-    >
-      <section
-        aria-labelledby="confirm-dialog-title"
-        aria-modal="true"
-        className="cc-panel w-full max-w-lg p-6"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        <h2 className="text-xl font-semibold text-text-primary" id="confirm-dialog-title">
-          {props.title}
-        </h2>
-        <div className="mt-3 text-sm leading-6 text-text-secondary">{props.description}</div>
-        <div className="mt-6 flex flex-wrap gap-2">
-          <button
-            className={
-              props.confirmVariant === "danger" ? "cc-button cc-button-danger" : "cc-button"
-            }
-            onClick={props.onConfirm}
-            type="button"
-          >
-            {props.confirmLabel}
-          </button>
-          {props.secondaryLabel && props.onSecondary ? (
-            <button
-              className="cc-button cc-button-secondary"
-              onClick={props.onSecondary}
-              type="button"
-            >
-              {props.secondaryLabel}
-            </button>
-          ) : null}
-          <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
-            Cancel
-          </button>
-        </div>
+        {activeTabId === "system-prompts" ? <SystemPromptsTab /> : null}
       </section>
     </div>
   );

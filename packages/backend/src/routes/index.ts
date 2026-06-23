@@ -19,6 +19,7 @@ import { registerSessionArchiveRoutes } from "./session-archive.js";
 import { registerTaskRunMonitorRoutes } from "./task-run-monitor.js";
 import { registerTerminalRoutes } from "./terminal.js";
 import { registerSystemRoutes } from "./system.js";
+import { registerSystemPromptRoutes } from "./system-prompts.js";
 import { registerTaskRoutes } from "./tasks.js";
 import { registerWorkspaceSkillRoutes } from "./workspace-skills.js";
 
@@ -41,6 +42,7 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerSessionArchiveRoutes(server, context);
   registerTaskRunMonitorRoutes(server, context);
   registerSystemRoutes(server, context);
+  registerSystemPromptRoutes(server, context);
   registerTaskRoutes(server, context);
   registerPublicApiRoutes(server, context);
   registerTerminalRoutes(server, context);

@@ -16,6 +16,10 @@ import {
   conversationDetailSchema,
   conversationListSchema,
   conversationSnapshotSchema,
+  resolvedSystemPromptSchema,
+  systemPromptBodySchema,
+  systemPromptDetailSchema,
+  systemPromptListResponseSchema,
   createSpecialistInputSchema,
   createApiTokenInputSchema,
   createApiTokenResponseSchema,
@@ -130,6 +134,9 @@ import {
   type ConversationDetail,
   type ConversationSnapshot,
   type ConversationSummary,
+  type ResolvedSystemPrompt,
+  type SystemPromptDetail,
+  type SystemPromptListResponse,
   type EngineStatus,
   type FileManagerCreateEntryInput,
   type FileManagerDeleteEntryQuery,
@@ -1506,6 +1513,57 @@ export async function getConversation(
   return requestJson<ConversationDetail>(
     `/api/specialists/${encodeURIComponent(agentId)}/conversations/${encodeURIComponent(conversationId)}`,
     conversationDetailSchema,
+  );
+}
+
+export async function getConversationSystemPrompts(
+  conversationId: string,
+): Promise<ResolvedSystemPrompt[]> {
+  return requestJson<ResolvedSystemPrompt[]>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/system-prompts`,
+    resolvedSystemPromptSchema.array(),
+  );
+}
+
+export async function setConversationSystemPromptEnabled(
+  conversationId: string,
+  promptId: string,
+  enabled: boolean,
+): Promise<ResolvedSystemPrompt[]> {
+  return requestJson<ResolvedSystemPrompt[]>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/system-prompts/${encodeURIComponent(promptId)}`,
+    resolvedSystemPromptSchema.array(),
+    { method: "PATCH", body: { enabled } },
+  );
+}
+
+export async function getSystemPrompts(): Promise<SystemPromptListResponse> {
+  return requestJson<SystemPromptListResponse>(
+    "/api/system-prompts",
+    systemPromptListResponseSchema,
+  );
+}
+
+export async function getSystemPrompt(id: string): Promise<SystemPromptDetail> {
+  return requestJson<SystemPromptDetail>(
+    `/api/system-prompts/${encodeURIComponent(id)}`,
+    systemPromptDetailSchema,
+  );
+}
+
+export async function saveSystemPrompt(id: string, body: string): Promise<SystemPromptDetail> {
+  return requestJson<SystemPromptDetail>(
+    `/api/system-prompts/${encodeURIComponent(id)}`,
+    systemPromptDetailSchema,
+    { method: "PUT", body: systemPromptBodySchema.parse({ body }) },
+  );
+}
+
+export async function resetSystemPrompt(id: string): Promise<SystemPromptDetail> {
+  return requestJson<SystemPromptDetail>(
+    `/api/system-prompts/${encodeURIComponent(id)}`,
+    systemPromptDetailSchema,
+    { method: "DELETE" },
   );
 }
 

@@ -74,6 +74,10 @@ import {
   createSystemVersionService,
   type SystemVersionService,
 } from "../services/system-version-service.js";
+import {
+  createSystemPromptService,
+  type SystemPromptService,
+} from "../system-prompts/system-prompt-service.js";
 import { createServer } from "../server.js";
 import { isActiveClaimCode } from "./owner-claim-code.js";
 
@@ -108,6 +112,7 @@ export type RuntimeContext = {
   sessionArchiveService?: SessionArchiveService;
   sessionArchiveSettingsService?: SessionArchiveSettingsService;
   taskRunMonitorSettingsService?: TaskRunMonitorSettingsService;
+  systemPromptService?: SystemPromptService;
   shutdownRuntime?: () => Promise<void>;
 };
 
@@ -176,6 +181,7 @@ export async function startServerRuntime(
   const sessionArchiveService = createSessionArchiveService({ config, logger });
   const sessionArchiveSettingsService = createSessionArchiveSettingsService({ config, logger });
   const taskRunMonitorSettingsService = createTaskRunMonitorSettingsService({ config, logger });
+  const systemPromptService = createSystemPromptService({ config, logger });
   const sessionArchiveScheduler = createSessionArchiveScheduler({
     archiveService: sessionArchiveService,
     settingsService: sessionArchiveSettingsService,
@@ -188,6 +194,7 @@ export async function startServerRuntime(
     logger,
     archiveService: sessionArchiveService,
     archiveSettingsService: sessionArchiveSettingsService,
+    systemPromptService,
   });
   const taskPermissionService = createTaskPermissionService({
     db: database.db,
@@ -251,6 +258,7 @@ export async function startServerRuntime(
     sessionArchiveService,
     sessionArchiveSettingsService,
     taskRunMonitorSettingsService,
+    systemPromptService,
   };
   const server = await createServer(context);
 
