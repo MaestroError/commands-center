@@ -1,40 +1,40 @@
 ---
-name: custom-tool-authoring
-description: Author portable OpenCode custom tools that fit CommandsCenter's workspace contract.
+name: global-tool-authoring
+description: Author portable OpenCode custom tools that fit CommandsCenter's global workspace tool contract. Use when creating reusable global tools, improving existing global tool code, or helping a user make a tool available to one or more specialists.
 compatibility: opencode
 metadata:
   category: workflow
   version: 1.0.0
 ---
 
-# custom-tool-authoring
+# global-tool-authoring
 
 Use this skill when creating or updating custom OpenCode tools for CommandsCenter.
 
 ## Start Here
 
 - Before creating or editing a custom tool, check whether you have the required CommandsCenter MCP tools available.
-- Custom tool creation must use the `cc_tool_management` MCP server. Do not create tool metadata or starter directories manually when the MCP tool is available.
-- If the required MCP server or tool is missing, stop and ask the user to enable the needed MCP server and tools for this specialist. Be specific: ask for `cc_tool_management_*` and the required tool, such as `create_custom_tool`.
+- Global custom tool creation must use the `cc_app` MCP server. Do not create tool metadata or starter directories manually when the MCP tool is available.
+- If the required MCP server or tool is missing, stop and ask the user to enable the needed MCP server and tools for this specialist. Be specific: ask for `cc_app` and the required tool, such as `cc_app_create_custom_tool`.
 - If the requested tool needs stored credentials or tokens, check if you have `cc_app_add_secret` tool available. If not, ask the user to enable that tool too.
 
 ## Scope
 
-- Create only global CommandsCenter custom tools, only using `cc_tool_management_*` MCP server tools.
-- `create_custom_tool` creates a global tool scaffold under and returns directory you should use for further development.
+- Create only global CommandsCenter custom tools, only using `cc_app_*` MCP server tools.
+- `cc_app_create_custom_tool` creates a global tool scaffold and returns the directory you should use for further development.
 - Do not offer specialist-local tool creation as an option.
-- When a global tool needs to be assigned to a specialist, use CommandsCenter's managed copy flow from `cc_tool_management_*` instead of writing into a specialist workspace manually.
+- When a global tool needs to be assigned to a specialist, use CommandsCenter's managed copy flow from `cc_app_copy_custom_tool_to_specialist` instead of writing into a specialist workspace manually.
 
 ## Required Creation Flow
 
 1. Confirm the tool purpose, expected inputs, expected output, and any external services it needs.
-2. Use `cc_tool_management_create_custom_tool` to create the global tool scaffold.
+2. Use `cc_app_create_custom_tool` to create the global tool scaffold.
 3. Edit the created global tool files under the provided directory.
 4. Implement `tool.ts` with a default OpenCode tool export.
 5. Keep helper files next to `tool.ts` inside the global tool directory.
 6. Do not manage CommandsCenter metadata fields, IDs, timestamps, or fingerprints manually.
 7. When finished, ask the user whether they want this tool enabled for any existing specialist now.
-8. If the user wants it enabled, use the CommandsCenter managed flow, such as `cc_tool_management_copy_custom_tool_to_specialist`, when that tool is available. When not, Do not write directly into a specialist workspace, Ask user to enable the tool for specific specialists from CC's Tools page.
+8. If the user wants it enabled, use `cc_app_copy_custom_tool_to_specialist` when that tool is available. When not, do not write directly into a specialist workspace. Ask the user to enable the tool for specific specialists from CommandsCenter's Tools page.
 
 ## Global Tool Layout
 
@@ -173,7 +173,7 @@ return await response.text();
 
 ## Review Checklist
 
-- The tool was created through `cc_tool_management_create_custom_tool`.
+- The tool was created through `cc_app_create_custom_tool`.
 - The tool lives under `.cc/workspace/custom-tools/<slug>/`.
 - No files were written directly under a specialist `.opencode/tools/` directory.
 - Argument schemas are narrow, described, and safe for model-provided input.

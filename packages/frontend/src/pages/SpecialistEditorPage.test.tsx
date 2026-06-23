@@ -46,14 +46,8 @@ beforeEach(() => {
           name: "cc_app",
           enabledByDefault: false,
           description: "CommandsCenter app-managed capabilities for this specialist.",
-          tools: [{ name: "add_secret", description: "Add a workspace secret.", context: "chat" }],
-        },
-        {
-          name: "cc_tool_management",
-          enabledByDefault: false,
-          description:
-            "CommandsCenter-managed tool creation and library maintenance for this specialist.",
           tools: [
+            { name: "add_secret", description: "Add a workspace secret.", context: "chat" },
             { name: "create_custom_tool", description: "Create a custom tool.", context: "chat" },
             {
               name: "copy_custom_tool_to_specialist",
@@ -308,12 +302,12 @@ describe("SpecialistEditorPage", () => {
     });
   });
 
-  it("saves tool management MCP group permission when selected", async () => {
+  it("saves app MCP group permission when selected for custom tool helpers", async () => {
     updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
 
     renderEditor();
 
-    fireEvent.click(screen.getByRole("button", { name: "cc_tool_management Allow" }));
+    fireEvent.click(screen.getByRole("button", { name: "cc_app Allow" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
@@ -323,7 +317,7 @@ describe("SpecialistEditorPage", () => {
           capabilities: expect.objectContaining({
             appMcpServers: [
               {
-                name: "cc_tool_management",
+                name: "cc_app",
                 enabled: true,
                 action: "allow",
               },
@@ -340,13 +334,11 @@ describe("SpecialistEditorPage", () => {
 
     renderEditor();
 
-    fireEvent.click(screen.getByRole("button", { name: "cc_tool_management Allow" }));
+    fireEvent.click(screen.getByRole("button", { name: "cc_app Allow" }));
 
     expect(screen.getByText("Task run")).toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole("switch", { name: "cc_tool_management copy_custom_tool_to_specialist" }),
-    );
+    fireEvent.click(screen.getByRole("switch", { name: "cc_app copy_custom_tool_to_specialist" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
@@ -356,13 +348,13 @@ describe("SpecialistEditorPage", () => {
           capabilities: expect.objectContaining({
             appMcpServers: [
               {
-                name: "cc_tool_management",
+                name: "cc_app",
                 enabled: true,
                 action: "allow",
               },
             ],
             appToolPermissions: [
-              { pattern: "cc_tool_management_copy_custom_tool_to_specialist", action: "deny" },
+              { pattern: "cc_app_copy_custom_tool_to_specialist", action: "deny" },
             ],
           }),
         }),
