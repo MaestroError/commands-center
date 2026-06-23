@@ -192,6 +192,13 @@ export async function runCli(args: string[]): Promise<void> {
     register:
       parsedArgs.command === "start"
         ? async (server) => {
+            // Apply to every response, regardless of whether static assets are present,
+            // so non-HTML/API endpoints stay unindexable too.
+            server.addHook("onSend", async (_request, reply, payload) => {
+              reply.header("X-Robots-Tag", "noindex, nofollow");
+              return payload;
+            });
+
             if (!staticAssetsDir || !existsSync(staticAssetsDir)) {
               return;
             }
@@ -199,11 +206,6 @@ export async function runCli(args: string[]): Promise<void> {
             await server.register(fastifyStatic, {
               root: staticAssetsDir,
               wildcard: false,
-            });
-
-            server.addHook("onSend", async (_request, reply, payload) => {
-              reply.header("X-Robots-Tag", "noindex, nofollow");
-              return payload;
             });
 
             server.setNotFoundHandler((_request: FastifyRequest, reply: FastifyReply) => {

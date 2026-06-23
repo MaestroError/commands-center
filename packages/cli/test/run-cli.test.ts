@@ -376,8 +376,10 @@ describe("runCli", () => {
       setNotFoundHandler,
     });
 
+    // The X-Robots-Tag hook is registered unconditionally; only the static
+    // asset registration and SPA fallback are skipped when the dir is absent.
+    expect(addHook).toHaveBeenCalledWith("onSend", expect.any(Function));
     expect(register).not.toHaveBeenCalled();
-    expect(addHook).not.toHaveBeenCalled();
     expect(setNotFoundHandler).not.toHaveBeenCalled();
   });
 
