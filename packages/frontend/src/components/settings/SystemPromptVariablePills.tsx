@@ -35,16 +35,19 @@ function VariablePill({ variable }: { variable: SystemPromptVariableMeta }) {
   }, []);
 
   const handleClick = () => {
-    void navigator.clipboard.writeText(token).then(() => {
-      setCopied(true);
-      if (timeoutRef.current !== null) {
-        clearTimeout(timeoutRef.current);
-      }
-      timeoutRef.current = setTimeout(() => {
-        setCopied(false);
-        timeoutRef.current = null;
-      }, 1500);
-    });
+    void navigator.clipboard
+      .writeText(token)
+      .then(() => {
+        setCopied(true);
+        if (timeoutRef.current !== null) {
+          clearTimeout(timeoutRef.current);
+        }
+        timeoutRef.current = setTimeout(() => {
+          setCopied(false);
+          timeoutRef.current = null;
+        }, 1500);
+      })
+      .catch(() => undefined);
   };
 
   return (

@@ -44,7 +44,7 @@ export function ActivityBell() {
       <button
         type="button"
         aria-label={count > 0 ? `Activity (${String(count)} need attention)` : "Activity"}
-        aria-haspopup="dialog"
+        aria-haspopup="true"
         aria-expanded={open}
         className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
         onClick={() => setOpen((value) => !value)}
@@ -58,8 +58,8 @@ export function ActivityBell() {
       </button>
 
       {open ? (
+        // Simple popover (not a focus-trapping dialog).
         <div
-          role="dialog"
           aria-label="Activity"
           className="absolute right-0 z-40 mt-2 w-96 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md border border-border bg-surface shadow-xl"
         >
