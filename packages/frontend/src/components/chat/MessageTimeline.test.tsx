@@ -274,7 +274,7 @@ describe("MessageTimeline", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Message actions" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "Convert to task" }));
+    await userEvent.click(screen.getByRole("button", { name: "Convert to task" }));
 
     expect(onConvert).toHaveBeenCalledWith(message, []);
   });
@@ -292,9 +292,9 @@ describe("MessageTimeline", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Message actions" }));
-    expect(screen.getByRole("menuitem", { name: "Check system prompts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check system prompts" })).toBeInTheDocument();
     // No convert handler provided → that item is hidden.
-    expect(screen.queryByRole("menuitem", { name: "Convert to task" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Convert to task" })).not.toBeInTheDocument();
   });
 
   it("does not show the actions menu for assistant messages", () => {

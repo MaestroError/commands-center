@@ -203,7 +203,7 @@ function UserMessageMenu(props: { onConvert?: () => void; onShowSystemPrompts: (
     <div className="relative" ref={containerRef}>
       <button
         aria-label="Message actions"
-        aria-haspopup="menu"
+        aria-haspopup="true"
         aria-expanded={open}
         className={`mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition hover:border-accent/50 hover:text-text-primary focus:opacity-100 group-hover:opacity-100 ${
           open ? "opacity-100" : "opacity-30"
@@ -215,14 +215,11 @@ function UserMessageMenu(props: { onConvert?: () => void; onShowSystemPrompts: (
         <MoreVertical aria-hidden="true" className="h-3.5 w-3.5" />
       </button>
       {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-surface py-1 shadow-lg"
-        >
+        // A simple popover of buttons — not an ARIA menu (no arrow-key/focus model).
+        <div className="absolute right-0 z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-surface py-1 shadow-lg">
           {props.onConvert ? (
             <button
               type="button"
-              role="menuitem"
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text-primary transition hover:bg-surface-elevated"
               onClick={() => {
                 setOpen(false);
@@ -235,7 +232,6 @@ function UserMessageMenu(props: { onConvert?: () => void; onShowSystemPrompts: (
           ) : null}
           <button
             type="button"
-            role="menuitem"
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text-primary transition hover:bg-surface-elevated"
             onClick={() => {
               setOpen(false);
