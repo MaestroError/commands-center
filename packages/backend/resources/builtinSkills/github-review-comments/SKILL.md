@@ -66,9 +66,9 @@ If ambiguity blocks several comments, ask one clear question that covers the sha
 
 ## Commit discipline
 
+- Before committing or pushing, ask the user for approval.
 - Commit only files needed for the addressed review item.
-- Use terse commit messages that name the fix, for example `Handle stale skill aliases`.
-- Do not batch unrelated reviewer comments into a cleanup commit.
+- Use terse commit messages and do not batch unrelated reviewer comments.
 - If tests or formatting modify extra files, include them only when they are caused by the fix.
 - Push after committing so GitHub thread resolution points at visible code.
 
