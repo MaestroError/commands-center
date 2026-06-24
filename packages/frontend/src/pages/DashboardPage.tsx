@@ -1,3 +1,4 @@
+import { ActivityPanel } from "@/components/activities/ActivityPanel";
 import { PageHeader } from "@/components/common/PageHeader";
 
 export function DashboardPage() {
@@ -8,6 +9,13 @@ export function DashboardPage() {
         eyebrow="Dashboard"
         title="Dashboard"
       />
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <ActivityPanel />
+        </div>
+        {/* Right third reserved for future dashboard widgets. */}
+        <div className="hidden lg:block" aria-hidden="true" />
+      </div>
     </div>
   );
 }

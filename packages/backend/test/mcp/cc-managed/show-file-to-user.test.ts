@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeSpecialistFilePath } from "../../../src/mcp/cc-managed/groups/cc-app/tools/show-file-to-user";
+import { normalizeSpecialistFilePath } from "../../../src/mcp/cc-managed/groups/cc-default/tools/show-file-to-user";
 
 describe("normalizeSpecialistFilePath", () => {
   const options = {

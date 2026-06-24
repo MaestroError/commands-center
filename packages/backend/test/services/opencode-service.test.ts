@@ -71,6 +71,41 @@ describe("opencode-service", () => {
       expect(init.method).toBe("POST");
     });
 
+    it("includes `system` in the body only when provided", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = createOpenCodeService({
+        client: FAKE_CLIENT,
+        config: createConfig(),
+        logger: createLogger(),
+      });
+
+      await service.promptSessionAsync({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "anthropic", modelID: "claude" },
+        text: "hello",
+        system: "You are Ada.",
+      });
+      const withSystem = JSON.parse(
+        (fetchMock.mock.calls[0]?.[1] as RequestInit).body as string,
+      ) as Record<string, unknown>;
+      expect(withSystem["system"]).toBe("You are Ada.");
+
+      fetchMock.mockClear();
+      await service.promptSessionAsync({
+        directory: "/work/agent-a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "anthropic", modelID: "claude" },
+        text: "hello",
+      });
+      const withoutSystem = JSON.parse(
+        (fetchMock.mock.calls[0]?.[1] as RequestInit).body as string,
+      ) as Record<string, unknown>;
+      expect(withoutSystem).not.toHaveProperty("system");
+    });
+
     it("rejects when the underlying request fails", async () => {
       fetchMock.mockRejectedValue(new Error("boom"));
       const service = createOpenCodeService({

@@ -24,6 +24,7 @@
     "clean": "pnpm --parallel --filter './packages/*' clean",
     "build:cli": "pnpm --filter commandscenter build",
     "create-claim-code": "tsx scripts/create-claim-code.ts",
+    "seed-activities": "tsx scripts/seed-activities.ts",
     "check:node-versions": "node scripts/check-node-version-consistency.mjs",
     "release:check": "pnpm check:node-versions && pnpm typecheck && pnpm lint && pnpm --filter commandscenter test && pnpm build:cli",
     "prepare": "husky"

@@ -30,6 +30,11 @@ export const test = base.extend({
       await route.fulfill(jsonResponse([]));
     });
 
+    // The activity bell polls this on every page; keep it empty by default.
+    await page.route("**/api/activities*", async (route: Route) => {
+      await route.fulfill(jsonResponse({ activities: [], actionRequiredCount: 0 }));
+    });
+
     await run(page);
   },
 });

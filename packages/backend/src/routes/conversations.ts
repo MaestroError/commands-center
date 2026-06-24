@@ -8,6 +8,7 @@ import {
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
 } from "../schemas/conversations.js";
+import { resolvedSystemPromptSchema } from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
@@ -39,6 +40,7 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
     logger: context.logger,
     archiveService: context.sessionArchiveService,
     archiveSettingsService: context.sessionArchiveSettingsService,
+    systemPromptService: context.systemPromptService,
   });
 
   app.get(
@@ -118,6 +120,34 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
 
       return service.sendPrompt(request.params.conversationId, request.body);
     },
+  );
+
+  app.get(
+    "/api/conversations/:conversationId/system-prompts",
+    {
+      schema: {
+        params: conversationParamsSchema,
+        response: { 200: z.array(resolvedSystemPromptSchema) },
+      },
+    },
+    async (request) => service.getConversationSystemPrompts(request.params.conversationId),
+  );
+
+  app.patch(
+    "/api/conversations/:conversationId/system-prompts/:id",
+    {
+      schema: {
+        params: conversationParamsSchema.extend({ id: z.string().min(1) }),
+        body: z.object({ enabled: z.boolean() }),
+        response: { 200: z.array(resolvedSystemPromptSchema) },
+      },
+    },
+    async (request) =>
+      service.setConversationSystemPromptEnabled(
+        request.params.conversationId,
+        request.params.id,
+        request.body.enabled,
+      ),
   );
 
   app.get(

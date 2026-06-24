@@ -1,4 +1,16 @@
 export {
+  activityKindSchema,
+  activityLevelSchema,
+  activityListResponseSchema,
+  activitySchema,
+  activityStatusSchema,
+  type Activity,
+  type ActivityKind,
+  type ActivityLevel,
+  type ActivityListResponse,
+  type ActivityStatus,
+} from "./activities.js";
+export {
   apiTokenListResponseSchema,
   apiTokenRecordSchema,
   apiTokenScopeSchema,
@@ -188,6 +200,7 @@ export {
   sendConversationCommandInputSchema,
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
+  systemPromptOverridesSchema,
   type ConversationAttachment,
   type ConversationDetail,
   type ConversationMessage,
@@ -202,6 +215,7 @@ export {
   type SendConversationCommandInput,
   type SendConversationPromptInput,
   type SendConversationShellInput,
+  type SystemPromptOverrides,
 } from "./conversations.js";
 export {
   sessionArchiveKindSchema,
@@ -220,6 +234,24 @@ export {
   type SessionArchiveStatus,
 } from "./session-archive.js";
 export { taskRunMonitorSettingsSchema, type TaskRunMonitorSettings } from "./task-run-monitor.js";
+export {
+  resolvedSystemPromptSchema,
+  systemPromptBodySchema,
+  systemPromptDefinitionSchema,
+  systemPromptDetailSchema,
+  systemPromptListItemSchema,
+  systemPromptListResponseSchema,
+  systemPromptScopeSchema,
+  systemPromptVariableMetaSchema,
+  type ResolvedSystemPrompt,
+  type SystemPromptBody,
+  type SystemPromptDefinitionMeta,
+  type SystemPromptDetail,
+  type SystemPromptListItem,
+  type SystemPromptListResponse,
+  type SystemPromptScope,
+  type SystemPromptVariableMeta,
+} from "./system-prompts.js";
 export {
   configProvidersSchema,
   providerApiKeyInputSchema,

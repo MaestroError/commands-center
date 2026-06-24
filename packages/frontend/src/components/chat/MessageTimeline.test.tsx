@@ -273,12 +273,31 @@ describe("MessageTimeline", () => {
       />,
     );
 
+    await userEvent.click(screen.getByRole("button", { name: "Message actions" }));
     await userEvent.click(screen.getByRole("button", { name: "Convert to task" }));
 
     expect(onConvert).toHaveBeenCalledWith(message, []);
   });
 
-  it("does not show convert to task for assistant messages", () => {
+  it("opens the actions menu and checks system prompts for user messages", async () => {
+    const message = makeMessage({ id: "user-prompts", role: "user", content: "Hi" });
+
+    render(
+      <MessageTimeline
+        messages={[message]}
+        parts={{}}
+        sessionStatus={{ type: "idle" }}
+        conversationId="conv-1"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    expect(screen.getByRole("button", { name: "Check system prompts" })).toBeInTheDocument();
+    // No convert handler provided → that item is hidden.
+    expect(screen.queryByRole("button", { name: "Convert to task" })).not.toBeInTheDocument();
+  });
+
+  it("does not show the actions menu for assistant messages", () => {
     render(
       <MessageTimeline
         messages={[makeMessage({ id: "assistant-task", role: "assistant", content: "Reply" })]}
@@ -288,7 +307,7 @@ describe("MessageTimeline", () => {
       />,
     );
 
-    expect(screen.queryByRole("button", { name: "Convert to task" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Message actions" })).not.toBeInTheDocument();
   });
 
   it("copies assistant text parts", async () => {

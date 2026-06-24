@@ -1,5 +1,6 @@
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
+import { registerActivityRoutes } from "./activities.js";
 import { registerSpecialistRoutes } from "./specialists.js";
 import { registerApiTokenRoutes } from "./api-tokens.js";
 import { registerCcManagedMcpRoutes } from "./cc-managed-mcp.js";
@@ -19,12 +20,14 @@ import { registerSessionArchiveRoutes } from "./session-archive.js";
 import { registerTaskRunMonitorRoutes } from "./task-run-monitor.js";
 import { registerTerminalRoutes } from "./terminal.js";
 import { registerSystemRoutes } from "./system.js";
+import { registerSystemPromptRoutes } from "./system-prompts.js";
 import { registerTaskRoutes } from "./tasks.js";
 import { registerWorkspaceSkillRoutes } from "./workspace-skills.js";
 
 export function registerApiRoutes(server: AppServer, context: RuntimeContext): void {
   registerHealthRoutes(server, context);
   registerOwnerAuthRoutes(server, context);
+  registerActivityRoutes(server, context);
   registerApiTokenRoutes(server, context);
   registerCcManagedMcpRoutes(server, context);
   registerSpecialistRoutes(server, context);
@@ -41,6 +44,7 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerSessionArchiveRoutes(server, context);
   registerTaskRunMonitorRoutes(server, context);
   registerSystemRoutes(server, context);
+  registerSystemPromptRoutes(server, context);
   registerTaskRoutes(server, context);
   registerPublicApiRoutes(server, context);
   registerTerminalRoutes(server, context);

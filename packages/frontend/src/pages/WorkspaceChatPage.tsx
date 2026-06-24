@@ -9,6 +9,7 @@ import { MediaTab } from "@/components/chat/MediaTab";
 import { MessageTimeline } from "@/components/chat/MessageTimeline";
 import { PermissionDock } from "@/components/chat/PermissionDock";
 import { QuestionDock } from "@/components/chat/QuestionDock";
+import { SystemPromptsTab } from "@/components/chat/SystemPromptsTab";
 import { TodoDock } from "@/components/chat/TodoDock";
 import { ToolsTab } from "@/components/chat/ToolsTab";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
@@ -246,6 +247,16 @@ export function WorkspaceChatPage() {
               label: "Tools",
               content: <ToolsTab agent={conv.agent} catalog={catalog} />,
             },
+            {
+              id: "system-prompts",
+              label: "System Prompts",
+              content: (
+                <SystemPromptsTab
+                  conversationId={conv.conversation.id}
+                  onEditInSettings={() => void navigate("/settings?tab=system-prompts")}
+                />
+              ),
+            },
           ],
           defaultTabId: "files",
         }}
@@ -318,6 +329,7 @@ export function WorkspaceChatPage() {
                     parts={conv.parts}
                     sessionStatus={conv.sessionStatus}
                     sendError={conv.sendError}
+                    conversationId={conv.conversation.id}
                     onAttachmentClick={handleAttachmentMediaSearch}
                     onConvertUserMessageToTask={handleConvertUserMessageToTask}
                   />

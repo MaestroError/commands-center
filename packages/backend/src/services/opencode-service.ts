@@ -429,6 +429,7 @@ export function createOpenCodeService(options: {
       model: SessionModel;
       text: string;
       attachments?: SendConversationAttachmentInput[];
+      system?: string;
     }): Promise<OpenCodeSessionMessage> {
       // The synchronous /message endpoint returns the assistant message once the
       // turn settles. A terminal model failure (after opencode's own same-model
@@ -442,6 +443,9 @@ export function createOpenCodeService(options: {
         body: {
           agent: input.agent,
           model: input.model,
+          // `system` is additive (appended after the agent prompt) and applies
+          // only to this generation, so callers send it on every message.
+          ...(input.system ? { system: input.system } : {}),
           parts: buildPromptParts(input.text, input.attachments ?? []),
         },
       });
@@ -518,6 +522,7 @@ export function createOpenCodeService(options: {
       model: SessionModel;
       text: string;
       attachments?: SendConversationAttachmentInput[];
+      system?: string;
     }): Promise<void> {
       await requestSessionJson({
         config: options.config,
@@ -527,6 +532,7 @@ export function createOpenCodeService(options: {
         body: {
           agent: input.agent,
           model: input.model,
+          ...(input.system ? { system: input.system } : {}),
           parts: buildPromptParts(input.text, input.attachments ?? []),
         },
       });

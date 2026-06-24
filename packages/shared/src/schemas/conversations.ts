@@ -1,6 +1,11 @@
 import { z } from "zod";
 
+import { resolvedSystemPromptSchema } from "./system-prompts.js";
+
 const looseRecordSchema = z.record(z.string(), z.unknown());
+
+/** Per-conversation system prompt enabled overrides: prompt id → enabled. */
+export const systemPromptOverridesSchema = z.record(z.string().min(1), z.boolean());
 
 export const conversationMessageErrorSchema = z.object({
   name: z.string().min(1),
@@ -37,6 +42,9 @@ export const conversationMessageSchema = z.object({
   attachments: z.array(conversationAttachmentSchema),
   parentId: z.string().min(1).optional(),
   error: conversationMessageErrorSchema.optional(),
+  // The system prompts composed and sent with this message, captured at send
+  // time. Present on user messages once captured; absent on older messages.
+  systemPromptSnapshot: z.array(resolvedSystemPromptSchema).optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -119,3 +127,4 @@ export type SendConversationAttachmentInput = z.infer<typeof sendConversationAtt
 export type SendConversationCommandInput = z.infer<typeof sendConversationCommandInputSchema>;
 export type SendConversationPromptInput = z.infer<typeof sendConversationPromptInputSchema>;
 export type SendConversationShellInput = z.infer<typeof sendConversationShellInputSchema>;
+export type SystemPromptOverrides = z.infer<typeof systemPromptOverridesSchema>;

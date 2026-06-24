@@ -1,10 +1,11 @@
-import { Check, ClipboardList, Copy } from "lucide-react";
+import { Check, ClipboardList, Copy, MoreVertical, ScrollText } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ConversationMessage, ConversationPart, SessionStatus } from "@cc/shared/schemas";
 
 import { AssistantMessage } from "./AssistantMessage";
 import { InterruptedDivider } from "./InterruptedDivider";
+import { MessageSystemPromptsModal } from "./MessageSystemPromptsModal";
 import { UserMessage } from "./UserMessage";
 import { isHiddenUserMessage, isInterruptedMessage } from "./message-timeline-utils";
 
@@ -13,6 +14,7 @@ type MessageTimelineProps = {
   parts: Record<string, ConversationPart[]>;
   sessionStatus: SessionStatus;
   sendError?: string | null;
+  conversationId?: string;
   onAttachmentClick?: (filename: string) => void;
   onConvertUserMessageToTask?: (message: ConversationMessage, parts: ConversationPart[]) => void;
 };
@@ -22,11 +24,13 @@ export function MessageTimeline({
   parts,
   sessionStatus,
   sendError,
+  conversationId,
   onAttachmentClick,
   onConvertUserMessageToTask,
 }: MessageTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const [promptsModalMessage, setPromptsModalMessage] = useState<ConversationMessage | null>(null);
 
   const scrollToBottom = useCallback(() => {
     // Scroll the timeline container itself rather than scrollIntoView on a
@@ -87,12 +91,15 @@ export function MessageTimeline({
                 <div className="flex items-start gap-2">
                   {msg.role === "user" ? (
                     <div className="flex gap-1">
-                      <ConvertToTaskButton
-                        message={msg}
-                        onConvert={onConvertUserMessageToTask}
-                        parts={msgParts}
-                      />
                       <MessageCopyButton copyText={copyText} />
+                      <UserMessageMenu
+                        onConvert={
+                          onConvertUserMessageToTask
+                            ? () => onConvertUserMessageToTask(msg, msgParts)
+                            : undefined
+                        }
+                        onShowSystemPrompts={() => setPromptsModalMessage(msg)}
+                      />
                     </div>
                   ) : null}
                   <div className="min-w-0">
@@ -154,29 +161,89 @@ export function MessageTimeline({
           </div>
         </div>
       ) : null}
+
+      {promptsModalMessage ? (
+        <MessageSystemPromptsModal
+          message={promptsModalMessage}
+          conversationId={conversationId}
+          onClose={() => setPromptsModalMessage(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ConvertToTaskButton(props: {
-  message: ConversationMessage;
-  parts: ConversationPart[];
-  onConvert?: (message: ConversationMessage, parts: ConversationPart[]) => void;
-}) {
-  if (!props.onConvert) {
-    return null;
-  }
+function UserMessageMenu(props: { onConvert?: () => void; onShowSystemPrompts: () => void }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    function onPointerDown(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   return (
-    <button
-      aria-label="Convert to task"
-      className="mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-transparent text-text-secondary opacity-30 transition hover:border-accent/50 hover:text-text-primary focus:opacity-100 group-hover:opacity-100"
-      onClick={() => props.onConvert?.(props.message, props.parts)}
-      title="Convert to task"
-      type="button"
-    >
-      <ClipboardList aria-hidden="true" className="h-3.5 w-3.5" />
-    </button>
+    <div className="relative" ref={containerRef}>
+      <button
+        aria-label="Message actions"
+        aria-haspopup="true"
+        aria-expanded={open}
+        className={`mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition hover:border-accent/50 hover:text-text-primary focus:opacity-100 group-hover:opacity-100 ${
+          open ? "opacity-100" : "opacity-30"
+        }`}
+        onClick={() => setOpen((value) => !value)}
+        title="Message actions"
+        type="button"
+      >
+        <MoreVertical aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+      {open ? (
+        // A simple popover of buttons — not an ARIA menu (no arrow-key/focus model).
+        <div className="absolute right-0 z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-surface py-1 shadow-lg">
+          {props.onConvert ? (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text-primary transition hover:bg-surface-elevated"
+              onClick={() => {
+                setOpen(false);
+                props.onConvert?.();
+              }}
+            >
+              <ClipboardList aria-hidden="true" className="h-3.5 w-3.5 text-text-secondary" />
+              Convert to task
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text-primary transition hover:bg-surface-elevated"
+            onClick={() => {
+              setOpen(false);
+              props.onShowSystemPrompts();
+            }}
+          >
+            <ScrollText aria-hidden="true" className="h-3.5 w-3.5 text-text-secondary" />
+            Check system prompts
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

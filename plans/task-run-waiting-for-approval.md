@@ -2,84 +2,143 @@
 
 ## Goal
 
-Task runs should optionally support the same permission approval flow that workspace chat already uses. By default, task runs remain fully autonomous as they are today. When approval mode is enabled for a task or task template and a task-owned OpenCode session asks for permission, the task should become visibly attention-worthy on the board, the task detail panel should show a permission explanation card near the top, and the operator should be able to deny, allow once, or allow for the current run.
+Task runs should optionally support the same permission approval flow that
+workspace chat already uses. By default, task runs remain fully autonomous. When
+approval mode is enabled for a task or task template and a task-owned OpenCode
+session asks for permission, the run **pauses in a dedicated waiting state** (so
+the stall monitor does not kill it) and the operator is asked to approve through
+the **activity thread** (see [`activities/00-overview.md`](activities/00-overview.md)),
+not through a board badge or a per-task detail card. The operator can deny, allow
+once, or allow for the current run from a single `task_run_approval` activity.
 
 ## Scope
 
 - Reuse the existing OpenCode `permission.asked` / `permission.replied` events.
-- Reuse the existing permission reply semantics: `reject`, `once`, and `always`.
-- Apply this only to task runs and task templates through task permission configuration.
-- Keep task runs fully autonomous by default.
-- Require explicit opt-in from task and task template create/update UI before task runs pause for approvals.
-- Keep the `question` tool denied for task runs in this implementation.
-- Continue a task run after either approval or denial by replying to the pending OpenCode permission request.
+- Reuse the existing permission reply semantics: `reject`, `once`, `always`.
+- Apply only to task runs and task templates via task permission configuration.
+- Keep task runs fully autonomous by default; require explicit opt-in.
+- Keep the `question` tool denied for task runs.
+- Continue a run after approval or denial by replying to the pending OpenCode
+  permission request.
+- **Surface approvals as `task_run_approval` activities** (this plan depends on
+  the activities feature for the surface + transport).
+- **Add a waiting-for-approval run state** that exempts the run from the
+  no-progress stall timeout while it waits on a human.
 
 ## Current Observations
 
-- Chat already renders `PermissionDock` and replies to permission requests through conversation routes.
-- Task runs already create task-owned conversations and pass OpenCode permission rules into the session.
+- Chat already renders `PermissionDock` and replies through conversation routes.
+- Task runs already create task-owned conversations and pass OpenCode permission
+  rules into the session.
 - Task effective permissions are persisted on each task run.
-- Task permission rules currently force the `question` tool to `deny`.
-- Task permission resolution currently normalizes task runs to auto-approve behavior.
-- The task board/detail UI does not currently surface pending task-run permission requests.
+- Task permission rules currently force the `question` tool to `deny` and
+  normalize task runs to auto-approve.
+- The task-run monitor finalizes a run as **stalled** after `noProgressMs`
+  (default 30 min) based on `lastProgressAtMs`
+  (`services/task-run-monitor-service.ts`). A run paused on an approval makes no
+  progress and would be cancelled — this is the gap the waiting state closes.
+- Run state today: `taskRunStatus` ∈ queued/running/completed/failed/error/
+  cancelled/skipped; the only runtime sub-state is `waiting_for_opencode`
+  (`taskRunRuntimeStateSchema`).
 
 ## Implementation Plan
 
-- [ ] Persist pending task-run permission request state.
-  - Capture `permission.asked` events for task-owned conversations.
-  - Associate each pending request with `taskId`, `taskRunId`, `opencodeSessionId`, request id, permission name, patterns, metadata, and created timestamp.
-  - Clear the pending request on `permission.replied`.
+### Waiting-for-approval run state (stall-timeout fix)
 
-- [ ] Add backend APIs for task-run approvals.
-  - Expose pending permission data in task/task-run read models.
-  - Add a task-run permission reply endpoint that accepts `reject`, `once`, or `always`.
-  - Delegate replies to the existing OpenCode permission reply path for the task-owned conversation.
-  - Return the updated task/task-run state after reply.
+- [ ] Add a runtime sub-state `waiting_for_approval` to
+      `taskRunRuntimeStateSchema` (parallel to `waiting_for_opencode`). The run
+      stays `running`; the sub-state marks it as parked on a human, and is what
+      the board/activity surfaces render as "Pending approval".
+  - Rationale: a runtime sub-state avoids touching the top-level run-status enum
+    and all its consumers (board mapping, queries, public API). It is the
+    smallest change that gives both visibility and monitor control. (Rejected
+    alternative: a new top-level `pending_approval` status.)
+- [ ] Enter `waiting_for_approval` when a pending permission request is captured
+      for a task-owned session; clear it on `permission.replied` (back to
+      `waiting_for_opencode`/normal running).
+- [ ] Monitor exemption (`task-run-monitor-service.ts`):
+  - While a run is in `waiting_for_approval`, **do not** trip the no-progress
+    stall finalizer (skip the `noProgressMs` check, or treat the wait as
+    progress by advancing `lastProgressAtMs`).
+  - Decide max-lifetime handling: either also pause `maxLifetimeMs` while
+    waiting, or keep the hard cap. **Recommended:** pause the no-progress timer
+    but keep a (longer) absolute safety cap so an abandoned approval cannot live
+    forever. Flag the exact cap for review.
 
-- [ ] Update task and task template create/update UI.
-  - Add a clear optional control for requiring approval before tool actions.
-  - Show the control on task create, task update/edit, task template create, and task template update/edit flows.
-  - Default the control to off so newly created tasks and templates keep autonomous execution.
-  - Persist the selected value in the existing task permission profile.
-  - Ensure generated tasks inherit the template permission profile.
+### Persist pending task-run permission state
 
-- [ ] Update task permission configuration.
-  - Store the choice in the existing task permission profile.
-  - Map the enabled state to OpenCode `ask` rules for selected tools/servers.
-  - Map the disabled/default state to the current autonomous behavior.
-  - Keep current auto-approved task-safe CC-managed tools allowed unless the operator configures stricter permissions.
+- [ ] Capture `permission.asked` for task-owned conversations; associate the
+      pending request with `taskId`, `taskRunId`, `opencodeSessionId`, request
+      id, permission name, patterns, metadata, created timestamp.
+- [ ] Clear the pending request on `permission.replied`.
+- [ ] Expose pending permission data in task/task-run read models (so the
+      activity payload and any board hint can render it).
 
-- [ ] Highlight tasks waiting for approval on the board.
-  - Show a `Needs approval` badge on task cards with pending permission requests.
-  - Use a theme-based visual treatment that stands out in the queued column without relying on animation.
-  - Include the requested permission/tool name when space allows.
+### Backend APIs for task-run approvals
 
-- [ ] Add the task detail approval card.
-  - Place it near the top of the task panel after the task description/context.
-  - Show the requesting run, permission/tool name, patterns, and relevant metadata.
-  - Render actions as `Deny`, `Allow once`, and `Allow`.
-  - Treat `Allow` as approval for the current run/session, matching chat's existing `always` reply semantics.
-  - Disable controls while the reply is in flight and refresh the task/run state afterward.
+- [ ] Add a task-run permission reply endpoint accepting `reject`, `once`,
+      `always`; delegate to the existing OpenCode permission reply path for the
+      task-owned conversation; return updated task/run state.
+- [ ] On reply: clear pending state, exit `waiting_for_approval`, and resolve the
+      linked `task_run_approval` activity (archive it).
 
-- [ ] Keep denial non-terminal.
-  - On `Deny`, reply with `reject` and let the agent continue from the denied tool result.
-  - Do not automatically fail, cancel, or archive the task run because of a denial.
-  - Let the run outcome be determined by the agent and existing task-run completion flow.
+### Approval via the activity thread (replaces board/detail surfacing)
 
-- [ ] Update task-run prompts for human interaction expectations.
-  - Instruct task runs to continue after denied permissions when possible.
-  - Keep direct question asking unavailable for task runs.
-  - Instruct the agent to mark the run for human review when it needs clarification that cannot be answered through permissions.
+- [ ] When a pending permission is captured, **emit a `task_run_approval`
+      activity** (`level: action_required`) with: task title, run id,
+      permission/tool name, patterns, relevant metadata, and a `dedupeKey` of the
+      request id (so re-emits update in place).
+- [ ] Actions on the card: **Deny**, **Allow once**, **Allow** — wired to the
+      reply endpoint (`reject` / `once` / `always`). Treat `Allow` as approval
+      for the current run/session (chat's `always` semantics). Disable controls
+      while the reply is in flight; archive the activity on success.
+- [ ] Keep denial non-terminal: on Deny, reply `reject` and let the agent
+      continue from the denied tool result. Do not auto-fail/cancel/archive the
+      run; let the existing completion flow decide the outcome.
+- [ ] Board treatment is now **optional/secondary**: at most a subtle
+      "Pending approval" hint derived from the `waiting_for_approval` sub-state.
+      The primary action surface is the activity thread. (No dedicated task-detail
+      approval card.)
 
-- [ ] Add tests.
-  - Backend service tests for capturing and clearing pending permission requests.
-  - Route tests for task-run permission replies.
-  - Task permission tests for generating `ask` rules from the task/template configuration.
-  - Frontend tests for board highlighting and task detail approval actions.
-  - Regression tests that denial replies do not directly mark the task run as failed.
+### Task & task template configuration (opt-in)
 
-- [ ] Verify.
-  - Run `pnpm format:fix`.
-  - Run `pnpm lint`.
-  - Run focused backend and frontend tests for task permissions, task execution, task routes, and task UI.
-  - Run broader tests if shared schemas or task run state shapes change.
+- [ ] Add an optional "Require approval before tool actions" control on task
+      create, task update/edit, task template create, and template update/edit.
+- [ ] Default off (autonomous). Persist in the existing task permission profile;
+      generated tasks inherit the template profile.
+- [ ] Map enabled → OpenCode `ask` rules for selected tools/servers; disabled →
+      current autonomous behavior. Keep task-safe CC-managed tools allowed unless
+      stricter rules are configured.
+
+### Task-run prompt updates
+
+- [ ] Instruct task runs to continue after denied permissions when possible.
+- [ ] Keep direct question asking unavailable for task runs.
+- [ ] Instruct the agent to mark the run for human review when it needs
+      clarification that cannot be resolved through permissions. (This lands as a
+      `task_needs_review` activity via the activities feature.)
+
+## Tests
+
+- Backend: capture/clear pending permission requests; enter/exit
+  `waiting_for_approval`; monitor does **not** stall a run while waiting for
+  approval; reply endpoint maps `reject`/`once`/`always` to the OpenCode reply
+  path; replying archives the `task_run_approval` activity; denial does not mark
+  the run failed.
+- Permission config: `ask` rules generated from the task/template opt-in.
+- Frontend: `task_run_approval` activity renders Deny/Allow once/Allow and calls
+  the reply endpoint; board shows only the subtle pending hint.
+
+## Dependencies
+
+- **Activities feature** ([`activities/00-overview.md`](activities/00-overview.md)):
+  provides the durable activity store, transport, Dashboard thread + nav bell,
+  and the generic card renderer. This plan adds the `task_run_approval` kind and
+  its producer/reply wiring on top of that infrastructure.
+
+## Verify
+
+- `pnpm format:fix`, `pnpm lint`.
+- Focused backend + frontend tests for task permissions, task execution, task
+  routes, the run monitor, and the approval activity.
+- Broader tests if shared schemas or task-run state shapes change.

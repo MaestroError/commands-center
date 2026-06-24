@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ChevronLeft, Clock3, ListChecks, Menu, Search } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
+import { ActivityBell } from "@/components/activities/ActivityBell";
 import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { AppLogo } from "@/components/common/AppLogo";
 import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
@@ -165,7 +166,7 @@ export function AppShell() {
                   </kbd>
                 </button>
                 <button
-                  className="hidden rounded-full border border-border bg-surface px-3 py-1 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary sm:inline-flex"
+                  className="hidden h-9 items-center rounded-md border border-border bg-surface px-3 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary sm:inline-flex"
                   onClick={() => {
                     const idx = themes.indexOf(theme ?? themes[0] ?? "dark");
                     const next = themes[(idx + 1) % themes.length];
@@ -176,7 +177,8 @@ export function AppShell() {
                 >
                   Theme: {theme}
                 </button>
-                <NavLink className="cc-button cc-button-secondary" to="/profile">
+                <ActivityBell />
+                <NavLink className="cc-button cc-button-secondary h-9 rounded-md" to="/profile">
                   Profile
                 </NavLink>
               </div>

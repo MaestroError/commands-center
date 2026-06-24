@@ -176,6 +176,20 @@
       "when": 1781873072376,
       "tag": "0024_pink_sharon_carter",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1782221761407,
+      "tag": "0025_loose_gamora",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1782295031788,
+      "tag": "0026_chubby_wendell_rand",
+      "breakpoints": true
     }
   ]
 }
