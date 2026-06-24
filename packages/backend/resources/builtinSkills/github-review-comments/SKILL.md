@@ -36,7 +36,7 @@ When a comment is relevant:
 
 1. Implement the smallest appropriate fix.
 2. Run focused validation for that fix.
-3. Commit the fix separately from other unrelated review comments.
+3. If the user has asked you to commit/push, commit the fix separately from other unrelated review comments; otherwise ask for approval before committing.
 4. Reply to the review thread with what changed and the validation used.
 5. Resolve the review thread after the fix is committed and pushed, when a review-thread resolve tool is available.
 
