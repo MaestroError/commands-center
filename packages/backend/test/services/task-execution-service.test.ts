@@ -233,6 +233,9 @@ describe("createTaskExecutionService", () => {
       });
       await expectRunStatus(taskService, defaultRun.id, "running");
 
+      // Prompts are sent asynchronously after the run flips to "running"; wait for
+      // all three to land before asserting their models.
+      await expect.poll(() => prompts.length).toBe(3);
       expect(prompts[0]?.model).toEqual({ providerID: "anthropic", modelID: "claude-haiku" });
       expect(prompts[1]?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
       expect(prompts[2]?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" });
@@ -287,6 +290,9 @@ describe("createTaskExecutionService", () => {
 
       expect(run.fallbackModels).toEqual(["anthropic/claude-haiku"]);
       await expectRunStatus(taskService, run.id, "running");
+      // Wait for the (single) async prompt to land before asserting no fallback
+      // was queued prematurely.
+      await expect.poll(() => prompts.length).toBe(1);
       const runs = await taskService.listRuns(task.id);
 
       expect(runs).toHaveLength(1);
