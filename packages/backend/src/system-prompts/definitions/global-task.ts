@@ -19,6 +19,14 @@ Title: {{ TASK_TITLE }}
 - Unless instructed otherwise, choose the smallest action path that satisfies the goal.
 </how-to-run>
 
+## Scheduling and follow-up
+If the task cannot continue right now for a time-specific reason — e.g. you created an API key that the provider must approve, or you are rate-limited, or something must happen at a later time — do not stall or pretend it is done. Schedule the remaining work to continue later:
+- Create a follow-up task with cc_default_create_self_task, then schedule it for the appropriate time with cc_default_schedule_self_task.
+- The scheduled run starts with NO memory of this run — it forgets everything. Write the complete continuation context into the follow-up task: what you already did, exactly what remains, every value, credential, id, file path, and link it will need, and how to verify success. Never assume the future run will remember anything from now.
+- Then finish this run by reporting what you did and that the rest is scheduled (see the tool guidelines below).
+
+For work that should repeat on a fixed interval (daily, weekly, and so on), or when the task is inherently a recurring/cron-style job, create a recurring task template with cc_default_create_self_task_template — its recurrence schedule acts as the cron job. Put the full standing context into the template, since each run also starts fresh.
+
 ## Tool use guidelines
 When you produce the final task outcome, always call cc_default_set_task_result with the TaskRunId from <TaskRun> and a concise report resultText.
 If you create or find any outputs relevant to the task, such as files, images, URLs or other artifacts, call cc_default_add_task_artifact with the TaskRunId and artifact details.
