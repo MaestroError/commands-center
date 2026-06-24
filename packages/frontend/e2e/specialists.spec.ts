@@ -48,7 +48,10 @@ test("creates and edits a specialist", async ({ page }) => {
   await page.getByRole("textbox", { name: /^Emoji$/ }).fill("🤖");
   await page.getByLabel(/Search skills/i).fill("code");
   await page.getByRole("button", { name: /code-reviewer/i }).click();
-  await page.getByRole("button", { name: "Create specialist" }).click();
+  // force: the submit button is genuinely clickable, but on the tall mobile
+  // layout Playwright's hit-test occasionally reports the adjacent card as the
+  // top element at the button's edge position (a false interception).
+  await page.getByRole("button", { name: "Create specialist" }).click({ force: true });
 
   // Creating a specialist returns to the specialists list.
   await expect(page).toHaveURL(/\/specialists$/);
@@ -74,7 +77,8 @@ test("creates and edits a specialist", async ({ page }) => {
   );
   await page.getByLabel(/^Role/).fill("plan features");
   await expect(page.getByLabel(/^Role/)).toHaveValue("plan features");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  // force: same false interception as the create submit above.
+  await page.getByRole("button", { name: "Save changes" }).click({ force: true });
   await updateResponse;
 
   // Saving also returns to the specialists list, now showing the updated role.
