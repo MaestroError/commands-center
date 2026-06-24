@@ -30,6 +30,8 @@ import {
 import type { TaskContextAttachmentService } from "./task-context-attachment-service.js";
 import type { SessionArchiveService } from "./session-archive-service.js";
 import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
+import type { ActivityService } from "./activity-service.js";
+import { buildTerminalActivity } from "./task-activity.js";
 import { createTaskRunContextService } from "./task-run-context-service.js";
 import {
   createTaskRunMonitorService,
@@ -128,6 +130,7 @@ export function createTaskExecutionService(options: {
   archiveService?: SessionArchiveService;
   archiveSettingsService?: SessionArchiveSettingsService;
   monitorSettingsService?: TaskRunMonitorSettingsService;
+  activityService?: ActivityService;
   onRunTerminal?: (run: TaskRun) => void | Promise<void>;
   logger?: Logger;
   monitor?: TaskRunMonitorOptions;
@@ -1357,7 +1360,39 @@ export function createTaskExecutionService(options: {
 
   function notifyRunTerminal(run: TaskRun): void {
     void finalizeRunArchive(run);
+    void emitTerminalActivity(run);
     void options.onRunTerminal?.(run);
+  }
+
+  // Drop an activity for the just-finished run. Best-effort: never throw into the
+  // terminal path, and never block it.
+  async function emitTerminalActivity(run: TaskRun): Promise<void> {
+    const activityService = options.activityService;
+    if (!activityService) {
+      return;
+    }
+
+    try {
+      let isFeedbackSubtask = false;
+      if (run.subtaskId) {
+        const subtask = (await options.taskService.listSubtasks(run.taskId)).find(
+          (entry) => entry.id === run.subtaskId,
+        );
+        isFeedbackSubtask = Boolean(subtask?.feedbackId);
+      }
+
+      const task = await options.taskService.get(run.taskId);
+      const input = buildTerminalActivity({
+        run,
+        taskTitle: task?.title ?? "Untitled task",
+        isFeedbackSubtask,
+      });
+      if (input) {
+        await activityService.emit(input);
+      }
+    } catch (error) {
+      options.logger?.warn({ err: error, runId: run.id }, "failed to emit terminal activity");
+    }
   }
 
   async function finalizeRunArchive(run: TaskRun): Promise<void> {

@@ -10,18 +10,19 @@ import type { CustomToolService } from "../../services/custom-tool-service.js";
 import type { SpecialistService } from "../../services/specialist-service.js";
 import type { LiveRequestService } from "../../services/live-request-service.js";
 import type { OpenCodeService } from "../../services/opencode-service.js";
+import type { ActivityService } from "../../services/activity-service.js";
 import type { SecretService } from "../../services/secret-service.js";
 import type { TaskExecutionService } from "../../services/task-execution-service.js";
 import type { TaskService } from "../../services/task-service.js";
 import type { OpenCodeOrchestrator } from "../../orchestrator/opencode-orchestrator.js";
 import {
-  addSecretToolMetadata,
-  createAddSecretDefinition,
-} from "./groups/cc-app/tools/add-secret.js";
+  createRequestSecretDefinition,
+  requestSecretToolMetadata,
+} from "./groups/cc-default/tools/request-secret.js";
 import {
   createShowFileToUserDefinition,
   showFileToUserToolMetadata,
-} from "./groups/cc-app/tools/show-file-to-user.js";
+} from "./groups/cc-default/tools/show-file-to-user.js";
 import {
   addTaskArtifactToolMetadata,
   createTaskRunOutcomeToolDefinitions,
@@ -171,36 +172,13 @@ export function createCcManagedMcpServerRegistry(options: {
   liveRequestService?: LiveRequestService;
   secretService?: SecretService;
   orchestrator?: OpenCodeOrchestrator;
+  activityService?: ActivityService;
   taskService?: TaskService;
   taskExecutionService?: TaskExecutionService;
   sessionArchiveService?: SessionArchiveService;
   sessionArchiveSettingsService?: SessionArchiveSettingsService;
 }): readonly CcManagedMcpServerDefinition[] {
   const ccAppTools: CcManagedToolDefinition[] = [];
-
-  if (options.db && options.config && options.opencodeService && options.liveRequestService) {
-    ccAppTools.push(
-      createShowFileToUserDefinition({
-        db: options.db,
-        config: options.config,
-        opencodeService: options.opencodeService,
-        liveRequestService: options.liveRequestService,
-      }),
-    );
-
-    if (options.secretService && options.orchestrator) {
-      ccAppTools.unshift(
-        createAddSecretDefinition({
-          db: options.db,
-          config: options.config,
-          opencodeService: options.opencodeService,
-          liveRequestService: options.liveRequestService,
-          secretService: options.secretService,
-          orchestrator: options.orchestrator,
-        }),
-      );
-    }
-  }
 
   // cc_app holds the operator-interactive tools (live requests) plus the custom-tool
   // authoring helpers. Only cc_app needs the long timeout.
@@ -261,20 +239,40 @@ export function createCcManagedMcpServerRegistry(options: {
         }),
       ]
     : [];
-  const defaultInteractiveTools: CcManagedToolDefinition[] =
-    options.db && options.taskService && options.taskExecutionService
-      ? [
-          ...createSelfTaskLiveToolDefinitions({
-            db: options.db,
-            taskService: options.taskService,
-            taskExecutionService: options.taskExecutionService,
-            conversationService: options.conversationService,
-            liveRequestService: options.liveRequestService,
-          }),
-        ]
-      : [];
+  const defaultInteractiveTools: CcManagedToolDefinition[] = [];
+
+  if (options.db && options.config && options.opencodeService && options.liveRequestService) {
+    defaultInteractiveTools.push(
+      createShowFileToUserDefinition({
+        db: options.db,
+        config: options.config,
+        opencodeService: options.opencodeService,
+        liveRequestService: options.liveRequestService,
+      }),
+    );
+  }
+
+  if (options.db && options.taskService && options.taskExecutionService) {
+    defaultInteractiveTools.push(
+      ...createSelfTaskLiveToolDefinitions({
+        db: options.db,
+        taskService: options.taskService,
+        taskExecutionService: options.taskExecutionService,
+        conversationService: options.conversationService,
+        liveRequestService: options.liveRequestService,
+      }),
+    );
+  }
 
   const defaultTools: CcManagedToolDefinition[] = [
+    ...(options.secretService && options.activityService
+      ? [
+          createRequestSecretDefinition({
+            secretService: options.secretService,
+            activityService: options.activityService,
+          }),
+        ]
+      : []),
     ...(options.agentService
       ? [
           createListSpecialistsToolDefinition({ agentService: options.agentService }),
@@ -333,6 +331,7 @@ export function createCcManagedMcpServerRegistry(options: {
       // fast while leaving headroom — far below the 10-min interactive window.
       toolCallTimeoutMs: 15 * 1000,
       catalogTools: [
+        requestSecretToolMetadata,
         listSpecialistsToolMetadata,
         getSelfProfileToolMetadata,
         setTaskResultToolMetadata,
@@ -372,6 +371,7 @@ export function createCcManagedMcpServerRegistry(options: {
       interactive: true,
       toolCallTimeoutMs: 10 * 60 * 1000,
       catalogTools: [
+        showFileToUserToolMetadata,
         runSelfTaskToolMetadata,
         draftSelfTaskToolMetadata,
         draftSelfTaskUpdateToolMetadata,
@@ -387,8 +387,6 @@ export function createCcManagedMcpServerRegistry(options: {
       enabledByDefault: false,
       interactive: true,
       catalogTools: [
-        addSecretToolMetadata,
-        showFileToUserToolMetadata,
         createCustomToolMetadata,
         copyCustomToolToSpecialistMetadata,
         draftSpecialistToolMetadata,

@@ -1,4 +1,16 @@
 export {
+  activityKindSchema,
+  activityLevelSchema,
+  activityListResponseSchema,
+  activitySchema,
+  activityStatusSchema,
+  type Activity,
+  type ActivityKind,
+  type ActivityLevel,
+  type ActivityListResponse,
+  type ActivityStatus,
+} from "./activities.js";
+export {
   apiTokenListResponseSchema,
   apiTokenRecordSchema,
   apiTokenScopeSchema,

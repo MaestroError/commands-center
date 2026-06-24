@@ -18,7 +18,9 @@ describe("createTaskPermissionService", () => {
       mcpServers: [{ name: "github", enabled: true, action: "ask" as const }],
       toolPermissions: [{ pattern: "bash_*", action: "ask" as const }],
       appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" as const }],
-      appToolPermissions: [{ pattern: "cc_app_show_file_to_user", action: "allow" as const }],
+      appToolPermissions: [
+        { pattern: "cc_default_interactive_show_file_to_user", action: "allow" as const },
+      ],
     };
 
     const merged = mergeTaskPermissions(agentCapabilities, {
@@ -47,7 +49,9 @@ describe("createTaskPermissionService", () => {
         mcpServers: [{ name: "github", enabled: true, action: "ask" }],
         toolPermissions: [{ pattern: "bash_*", action: "ask" }],
         appMcpServers: [{ name: "cc_app", enabled: true, action: "allow" }],
-        appToolPermissions: [{ pattern: "cc_app_show_file_to_user", action: "ask" }],
+        appToolPermissions: [
+          { pattern: "cc_default_interactive_show_file_to_user", action: "ask" },
+        ],
       });
       const task = await taskService.create({
         agentId: agent.id,
@@ -62,7 +66,7 @@ describe("createTaskPermissionService", () => {
       expect(effective.mcpServers).toEqual([{ name: "github", enabled: true, action: "allow" }]);
       expect(effective.toolPermissions).toEqual([{ pattern: "bash_*", action: "allow" }]);
       expect(effective.appToolPermissions).toContainEqual({
-        pattern: "cc_app_show_file_to_user",
+        pattern: "cc_default_interactive_show_file_to_user",
         action: "deny",
       });
       expect(effective.appToolPermissions).toContainEqual({

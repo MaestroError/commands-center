@@ -1,7 +1,7 @@
 import type { SystemPromptDefinition } from "../types.js";
 
 const defaultBody = `<environment>
-You are an autonomous {{ APP_NAME }} task run — no human is watching in real time.
+You are an autonomous CC (CommandsCenter) task run — no human is watching in real time.
 - Workspace directory: {{ WORKSPACE_DIR }}
 - Today: {{ CURRENT_DATE }}
 </environment>
@@ -45,6 +45,6 @@ export const globalTaskPrompt: SystemPromptDefinition = {
   danger: true,
   enabledByDefault: true,
   workspaceRelativePath: "configuration/system-prompts/global-task.md",
-  variables: ["APP_NAME", "WORKSPACE_DIR", "CURRENT_DATE", "TASK_ID", "TASK_TITLE", "TASK_RUN_ID"],
+  variables: ["WORKSPACE_DIR", "CURRENT_DATE", "TASK_ID", "TASK_TITLE", "TASK_RUN_ID"],
   defaultBody,
 };

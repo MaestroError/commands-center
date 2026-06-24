@@ -1,4 +1,8 @@
 import {
+  activityListResponseSchema,
+  activitySchema,
+  type Activity,
+  type ActivityListResponse,
   specialistCatalogSchema,
   apiTokenListResponseSchema,
   cancelTaskRunInputSchema,
@@ -1534,6 +1538,29 @@ export async function setConversationSystemPromptEnabled(
     `/api/conversations/${encodeURIComponent(conversationId)}/system-prompts/${encodeURIComponent(promptId)}`,
     resolvedSystemPromptSchema.array(),
     { method: "PATCH", body: { enabled } },
+  );
+}
+
+export async function getActivities(
+  status?: "pending" | "archived" | "all",
+): Promise<ActivityListResponse> {
+  const query = status ? `?status=${status}` : "";
+  return requestJson<ActivityListResponse>(`/api/activities${query}`, activityListResponseSchema);
+}
+
+export async function archiveActivity(id: string): Promise<Activity> {
+  return requestJson<Activity>(
+    `/api/activities/${encodeURIComponent(id)}/archive`,
+    activitySchema,
+    { method: "POST" },
+  );
+}
+
+export async function fillSecret(id: string, value: string): Promise<Activity> {
+  return requestJson<Activity>(
+    `/api/activities/${encodeURIComponent(id)}/fill-secret`,
+    activitySchema,
+    { method: "POST", body: { value } },
   );
 }
 

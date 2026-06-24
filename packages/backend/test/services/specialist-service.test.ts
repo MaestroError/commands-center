@@ -242,18 +242,6 @@ describe("createSpecialistService", () => {
             "CommandsCenter app-managed, operator-interactive capabilities for this specialist.",
           tools: [
             {
-              name: "add_secret",
-              description:
-                "Ask the CommandsCenter operator to securely enter a workspace secret while the specialist waits.",
-              context: "chat",
-            },
-            {
-              name: "show_file_to_user",
-              description:
-                "Open a file from this specialist workspace in the CommandsCenter operator's preview tab while the specialist waits. Accepts either a specialist-relative path or an absolute path inside this specialist workspace.",
-              context: "chat",
-            },
-            {
               name: "create_custom_tool",
               description:
                 "Create a blank CommandsCenter custom tool and return the folder path the specialist should edit.",

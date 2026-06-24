@@ -21,6 +21,8 @@ export const queryKeys = {
   conversationMedia: (conversationId: string) => ["conversation-media", conversationId] as const,
   conversationSystemPrompts: (conversationId: string) =>
     ["conversation-system-prompts", conversationId] as const,
+  activities: ["activities"] as const,
+  activitiesResolved: ["activities", "resolved"] as const,
   systemPrompts: ["system-prompts"] as const,
   systemPrompt: (id: string) => ["system-prompt", id] as const,
   tasks: (query?: Record<string, unknown>) => ["tasks", query ?? {}] as const,

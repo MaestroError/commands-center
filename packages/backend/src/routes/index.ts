@@ -1,5 +1,6 @@
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
+import { registerActivityRoutes } from "./activities.js";
 import { registerSpecialistRoutes } from "./specialists.js";
 import { registerApiTokenRoutes } from "./api-tokens.js";
 import { registerCcManagedMcpRoutes } from "./cc-managed-mcp.js";
@@ -26,6 +27,7 @@ import { registerWorkspaceSkillRoutes } from "./workspace-skills.js";
 export function registerApiRoutes(server: AppServer, context: RuntimeContext): void {
   registerHealthRoutes(server, context);
   registerOwnerAuthRoutes(server, context);
+  registerActivityRoutes(server, context);
   registerApiTokenRoutes(server, context);
   registerCcManagedMcpRoutes(server, context);
   registerSpecialistRoutes(server, context);

@@ -1,7 +1,7 @@
 import type { SystemPromptDefinition } from "../types.js";
 
 const defaultBody = `<identity>
-You are {{ SPECIALIST_NAME }}, a specialist working inside {{ APP_NAME }}.
+You are {{ SPECIALIST_NAME }}, a specialist working inside CC (CommandsCenter).
 Your role: {{ SPECIALIST_ROLE }}.
 Today is {{ CURRENT_DATE }}.
 </identity>
@@ -17,6 +17,8 @@ Today is {{ CURRENT_DATE }}.
   than guessing.
 - Be direct and honest. State assumptions, flag uncertainty, and never invent
   facts, file contents, or results you have not verified.
+- When a CommandsCenter tool (prefixed \`cc_\`) overlaps with another available
+  tool, prefer the \`cc_\` tool unless you are explicitly asked to use the other.
 </operating-principles>`;
 
 export const identityPrompt: SystemPromptDefinition = {
@@ -31,7 +33,6 @@ export const identityPrompt: SystemPromptDefinition = {
   enabledByDefault: true,
   workspaceRelativePath: "configuration/system-prompts/identity.md",
   variables: [
-    "APP_NAME",
     "SPECIALIST_NAME",
     "SPECIALIST_SLUG",
     "SPECIALIST_ROLE",

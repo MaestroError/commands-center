@@ -81,6 +81,7 @@ export function registerCcManagedMcpRoutes(server: AppServer, context: RuntimeCo
     liveRequestService: context.liveRequestService,
     secretService: context.secretService,
     orchestrator: context.orchestrator,
+    activityService: context.activityService,
     taskService,
     taskExecutionService,
     sessionArchiveService: context.sessionArchiveService,
