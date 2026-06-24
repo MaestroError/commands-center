@@ -95,6 +95,7 @@ describe("agent routes", () => {
         "code-simplification",
         "concise-summarizer",
         "final-review",
+        "github-review-comments",
         "global-skill-authoring",
         "global-tool-authoring",
         "self-skill-authoring",
