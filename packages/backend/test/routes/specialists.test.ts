@@ -90,6 +90,9 @@ describe("agent routes", () => {
       expect(catalog.statusCode).toBe(200);
       const catalogBody = catalog.json<{ builtInSkills: Array<{ slug: string }> }>();
       expect(catalogBody.builtInSkills.map((skill) => skill.slug)).toEqual([
+        "code-review",
+        "code-security",
+        "code-simplification",
         "concise-summarizer",
         "final-review",
         "global-skill-authoring",
