@@ -61,10 +61,10 @@ request**:
       affordance, that is the Settings UI, not an agent tool.)
 - [ ] Secret-fill endpoint `POST /api/activities/:id/fill-secret`
       (owner-guarded): validate the activity is a `pending` `secret_request`,
-      read `{ value }` (and confirm key from payload), `secretService.set(key,
-    value)`, trigger `orchestrator.restart("secret updated")` (now safe — no
-      agent turn is blocked on it), then `archive` the activity. Returns the
-      updated record.
+      read `{ value }` (and confirm key from payload), call
+      `secretService.set(key, value)`, trigger
+      `orchestrator.restart("secret updated")` (now safe — no agent turn is
+      blocked on it), then `archive` the activity. Returns the updated record.
   - Reuse the existing secret-set + restart semantics from the current
     `add-secret.ts` (only the _trigger_ moves from a blocking tool to an
     operator-driven endpoint).
