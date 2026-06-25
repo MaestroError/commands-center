@@ -1,9 +1,19 @@
-import type { Activity } from "@cc/shared/schemas";
+import type { Activity, ActivityKind } from "@cc/shared/schemas";
 
 import { Markdown } from "@/components/chat/Markdown";
+import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
+import { useTaskQuery } from "@/hooks/use-tasks-query";
 
 import { ActivityActions } from "./ActivityActions";
 import { getActivityKindMeta } from "./activity-registry";
+
+// Outcome notifications carry the task's definition of done, so surface the
+// acceptance criteria inline — the operator verifies them right where they
+// accept or review, without opening the task.
+const ACTIVITY_KINDS_WITH_CRITERIA: ReadonlySet<ActivityKind> = new Set<ActivityKind>([
+  "task_completed",
+  "task_needs_review",
+]);
 
 type ActivityCardProps = {
   activity: Activity;
@@ -65,6 +75,9 @@ export function ActivityCard({
               <Markdown content={activity.body} />
             </div>
           ) : null}
+          {!compact && ACTIVITY_KINDS_WITH_CRITERIA.has(activity.kind) ? (
+            <ActivityAcceptanceCriteria activity={activity} interactive={!readOnly} />
+          ) : null}
           {!readOnly && onArchive ? (
             <div className="mt-2">
               <ActivityActions activity={activity} onArchive={onArchive} archiving={archiving} />
@@ -72,6 +85,35 @@ export function ActivityCard({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Loads the activity's task and renders its acceptance criteria. Returns nothing
+// until the task resolves or when it has no criteria, so the card stays compact
+// for tasks without a defined "done". Interactive (operator can tick criteria)
+// unless the card is read-only history.
+function ActivityAcceptanceCriteria({
+  activity,
+  interactive,
+}: {
+  activity: Activity;
+  interactive: boolean;
+}) {
+  const taskId = typeof activity.payload["taskId"] === "string" ? activity.payload["taskId"] : "";
+  const taskQuery = useTaskQuery(taskId || undefined);
+  const task = taskQuery.data;
+
+  if (!task || task.todos.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+        Acceptance criteria
+      </p>
+      <AcceptanceCriteriaList className="mt-1.5" interactive={interactive} task={task} />
     </div>
   );
 }

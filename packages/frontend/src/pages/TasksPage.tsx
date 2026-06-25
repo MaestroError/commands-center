@@ -3050,6 +3050,10 @@ function TaskTemplateForm(props: {
   onSubmit: (input: CreateTaskTemplateInput) => void;
 }) {
   const [form, setForm] = useState<FormState>(() => templateToForm(props.initialTemplate));
+  const catalogQuery = useSpecialistCatalogQuery();
+  const selectedAgent = props.agents.find((agent) => agent.id === form.agentId);
+  const templateSkills = useTaskComposerSkills(selectedAgent, catalogQuery.data);
+  const timezones = useMemo(() => listTimezones(), []);
 
   useEffect(() => {
     if (props.initialTemplate) {
@@ -3115,14 +3119,21 @@ function TaskTemplateForm(props: {
           onChange={(fallbackModels) => updateForm({ fallbackModels })}
         />
       </div>
-      <label className="grid gap-1 text-sm text-text-secondary">
-        Task prompt
-        <textarea
-          className="cc-input min-h-28 resize-y"
-          value={form.prompt.text}
-          onChange={(event) => updateForm({ prompt: createTaskPromptValue(event.target.value) })}
+      <section className="grid gap-1 text-sm text-text-secondary">
+        <div>
+          <h2 className="font-medium text-text-primary">Task prompt</h2>
+          <p className="text-xs text-text-secondary">
+            Use # to mention workspace files and / to pick a skill available to the selected agent.
+          </p>
+        </div>
+        <TaskPromptComposer
+          agentId={form.agentId || undefined}
+          disabled={!form.agentId}
+          onChange={(prompt) => updateForm({ prompt })}
+          skills={templateSkills}
+          value={form.prompt}
         />
-      </label>
+      </section>
       <section className="grid min-w-0 gap-2 rounded-xl border border-border bg-surface p-4">
         <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
           <input
@@ -3175,6 +3186,21 @@ function TaskTemplateForm(props: {
                   value={form.anchorAtLocal}
                   onChange={(event) => updateForm({ anchorAtLocal: event.target.value })}
                 />
+              </label>
+              <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                Timezone
+                <select
+                  className="cc-input min-w-0"
+                  data-testid="task-template-timezone-input"
+                  value={form.timezone}
+                  onChange={(event) => updateForm({ timezone: event.target.value })}
+                >
+                  {timezones.map((zone) => (
+                    <option key={zone} value={zone}>
+                      {zone}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
             {form.repeatPreset === "custom" ? (
@@ -3347,7 +3373,7 @@ function TaskTemplateDetailPanel(props: {
           </h2>
         </div>
         <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
-          Back to templates
+          Close
         </button>
       </header>
       <div className="overflow-auto bg-surface-elevated p-4">
@@ -3560,12 +3586,12 @@ function GeneratedTaskHistory(props: {
             >
               Open full page
             </Link>
-            {task.latestFinalMessage ? (
-              <span className="rounded-full border border-border bg-background px-2 py-1 text-xs text-text-secondary">
-                {task.latestFinalMessage}
-              </span>
-            ) : null}
           </div>
+          {task.latestFinalMessage ? (
+            <p className="mt-3 min-w-0 break-words rounded-lg border border-border bg-surface-elevated p-3 text-xs text-text-secondary [overflow-wrap:anywhere]">
+              {task.latestFinalMessage}
+            </p>
+          ) : null}
         </article>
       ))}
     </section>
@@ -4801,6 +4827,15 @@ function Metric(props: { label: string; value: string }) {
 
 function readLocalTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+// IANA timezone names for the schedule picker. Always include the operator's
+// local zone (and "UTC") so the current selection is never missing from the
+// list, even on runtimes that don't implement Intl.supportedValuesOf.
+function listTimezones(): string[] {
+  const supported =
+    typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+  return Array.from(new Set([readLocalTimezone(), "UTC", ...supported]));
 }
 
 function toLocalDateTime(value: string): string {

@@ -2278,6 +2278,7 @@ describe("TasksPage", () => {
     await user.selectOptions(screen.getByLabelText(/Unit/i), "hour");
     await user.clear(screen.getByLabelText(/Every/i));
     await user.type(screen.getByLabelText(/Every/i), "4");
+    await user.selectOptions(screen.getByLabelText(/Timezone/i), "UTC");
     const createButtons = screen.getAllByRole("button", { name: "Create template" });
     expect(createButtons[1]).toBeDefined();
     await user.click(createButtons[1] as HTMLElement);
@@ -2294,6 +2295,10 @@ describe("TasksPage", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/tasks/templates",
       expect.objectContaining({ body: expect.stringContaining('"interval":4') }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tasks/templates",
+      expect.objectContaining({ body: expect.stringContaining('"timezone":"UTC"') }),
     );
   });
 });
