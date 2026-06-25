@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import {
@@ -40,6 +40,11 @@ const updateHistorySchema = z.object({
 type UpdateHistory = z.infer<typeof updateHistorySchema>;
 type UpdateHistoryEntry = z.infer<typeof updateHistoryEntrySchema>;
 type CommandRunner = (command: string, args: string[]) => Promise<void>;
+type CommandOutput = {
+  stdout: string;
+  stderr: string;
+};
+type OutputCommandRunner = (command: string, args: string[]) => Promise<CommandOutput>;
 
 export type SystemVersionService = {
   start(): void;
@@ -101,8 +106,11 @@ export function createSystemVersionService(options: {
   drainController?: DrainController;
   fetchLatest?: () => Promise<string>;
   runCommand?: CommandRunner;
+  runOutputCommand?: OutputCommandRunner;
   exitProcess?: (code: number) => never | void;
   detectMode?: () => InstallMode;
+  npmGlobalRoot?: string;
+  getNodeMajor?: () => number;
 }): SystemVersionService {
   const env = options.env ?? process.env;
   const installMode = options.detectMode
@@ -113,6 +121,7 @@ export function createSystemVersionService(options: {
         dockerEnvPath: nonEmpty(env["CC_DOCKER_ENV_PATH"]),
       });
   const runCommand = options.runCommand ?? spawnCommand;
+  const runOutputCommand = options.runOutputCommand ?? spawnOutputCommand;
   const exitProcess = options.exitProcess ?? ((code: number) => process.exit(code));
   const fetchLatest =
     options.fetchLatest ?? (() => fetchLatestVersion(options.config.updates.registryUrl));
@@ -124,6 +133,7 @@ export function createSystemVersionService(options: {
   );
   let interval: NodeJS.Timeout | undefined;
   let checking: Promise<SystemVersion> | undefined;
+  let activeOperation: "update" | "rollback" | undefined;
 
   const service: SystemVersionService = {
     start() {
@@ -184,27 +194,43 @@ export function createSystemVersionService(options: {
         return dockerGuidance();
       }
 
-      const latest = (await runCheck()).latest;
-      const targetVersion = latest ?? options.packageInfo.version;
-      await runNpmInstall(runCommand, installMode, targetVersion);
-      await appendHistory(options.config.updates.historyFile, {
-        previousVersion: options.packageInfo.version,
-        targetVersion,
-        appliedAt: new Date().toISOString(),
-        installMode,
+      return runExclusive("update", async () => {
+        const latest = (await runCheck()).latest;
+        const targetVersion = latest ?? options.packageInfo.version;
+        const previousVersion = options.packageInfo.version;
+        const preflightResult = await preflightNpmInstall(targetVersion);
+
+        if (preflightResult) {
+          return preflightResult;
+        }
+
+        try {
+          await runNpmInstall(runCommand, npmInstallMode(), targetVersion);
+          await verifyNpmInstall(targetVersion);
+        } catch (error) {
+          options.logger.error({ err: error, targetVersion }, "commandscenter update failed");
+          return restorePreviousVersion(previousVersion, targetVersion, error);
+        }
+
+        await appendHistory(options.config.updates.historyFile, {
+          previousVersion,
+          targetVersion,
+          appliedAt: new Date().toISOString(),
+          installMode,
+        });
+
+        const result: SystemUpdateResult = {
+          applied: true,
+          installMode,
+          message: `Updated commandscenter to ${targetVersion}. Restarting process.`,
+          previousVersion,
+          targetVersion,
+          restartRequired: true,
+        };
+
+        scheduleRestart(options.drainController, exitProcess, options.logger);
+        return result;
       });
-
-      const result: SystemUpdateResult = {
-        applied: true,
-        installMode,
-        message: `Updated commandscenter to ${targetVersion}. Restarting process.`,
-        previousVersion: options.packageInfo.version,
-        targetVersion,
-        restartRequired: true,
-      };
-
-      scheduleRestart(options.drainController, exitProcess, options.logger);
-      return result;
     },
 
     async rollback() {
@@ -212,30 +238,55 @@ export function createSystemVersionService(options: {
         return dockerGuidance();
       }
 
-      const previous = await readPreviousVersion(options.config.updates.historyFile);
+      return runExclusive("rollback", async () => {
+        const previous = await readPreviousVersion(options.config.updates.historyFile);
 
-      if (!previous) {
-        return {
-          applied: false,
+        if (!previous) {
+          return {
+            applied: false,
+            installMode,
+            message: "No previous commandscenter version is recorded in this workspace.",
+            restartRequired: false,
+          };
+        }
+
+        const preflightResult = await preflightNpmInstall(previous.previousVersion);
+
+        if (preflightResult) {
+          return preflightResult;
+        }
+
+        try {
+          await runNpmInstall(runCommand, npmInstallMode(), previous.previousVersion);
+          await verifyNpmInstall(previous.previousVersion);
+        } catch (error) {
+          options.logger.error(
+            { err: error, targetVersion: previous.previousVersion },
+            "commandscenter rollback failed",
+          );
+          return {
+            applied: false,
+            installMode,
+            message: `Rollback to commandscenter ${previous.previousVersion} failed.`,
+            previousVersion: options.packageInfo.version,
+            targetVersion: previous.previousVersion,
+            restartRequired: false,
+            instructions: recoveryInstructions(formatError(error)),
+          };
+        }
+
+        const result: SystemUpdateResult = {
+          applied: true,
           installMode,
-          message: "No previous commandscenter version is recorded in this workspace.",
-          restartRequired: false,
+          message: `Rolled back commandscenter to ${previous.previousVersion}. Restarting process.`,
+          previousVersion: options.packageInfo.version,
+          targetVersion: previous.previousVersion,
+          restartRequired: true,
         };
-      }
 
-      await runNpmInstall(runCommand, installMode, previous.previousVersion);
-
-      const result: SystemUpdateResult = {
-        applied: true,
-        installMode,
-        message: `Rolled back commandscenter to ${previous.previousVersion}. Restarting process.`,
-        previousVersion: options.packageInfo.version,
-        targetVersion: previous.previousVersion,
-        restartRequired: true,
-      };
-
-      scheduleRestart(options.drainController, exitProcess, options.logger);
-      return result;
+        scheduleRestart(options.drainController, exitProcess, options.logger);
+        return result;
+      });
     },
   };
 
@@ -290,6 +341,126 @@ export function createSystemVersionService(options: {
       environmentDefault: options.config.updates.autoUpdate,
     });
   }
+
+  async function runExclusive(
+    operation: "update" | "rollback",
+    callback: () => Promise<SystemUpdateResult>,
+  ): Promise<SystemUpdateResult> {
+    if (activeOperation) {
+      return {
+        applied: false,
+        installMode,
+        message: `A CommandsCenter ${activeOperation} is already in progress.`,
+        restartRequired: false,
+        instructions: [
+          "Wait for the current operation to finish, then refresh Settings and try again.",
+          "If the operation was interrupted, check `journalctl -u commandscenter -n 100 --no-pager` before retrying.",
+        ],
+      };
+    }
+
+    activeOperation = operation;
+    try {
+      return await callback();
+    } finally {
+      activeOperation = undefined;
+    }
+  }
+
+  async function preflightNpmInstall(
+    targetVersion: string,
+  ): Promise<SystemUpdateResult | undefined> {
+    if (installMode !== "npm-global") {
+      return undefined;
+    }
+
+    const staleDirs = await findStaleCommandsCenterDirs(options.npmGlobalRoot);
+    if (staleDirs.length > 0) {
+      return {
+        applied: false,
+        installMode,
+        message: "CommandsCenter npm install refused because stale npm staging directories exist.",
+        previousVersion: options.packageInfo.version,
+        targetVersion,
+        restartRequired: false,
+        instructions: staleDirectoryInstructions(staleDirs),
+      };
+    }
+
+    const requiredMajor = await targetRequiredNodeMajor(runOutputCommand, targetVersion);
+    const currentMajor = options.getNodeMajor?.() ?? Number.parseInt(process.versions.node, 10);
+    if (requiredMajor !== undefined && currentMajor < requiredMajor) {
+      return {
+        applied: false,
+        installMode,
+        message: `commandscenter@${targetVersion} requires Node >=${String(requiredMajor)}, but this process is running Node ${process.version}.`,
+        previousVersion: options.packageInfo.version,
+        targetVersion,
+        restartRequired: false,
+        instructions: [
+          `Upgrade Node to ${String(requiredMajor)} or newer, then rerun the CommandsCenter service installer.`,
+          "Recommended repair command: curl -fsSL https://raw.githubusercontent.com/MaestroError/commands-center/main/scripts/install-ccenter-service.sh | bash",
+        ],
+      };
+    }
+
+    return undefined;
+  }
+
+  async function restorePreviousVersion(
+    previousVersion: string,
+    targetVersion: string,
+    cause: unknown,
+  ): Promise<SystemUpdateResult> {
+    try {
+      await runNpmInstall(runCommand, npmInstallMode(), previousVersion);
+      await verifyNpmInstall(previousVersion);
+      return {
+        applied: false,
+        installMode,
+        message: `Upgrade to commandscenter ${targetVersion} failed. Restored commandscenter ${previousVersion}; the running service was not restarted.`,
+        previousVersion,
+        targetVersion,
+        restartRequired: false,
+        instructions: [
+          `Original error: ${formatError(cause)}`,
+          "Review the npm output in `journalctl -u commandscenter --no-pager` before retrying.",
+        ],
+      };
+    } catch (rollbackError) {
+      options.logger.error(
+        { err: rollbackError, previousVersion, targetVersion },
+        "commandscenter rollback after failed update also failed",
+      );
+      return {
+        applied: false,
+        installMode,
+        message: `Upgrade to commandscenter ${targetVersion} failed, and automatic rollback to ${previousVersion} also failed.`,
+        previousVersion,
+        targetVersion,
+        restartRequired: false,
+        instructions: recoveryInstructions(
+          `update failed: ${formatError(cause)}; rollback failed: ${formatError(rollbackError)}`,
+        ),
+      };
+    }
+  }
+
+  function npmInstallMode(): Exclude<InstallMode, "docker"> {
+    if (installMode === "docker") {
+      throw new Error("Docker installations cannot run npm package installs.");
+    }
+
+    return installMode;
+  }
+
+  async function verifyNpmInstall(expectedVersion: string): Promise<void> {
+    if (installMode !== "npm-global") {
+      return;
+    }
+
+    await verifyInstalledCcenter(runOutputCommand, expectedVersion);
+  }
 }
 
 async function fetchLatestVersion(registryUrl: string): Promise<string> {
@@ -320,6 +491,53 @@ async function runNpmInstall(
   await runCommand("npm", ["install", `commandscenter@${version}`]);
 }
 
+async function targetRequiredNodeMajor(
+  runOutputCommand: OutputCommandRunner,
+  targetVersion: string,
+): Promise<number | undefined> {
+  try {
+    const result = await runOutputCommand("npm", [
+      "view",
+      `commandscenter@${targetVersion}`,
+      "engines.node",
+    ]);
+    return parseNodeMajorLowerBound(result.stdout);
+  } catch {
+    return undefined;
+  }
+}
+
+function parseNodeMajorLowerBound(range: string): number | undefined {
+  const majors = new Set<number>();
+  const operatorPattern = /(?:^|[\s|])(?:>=|>|\^|~)\s*v?(\d+)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = operatorPattern.exec(range)) !== null) {
+    majors.add(Number.parseInt(match[1] ?? "", 10));
+  }
+
+  const leadingMajor = range.match(/^\s*v?(\d+)/);
+  if (leadingMajor) {
+    majors.add(Number.parseInt(leadingMajor[1] ?? "", 10));
+  }
+
+  return majors.size > 0 ? Math.min(...majors) : undefined;
+}
+
+async function verifyInstalledCcenter(
+  runOutputCommand: OutputCommandRunner,
+  expectedVersion: string,
+): Promise<void> {
+  const result = await runOutputCommand("ccenter", ["--version"]);
+  const actualVersion = result.stdout.trim();
+
+  if (actualVersion !== expectedVersion) {
+    throw new Error(
+      `ccenter --version returned ${actualVersion || "empty output"}, expected ${expectedVersion}`,
+    );
+  }
+}
+
 function spawnCommand(command: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: "inherit" });
@@ -334,6 +552,74 @@ function spawnCommand(command: string, args: string[]): Promise<void> {
       reject(new Error(`${command} exited with code ${String(code)}`));
     });
   });
+}
+
+function spawnOutputCommand(command: string, args: string[]): Promise<CommandOutput> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      const result = {
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+      };
+
+      if (code === 0) {
+        resolve(result);
+        return;
+      }
+
+      const output = result.stderr.trim() || result.stdout.trim();
+      const details = output ? `: ${output}` : "";
+      reject(new Error(`${command} exited with code ${String(code)}${details}`));
+    });
+  });
+}
+
+async function findStaleCommandsCenterDirs(npmGlobalRoot: string | undefined): Promise<string[]> {
+  const root = npmGlobalRoot ?? resolveNpmGlobalRoot();
+  if (!root) {
+    return [];
+  }
+
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith(".commandscenter-"))
+      .map((entry) => `${root.replace(/\/$/, "")}/${entry.name}`)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function staleDirectoryInstructions(paths: string[]): string[] {
+  const root = dirname(paths[0] ?? "/usr/lib/node_modules");
+
+  return [
+    "Stop the service and make sure no npm install is running:",
+    "sudo systemctl stop commandscenter",
+    "pgrep -a npm || true",
+    "Inspect the stale directories:",
+    ...paths.map((path) => `sudo du -sh ${path}`),
+    "If no npm process is running, remove the stale CommandsCenter npm staging directories:",
+    `sudo find ${root} -maxdepth 1 -type d -name '.commandscenter-*' -exec rm -rf {} +`,
+    "Then rerun the CommandsCenter service installer.",
+  ];
+}
+
+function recoveryInstructions(error: string): string[] {
+  return [
+    `Error: ${error}`,
+    "Repair with the CommandsCenter service installer:",
+    "curl -fsSL https://raw.githubusercontent.com/MaestroError/commands-center/main/scripts/install-ccenter-service.sh | bash",
+    "Then verify `command -v ccenter`, `ccenter --version`, and `sudo systemctl status commandscenter --no-pager -l`.",
+  ];
 }
 
 function resolveNpmGlobalRoot(): string | undefined {
