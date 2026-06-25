@@ -3053,6 +3053,7 @@ function TaskTemplateForm(props: {
   const catalogQuery = useSpecialistCatalogQuery();
   const selectedAgent = props.agents.find((agent) => agent.id === form.agentId);
   const templateSkills = useTaskComposerSkills(selectedAgent, catalogQuery.data);
+  const timezones = useMemo(() => listTimezones(), []);
 
   useEffect(() => {
     if (props.initialTemplate) {
@@ -3185,6 +3186,21 @@ function TaskTemplateForm(props: {
                   value={form.anchorAtLocal}
                   onChange={(event) => updateForm({ anchorAtLocal: event.target.value })}
                 />
+              </label>
+              <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                Timezone
+                <select
+                  className="cc-input min-w-0"
+                  data-testid="task-template-timezone-input"
+                  value={form.timezone}
+                  onChange={(event) => updateForm({ timezone: event.target.value })}
+                >
+                  {timezones.map((zone) => (
+                    <option key={zone} value={zone}>
+                      {zone}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
             {form.repeatPreset === "custom" ? (
@@ -4811,6 +4827,15 @@ function Metric(props: { label: string; value: string }) {
 
 function readLocalTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+// IANA timezone names for the schedule picker. Always include the operator's
+// local zone (and "UTC") so the current selection is never missing from the
+// list, even on runtimes that don't implement Intl.supportedValuesOf.
+function listTimezones(): string[] {
+  const supported =
+    typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+  return Array.from(new Set([readLocalTimezone(), "UTC", ...supported]));
 }
 
 function toLocalDateTime(value: string): string {
