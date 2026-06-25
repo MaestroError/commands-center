@@ -538,8 +538,11 @@ describe("cc-managed MCP routes", () => {
         "list_task_runs",
         "get_task_run",
         "create_task_template",
+        "list_task_templates",
         "get_task_template",
+        "update_task_template",
         "run_task_template_now",
+        "create_task_from_template",
         "enable_task_template",
         "disable_task_template",
       ]) {
@@ -642,12 +645,39 @@ describe("cc-managed MCP routes", () => {
         { name: "get_task_template", arguments: { templateId: recurring.id } },
         14,
       );
+      const listTemplatesResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "list_task_templates", arguments: { defaultAgentId: agent.id } },
+        15,
+      );
+      const updateTemplateResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        {
+          name: "update_task_template",
+          arguments: {
+            templateId: recurring.id,
+            input: { title: "Updated recurring MCP task" },
+          },
+        },
+        16,
+      );
+      const createFromTemplateResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "create_task_from_template", arguments: { templateId: recurring.id } },
+        17,
+      );
       const runTemplateResponse = await callMcpToolRoute(
         server,
         authHeader,
         "tools/call",
         { name: "run_task_template_now", arguments: { taskId: recurring.id } },
-        15,
+        18,
       );
 
       expect(scheduledResponse.statusCode).toBe(200);
@@ -685,6 +715,30 @@ describe("cc-managed MCP routes", () => {
           },
         },
       });
+      expect(parseSseJson(listTemplatesResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            templates: expect.arrayContaining([expect.objectContaining({ id: recurring.id })]),
+          },
+        },
+      });
+      expect(parseSseJson(updateTemplateResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            id: recurring.id,
+            title: "Updated recurring MCP task",
+          },
+        },
+      });
+      expect(parseSseJson(createFromTemplateResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            status: "backlog",
+            title: "Updated recurring MCP task #G1",
+            generatedByAgentId: agent.id,
+          },
+        },
+      });
       const runTemplateJson = parseSseJson(runTemplateResponse.body) as {
         result?: { structuredContent?: { taskId?: string } };
       };
@@ -695,7 +749,7 @@ describe("cc-managed MCP routes", () => {
         runTemplateJson.result?.structuredContent?.taskId ?? "",
       );
       expect(generatedByManagedTool).toMatchObject({
-        title: "Recurring MCP task #G1",
+        title: "Updated recurring MCP task #G2",
         generatedByAgentId: agent.id,
       });
 
@@ -706,7 +760,7 @@ describe("cc-managed MCP routes", () => {
         authHeader,
         "tools/call",
         { name: "disable_task_template", arguments: { templateId: recurring.id } },
-        16,
+        19,
       );
       expect(parseSseJson(disableResponse.body)).toMatchObject({
         result: { structuredContent: { id: recurring.id, enabled: false } },
@@ -717,7 +771,7 @@ describe("cc-managed MCP routes", () => {
         authHeader,
         "tools/call",
         { name: "run_task_template_now", arguments: { taskId: recurring.id } },
-        17,
+        20,
       );
       expect(parseSseJson(refusedRun.body)).toMatchObject({
         result: { isError: true },
@@ -729,7 +783,7 @@ describe("cc-managed MCP routes", () => {
         authHeader,
         "tools/call",
         { name: "enable_task_template", arguments: { taskId: recurring.id } },
-        18,
+        21,
       );
       expect(parseSseJson(enableResponse.body)).toMatchObject({
         result: { structuredContent: { id: recurring.id, enabled: true } },

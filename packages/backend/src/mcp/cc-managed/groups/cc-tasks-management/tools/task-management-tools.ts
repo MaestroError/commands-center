@@ -11,9 +11,11 @@ import {
   taskRunListSchema,
   taskRunSchema,
   taskSchema,
+  taskTemplateListSchema,
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
   updateTaskInputSchema,
+  updateTaskTemplateInputSchema,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../../../../../db/client.js";
@@ -95,6 +97,16 @@ const createManagedTaskTemplateInputSchema = createTaskTemplateInputSchema.exten
   defaultAgentId: z.string().trim().min(1).optional(),
 });
 
+const listTaskTemplatesInputSchema = z
+  .object({
+    defaultAgentId: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+const updateTaskTemplateToolInputSchema = templateIdInputSchema.extend({
+  input: updateTaskTemplateInputSchema,
+});
+
 // Draft tools accept partial input so the specialist can pre-fill what it knows and let
 // the operator complete the rest in the form.
 const draftTaskInputSchema = createManagedTaskInputSchema.partial();
@@ -109,6 +121,10 @@ const listTasksOutputSchema = z.object({
 
 const listTaskRunsOutputSchema = z.object({
   runs: taskRunListSchema,
+});
+
+const listTaskTemplatesOutputSchema = z.object({
+  templates: taskTemplateListSchema,
 });
 
 const reviewDecisionSchema = z.object({
@@ -172,15 +188,35 @@ export const createTaskTemplateToolMetadata = {
   context: "both",
 } as const;
 
+export const listTaskTemplatesToolMetadata = {
+  name: "list_task_templates",
+  description: "List CommandsCenter task templates visible in this workspace.",
+  context: "both",
+} as const;
+
 export const getTaskTemplateToolMetadata = {
   name: "get_task_template",
   description: "Read a CommandsCenter task template by id.",
   context: "both",
 } as const;
 
+export const updateTaskTemplateToolMetadata = {
+  name: "update_task_template",
+  description:
+    "Update an existing CommandsCenter task template by id. Existing generated tasks keep their copied content.",
+  context: "both",
+} as const;
+
 export const runTaskTemplateNowToolMetadata = {
   name: "run_task_template_now",
   description: "Generate and queue a run from a recurring CommandsCenter task template.",
+  context: "both",
+} as const;
+
+export const createTaskFromTemplateToolMetadata = {
+  name: "create_task_from_template",
+  description:
+    "Generate a new backlog task from a CommandsCenter task template without queuing it.",
   context: "both",
 } as const;
 
@@ -390,6 +426,23 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
         }, "Failed to create task template."),
     },
     {
+      name: listTaskTemplatesToolMetadata.name,
+      description: listTaskTemplatesToolMetadata.description,
+      context: listTaskTemplatesToolMetadata.context,
+      inputSchema: listTaskTemplatesInputSchema,
+      outputSchema: listTaskTemplatesOutputSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const parsed = listTaskTemplatesInputSchema.parse(args);
+          const templates = await options.taskService.listTemplates(parsed);
+
+          return success(
+            `Found ${String(templates.length)} template${templates.length === 1 ? "" : "s"}.`,
+            { templates: taskTemplateListSchema.parse(templates) },
+          );
+        }, "Failed to list task templates."),
+    },
+    {
       name: getTaskTemplateToolMetadata.name,
       description: getTaskTemplateToolMetadata.description,
       context: getTaskTemplateToolMetadata.context,
@@ -406,6 +459,25 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
 
           return success("Task template loaded.", taskTemplateSchema.parse(template));
         }, "Failed to get task template."),
+    },
+    {
+      name: updateTaskTemplateToolMetadata.name,
+      description: updateTaskTemplateToolMetadata.description,
+      context: updateTaskTemplateToolMetadata.context,
+      inputSchema: updateTaskTemplateToolInputSchema,
+      outputSchema: taskTemplateSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const parsed = updateTaskTemplateToolInputSchema.parse(args);
+          const templateId = resolveTemplateId(parsed);
+          const template = await options.taskService.updateTemplate(templateId, parsed.input);
+
+          if (!template) {
+            throw new Error("Task template not found.");
+          }
+
+          return success("Task template updated.", taskTemplateSchema.parse(template));
+        }, "Failed to update task template."),
     },
     {
       name: runTaskTemplateNowToolMetadata.name,
@@ -435,6 +507,28 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
 
           return success("Task template queued.", taskRunSchema.parse(run));
         }, "Failed to run task template."),
+    },
+    {
+      name: createTaskFromTemplateToolMetadata.name,
+      description: createTaskFromTemplateToolMetadata.description,
+      context: createTaskFromTemplateToolMetadata.context,
+      inputSchema: templateIdInputSchema,
+      outputSchema: taskSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const templateId = resolveTemplateId(templateIdInputSchema.parse(args));
+          const callingAgentId = await requireCallingAgentId(options.db, context.agentSlug);
+          const task = await options.taskService.createTaskFromTemplate(templateId, {
+            triggerSource: "agent",
+            generatedByAgentId: callingAgentId,
+          });
+
+          if (!task) {
+            throw new Error("Task template not found.");
+          }
+
+          return success("Task created from template.", taskSchema.parse(task));
+        }, "Failed to create task from template."),
     },
     {
       name: enableTaskTemplateToolMetadata.name,
