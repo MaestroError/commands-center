@@ -538,6 +538,7 @@ describe("cc-managed MCP routes", () => {
         "list_task_runs",
         "get_task_run",
         "create_task_template",
+        "get_task_template",
         "run_task_template_now",
         "enable_task_template",
         "disable_task_template",
@@ -634,6 +635,13 @@ describe("cc-managed MCP routes", () => {
         },
         13,
       );
+      const getTemplateResponse = await callMcpToolRoute(
+        server,
+        authHeader,
+        "tools/call",
+        { name: "get_task_template", arguments: { templateId: recurring.id } },
+        14,
+      );
       const runTemplateResponse = await callMcpToolRoute(
         server,
         authHeader,
@@ -664,6 +672,15 @@ describe("cc-managed MCP routes", () => {
         result: {
           structuredContent: {
             title: "Created MCP template",
+            defaultAgentId: agent.id,
+          },
+        },
+      });
+      expect(parseSseJson(getTemplateResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            id: recurring.id,
+            title: "Recurring MCP task",
             defaultAgentId: agent.id,
           },
         },

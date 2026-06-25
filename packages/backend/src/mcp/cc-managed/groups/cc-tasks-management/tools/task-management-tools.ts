@@ -172,6 +172,12 @@ export const createTaskTemplateToolMetadata = {
   context: "both",
 } as const;
 
+export const getTaskTemplateToolMetadata = {
+  name: "get_task_template",
+  description: "Read a CommandsCenter task template by id.",
+  context: "both",
+} as const;
+
 export const runTaskTemplateNowToolMetadata = {
   name: "run_task_template_now",
   description: "Generate and queue a run from a recurring CommandsCenter task template.",
@@ -382,6 +388,24 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
 
           return success("Task template created.", taskTemplateSchema.parse(template));
         }, "Failed to create task template."),
+    },
+    {
+      name: getTaskTemplateToolMetadata.name,
+      description: getTaskTemplateToolMetadata.description,
+      context: getTaskTemplateToolMetadata.context,
+      inputSchema: templateIdInputSchema,
+      outputSchema: taskTemplateSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const templateId = resolveTemplateId(templateIdInputSchema.parse(args));
+          const template = await options.taskService.getTemplate(templateId);
+
+          if (!template) {
+            throw new Error("Task template not found.");
+          }
+
+          return success("Task template loaded.", taskTemplateSchema.parse(template));
+        }, "Failed to get task template."),
     },
     {
       name: runTaskTemplateNowToolMetadata.name,
