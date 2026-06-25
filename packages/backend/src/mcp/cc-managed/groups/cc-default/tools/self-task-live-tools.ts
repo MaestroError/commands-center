@@ -11,14 +11,21 @@ import {
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../../../../../db/client.js";
+import type { RuntimeConfig } from "../../../../../lib/runtime-config.js";
 import type { ConversationService } from "../../../../../services/conversation-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
 import type { TaskExecutionService } from "../../../../../services/task-execution-service.js";
 import type { TaskService } from "../../../../../services/task-service.js";
 import type { Task, TaskRun } from "@cc/shared/schemas";
+import {
+  withTaskBoardUrl,
+  withTaskRunBoardUrl,
+  withTaskTemplateBoardUrl,
+} from "../../../task-board-urls.js";
 
 type SelfTaskLiveToolOptions = {
   db: AppDb;
+  config: RuntimeConfig;
   taskService: TaskService;
   taskExecutionService: TaskExecutionService;
   conversationService?: ConversationService;
@@ -69,6 +76,18 @@ const reviewDecisionSchema = z.object({
   values: z.record(z.string(), z.string()),
 });
 
+const mcpTaskSchema = taskSchema.extend({
+  url: z.string().url(),
+});
+
+const mcpTaskRunSchema = taskRunSchema.extend({
+  taskUrl: z.string().url(),
+});
+
+const mcpTaskTemplateSchema = taskTemplateSchema.extend({
+  url: z.string().url(),
+});
+
 export const draftSelfTaskToolMetadata = {
   name: "draft_self_task",
   description:
@@ -107,7 +126,7 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
       description: runSelfTaskToolMetadata.description,
       context: runSelfTaskToolMetadata.context,
       inputSchema: runSelfTaskInputSchema,
-      outputSchema: taskRunSchema,
+      outputSchema: mcpTaskRunSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = runSelfTaskInputSchema.parse(args);
@@ -132,7 +151,10 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
             const msg = terminal.errorMessage ?? "Task run failed.";
             return {
               isError: true,
-              structuredContent: { error: { message: msg }, run: taskRunSchema.parse(terminal) },
+              structuredContent: {
+                error: { message: msg },
+                run: mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, terminal)),
+              },
               content: [{ type: "text" as const, text: msg }],
             };
           }
@@ -141,12 +163,18 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
             const msg = "Task run was cancelled before it could complete.";
             return {
               isError: true,
-              structuredContent: { error: { message: msg }, run: taskRunSchema.parse(terminal) },
+              structuredContent: {
+                error: { message: msg },
+                run: mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, terminal)),
+              },
               content: [{ type: "text" as const, text: msg }],
             };
           }
 
-          return success("Task run completed.", taskRunSchema.parse(terminal));
+          return success(
+            "Task run completed.",
+            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, terminal)),
+          );
         }, "Failed to run task."),
     },
     {
@@ -154,7 +182,7 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
       description: draftSelfTaskToolMetadata.description,
       context: draftSelfTaskToolMetadata.context,
       inputSchema: draftSelfTaskInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const draft = draftSelfTaskInputSchema.parse(args);
@@ -192,7 +220,10 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
             }),
           );
 
-          return success("Task created.", taskSchema.parse(task));
+          return success(
+            "Task created.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to draft task."),
     },
     {
@@ -200,7 +231,7 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
       description: draftSelfTaskUpdateToolMetadata.description,
       context: draftSelfTaskUpdateToolMetadata.context,
       inputSchema: draftSelfTaskUpdateInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = draftSelfTaskUpdateInputSchema.parse(args);
@@ -285,7 +316,10 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
             throw new Error("Task not found.");
           }
 
-          return success("Task updated.", taskSchema.parse(task));
+          return success(
+            "Task updated.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to draft task update."),
     },
     {
@@ -293,7 +327,7 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
       description: draftSelfTaskTemplateToolMetadata.description,
       context: draftSelfTaskTemplateToolMetadata.context,
       inputSchema: draftSelfTaskTemplateInputSchema,
-      outputSchema: taskTemplateSchema,
+      outputSchema: mcpTaskTemplateSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const draft = draftSelfTaskTemplateInputSchema.parse(args);
@@ -327,7 +361,10 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
             }),
           );
 
-          return success("Task template created.", taskTemplateSchema.parse(template));
+          return success(
+            "Task template created.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
         }, "Failed to draft task template."),
     },
   ] as const;

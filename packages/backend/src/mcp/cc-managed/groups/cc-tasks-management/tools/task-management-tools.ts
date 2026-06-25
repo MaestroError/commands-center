@@ -7,23 +7,29 @@ import {
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
   taskContextSchema,
-  taskListSchema,
-  taskRunListSchema,
   taskRunSchema,
   taskSchema,
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
   updateTaskInputSchema,
+  updateTaskTemplateInputSchema,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../../../../../db/client.js";
+import type { RuntimeConfig } from "../../../../../lib/runtime-config.js";
 import type { ConversationService } from "../../../../../services/conversation-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";
 import type { TaskExecutionService } from "../../../../../services/task-execution-service.js";
 import type { TaskService } from "../../../../../services/task-service.js";
+import {
+  withTaskBoardUrl,
+  withTaskRunBoardUrl,
+  withTaskTemplateBoardUrl,
+} from "../../../task-board-urls.js";
 
 type TaskManagementToolOptions = {
   db: AppDb;
+  config: RuntimeConfig;
   taskService: TaskService;
   taskExecutionService: TaskExecutionService;
   conversationService?: ConversationService;
@@ -95,6 +101,16 @@ const createManagedTaskTemplateInputSchema = createTaskTemplateInputSchema.exten
   defaultAgentId: z.string().trim().min(1).optional(),
 });
 
+const listTaskTemplatesInputSchema = z
+  .object({
+    defaultAgentId: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+const updateTaskTemplateToolInputSchema = templateIdInputSchema.extend({
+  input: updateTaskTemplateInputSchema,
+});
+
 // Draft tools accept partial input so the specialist can pre-fill what it knows and let
 // the operator complete the rest in the form.
 const draftTaskInputSchema = createManagedTaskInputSchema.partial();
@@ -103,12 +119,28 @@ const draftTaskUpdateInputSchema = taskIdInputSchema.extend({
   input: updateTaskInputSchema.optional(),
 });
 
+const mcpTaskSchema = taskSchema.extend({
+  url: z.string().url(),
+});
+
+const mcpTaskRunSchema = taskRunSchema.extend({
+  taskUrl: z.string().url(),
+});
+
+const mcpTaskTemplateSchema = taskTemplateSchema.extend({
+  url: z.string().url(),
+});
+
 const listTasksOutputSchema = z.object({
-  tasks: taskListSchema,
+  tasks: z.array(mcpTaskSchema),
 });
 
 const listTaskRunsOutputSchema = z.object({
-  runs: taskRunListSchema,
+  runs: z.array(mcpTaskRunSchema),
+});
+
+const listTaskTemplatesOutputSchema = z.object({
+  templates: z.array(mcpTaskTemplateSchema),
 });
 
 const reviewDecisionSchema = z.object({
@@ -172,9 +204,35 @@ export const createTaskTemplateToolMetadata = {
   context: "both",
 } as const;
 
+export const listTaskTemplatesToolMetadata = {
+  name: "list_task_templates",
+  description: "List CommandsCenter task templates visible in this workspace.",
+  context: "both",
+} as const;
+
+export const getTaskTemplateToolMetadata = {
+  name: "get_task_template",
+  description: "Read a CommandsCenter task template by id.",
+  context: "both",
+} as const;
+
+export const updateTaskTemplateToolMetadata = {
+  name: "update_task_template",
+  description:
+    "Update an existing CommandsCenter task template by id. Existing generated tasks keep their copied content.",
+  context: "both",
+} as const;
+
 export const runTaskTemplateNowToolMetadata = {
   name: "run_task_template_now",
   description: "Generate and queue a run from a recurring CommandsCenter task template.",
+  context: "both",
+} as const;
+
+export const createTaskFromTemplateToolMetadata = {
+  name: "create_task_from_template",
+  description:
+    "Generate a new backlog task from a CommandsCenter task template without queuing it.",
   context: "both",
 } as const;
 
@@ -225,7 +283,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       description: createTaskToolMetadata.description,
       context: createTaskToolMetadata.context,
       inputSchema: createManagedTaskInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = createManagedTaskInputSchema.parse(args);
@@ -235,7 +293,10 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             createTaskInputSchema.parse({ ...parsed, agentId }),
           );
 
-          return success("Task created.", taskSchema.parse(task));
+          return success(
+            "Task created.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to create task."),
     },
     {
@@ -243,7 +304,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       description: updateTaskToolMetadata.description,
       context: updateTaskToolMetadata.context,
       inputSchema: updateTaskToolInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
           const parsed = updateTaskToolInputSchema.parse(args);
@@ -253,7 +314,10 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             throw new Error("Task not found.");
           }
 
-          return success("Task updated.", taskSchema.parse(task));
+          return success(
+            "Task updated.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to update task."),
     },
     {
@@ -266,7 +330,9 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
         executeTool(async () => {
           const tasks = await options.taskService.list(listTasksQuerySchema.partial().parse(args));
           return success(`Found ${String(tasks.length)} task${tasks.length === 1 ? "" : "s"}.`, {
-            tasks: taskListSchema.parse(tasks),
+            tasks: z
+              .array(mcpTaskSchema)
+              .parse(tasks.map((task) => withTaskBoardUrl(options.config, task))),
           });
         }, "Failed to list tasks."),
     },
@@ -275,7 +341,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       description: getTaskToolMetadata.description,
       context: getTaskToolMetadata.context,
       inputSchema: taskIdInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
           const parsed = taskIdInputSchema.parse(args);
@@ -285,7 +351,10 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             throw new Error("Task not found.");
           }
 
-          return success("Task loaded.", taskSchema.parse(task));
+          return success(
+            "Task loaded.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to get task."),
     },
     {
@@ -293,7 +362,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       description: queueTaskToolMetadata.description,
       context: queueTaskToolMetadata.context,
       inputSchema: queueTaskToolInputSchema,
-      outputSchema: taskRunSchema,
+      outputSchema: mcpTaskRunSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
           const parsed = queueTaskToolInputSchema.parse(args);
@@ -302,7 +371,10 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             metadata: parsed.metadata,
           });
 
-          return success("Task queued.", taskRunSchema.parse(run));
+          return success(
+            "Task queued.",
+            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, run)),
+          );
         }, "Failed to queue task."),
     },
     {
@@ -310,7 +382,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       description: scheduleTaskToolMetadata.description,
       context: scheduleTaskToolMetadata.context,
       inputSchema: scheduleTaskToolInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
           const parsed = scheduleTaskToolInputSchema.parse(args);
@@ -324,7 +396,10 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             throw new Error("Task not found.");
           }
 
-          return success("Task scheduled.", taskSchema.parse(task));
+          return success(
+            "Task scheduled.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to schedule task."),
     },
     {
@@ -342,7 +417,9 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             .parse(args);
           const runs = await options.taskService.listRuns(parsed.taskId, parsed.query ?? {});
           return success(`Found ${String(runs.length)} task run${runs.length === 1 ? "" : "s"}.`, {
-            runs: taskRunListSchema.parse(runs),
+            runs: z
+              .array(mcpTaskRunSchema)
+              .parse(runs.map((run) => withTaskRunBoardUrl(options.config, run))),
           });
         }, "Failed to list task runs."),
     },
@@ -351,7 +428,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       description: getTaskRunToolMetadata.description,
       context: getTaskRunToolMetadata.context,
       inputSchema: getTaskRunInputSchema,
-      outputSchema: taskRunSchema,
+      outputSchema: mcpTaskRunSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
           const parsed = getTaskRunInputSchema.parse(args);
@@ -361,7 +438,10 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             throw new Error("Task run not found.");
           }
 
-          return success("Task run loaded.", taskRunSchema.parse(run));
+          return success(
+            "Task run loaded.",
+            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, run)),
+          );
         }, "Failed to get task run."),
     },
     {
@@ -369,7 +449,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       description: createTaskTemplateToolMetadata.description,
       context: createTaskTemplateToolMetadata.context,
       inputSchema: createManagedTaskTemplateInputSchema,
-      outputSchema: taskTemplateSchema,
+      outputSchema: mcpTaskTemplateSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = createManagedTaskTemplateInputSchema.parse(args);
@@ -380,15 +460,84 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             defaultAgentId,
           });
 
-          return success("Task template created.", taskTemplateSchema.parse(template));
+          return success(
+            "Task template created.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
         }, "Failed to create task template."),
+    },
+    {
+      name: listTaskTemplatesToolMetadata.name,
+      description: listTaskTemplatesToolMetadata.description,
+      context: listTaskTemplatesToolMetadata.context,
+      inputSchema: listTaskTemplatesInputSchema,
+      outputSchema: listTaskTemplatesOutputSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const parsed = listTaskTemplatesInputSchema.parse(args);
+          const templates = await options.taskService.listTemplates(parsed);
+
+          return success(
+            `Found ${String(templates.length)} template${templates.length === 1 ? "" : "s"}.`,
+            {
+              templates: z
+                .array(mcpTaskTemplateSchema)
+                .parse(
+                  templates.map((template) => withTaskTemplateBoardUrl(options.config, template)),
+                ),
+            },
+          );
+        }, "Failed to list task templates."),
+    },
+    {
+      name: getTaskTemplateToolMetadata.name,
+      description: getTaskTemplateToolMetadata.description,
+      context: getTaskTemplateToolMetadata.context,
+      inputSchema: templateIdInputSchema,
+      outputSchema: mcpTaskTemplateSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const templateId = resolveTemplateId(templateIdInputSchema.parse(args));
+          const template = await options.taskService.getTemplate(templateId);
+
+          if (!template) {
+            throw new Error("Task template not found.");
+          }
+
+          return success(
+            "Task template loaded.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
+        }, "Failed to get task template."),
+    },
+    {
+      name: updateTaskTemplateToolMetadata.name,
+      description: updateTaskTemplateToolMetadata.description,
+      context: updateTaskTemplateToolMetadata.context,
+      inputSchema: updateTaskTemplateToolInputSchema,
+      outputSchema: mcpTaskTemplateSchema,
+      execute: async (args: unknown) =>
+        executeTool(async () => {
+          const parsed = updateTaskTemplateToolInputSchema.parse(args);
+          const templateId = resolveTemplateId(parsed);
+          const template = await options.taskService.updateTemplate(templateId, parsed.input);
+
+          if (!template) {
+            throw new Error("Task template not found.");
+          }
+
+          return success(
+            "Task template updated.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
+        }, "Failed to update task template."),
     },
     {
       name: runTaskTemplateNowToolMetadata.name,
       description: runTaskTemplateNowToolMetadata.description,
       context: runTaskTemplateNowToolMetadata.context,
       inputSchema: runTaskTemplateNowToolInputSchema,
-      outputSchema: taskRunSchema,
+      outputSchema: mcpTaskRunSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = runTaskTemplateNowToolInputSchema.parse(args);
@@ -409,15 +558,43 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             metadata: parsed.metadata,
           });
 
-          return success("Task template queued.", taskRunSchema.parse(run));
+          return success(
+            "Task template queued.",
+            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, run)),
+          );
         }, "Failed to run task template."),
+    },
+    {
+      name: createTaskFromTemplateToolMetadata.name,
+      description: createTaskFromTemplateToolMetadata.description,
+      context: createTaskFromTemplateToolMetadata.context,
+      inputSchema: templateIdInputSchema,
+      outputSchema: mcpTaskSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const templateId = resolveTemplateId(templateIdInputSchema.parse(args));
+          const callingAgentId = await requireCallingAgentId(options.db, context.agentSlug);
+          const task = await options.taskService.createTaskFromTemplate(templateId, {
+            triggerSource: "agent",
+            generatedByAgentId: callingAgentId,
+          });
+
+          if (!task) {
+            throw new Error("Task template not found.");
+          }
+
+          return success(
+            "Task created from template.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
+        }, "Failed to create task from template."),
     },
     {
       name: enableTaskTemplateToolMetadata.name,
       description: enableTaskTemplateToolMetadata.description,
       context: enableTaskTemplateToolMetadata.context,
       inputSchema: templateIdInputSchema,
-      outputSchema: taskTemplateSchema,
+      outputSchema: mcpTaskTemplateSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
           const templateId = resolveTemplateId(templateIdInputSchema.parse(args));
@@ -427,7 +604,10 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             throw new Error("Task template not found.");
           }
 
-          return success("Task template enabled.", taskTemplateSchema.parse(template));
+          return success(
+            "Task template enabled.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
         }, "Failed to enable task template."),
     },
     {
@@ -435,7 +615,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       description: disableTaskTemplateToolMetadata.description,
       context: disableTaskTemplateToolMetadata.context,
       inputSchema: templateIdInputSchema,
-      outputSchema: taskTemplateSchema,
+      outputSchema: mcpTaskTemplateSchema,
       execute: async (args: unknown) =>
         executeTool(async () => {
           const templateId = resolveTemplateId(templateIdInputSchema.parse(args));
@@ -445,7 +625,10 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             throw new Error("Task template not found.");
           }
 
-          return success("Task template disabled.", taskTemplateSchema.parse(template));
+          return success(
+            "Task template disabled.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
         }, "Failed to disable task template."),
     },
   ] as const;
@@ -505,7 +688,7 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
       description: draftTaskToolMetadata.description,
       context: draftTaskToolMetadata.context,
       inputSchema: draftTaskInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const draft = draftTaskInputSchema.parse(args);
@@ -542,7 +725,10 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
             }),
           );
 
-          return success("Task created.", taskSchema.parse(task));
+          return success(
+            "Task created.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to draft task."),
     },
     {
@@ -550,7 +736,7 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
       description: draftTaskUpdateToolMetadata.description,
       context: draftTaskUpdateToolMetadata.context,
       inputSchema: draftTaskUpdateInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = draftTaskUpdateInputSchema.parse(args);
@@ -640,7 +826,10 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
             throw new Error("Task not found.");
           }
 
-          return success("Task updated.", taskSchema.parse(task));
+          return success(
+            "Task updated.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to draft task update."),
     },
   ] as const;

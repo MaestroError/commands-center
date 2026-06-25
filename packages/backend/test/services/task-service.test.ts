@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { taskRunArtifactSchema } from "@cc/shared/schemas";
+import { persistedTaskRunArtifactSchema, taskRunArtifactSchema } from "@cc/shared/schemas";
 import { eq } from "drizzle-orm";
 
 import type { AppDb } from "../../src/db/client";
@@ -514,20 +514,28 @@ describe("createTaskService", () => {
     }
   });
 
-  it("validates task run artifacts with exactly one locator", () => {
+  it("validates task run artifacts with typed links", () => {
     expect(
-      taskRunArtifactSchema.parse({ title: "Report", path: ".cc/artifacts/report.md" }),
-    ).toEqual({ title: "Report", path: ".cc/artifacts/report.md" });
-    expect(() => taskRunArtifactSchema.parse({ title: "Report" })).toThrow(
-      "Exactly one of url or path is required.",
-    );
+      taskRunArtifactSchema.parse({
+        title: "Report",
+        type: "file",
+        link: ".cc/artifacts/report.md",
+      }),
+    ).toEqual({ title: "Report", type: "file", link: ".cc/artifacts/report.md" });
+    expect(() => taskRunArtifactSchema.parse({ title: "Report" })).toThrow();
     expect(() =>
       taskRunArtifactSchema.parse({
         title: "Report",
-        url: "https://example.com/report",
+        type: "url",
+        link: ".cc/artifacts/report.md",
+      }),
+    ).toThrow();
+    expect(
+      persistedTaskRunArtifactSchema.parse({
+        title: "Legacy report",
         path: ".cc/artifacts/report.md",
       }),
-    ).toThrow("Exactly one of url or path is required.");
+    ).toEqual({ title: "Legacy report", type: "file", link: ".cc/artifacts/report.md" });
   });
 
   it("lets the assigned agent update outcome fields while a run is running", async () => {
@@ -551,7 +559,8 @@ describe("createTaskService", () => {
       await service.setRunResultText(run.id, agent.id, "Done with details.");
       await service.addRunArtifact(run.id, agent.id, {
         title: "Article",
-        path: ".cc/artifacts/article.md",
+        type: "file",
+        link: ".cc/artifacts/article.md",
       });
       const reviewed = await service.markRunNeedsHumanReview(
         run.id,
@@ -560,7 +569,9 @@ describe("createTaskService", () => {
       );
 
       expect(reviewed.resultText).toBe("Done with details.");
-      expect(reviewed.artifacts).toEqual([{ title: "Article", path: ".cc/artifacts/article.md" }]);
+      expect(reviewed.artifacts).toEqual([
+        { title: "Article", type: "file", link: ".cc/artifacts/article.md" },
+      ]);
       expect(reviewed.needsHumanReview).toBe(true);
       expect(reviewed.humanReviewReason).toBe("Send the post manually.");
     } finally {
@@ -649,19 +660,21 @@ describe("createTaskService", () => {
       await Promise.all([
         service.addRunArtifact(run.id, agent.id, {
           title: "First artifact",
-          path: ".cc/artifacts/first.md",
+          type: "file",
+          link: ".cc/artifacts/first.md",
         }),
         service.addRunArtifact(run.id, agent.id, {
           title: "Second artifact",
-          path: ".cc/artifacts/second.md",
+          type: "file",
+          link: ".cc/artifacts/second.md",
         }),
       ]);
 
       const updated = await service.getRun(task.id, run.id);
 
       expect(updated?.artifacts).toEqual([
-        { title: "First artifact", path: ".cc/artifacts/first.md" },
-        { title: "Second artifact", path: ".cc/artifacts/second.md" },
+        { title: "First artifact", type: "file", link: ".cc/artifacts/first.md" },
+        { title: "Second artifact", type: "file", link: ".cc/artifacts/second.md" },
       ]);
     } finally {
       await testDb.cleanup();

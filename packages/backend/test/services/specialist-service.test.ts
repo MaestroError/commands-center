@@ -369,9 +369,31 @@ describe("createSpecialistService", () => {
               context: "both",
             },
             {
+              name: "list_task_templates",
+              description: "List CommandsCenter task templates visible in this workspace.",
+              context: "both",
+            },
+            {
+              name: "get_task_template",
+              description: "Read a CommandsCenter task template by id.",
+              context: "both",
+            },
+            {
+              name: "update_task_template",
+              description:
+                "Update an existing CommandsCenter task template by id. Existing generated tasks keep their copied content.",
+              context: "both",
+            },
+            {
               name: "run_task_template_now",
               description:
                 "Generate and queue a run from a recurring CommandsCenter task template.",
+              context: "both",
+            },
+            {
+              name: "create_task_from_template",
+              description:
+                "Generate a new backlog task from a CommandsCenter task template without queuing it.",
               context: "both",
             },
             {

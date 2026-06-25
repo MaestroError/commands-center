@@ -76,20 +76,24 @@ import {
   createTaskContextToolDefinitions,
   createTaskLiveToolDefinitions,
   createTaskToolMetadata,
+  createTaskFromTemplateToolMetadata,
   createTaskTemplateToolMetadata,
   createTasksManagementToolDefinitions,
   disableTaskTemplateToolMetadata,
   draftTaskToolMetadata,
   draftTaskUpdateToolMetadata,
   enableTaskTemplateToolMetadata,
+  getTaskTemplateToolMetadata,
   getTaskRunToolMetadata,
   getTaskToolMetadata,
+  listTaskTemplatesToolMetadata,
   queueTaskToolMetadata,
   appendTaskContextToolMetadata,
   readTaskContextToolMetadata,
   runTaskTemplateNowToolMetadata,
   scheduleTaskToolMetadata,
   updateTaskToolMetadata,
+  updateTaskTemplateToolMetadata,
   listTaskRunsToolMetadata,
   listTasksToolMetadata,
 } from "./groups/cc-tasks-management/tools/task-management-tools.js";
@@ -206,10 +210,11 @@ export function createCcManagedMcpServerRegistry(options: {
     );
   }
 
-  if (options.db && options.taskService && options.taskExecutionService) {
+  if (options.db && options.config && options.taskService && options.taskExecutionService) {
     ccAppTools.push(
       ...createTaskLiveToolDefinitions({
         db: options.db,
+        config: options.config,
         taskService: options.taskService,
         taskExecutionService: options.taskExecutionService,
         conversationService: options.conversationService,
@@ -219,10 +224,11 @@ export function createCcManagedMcpServerRegistry(options: {
   }
 
   const taskManagementTools: CcManagedToolDefinition[] =
-    options.db && options.taskService && options.taskExecutionService
+    options.db && options.config && options.taskService && options.taskExecutionService
       ? [
           ...createTasksManagementToolDefinitions({
             db: options.db,
+            config: options.config,
             taskService: options.taskService,
             taskExecutionService: options.taskExecutionService,
             conversationService: options.conversationService,
@@ -252,10 +258,11 @@ export function createCcManagedMcpServerRegistry(options: {
     );
   }
 
-  if (options.db && options.taskService && options.taskExecutionService) {
+  if (options.db && options.config && options.taskService && options.taskExecutionService) {
     defaultInteractiveTools.push(
       ...createSelfTaskLiveToolDefinitions({
         db: options.db,
+        config: options.config,
         taskService: options.taskService,
         taskExecutionService: options.taskExecutionService,
         conversationService: options.conversationService,
@@ -279,10 +286,11 @@ export function createCcManagedMcpServerRegistry(options: {
           createGetSelfProfileToolDefinition({ agentService: options.agentService }),
         ]
       : []),
-    ...(options.db && options.taskService
+    ...(options.db && options.config && options.taskService
       ? [
           ...createTaskRunOutcomeToolDefinitions({
             db: options.db,
+            config: options.config,
             taskService: options.taskService,
           }),
           ...createTaskContextToolDefinitions({ taskService: options.taskService }),
@@ -292,18 +300,21 @@ export function createCcManagedMcpServerRegistry(options: {
           }),
           ...createSelfTaskArtifactToolDefinitions({
             db: options.db,
+            config: options.config,
             taskService: options.taskService,
           }),
         ]
       : []),
-    ...(options.db && options.taskService && options.taskExecutionService
+    ...(options.db && options.config && options.taskService && options.taskExecutionService
       ? [
           ...createSelfTaskToolDefinitions({
             db: options.db,
+            config: options.config,
             taskService: options.taskService,
           }),
           ...createSelfTaskTemplateToolDefinitions({
             db: options.db,
+            config: options.config,
             taskService: options.taskService,
             taskExecutionService: options.taskExecutionService,
           }),
@@ -425,7 +436,11 @@ export function createCcManagedMcpServerRegistry(options: {
         listTaskRunsToolMetadata,
         getTaskRunToolMetadata,
         createTaskTemplateToolMetadata,
+        listTaskTemplatesToolMetadata,
+        getTaskTemplateToolMetadata,
+        updateTaskTemplateToolMetadata,
         runTaskTemplateNowToolMetadata,
+        createTaskFromTemplateToolMetadata,
         enableTaskTemplateToolMetadata,
         disableTaskTemplateToolMetadata,
       ],

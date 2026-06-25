@@ -269,17 +269,42 @@ export const cancelTaskRunInputSchema = z.object({
   reason: z.string().trim().min(1).optional(),
 });
 
-export const taskRunArtifactSchema = z
-  .object({
-    title: z.string().trim().min(1),
-    description: z.string().trim().min(1).optional(),
+const taskRunArtifactBaseSchema = z.object({
+  title: z.string().trim().min(1),
+  description: z.string().trim().min(1).optional(),
+});
+
+const legacyTaskRunArtifactSchema = taskRunArtifactBaseSchema
+  .extend({
     url: z.string().trim().url().optional(),
     path: z.string().trim().min(1).optional(),
   })
   .refine((artifact) => (artifact.url ? 1 : 0) + (artifact.path ? 1 : 0) === 1, {
     message: "Exactly one of url or path is required.",
     path: ["url"],
-  });
+  })
+  .transform((artifact) => ({
+    title: artifact.title,
+    description: artifact.description,
+    type: artifact.path ? ("file" as const) : ("url" as const),
+    link: artifact.path ?? artifact.url ?? "",
+  }));
+
+export const taskRunArtifactSchema = z.discriminatedUnion("type", [
+  taskRunArtifactBaseSchema.extend({
+    type: z.literal("url"),
+    link: z.string().trim().url(),
+  }),
+  taskRunArtifactBaseSchema.extend({
+    type: z.literal("file"),
+    link: z.string().trim().min(1),
+  }),
+]);
+
+export const persistedTaskRunArtifactSchema = z.union([
+  taskRunArtifactSchema,
+  legacyTaskRunArtifactSchema,
+]);
 
 export const setTaskRunResultInputSchema = z.object({
   taskRunId: z.string().trim().min(1),

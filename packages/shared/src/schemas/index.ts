@@ -314,6 +314,7 @@ export {
   taskWeekdaySchema,
   taskListSchema,
   taskPermissionProfileSchema,
+  persistedTaskRunArtifactSchema,
   taskRunArtifactSchema,
   taskRunListSchema,
   taskRunOutcomeSchema,

@@ -17,14 +17,14 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
   const [createdUrl, setCreatedUrl] = useState<string>();
   const [copied, setCopied] = useState(false);
 
-  if (!props.artifact.path) {
+  if (props.artifact.type !== "file") {
     return null;
   }
 
   const candidate = artifactsQuery.data?.artifacts.find(
     (artifact) =>
       artifact.title === props.artifact.title &&
-      artifact.originalFilename === basename(props.artifact.path),
+      artifact.originalFilename === basename(props.artifact.link),
   );
   const busy =
     mutations.createArtifactShareLink.isPending || mutations.revokeArtifactShareLink.isPending;
@@ -134,7 +134,7 @@ async function copyText(value: string): Promise<void> {
   await navigator.clipboard?.writeText(value);
 }
 
-function basename(path: string | undefined): string {
-  const segments = path?.split("/").filter(Boolean) ?? [];
+function basename(path: string): string {
+  const segments = path.split("/").filter(Boolean);
   return segments[segments.length - 1] ?? "";
 }

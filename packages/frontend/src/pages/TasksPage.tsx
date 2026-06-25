@@ -1906,10 +1906,10 @@ function TaskPanelArtifactSection(props: { runs: TaskRun[] }) {
                   rel="noreferrer"
                   target={artifact.external ? "_blank" : undefined}
                 >
-                  {formatArtifactLinkLabel(artifact.path ?? artifact.title)}
+                  {formatArtifactLinkLabel(artifact.link)}
                 </a>
                 <p className="mt-1 text-xs leading-5 text-text-muted [overflow-wrap:anywhere]">
-                  {artifact.path ?? artifact.href}
+                  {artifact.link}
                 </p>
                 <p className="mt-3 text-sm leading-6 text-text-secondary">
                   {artifact.description ?? artifact.title}
@@ -2273,25 +2273,26 @@ function RunArtifactAttachments(props: {
   return (
     <ul className="mt-3 grid gap-2" aria-label="Run artifacts">
       {props.artifacts.map((artifact) => {
-        const href = artifact.path
-          ? buildFileManagerHref({ path: artifact.path, openInEditor: true })
-          : (artifact.url ?? "#");
+        const href =
+          artifact.type === "file"
+            ? buildFileManagerHref({ path: artifact.link, openInEditor: true })
+            : artifact.link;
         return (
           <li
             className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
-            key={`${artifact.path ?? artifact.url ?? artifact.title}:${artifact.title}`}
+            key={`${artifact.type}:${artifact.link}:${artifact.title}`}
           >
             <span className="min-w-0">
               <a
                 className="break-words font-medium text-accent underline-offset-4 hover:underline [overflow-wrap:anywhere]"
                 href={href}
                 rel="noreferrer"
-                target={artifact.path ? undefined : "_blank"}
+                target={artifact.type === "file" ? undefined : "_blank"}
               >
-                {formatArtifactLinkLabel(artifact.path ?? artifact.title)}
+                {formatArtifactLinkLabel(artifact.link)}
               </a>
               <span className="block text-xs text-text-muted [overflow-wrap:anywhere]">
-                {artifact.path ?? artifact.url ?? artifact.title}
+                {artifact.link}
               </span>
               <span className="mt-2 block text-xs text-text-secondary">
                 {artifact.description ?? artifact.title}
@@ -4627,7 +4628,7 @@ type AggregatedRunArtifact = {
   key: string;
   title: string;
   description?: string;
-  path?: string;
+  link: string;
   href: string;
   external: boolean;
   latestRun: TaskRun;
@@ -4642,7 +4643,7 @@ function aggregateRunArtifacts(runs: TaskRun[]): AggregatedRunArtifact[] {
 
   for (const run of runs) {
     for (const artifact of run.artifacts) {
-      const key = artifact.path ? `path:${artifact.path}` : `url:${artifact.url ?? artifact.title}`;
+      const key = `${artifact.type}:${artifact.link}`;
       const existing = byKey.get(key);
 
       if (!existing) {
@@ -4662,11 +4663,12 @@ function aggregateRunArtifacts(runs: TaskRun[]): AggregatedRunArtifact[] {
     key,
     title: entry.artifact.title,
     description: entry.artifact.description,
-    path: entry.artifact.path,
-    href: entry.artifact.path
-      ? buildFileManagerHref({ path: entry.artifact.path, openInEditor: true })
-      : (entry.artifact.url ?? "#"),
-    external: !entry.artifact.path,
+    link: entry.artifact.link,
+    href:
+      entry.artifact.type === "file"
+        ? buildFileManagerHref({ path: entry.artifact.link, openInEditor: true })
+        : entry.artifact.link,
+    external: entry.artifact.type !== "file",
     latestRun: entry.latestRun,
     runCount: entry.runIds.size,
   }));

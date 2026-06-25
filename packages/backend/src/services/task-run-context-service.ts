@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import {
-  taskRunArtifactSchema,
+  persistedTaskRunArtifactSchema,
   taskSubtaskSchema,
   type Task,
   type TaskContext,
@@ -14,6 +14,23 @@ import type { AppDb } from "../db/client.js";
 import type { task_subtasks } from "../db/schema/index.js";
 
 const TASK_CONTEXT_ATTACHMENT_PATH_PREFIX = ".cc/workspace/sessions";
+
+const renderedArtifactSchema = z.discriminatedUnion("type", [
+  z.object({
+    title: z.string(),
+    description: z.string().optional(),
+    type: z.literal("url"),
+    link: z.string().url(),
+    sourceRunId: z.string(),
+  }),
+  z.object({
+    title: z.string(),
+    description: z.string().optional(),
+    type: z.literal("file"),
+    link: z.string().min(1),
+    sourceRunId: z.string(),
+  }),
+]);
 
 type TaskRunContextTrigger = {
   triggerSource: TaskRunTriggerSource;
@@ -265,11 +282,7 @@ function renderContext(renderedContext: Record<string, unknown>): string {
           ),
         })
         .optional(),
-      artifacts: z.array(
-        taskRunArtifactSchema.extend({
-          sourceRunId: z.string(),
-        }),
-      ),
+      artifacts: z.array(renderedArtifactSchema),
       history: z.array(historyEntrySchema),
     })
     .parse(renderedContext);
@@ -303,7 +316,7 @@ const historyEntrySchema = z.object({
   completedAt: z.string().optional(),
   cancelledAt: z.string().optional(),
   createdAt: z.string(),
-  artifacts: z.array(taskRunArtifactSchema),
+  artifacts: z.array(persistedTaskRunArtifactSchema),
 });
 
 function renderAdditionalUntrustedContext(
@@ -331,9 +344,7 @@ function renderAdditionalUntrustedContext(
 function renderArtifacts(artifacts: LeanRenderedContext["artifacts"]): string {
   return artifacts
     .map((artifact) => {
-      const locator = artifact.path
-        ? `path: ${escapeXmlContent(artifact.path)}`
-        : `url: ${escapeXmlContent(artifact.url ?? "")}`;
+      const locator = `${artifact.type}: ${escapeXmlContent(artifact.link)}`;
 
       return [
         `- sourceRunId: ${artifact.sourceRunId}`,
@@ -423,7 +434,7 @@ function uniqueArtifacts(history: TaskRunHistoryEntry[]): LeanRenderedContext["a
 
   for (const run of history) {
     for (const artifact of run.artifacts) {
-      const key = artifact.path ? `path:${artifact.path}` : `url:${artifact.url ?? ""}`;
+      const key = `${artifact.type}:${artifact.link}`;
 
       if (seen.has(key)) {
         continue;
@@ -454,7 +465,7 @@ function parseJsonRecord(value: string | null): Record<string, unknown> | undefi
 }
 
 function parseArtifacts(value: string | null): TaskRunArtifact[] {
-  return value ? taskRunArtifactSchema.array().parse(JSON.parse(value)) : [];
+  return value ? persistedTaskRunArtifactSchema.array().parse(JSON.parse(value)) : [];
 }
 
 function tag(name: string, content: string, options: { escape?: boolean } = {}): string {

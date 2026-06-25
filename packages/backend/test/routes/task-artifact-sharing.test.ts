@@ -254,7 +254,8 @@ describe("task artifact sharing", () => {
       });
       await taskService.addRunArtifact(run.id, agent.id, {
         title: "Escaped report",
-        path: "../secret.md",
+        type: "file",
+        link: "../secret.md",
       });
 
       const listed = await server.inject({
@@ -289,7 +290,8 @@ async function createRunWithArtifact(
   await writeFile(absolutePath, options.content, "utf8");
   await taskService.addRunArtifact(run.id, agent.id, {
     title: "Release report",
-    path: options.artifactPath,
+    type: "file",
+    link: options.artifactPath,
   });
 
   return { taskId: task.id, runId: run.id };

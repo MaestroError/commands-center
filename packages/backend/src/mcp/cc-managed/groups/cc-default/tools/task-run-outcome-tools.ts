@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import {
   addTaskRunArtifactInputSchema,
   markTaskRunNeedsReviewInputSchema,
@@ -6,10 +8,13 @@ import {
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../../../../../db/client.js";
+import type { RuntimeConfig } from "../../../../../lib/runtime-config.js";
 import type { TaskService } from "../../../../../services/task-service.js";
+import { withTaskRunBoardUrl } from "../../../task-board-urls.js";
 
 type TaskRunOutcomeToolOptions = {
   db: AppDb;
+  config: RuntimeConfig;
   taskService: TaskService;
 };
 
@@ -38,6 +43,10 @@ export const markNeedsHumanReviewToolMetadata = {
   context: "task_run",
 } as const;
 
+const mcpTaskRunSchema = taskRunSchema.extend({
+  taskUrl: z.string().url(),
+});
+
 export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolOptions) {
   return [
     {
@@ -45,7 +54,7 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
       description: setTaskResultToolMetadata.description,
       context: setTaskResultToolMetadata.context,
       inputSchema: setTaskRunResultInputSchema,
-      outputSchema: taskRunSchema,
+      outputSchema: mcpTaskRunSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = setTaskRunResultInputSchema.parse(args);
@@ -56,7 +65,10 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
             parsed.resultText,
           );
 
-          return success("Task result updated.", taskRunSchema.parse(run));
+          return success(
+            "Task result updated.",
+            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, run)),
+          );
         }, "Failed to set task result."),
     },
     {
@@ -64,7 +76,7 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
       description: addTaskArtifactToolMetadata.description,
       context: addTaskArtifactToolMetadata.context,
       inputSchema: addTaskRunArtifactInputSchema,
-      outputSchema: taskRunSchema,
+      outputSchema: mcpTaskRunSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = addTaskRunArtifactInputSchema.parse(args);
@@ -75,7 +87,10 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
             parsed.artifact,
           );
 
-          return success("Task artifact added.", taskRunSchema.parse(run));
+          return success(
+            "Task artifact added.",
+            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, run)),
+          );
         }, "Failed to add task artifact."),
     },
     {
@@ -83,7 +98,7 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
       description: markNeedsHumanReviewToolMetadata.description,
       context: markNeedsHumanReviewToolMetadata.context,
       inputSchema: markTaskRunNeedsReviewInputSchema,
-      outputSchema: taskRunSchema,
+      outputSchema: mcpTaskRunSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = markTaskRunNeedsReviewInputSchema.parse(args);
@@ -94,7 +109,10 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
             parsed.reason,
           );
 
-          return success("Task run marked for human review.", taskRunSchema.parse(run));
+          return success(
+            "Task run marked for human review.",
+            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, run)),
+          );
         }, "Failed to mark task run for human review."),
     },
   ] as const;

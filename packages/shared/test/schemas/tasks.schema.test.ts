@@ -6,6 +6,7 @@ import {
   createTaskFeedbackInputSchema,
   createTaskRunInputSchema,
   markTaskRunNeedsReviewInputSchema,
+  persistedTaskRunArtifactSchema,
   queueTaskInputSchema,
   setTaskRunResultInputSchema,
   taskFeedbackThreadSchema,
@@ -183,44 +184,84 @@ describe("task schemas", () => {
   });
 
   describe("taskRunArtifactSchema", () => {
-    it("accepts artifacts with a path", () => {
+    it("accepts file artifacts", () => {
       expect(
         taskRunArtifactSchema.parse({
           title: "Report",
           description: "Generated report.",
-          path: "reports/output.md",
+          type: "file",
+          link: "reports/output.md",
         }),
       ).toEqual({
         title: "Report",
         description: "Generated report.",
-        path: "reports/output.md",
+        type: "file",
+        link: "reports/output.md",
       });
     });
 
-    it("accepts artifacts with a URL", () => {
+    it("accepts URL artifacts", () => {
       expect(
         taskRunArtifactSchema.parse({
+          title: "Preview",
+          type: "url",
+          link: "https://example.com/preview",
+        }),
+      ).toEqual({
+        title: "Preview",
+        type: "url",
+        link: "https://example.com/preview",
+      });
+    });
+
+    it("rejects artifacts without a type", () => {
+      expect(() =>
+        taskRunArtifactSchema.parse({ title: "Missing output", link: "reports/output.md" }),
+      ).toThrow();
+    });
+
+    it("rejects URL artifacts with invalid links", () => {
+      expect(() =>
+        taskRunArtifactSchema.parse({
+          title: "Ambiguous output",
+          type: "url",
+          link: "reports/output.md",
+        }),
+      ).toThrow();
+    });
+
+    it("normalizes legacy path artifacts from persisted storage", () => {
+      expect(
+        persistedTaskRunArtifactSchema.parse({
+          title: "Report",
+          path: "reports/output.md",
+        }),
+      ).toEqual({
+        title: "Report",
+        type: "file",
+        link: "reports/output.md",
+      });
+    });
+
+    it("normalizes legacy URL artifacts from persisted storage", () => {
+      expect(
+        persistedTaskRunArtifactSchema.parse({
           title: "Preview",
           url: "https://example.com/preview",
         }),
       ).toEqual({
         title: "Preview",
-        url: "https://example.com/preview",
+        type: "url",
+        link: "https://example.com/preview",
       });
     });
 
-    it("rejects artifacts without a path or URL", () => {
-      expect(() => taskRunArtifactSchema.parse({ title: "Missing output" })).toThrow(
-        "Exactly one of url or path is required.",
-      );
-    });
-
-    it("rejects artifacts with both a path and URL", () => {
+    it("rejects legacy artifacts that provide both path and URL", () => {
       expect(() =>
-        taskRunArtifactSchema.parse({
+        persistedTaskRunArtifactSchema.parse({
           title: "Ambiguous output",
           path: "reports/output.md",
-          url: "https://example.com/output",
+          url: "https://example.com/preview",
         }),
       ).toThrow("Exactly one of url or path is required.");
     });
@@ -240,11 +281,11 @@ describe("task schemas", () => {
       expect(
         addTaskRunArtifactInputSchema.parse({
           taskRunId: "run-1",
-          artifact: { title: "Report", path: "reports/output.md" },
+          artifact: { title: "Report", type: "file", link: "reports/output.md" },
         }),
       ).toEqual({
         taskRunId: "run-1",
-        artifact: { title: "Report", path: "reports/output.md" },
+        artifact: { title: "Report", type: "file", link: "reports/output.md" },
       });
     });
 
