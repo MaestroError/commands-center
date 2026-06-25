@@ -113,7 +113,9 @@ const completedRun: TaskRun = {
   effectivePermissions: { toolPermissions: [{ pattern: "bash_*", action: "allow" }] },
   finalMessage: "Release notes drafted.",
   resultText: "Saved release notes to `notes.md`.",
-  artifacts: [{ title: "Notes", path: "notes.md", description: "Generated release notes." }],
+  artifacts: [
+    { title: "Notes", type: "file", link: "notes.md", description: "Generated release notes." },
+  ],
   needsHumanReview: true,
   humanReviewReason: "Confirm the generated notes are complete.",
   result: { messageCount: 3 },

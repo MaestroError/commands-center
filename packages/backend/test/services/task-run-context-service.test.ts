@@ -123,7 +123,7 @@ describe("createTaskRunContextService", () => {
         renderedPrompt: "Previous prompt.",
         resultText: "Previous result.",
         finalMessage: "Previous summary.",
-        artifacts: [{ title: "Report", path: ".cc/artifacts/report.md" }],
+        artifacts: [{ title: "Report", type: "file", link: ".cc/artifacts/report.md" }],
       });
       await taskService.createRun({
         id: "duplicate-artifact-run",
@@ -133,7 +133,7 @@ describe("createTaskRunContextService", () => {
         triggerSource: "manual",
         renderedPrompt: "Duplicate artifact prompt.",
         finalMessage: "Duplicate artifact summary.",
-        artifacts: [{ title: "Duplicate report", path: ".cc/artifacts/report.md" }],
+        artifacts: [{ title: "Duplicate report", type: "file", link: ".cc/artifacts/report.md" }],
       });
 
       const built = await contextService.build({
@@ -154,9 +154,15 @@ describe("createTaskRunContextService", () => {
         expect.objectContaining({ id: "duplicate-artifact-run" }),
       ]);
       expect(built.renderedContext["artifacts"]).toEqual([
-        { title: "Report", path: ".cc/artifacts/report.md", sourceRunId: "previous-run" },
+        {
+          title: "Report",
+          type: "file",
+          link: ".cc/artifacts/report.md",
+          sourceRunId: "previous-run",
+        },
       ]);
       expect(built.renderedPrompt).toContain("<artifacts>\n- sourceRunId: previous-run");
+      expect(built.renderedPrompt).toContain("file: .cc/artifacts/report.md");
       expect(built.renderedPrompt).not.toContain("Duplicate report");
     } finally {
       await testDb.cleanup();

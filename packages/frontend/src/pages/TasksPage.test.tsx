@@ -135,7 +135,8 @@ const run: TaskRun = {
   artifacts: [
     {
       title: "Tool list",
-      path: "tools-23.md",
+      type: "file",
+      link: "tools-23.md",
       description: "Generated tool inventory.",
     },
   ],
@@ -633,12 +634,14 @@ describe("TasksPage", () => {
       artifacts: [
         {
           title: "Tool list update",
-          path: "tools-23.md",
+          type: "file",
+          link: "tools-23.md",
           description: "Updated generated tool inventory.",
         },
         {
           title: "Release report",
-          path: "reports/release.md",
+          type: "file",
+          link: "reports/release.md",
           description: "Generated release report.",
         },
       ],
@@ -2399,12 +2402,14 @@ describe("TaskDetailPage", () => {
       artifacts: [
         {
           title: "Tool list update",
-          path: "tools-23.md",
+          type: "file",
+          link: "tools-23.md",
           description: "Updated generated tool inventory.",
         },
         {
           title: "Release report",
-          path: "reports/release.md",
+          type: "file",
+          link: "reports/release.md",
           description: "Generated release report.",
         },
       ],
@@ -2608,7 +2613,7 @@ describe("TaskDetailPage", () => {
     expect(screen.getByText("session-1")).toBeInTheDocument();
     expect(screen.getByText("Saved all 24 available tools to `tools-23.md`.")).toBeInTheDocument();
     expect(screen.getByText("Confirm the generated tool list is complete.")).toBeInTheDocument();
-    expect(screen.getByText(/"path": "tools-23.md"/)).toBeInTheDocument();
+    expect(screen.getByText(/"link": "tools-23.md"/)).toBeInTheDocument();
     expect(screen.queryByText("Rendered prompt")).not.toBeInTheDocument();
   });
 

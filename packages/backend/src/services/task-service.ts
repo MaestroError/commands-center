@@ -28,7 +28,7 @@ import {
   taskContextSchema,
   taskListSchema,
   taskPermissionProfileSchema,
-  taskRunArtifactSchema,
+  persistedTaskRunArtifactSchema,
   taskRunListSchema,
   taskRunSchema,
   taskSchema,
@@ -2387,7 +2387,7 @@ function parseJsonRecord(value: string | null): Record<string, unknown> | undefi
 }
 
 function parseTaskRunArtifacts(value: string | null): TaskRunArtifact[] {
-  return value ? taskRunArtifactSchema.array().parse(JSON.parse(value)) : [];
+  return value ? persistedTaskRunArtifactSchema.array().parse(JSON.parse(value)) : [];
 }
 
 function parseOptional<T>(

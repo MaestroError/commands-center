@@ -34,7 +34,11 @@ function setArtifacts(data: unknown, isLoading = false): void {
   } as unknown as ReturnType<typeof useTaskRunArtifactsQuery>);
 }
 
-const artifact: TaskRunArtifact = { title: "Report", path: "/runs/run-1/report.pdf" };
+const artifact: TaskRunArtifact = {
+  title: "Report",
+  type: "file",
+  link: "/runs/run-1/report.pdf",
+};
 
 function registered(overrides: Record<string, unknown> = {}) {
   return {
@@ -70,7 +74,7 @@ describe("ArtifactShareControls", () => {
       <ArtifactShareControls
         taskId="task-1"
         runId="run-1"
-        artifact={{ title: "External", url: "https://example.com" }}
+        artifact={{ title: "External", type: "url", link: "https://example.com" }}
       />,
     );
     expect(container).toBeEmptyDOMElement();

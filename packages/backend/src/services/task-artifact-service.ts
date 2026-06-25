@@ -59,8 +59,8 @@ export function createTaskArtifactService(options: {
             return taskRegisteredArtifactSchema.parse({ ...stored, shareLinks: [] });
           }
 
-          const filename = validateFilename(candidate.artifact.path);
-          const sourcePath = resolveWorkspaceSourcePath(options.config, candidate.artifact.path);
+          const filename = validateFilename(candidate.artifact.link);
+          const sourcePath = resolveWorkspaceSourcePath(options.config, candidate.artifact.link);
           const sourceStat = await stat(sourcePath).catch((error: unknown) => {
             if ((error as NodeJS.ErrnoException).code === "ENOENT") {
               return undefined;
@@ -116,9 +116,9 @@ export function createTaskArtifactService(options: {
         return taskRegisteredArtifactSchema.parse({ ...existing, shareLinks: [] });
       }
 
-      const filename = validateFilename(candidate.artifact.path);
+      const filename = validateFilename(candidate.artifact.link);
       const mimeType = resolveMimeType(filename);
-      const sourcePath = resolveWorkspaceSourcePath(options.config, candidate.artifact.path);
+      const sourcePath = resolveWorkspaceSourcePath(options.config, candidate.artifact.link);
       const sourceStat = await stat(sourcePath).catch((error: unknown) => {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           throw new NotFoundError("Task artifact source file not found.");
@@ -176,12 +176,12 @@ export function createTaskArtifactService(options: {
 function listLocalCandidates(run: TaskRun): ArtifactCandidate[] {
   return run.artifacts
     .map((artifact, index) => ({ id: createArtifactCandidateId(run, artifact, index), artifact }))
-    .filter((candidate) => candidate.artifact.path !== undefined);
+    .filter((candidate) => candidate.artifact.type === "file");
 }
 
 function createArtifactCandidateId(run: TaskRun, artifact: TaskRunArtifact, index: number): string {
   return createHash("sha256")
-    .update([run.taskId, run.id, String(index), artifact.title, artifact.path ?? ""].join("\0"))
+    .update([run.taskId, run.id, String(index), artifact.title, artifact.link].join("\0"))
     .digest("hex")
     .slice(0, 26);
 }

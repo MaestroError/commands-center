@@ -1551,7 +1551,7 @@ describe("cc-managed MCP routes", () => {
           name: "add_task_artifact",
           arguments: {
             taskRunId: run.id,
-            artifact: { title: "Report", path: ".cc/artifacts/report.md" },
+            artifact: { title: "Report", type: "file", link: ".cc/artifacts/report.md" },
           },
         },
         22,
@@ -3403,7 +3403,8 @@ describe("cc-managed MCP routes", () => {
       await taskService.addRunArtifact(run.id, agent.id, {
         title: "Report",
         description: "Weekly summary.",
-        path: ".cc/artifacts/report.md",
+        type: "file",
+        link: ".cc/artifacts/report.md",
       });
 
       // list_self_task_artifacts: aggregates across all runs
@@ -3424,7 +3425,8 @@ describe("cc-managed MCP routes", () => {
             artifacts: [
               expect.objectContaining({
                 title: "Report",
-                path: ".cc/artifacts/report.md",
+                type: "file",
+                link: ".cc/artifacts/report.md",
                 sourceRunId: run.id,
               }),
             ],
@@ -3578,7 +3580,8 @@ describe("cc-managed MCP routes", () => {
       });
       await taskService.addRunArtifact(ownerRun.id, owner.id, {
         title: "Secret report",
-        path: ".cc/artifacts/secret.md",
+        type: "file",
+        link: ".cc/artifacts/secret.md",
       });
 
       const intruderAuth = await issueAuthHeader(

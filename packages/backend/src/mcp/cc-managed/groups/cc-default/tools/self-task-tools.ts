@@ -77,12 +77,11 @@ const listSelfTaskRunsOutputSchema = z.object({
   runs: taskRunListSchema,
 });
 
-// Artifact entry: the raw taskRunArtifactSchema fields plus which run produced it.
 const selfTaskArtifactEntrySchema = z.object({
   title: z.string(),
   description: z.string().optional(),
-  url: z.string().url().optional(),
-  path: z.string().optional(),
+  type: z.union([z.literal("url"), z.literal("file")]),
+  link: z.string().min(1),
   sourceRunId: z.string(),
 });
 
