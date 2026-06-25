@@ -5,17 +5,23 @@ import {
   taskContextInputSchema,
   taskRunSchema,
   taskSchema,
-  taskTemplateListSchema,
   taskTemplateSchema,
   type TaskTemplate,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../../../../../db/client.js";
+import type { RuntimeConfig } from "../../../../../lib/runtime-config.js";
 import type { TaskExecutionService } from "../../../../../services/task-execution-service.js";
 import type { TaskService } from "../../../../../services/task-service.js";
+import {
+  withTaskBoardUrl,
+  withTaskRunBoardUrl,
+  withTaskTemplateBoardUrl,
+} from "../../../task-board-urls.js";
 
 type SelfTaskTemplateToolOptions = {
   db: AppDb;
+  config: RuntimeConfig;
   taskService: TaskService;
   taskExecutionService: TaskExecutionService;
 };
@@ -49,8 +55,20 @@ const runSelfTaskTemplateNowInputSchema = templateIdInputSchema
   })
   .strict();
 
+const mcpTaskSchema = taskSchema.extend({
+  url: z.string().url(),
+});
+
+const mcpTaskRunSchema = taskRunSchema.extend({
+  taskUrl: z.string().url(),
+});
+
+const mcpTaskTemplateSchema = taskTemplateSchema.extend({
+  url: z.string().url(),
+});
+
 const listSelfTaskTemplatesOutputSchema = z.object({
-  templates: taskTemplateListSchema,
+  templates: z.array(mcpTaskTemplateSchema),
 });
 
 export const listSelfTaskTemplatesToolMetadata = {
@@ -119,7 +137,13 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
 
           return success(
             `Found ${String(templates.length)} template${templates.length === 1 ? "" : "s"}.`,
-            { templates: taskTemplateListSchema.parse(templates) },
+            {
+              templates: z
+                .array(mcpTaskTemplateSchema)
+                .parse(
+                  templates.map((template) => withTaskTemplateBoardUrl(options.config, template)),
+                ),
+            },
           );
         }, "Failed to list task templates."),
     },
@@ -128,7 +152,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       description: getSelfTaskTemplateToolMetadata.description,
       context: getSelfTaskTemplateToolMetadata.context,
       inputSchema: templateIdInputSchema,
-      outputSchema: taskTemplateSchema,
+      outputSchema: mcpTaskTemplateSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = templateIdInputSchema.parse(args);
@@ -139,7 +163,10 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
             agentId,
           );
 
-          return success("Template loaded.", taskTemplateSchema.parse(template));
+          return success(
+            "Template loaded.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
         }, "Failed to get task template."),
     },
     {
@@ -147,7 +174,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       description: createSelfTaskTemplateToolMetadata.description,
       context: createSelfTaskTemplateToolMetadata.context,
       inputSchema: createSelfTaskTemplateInputSchema,
-      outputSchema: taskTemplateSchema,
+      outputSchema: mcpTaskTemplateSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = createSelfTaskTemplateInputSchema.parse(args);
@@ -157,7 +184,10 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
             defaultAgentId: agentId,
           });
 
-          return success("Task template created.", taskTemplateSchema.parse(template));
+          return success(
+            "Task template created.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
         }, "Failed to create task template."),
     },
     {
@@ -165,7 +195,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       description: runSelfTaskTemplateNowToolMetadata.description,
       context: runSelfTaskTemplateNowToolMetadata.context,
       inputSchema: runSelfTaskTemplateNowInputSchema,
-      outputSchema: taskRunSchema,
+      outputSchema: mcpTaskRunSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = runSelfTaskTemplateNowInputSchema.parse(args);
@@ -188,7 +218,10 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
             metadata: parsed.metadata,
           });
 
-          return success("Task template queued.", taskRunSchema.parse(run));
+          return success(
+            "Task template queued.",
+            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, run)),
+          );
         }, "Failed to run task template."),
     },
     {
@@ -196,7 +229,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       description: createSelfTaskFromTemplateToolMetadata.description,
       context: createSelfTaskFromTemplateToolMetadata.context,
       inputSchema: templateIdInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = templateIdInputSchema.parse(args);
@@ -212,7 +245,10 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
             throw new Error("Task template not found.");
           }
 
-          return success("Task created from template.", taskSchema.parse(task));
+          return success(
+            "Task created from template.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to create task from template."),
     },
     {
@@ -220,7 +256,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       description: enableSelfTaskTemplateToolMetadata.description,
       context: enableSelfTaskTemplateToolMetadata.context,
       inputSchema: templateIdInputSchema,
-      outputSchema: taskTemplateSchema,
+      outputSchema: mcpTaskTemplateSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = templateIdInputSchema.parse(args);
@@ -233,7 +269,10 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
             throw new Error("Task template not found.");
           }
 
-          return success("Task template enabled.", taskTemplateSchema.parse(template));
+          return success(
+            "Task template enabled.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
         }, "Failed to enable task template."),
     },
     {
@@ -241,7 +280,7 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
       description: disableSelfTaskTemplateToolMetadata.description,
       context: disableSelfTaskTemplateToolMetadata.context,
       inputSchema: templateIdInputSchema,
-      outputSchema: taskTemplateSchema,
+      outputSchema: mcpTaskTemplateSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = templateIdInputSchema.parse(args);
@@ -254,7 +293,10 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
             throw new Error("Task template not found.");
           }
 
-          return success("Task template disabled.", taskTemplateSchema.parse(template));
+          return success(
+            "Task template disabled.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
         }, "Failed to disable task template."),
     },
   ] as const;

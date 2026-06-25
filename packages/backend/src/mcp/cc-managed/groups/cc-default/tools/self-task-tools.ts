@@ -6,18 +6,19 @@ import {
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
   taskContextSchema,
-  taskListSchema,
-  taskRunListSchema,
   taskRunSchema,
   taskSchema,
   type Task,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../../../../../db/client.js";
+import type { RuntimeConfig } from "../../../../../lib/runtime-config.js";
 import type { TaskService } from "../../../../../services/task-service.js";
+import { withTaskBoardUrl, withTaskRunBoardUrl } from "../../../task-board-urls.js";
 
 type SelfTaskToolOptions = {
   db: AppDb;
+  config: RuntimeConfig;
   taskService: TaskService;
 };
 
@@ -69,12 +70,20 @@ const appendSelfTaskContextInputSchema = taskIdInputSchema
   .merge(appendTaskContextInputSchema)
   .strict();
 
+const mcpTaskSchema = taskSchema.extend({
+  url: z.string().url(),
+});
+
+const mcpTaskRunSchema = taskRunSchema.extend({
+  taskUrl: z.string().url(),
+});
+
 const listSelfTasksOutputSchema = z.object({
-  tasks: taskListSchema,
+  tasks: z.array(mcpTaskSchema),
 });
 
 const listSelfTaskRunsOutputSchema = z.object({
-  runs: taskRunListSchema,
+  runs: z.array(mcpTaskRunSchema),
 });
 
 const selfTaskArtifactEntrySchema = z.object({
@@ -169,7 +178,7 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
       description: createSelfTaskToolMetadata.description,
       context: createSelfTaskToolMetadata.context,
       inputSchema: createSelfTaskInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = createSelfTaskInputSchema.parse(args);
@@ -178,7 +187,10 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
             createTaskInputSchema.parse({ ...parsed, agentId }),
           );
 
-          return success("Task created.", taskSchema.parse(task));
+          return success(
+            "Task created.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to create task."),
     },
     {
@@ -186,7 +198,7 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
       description: scheduleSelfTaskToolMetadata.description,
       context: scheduleSelfTaskToolMetadata.context,
       inputSchema: scheduleSelfTaskInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = scheduleSelfTaskInputSchema.parse(args);
@@ -202,7 +214,10 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
             throw new Error("Task not found.");
           }
 
-          return success("Task scheduled.", taskSchema.parse(task));
+          return success(
+            "Task scheduled.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to schedule task."),
     },
     {
@@ -218,7 +233,9 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
           const tasks = await options.taskService.list({ ...query, agentId });
 
           return success(`Found ${String(tasks.length)} task${tasks.length === 1 ? "" : "s"}.`, {
-            tasks: taskListSchema.parse(tasks),
+            tasks: z
+              .array(mcpTaskSchema)
+              .parse(tasks.map((task) => withTaskBoardUrl(options.config, task))),
           });
         }, "Failed to list tasks."),
     },
@@ -227,14 +244,17 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
       description: getSelfTaskToolMetadata.description,
       context: getSelfTaskToolMetadata.context,
       inputSchema: taskIdInputSchema,
-      outputSchema: taskSchema,
+      outputSchema: mcpTaskSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = taskIdInputSchema.parse(args);
           const agentId = await requireCallingAgentId(options.db, context.agentSlug);
           const task = await requireSelfTask(options.taskService, parsed.taskId, agentId);
 
-          return success("Task loaded.", taskSchema.parse(task));
+          return success(
+            "Task loaded.",
+            mcpTaskSchema.parse(withTaskBoardUrl(options.config, task)),
+          );
         }, "Failed to get task."),
     },
     {
@@ -251,7 +271,9 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
           const runs = await options.taskService.listRuns(parsed.taskId, parsed.query ?? {});
 
           return success(`Found ${String(runs.length)} task run${runs.length === 1 ? "" : "s"}.`, {
-            runs: taskRunListSchema.parse(runs),
+            runs: z
+              .array(mcpTaskRunSchema)
+              .parse(runs.map((run) => withTaskRunBoardUrl(options.config, run))),
           });
         }, "Failed to list task runs."),
     },
@@ -260,7 +282,7 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
       description: getSelfTaskRunToolMetadata.description,
       context: getSelfTaskRunToolMetadata.context,
       inputSchema: taskRunIdInputSchema,
-      outputSchema: taskRunSchema,
+      outputSchema: mcpTaskRunSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = taskRunIdInputSchema.parse(args);
@@ -272,7 +294,10 @@ export function createSelfTaskToolDefinitions(options: SelfTaskToolOptions) {
             throw new Error("Task run not found.");
           }
 
-          return success("Task run loaded.", taskRunSchema.parse(run));
+          return success(
+            "Task run loaded.",
+            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, run)),
+          );
         }, "Failed to get task run."),
     },
   ] as const;

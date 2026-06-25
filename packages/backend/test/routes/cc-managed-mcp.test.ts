@@ -525,6 +525,8 @@ describe("cc-managed MCP routes", () => {
           repeatRule: { frequency: "day", interval: 1 },
         },
       });
+      const taskUrl = `${testDb.config.security.publicOrigin}/tasks?task=${task.id}`;
+      const recurringTemplateUrl = `${testDb.config.security.publicOrigin}/tasks?view=templates&template=${recurring.id}`;
 
       const listToolsResponse = await callMcpToolRoute(server, authHeader, "tools/list", {}, 6);
 
@@ -597,7 +599,7 @@ describe("cc-managed MCP routes", () => {
       );
 
       const triggerJson = parseSseJson(triggerResponse.body) as {
-        result?: { structuredContent?: { id?: string } };
+        result?: { structuredContent?: { id?: string; taskUrl?: string } };
       };
       const runId = triggerJson.result?.structuredContent?.id;
 
@@ -683,26 +685,36 @@ describe("cc-managed MCP routes", () => {
       expect(scheduledResponse.statusCode).toBe(200);
       expect(parseSseJson(scheduledResponse.body)).toMatchObject({
         result: {
-          structuredContent: { id: task.id, status: "scheduled" },
+          structuredContent: { id: task.id, status: "scheduled", url: taskUrl },
         },
       });
       expect(parseSseJson(listedResponse.body)).toMatchObject({
-        result: { structuredContent: { tasks: expect.any(Array) } },
+        result: {
+          structuredContent: {
+            tasks: expect.arrayContaining([expect.objectContaining({ id: task.id, url: taskUrl })]),
+          },
+        },
       });
       expect(parseSseJson(getTaskResponse.body)).toMatchObject({
-        result: { structuredContent: { id: task.id, title: "Manual MCP task" } },
+        result: { structuredContent: { id: task.id, title: "Manual MCP task", url: taskUrl } },
+      });
+      expect(triggerJson).toMatchObject({
+        result: { structuredContent: { taskUrl } },
       });
       expect(parseSseJson(listRunsResponse.body)).toMatchObject({
-        result: { structuredContent: { runs: [expect.objectContaining({ id: runId })] } },
+        result: {
+          structuredContent: { runs: [expect.objectContaining({ id: runId, taskUrl })] },
+        },
       });
       expect(parseSseJson(getRunResponse.body)).toMatchObject({
-        result: { structuredContent: { id: runId, taskId: task.id } },
+        result: { structuredContent: { id: runId, taskId: task.id, taskUrl } },
       });
       expect(parseSseJson(createTemplateResponse.body)).toMatchObject({
         result: {
           structuredContent: {
             title: "Created MCP template",
             defaultAgentId: agent.id,
+            url: expect.stringContaining("/tasks?view=templates&template="),
           },
         },
       });
@@ -712,13 +724,16 @@ describe("cc-managed MCP routes", () => {
             id: recurring.id,
             title: "Recurring MCP task",
             defaultAgentId: agent.id,
+            url: recurringTemplateUrl,
           },
         },
       });
       expect(parseSseJson(listTemplatesResponse.body)).toMatchObject({
         result: {
           structuredContent: {
-            templates: expect.arrayContaining([expect.objectContaining({ id: recurring.id })]),
+            templates: expect.arrayContaining([
+              expect.objectContaining({ id: recurring.id, url: recurringTemplateUrl }),
+            ]),
           },
         },
       });
@@ -727,6 +742,7 @@ describe("cc-managed MCP routes", () => {
           structuredContent: {
             id: recurring.id,
             title: "Updated recurring MCP task",
+            url: recurringTemplateUrl,
           },
         },
       });
@@ -736,14 +752,21 @@ describe("cc-managed MCP routes", () => {
             status: "backlog",
             title: "Updated recurring MCP task #G1",
             generatedByAgentId: agent.id,
+            url: expect.stringContaining("/tasks?task="),
           },
         },
       });
       const runTemplateJson = parseSseJson(runTemplateResponse.body) as {
-        result?: { structuredContent?: { taskId?: string } };
+        result?: { structuredContent?: { taskId?: string; taskUrl?: string } };
       };
       expect(runTemplateJson).toMatchObject({
-        result: { structuredContent: { status: "queued", triggerSource: "agent" } },
+        result: {
+          structuredContent: {
+            status: "queued",
+            triggerSource: "agent",
+            taskUrl: expect.stringContaining("/tasks?task="),
+          },
+        },
       });
       const generatedByManagedTool = await taskService.get(
         runTemplateJson.result?.structuredContent?.taskId ?? "",
@@ -752,6 +775,9 @@ describe("cc-managed MCP routes", () => {
         title: "Updated recurring MCP task #G2",
         generatedByAgentId: agent.id,
       });
+      expect(runTemplateJson.result?.structuredContent?.taskUrl).toBe(
+        `${testDb.config.security.publicOrigin}/tasks?task=${generatedByManagedTool?.id}`,
+      );
 
       // Disable the recurring template, then a fresh agent run-now must be refused
       // while the template's settings remain intact.
@@ -763,7 +789,9 @@ describe("cc-managed MCP routes", () => {
         19,
       );
       expect(parseSseJson(disableResponse.body)).toMatchObject({
-        result: { structuredContent: { id: recurring.id, enabled: false } },
+        result: {
+          structuredContent: { id: recurring.id, enabled: false, url: recurringTemplateUrl },
+        },
       });
 
       const refusedRun = await callMcpToolRoute(
