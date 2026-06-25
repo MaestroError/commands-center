@@ -242,6 +242,29 @@ describe("task schemas", () => {
         link: "reports/output.md",
       });
     });
+
+    it("normalizes legacy URL artifacts from persisted storage", () => {
+      expect(
+        persistedTaskRunArtifactSchema.parse({
+          title: "Preview",
+          url: "https://example.com/preview",
+        }),
+      ).toEqual({
+        title: "Preview",
+        type: "url",
+        link: "https://example.com/preview",
+      });
+    });
+
+    it("rejects legacy artifacts that provide both path and URL", () => {
+      expect(() =>
+        persistedTaskRunArtifactSchema.parse({
+          title: "Ambiguous output",
+          path: "reports/output.md",
+          url: "https://example.com/preview",
+        }),
+      ).toThrow("Exactly one of url or path is required.");
+    });
   });
 
   describe("task run outcome tool input schemas", () => {
