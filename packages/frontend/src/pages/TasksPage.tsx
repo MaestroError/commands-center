@@ -3572,7 +3572,7 @@ function GeneratedTaskHistory(props: {
             </Link>
           </div>
           {task.latestFinalMessage ? (
-            <p className="mt-3 rounded-lg border border-border bg-surface-elevated p-3 text-xs text-text-secondary">
+            <p className="mt-3 min-w-0 break-words rounded-lg border border-border bg-surface-elevated p-3 text-xs text-text-secondary [overflow-wrap:anywhere]">
               {task.latestFinalMessage}
             </p>
           ) : null}

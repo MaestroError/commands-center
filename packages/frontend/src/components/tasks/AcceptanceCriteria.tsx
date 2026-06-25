@@ -58,17 +58,23 @@ export function AcceptanceCriteriaList({
               </button>
             ) : (
               <span
-                aria-checked={isMet}
-                aria-disabled="true"
+                aria-hidden="true"
                 className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border opacity-60 ${
                   isMet ? "border-accent text-accent" : "border-border text-transparent"
                 }`}
-                role="checkbox"
               >
-                <Check aria-hidden="true" className="h-3 w-3" />
+                <Check className="h-3 w-3" />
               </span>
             )}
-            <span className={isMet ? "text-text-muted line-through" : ""}>{todo.content}</span>
+            <span className={isMet ? "text-text-muted line-through" : ""}>
+              {todo.content}
+              {/* The read-only marker is decorative, so convey met state to
+                  screen readers here instead. The interactive variant exposes
+                  it through the button's aria-checked. */}
+              {!interactive ? (
+                <span className="sr-only">{isMet ? " (met)" : " (not met)"}</span>
+              ) : null}
+            </span>
           </li>
         );
       })}
