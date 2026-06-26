@@ -701,9 +701,11 @@ describe("IntegrationsPage", () => {
 
     expect(screen.getByRole("button", { name: "Add Brave Search" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Linear" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Jira" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Sentry" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Vercel" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Supabase" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add n8n" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Playwright" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add AntV Charts" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Mermaid" })).toBeInTheDocument();

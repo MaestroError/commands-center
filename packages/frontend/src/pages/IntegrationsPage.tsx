@@ -140,6 +140,20 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     },
   },
   {
+    id: "jira",
+    name: "Jira",
+    description: "Jira issues and Confluence pages via Atlassian's Remote MCP (Rovo).",
+    authBadge: "OAuth",
+    tags: ["auth:oauth", "category:productivity", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "jira",
+      url: "https://mcp.atlassian.com/v1/mcp",
+      transport: "streamable-http",
+      authMethod: "oauth",
+    },
+  },
+  {
     id: "sentry",
     name: "Sentry",
     description: "Inspect errors, releases, and performance issues.",
@@ -179,6 +193,22 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
       url: "https://mcp.supabase.com/mcp",
       transport: "streamable-http",
       authMethod: "oauth",
+    },
+  },
+  {
+    id: "n8n",
+    name: "n8n",
+    description: "Trigger workflows and tools from your n8n instance. Set your instance URL.",
+    authBadge: "Token",
+    tags: ["auth:token", "category:automation", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "n8n",
+      // Placeholder — users replace the host with their own n8n instance URL.
+      url: "https://your-n8n-instance.com/mcp-server/http",
+      transport: "streamable-http",
+      authMethod: "headers",
+      headersText: "Authorization: Bearer {env:N8N_MCP_TOKEN}",
     },
   },
   {
