@@ -671,8 +671,8 @@ export function IntegrationsPage() {
 
       {authServer ? (
         <McpAuthDialog
-          busy={mcpMutations.authenticate.isPending}
-          onClose={() => setAuthServer(undefined)}
+          browserBusy={mcpMutations.authenticate.isPending}
+          composio={isComposioServer(authServer)}
           onAuthenticate={async () => {
             setSuccessMessage(undefined);
             const updated = await mcpMutations.authenticate.mutateAsync({
@@ -681,7 +681,21 @@ export function IntegrationsPage() {
             setSuccessMessage(`${updated.name} authenticated.`);
             setAuthServer(undefined);
           }}
+          onClose={() => setAuthServer(undefined)}
+          onConnected={(name) => {
+            setSuccessMessage(`${name} authenticated.`);
+            setAuthServer(undefined);
+          }}
+          onRefresh={async () => {
+            const { data } = await mcpServersQuery.refetch();
+            return data?.find((server) => server.id === authServer.id);
+          }}
+          onStartHosted={async () => {
+            const result = await mcpMutations.startAuth.mutateAsync({ id: authServer.id });
+            return result.authorizationUrl;
+          }}
           server={authServer}
+          startBusy={mcpMutations.startAuth.isPending}
         />
       ) : null}
     </div>
@@ -1092,16 +1106,34 @@ function ComposioDialog(props: {
 
 function McpAuthDialog(props: {
   server: McpServer;
-  busy: boolean;
+  composio: boolean;
+  browserBusy: boolean;
+  startBusy: boolean;
   onClose: () => void;
   onAuthenticate: () => Promise<void>;
+  onStartHosted: () => Promise<string>;
+  onRefresh: () => Promise<McpServer | undefined>;
+  onConnected: (name: string) => void;
 }) {
   const [error, setError] = useState<string>();
+  const [awaiting, setAwaiting] = useState(false);
+  const [authUrl, setAuthUrl] = useState<string>();
+  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+      }
+    };
+  }, []);
+
+  const busy = props.browserBusy || props.startBusy || awaiting;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/60 p-4 backdrop-blur-sm"
-      onClick={props.onClose}
+      onClick={busy ? undefined : props.onClose}
     >
       <div
         className="cc-panel flex min-h-0 max-h-[calc(100vh-8rem)] w-full max-w-xl flex-col overflow-hidden p-6"
@@ -1113,8 +1145,9 @@ function McpAuthDialog(props: {
               Authenticate {props.server.name}
             </h2>
             <p className="mt-1 text-sm text-text-secondary">
-              We&rsquo;ll open your default browser to complete sign-in. This window will update
-              automatically when authentication succeeds.
+              {props.composio
+                ? "We’ll open your default browser to complete sign-in. This window will update automatically when authentication succeeds."
+                : "We’ll open the provider’s sign-in page in a new tab. After you approve, this dialog updates automatically — the browser is redirected back to CC, so it works on a remote/VPS host too."}
             </p>
           </div>
           <button
@@ -1127,14 +1160,48 @@ function McpAuthDialog(props: {
         </div>
 
         <div className="mt-6 grid min-h-0 flex-1 gap-4 overflow-y-auto">
-          <button
-            className="cc-button"
-            disabled={props.busy}
-            onClick={() => void handleAuthenticate()}
-            type="button"
-          >
-            {props.busy ? "Waiting for browser sign-in..." : "Authenticate in browser"}
-          </button>
+          {props.composio ? (
+            <button
+              className="cc-button"
+              disabled={props.browserBusy}
+              onClick={() => void handleAuthenticateBrowser()}
+              type="button"
+            >
+              {props.browserBusy ? "Waiting for browser sign-in..." : "Authenticate in browser"}
+            </button>
+          ) : awaiting ? (
+            <div className="grid gap-3">
+              <p className="text-sm text-text-secondary">
+                Waiting for you to finish signing in in the opened tab&hellip;
+              </p>
+              {authUrl ? (
+                <a
+                  className="text-sm text-accent hover:underline"
+                  href={authUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Reopen sign-in page
+                </a>
+              ) : null}
+              <button
+                className="cc-button cc-button-secondary justify-self-start"
+                onClick={() => void checkOnce()}
+                type="button"
+              >
+                Check now
+              </button>
+            </div>
+          ) : (
+            <button
+              className="cc-button"
+              disabled={props.startBusy}
+              onClick={() => void handleStartHosted()}
+              type="button"
+            >
+              {props.startBusy ? "Preparing sign-in..." : "Authenticate"}
+            </button>
+          )}
 
           {error ? <p className="text-sm text-danger">{error}</p> : null}
         </div>
@@ -1142,24 +1209,62 @@ function McpAuthDialog(props: {
         <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-surface pt-4">
           <button
             className="cc-button cc-button-secondary"
-            disabled={props.busy}
+            disabled={busy}
             onClick={props.onClose}
             type="button"
           >
-            {props.busy ? "Cancel disabled" : "Close"}
+            {busy ? "Cancel disabled" : "Close"}
           </button>
         </div>
       </div>
     </div>
   );
 
-  async function handleAuthenticate() {
+  async function handleAuthenticateBrowser() {
     setError(undefined);
 
     try {
       await props.onAuthenticate();
     } catch (nextError) {
       setError(readError(nextError));
+    }
+  }
+
+  async function handleStartHosted() {
+    setError(undefined);
+
+    try {
+      const url = await props.onStartHosted();
+      setAuthUrl(url);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setAwaiting(true);
+      startPolling();
+    } catch (nextError) {
+      setError(readError(nextError));
+    }
+  }
+
+  function startPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+    }
+
+    pollRef.current = setInterval(() => {
+      void checkOnce();
+    }, 2500);
+  }
+
+  async function checkOnce() {
+    try {
+      const updated = await props.onRefresh();
+      if (updated?.runtimeStatus?.status === "connected") {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+        }
+        props.onConnected(updated.name);
+      }
+    } catch {
+      // Transient refresh failures are ignored; polling continues.
     }
   }
 }

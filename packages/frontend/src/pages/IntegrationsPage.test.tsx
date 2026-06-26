@@ -31,6 +31,7 @@ const authenticateMutateAsync = vi.fn();
 const removeAuthMutateAsync = vi.fn();
 const updateSpecialistMutateAsync = vi.fn();
 const confirmSpy = vi.spyOn(window, "confirm");
+const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
 const writeClipboardSpy = vi.fn(() => Promise.resolve());
 
 function setViewport(size: "mobile" | "medium" | "large") {
@@ -69,6 +70,7 @@ beforeEach(() => {
   updateSpecialistMutateAsync.mockReset();
   confirmSpy.mockReset();
   confirmSpy.mockReturnValue(true);
+  openSpy.mockClear();
   Object.defineProperty(window.navigator, "clipboard", {
     configurable: true,
     value: {
@@ -436,8 +438,10 @@ describe("IntegrationsPage", () => {
     fireEvent.change(screen.getByLabelText("Auth method"), { target: { value: "oauth" } });
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
 
+    // Non-Composio OAuth servers use the CC-hosted redirect flow ("Authenticate"),
+    // not OpenCode's loopback browser flow ("Authenticate in browser").
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Authenticate in browser" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Authenticate" })).toBeInTheDocument();
     });
   });
 
@@ -629,43 +633,57 @@ describe("IntegrationsPage", () => {
     });
   });
 
-  it("supports MCP authenticate-in-browser flow and credential removal", async () => {
-    authenticateMutateAsync.mockResolvedValue({ name: "github" });
+  it("supports the CC-hosted MCP OAuth flow and credential removal", async () => {
+    const server = {
+      id: "mcp-1",
+      name: "github",
+      enabled: true,
+      config: {
+        url: "https://example.com/mcp",
+        transport: "streamable-http",
+        authMethod: "oauth",
+        headers: [],
+      },
+      runtimeStatus: { status: "connected" },
+      tools: [{ id: "github_create_issue", name: "create_issue" }],
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T10:00:00.000Z",
+    };
+    startAuthMutateAsync.mockResolvedValue({
+      authorizationUrl: "https://provider.example.com/authorize?client_id=abc",
+    });
     removeAuthMutateAsync.mockResolvedValue({ success: true });
+    const refetch = vi.fn().mockResolvedValue({ data: [server] });
     vi.mocked(useMcpServersQuery).mockReturnValue({
-      data: [
-        {
-          id: "mcp-1",
-          name: "github",
-          enabled: true,
-          config: {
-            url: "https://example.com/mcp",
-            transport: "streamable-http",
-            authMethod: "oauth",
-            headers: [],
-          },
-          runtimeStatus: { status: "connected" },
-          tools: [{ id: "github_create_issue", name: "create_issue" }],
-          createdAt: "2026-04-22T10:00:00.000Z",
-          updatedAt: "2026-04-22T10:00:00.000Z",
-        },
-      ],
+      data: [server],
       isLoading: false,
       error: null,
-      refetch: vi.fn(),
+      refetch,
     } as never);
 
     render(<IntegrationsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Re-authenticate" }));
-    fireEvent.click(screen.getByRole("button", { name: "Authenticate in browser" }));
+    fireEvent.click(screen.getByRole("button", { name: "Authenticate" }));
 
+    // Starts the hosted flow and opens the provider sign-in in a new tab.
     await waitFor(() => {
-      expect(authenticateMutateAsync).toHaveBeenCalledWith({ id: "mcp-1" });
+      expect(startAuthMutateAsync).toHaveBeenCalledWith({ id: "mcp-1" });
+    });
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://provider.example.com/authorize?client_id=abc",
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    // Polling detects the connected status and closes the dialog.
+    fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+    await waitFor(() => {
+      expect(refetch).toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Check now" })).not.toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Remove auth" }));
-
     await waitFor(() => {
       expect(removeAuthMutateAsync).toHaveBeenCalledWith({ id: "mcp-1" });
     });

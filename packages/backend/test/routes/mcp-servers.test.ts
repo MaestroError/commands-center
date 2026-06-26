@@ -227,6 +227,60 @@ describe("mcp server routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("completes the hosted OAuth redirect and renders a status page", async () => {
+    const testDb = await createTestDatabase();
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/mcp-servers",
+        payload: {
+          name: "github",
+          enabled: true,
+          config: {
+            url: "https://example.com/mcp",
+            transport: "streamable-http",
+            authMethod: "oauth",
+            headers: [],
+          },
+        },
+      });
+      const id = created.json<{ id: string }>().id;
+
+      const redirect = await server.inject({
+        method: "GET",
+        url: `/api/mcp-servers/${id}/auth/redirect?code=abc123&state=xyz`,
+      });
+      expect(redirect.statusCode).toBe(200);
+      expect(redirect.headers["content-type"]).toContain("text/html");
+      expect(redirect.body).toContain("Authorization complete");
+      expect(redirect.body).toContain("github");
+
+      // Provider-reported errors render a failure page without throwing.
+      const failed = await server.inject({
+        method: "GET",
+        url: `/api/mcp-servers/${id}/auth/redirect?error=access_denied&error_description=Denied`,
+      });
+      expect(failed.statusCode).toBe(200);
+      expect(failed.body).toContain("Authorization failed");
+      expect(failed.body).toContain("Denied");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 function createOrchestrator() {
