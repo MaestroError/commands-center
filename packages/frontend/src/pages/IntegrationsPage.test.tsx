@@ -31,7 +31,6 @@ const authenticateMutateAsync = vi.fn();
 const removeAuthMutateAsync = vi.fn();
 const updateSpecialistMutateAsync = vi.fn();
 const confirmSpy = vi.spyOn(window, "confirm");
-const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
 const writeClipboardSpy = vi.fn(() => Promise.resolve());
 
 function setViewport(size: "mobile" | "medium" | "large") {
@@ -70,7 +69,7 @@ beforeEach(() => {
   updateSpecialistMutateAsync.mockReset();
   confirmSpy.mockReset();
   confirmSpy.mockReturnValue(true);
-  openSpy.mockClear();
+  vi.mocked(window.open).mockClear();
   Object.defineProperty(window.navigator, "clipboard", {
     configurable: true,
     value: {
@@ -633,7 +632,7 @@ describe("IntegrationsPage", () => {
     await waitFor(() => {
       expect(startAuthMutateAsync).toHaveBeenCalledWith({ id: "mcp-1" });
     });
-    expect(openSpy).toHaveBeenCalledWith(
+    expect(window.open).toHaveBeenCalledWith(
       "https://provider.example.com/authorize?client_id=abc",
       "_blank",
       "noopener,noreferrer",
