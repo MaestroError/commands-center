@@ -100,6 +100,7 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
       await expectRunStatus(taskService, run.id, "running");
+      await expectRunRuntimeState(taskService, run.id, "waiting_for_opencode");
       const runningRun = await taskService.getRunById(run.id);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
@@ -2370,6 +2371,16 @@ async function expectRunStatus(
   status: string,
 ): Promise<void> {
   await expect.poll(async () => (await taskService.getRunById(runId))?.status).toBe(status);
+}
+
+async function expectRunRuntimeState(
+  taskService: ReturnType<typeof createTaskService>,
+  runId: string,
+  runtimeState: string | undefined,
+): Promise<void> {
+  await expect
+    .poll(async () => (await taskService.getRunById(runId))?.runtimeState)
+    .toBe(runtimeState);
 }
 
 async function insertAgent(

@@ -301,6 +301,8 @@ sudo systemctl restart commandscenter
 
 When an update is applied from the running web app, CommandsCenter exits with code `75` after the package update. The service treats that as an intentional update restart: systemd records it as a successful exit and starts the service again. For manual `ccenter upgrade` runs, restart the service with `systemctl` as shown above.
 
+Settings and CLI upgrades preflight the global npm install before mutating it. If stale npm staging directories such as `/usr/lib/node_modules/.commandscenter-*` are present, or if the active Node.js version is too old for the target package, the update is refused with cleanup instructions. Rerun the automatic service installer after cleanup if the global npm prefix needs repair.
+
 > To expose this instance publicly over HTTPS, see [Public Domain And Reverse Proxy](#public-domain-and-reverse-proxy).
 
 ### Docker Compose
