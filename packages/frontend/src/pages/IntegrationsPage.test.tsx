@@ -166,44 +166,6 @@ describe("IntegrationsPage", () => {
     expect(screen.queryByText("Built-in MCP")).not.toBeInTheDocument();
   });
 
-  it("activates Composio with OAuth using the predefined MCP config", async () => {
-    createMutateAsync.mockResolvedValue({
-      id: "mcp-composio",
-      name: "composio",
-      enabled: true,
-      config: {
-        url: "https://connect.composio.dev/mcp",
-        transport: "streamable-http",
-        authMethod: "oauth",
-        headers: [],
-      },
-      runtimeStatus: { status: "needs_auth" },
-      tools: [],
-      createdAt: "2026-04-22T10:00:00.000Z",
-      updatedAt: "2026-04-22T10:00:00.000Z",
-    });
-
-    render(<IntegrationsPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Connect Composio" }));
-    fireEvent.click(screen.getByRole("button", { name: "Activate Composio" }));
-
-    await waitFor(() => {
-      expect(createMutateAsync).toHaveBeenCalledWith({
-        enabled: true,
-        name: "composio",
-        config: {
-          url: "https://connect.composio.dev/mcp",
-          transport: "streamable-http",
-          authMethod: "oauth",
-          headers: [],
-        },
-      });
-    });
-
-    expect(screen.getByRole("button", { name: "Authenticate in browser" })).toBeInTheDocument();
-  });
-
   it("activates Composio with API key using the predefined header", async () => {
     createMutateAsync.mockResolvedValue({
       id: "mcp-composio",
@@ -224,11 +186,12 @@ describe("IntegrationsPage", () => {
     render(<IntegrationsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Connect Composio" }));
-    fireEvent.click(screen.getByLabelText("API key"));
+    // No auth-method choice anymore — Composio is API-key only.
+    expect(screen.queryByLabelText("OAuth")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Composio name"), {
       target: { value: "my-composio" },
     });
-    fireEvent.change(screen.getByLabelText("Consumer API key"), {
+    fireEvent.change(screen.getByLabelText("Composio API key"), {
       target: { value: "secret-key" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Activate Composio" }));

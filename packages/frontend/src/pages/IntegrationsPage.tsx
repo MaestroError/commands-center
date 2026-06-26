@@ -44,8 +44,6 @@ type SuggestedMcpServer = {
   form: FormState;
 };
 
-type ComposioAuthMode = "oauth" | "api-key";
-
 const EMPTY_FORM_BASE = {
   url: "",
   headersText: "",
@@ -640,31 +638,19 @@ export function IntegrationsPage() {
           onSubmit={async (input) => {
             setSuccessMessage(undefined);
 
-            const created = await mcpMutations.create.mutateAsync({
+            await mcpMutations.create.mutateAsync({
               enabled: true,
               name: input.name,
-              config:
-                input.authMode === "oauth"
-                  ? {
-                      transport: "streamable-http",
-                      url: COMPOSIO_SERVER_URL,
-                      authMethod: "oauth",
-                      headers: [],
-                    }
-                  : {
-                      transport: "streamable-http",
-                      url: COMPOSIO_SERVER_URL,
-                      authMethod: "headers",
-                      headers: [{ key: COMPOSIO_API_KEY_HEADER, value: input.apiKey }],
-                    },
+              config: {
+                transport: "streamable-http",
+                url: COMPOSIO_SERVER_URL,
+                authMethod: "headers",
+                headers: [{ key: COMPOSIO_API_KEY_HEADER, value: input.apiKey }],
+              },
             });
 
             setSuccessMessage("Composio activated.");
             setComposioDialogOpen(false);
-
-            if (input.authMode === "oauth" && created.runtimeStatus?.status !== "connected") {
-              setAuthServer(created);
-            }
           }}
         />
       ) : null}
@@ -959,10 +945,9 @@ function ComposioSection(props: {
 function ComposioDialog(props: {
   busy: boolean;
   onClose: () => void;
-  onSubmit: (input: { name: string; authMode: ComposioAuthMode; apiKey: string }) => Promise<void>;
+  onSubmit: (input: { name: string; apiKey: string }) => Promise<void>;
 }) {
   const [name, setName] = useState(DEFAULT_COMPOSIO_NAME);
-  const [authMode, setAuthMode] = useState<ComposioAuthMode>("oauth");
   const [apiKey, setApiKey] = useState("");
   const [submitError, setSubmitError] = useState<string>();
 
@@ -979,7 +964,7 @@ function ComposioDialog(props: {
           <div>
             <h2 className="text-lg font-semibold text-text-primary">Connect Composio</h2>
             <p className="mt-1 text-sm text-text-secondary">
-              CC manages the endpoint and transport. Choose how to authenticate this MCP server.
+              CC manages the endpoint and transport. Authenticate with your Composio API key.
             </p>
           </div>
           <button
@@ -1004,64 +989,19 @@ function ComposioDialog(props: {
             />
           </Field>
 
-          <fieldset className="grid gap-3">
-            <legend className="text-sm font-medium text-text-primary">Authentication</legend>
-            <label className="rounded-lg border border-border bg-surface p-4">
-              <div className="flex items-start gap-3">
-                <input
-                  aria-label="OAuth"
-                  checked={authMode === "oauth"}
-                  name="composio-auth-mode"
-                  onChange={() => {
-                    setAuthMode("oauth");
-                    setSubmitError(undefined);
-                  }}
-                  type="radio"
-                />
-                <div>
-                  <p className="text-sm font-medium text-text-primary">OAuth (Recommended)</p>
-                  <p className="mt-1 text-sm text-text-secondary">
-                    Browser-based sign-in delegated to the standard OpenCode MCP auth flow.
-                  </p>
-                </div>
-              </div>
-            </label>
-
-            <label className="rounded-lg border border-border bg-surface p-4">
-              <div className="flex items-start gap-3">
-                <input
-                  aria-label="API key"
-                  checked={authMode === "api-key"}
-                  name="composio-auth-mode"
-                  onChange={() => {
-                    setAuthMode("api-key");
-                    setSubmitError(undefined);
-                  }}
-                  type="radio"
-                />
-                <div>
-                  <p className="text-sm font-medium text-text-primary">API key</p>
-                  <p className="mt-1 text-sm text-text-secondary">
-                    Sends your consumer key through the predefined{" "}
-                    <code>{COMPOSIO_API_KEY_HEADER}</code> header.
-                  </p>
-                </div>
-              </div>
-            </label>
-          </fieldset>
-
-          {authMode === "api-key" ? (
-            <Field label="Consumer API key" required>
-              <PasswordInput
-                aria-label="Consumer API key"
-                onChange={(event) => {
-                  setApiKey(event.target.value);
-                  setSubmitError(undefined);
-                }}
-                value={apiKey}
-              />
-            </Field>
-          ) : null}
+          <Field label="API key" required>
+            <PasswordInput
+              aria-label="Composio API key"
+              onChange={(event) => {
+                setApiKey(event.target.value);
+                setSubmitError(undefined);
+              }}
+              value={apiKey}
+            />
+            <p className="mt-2 text-xs text-text-secondary">
+              Sent through the predefined <code>{COMPOSIO_API_KEY_HEADER}</code> header.
+            </p>
+          </Field>
 
           {submitError ? <p className="text-sm text-danger">{submitError}</p> : null}
 
@@ -1087,15 +1027,14 @@ function ComposioDialog(props: {
       return;
     }
 
-    if (authMode === "api-key" && !apiKey.trim()) {
-      setSubmitError("Consumer API key is required.");
+    if (!apiKey.trim()) {
+      setSubmitError("API key is required.");
       return;
     }
 
     try {
       await props.onSubmit({
         name: name.trim(),
-        authMode,
         apiKey: apiKey.trim(),
       });
     } catch (error) {
@@ -1147,7 +1086,7 @@ function McpAuthDialog(props: {
             <p className="mt-1 text-sm text-text-secondary">
               {props.composio
                 ? "We’ll open your default browser to complete sign-in. This window will update automatically when authentication succeeds."
-                : "We’ll open the provider’s sign-in page in a new tab. After you approve, this dialog updates automatically — the browser is redirected back to CC, so it works on a remote/VPS host too."}
+                : "We’ll open the provider’s sign-in page in a new tab. After you approve, this dialog updates automatically — the browser is redirected back to CC."}
             </p>
           </div>
           <button
