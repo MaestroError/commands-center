@@ -621,7 +621,8 @@ export function buildMcpOauthRedirectUri(serverId: string, config: RuntimeConfig
 
 function isComposioRemoteUrl(url: string): boolean {
   try {
-    return new URL(url).hostname.endsWith("composio.dev");
+    const { hostname } = new URL(url);
+    return hostname === "composio.dev" || hostname.endsWith(".composio.dev");
   } catch {
     return false;
   }

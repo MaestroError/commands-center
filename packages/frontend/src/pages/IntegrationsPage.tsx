@@ -1087,7 +1087,7 @@ function McpAuthDialog(props: {
   const [error, setError] = useState<string>();
   const [awaiting, setAwaiting] = useState(false);
   const [authUrl, setAuthUrl] = useState<string>();
-  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   useEffect(() => {
     return () => {

@@ -268,14 +268,18 @@ describe("mcp server routes", () => {
       expect(redirect.body).toContain("Authorization complete");
       expect(redirect.body).toContain("github");
 
-      // Provider-reported errors render a failure page without throwing.
+      // Provider-reported errors render a failure page without throwing, and
+      // untrusted error text is HTML-escaped (no reflected XSS).
       const failed = await server.inject({
         method: "GET",
-        url: `/api/mcp-servers/${id}/auth/redirect?error=access_denied&error_description=Denied`,
+        url: `/api/mcp-servers/${id}/auth/redirect?error=access_denied&error_description=${encodeURIComponent(
+          "<script>alert(1)</script>",
+        )}`,
       });
       expect(failed.statusCode).toBe(200);
       expect(failed.body).toContain("Authorization failed");
-      expect(failed.body).toContain("Denied");
+      expect(failed.body).not.toContain("<script>alert(1)</script>");
+      expect(failed.body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     } finally {
       await server.close();
       await testDb.cleanup();

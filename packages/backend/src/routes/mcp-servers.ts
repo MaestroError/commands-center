@@ -23,14 +23,25 @@ const mcpAuthRedirectQuerySchema = z.object({
   error_description: z.string().trim().optional(),
 });
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function renderAuthRedirectPage(options: { ok: boolean; title: string; message: string }): string {
   const accent = options.ok ? "#4ade80" : "#f87171";
+  const title = escapeHtml(options.title);
+  const message = escapeHtml(options.message);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CC — ${options.title}</title>
+  <title>CC — ${title}</title>
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #0f1117; color: #e5e7eb; }
     .card { text-align: center; padding: 2.5rem; max-width: 32rem; }
@@ -40,8 +51,8 @@ function renderAuthRedirectPage(options: { ok: boolean; title: string; message: 
 </head>
 <body>
   <div class="card">
-    <h1>${options.title}</h1>
-    <p>${options.message}</p>
+    <h1>${title}</h1>
+    <p>${message}</p>
   </div>
   <script>setTimeout(() => { try { window.close(); } catch (_) {} }, ${options.ok ? 1500 : 8000});</script>
 </body>

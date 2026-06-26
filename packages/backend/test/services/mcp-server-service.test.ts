@@ -338,6 +338,18 @@ describe("mcp-server-service", () => {
         },
       });
 
+      // A look-alike domain must NOT be treated as Composio.
+      const lookalikeServer = await service.create({
+        name: "lookalike",
+        enabled: true,
+        config: {
+          url: "https://notcomposio.dev/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+
       const configPath = join(testDb.config.paths.workspaceDir, "opencode.jsonc");
       const rendered = JSON.parse(await readFile(configPath, "utf8")) as {
         mcp: Record<string, Record<string, unknown>>;
@@ -357,6 +369,15 @@ describe("mcp-server-service", () => {
         type: "remote",
         url: "https://connect.composio.dev/mcp",
         enabled: true,
+      });
+      // notcomposio.dev is not Composio — it still gets the CC-hosted redirect.
+      expect(rendered.mcp["lookalike"]).toEqual({
+        type: "remote",
+        url: "https://notcomposio.dev/mcp",
+        enabled: true,
+        oauth: {
+          redirectUri: `${testDb.config.security.publicOrigin}/api/mcp-servers/${lookalikeServer.id}/auth/redirect`,
+        },
       });
       expect(rendered.mcp["plain-server"]).toEqual({
         type: "remote",
