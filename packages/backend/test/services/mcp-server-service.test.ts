@@ -305,7 +305,7 @@ describe("mcp-server-service", () => {
     });
 
     try {
-      await service.create({
+      const oauthServer = await service.create({
         name: "oauth-server",
         enabled: true,
         config: {
@@ -327,15 +327,57 @@ describe("mcp-server-service", () => {
         },
       });
 
+      await service.create({
+        name: "composio",
+        enabled: true,
+        config: {
+          url: "https://connect.composio.dev/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+
+      // A look-alike domain must NOT be treated as Composio.
+      const lookalikeServer = await service.create({
+        name: "lookalike",
+        enabled: true,
+        config: {
+          url: "https://notcomposio.dev/mcp",
+          transport: "streamable-http",
+          authMethod: "oauth",
+          headers: [],
+        },
+      });
+
       const configPath = join(testDb.config.paths.workspaceDir, "opencode.jsonc");
       const rendered = JSON.parse(await readFile(configPath, "utf8")) as {
         mcp: Record<string, Record<string, unknown>>;
       };
 
+      // Non-Composio OAuth servers get a CC-hosted redirect so the flow works on a VPS.
       expect(rendered.mcp["oauth-server"]).toEqual({
         type: "remote",
         url: "https://oauth.example.com/mcp",
         enabled: true,
+        oauth: {
+          redirectUri: `${testDb.config.security.publicOrigin}/api/mcp-servers/${oauthServer.id}/auth/redirect`,
+        },
+      });
+      // Composio OAuth is left untouched (default loopback) — no redirectUri injected.
+      expect(rendered.mcp["composio"]).toEqual({
+        type: "remote",
+        url: "https://connect.composio.dev/mcp",
+        enabled: true,
+      });
+      // notcomposio.dev is not Composio — it still gets the CC-hosted redirect.
+      expect(rendered.mcp["lookalike"]).toEqual({
+        type: "remote",
+        url: "https://notcomposio.dev/mcp",
+        enabled: true,
+        oauth: {
+          redirectUri: `${testDb.config.security.publicOrigin}/api/mcp-servers/${lookalikeServer.id}/auth/redirect`,
+        },
       });
       expect(rendered.mcp["plain-server"]).toEqual({
         type: "remote",
@@ -714,7 +756,7 @@ describe("mcp-server-service", () => {
   });
 
   describe("disposeGlobal call sites", () => {
-    it("calls disposeGlobal after update, setEnabled, authenticate, completeAuth, and removeAuth", async () => {
+    it("calls disposeGlobal after update, setEnabled, startAuth, authenticate, completeAuth, and removeAuth", async () => {
       const testDb = await createTestDatabase();
       const opencodeService = createMockOpenCodeService();
       const service = createMcpServerService({
@@ -754,7 +796,7 @@ describe("mcp-server-service", () => {
         await service.completeAuth(created.id, "code");
         await service.removeAuth(created.id);
 
-        expect(opencodeService.disposeGlobal).toHaveBeenCalledTimes(6);
+        expect(opencodeService.disposeGlobal).toHaveBeenCalledTimes(7);
       } finally {
         await testDb.cleanup();
       }

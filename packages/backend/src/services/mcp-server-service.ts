@@ -113,7 +113,7 @@ export async function syncGlobalMcpConfig(db: AppDb, config: RuntimeConfig): Pro
   const next = {
     ...current,
     $schema: OPENCODE_CONFIG_SCHEMA_URL,
-    mcp: Object.fromEntries(rows.map((row) => [row.name, renderConfigEntry(row)])),
+    mcp: Object.fromEntries(rows.map((row) => [row.name, renderConfigEntry(row, config)])),
   };
 
   await mkdir(config.paths.workspaceDir, { recursive: true });
@@ -346,6 +346,18 @@ export function createMcpServerService(options: {
 
       assertRowSupportsOauth(row);
       await syncGlobalConfig();
+      // Ensure OpenCode reloads the config so the CC-hosted redirectUri (if any)
+      // is applied before the authorization URL is generated.
+      await options.opencodeService.disposeGlobal();
+
+      // Clear any stored OAuth client registration so dynamic client registration
+      // re-runs against the current redirectUri. A client registered during an
+      // earlier attempt (e.g. with OpenCode's default loopback redirect) pins its
+      // own redirect_uris, which the provider rejects once the redirect changes
+      // ("Invalid redirect_uri for OAuth client").
+      await options.opencodeService
+        .removeMcpAuth(options.config.paths.workspaceDir, row.name)
+        .catch(() => undefined);
 
       const result = await callOpencode(row.name, "start authentication for", () =>
         options.opencodeService.startMcpAuth(options.config.paths.workspaceDir, row.name),
@@ -544,27 +556,76 @@ async function readGlobalConfig(filePath: string): Promise<Record<string, unknow
   }
 }
 
-function renderConfigEntry(row: typeof mcp_servers.$inferSelect): Record<string, unknown> {
-  const config = mcpServerConfigSchema.parse(JSON.parse(row.config_json)) satisfies McpServerConfig;
+function renderConfigEntry(
+  row: typeof mcp_servers.$inferSelect,
+  config: RuntimeConfig,
+): Record<string, unknown> {
+  const serverConfig = mcpServerConfigSchema.parse(
+    JSON.parse(row.config_json),
+  ) satisfies McpServerConfig;
 
-  if (config.transport === "stdio") {
+  if (serverConfig.transport === "stdio") {
     return {
       type: "local",
-      command: config.command,
+      command: serverConfig.command,
       enabled: row.enabled,
-      ...(Object.keys(config.environment).length > 0 ? { environment: config.environment } : {}),
+      ...(Object.keys(serverConfig.environment).length > 0
+        ? { environment: serverConfig.environment }
+        : {}),
     };
   }
 
-  const headers = Object.fromEntries(config.headers.map((header) => [header.key, header.value]));
+  const headers = Object.fromEntries(
+    serverConfig.headers.map((header) => [header.key, header.value]),
+  );
 
   return {
     type: "remote",
-    url: config.url,
+    url: serverConfig.url,
     enabled: row.enabled,
-    ...(config.authMethod === "oauth" ? {} : { oauth: false }),
-    ...(config.headers.length > 0 ? { headers } : {}),
+    ...renderOauthConfig(row.id, serverConfig, config),
+    ...(serverConfig.headers.length > 0 ? { headers } : {}),
   };
+}
+
+// Decide what OpenCode `oauth` config a remote server gets.
+//
+// - Non-OAuth servers: `oauth: false` (OpenCode never attempts a flow).
+// - Composio OAuth: left untouched (`{}`) — its loopback flow is unchanged, as
+//   Composio is configured separately and OAuth against it is not supported here.
+// - Other OAuth servers: point the redirect at a CC-hosted callback so the
+//   browser-based flow completes through CC (works on a remote/VPS host) instead
+//   of OpenCode's loopback `127.0.0.1:19876` listener.
+function renderOauthConfig(
+  serverId: string,
+  serverConfig: Extract<McpServerConfig, { transport: "streamable-http" | "sse" }>,
+  config: RuntimeConfig,
+): Record<string, unknown> {
+  if (serverConfig.authMethod !== "oauth") {
+    return { oauth: false };
+  }
+
+  if (isComposioRemoteUrl(serverConfig.url)) {
+    return {};
+  }
+
+  return { oauth: { redirectUri: buildMcpOauthRedirectUri(serverId, config) } };
+}
+
+export function buildMcpOauthRedirectUri(serverId: string, config: RuntimeConfig): string {
+  return new URL(
+    `/api/mcp-servers/${encodeURIComponent(serverId)}/auth/redirect`,
+    config.security.publicOrigin,
+  ).toString();
+}
+
+function isComposioRemoteUrl(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === "composio.dev" || hostname.endsWith(".composio.dev");
+  } catch {
+    return false;
+  }
 }
 
 function mapMcpServer(row: typeof mcp_servers.$inferSelect): McpServer {

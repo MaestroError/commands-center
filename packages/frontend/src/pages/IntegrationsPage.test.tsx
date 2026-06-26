@@ -69,6 +69,7 @@ beforeEach(() => {
   updateSpecialistMutateAsync.mockReset();
   confirmSpy.mockReset();
   confirmSpy.mockReturnValue(true);
+  vi.mocked(window.open).mockClear();
   Object.defineProperty(window.navigator, "clipboard", {
     configurable: true,
     value: {
@@ -164,44 +165,6 @@ describe("IntegrationsPage", () => {
     expect(screen.queryByText("Built-in MCP")).not.toBeInTheDocument();
   });
 
-  it("activates Composio with OAuth using the predefined MCP config", async () => {
-    createMutateAsync.mockResolvedValue({
-      id: "mcp-composio",
-      name: "composio",
-      enabled: true,
-      config: {
-        url: "https://connect.composio.dev/mcp",
-        transport: "streamable-http",
-        authMethod: "oauth",
-        headers: [],
-      },
-      runtimeStatus: { status: "needs_auth" },
-      tools: [],
-      createdAt: "2026-04-22T10:00:00.000Z",
-      updatedAt: "2026-04-22T10:00:00.000Z",
-    });
-
-    render(<IntegrationsPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Connect Composio" }));
-    fireEvent.click(screen.getByRole("button", { name: "Activate Composio" }));
-
-    await waitFor(() => {
-      expect(createMutateAsync).toHaveBeenCalledWith({
-        enabled: true,
-        name: "composio",
-        config: {
-          url: "https://connect.composio.dev/mcp",
-          transport: "streamable-http",
-          authMethod: "oauth",
-          headers: [],
-        },
-      });
-    });
-
-    expect(screen.getByRole("button", { name: "Authenticate in browser" })).toBeInTheDocument();
-  });
-
   it("activates Composio with API key using the predefined header", async () => {
     createMutateAsync.mockResolvedValue({
       id: "mcp-composio",
@@ -222,11 +185,12 @@ describe("IntegrationsPage", () => {
     render(<IntegrationsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Connect Composio" }));
-    fireEvent.click(screen.getByLabelText("API key"));
+    // No auth-method choice anymore — Composio is API-key only.
+    expect(screen.queryByLabelText("OAuth")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Composio name"), {
       target: { value: "my-composio" },
     });
-    fireEvent.change(screen.getByLabelText("Consumer API key"), {
+    fireEvent.change(screen.getByLabelText("Composio API key"), {
       target: { value: "secret-key" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Activate Composio" }));
@@ -436,8 +400,10 @@ describe("IntegrationsPage", () => {
     fireEvent.change(screen.getByLabelText("Auth method"), { target: { value: "oauth" } });
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
 
+    // Non-Composio OAuth servers use the CC-hosted redirect flow ("Authenticate"),
+    // not OpenCode's loopback browser flow ("Authenticate in browser").
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Authenticate in browser" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Authenticate" })).toBeInTheDocument();
     });
   });
 
@@ -629,43 +595,57 @@ describe("IntegrationsPage", () => {
     });
   });
 
-  it("supports MCP authenticate-in-browser flow and credential removal", async () => {
-    authenticateMutateAsync.mockResolvedValue({ name: "github" });
+  it("supports the CC-hosted MCP OAuth flow and credential removal", async () => {
+    const server = {
+      id: "mcp-1",
+      name: "github",
+      enabled: true,
+      config: {
+        url: "https://example.com/mcp",
+        transport: "streamable-http",
+        authMethod: "oauth",
+        headers: [],
+      },
+      runtimeStatus: { status: "connected" },
+      tools: [{ id: "github_create_issue", name: "create_issue" }],
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T10:00:00.000Z",
+    };
+    startAuthMutateAsync.mockResolvedValue({
+      authorizationUrl: "https://provider.example.com/authorize?client_id=abc",
+    });
     removeAuthMutateAsync.mockResolvedValue({ success: true });
+    const refetch = vi.fn().mockResolvedValue({ data: [server] });
     vi.mocked(useMcpServersQuery).mockReturnValue({
-      data: [
-        {
-          id: "mcp-1",
-          name: "github",
-          enabled: true,
-          config: {
-            url: "https://example.com/mcp",
-            transport: "streamable-http",
-            authMethod: "oauth",
-            headers: [],
-          },
-          runtimeStatus: { status: "connected" },
-          tools: [{ id: "github_create_issue", name: "create_issue" }],
-          createdAt: "2026-04-22T10:00:00.000Z",
-          updatedAt: "2026-04-22T10:00:00.000Z",
-        },
-      ],
+      data: [server],
       isLoading: false,
       error: null,
-      refetch: vi.fn(),
+      refetch,
     } as never);
 
     render(<IntegrationsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Re-authenticate" }));
-    fireEvent.click(screen.getByRole("button", { name: "Authenticate in browser" }));
+    fireEvent.click(screen.getByRole("button", { name: "Authenticate" }));
 
+    // Starts the hosted flow and opens the provider sign-in in a new tab.
     await waitFor(() => {
-      expect(authenticateMutateAsync).toHaveBeenCalledWith({ id: "mcp-1" });
+      expect(startAuthMutateAsync).toHaveBeenCalledWith({ id: "mcp-1" });
+    });
+    expect(window.open).toHaveBeenCalledWith(
+      "https://provider.example.com/authorize?client_id=abc",
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    // Polling detects the connected status and closes the dialog.
+    fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+    await waitFor(() => {
+      expect(refetch).toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Check now" })).not.toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Remove auth" }));
-
     await waitFor(() => {
       expect(removeAuthMutateAsync).toHaveBeenCalledWith({ id: "mcp-1" });
     });
@@ -720,9 +700,11 @@ describe("IntegrationsPage", () => {
 
     expect(screen.getByRole("button", { name: "Add Brave Search" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Linear" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Jira" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Sentry" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Vercel" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Supabase" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add n8n" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Playwright" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add AntV Charts" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Mermaid" })).toBeInTheDocument();

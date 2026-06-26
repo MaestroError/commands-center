@@ -44,8 +44,6 @@ type SuggestedMcpServer = {
   form: FormState;
 };
 
-type ComposioAuthMode = "oauth" | "api-key";
-
 const EMPTY_FORM_BASE = {
   url: "",
   headersText: "",
@@ -142,6 +140,20 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     },
   },
   {
+    id: "jira",
+    name: "Jira",
+    description: "Jira issues and Confluence pages via Atlassian's Remote MCP (Rovo).",
+    authBadge: "OAuth",
+    tags: ["auth:oauth", "category:productivity", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "jira",
+      url: "https://mcp.atlassian.com/v1/mcp",
+      transport: "streamable-http",
+      authMethod: "oauth",
+    },
+  },
+  {
     id: "sentry",
     name: "Sentry",
     description: "Inspect errors, releases, and performance issues.",
@@ -181,6 +193,22 @@ const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
       url: "https://mcp.supabase.com/mcp",
       transport: "streamable-http",
       authMethod: "oauth",
+    },
+  },
+  {
+    id: "n8n",
+    name: "n8n",
+    description: "Trigger workflows and tools from your n8n instance. Set your instance URL.",
+    authBadge: "Token",
+    tags: ["auth:token", "category:automation", "type:remote", "source:official"],
+    form: {
+      ...EMPTY_FORM_BASE,
+      name: "n8n",
+      // Placeholder — users replace the host with their own n8n instance URL.
+      url: "https://your-n8n-instance.com/mcp-server/http",
+      transport: "streamable-http",
+      authMethod: "headers",
+      headersText: "Authorization: Bearer {env:N8N_MCP_TOKEN}",
     },
   },
   {
@@ -640,39 +668,27 @@ export function IntegrationsPage() {
           onSubmit={async (input) => {
             setSuccessMessage(undefined);
 
-            const created = await mcpMutations.create.mutateAsync({
+            await mcpMutations.create.mutateAsync({
               enabled: true,
               name: input.name,
-              config:
-                input.authMode === "oauth"
-                  ? {
-                      transport: "streamable-http",
-                      url: COMPOSIO_SERVER_URL,
-                      authMethod: "oauth",
-                      headers: [],
-                    }
-                  : {
-                      transport: "streamable-http",
-                      url: COMPOSIO_SERVER_URL,
-                      authMethod: "headers",
-                      headers: [{ key: COMPOSIO_API_KEY_HEADER, value: input.apiKey }],
-                    },
+              config: {
+                transport: "streamable-http",
+                url: COMPOSIO_SERVER_URL,
+                authMethod: "headers",
+                headers: [{ key: COMPOSIO_API_KEY_HEADER, value: input.apiKey }],
+              },
             });
 
             setSuccessMessage("Composio activated.");
             setComposioDialogOpen(false);
-
-            if (input.authMode === "oauth" && created.runtimeStatus?.status !== "connected") {
-              setAuthServer(created);
-            }
           }}
         />
       ) : null}
 
       {authServer ? (
         <McpAuthDialog
-          busy={mcpMutations.authenticate.isPending}
-          onClose={() => setAuthServer(undefined)}
+          browserBusy={mcpMutations.authenticate.isPending}
+          composio={isComposioServer(authServer)}
           onAuthenticate={async () => {
             setSuccessMessage(undefined);
             const updated = await mcpMutations.authenticate.mutateAsync({
@@ -681,7 +697,21 @@ export function IntegrationsPage() {
             setSuccessMessage(`${updated.name} authenticated.`);
             setAuthServer(undefined);
           }}
+          onClose={() => setAuthServer(undefined)}
+          onConnected={(name) => {
+            setSuccessMessage(`${name} authenticated.`);
+            setAuthServer(undefined);
+          }}
+          onRefresh={async () => {
+            const { data } = await mcpServersQuery.refetch();
+            return data?.find((server) => server.id === authServer.id);
+          }}
+          onStartHosted={async () => {
+            const result = await mcpMutations.startAuth.mutateAsync({ id: authServer.id });
+            return result.authorizationUrl;
+          }}
           server={authServer}
+          startBusy={mcpMutations.startAuth.isPending}
         />
       ) : null}
     </div>
@@ -945,10 +975,9 @@ function ComposioSection(props: {
 function ComposioDialog(props: {
   busy: boolean;
   onClose: () => void;
-  onSubmit: (input: { name: string; authMode: ComposioAuthMode; apiKey: string }) => Promise<void>;
+  onSubmit: (input: { name: string; apiKey: string }) => Promise<void>;
 }) {
   const [name, setName] = useState(DEFAULT_COMPOSIO_NAME);
-  const [authMode, setAuthMode] = useState<ComposioAuthMode>("oauth");
   const [apiKey, setApiKey] = useState("");
   const [submitError, setSubmitError] = useState<string>();
 
@@ -965,7 +994,7 @@ function ComposioDialog(props: {
           <div>
             <h2 className="text-lg font-semibold text-text-primary">Connect Composio</h2>
             <p className="mt-1 text-sm text-text-secondary">
-              CC manages the endpoint and transport. Choose how to authenticate this MCP server.
+              CC manages the endpoint and transport. Authenticate with your Composio API key.
             </p>
           </div>
           <button
@@ -990,64 +1019,19 @@ function ComposioDialog(props: {
             />
           </Field>
 
-          <fieldset className="grid gap-3">
-            <legend className="text-sm font-medium text-text-primary">Authentication</legend>
-            <label className="rounded-lg border border-border bg-surface p-4">
-              <div className="flex items-start gap-3">
-                <input
-                  aria-label="OAuth"
-                  checked={authMode === "oauth"}
-                  name="composio-auth-mode"
-                  onChange={() => {
-                    setAuthMode("oauth");
-                    setSubmitError(undefined);
-                  }}
-                  type="radio"
-                />
-                <div>
-                  <p className="text-sm font-medium text-text-primary">OAuth (Recommended)</p>
-                  <p className="mt-1 text-sm text-text-secondary">
-                    Browser-based sign-in delegated to the standard OpenCode MCP auth flow.
-                  </p>
-                </div>
-              </div>
-            </label>
-
-            <label className="rounded-lg border border-border bg-surface p-4">
-              <div className="flex items-start gap-3">
-                <input
-                  aria-label="API key"
-                  checked={authMode === "api-key"}
-                  name="composio-auth-mode"
-                  onChange={() => {
-                    setAuthMode("api-key");
-                    setSubmitError(undefined);
-                  }}
-                  type="radio"
-                />
-                <div>
-                  <p className="text-sm font-medium text-text-primary">API key</p>
-                  <p className="mt-1 text-sm text-text-secondary">
-                    Sends your consumer key through the predefined{" "}
-                    <code>{COMPOSIO_API_KEY_HEADER}</code> header.
-                  </p>
-                </div>
-              </div>
-            </label>
-          </fieldset>
-
-          {authMode === "api-key" ? (
-            <Field label="Consumer API key" required>
-              <PasswordInput
-                aria-label="Consumer API key"
-                onChange={(event) => {
-                  setApiKey(event.target.value);
-                  setSubmitError(undefined);
-                }}
-                value={apiKey}
-              />
-            </Field>
-          ) : null}
+          <Field label="API key" required>
+            <PasswordInput
+              aria-label="Composio API key"
+              onChange={(event) => {
+                setApiKey(event.target.value);
+                setSubmitError(undefined);
+              }}
+              value={apiKey}
+            />
+            <p className="mt-2 text-xs text-text-secondary">
+              Sent through the predefined <code>{COMPOSIO_API_KEY_HEADER}</code> header.
+            </p>
+          </Field>
 
           {submitError ? <p className="text-sm text-danger">{submitError}</p> : null}
 
@@ -1073,15 +1057,14 @@ function ComposioDialog(props: {
       return;
     }
 
-    if (authMode === "api-key" && !apiKey.trim()) {
-      setSubmitError("Consumer API key is required.");
+    if (!apiKey.trim()) {
+      setSubmitError("API key is required.");
       return;
     }
 
     try {
       await props.onSubmit({
         name: name.trim(),
-        authMode,
         apiKey: apiKey.trim(),
       });
     } catch (error) {
@@ -1092,16 +1075,34 @@ function ComposioDialog(props: {
 
 function McpAuthDialog(props: {
   server: McpServer;
-  busy: boolean;
+  composio: boolean;
+  browserBusy: boolean;
+  startBusy: boolean;
   onClose: () => void;
   onAuthenticate: () => Promise<void>;
+  onStartHosted: () => Promise<string>;
+  onRefresh: () => Promise<McpServer | undefined>;
+  onConnected: (name: string) => void;
 }) {
   const [error, setError] = useState<string>();
+  const [awaiting, setAwaiting] = useState(false);
+  const [authUrl, setAuthUrl] = useState<string>();
+  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+      }
+    };
+  }, []);
+
+  const busy = props.browserBusy || props.startBusy || awaiting;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/60 p-4 backdrop-blur-sm"
-      onClick={props.onClose}
+      onClick={busy ? undefined : props.onClose}
     >
       <div
         className="cc-panel flex min-h-0 max-h-[calc(100vh-8rem)] w-full max-w-xl flex-col overflow-hidden p-6"
@@ -1113,8 +1114,9 @@ function McpAuthDialog(props: {
               Authenticate {props.server.name}
             </h2>
             <p className="mt-1 text-sm text-text-secondary">
-              We&rsquo;ll open your default browser to complete sign-in. This window will update
-              automatically when authentication succeeds.
+              {props.composio
+                ? "We’ll open your default browser to complete sign-in. This window will update automatically when authentication succeeds."
+                : "We’ll open the provider’s sign-in page in a new tab. After you approve, this dialog updates automatically — the browser is redirected back to CC."}
             </p>
           </div>
           <button
@@ -1127,14 +1129,48 @@ function McpAuthDialog(props: {
         </div>
 
         <div className="mt-6 grid min-h-0 flex-1 gap-4 overflow-y-auto">
-          <button
-            className="cc-button"
-            disabled={props.busy}
-            onClick={() => void handleAuthenticate()}
-            type="button"
-          >
-            {props.busy ? "Waiting for browser sign-in..." : "Authenticate in browser"}
-          </button>
+          {props.composio ? (
+            <button
+              className="cc-button"
+              disabled={props.browserBusy}
+              onClick={() => void handleAuthenticateBrowser()}
+              type="button"
+            >
+              {props.browserBusy ? "Waiting for browser sign-in..." : "Authenticate in browser"}
+            </button>
+          ) : awaiting ? (
+            <div className="grid gap-3">
+              <p className="text-sm text-text-secondary">
+                Waiting for you to finish signing in in the opened tab&hellip;
+              </p>
+              {authUrl ? (
+                <a
+                  className="text-sm text-accent hover:underline"
+                  href={authUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Reopen sign-in page
+                </a>
+              ) : null}
+              <button
+                className="cc-button cc-button-secondary justify-self-start"
+                onClick={() => void checkOnce()}
+                type="button"
+              >
+                Check now
+              </button>
+            </div>
+          ) : (
+            <button
+              className="cc-button"
+              disabled={props.startBusy}
+              onClick={() => void handleStartHosted()}
+              type="button"
+            >
+              {props.startBusy ? "Preparing sign-in..." : "Authenticate"}
+            </button>
+          )}
 
           {error ? <p className="text-sm text-danger">{error}</p> : null}
         </div>
@@ -1142,24 +1178,62 @@ function McpAuthDialog(props: {
         <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-surface pt-4">
           <button
             className="cc-button cc-button-secondary"
-            disabled={props.busy}
+            disabled={busy}
             onClick={props.onClose}
             type="button"
           >
-            {props.busy ? "Cancel disabled" : "Close"}
+            {busy ? "Cancel disabled" : "Close"}
           </button>
         </div>
       </div>
     </div>
   );
 
-  async function handleAuthenticate() {
+  async function handleAuthenticateBrowser() {
     setError(undefined);
 
     try {
       await props.onAuthenticate();
     } catch (nextError) {
       setError(readError(nextError));
+    }
+  }
+
+  async function handleStartHosted() {
+    setError(undefined);
+
+    try {
+      const url = await props.onStartHosted();
+      setAuthUrl(url);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setAwaiting(true);
+      startPolling();
+    } catch (nextError) {
+      setError(readError(nextError));
+    }
+  }
+
+  function startPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+    }
+
+    pollRef.current = setInterval(() => {
+      void checkOnce();
+    }, 2500);
+  }
+
+  async function checkOnce() {
+    try {
+      const updated = await props.onRefresh();
+      if (updated?.runtimeStatus?.status === "connected") {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+        }
+        props.onConnected(updated.name);
+      }
+    } catch {
+      // Transient refresh failures are ignored; polling continues.
     }
   }
 }
