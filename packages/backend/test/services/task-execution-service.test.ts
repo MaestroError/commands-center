@@ -337,7 +337,7 @@ describe("createTaskExecutionService", () => {
       const restarted = await executionService.runQueuedTask(run.id);
 
       expect(restarted.status).toBe("running");
-      expect(prompts).toHaveLength(1);
+      await expect.poll(() => prompts.length).toBe(1);
     } finally {
       await testDb.cleanup();
     }
