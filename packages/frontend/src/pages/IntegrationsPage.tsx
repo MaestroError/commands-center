@@ -546,6 +546,15 @@ export function IntegrationsPage() {
                 <McpServerCard
                   key={server.id}
                   onAuthenticate={() => setAuthServer(server)}
+                  onDuplicate={() =>
+                    setDialog({
+                      mode: "create",
+                      prefill: buildDuplicateForm(
+                        server,
+                        mcpServers.map((existing) => existing.name),
+                      ),
+                    })
+                  }
                   onEdit={() => setDialog({ mode: "edit", server })}
                   onRemoveAuth={async () => {
                     setSuccessMessage(undefined);
@@ -598,6 +607,7 @@ export function IntegrationsPage() {
             mcpMutations.update.isPending ||
             agentMutations.update.isPending
           }
+          existingNames={mcpServers.map((server) => server.name)}
           initialServer={dialog.mode === "edit" ? dialog.server : undefined}
           mode={dialog.mode}
           prefill={dialog.mode === "create" ? dialog.prefill : undefined}
@@ -727,6 +737,7 @@ function McpServerCard(props: {
   onToggleEnabled: () => Promise<void>;
   onRemoveAuth: () => Promise<void>;
   onEdit: () => void;
+  onDuplicate: () => void;
   onRemove: () => Promise<void>;
 }) {
   const config = props.server.config;
@@ -819,6 +830,9 @@ function McpServerCard(props: {
         </button>
         <button className="cc-button cc-button-secondary" onClick={props.onEdit} type="button">
           Edit
+        </button>
+        <button className="cc-button cc-button-secondary" onClick={props.onDuplicate} type="button">
+          Duplicate
         </button>
         <button
           className="cc-button cc-button-danger"
@@ -1243,6 +1257,7 @@ function McpServerDialog(props: {
   mode: "create" | "edit";
   initialServer?: McpServer;
   prefill?: FormState;
+  existingNames: string[];
   secretKeys: string[];
   unsetSecretKeys: Set<string>;
   busy: boolean;
@@ -1303,6 +1318,15 @@ function McpServerDialog(props: {
   );
   const missingSecrets = referencedSecretKeys.filter((key) => props.unsetSecretKeys.has(key));
   const unknownSecrets = referencedSecretKeys.filter((key) => !props.secretKeys.includes(key));
+  // Names already taken by other servers — Opencode requires unique MCP names.
+  // When editing, the server's own current name stays allowed.
+  const reservedNames = useMemo(
+    () =>
+      props.existingNames.filter(
+        (name) => name.toLowerCase() !== props.initialServer?.name.toLowerCase(),
+      ),
+    [props.existingNames, props.initialServer],
+  );
 
   return (
     <div
@@ -1534,7 +1558,7 @@ function McpServerDialog(props: {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitError(undefined);
-    const validation = validateForm(form);
+    const validation = validateForm(form, reservedNames);
     setErrors(validation);
 
     if (Object.values(validation).some(Boolean)) {
@@ -1799,13 +1823,47 @@ function createForm(server?: McpServer): FormState {
   };
 }
 
+function buildDuplicateForm(server: McpServer, existingNames: string[]): FormState {
+  return {
+    ...createForm(server),
+    name: suggestUniqueName(server.name, existingNames),
+  };
+}
+
+// Suggests a non-colliding copy name like `github` -> `github-2` -> `github-3`,
+// reusing an existing numeric suffix instead of stacking them (`github-2-2`).
+function suggestUniqueName(base: string, existingNames: string[]): string {
+  const taken = new Set(existingNames.map((name) => name.trim().toLowerCase()));
+  const trimmed = base.trim();
+  const suffixMatch = /^(.*?)-(\d+)$/.exec(trimmed);
+  const stem = suffixMatch ? suffixMatch[1] : trimmed;
+  let counter = suffixMatch ? Number(suffixMatch[2]) + 1 : 2;
+  let candidate = `${stem}-${counter}`;
+
+  while (taken.has(candidate.toLowerCase())) {
+    counter += 1;
+    candidate = `${stem}-${counter}`;
+  }
+
+  return candidate;
+}
+
 function isComposioServer(server: McpServer): boolean {
   return server.config.transport !== "stdio" && server.config.url === COMPOSIO_SERVER_URL;
 }
 
-function validateForm(form: FormState): FormErrors {
+function validateForm(form: FormState, reservedNames: string[] = []): FormErrors {
+  const trimmedName = form.name.trim();
+  const nameTaken =
+    trimmedName.length > 0 &&
+    reservedNames.some((name) => name.toLowerCase() === trimmedName.toLowerCase());
+
   return {
-    name: form.name.trim() ? undefined : "Name is required.",
+    name: !trimmedName
+      ? "Name is required."
+      : nameTaken
+        ? `An MCP server named '${trimmedName}' already exists.`
+        : undefined,
     url:
       form.transport === "stdio"
         ? undefined

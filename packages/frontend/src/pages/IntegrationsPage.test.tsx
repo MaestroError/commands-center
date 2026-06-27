@@ -852,4 +852,75 @@ describe("IntegrationsPage", () => {
     expect(screen.queryByRole("button", { name: "Add Notion" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add GitHub" })).toBeInTheDocument();
   });
+
+  it("duplicates an MCP server into the add dialog with a unique name", () => {
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        {
+          id: "mcp-1",
+          name: "github",
+          enabled: true,
+          config: {
+            url: "https://api.githubcopilot.com/mcp/",
+            transport: "streamable-http",
+            authMethod: "headers",
+            headers: [{ key: "Authorization", value: "Bearer {env:GITHUB_TOKEN}" }],
+          },
+          runtimeStatus: { status: "connected" },
+          tools: [],
+          createdAt: "2026-04-22T10:00:00.000Z",
+          updatedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
+
+    expect(screen.getByRole("heading", { name: "Add MCP server" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("github-2");
+    expect(screen.getByLabelText("URL")).toHaveValue("https://api.githubcopilot.com/mcp/");
+    expect(screen.getByLabelText("Headers")).toHaveValue(
+      "Authorization: Bearer {env:GITHUB_TOKEN}",
+    );
+  });
+
+  it("blocks submitting an MCP server with a name already in use", () => {
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        {
+          id: "mcp-1",
+          name: "github",
+          enabled: true,
+          config: {
+            url: "https://api.githubcopilot.com/mcp/",
+            transport: "streamable-http",
+            authMethod: "headers",
+            headers: [{ key: "Authorization", value: "Bearer {env:GITHUB_TOKEN}" }],
+          },
+          runtimeStatus: { status: "connected" },
+          tools: [],
+          createdAt: "2026-04-22T10:00:00.000Z",
+          updatedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    render(<IntegrationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
+    // Force the duplicated name back to the existing one (case-insensitive).
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "GitHub" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+
+    expect(screen.getByText("An MCP server named 'GitHub' already exists.")).toBeInTheDocument();
+    expect(createMutateAsync).not.toHaveBeenCalled();
+  });
 });
