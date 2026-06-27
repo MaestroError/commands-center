@@ -644,6 +644,12 @@ describe("TasksPage", () => {
           link: "reports/release.md",
           description: "Generated release report.",
         },
+        {
+          title: "PR #4",
+          type: "url",
+          link: "https://github.com/RedberryProducts/pest-plugin-evals/pull/4",
+          description: "Pull request for AI-Ready issue #4",
+        },
       ],
       completedAt: "2026-01-01T00:10:00.000Z",
       updatedAt: "2026-01-01T00:10:00.000Z",
@@ -658,9 +664,14 @@ describe("TasksPage", () => {
     const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
     const artifacts = within(panel).getByRole("region", { name: "Task artifacts" });
     expect(within(artifacts).getByRole("heading", { name: "Artifacts" })).toBeInTheDocument();
-    expect(within(artifacts).getAllByRole("link", { name: "tools-23.md" })).toHaveLength(1);
+    expect(within(artifacts).getAllByRole("link", { name: "Tool list update" })).toHaveLength(1);
+    expect(within(artifacts).getByRole("link", { name: "PR #4" })).toHaveAttribute(
+      "href",
+      "https://github.com/RedberryProducts/pest-plugin-evals/pull/4",
+    );
+    expect(within(artifacts).queryByRole("link", { name: "4" })).not.toBeInTheDocument();
     expect(within(artifacts).getByText("reports/release.md")).toBeInTheDocument();
-    const artifactLink = within(artifacts).getByRole("link", { name: "release.md" });
+    const artifactLink = within(artifacts).getByRole("link", { name: "Release report" });
     const params = new URLSearchParams(artifactLink.getAttribute("href")?.replace("/files?", ""));
     expect(params.get("root")).toBe("workspace");
     expect(params.get("path")).toBe("reports");
@@ -936,7 +947,7 @@ describe("TasksPage", () => {
     ).toBe(true);
     expect(within(comments).queryByText("Latest update:")).not.toBeInTheDocument();
     expect(within(comments).getAllByRole("list", { name: "Run artifacts" })).toHaveLength(2);
-    expect(within(comments).getAllByRole("link", { name: "tools-23.md" })).toHaveLength(2);
+    expect(within(comments).getAllByRole("link", { name: "Tool list" })).toHaveLength(2);
     expect(within(comments).getAllByText("tools-23.md").length).toBeGreaterThanOrEqual(2);
     expect(within(comments).getAllByText("Generated tool inventory.")).toHaveLength(2);
     expect(
@@ -2367,7 +2378,7 @@ describe("TaskDetailPage", () => {
     ).toBe(true);
     expect(within(comments).queryByText("Latest update:")).not.toBeInTheDocument();
     expect(within(comments).getAllByRole("list", { name: "Run artifacts" })).toHaveLength(2);
-    expect(within(comments).getAllByRole("link", { name: "tools-23.md" })).toHaveLength(2);
+    expect(within(comments).getAllByRole("link", { name: "Tool list" })).toHaveLength(2);
   });
 
   it("updates the task detail page title from inline edit mode", async () => {
@@ -2417,6 +2428,12 @@ describe("TaskDetailPage", () => {
           link: "reports/release.md",
           description: "Generated release report.",
         },
+        {
+          title: "PR #4",
+          type: "url",
+          link: "https://github.com/RedberryProducts/pest-plugin-evals/pull/4",
+          description: "Pull request for AI-Ready issue #4",
+        },
       ],
       completedAt: "2026-01-01T00:10:00.000Z",
       updatedAt: "2026-01-01T00:10:00.000Z",
@@ -2432,10 +2449,16 @@ describe("TaskDetailPage", () => {
     expect(screen.getAllByText("Updated tool inventory.").length).toBeGreaterThan(0);
     expect(screen.getByText("Saved all 24 available tools to `tools-23.md`.")).toBeInTheDocument();
     expect(
-      within(outcomeSummary as HTMLElement).getAllByRole("link", { name: "tools-23.md" }),
+      within(outcomeSummary as HTMLElement).getAllByRole("link", { name: "Tool list update" }),
     ).toHaveLength(1);
+    expect(
+      within(outcomeSummary as HTMLElement).getByRole("link", { name: "PR #4" }),
+    ).toHaveAttribute("href", "https://github.com/RedberryProducts/pest-plugin-evals/pull/4");
+    expect(
+      within(outcomeSummary as HTMLElement).queryByRole("link", { name: "4" }),
+    ).not.toBeInTheDocument();
     const artifactLink = within(outcomeSummary as HTMLElement).getByRole("link", {
-      name: "release.md",
+      name: "Release report",
     });
     expect(
       within(outcomeSummary as HTMLElement).getByText("reports/release.md"),
