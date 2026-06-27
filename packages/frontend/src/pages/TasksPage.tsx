@@ -677,7 +677,10 @@ function TaskBoard(props: {
         {BOARD_COLUMNS.map((column) => {
           const columnTasks = props.tasks.filter((task) => readBoardStatus(task) === column.status);
 
-          if (column.status === "review" && columnTasks.length === 0) {
+          if (
+            (column.status === "failed" || column.status === "review") &&
+            columnTasks.length === 0
+          ) {
             return null;
           }
 

@@ -13,6 +13,8 @@ test.describe("tasks board", { tag: "@tasks" }, () => {
     await expect(page.getByTestId("task-card-task-done")).toBeVisible();
     await expect(page.getByTestId("task-column-count-backlog")).toHaveText("1");
     await expect(page.getByTestId("task-column-count-done")).toHaveText("1");
+    await expect(page.getByTestId("task-column-failed")).toHaveCount(0);
+    await expect(page.getByTestId("task-column-review")).toHaveCount(0);
   });
 
   test("filters board cards by free text", async ({ page }) => {
