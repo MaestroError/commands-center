@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { basename, extname, join, posix, resolve } from "node:path";
+import { basename, extname, isAbsolute, join, posix, relative, resolve } from "node:path";
 
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
@@ -65,6 +65,50 @@ function descriptionFromContent(content: string): string | null {
 
 function toPosixPath(p: string): string {
   return p.split("/").join(posix.sep);
+}
+
+const ASSET_CONTENT_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".bmp": "image/bmp",
+  ".ico": "image/x-icon",
+  ".svg": "image/svg+xml",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
+  ".markdown": "text/markdown; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
+};
+
+function contentTypeForPath(path: string): string {
+  return ASSET_CONTENT_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
+}
+
+/**
+ * Normalizes a workspace asset reference into a workspace-root-relative POSIX
+ * path. Accepts an optional `workspace:` scheme prefix and leading slashes.
+ */
+function normalizeWorkspaceAssetPath(path: string): string {
+  let normalized = path.trim();
+  if (!normalized) {
+    throw new BadRequestError("Asset path is required.");
+  }
+  if (normalized.startsWith("workspace:")) {
+    normalized = normalized.slice("workspace:".length);
+  }
+  normalized = normalized.replace(/^\/+/, "");
+  if (!normalized) {
+    throw new BadRequestError("Asset path is required.");
+  }
+  if (normalized.split("/").some((segment) => segment === "..")) {
+    throw new BadRequestError("Asset path must not contain '..'.");
+  }
+  return normalized;
 }
 
 export type DocumentService = ReturnType<typeof createDocumentService>;
@@ -133,6 +177,33 @@ export function createDocumentService(options: {
   return {
     documentsRoot,
     fullPath,
+
+    /**
+     * Resolves a `workspace:`/workspace-relative asset reference to an absolute
+     * path for serving, confined to the workspace root.
+     */
+    async resolveWorkspaceAsset(
+      assetPath: string,
+    ): Promise<{ absolutePath: string; contentType: string; sizeBytes: number }> {
+      const normalized = normalizeWorkspaceAssetPath(assetPath);
+      const workspaceRoot = config.paths.workspaceDir;
+      const absolutePath = resolve(workspaceRoot, normalized);
+      const rel = relative(workspaceRoot, absolutePath);
+      if (rel.startsWith("..") || isAbsolute(rel)) {
+        throw new BadRequestError("Asset path escapes the workspace.");
+      }
+
+      const fileStat = await stat(absolutePath).catch(() => null);
+      if (!fileStat || !fileStat.isFile()) {
+        throw new NotFoundError(`Asset not found: ${normalized}`);
+      }
+
+      return {
+        absolutePath,
+        contentType: contentTypeForPath(absolutePath),
+        sizeBytes: fileStat.size,
+      };
+    },
 
     async getTree(): Promise<DocumentTreeNode[]> {
       return scanTree(documentsRoot(), "");

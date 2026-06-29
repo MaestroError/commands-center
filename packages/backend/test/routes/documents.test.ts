@@ -273,6 +273,90 @@ describe("document routes", () => {
     });
   });
 
+  describe("GET /api/documents/asset", () => {
+    it("serves a workspace file with its content type", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        const { writeFile } = await import("node:fs/promises");
+        const { join } = await import("node:path");
+        const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        await writeFile(join(testDb.config.paths.subdirectories.documents, "logo.png"), pngBytes);
+
+        const response = await server.inject({
+          method: "GET",
+          url: "/api/documents/asset?path=Documents/logo.png",
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.headers["content-type"]).toContain("image/png");
+        expect(response.rawPayload.equals(pngBytes)).toBe(true);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("accepts the workspace: scheme prefix", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        const { writeFile } = await import("node:fs/promises");
+        const { join } = await import("node:path");
+        await writeFile(
+          join(testDb.config.paths.subdirectories.documents, "logo.png"),
+          Buffer.from([0x89]),
+        );
+
+        const response = await server.inject({
+          method: "GET",
+          url: `/api/documents/asset?path=${encodeURIComponent("workspace:Documents/logo.png")}`,
+        });
+
+        expect(response.statusCode).toBe(200);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("returns 404 for a missing asset", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        const response = await server.inject({
+          method: "GET",
+          url: "/api/documents/asset?path=Documents/missing.png",
+        });
+
+        expect(response.statusCode).toBe(404);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects path traversal outside the workspace", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        const response = await server.inject({
+          method: "GET",
+          url: `/api/documents/asset?path=${encodeURIComponent("../../../etc/hosts")}`,
+        });
+
+        expect(response.statusCode).toBe(400);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+  });
+
   describe("GET /api/documents/search", () => {
     it("searches documents by title", async () => {
       const testDb = await createTestDatabase();

@@ -1,3 +1,5 @@
+import { createReadStream } from "node:fs";
+
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
@@ -55,6 +57,21 @@ export function registerDocumentRoutes(server: AppServer, context: RuntimeContex
     async (request) => service.read(request.query.path),
   );
 
+  app.get(
+    "/api/documents/asset",
+    {
+      schema: {
+        querystring: documentAssetQuerySchema,
+      },
+    },
+    async (request, reply) => {
+      const asset = await service.resolveWorkspaceAsset(request.query.path);
+      void reply.header("Cache-Control", "private, no-cache");
+      void reply.type(asset.contentType);
+      return reply.send(createReadStream(asset.absolutePath));
+    },
+  );
+
   app.post(
     "/api/documents",
     {
@@ -108,5 +125,9 @@ export function registerDocumentRoutes(server: AppServer, context: RuntimeContex
 import { z } from "zod";
 
 const documentReadQuerySchema = z.object({
+  path: z.string().min(1),
+});
+
+const documentAssetQuerySchema = z.object({
   path: z.string().min(1),
 });

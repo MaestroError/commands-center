@@ -3,6 +3,7 @@ import { Crepe } from "@milkdown/crepe";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/frame-dark.css";
 
+import { resolveDocumentAssetUrl } from "./document-asset";
 import { createBase64UploadHandler } from "./image-upload";
 
 type MilkdownDocumentEditorProps = {
@@ -30,8 +31,11 @@ export function MilkdownDocumentEditor(props: MilkdownDocumentEditorProps) {
         },
         // Embed uploaded/dropped images as base64 data URIs so documents stay
         // self-contained. Used by both inline and block image upload flows.
+        // proxyDomURL resolves `workspace:` references to the asset endpoint for
+        // display while keeping the reference itself in the markdown.
         [Crepe.Feature.ImageBlock]: {
           onUpload: createBase64UploadHandler(),
+          proxyDomURL: resolveDocumentAssetUrl,
         },
       },
     });
