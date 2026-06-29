@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Check, X } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -13,6 +13,7 @@ import type {
   TaskPermissionProfile,
   TaskRun,
   TaskRunArtifact,
+  TaskRunFollowup,
   TaskSubtask,
 } from "@cc/shared/schemas";
 
@@ -37,6 +38,7 @@ import {
   useTaskFeedbackQuery,
   useTaskQuery,
   useTaskRunQuery,
+  useTaskRunFollowupsQuery,
   useTaskRunsQuery,
   useTaskSubtasksQuery,
   useTaskRunSessionQuery,
@@ -285,6 +287,8 @@ function RunHistory(props: {
   isLoading: boolean;
   error: unknown;
 }) {
+  const [openReplyRunId, setOpenReplyRunId] = useState<string>();
+
   return (
     <section className="cc-panel min-w-0 p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -325,45 +329,64 @@ function RunHistory(props: {
             </thead>
             <tbody>
               {props.runs.map((run) => (
-                <tr
-                  className="border-b border-border/70"
-                  data-testid={`task-run-row-${run.id}`}
-                  key={run.id}
-                >
-                  <td className="py-3 pr-3">
-                    <StatusBadge status={run.status} />
-                  </td>
-                  <td className="py-3 pr-3 text-text-secondary">
-                    {readAgentName(props.agents ?? [], run.agentId)}
-                  </td>
-                  <td className="py-3 pr-3 text-text-secondary">
-                    {run.outcome ? formatToken(run.outcome) : "-"}
-                  </td>
-                  <td className="py-3 pr-3 text-text-secondary">
-                    {formatToken(run.triggerSource)}
-                  </td>
-                  <td className="max-w-48 truncate py-3 pr-3 text-text-secondary">
-                    {formatRunTarget(run, props.subtasks ?? [])}
-                  </td>
-                  <td className="py-3 pr-3 text-text-secondary">{formatDate(run.startedAt)}</td>
-                  <td className="py-3 pr-3 text-text-secondary">{formatRunDuration(run)}</td>
-                  <td className="py-3 pr-3 text-text-secondary">{run.artifacts.length}</td>
-                  <td className="py-3 pr-3 text-text-secondary">
-                    {run.opencodeSessionId ? "Recorded" : "Unavailable"}
-                  </td>
-                  <td className="max-w-sm truncate py-3 pr-3 text-text-secondary">
-                    {run.finalMessage ?? run.errorMessage ?? "No summary"}
-                  </td>
-                  <td className="py-3 pr-3">
-                    <Link
-                      className="cc-button cc-button-secondary"
-                      data-testid={`task-run-inspect-${run.id}`}
-                      to={`/tasks/${props.taskId}/runs/${run.id}`}
-                    >
-                      Inspect
-                    </Link>
-                  </td>
-                </tr>
+                <Fragment key={run.id}>
+                  <tr className="border-b border-border/70" data-testid={`task-run-row-${run.id}`}>
+                    <td className="py-3 pr-3">
+                      <StatusBadge status={run.status} />
+                    </td>
+                    <td className="py-3 pr-3 text-text-secondary">
+                      {readAgentName(props.agents ?? [], run.agentId)}
+                    </td>
+                    <td className="py-3 pr-3 text-text-secondary">
+                      {run.outcome ? formatToken(run.outcome) : "-"}
+                    </td>
+                    <td className="py-3 pr-3 text-text-secondary">
+                      {formatToken(run.triggerSource)}
+                    </td>
+                    <td className="max-w-48 truncate py-3 pr-3 text-text-secondary">
+                      {formatRunTarget(run, props.subtasks ?? [])}
+                    </td>
+                    <td className="py-3 pr-3 text-text-secondary">{formatDate(run.startedAt)}</td>
+                    <td className="py-3 pr-3 text-text-secondary">{formatRunDuration(run)}</td>
+                    <td className="py-3 pr-3 text-text-secondary">{run.artifacts.length}</td>
+                    <td className="py-3 pr-3 text-text-secondary">
+                      {run.opencodeSessionId ? "Recorded" : "Unavailable"}
+                    </td>
+                    <td className="max-w-sm truncate py-3 pr-3 text-text-secondary">
+                      {run.finalMessage ?? run.errorMessage ?? "No summary"}
+                    </td>
+                    <td className="py-3 pr-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Link
+                          className="cc-button cc-button-secondary"
+                          data-testid={`task-run-inspect-${run.id}`}
+                          to={`/tasks/${props.taskId}/runs/${run.id}`}
+                        >
+                          Inspect
+                        </Link>
+                        <button
+                          className="cc-button cc-button-secondary"
+                          data-testid={`task-run-reply-${run.id}`}
+                          onClick={() =>
+                            setOpenReplyRunId((current) =>
+                              current === run.id ? undefined : run.id,
+                            )
+                          }
+                          type="button"
+                        >
+                          Reply
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {openReplyRunId === run.id ? (
+                    <tr className="border-b border-border/70">
+                      <td className="py-3 pr-3" colSpan={11}>
+                        <RunReplyPanel run={run} taskId={props.taskId} />
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -607,6 +630,7 @@ function TaskFeedbackPanelSection(props: {
   const catalogQuery = useSpecialistCatalogQuery();
   const mutations = useTaskMutations();
   const feedbackSkills = useTaskComposerSkills(props.agent, catalogQuery.data);
+  const isSubmittingFeedback = mutations.createFeedback.isPending || mutations.trigger.isPending;
 
   return (
     <section
@@ -625,12 +649,23 @@ function TaskFeedbackPanelSection(props: {
         error={feedbackQuery.error}
         feedback={feedbackQuery.data ?? []}
         isLoading={feedbackQuery.isLoading}
-        isSubmitting={mutations.createFeedback.isPending}
-        onSubmit={(input, options) =>
-          mutations.createFeedback.mutate(
-            { id: props.taskId, input },
-            { onSuccess: options.onSuccess },
-          )
+        isSubmitting={isSubmittingFeedback}
+        isUpdatingFeedback={mutations.updateFeedback.isPending}
+        onSubmit={async (input, options) => {
+          await mutations.createFeedback.mutateAsync({ id: props.taskId, input });
+
+          if (options.requeue) {
+            await mutations.trigger.mutateAsync({ id: props.taskId });
+          }
+
+          options.onSuccess();
+        }}
+        onUpdateFeedback={(feedbackId, input) =>
+          mutations.updateFeedback.mutateAsync({
+            taskId: props.taskId,
+            feedbackId,
+            input,
+          })
         }
         parentRuns={props.runs}
         skills={feedbackSkills}
@@ -649,30 +684,65 @@ function TaskFeedbackSection(props: {
   isLoading: boolean;
   error: unknown;
   isSubmitting: boolean;
-  onSubmit: (input: CreateTaskFeedbackInput, options: { onSuccess: () => void }) => void;
+  isUpdatingFeedback: boolean;
+  onSubmit: (
+    input: CreateTaskFeedbackInput,
+    options: { requeue: boolean; onSuccess: () => void },
+  ) => Promise<void>;
+  onUpdateFeedback: (feedbackId: string, input: { body: string }) => Promise<unknown>;
 }) {
   const [prompt, setPrompt] = useState<TaskPromptValue>(() => createTaskPromptValue());
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editingFeedbackId, setEditingFeedbackId] = useState<string>();
+  const [editingFeedbackBody, setEditingFeedbackBody] = useState("");
+  const [feedbackError, setFeedbackError] = useState<string>();
   const timelineItems = buildFeedbackTimelineItems(props.feedback, props.parentRuns);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitFeedback(requeue: boolean): Promise<void> {
     const body = buildTaskPromptText(prompt);
 
     if (!body) return;
 
-    props.onSubmit(
-      {
-        body,
-        mentionedAgentIds: prompt.mentionedAgents.map((agent) => agent.id),
-      },
-      {
-        onSuccess: () => {
-          setPrompt(createTaskPromptValue());
-          setIsEditorOpen(false);
+    setFeedbackError(undefined);
+
+    try {
+      await props.onSubmit(
+        {
+          body,
+          mentionedAgentIds: prompt.mentionedAgents.map((agent) => agent.id),
         },
-      },
-    );
+        {
+          requeue,
+          onSuccess: () => {
+            setPrompt(createTaskPromptValue());
+            setIsEditorOpen(false);
+          },
+        },
+      );
+    } catch (error) {
+      setFeedbackError(readError(error));
+    }
+  }
+
+  async function updateFeedback(feedbackId: string): Promise<void> {
+    const body = editingFeedbackBody.trim();
+
+    if (!body) return;
+
+    setFeedbackError(undefined);
+
+    try {
+      await props.onUpdateFeedback(feedbackId, { body });
+      setEditingFeedbackId(undefined);
+      setEditingFeedbackBody("");
+    } catch (error) {
+      setFeedbackError(readError(error));
+    }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submitFeedback(false);
   }
 
   return (
@@ -704,14 +774,15 @@ function TaskFeedbackSection(props: {
           <p className="text-xs text-text-secondary">
             If no agent is mentioned, feedback creates one subtask for the task default agent.
           </p>
-          <button
-            className="cc-button w-fit"
-            data-testid="task-feedback-submit"
-            disabled={props.isSubmitting}
-            type="submit"
-          >
-            {props.isSubmitting ? "Adding..." : "Add feedback"}
-          </button>
+          <SendButtons
+            disabled={!buildTaskPromptText(prompt)}
+            isRequeueing={props.isSubmitting}
+            isSending={props.isSubmitting}
+            onSend={() => void submitFeedback(false)}
+            onSendAndRequeue={() => void submitFeedback(true)}
+            requeueTestId="task-feedback-submit-requeue"
+            sendTestId="task-feedback-submit"
+          />
         </form>
       ) : (
         <button
@@ -723,6 +794,12 @@ function TaskFeedbackSection(props: {
           Leave comment
         </button>
       )}
+
+      {feedbackError ? (
+        <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {feedbackError}
+        </p>
+      ) : null}
 
       {props.isLoading ? <LoadingState testId="task-feedback-loading" /> : null}
       {props.error ? (
@@ -741,6 +818,8 @@ function TaskFeedbackSection(props: {
           {timelineItems.map((item) => {
             if (item.type === "feedback") {
               const entry = item.feedback;
+              const isEditing = editingFeedbackId === entry.id;
+              const canEdit = canEditFeedback(entry, props.parentRuns);
               return (
                 <article
                   className="grid gap-3"
@@ -761,10 +840,54 @@ function TaskFeedbackSection(props: {
                             @{readAgentName(props.agents, agentId)}
                           </span>
                         ))}
+                        {canEdit ? (
+                          <button
+                            className="font-medium text-accent underline-offset-4 hover:underline"
+                            onClick={() => {
+                              setEditingFeedbackId(entry.id);
+                              setEditingFeedbackBody(entry.body);
+                            }}
+                            type="button"
+                          >
+                            Edit
+                          </button>
+                        ) : null}
                       </>
                     }
                     tone="operator"
-                  />
+                  >
+                    {isEditing ? (
+                      <div className="mt-3 grid gap-2">
+                        <textarea
+                          aria-label="Edit feedback"
+                          className="cc-input min-h-24"
+                          onChange={(event) => setEditingFeedbackBody(event.target.value)}
+                          value={editingFeedbackBody}
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className="cc-button"
+                            disabled={props.isUpdatingFeedback || !editingFeedbackBody.trim()}
+                            onClick={() => void updateFeedback(entry.id)}
+                            type="button"
+                          >
+                            Save
+                          </button>
+                          <button
+                            className="cc-button cc-button-secondary"
+                            disabled={props.isUpdatingFeedback}
+                            onClick={() => {
+                              setEditingFeedbackId(undefined);
+                              setEditingFeedbackBody("");
+                            }}
+                            type="button"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </FeedbackComment>
                   <FeedbackReplies agents={props.agents} subtasks={entry.subtasks} />
                 </article>
               );
@@ -794,12 +917,288 @@ function TaskFeedbackSection(props: {
                 taskId={props.task.id}
                 runId={run.id}
                 tone="agent"
-              />
+              >
+                <RunReplyPanel run={run} taskId={props.task.id} />
+              </FeedbackComment>
             );
           })}
         </div>
       ) : null}
     </div>
+  );
+}
+
+function SendButtons(props: {
+  disabled?: boolean;
+  isSending?: boolean;
+  isRequeueing?: boolean;
+  onSend: () => void;
+  onSendAndRequeue: () => void;
+  sendTestId?: string;
+  requeueTestId?: string;
+}) {
+  const isBusy = Boolean(props.isSending || props.isRequeueing);
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button
+        className="cc-button cc-button-secondary"
+        data-testid={props.sendTestId}
+        disabled={props.disabled || isBusy}
+        onClick={props.onSend}
+        type="button"
+      >
+        {props.isSending ? "Sending..." : "Send"}
+      </button>
+      <button
+        className="cc-button"
+        data-testid={props.requeueTestId}
+        disabled={props.disabled || isBusy}
+        onClick={props.onSendAndRequeue}
+        type="button"
+      >
+        {props.isRequeueing ? "Sending..." : "Send & requeue"}
+      </button>
+    </div>
+  );
+}
+
+function RunReplyPanel(props: { taskId: string; run: TaskRun }) {
+  const followupsQuery = useTaskRunFollowupsQuery(props.taskId, props.run.id);
+  const mutations = useTaskMutations();
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [body, setBody] = useState("");
+  const [editingFollowupId, setEditingFollowupId] = useState<string>();
+  const [editingBody, setEditingBody] = useState("");
+  const [error, setError] = useState<string>();
+
+  async function submit(requeue: boolean): Promise<void> {
+    const trimmedBody = body.trim();
+
+    if (!trimmedBody) return;
+
+    setError(undefined);
+
+    try {
+      await mutations.createRunFollowup.mutateAsync({
+        taskId: props.taskId,
+        runId: props.run.id,
+        input: { body: trimmedBody },
+      });
+
+      if (requeue) {
+        await mutations.continueRun.mutateAsync({ taskId: props.taskId, runId: props.run.id });
+      }
+
+      setBody("");
+      setIsComposerOpen(false);
+    } catch (submitError) {
+      setError(readError(submitError));
+    }
+  }
+
+  async function updateFollowup(followupId: string): Promise<void> {
+    const trimmedBody = editingBody.trim();
+
+    if (!trimmedBody) return;
+
+    setError(undefined);
+
+    try {
+      await mutations.updateRunFollowup.mutateAsync({
+        taskId: props.taskId,
+        runId: props.run.id,
+        followupId,
+        input: { body: trimmedBody },
+      });
+      setEditingFollowupId(undefined);
+      setEditingBody("");
+    } catch (updateError) {
+      setError(readError(updateError));
+    }
+  }
+
+  async function deleteFollowup(followupId: string): Promise<void> {
+    setError(undefined);
+
+    try {
+      await mutations.deleteRunFollowup.mutateAsync({
+        taskId: props.taskId,
+        runId: props.run.id,
+        followupId,
+      });
+    } catch (deleteError) {
+      setError(readError(deleteError));
+    }
+  }
+
+  const followups = followupsQuery.data ?? [];
+  const pendingCount = followups.filter((followup) => followup.status === "pending").length;
+  const isSending = mutations.createRunFollowup.isPending || mutations.continueRun.isPending;
+
+  return (
+    <div className="mt-3 grid gap-3 rounded-lg border border-border bg-surface p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium text-text-primary">Reply to this run</p>
+          <p className="text-xs text-text-secondary">
+            Replies are delivered into this run&apos;s existing session when it is requeued.
+          </p>
+        </div>
+        <button
+          className="cc-button cc-button-secondary"
+          onClick={() => setIsComposerOpen((current) => !current)}
+          type="button"
+        >
+          Reply
+        </button>
+      </div>
+
+      {isComposerOpen ? (
+        <div className="grid gap-2">
+          <textarea
+            aria-label={`Reply to run ${props.run.id}`}
+            className="cc-input min-h-24"
+            onChange={(event) => setBody(event.target.value)}
+            placeholder="Add a short follow-up for the specialist."
+            value={body}
+          />
+          <SendButtons
+            disabled={!body.trim()}
+            isRequeueing={isSending}
+            isSending={isSending}
+            onSend={() => void submit(false)}
+            onSendAndRequeue={() => void submit(true)}
+            requeueTestId={`task-run-reply-requeue-${props.run.id}`}
+            sendTestId={`task-run-reply-send-${props.run.id}`}
+          />
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {error}
+        </p>
+      ) : null}
+
+      {followupsQuery.isLoading ? (
+        <p className="text-xs text-text-secondary">Loading replies...</p>
+      ) : null}
+      {followups.length > 0 ? (
+        <div aria-label={pendingCount > 0 ? "Pending replies" : "Replies"} className="grid gap-2">
+          {followups.map((followup) => (
+            <RunFollowupItem
+              editingBody={editingBody}
+              editingFollowupId={editingFollowupId}
+              followup={followup}
+              isDeleting={mutations.deleteRunFollowup.isPending}
+              isUpdating={mutations.updateRunFollowup.isPending}
+              key={followup.id}
+              onCancelEdit={() => {
+                setEditingFollowupId(undefined);
+                setEditingBody("");
+              }}
+              onDelete={() => void deleteFollowup(followup.id)}
+              onEditingBodyChange={setEditingBody}
+              onSave={() => void updateFollowup(followup.id)}
+              onStartEdit={() => {
+                setEditingFollowupId(followup.id);
+                setEditingBody(followup.body);
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RunFollowupItem(props: {
+  followup: TaskRunFollowup;
+  editingFollowupId?: string;
+  editingBody: string;
+  isUpdating: boolean;
+  isDeleting: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onEditingBodyChange: (body: string) => void;
+  onSave: () => void;
+  onDelete: () => void;
+}) {
+  const isEditing = props.editingFollowupId === props.followup.id;
+  const isPending = props.followup.status === "pending";
+
+  return (
+    <article className="rounded-md border border-border bg-background p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-text-secondary">
+          {formatToken(props.followup.status)}
+        </span>
+        {isPending && !isEditing ? (
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="font-medium text-accent underline-offset-4 hover:underline"
+              onClick={props.onStartEdit}
+              type="button"
+            >
+              Edit
+            </button>
+            <button
+              className="font-medium text-danger underline-offset-4 hover:underline"
+              disabled={props.isDeleting}
+              onClick={props.onDelete}
+              type="button"
+            >
+              Delete
+            </button>
+          </div>
+        ) : null}
+      </div>
+      {isEditing ? (
+        <div className="mt-2 grid gap-2">
+          <textarea
+            aria-label="Edit pending reply"
+            className="cc-input min-h-20"
+            onChange={(event) => props.onEditingBodyChange(event.target.value)}
+            value={props.editingBody}
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="cc-button"
+              disabled={props.isUpdating || !props.editingBody.trim()}
+              onClick={props.onSave}
+              type="button"
+            >
+              Save
+            </button>
+            <button
+              className="cc-button cc-button-secondary"
+              disabled={props.isUpdating}
+              onClick={props.onCancelEdit}
+              type="button"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2 leading-6 text-text-secondary">{props.followup.body}</p>
+      )}
+    </article>
+  );
+}
+
+function canEditFeedback(entry: TaskFeedbackThread, parentRuns: TaskRun[]): boolean {
+  if (entry.subtasks.length === 0) {
+    return true;
+  }
+
+  const subtaskIds = new Set(entry.subtasks.map((subtask) => subtask.id));
+
+  return (
+    !entry.subtasks.some(
+      (subtask) => subtask.latestRun || subtask.replies.length > 0 || subtask.status !== "backlog",
+    ) && !parentRuns.some((run) => run.subtaskId && subtaskIds.has(run.subtaskId))
   );
 }
 
@@ -812,6 +1211,7 @@ function FeedbackComment(props: {
   runId?: string;
   meta: ReactNode;
   tone: "operator" | "agent";
+  children?: ReactNode;
 }) {
   return (
     <div className="flex gap-3 rounded-lg border border-border bg-surface-elevated p-3 shadow-sm">
@@ -843,6 +1243,7 @@ function FeedbackComment(props: {
           taskId={props.taskId}
           runId={props.runId}
         />
+        {props.children}
       </div>
     </div>
   );

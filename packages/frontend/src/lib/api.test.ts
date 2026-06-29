@@ -9,16 +9,19 @@ import {
   claimWorkspace,
   checkSystemVersion,
   closeTerminalSession,
+  continueRun,
   completeMcpAuth,
   connectTerminalWebSocket,
   connectConversationEvents,
   connectWorkspaceEvents,
+  createRunFollowup,
   createTaskFromTemplate,
   createApiToken,
   createTaskArtifactShareLink,
   createTaskTemplate,
   getTaskArtifactSharingPreferences,
   deleteConversation,
+  deleteRunFollowup,
   deleteSpecialistCustomTool,
   deleteCustomTool,
   deleteSecret,
@@ -27,6 +30,7 @@ import {
   type FileSaveConflictError,
   getTaskTemplate,
   getWorkspaceTree,
+  listRunFollowups,
   listApiTokens,
   listTaskRunArtifacts,
   listTaskSubtaskProgress,
@@ -42,6 +46,8 @@ import {
   resizeTerminalSession,
   restartEngine,
   updateTaskArtifactSharingPreferences,
+  updateRunFollowup,
+  updateTaskFeedback,
   runTaskTemplateNow,
   saveFileManagerFileContent,
   searchWorkspaceFiles,
@@ -208,6 +214,113 @@ describe("task actions", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ reason: "Stop" }),
+    });
+  });
+
+  it("lists run followups", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse([makeTaskRunFollowupPayload()]));
+
+    await expect(listRunFollowups("task-1", "run-1")).resolves.toEqual([
+      expect.objectContaining({ id: "followup-1", body: "Please continue." }),
+    ]);
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/followups", {
+      method: "GET",
+    });
+  });
+
+  it("creates a run followup", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        makeJsonResponse(makeTaskRunFollowupPayload({ body: "Answer A", kind: "review_answer" })),
+      );
+
+    await expect(
+      createRunFollowup("task-1", "run-1", { body: "Answer A", kind: "review_answer" }),
+    ).resolves.toMatchObject({
+      body: "Answer A",
+      kind: "review_answer",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/followups", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "Answer A", kind: "review_answer" }),
+    });
+  });
+
+  it("updates a run followup", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse(makeTaskRunFollowupPayload({ body: "Updated" })));
+
+    await expect(
+      updateRunFollowup("task-1", "run-1", "followup-1", { body: "Updated" }),
+    ).resolves.toMatchObject({
+      id: "followup-1",
+      body: "Updated",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/followups/followup-1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "Updated" }),
+    });
+  });
+
+  it("deletes a run followup", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(deleteRunFollowup("task-1", "run-1", "followup-1")).resolves.toBeUndefined();
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/followups/followup-1", {
+      method: "DELETE",
+    });
+  });
+
+  it("continues a run with pending followups", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(makeJsonResponse(makeTaskRunPayload({ status: "running" })));
+
+    await expect(continueRun("task-1", "run-1")).resolves.toMatchObject({
+      id: "run-1",
+      status: "running",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/continue", {
+      method: "POST",
+    });
+  });
+
+  it("updates task feedback", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse({
+        id: "feedback-1",
+        taskId: "task-1",
+        body: "Updated feedback.",
+        targetAgentIds: ["agent-1"],
+        subtasks: [],
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    await expect(
+      updateTaskFeedback("task-1", "feedback-1", { body: "Updated feedback." }),
+    ).resolves.toMatchObject({
+      id: "feedback-1",
+      body: "Updated feedback.",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/feedback/feedback-1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "Updated feedback." }),
     });
   });
 
@@ -1135,6 +1248,21 @@ function makeTaskRunPayload(overrides: Record<string, unknown> = {}): Record<str
     needsHumanReview: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeTaskRunFollowupPayload(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id: "followup-1",
+    taskId: "task-1",
+    runId: "run-1",
+    kind: "operator_reply",
+    status: "pending",
+    body: "Please continue.",
+    createdAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
 }

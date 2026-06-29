@@ -514,6 +514,227 @@ describe("createTaskService", () => {
     }
   });
 
+  it("creates and lists pending followups for a run with an existing session", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Follow up" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Do the task.",
+      });
+
+      const first = await service.createFollowup(run.id, { body: "Please add logs." });
+      const second = await service.createFollowup(run.id, {
+        body: "Should I retry option B?",
+        kind: "review_answer",
+      });
+      const listed = await service.listFollowups(run.id);
+      const pending = await service.listPendingFollowups(run.id);
+
+      expect(first.kind).toBe("operator_reply");
+      expect(second.kind).toBe("review_answer");
+      expect(listed.map((followup) => followup.id)).toEqual([first.id, second.id]);
+      expect(pending.map((followup) => followup.status)).toEqual(["pending", "pending"]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects followups for runs without an OpenCode session", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "No session" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        renderedPrompt: "Do the task.",
+      });
+
+      await expect(service.createFollowup(run.id, { body: "Please continue." })).rejects.toThrow(
+        "Task run does not have an OpenCode session.",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("updates pending followups", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Edit followup" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Do the task.",
+      });
+      const followup = await service.createFollowup(run.id, { body: "First body." });
+      const updated = await service.updateFollowup(followup.id, { body: "Updated body." });
+
+      expect(updated?.body).toBe("Updated body.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("deletes pending followups", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Delete followup" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Do the task.",
+      });
+      const followup = await service.createFollowup(run.id, { body: "Remove me." });
+
+      await expect(service.deleteFollowup(followup.id)).resolves.toBe(true);
+      await expect(service.listFollowups(run.id)).resolves.toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects editing sent followups", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Sent followup" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Do the task.",
+      });
+      const followup = await service.createFollowup(run.id, { body: "Keep me." });
+      await service.markFollowupsSent([followup.id], "2026-06-01T12:00:00.000Z");
+
+      await expect(service.updateFollowup(followup.id, { body: "Nope." })).rejects.toThrow(
+        "Only pending follow-ups can be edited.",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects deleting sent followups", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Sent followup delete" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Do the task.",
+      });
+      const followup = await service.createFollowup(run.id, { body: "Keep me." });
+      await service.markFollowupsSent([followup.id], "2026-06-01T12:00:00.000Z");
+
+      await expect(service.deleteFollowup(followup.id)).rejects.toThrow(
+        "Only pending follow-ups can be deleted.",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("marks followups sent and failed", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Followup states" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Do the task.",
+      });
+      const sent = await service.createFollowup(run.id, { body: "Deliver me." });
+      const failed = await service.createFollowup(run.id, { body: "I failed." });
+
+      const [sentFollowup] = await service.markFollowupsSent([sent.id], "2026-06-01T12:00:00.000Z");
+      const failedFollowup = await service.markFollowupFailed(failed.id, "transport failed");
+      const pending = await service.listPendingFollowups(run.id);
+
+      expect(sentFollowup?.status).toBe("sent");
+      expect(sentFollowup?.sentAt).toBe("2026-06-01T12:00:00.000Z");
+      expect(failedFollowup?.status).toBe("failed");
+      expect(pending).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("maps review questions and pending followup counts on runs", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Mapped followups" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Do the task.",
+      });
+
+      await testDb.client.db
+        .update(task_runs)
+        .set({
+          review_question_json: JSON.stringify({
+            question: "Which option should I ship?",
+            suggestedReplies: ["Option A", "Option B"],
+          }),
+        })
+        .where(eq(task_runs.id, run.id));
+
+      const first = await service.createFollowup(run.id, { body: "One" });
+      const second = await service.createFollowup(run.id, { body: "Two" });
+      await service.markFollowupsSent([first.id], "2026-06-01T12:00:00.000Z");
+      const fetched = await service.getRun(task.id, run.id);
+
+      expect(fetched?.reviewQuestion).toEqual({
+        question: "Which option should I ship?",
+        suggestedReplies: ["Option A", "Option B"],
+      });
+      expect(fetched?.pendingFollowupCount).toBe(1);
+      expect(second.status).toBe("pending");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("validates task run artifacts with typed links", () => {
     expect(
       taskRunArtifactSchema.parse({
@@ -574,6 +795,80 @@ describe("createTaskService", () => {
       ]);
       expect(reviewed.needsHumanReview).toBe(true);
       expect(reviewed.humanReviewReason).toBe("Send the post manually.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("persists review questions when marking a run for human review", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Question run",
+      });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Do the task.",
+      });
+
+      const reviewed = await service.markRunNeedsHumanReview(
+        run.id,
+        agent.id,
+        "Need an operator decision.",
+        "Which option should I ship?",
+        ["Option A", "Option B"],
+      );
+      const fetched = await service.getRun(task.id, run.id);
+
+      expect(reviewed.reviewQuestion).toEqual({
+        question: "Which option should I ship?",
+        suggestedReplies: ["Option A", "Option B"],
+      });
+      expect(fetched?.reviewQuestion).toEqual({
+        question: "Which option should I ship?",
+        suggestedReplies: ["Option A", "Option B"],
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects oversized suggested replies when marking a run for human review", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Invalid review question",
+      });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Do the task.",
+      });
+
+      await expect(
+        service.markRunNeedsHumanReview(run.id, agent.id, "Need input.", "Pick one.", [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+        ]),
+      ).rejects.toThrow();
     } finally {
       await testDb.cleanup();
     }
@@ -1088,6 +1383,52 @@ describe("createTaskService", () => {
           status: "done",
         }),
       ]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("updates feedback bodies and derived subtask descriptions before any subtask run starts", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Update feedback" });
+      const feedback = await service.createFeedback(task.id, { body: "Old feedback." });
+      const updated = await service.updateFeedback(task.id, feedback.id, { body: "New feedback." });
+
+      expect(updated?.body).toBe("New feedback.");
+      expect(updated?.subtasks[0]?.description).toBe("New feedback.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects feedback edits after a derived subtask run has started", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Locked feedback" });
+      const feedback = await service.createFeedback(task.id, { body: "Old feedback." });
+      const subtaskId = feedback.subtasks[0]?.id;
+
+      if (!subtaskId) {
+        throw new Error("Expected feedback subtask.");
+      }
+
+      await service.queueTask({
+        taskId: task.id,
+        subtaskId,
+        triggerSource: "manual",
+        renderedPrompt: "Review the feedback.",
+      });
+
+      await expect(
+        service.updateFeedback(task.id, feedback.id, { body: "New feedback." }),
+      ).rejects.toThrow("Feedback cannot be edited after a subtask run has started.");
     } finally {
       await testDb.cleanup();
     }

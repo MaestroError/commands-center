@@ -2,18 +2,27 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Task, TaskFeedbackThread, TaskRun, TaskTemplate } from "@cc/shared/schemas";
+import type {
+  Task,
+  TaskFeedbackThread,
+  TaskRun,
+  TaskRunFollowup,
+  TaskTemplate,
+} from "@cc/shared/schemas";
 
 vi.mock("@/lib/api", () => ({
   acceptTask: vi.fn(),
   archiveTask: vi.fn(),
   cancelTaskRun: vi.fn(),
+  continueRun: vi.fn(),
   createTask: vi.fn(),
   createTaskFeedback: vi.fn(),
+  createRunFollowup: vi.fn(),
   createTaskFromTemplate: vi.fn(),
   createTaskTemplate: vi.fn(),
   createTaskArtifactShareLink: vi.fn(),
   deleteTask: vi.fn(),
+  deleteRunFollowup: vi.fn(),
   disableTask: vi.fn(),
   duplicateTask: vi.fn(),
   enableTask: vi.fn(),
@@ -23,6 +32,7 @@ vi.mock("@/lib/api", () => ({
   inspectTaskRunSession: vi.fn(),
   listActiveTaskRuns: vi.fn(),
   listArchivedTasks: vi.fn(),
+  listRunFollowups: vi.fn(),
   listTaskRunArtifacts: vi.fn(),
   listTaskFeedback: vi.fn(),
   listTaskRuns: vi.fn(),
@@ -38,8 +48,10 @@ vi.mock("@/lib/api", () => ({
   restoreTask: vi.fn(),
   revokeTaskArtifactShareLink: vi.fn(),
   runTaskTemplateNow: vi.fn(),
+  updateRunFollowup: vi.fn(),
   updateTask: vi.fn(),
   updateTaskContext: vi.fn(),
+  updateTaskFeedback: vi.fn(),
   updateTaskTemplate: vi.fn(),
   uploadTaskContextAttachment: vi.fn(),
 }));
@@ -48,12 +60,15 @@ import {
   acceptTask,
   archiveTask,
   cancelTaskRun,
+  continueRun,
   createTask,
   createTaskFeedback,
+  createRunFollowup,
   createTaskFromTemplate,
   createTaskTemplate,
   createTaskArtifactShareLink,
   deleteTask,
+  deleteRunFollowup,
   disableTask,
   duplicateTask,
   enableTask,
@@ -63,6 +78,7 @@ import {
   inspectTaskRunSession,
   listActiveTaskRuns,
   listArchivedTasks,
+  listRunFollowups,
   listTaskRunArtifacts,
   listTaskFeedback,
   listTaskRuns,
@@ -78,8 +94,10 @@ import {
   restoreTask,
   revokeTaskArtifactShareLink,
   runTaskTemplateNow,
+  updateRunFollowup,
   updateTask,
   updateTaskContext,
+  updateTaskFeedback,
   updateTaskTemplate,
   uploadTaskContextAttachment,
 } from "@/lib/api";
@@ -92,6 +110,7 @@ import {
   useTaskMutations,
   useTaskQuery,
   useTaskRunQuery,
+  useTaskRunFollowupsQuery,
   useTaskRunArtifactsQuery,
   useTaskRunSessionQuery,
   useTaskRunsQuery,
@@ -161,8 +180,22 @@ function makeRun(overrides: Partial<TaskRun> = {}): TaskRun {
     renderedPrompt: "Do the task.",
     artifacts: [],
     needsHumanReview: false,
+    pendingFollowupCount: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeFollowup(overrides: Partial<TaskRunFollowup> = {}): TaskRunFollowup {
+  return {
+    id: "followup-1",
+    taskId: "task-1",
+    runId: "run-1",
+    kind: "operator_reply",
+    status: "pending",
+    body: "Please continue.",
+    createdAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -212,6 +245,7 @@ describe("use task queries", () => {
     vi.mocked(listTaskSubtasks).mockResolvedValue([]);
     vi.mocked(listTaskSubtaskProgress).mockResolvedValue([]);
     vi.mocked(listActiveTaskRuns).mockResolvedValue([makeRun({ id: "active-run" })]);
+    vi.mocked(listRunFollowups).mockResolvedValue([makeFollowup()]);
     vi.mocked(listTaskSchedulerState).mockResolvedValue([]);
 
     const queryClient = createQueryClient();
@@ -225,6 +259,7 @@ describe("use task queries", () => {
         task: useTaskQuery("task-2").data,
         runs: useTaskRunsQuery("task-1").data,
         run: useTaskRunQuery("task-1", "run-2").data,
+        followups: useTaskRunFollowupsQuery("task-1", "run-1").data,
         session: useTaskRunSessionQuery("task-1", "run-2").data,
         feedback: useTaskFeedbackQuery("task-1").data,
         subtasks: useTaskSubtasksQuery("task-1").data,
@@ -248,6 +283,7 @@ describe("use task queries", () => {
     expect(result.current.task?.id).toBe("task-2");
     expect(result.current.runs?.[0]?.id).toBe("run-1");
     expect(result.current.run?.id).toBe("run-2");
+    expect(result.current.followups?.[0]?.id).toBe("followup-1");
     expect(result.current.session?.conversation?.id).toBe("conv-1");
     expect(result.current.feedback?.[0]?.id).toBe("feedback-1");
     expect(result.current.subtasks).toEqual([]);
@@ -265,6 +301,7 @@ describe("use task queries", () => {
         task: useTaskQuery(undefined),
         runs: useTaskRunsQuery(undefined),
         run: useTaskRunQuery(undefined, "run-1"),
+        followups: useTaskRunFollowupsQuery("task-1", undefined),
         session: useTaskRunSessionQuery("task-1", undefined),
         feedback: useTaskFeedbackQuery(undefined),
         subtasks: useTaskSubtasksQuery(undefined),
@@ -278,6 +315,7 @@ describe("use task queries", () => {
     expect(getTask).not.toHaveBeenCalled();
     expect(listTaskRuns).not.toHaveBeenCalled();
     expect(getTaskRun).not.toHaveBeenCalled();
+    expect(listRunFollowups).not.toHaveBeenCalled();
     expect(inspectTaskRunSession).not.toHaveBeenCalled();
     expect(listTaskFeedback).not.toHaveBeenCalled();
     expect(listTaskSubtasks).not.toHaveBeenCalled();
@@ -404,6 +442,96 @@ describe("useTaskMutations", () => {
 
     expect(result.current.fetchStatus).toBe("idle");
     expect(listTaskRunArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("updates followup cache and invalidates run views for followup mutations", async () => {
+    const queryClient = createQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const created = makeFollowup({ id: "followup-created", body: "First reply." });
+    const updated = makeFollowup({ id: "followup-created", body: "Updated reply." });
+    const continued = makeRun({ id: "run-1", taskId: "task-1", status: "running" });
+
+    queryClient.setQueryData(queryKeys.taskRunFollowups("task-1", "run-1"), [created]);
+    vi.mocked(createRunFollowup).mockResolvedValue(created);
+    vi.mocked(updateRunFollowup).mockResolvedValue(updated);
+    vi.mocked(deleteRunFollowup).mockResolvedValue(undefined);
+    vi.mocked(continueRun).mockResolvedValue(continued);
+
+    const { result } = renderHook(() => useTaskMutations(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.createRunFollowup.mutateAsync({
+        taskId: "task-1",
+        runId: "run-1",
+        input: { body: "First reply." },
+      });
+      await result.current.updateRunFollowup.mutateAsync({
+        taskId: "task-1",
+        runId: "run-1",
+        followupId: "followup-created",
+        input: { body: "Updated reply." },
+      });
+      await result.current.continueRun.mutateAsync({ taskId: "task-1", runId: "run-1" });
+      await result.current.deleteRunFollowup.mutateAsync({
+        taskId: "task-1",
+        runId: "run-1",
+        followupId: "followup-created",
+      });
+    });
+
+    expect(createRunFollowup).toHaveBeenCalledWith("task-1", "run-1", { body: "First reply." });
+    expect(updateRunFollowup).toHaveBeenCalledWith("task-1", "run-1", "followup-created", {
+      body: "Updated reply.",
+    });
+    expect(continueRun).toHaveBeenCalledWith("task-1", "run-1");
+    expect(deleteRunFollowup).toHaveBeenCalledWith("task-1", "run-1", "followup-created");
+    expect(queryClient.getQueryData(queryKeys.taskRun("task-1", "run-1"))).toEqual(continued);
+    expect(queryClient.getQueryData(queryKeys.taskRunFollowups("task-1", "run-1"))).toEqual([]);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.taskRunFollowups("task-1", "run-1"),
+    });
+  });
+
+  it("updates feedback cache and invalidates subtask views for feedback edits", async () => {
+    const queryClient = createQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const original: TaskFeedbackThread = {
+      id: "feedback-1",
+      taskId: "task-1",
+      body: "Old feedback.",
+      targetAgentIds: ["agent-1"],
+      subtasks: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const updated: TaskFeedbackThread = {
+      ...original,
+      body: "Updated feedback.",
+    };
+
+    queryClient.setQueryData(queryKeys.taskFeedback("task-1"), [original]);
+    vi.mocked(updateTaskFeedback).mockResolvedValue(updated);
+
+    const { result } = renderHook(() => useTaskMutations(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.updateFeedback.mutateAsync({
+        taskId: "task-1",
+        feedbackId: "feedback-1",
+        input: { body: "Updated feedback." },
+      });
+    });
+
+    expect(updateTaskFeedback).toHaveBeenCalledWith("task-1", "feedback-1", {
+      body: "Updated feedback.",
+    });
+    expect(queryClient.getQueryData(queryKeys.taskFeedback("task-1"))).toEqual([updated]);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.taskSubtasks("task-1"),
+    });
   });
 
   it("updates template, feedback, run, and attachment caches", async () => {

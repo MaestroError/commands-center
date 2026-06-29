@@ -39,7 +39,8 @@ export const addTaskArtifactToolMetadata = {
 
 export const markNeedsHumanReviewToolMetadata = {
   name: "mark_needs_human_review",
-  description: "Mark the active task as requiring user review or follow-up.",
+  description:
+    "Mark the active task as requiring user review or follow-up, optionally asking a specific question with suggested replies.",
   context: "task_run",
 } as const;
 
@@ -107,6 +108,8 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
             parsed.taskRunId,
             agentId,
             parsed.reason,
+            parsed.question,
+            parsed.suggestedReplies,
           );
 
           return success(

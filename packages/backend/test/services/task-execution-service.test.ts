@@ -405,6 +405,161 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("continues a reviewed run by sending pending followups into the existing session", async () => {
+    const testDb = await createTestDatabase();
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      onPrompt: (input) => prompts.push(input),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Continue reviewed run" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Continue reviewed run",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await taskService.markRunNeedsHumanReview(
+        run.id,
+        agent.id,
+        "Need a choice.",
+        "Which option should I ship?",
+        ["Option A", "Option B"],
+      );
+      await taskService.setRunStatus(run.id, "completed", {
+        outcome: "needs_human_review",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      await taskService.createFollowup(run.id, { body: "Ship option A." });
+
+      const continued = await executionService.continueRunWithFollowups(run.id);
+      const refreshed = await taskService.getRunById(run.id);
+      const followups = await taskService.listFollowups(run.id);
+      const taskAfter = await taskService.get(task.id);
+
+      expect(continued.status).toBe("running");
+      expect(prompts.map((prompt) => prompt.text)).toEqual(["Ship option A."]);
+      expect(refreshed?.needsHumanReview).toBe(false);
+      expect(refreshed?.reviewQuestion).toBeUndefined();
+      expect(refreshed?.pendingFollowupCount).toBe(0);
+      expect(taskAfter?.status).toBe("queued");
+      expect(followups.map((followup) => followup.status)).toEqual(["sent"]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns the existing run unchanged when there are no pending followups to continue", async () => {
+    const testDb = await createTestDatabase();
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        onPrompt: (input) => prompts.push(input),
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "No pending followups" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Initial run.",
+      });
+
+      const continued = await executionService.continueRunWithFollowups(run.id);
+
+      expect(continued.status).toBe("completed");
+      expect(prompts).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("marks pending followups failed when continuation prompt delivery fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        promptTransportError: createLocalTransportError("ECONNRESET"),
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 5, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Failed continuation" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Failed continuation",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await taskService.createFollowup(run.id, { body: "Please retry with logs." });
+
+      const continued = await executionService.continueRunWithFollowups(run.id);
+      const followups = await taskService.listFollowups(run.id);
+      const taskAfter = await taskService.get(task.id);
+
+      expect(continued.status).toBe("error");
+      expect(continued.errorMessage).toBe("fetch failed");
+      expect(followups.map((followup) => followup.status)).toEqual(["failed"]);
+      expect(taskAfter?.status).toBe("failed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("stores transport cause details when async prompt acceptance fails", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

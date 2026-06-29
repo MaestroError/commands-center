@@ -118,6 +118,7 @@ const completedRun: TaskRun = {
   ],
   needsHumanReview: true,
   humanReviewReason: "Confirm the generated notes are complete.",
+  pendingFollowupCount: 0,
   result: { messageCount: 3 },
   createdAt: NOW,
   updatedAt: NOW,

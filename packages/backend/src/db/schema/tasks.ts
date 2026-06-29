@@ -172,6 +172,7 @@ export const task_runs = sqliteTable(
     artifacts_json: text("artifacts_json").default("[]"),
     needs_human_review: integer("needs_human_review", { mode: "boolean" }).default(false),
     human_review_reason: text("human_review_reason"),
+    review_question_json: text("review_question_json"),
     result_json: text("result_json"),
     error_message: text("error_message"),
     error_details_json: text("error_details_json"),
@@ -192,6 +193,32 @@ export const task_runs = sqliteTable(
       .where(sql`${table.status} = 'running'`),
     index("task_runs_outcome_idx").on(table.outcome),
     index("task_runs_created_at_idx").on(table.created_at),
+  ],
+);
+
+export const task_run_followups = sqliteTable(
+  "task_run_followups",
+  {
+    id: text("id").primaryKey(),
+    task_id: text("task_id")
+      .notNull()
+      .references(() => tasks.id),
+    run_id: text("run_id")
+      .notNull()
+      .references(() => task_runs.id),
+    kind: text("kind").notNull(),
+    status: text("status").notNull(),
+    body: text("body").notNull(),
+    sent_at: integer("sent_at", { mode: "timestamp_ms" }),
+    error_message: text("error_message"),
+    created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updated_at: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("task_run_followups_task_id_idx").on(table.task_id),
+    index("task_run_followups_run_id_idx").on(table.run_id),
+    index("task_run_followups_run_status_idx").on(table.run_id, table.status),
+    index("task_run_followups_created_at_idx").on(table.created_at),
   ],
 );
 

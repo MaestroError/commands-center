@@ -72,6 +72,27 @@ describe("buildTerminalActivity", () => {
     expect(activity).toMatchObject({ kind: "task_needs_review", body: "please confirm" });
   });
 
+  it("includes review questions in task_needs_review payloads", () => {
+    const activity = buildTerminalActivity({
+      run: run({
+        status: "completed",
+        outcome: "needs_human_review",
+        humanReviewReason: "please confirm",
+        reviewQuestion: {
+          question: "Should I publish it?",
+          suggestedReplies: ["Publish", "Revise"],
+        },
+      }),
+      taskTitle: "Ship it",
+      isFeedbackSubtask: false,
+    });
+
+    expect(activity?.payload).toMatchObject({
+      question: "Should I publish it?",
+      suggestedReplies: ["Publish", "Revise"],
+    });
+  });
+
   it("includes artifacts in task_needs_review payloads", () => {
     const activity = buildTerminalActivity({
       run: run({
@@ -128,6 +149,30 @@ describe("buildTerminalActivity", () => {
       isFeedbackSubtask: true,
     });
     expect(activity).toMatchObject({ kind: "subtask_needs_review", level: "action_required" });
+  });
+
+  it("includes review questions in subtask_needs_review payloads", () => {
+    const activity = buildTerminalActivity({
+      run: run({
+        status: "completed",
+        outcome: "needs_human_review",
+        subtaskId: "s1",
+        reviewQuestion: {
+          question: "Which fix should I try?",
+          suggestedReplies: ["Small patch", "Full rewrite"],
+        },
+      }),
+      taskTitle: "Ship it",
+      isFeedbackSubtask: true,
+    });
+
+    expect(activity?.payload).toMatchObject({
+      taskId: "task-1",
+      taskRunId: "run-1",
+      subtaskId: "s1",
+      question: "Which fix should I try?",
+      suggestedReplies: ["Small patch", "Full rewrite"],
+    });
   });
 
   it("emits nothing for a fresh (non-feedback) subtask success or review", () => {

@@ -39,9 +39,14 @@ const task: Task = {
 
 vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskQuery: (taskId?: string) => ({ data: taskId === "t1" ? task : undefined }),
+  useTaskRunFollowupsQuery: () => ({ data: [] }),
   useTaskMutations: () => ({
     accept: { mutate: vi.fn(), isPending: false, isError: false },
+    continueRun: { mutateAsync: vi.fn(), isPending: false, isError: false },
+    createRunFollowup: { mutateAsync: vi.fn(), isPending: false, isError: false },
+    deleteRunFollowup: { mutateAsync: vi.fn(), isPending: false, isError: false },
     update: { mutate: updateMutate, isPending: false, isError: false },
+    updateRunFollowup: { mutateAsync: vi.fn(), isPending: false, isError: false },
   }),
 }));
 
@@ -83,6 +88,25 @@ describe("ActivityCard acceptance criteria", () => {
     renderCard(activity({ id: "a1", kind: "task_needs_review", payload: { taskId: "t1" } }));
 
     expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0);
+  });
+
+  it("task_needs_review: shows the question instead of the raw reason", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        body: "Internal reason only.",
+        payload: {
+          taskId: "t1",
+          taskRunId: "r1",
+          question: "Should this be published?",
+          suggestedReplies: ["Publish", "Revise"],
+        },
+      }),
+    );
+
+    expect(screen.getByText("Should this be published?")).toBeInTheDocument();
+    expect(screen.queryByText("Internal reason only.")).not.toBeInTheDocument();
   });
 
   it("task_completed: shows artifact titles", () => {
