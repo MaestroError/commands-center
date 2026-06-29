@@ -32,6 +32,33 @@ describe("buildTerminalActivity", () => {
     });
   });
 
+  it("includes artifacts in task_completed payloads", () => {
+    const activity = buildTerminalActivity({
+      run: run({
+        status: "completed",
+        outcome: "success",
+        artifacts: [
+          {
+            title: "PR #4",
+            type: "url",
+            link: "https://github.com/RedberryProducts/pest-plugin-evals/pull/4",
+          },
+        ],
+      }),
+      taskTitle: "Ship it",
+      isFeedbackSubtask: false,
+    });
+    expect(activity?.payload).toMatchObject({
+      artifacts: [
+        {
+          title: "PR #4",
+          type: "url",
+          link: "https://github.com/RedberryProducts/pest-plugin-evals/pull/4",
+        },
+      ],
+    });
+  });
+
   it("maps a needs-review plain run to task_needs_review with the reason", () => {
     const activity = buildTerminalActivity({
       run: run({
@@ -43,6 +70,33 @@ describe("buildTerminalActivity", () => {
       isFeedbackSubtask: false,
     });
     expect(activity).toMatchObject({ kind: "task_needs_review", body: "please confirm" });
+  });
+
+  it("includes artifacts in task_needs_review payloads", () => {
+    const activity = buildTerminalActivity({
+      run: run({
+        status: "completed",
+        outcome: "needs_human_review",
+        artifacts: [
+          {
+            title: "Review report",
+            type: "file",
+            link: "reports/review.md",
+          },
+        ],
+      }),
+      taskTitle: "Ship it",
+      isFeedbackSubtask: false,
+    });
+    expect(activity?.payload).toMatchObject({
+      artifacts: [
+        {
+          title: "Review report",
+          type: "file",
+          link: "reports/review.md",
+        },
+      ],
+    });
   });
 
   it("maps a failed run to task_run_failed regardless of subtask", () => {
