@@ -1,53 +1,26 @@
-import { useCallback, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  BookOpenText,
-  ClipboardCopy,
-  FilePlus,
-  FolderOpen,
-  FolderPlus,
-  Save,
-} from "lucide-react";
+import { AlertTriangle, ClipboardCopy, FolderOpen, Save } from "lucide-react";
 
-import type {
-  DocumentReadResponse,
-  DocumentTreeNode,
-  FileManagerFileRevision,
-} from "@cc/shared/schemas";
+import type { DocumentReadResponse, FileManagerFileRevision } from "@cc/shared/schemas";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
-import { DocumentCreateDialog } from "@/components/documents/DocumentCreateDialog";
-import { DocumentFolderDialog } from "@/components/documents/DocumentFolderDialog";
 import { LazyMilkdownEditor } from "@/components/documents/LazyMilkdownEditor";
-import {
-  getDocumentContent,
-  getDocumentTree,
-  saveDocumentContent,
-  updateDocumentMetadata,
-} from "@/lib/api";
+import { getDocumentContent, saveDocumentContent, updateDocumentMetadata } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 
 const CONTEXT_TAB_STORAGE_KEY = "cc.documents.context-tab";
 
 export function DocumentsPage() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const selectedPath = searchParams.get("path");
-  const [showCreateDoc, setShowCreateDoc] = useState(false);
   const queryClient = useQueryClient();
-  const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [activeContextTabId, setActiveContextTabId] = useState<"info" | "actions">(() => {
     const stored = window.sessionStorage.getItem(CONTEXT_TAB_STORAGE_KEY);
     return stored === "actions" ? "actions" : "info";
-  });
-
-  const treeQuery = useQuery({
-    queryKey: queryKeys.documentTree,
-    queryFn: getDocumentTree,
   });
 
   const documentQuery = useQuery({
@@ -56,7 +29,6 @@ export function DocumentsPage() {
     enabled: !!selectedPath,
   });
 
-  const tree = treeQuery.data?.tree ?? [];
   const selectedDoc = documentQuery.data;
   const [isDirty, setIsDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -95,104 +67,63 @@ export function DocumentsPage() {
     });
   };
 
-  const primaryContent = (
-    <>
-      <PageHeader
-        title="Documents"
-        description="Shared project context documents."
-        actions={
-          <>
-            <button
-              className="cc-button cc-button-secondary gap-1.5"
-              onClick={() => setShowCreateFolder(true)}
-              type="button"
-            >
-              <FolderPlus className="h-4 w-4" />
-              New Folder
-            </button>
+  let primaryContent: ReactNode;
+  if (selectedPath && selectedDoc) {
+    primaryContent = (
+      <div className="cc-panel" data-testid="document-editor-panel">
+        <div className="flex items-center justify-between gap-4 border-b border-border p-4">
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-semibold text-text-primary">
+              {selectedDoc.title}
+            </h2>
+            {selectedDoc.description ? (
+              <p className="mt-0.5 truncate text-sm text-text-secondary">
+                {selectedDoc.description}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {saveError ? (
+              <span className="flex items-center gap-1 text-xs text-danger">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {saveError}
+              </span>
+            ) : null}
+            {isDirty ? <span className="text-xs text-text-secondary">Unsaved changes</span> : null}
             <button
               className="cc-button gap-1.5"
-              onClick={() => setShowCreateDoc(true)}
+              disabled={!isDirty || saveMutation.isPending}
+              onClick={handleSaveContent}
               type="button"
             >
-              <FilePlus className="h-4 w-4" />
-              New Document
+              <Save className="h-4 w-4" />
+              {saveMutation.isPending ? "Saving..." : "Save"}
             </button>
-          </>
-        }
-      />
-
-      {treeQuery.isLoading ? (
-        <LoadingState />
-      ) : tree.length === 0 ? (
-        <EmptyState
-          title="No documents yet"
-          description="Create a document or add markdown files to the Documents folder."
-        />
-      ) : (
-        <div className="cc-panel mt-4 divide-y divide-border">
-          {tree.map((node) => (
-            <DocumentTreeRow
-              key={node.relativePath}
-              node={node}
-              depth={0}
-              selectedPath={selectedPath}
-              onSelect={(path) => {
-                void navigate(`/documents?path=${encodeURIComponent(path)}`);
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      {selectedPath && selectedDoc ? (
-        <div className="cc-panel mt-4" data-testid="document-editor-panel">
-          <div className="flex items-center justify-between gap-4 border-b border-border p-4">
-            <div className="min-w-0">
-              <h2 className="truncate text-lg font-semibold text-text-primary">
-                {selectedDoc.title}
-              </h2>
-              {selectedDoc.description ? (
-                <p className="mt-0.5 truncate text-sm text-text-secondary">
-                  {selectedDoc.description}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {saveError ? (
-                <span className="flex items-center gap-1 text-xs text-danger">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  {saveError}
-                </span>
-              ) : null}
-              {isDirty ? (
-                <span className="text-xs text-text-secondary">Unsaved changes</span>
-              ) : null}
-              <button
-                className="cc-button gap-1.5"
-                disabled={!isDirty || saveMutation.isPending}
-                onClick={handleSaveContent}
-                type="button"
-              >
-                <Save className="h-4 w-4" />
-                {saveMutation.isPending ? "Saving..." : "Save"}
-              </button>
-            </div>
           </div>
-          <LazyMilkdownEditor
-            key={selectedPath}
-            initialContent={selectedDoc.content}
-            onChange={handleEditorChange}
-          />
         </div>
-      ) : null}
-
-      {showCreateDoc ? <DocumentCreateDialog onClose={() => setShowCreateDoc(false)} /> : null}
-      {showCreateFolder ? (
-        <DocumentFolderDialog onClose={() => setShowCreateFolder(false)} />
-      ) : null}
-    </>
-  );
+        <LazyMilkdownEditor
+          key={selectedPath}
+          initialContent={selectedDoc.content}
+          onChange={handleEditorChange}
+        />
+      </div>
+    );
+  } else if (selectedPath && documentQuery.isLoading) {
+    primaryContent = <LoadingState />;
+  } else {
+    primaryContent = (
+      <>
+        <PageHeader
+          title="Documents"
+          description="Shared project context documents. Browse, create, and open documents from the Documents tree in the sidebar."
+        />
+        <EmptyState
+          title="No document selected"
+          description="Open a document from the Documents tree in the sidebar, or create one with the + buttons there."
+        />
+      </>
+    );
+  }
 
   return (
     <WorkspaceLayout
@@ -376,65 +307,4 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function DocumentTreeRow(props: {
-  node: DocumentTreeNode;
-  depth: number;
-  selectedPath: string | null;
-  onSelect: (path: string) => void;
-}) {
-  const { node, depth, selectedPath, onSelect } = props;
-  const [expanded, setExpanded] = useState(true);
-  const isSelected = selectedPath === node.relativePath;
-
-  if (node.type === "directory") {
-    return (
-      <div>
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-text-secondary transition hover:bg-surface-elevated"
-          style={{ paddingLeft: `${depth * 1.25 + 1}rem` }}
-          onClick={() => setExpanded((v) => !v)}
-        >
-          <svg
-            className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-          <FolderPlus className="h-4 w-4 shrink-0 text-text-secondary" />
-          <span className="font-medium">{node.name}</span>
-        </button>
-        {expanded && node.children
-          ? node.children.map((child) => (
-              <DocumentTreeRow
-                key={child.relativePath}
-                node={child}
-                depth={depth + 1}
-                selectedPath={selectedPath}
-                onSelect={onSelect}
-              />
-            ))
-          : null}
-      </div>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition hover:bg-surface-elevated ${
-        isSelected ? "bg-accent/10 text-accent" : "text-text-primary"
-      }`}
-      style={{ paddingLeft: `${depth * 1.25 + 1 + 1.375}rem` }}
-      onClick={() => onSelect(node.relativePath)}
-    >
-      <BookOpenText className="h-4 w-4 shrink-0 text-text-secondary" />
-      <span className="truncate">{node.title ?? node.name}</span>
-    </button>
-  );
 }

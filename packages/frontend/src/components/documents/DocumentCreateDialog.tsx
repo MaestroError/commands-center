@@ -6,11 +6,14 @@ import { queryKeys } from "@/lib/query-keys";
 
 type DocumentCreateDialogProps = {
   onClose: () => void;
+  /** Folder the document is created in, relative to Documents/ (no trailing slash). */
+  defaultFolder?: string;
 };
 
 export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
+  const folderPrefix = props.defaultFolder ? `${props.defaultFolder}/` : "";
   const [title, setTitle] = useState("");
-  const [path, setPath] = useState("");
+  const [path, setPath] = useState(folderPrefix);
   const [description, setDescription] = useState("");
   const queryClient = useQueryClient();
 
@@ -22,7 +25,16 @@ export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
     },
   });
 
-  const derivedPath = path.trim() || (title.trim() ? `${slugify(title.trim())}.md` : "");
+  const trimmedPath = path.trim();
+  const titleSlug = title.trim() ? `${slugify(title.trim())}.md` : "";
+  // When the path points to a concrete file, use it. Otherwise (empty or ends
+  // with "/", i.e. just a folder prefix) combine the folder with the title slug.
+  const derivedPath =
+    trimmedPath && !trimmedPath.endsWith("/")
+      ? trimmedPath
+      : titleSlug
+        ? `${trimmedPath}${titleSlug}`
+        : "";
 
   const handleSubmit = () => {
     if (!derivedPath) return;

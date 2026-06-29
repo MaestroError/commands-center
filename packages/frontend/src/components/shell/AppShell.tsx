@@ -3,6 +3,7 @@ import { ChevronLeft, Clock3, ListChecks, Menu, Search } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { ActivityBell } from "@/components/activities/ActivityBell";
+import { DocumentsSidebarSection } from "@/components/documents/DocumentsSidebarSection";
 import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { AppLogo } from "@/components/common/AppLogo";
 import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
@@ -381,18 +382,27 @@ function SidebarContent(props: {
             {dashboardSidebarRoute.navIcon}
           </SidebarRouteLink>
         ) : null}
-        {secondarySidebarRoutes.map((route) => (
-          <SidebarRouteLink
-            collapsed={props.collapsed}
-            isActive={isRouteActive(props.pathname, route.path, route.navigationMatch)}
-            key={route.path}
-            label={route.navLabel ?? route.title}
-            onNavigate={props.onNavigate}
-            to={route.path}
-          >
-            {route.navIcon}
-          </SidebarRouteLink>
-        ))}
+        {secondarySidebarRoutes.map((route) =>
+          route.path === "/documents" ? (
+            <DocumentsSidebarSection
+              collapsed={props.collapsed}
+              key={route.path}
+              onNavigate={props.onNavigate}
+              pathname={props.pathname}
+            />
+          ) : (
+            <SidebarRouteLink
+              collapsed={props.collapsed}
+              isActive={isRouteActive(props.pathname, route.path, route.navigationMatch)}
+              key={route.path}
+              label={route.navLabel ?? route.title}
+              onNavigate={props.onNavigate}
+              to={route.path}
+            >
+              {route.navIcon}
+            </SidebarRouteLink>
+          ),
+        )}
       </nav>
     </div>
   );

@@ -6,10 +6,12 @@ import { queryKeys } from "@/lib/query-keys";
 
 type DocumentFolderDialogProps = {
   onClose: () => void;
+  /** Parent folder the new folder is created in, relative to Documents/ (no trailing slash). */
+  defaultParent?: string;
 };
 
 export function DocumentFolderDialog(props: DocumentFolderDialogProps) {
-  const [path, setPath] = useState("");
+  const [path, setPath] = useState(props.defaultParent ? `${props.defaultParent}/` : "");
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
