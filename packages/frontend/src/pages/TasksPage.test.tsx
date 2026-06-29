@@ -348,7 +348,6 @@ describe("TasksPage", () => {
       "Backlog",
       "Scheduled",
       "Queued",
-      "Failed",
       "Review",
       "Ready to Check",
       "Done",
