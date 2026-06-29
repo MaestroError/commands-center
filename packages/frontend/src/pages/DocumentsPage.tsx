@@ -287,7 +287,7 @@ function DocumentActionsTab(props: { doc: DocumentReadResponse }) {
           </button>
           <a
             className="cc-button cc-button-secondary flex w-full items-center justify-center gap-1.5 text-xs no-underline"
-            href={`/files?root=workspace&path=Documents&select=Documents/${encodeURIComponent(doc.relativePath)}`}
+            href={`/files?root=workspace&path=${encodeURIComponent("Documents/" + doc.relativePath.substring(0, doc.relativePath.lastIndexOf("/")))}&select=Documents/${encodeURIComponent(doc.relativePath)}`}
           >
             <FolderOpen className="h-3.5 w-3.5" />
             Reveal in File Manager
