@@ -3,6 +3,8 @@ import { Crepe } from "@milkdown/crepe";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/frame-dark.css";
 
+import { createBase64UploadHandler } from "./image-upload";
+
 type MilkdownDocumentEditorProps = {
   initialContent: string;
   readonly?: boolean;
@@ -25,6 +27,11 @@ export function MilkdownDocumentEditor(props: MilkdownDocumentEditorProps) {
         [Crepe.Feature.Placeholder]: {
           text: "Start writing...",
           mode: "block",
+        },
+        // Embed uploaded/dropped images as base64 data URIs so documents stay
+        // self-contained. Used by both inline and block image upload flows.
+        [Crepe.Feature.ImageBlock]: {
+          onUpload: createBase64UploadHandler(),
         },
       },
     });
