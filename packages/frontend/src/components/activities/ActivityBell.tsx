@@ -61,7 +61,7 @@ export function ActivityBell() {
         // Simple popover (not a focus-trapping dialog).
         <div
           aria-label="Activity"
-          className="absolute right-0 z-40 mt-2 w-96 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md border border-border bg-surface shadow-xl"
+          className="fixed inset-x-3 top-20 z-40 max-h-[calc(100vh-6rem)] overflow-hidden rounded-md border border-border bg-surface shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 sm:max-w-[calc(100vw-1.5rem)]"
         >
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="text-sm font-semibold text-text-primary">Needs attention</span>
@@ -73,7 +73,7 @@ export function ActivityBell() {
               View all
             </NavLink>
           </div>
-          <div className="max-h-96 overflow-y-auto p-2">
+          <div className="max-h-[calc(100vh-10rem)] overflow-y-auto p-2 sm:max-h-96">
             {actionable.length === 0 ? (
               <p className="px-1 py-6 text-center text-sm text-text-secondary">
                 Nothing needs your attention.

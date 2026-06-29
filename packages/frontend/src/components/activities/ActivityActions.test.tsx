@@ -91,7 +91,7 @@ describe("ActivityActions", () => {
       activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }),
     );
 
-    fireEvent.click(screen.getByText("Accept (move to done)"));
+    fireEvent.click(screen.getByText("Accept"));
 
     expect(acceptMutate).toHaveBeenCalledWith("t1", expect.objectContaining({}));
     expect(onArchive).toHaveBeenCalledWith("a1");

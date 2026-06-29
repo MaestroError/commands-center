@@ -56,7 +56,7 @@ describe("ResolvedActivityList", () => {
     });
     expect(api.getActivities).toHaveBeenCalledWith("archived");
     // Read-only: no action buttons.
-    expect(screen.queryByText("Accept (move to done)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Accept")).not.toBeInTheDocument();
     expect(screen.queryByText("Open task")).not.toBeInTheDocument();
     expect(screen.queryByText("Mark read")).not.toBeInTheDocument();
   });

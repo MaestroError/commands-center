@@ -73,8 +73,8 @@ export function ActivityCard({
           <Icon aria-hidden="true" className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="min-w-0 break-words text-sm font-medium text-text-primary">
+          <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+            <p className="min-w-0 flex-1 basis-40 whitespace-normal break-words text-sm font-medium leading-5 text-text-primary [overflow-wrap:anywhere]">
               {activity.title}
             </p>
             <span className="shrink-0 whitespace-nowrap text-[11px] text-text-secondary">
