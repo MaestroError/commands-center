@@ -105,6 +105,7 @@ export function AppShell() {
               pathname={pathname}
               recentSpecialists={recentSpecialists}
               onNavigate={() => undefined}
+              onOpenSearch={() => setSearchPaletteOpen(true)}
               onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
             />
           </aside>
@@ -126,6 +127,7 @@ export function AppShell() {
                 pathname={pathname}
                 recentSpecialists={recentSpecialists}
                 onNavigate={() => setMobileSidebarOpen(false)}
+                onOpenSearch={() => setSearchPaletteOpen(true)}
                 onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
               />
             </aside>
@@ -242,6 +244,7 @@ function SidebarContent(props: {
   collapsed: boolean;
   recentSpecialists: ReturnType<typeof readRecentSpecialists>;
   onNavigate: () => void;
+  onOpenSearch: () => void;
   onToggleCollapsed: () => void;
 }) {
   return (
@@ -388,6 +391,7 @@ function SidebarContent(props: {
               collapsed={props.collapsed}
               key={route.path}
               onNavigate={props.onNavigate}
+              onOpenSearch={props.onOpenSearch}
               pathname={props.pathname}
             />
           ) : (

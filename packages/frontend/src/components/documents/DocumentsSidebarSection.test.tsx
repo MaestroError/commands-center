@@ -19,7 +19,10 @@ function LocationProbe() {
   return <div data-testid="location-probe">{`${location.pathname}${location.search}`}</div>;
 }
 
-function renderSidebar(initialEntries: string[] = ["/documents"]) {
+function renderSidebar(
+  initialEntries: string[] = ["/documents"],
+  options: { onOpenSearch?: () => void } = {},
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -36,6 +39,7 @@ function renderSidebar(initialEntries: string[] = ["/documents"]) {
                   collapsed={false}
                   pathname="/documents"
                   onNavigate={() => undefined}
+                  onOpenSearch={options.onOpenSearch ?? (() => undefined)}
                 />
                 <LocationProbe />
               </>
@@ -71,6 +75,19 @@ describe("DocumentsSidebarSection", () => {
     expect(
       within(section).queryByRole("button", { name: /^New document$/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("opens global search from the Documents header search button", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(tree());
+    const onOpenSearch = vi.fn();
+
+    const user = userEvent.setup();
+    renderSidebar(["/documents"], { onOpenSearch });
+
+    await screen.findByTestId("documents-sidebar-section");
+    await user.click(screen.getByRole("button", { name: "Search documents" }));
+
+    expect(onOpenSearch).toHaveBeenCalledTimes(1);
   });
 
   it("renders folders and documents from the tree", async () => {
