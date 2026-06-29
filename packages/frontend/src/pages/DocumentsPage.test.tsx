@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,6 +31,7 @@ function renderPage(initialEntries: string[] = ["/documents"]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -66,7 +68,7 @@ describe("DocumentsPage", () => {
     expect(getDocumentContent).toHaveBeenCalledWith("notes.md");
   });
 
-  it("shows document info in the context pane", async () => {
+  it("defaults the context pane to the Actions tab", async () => {
     vi.mocked(getDocumentContent).mockResolvedValue({
       relativePath: "notes.md",
       fullPath: "/workspace/Documents/notes.md",
@@ -80,6 +82,29 @@ describe("DocumentsPage", () => {
     });
 
     renderPage(["/documents?path=notes.md"]);
+
+    expect(await screen.findByTestId("document-actions-tab")).toBeInTheDocument();
+    expect(screen.queryByTestId("document-info-tab")).not.toBeInTheDocument();
+  });
+
+  it("shows document info after switching to the Info tab", async () => {
+    vi.mocked(getDocumentContent).mockResolvedValue({
+      relativePath: "notes.md",
+      fullPath: "/workspace/Documents/notes.md",
+      title: "Notes",
+      description: "Project notes",
+      author: "operator",
+      content: "# Hello",
+      revision: { mtimeMs: 1700000000000, sizeBytes: 7 },
+      createdAt: 1700000000000,
+      updatedAt: 1700000001000,
+    });
+
+    const user = userEvent.setup();
+    renderPage(["/documents?path=notes.md"]);
+
+    await screen.findByTestId("document-actions-tab");
+    await user.click(screen.getByRole("tab", { name: "Info" }));
 
     const infoTab = await screen.findByTestId("document-info-tab");
     expect(within(infoTab).getByText("notes.md")).toBeInTheDocument();

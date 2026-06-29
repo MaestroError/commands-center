@@ -5,8 +5,7 @@ import { AlertTriangle, ClipboardCopy, FolderOpen, Save } from "lucide-react";
 
 import type { DocumentReadResponse, FileManagerFileRevision } from "@cc/shared/schemas";
 
-import { PageHeader } from "@/components/common/PageHeader";
-import { EmptyState, LoadingState } from "@/components/common/PageStates";
+import { LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { LazyMilkdownEditor } from "@/components/documents/LazyMilkdownEditor";
 import { getDocumentContent, saveDocumentContent, updateDocumentMetadata } from "@/lib/api";
@@ -20,7 +19,7 @@ export function DocumentsPage() {
   const queryClient = useQueryClient();
   const [activeContextTabId, setActiveContextTabId] = useState<"info" | "actions">(() => {
     const stored = window.sessionStorage.getItem(CONTEXT_TAB_STORAGE_KEY);
-    return stored === "actions" ? "actions" : "info";
+    return stored === "info" ? "info" : "actions";
   });
 
   const documentQuery = useQuery({
@@ -70,8 +69,8 @@ export function DocumentsPage() {
   let primaryContent: ReactNode;
   if (selectedPath && selectedDoc) {
     primaryContent = (
-      <div className="cc-panel" data-testid="document-editor-panel">
-        <div className="flex items-center justify-between gap-4 border-b border-border p-4">
+      <div className="flex h-full flex-col" data-testid="document-editor-panel">
+        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border p-4">
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold text-text-primary">
               {selectedDoc.title}
@@ -101,27 +100,32 @@ export function DocumentsPage() {
             </button>
           </div>
         </div>
-        <LazyMilkdownEditor
-          key={selectedPath}
-          initialContent={selectedDoc.content}
-          onChange={handleEditorChange}
-        />
+        <div className="min-h-0 flex-1 overflow-y-auto" data-testid="document-editor-scroll">
+          <LazyMilkdownEditor
+            key={selectedPath}
+            initialContent={selectedDoc.content}
+            onChange={handleEditorChange}
+          />
+        </div>
       </div>
     );
   } else if (selectedPath && documentQuery.isLoading) {
-    primaryContent = <LoadingState />;
+    primaryContent = (
+      <div className="h-full overflow-y-auto p-4">
+        <LoadingState />
+      </div>
+    );
   } else {
     primaryContent = (
-      <>
-        <PageHeader
-          title="Documents"
-          description="Shared project context documents. Browse, create, and open documents from the Documents tree in the sidebar."
-        />
-        <EmptyState
-          title="No document selected"
-          description="Open a document from the Documents tree in the sidebar, or create one with the + buttons there."
-        />
-      </>
+      <div className="flex h-full items-center justify-center p-8 text-center">
+        <div className="max-w-md">
+          <p className="text-lg font-semibold text-text-primary">No document selected</p>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            Open a document from the Documents tree in the sidebar, or create one with the + buttons
+            there.
+          </p>
+        </div>
+      </div>
     );
   }
 
@@ -133,22 +137,22 @@ export function DocumentsPage() {
           ? {
               title: "Document",
               activeTabId: activeContextTabId,
-              defaultTabId: "info",
+              defaultTabId: "actions",
               onTabChange: (tabId) => {
-                const nextTabId = tabId === "actions" ? "actions" : "info";
+                const nextTabId = tabId === "info" ? "info" : "actions";
                 setActiveContextTabId(nextTabId);
                 window.sessionStorage.setItem(CONTEXT_TAB_STORAGE_KEY, nextTabId);
               },
               tabs: [
                 {
-                  id: "info",
-                  label: "Info",
-                  content: <DocumentInfoTab doc={selectedDoc} />,
-                },
-                {
                   id: "actions",
                   label: "Actions",
                   content: <DocumentActionsTab doc={selectedDoc} />,
+                },
+                {
+                  id: "info",
+                  label: "Info",
+                  content: <DocumentInfoTab doc={selectedDoc} />,
                 },
               ],
             }
