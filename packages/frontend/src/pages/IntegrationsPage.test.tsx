@@ -923,4 +923,54 @@ describe("IntegrationsPage", () => {
     expect(screen.getByText("An MCP server named 'GitHub' already exists.")).toBeInTheDocument();
     expect(createMutateAsync).not.toHaveBeenCalled();
   });
+
+  it("blocks editing one server onto another that differs only by case", () => {
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        {
+          id: "mcp-1",
+          name: "github",
+          enabled: true,
+          config: {
+            url: "https://api.githubcopilot.com/mcp/",
+            transport: "streamable-http",
+            authMethod: "headers",
+            headers: [{ key: "Authorization", value: "Bearer {env:GITHUB_TOKEN}" }],
+          },
+          runtimeStatus: { status: "connected" },
+          tools: [],
+          createdAt: "2026-04-22T10:00:00.000Z",
+          updatedAt: "2026-04-22T10:00:00.000Z",
+        },
+        {
+          id: "mcp-2",
+          name: "GitHub",
+          enabled: true,
+          config: {
+            url: "https://api.githubcopilot.com/mcp/",
+            transport: "streamable-http",
+            authMethod: "headers",
+            headers: [{ key: "Authorization", value: "Bearer {env:GITHUB_TOKEN_2}" }],
+          },
+          runtimeStatus: { status: "connected" },
+          tools: [],
+          createdAt: "2026-04-22T10:00:00.000Z",
+          updatedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    render(<IntegrationsPage />);
+
+    // Edit the lowercase "github" server and rename it to the other's exact name.
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]!);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "GitHub" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(screen.getByText("An MCP server named 'GitHub' already exists.")).toBeInTheDocument();
+    expect(updateMutateAsync).not.toHaveBeenCalled();
+  });
 });

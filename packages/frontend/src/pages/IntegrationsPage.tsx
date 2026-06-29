@@ -1319,12 +1319,10 @@ function McpServerDialog(props: {
   const missingSecrets = referencedSecretKeys.filter((key) => props.unsetSecretKeys.has(key));
   const unknownSecrets = referencedSecretKeys.filter((key) => !props.secretKeys.includes(key));
   // Names already taken by other servers — Opencode requires unique MCP names.
-  // When editing, the server's own current name stays allowed.
+  // When editing, only the server's own exact current name stays allowed; other
+  // case variants remain reserved so the case-insensitive check can catch them.
   const reservedNames = useMemo(
-    () =>
-      props.existingNames.filter(
-        (name) => name.toLowerCase() !== props.initialServer?.name.toLowerCase(),
-      ),
+    () => props.existingNames.filter((name) => name !== props.initialServer?.name),
     [props.existingNames, props.initialServer],
   );
 
