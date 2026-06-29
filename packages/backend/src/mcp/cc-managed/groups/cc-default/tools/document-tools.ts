@@ -50,7 +50,10 @@ export const listProjectDocumentsToolMetadata = {
 export const registerProjectDocumentToolMetadata = {
   name: "register_project_document",
   description:
-    "Register or create a project document. Creates the markdown file if it does not exist. Updates metadata for an existing file without overwriting its content.",
+    "Register or create a project document. Creates the markdown file if it does not exist. " +
+    "Updates metadata for an existing file without overwriting its content. When running " +
+    "inside a task, also attach the document to the run with add_task_artifact using type " +
+    '"document" and the same Documents-relative path so the user can open it in the Documents module.',
   context: "both",
 } as const;
 

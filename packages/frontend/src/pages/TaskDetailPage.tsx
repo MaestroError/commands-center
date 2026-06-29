@@ -41,6 +41,7 @@ import {
   useTaskSubtasksQuery,
   useTaskRunSessionQuery,
 } from "@/hooks/use-tasks-query";
+import { buildDocumentHref } from "@/lib/document-href";
 import { buildFileManagerHref } from "@/lib/file-manager-href";
 
 type TaskDetailPageProps = {
@@ -860,10 +861,7 @@ function RunArtifactAttachments(props: {
   return (
     <ul className="mt-3 grid gap-2" aria-label="Run artifacts">
       {props.artifacts.map((artifact) => {
-        const href =
-          artifact.type === "file"
-            ? buildFileManagerHref({ path: artifact.link, openInEditor: true })
-            : artifact.link;
+        const href = buildArtifactHref(artifact);
         return (
           <li
             className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
@@ -874,7 +872,7 @@ function RunArtifactAttachments(props: {
                 className="break-words font-medium text-accent underline-offset-4 hover:underline [overflow-wrap:anywhere]"
                 href={href}
                 rel="noreferrer"
-                target={artifact.type === "file" ? undefined : "_blank"}
+                target={artifact.type === "url" ? "_blank" : undefined}
               >
                 {artifact.title}
               </a>
@@ -1559,14 +1557,22 @@ function aggregateRunArtifacts(runs: TaskRun[]): AggregatedRunArtifact[] {
     title: entry.artifact.title,
     description: entry.artifact.description,
     link: entry.artifact.link,
-    href:
-      entry.artifact.type === "file"
-        ? buildFileManagerHref({ path: entry.artifact.link, openInEditor: true })
-        : entry.artifact.link,
-    external: entry.artifact.type !== "file",
+    href: buildArtifactHref(entry.artifact),
+    external: entry.artifact.type === "url",
     latestRun: entry.latestRun,
     runCount: entry.runIds.size,
   }));
+}
+
+function buildArtifactHref(artifact: TaskRunArtifact): string {
+  switch (artifact.type) {
+    case "document":
+      return buildDocumentHref(artifact.link);
+    case "file":
+      return buildFileManagerHref({ path: artifact.link, openInEditor: true });
+    default:
+      return artifact.link;
+  }
 }
 
 function isRunNewer(candidate: TaskRun, current: TaskRun): boolean {

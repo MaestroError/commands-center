@@ -299,6 +299,13 @@ export const taskRunArtifactSchema = z.discriminatedUnion("type", [
     type: z.literal("file"),
     link: z.string().trim().min(1),
   }),
+  // Markdown documents that live in the Documents module. `link` is the path
+  // relative to the `Documents/` folder (e.g. "design/overview.md"). The UI
+  // opens these in the Documents editor instead of the File Manager.
+  taskRunArtifactBaseSchema.extend({
+    type: z.literal("document"),
+    link: z.string().trim().min(1),
+  }),
 ]);
 
 export const persistedTaskRunArtifactSchema = z.union([
