@@ -56,6 +56,7 @@ describe("FileMentionPopover", () => {
     vi.mocked(api.searchWorkspaceFiles).mockResolvedValueOnce({
       nameMatches: [{ path: "README.md" }, { path: "src/index.ts" }],
       contentMatches: [],
+      documentMatches: [],
     });
 
     render(
@@ -87,6 +88,83 @@ describe("FileMentionPopover", () => {
 
     expect(await screen.findByRole("button", { name: /README\.md/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /node_modules/i })).not.toBeInTheDocument();
+  });
+
+  it("includes document matches in global workspace search results", async () => {
+    vi.mocked(api.searchWorkspaceFiles).mockResolvedValueOnce({
+      nameMatches: [{ path: "src/index.ts" }],
+      contentMatches: [],
+      documentMatches: [
+        {
+          relativePath: "design/overview.md",
+          fullPath: "/workspace/Documents/design/overview.md",
+          title: "Architecture Overview",
+          description: "System design notes",
+        },
+      ],
+    });
+
+    render(
+      <FileMentionPopover
+        query="overview"
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        onKeyDown={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Architecture Overview")).toBeInTheDocument();
+    expect(screen.getByText("Documents/design/overview.md")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /src\/index\.ts/i })).toBeInTheDocument();
+  });
+
+  it("selects a document mention with workspace-relative path", async () => {
+    vi.mocked(api.searchWorkspaceFiles).mockResolvedValueOnce({
+      nameMatches: [],
+      contentMatches: [],
+      documentMatches: [
+        {
+          relativePath: "notes.md",
+          fullPath: "/workspace/Documents/notes.md",
+          title: "Notes",
+          description: null,
+        },
+      ],
+    });
+    const onSelect = vi.fn();
+
+    render(
+      <FileMentionPopover
+        query="notes"
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        onKeyDown={vi.fn()}
+      />,
+    );
+
+    const button = await screen.findByText("Notes");
+    fireEvent.click(button.closest("button")!);
+
+    await waitFor(() => {
+      expect(onSelect).toHaveBeenCalledWith("Documents/notes.md");
+    });
+  });
+
+  it("does not include document matches when searching within a specialist workspace", async () => {
+    vi.mocked(api.searchAgentWorkspaceFiles).mockResolvedValueOnce(["README.md"]);
+
+    render(
+      <FileMentionPopover
+        agentId="agent-1"
+        query="read"
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        onKeyDown={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /README\.md/i })).toBeInTheDocument();
+    expect(api.searchWorkspaceFiles).not.toHaveBeenCalled();
   });
 
   it("selects the active result when Enter is pressed", async () => {

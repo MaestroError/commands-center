@@ -242,6 +242,7 @@ describe("file manager routes", () => {
       expect(response.json()).toEqual({
         nameMatches: [{ path: "src/index.ts" }, { path: "docs/README.md" }],
         contentMatches: [{ path: "README.md", lineNumber: 7, lineText: "plan the release" }],
+        documentMatches: [],
       });
       expect(opencodeService.findFiles).toHaveBeenCalledWith(testDb.config.paths.workspaceDir, {
         query: "plan",

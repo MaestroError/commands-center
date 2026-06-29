@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  BookOpenText,
   Bot,
   CalendarClock,
   FileCode,
@@ -19,6 +20,7 @@ import type {
   Specialist,
   BuiltInSkill,
   CustomTool,
+  GlobalSearchDocumentMatch,
   GlobalSearchWorkspaceFilesResponse,
   Task,
   TaskTemplate,
@@ -49,7 +51,14 @@ type ResultAction = {
 
 type PaletteResult = {
   id: string;
-  group: "Specialists" | "Tasks" | "Task Templates" | "Custom Tools" | "Skills" | "Files";
+  group:
+    | "Documents"
+    | "Specialists"
+    | "Tasks"
+    | "Task Templates"
+    | "Custom Tools"
+    | "Skills"
+    | "Files";
   title: string;
   subtitle?: string;
   markerIcon: React.ReactNode;
@@ -198,6 +207,19 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
       .map((entry) => buildSkillResult(entry.skill, entry.source, navigate, props.onClose));
   }, [catalogQuery.data, deferredQuery, navigate, props.onClose]);
 
+  const documentResults = useMemo(() => {
+    if (deferredQuery.length === 0 || !fileQuery.data) {
+      return [] satisfies PaletteResult[];
+    }
+
+    return buildDocumentResults({
+      documents: fileQuery.data.documentMatches ?? [],
+      navigate,
+      onClose: props.onClose,
+      query: deferredQuery,
+    });
+  }, [deferredQuery, fileQuery.data, navigate, props.onClose]);
+
   const fileResults = useMemo(() => {
     if (deferredQuery.length === 0 || !fileQuery.data) {
       return [] satisfies PaletteResult[];
@@ -214,6 +236,7 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
   }, [deferredQuery, fileQuery.data, location.pathname, location.search, navigate, props.onClose]);
 
   const results = [
+    ...documentResults,
     ...agentResults,
     ...taskResults,
     ...taskTemplateResults,
@@ -270,7 +293,7 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
         </div>
         <div className="max-h-[70vh] overflow-y-auto">
           {deferredQuery.length === 0 ? (
-            <EmptyState message="Search specialists, tasks, custom tools, skills, and workspace files." />
+            <EmptyState message="Search documents, specialists, tasks, custom tools, skills, and workspace files." />
           ) : isLoading ? (
             <EmptyState message="Searching resources..." />
           ) : results.length === 0 ? (
@@ -534,6 +557,49 @@ function buildSkillResult(
       },
     ],
   } satisfies PaletteResult;
+}
+
+function buildDocumentResults(props: {
+  documents: GlobalSearchDocumentMatch[];
+  query: string;
+  navigate: ReturnType<typeof useNavigate>;
+  onClose: () => void;
+}): PaletteResult[] {
+  return props.documents.slice(0, 10).map((doc) => {
+    const openDocument = () => {
+      const params = new URLSearchParams({ path: doc.relativePath });
+      void props.navigate(`/documents?${params.toString()}`);
+      props.onClose();
+    };
+    const revealInFiles = () => {
+      void props.navigate(
+        buildFileManagerHref({
+          path: `Documents/${doc.relativePath}`,
+          currentPathname: "/files",
+          currentSearch: "",
+        }),
+      );
+      props.onClose();
+    };
+
+    return {
+      id: `document:${doc.relativePath}`,
+      group: "Documents",
+      title: doc.title,
+      subtitle: doc.description ?? `Documents/${doc.relativePath}`,
+      markerIcon: <BookOpenText className="h-4 w-4" />,
+      markerLabel: "Document",
+      emphasizedTitle: highlightMatch(doc.title, props.query),
+      primaryAction: openDocument,
+      secondaryActions: [
+        {
+          label: "Reveal in file manager",
+          icon: <FolderSearch className="h-4 w-4" />,
+          onSelect: revealInFiles,
+        },
+      ],
+    } satisfies PaletteResult;
+  });
 }
 
 function buildFileResults(props: {

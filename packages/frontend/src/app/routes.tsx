@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  BookOpenText,
   Code2,
   Clock3,
   FolderKanban,
@@ -16,6 +17,7 @@ import {
 import type { RouteObject } from "react-router-dom";
 
 import { DashboardPage } from "@/pages/DashboardPage";
+import { DocumentsPage } from "@/pages/DocumentsPage";
 import { ApiPage } from "@/pages/ApiPage";
 import { FileManagerPage } from "@/pages/FileManagerPage";
 import { SpecialistEditorPage } from "@/pages/SpecialistEditorPage";
@@ -114,6 +116,13 @@ export const appRoutes = [
     path: "/tasks/templates/:id/edit",
     title: "Edit Task Template",
     element: <TasksPage mode="template-edit" />,
+  },
+  {
+    path: "/documents",
+    title: "Documents",
+    navLabel: "Documents",
+    navIcon: <BookOpenText className="h-4 w-4 shrink-0" />,
+    element: <DocumentsPage />,
   },
   {
     path: "/skills",

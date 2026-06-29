@@ -189,6 +189,15 @@ describe("loadRuntimeConfig", () => {
     );
   });
 
+  it("resolves Documents subdirectory inside the workspace", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test" },
+    });
+
+    expect(config.paths.subdirectories.documents).toBe("/tmp/project/.cc/workspace/Documents");
+  });
+
   it("allows overriding the workspace root with an absolute CC_WORKSPACE_DIR path", () => {
     const config = loadRuntimeConfig({
       env: {

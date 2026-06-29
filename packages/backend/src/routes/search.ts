@@ -7,10 +7,15 @@ import {
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
+import { createDocumentService } from "../services/document-service.js";
 import { resolveFileManagerRoot } from "../services/file-manager-service.js";
 
 export function registerSearchRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
+  const documentService = createDocumentService({
+    db: context.database.db,
+    config: context.config,
+  });
 
   app.get(
     "/api/search/files",
@@ -26,13 +31,14 @@ export function registerSearchRoutes(server: AppServer, context: RuntimeContext)
       const root = resolveFileManagerRoot({ kind: "workspace", config: context.config });
       const query = request.query.query;
 
-      const [nameMatches, contentMatches] = await Promise.all([
+      const [nameMatches, contentMatches, documentMatches] = await Promise.all([
         context.opencodeService.findFiles(root.basePath, {
           query,
           type: "file",
           limit: 20,
         }),
         context.opencodeService.findText(root.basePath, query),
+        documentService.search(query),
       ]);
 
       const visibleNameMatches = nameMatches.filter((path) => !isExcludedSearchPath(path));
@@ -46,6 +52,12 @@ export function registerSearchRoutes(server: AppServer, context: RuntimeContext)
           path: match.path.text,
           lineNumber: match.line_number,
           lineText: match.lines.text,
+        })),
+        documentMatches: documentMatches.map((doc) => ({
+          relativePath: doc.relativePath,
+          fullPath: doc.fullPath,
+          title: doc.title,
+          description: doc.description,
         })),
       };
     },

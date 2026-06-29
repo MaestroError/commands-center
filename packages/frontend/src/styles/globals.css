@@ -790,3 +790,27 @@ select.cc-input {
   border-top: 1px solid var(--border);
   padding: 10px 12px;
 }
+
+/* Milkdown Crepe theme overrides */
+.milkdown-editor-wrapper .milkdown {
+  --crepe-color-background: var(--surface);
+  --crepe-color-surface: var(--surface-elevated);
+  --crepe-color-surface-low: var(--app-bg);
+  --crepe-color-on-background: var(--text-primary);
+  --crepe-color-on-surface: var(--text-primary);
+  --crepe-color-on-surface-variant: var(--text-secondary);
+  --crepe-color-primary: var(--accent);
+  --crepe-color-secondary: var(--surface-elevated);
+  --crepe-color-outline: var(--border);
+  --crepe-color-hover: var(--surface-elevated);
+  --crepe-color-selected: var(--surface-elevated);
+}
+
+.milkdown-editor-wrapper {
+  min-height: 16rem;
+}
+
+.milkdown-editor-wrapper .milkdown .editor {
+  min-height: 14rem;
+  padding: 1rem 1.25rem;
+}
