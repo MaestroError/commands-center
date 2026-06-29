@@ -1980,9 +1980,13 @@ describe("createTaskExecutionService", () => {
     const executionService = createTaskExecutionService({
       taskService,
       conversationService,
-      // Tiny stall window, but the run produces an assistant message and settles
-      // idle first, so it completes instead of being flagged as stalled.
-      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1, noProgressMs: 5 },
+      // Stall detection stays enabled, but the window must comfortably exceed the
+      // poll cadence: the stall check runs before the completion check each poll,
+      // so a window as small as the gap between the progress poll and the idle
+      // settle poll would race and flag a healthy run as stalled (flaky under
+      // coverage instrumentation). The run completes in milliseconds, so the
+      // generous window adds no real wait.
+      monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1, noProgressMs: 5_000 },
     });
 
     try {
