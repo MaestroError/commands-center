@@ -1906,7 +1906,7 @@ function TaskPanelArtifactSection(props: { runs: TaskRun[] }) {
                   rel="noreferrer"
                   target={artifact.external ? "_blank" : undefined}
                 >
-                  {formatArtifactLinkLabel(artifact.link)}
+                  {artifact.title}
                 </a>
                 <p className="mt-1 text-xs leading-5 text-text-muted [overflow-wrap:anywhere]">
                   {artifact.link}
@@ -2289,7 +2289,7 @@ function RunArtifactAttachments(props: {
                 rel="noreferrer"
                 target={artifact.type === "file" ? undefined : "_blank"}
               >
-                {formatArtifactLinkLabel(artifact.link)}
+                {artifact.title}
               </a>
               <span className="block text-xs text-text-muted [overflow-wrap:anywhere]">
                 {artifact.link}
@@ -4617,11 +4617,6 @@ function buildFeedbackTimelineItems(
 
 function readRunCommentBody(run: TaskRun): string {
   return run.finalMessage ?? run.resultText ?? run.errorMessage ?? "No result yet.";
-}
-
-function formatArtifactLinkLabel(value: string): string {
-  const normalized = value.replace(/\\/g, "/");
-  return normalized.split("/").filter(Boolean).pop() ?? value;
 }
 
 type AggregatedRunArtifact = {

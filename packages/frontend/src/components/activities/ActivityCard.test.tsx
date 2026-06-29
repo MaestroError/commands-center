@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Activity, Task } from "@cc/shared/schemas";
@@ -85,6 +85,58 @@ describe("ActivityCard acceptance criteria", () => {
     expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0);
   });
 
+  it("task_completed: shows artifact titles", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_completed",
+        payload: {
+          taskId: "t1",
+          artifacts: [
+            {
+              title: "PR #4",
+              type: "url",
+              link: "https://github.com/RedberryProducts/pest-plugin-evals/pull/4",
+            },
+          ],
+        },
+      }),
+    );
+
+    const artifacts = screen.getByRole("list", { name: "Activity artifacts" });
+    expect(within(artifacts).getByRole("link", { name: "PR #4" })).toHaveAttribute(
+      "href",
+      "https://github.com/RedberryProducts/pest-plugin-evals/pull/4",
+    );
+    expect(within(artifacts).queryByRole("link", { name: "4" })).not.toBeInTheDocument();
+  });
+
+  it("task_needs_review: shows artifact titles", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: {
+          taskId: "t1",
+          artifacts: [
+            {
+              title: "Review report",
+              type: "file",
+              link: "reports/review.md",
+            },
+          ],
+        },
+      }),
+    );
+
+    const artifacts = screen.getByRole("list", { name: "Activity artifacts" });
+    const artifactLink = within(artifacts).getByRole("link", { name: "Review report" });
+    const params = new URLSearchParams(artifactLink.getAttribute("href")?.replace("/files?", ""));
+    expect(params.get("root")).toBe("workspace");
+    expect(params.get("path")).toBe("reports");
+    expect(params.get("select")).toBe("reports/review.md");
+  });
+
   it("read-only history renders non-interactive criteria", () => {
     renderCard(activity({ id: "a1", kind: "task_completed", payload: { taskId: "t1" } }), {
       readOnly: true,
@@ -101,6 +153,22 @@ describe("ActivityCard acceptance criteria", () => {
     });
 
     expect(screen.queryByText("Read changelog")).not.toBeInTheDocument();
+  });
+
+  it("compact cards omit artifacts to stay condensed", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_completed",
+        payload: {
+          taskId: "t1",
+          artifacts: [{ title: "PR #4", type: "url", link: "https://example.com/pull/4" }],
+        },
+      }),
+      { compact: true },
+    );
+
+    expect(screen.queryByRole("list", { name: "Activity artifacts" })).not.toBeInTheDocument();
   });
 
   it("non-outcome kinds do not show criteria", () => {

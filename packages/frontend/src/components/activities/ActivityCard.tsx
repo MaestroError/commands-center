@@ -1,8 +1,14 @@
-import type { Activity, ActivityKind } from "@cc/shared/schemas";
+import {
+  taskRunArtifactSchema,
+  type Activity,
+  type ActivityKind,
+  type TaskRunArtifact,
+} from "@cc/shared/schemas";
 
 import { Markdown } from "@/components/chat/Markdown";
 import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
 import { useTaskQuery } from "@/hooks/use-tasks-query";
+import { buildFileManagerHref } from "@/lib/file-manager-href";
 
 import { ActivityActions } from "./ActivityActions";
 import { getActivityKindMeta } from "./activity-registry";
@@ -11,6 +17,11 @@ import { getActivityKindMeta } from "./activity-registry";
 // acceptance criteria inline — the operator verifies them right where they
 // accept or review, without opening the task.
 const ACTIVITY_KINDS_WITH_CRITERIA: ReadonlySet<ActivityKind> = new Set<ActivityKind>([
+  "task_completed",
+  "task_needs_review",
+]);
+
+const ACTIVITY_KINDS_WITH_ARTIFACTS: ReadonlySet<ActivityKind> = new Set<ActivityKind>([
   "task_completed",
   "task_needs_review",
 ]);
@@ -62,8 +73,8 @@ export function ActivityCard({
           <Icon aria-hidden="true" className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="min-w-0 break-words text-sm font-medium text-text-primary">
+          <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+            <p className="min-w-0 flex-1 basis-40 whitespace-normal break-words text-sm font-medium leading-5 text-text-primary [overflow-wrap:anywhere]">
               {activity.title}
             </p>
             <span className="shrink-0 whitespace-nowrap text-[11px] text-text-secondary">
@@ -75,6 +86,9 @@ export function ActivityCard({
               <Markdown content={activity.body} />
             </div>
           ) : null}
+          {!compact && ACTIVITY_KINDS_WITH_ARTIFACTS.has(activity.kind) ? (
+            <ActivityArtifacts activity={activity} />
+          ) : null}
           {!compact && ACTIVITY_KINDS_WITH_CRITERIA.has(activity.kind) ? (
             <ActivityAcceptanceCriteria activity={activity} interactive={!readOnly} />
           ) : null}
@@ -85,6 +99,48 @@ export function ActivityCard({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ActivityArtifacts({ activity }: { activity: Activity }) {
+  const artifacts = readActivityArtifacts(activity);
+
+  if (artifacts.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+        Artifacts
+      </p>
+      <ul className="mt-1.5 grid gap-1.5" aria-label="Activity artifacts">
+        {artifacts.map((artifact) => {
+          const href =
+            artifact.type === "file"
+              ? buildFileManagerHref({ path: artifact.link, openInEditor: true })
+              : artifact.link;
+          return (
+            <li
+              className="rounded-md border border-border bg-background px-2 py-1.5"
+              key={`${artifact.type}:${artifact.link}:${artifact.title}`}
+            >
+              <a
+                className="break-words text-xs font-medium text-accent underline-offset-4 hover:underline [overflow-wrap:anywhere]"
+                href={href}
+                rel="noreferrer"
+                target={artifact.type === "file" ? undefined : "_blank"}
+              >
+                {artifact.title}
+              </a>
+              <span className="mt-0.5 block text-[11px] text-text-muted [overflow-wrap:anywhere]">
+                {artifact.link}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -116,4 +172,17 @@ function ActivityAcceptanceCriteria({
       <AcceptanceCriteriaList className="mt-1.5" interactive={interactive} task={task} />
     </div>
   );
+}
+
+function readActivityArtifacts(activity: Activity): TaskRunArtifact[] {
+  const artifacts = activity.payload["artifacts"];
+
+  if (!Array.isArray(artifacts)) {
+    return [];
+  }
+
+  return artifacts
+    .map((artifact) => taskRunArtifactSchema.safeParse(artifact))
+    .filter((result) => result.success)
+    .map((result) => result.data);
 }

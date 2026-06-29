@@ -121,7 +121,7 @@ function TaskOutcomeActions({ activity, onArchive, archiving }: ActivityActionsP
         disabled={!taskId || accept.isPending || archiving}
         onClick={handleAccept}
       >
-        {accept.isPending ? "Accepting…" : "Accept (move to done)"}
+        {accept.isPending ? "Accepting…" : "Accept"}
       </ActionButton>
       {taskId ? (
         <ActionButton variant="secondary" onClick={() => void navigate(openTaskPath(taskId))}>

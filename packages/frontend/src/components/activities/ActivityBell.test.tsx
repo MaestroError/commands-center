@@ -56,6 +56,7 @@ describe("ActivityBell", () => {
     });
 
     fireEvent.click(screen.getByLabelText("Activity (1 need attention)"));
+    expect(screen.getByLabelText("Activity")).toHaveClass("fixed", "inset-x-3", "sm:absolute");
     expect(screen.getByText("Secret needed: GITHUB_TOKEN")).toBeInTheDocument();
   });
 
