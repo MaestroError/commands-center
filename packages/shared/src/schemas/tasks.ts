@@ -224,6 +224,7 @@ export const taskRunFollowupSchema = z.object({
   body: z.string().min(1),
   createdAt: z.string().datetime(),
   sentAt: z.string().datetime().optional(),
+  errorMessage: z.string().optional(),
 });
 
 export const createTaskRunFollowupInputSchema = z.object({

@@ -2577,6 +2577,20 @@ describe("TaskDetailPage", () => {
     });
   });
 
+  it("disables run replies when the run has no recorded session", async () => {
+    mockFetch({ runsPayload: [{ ...run, opencodeSessionId: undefined }] });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Runs" }));
+    const runHistory = screen.getByRole("heading", { name: "Run history" }).closest("section");
+    expect(runHistory).not.toBeNull();
+
+    expect(within(runHistory as HTMLElement).getByText("Unavailable")).toBeInTheDocument();
+    expect(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1")).toBeDisabled();
+  });
+
   it("sends and requeues a run reply from the run history row", async () => {
     const fetchMock = mockFetch({ runsPayload: [run] });
 

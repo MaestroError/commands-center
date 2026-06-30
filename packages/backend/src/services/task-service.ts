@@ -1066,7 +1066,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           error_message: null,
           updated_at: now(),
         })
-        .where(inArray(task_run_followups.id, followupIds))
+        .where(
+          and(
+            inArray(task_run_followups.id, followupIds),
+            eq(task_run_followups.status, "pending"),
+          ),
+        )
         .returning();
 
       return rows.map(mapTaskRunFollowup);
@@ -2568,6 +2573,7 @@ function mapTaskRunFollowup(row: typeof task_run_followups.$inferSelect): TaskRu
     body: row.body,
     createdAt: row.created_at.toISOString(),
     sentAt: row.sent_at?.toISOString(),
+    errorMessage: row.error_message ?? undefined,
   });
 }
 

@@ -554,7 +554,76 @@ describe("createTaskExecutionService", () => {
       expect(continued.status).toBe("error");
       expect(continued.errorMessage).toBe("fetch failed");
       expect(followups.map((followup) => followup.status)).toEqual(["failed"]);
+      expect(followups[0]?.errorMessage).toBe("fetch failed");
       expect(taskAfter?.status).toBe("failed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("notifies terminal runs when followup delivery fails after the run already ended", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    let runId = "";
+    const taskServiceWithTerminalTransition = {
+      ...taskService,
+      markFollowupFailed: async (
+        ...args: Parameters<typeof taskService.markFollowupFailed>
+      ): ReturnType<typeof taskService.markFollowupFailed> => {
+        const followup = await taskService.markFollowupFailed(...args);
+        await taskService.setRunStatus(runId, "completed", {
+          completedAt: "2026-06-01T12:10:00.000Z",
+          finalMessage: "Completed while follow-up delivery failed.",
+        });
+        return followup;
+      },
+    };
+    const terminalRuns: string[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        promptTransportError: createLocalTransportError("ECONNRESET"),
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService: taskServiceWithTerminalTransition,
+      conversationService,
+      monitor: { autoStart: false },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 5, jitterRatio: 0 },
+      onRunTerminal: (run) => {
+        terminalRuns.push(run.id);
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Terminal continuation failure",
+      });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      runId = run.id;
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Terminal continuation failure",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await taskService.createFollowup(run.id, { body: "Please retry with logs." });
+
+      const continued = await executionService.continueRunWithFollowups(run.id);
+
+      expect(continued.status).toBe("completed");
+      expect(terminalRuns).toEqual([run.id]);
     } finally {
       await testDb.cleanup();
     }

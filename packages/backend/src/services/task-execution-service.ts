@@ -643,6 +643,7 @@ export function createTaskExecutionService(options: {
       const latest = await findRun(resumed.id);
 
       if (latest.status !== "running") {
+        await handleTerminalRun(latest, { triggerContext: readRunContext(latest) });
         return latest;
       }
 

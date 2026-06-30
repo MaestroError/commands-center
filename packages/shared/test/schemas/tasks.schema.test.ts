@@ -409,6 +409,24 @@ describe("task schemas", () => {
       });
     });
 
+    it("parses failed followup error messages", () => {
+      expect(
+        taskRunFollowupSchema.parse({
+          id: "followup-1",
+          taskId: "task-1",
+          runId: "run-1",
+          kind: "operator_reply",
+          status: "failed",
+          body: "Try again.",
+          createdAt: "2026-06-01T12:00:00.000Z",
+          errorMessage: "transport failed",
+        }),
+      ).toMatchObject({
+        status: "failed",
+        errorMessage: "transport failed",
+      });
+    });
+
     it("defaults followup creation kind to operator_reply", () => {
       expect(
         createTaskRunFollowupInputSchema.parse({ body: "  Please retry with logs.  " }),

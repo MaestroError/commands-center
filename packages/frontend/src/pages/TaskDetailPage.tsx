@@ -367,10 +367,16 @@ function RunHistory(props: {
                         <button
                           className="cc-button cc-button-secondary"
                           data-testid={`task-run-reply-${run.id}`}
+                          disabled={!run.opencodeSessionId}
                           onClick={() =>
                             setOpenReplyRunId((current) =>
                               current === run.id ? undefined : run.id,
                             )
+                          }
+                          title={
+                            run.opencodeSessionId
+                              ? undefined
+                              : "Replies require a recorded OpenCode session."
                           }
                           type="button"
                         >

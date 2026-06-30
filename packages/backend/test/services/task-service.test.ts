@@ -688,7 +688,47 @@ describe("createTaskService", () => {
       expect(sentFollowup?.status).toBe("sent");
       expect(sentFollowup?.sentAt).toBe("2026-06-01T12:00:00.000Z");
       expect(failedFollowup?.status).toBe("failed");
+      expect(failedFollowup?.errorMessage).toBe("transport failed");
       expect(pending).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not mark non-pending followups sent", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Followup sent guard" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Do the task.",
+      });
+      const pending = await service.createFollowup(run.id, { body: "Deliver me." });
+      const failed = await service.createFollowup(run.id, { body: "I failed." });
+      const sent = await service.createFollowup(run.id, { body: "Already sent." });
+      await service.markFollowupFailed(failed.id, "transport failed");
+      await service.markFollowupsSent([sent.id], "2026-06-01T11:00:00.000Z");
+
+      const marked = await service.markFollowupsSent(
+        [pending.id, failed.id, sent.id],
+        "2026-06-01T12:00:00.000Z",
+      );
+      const followups = await service.listFollowups(run.id);
+
+      expect(marked.map((followup) => followup.id)).toEqual([pending.id]);
+      expect(followups.find((followup) => followup.id === failed.id)?.status).toBe("failed");
+      expect(followups.find((followup) => followup.id === failed.id)?.errorMessage).toBe(
+        "transport failed",
+      );
+      expect(followups.find((followup) => followup.id === sent.id)?.sentAt).toBe(
+        "2026-06-01T11:00:00.000Z",
+      );
     } finally {
       await testDb.cleanup();
     }
