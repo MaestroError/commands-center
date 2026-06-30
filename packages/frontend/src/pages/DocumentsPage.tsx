@@ -58,7 +58,7 @@ export function DocumentsPage() {
   }, []);
 
   const handleSaveContent = () => {
-    if (!selectedPath || !pendingContentRef.current || !currentRevisionRef.current) return;
+    if (!selectedPath || pendingContentRef.current === null || !currentRevisionRef.current) return;
     saveMutation.mutate({
       path: selectedPath,
       content: pendingContentRef.current,
@@ -147,7 +147,7 @@ export function DocumentsPage() {
                 {
                   id: "actions",
                   label: "Actions",
-                  content: <DocumentActionsTab doc={selectedDoc} />,
+                  content: <DocumentActionsTab doc={selectedDoc} key={selectedDoc.relativePath} />,
                 },
                 {
                   id: "info",
