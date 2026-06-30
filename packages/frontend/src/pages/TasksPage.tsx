@@ -401,7 +401,7 @@ function TaskListPage() {
             });
           }}
           onRunNow={setRunTemplate}
-          onDelete={(template) => void mutations.remove.mutate(template.id)}
+          onDelete={(template) => void handleDeleteTemplate(template)}
           onCreateTask={(template) => {
             mutations.createFromTemplate.mutate(template.id, {
               onSuccess: (task) => selectGeneratedTask(searchParams, setSearchParams, task.id),
@@ -518,11 +518,11 @@ function TaskListPage() {
             void navigate(`/tasks/templates/${template.id}/edit${currentSearch}`)
           }
           onRunNow={setRunTemplate}
-          onDelete={(template) => {
-            mutations.remove.mutate(template.id, {
+          onDelete={(template) =>
+            void handleDeleteTemplate(template, {
               onSuccess: () => clearSelectedTemplate(searchParams, setSearchParams),
-            });
-          }}
+            })
+          }
           templateId={selectedTemplateId}
         />
       ) : null}
@@ -560,6 +560,21 @@ function TaskListPage() {
     }
 
     mutations.update.mutate({ id: task.id, input: { status } });
+  }
+
+  function handleDeleteTemplate(
+    template: TaskTemplate,
+    options?: {
+      onSuccess?: () => void;
+    },
+  ) {
+    if (!window.confirm(`Delete template '${template.title}'?`)) {
+      return;
+    }
+
+    mutations.remove.mutate(template.id, {
+      onSuccess: options?.onSuccess,
+    });
   }
 }
 

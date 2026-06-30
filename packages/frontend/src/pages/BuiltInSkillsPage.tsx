@@ -338,60 +338,65 @@ export function BuiltInSkillsPage() {
               : undefined
           }
           primary={
-            <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
-              {filteredSkills.map((entry) => {
-                const selected = selectedEntry?.key === entry.key;
+            <div className="h-full min-h-0 overflow-y-auto" data-testid="skills-scroll-panel">
+              <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+                {filteredSkills.map((entry) => {
+                  const selected = selectedEntry?.key === entry.key;
 
-                return (
-                  <div
-                    className={
-                      selected
-                        ? "rounded-xl border border-accent/30 bg-accent/5 p-5 text-left"
-                        : "rounded-xl border border-border bg-surface p-5 text-left"
-                    }
-                    key={entry.key}
-                  >
-                    <button
-                      className="grid w-full gap-0 text-left"
-                      onClick={() => setSelectedKey(entry.key)}
-                      type="button"
+                  return (
+                    <div
+                      className={
+                        selected
+                          ? "rounded-xl border border-accent/30 bg-accent/5 p-5 text-left"
+                          : "rounded-xl border border-border bg-surface p-5 text-left"
+                      }
+                      key={entry.key}
                     >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-lg font-semibold text-text-primary">
-                          {entry.skill.name}
-                        </p>
-                        <SourceBadge source={entry.source} />
-                      </div>
-                      <p className="mt-2 line-clamp-3 text-sm leading-6 text-text-secondary">
-                        {entry.skill.description}
-                      </p>
-                    </button>
-                    {canExpandSkillDescription(entry.skill.description) ? (
                       <button
-                        className="mt-2 text-sm font-medium text-accent transition hover:text-accent/80"
-                        onClick={() => {
-                          setSelectedKey(entry.key);
-                          setActiveContextTabId("details");
-                          window.sessionStorage.setItem(SKILLS_CONTEXT_TAB_STORAGE_KEY, "details");
-                        }}
+                        className="grid w-full gap-0 text-left"
+                        onClick={() => setSelectedKey(entry.key)}
                         type="button"
                       >
-                        Show more
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-lg font-semibold text-text-primary">
+                            {entry.skill.name}
+                          </p>
+                          <SourceBadge source={entry.source} />
+                        </div>
+                        <p className="mt-2 line-clamp-3 text-sm leading-6 text-text-secondary">
+                          {entry.skill.description}
+                        </p>
                       </button>
-                    ) : null}
-                    <div className="mt-4 flex flex-wrap gap-2 text-xs text-text-secondary">
-                      <span className="rounded-full border border-border px-2 py-1">
-                        {entry.skill.category}
-                      </span>
-                      {entry.skill.version ? (
-                        <span className="rounded-full border border-border px-2 py-1">
-                          v{entry.skill.version}
-                        </span>
+                      {canExpandSkillDescription(entry.skill.description) ? (
+                        <button
+                          className="mt-2 text-sm font-medium text-accent transition hover:text-accent/80"
+                          onClick={() => {
+                            setSelectedKey(entry.key);
+                            setActiveContextTabId("details");
+                            window.sessionStorage.setItem(
+                              SKILLS_CONTEXT_TAB_STORAGE_KEY,
+                              "details",
+                            );
+                          }}
+                          type="button"
+                        >
+                          Show more
+                        </button>
                       ) : null}
+                      <div className="mt-4 flex flex-wrap gap-2 text-xs text-text-secondary">
+                        <span className="rounded-full border border-border px-2 py-1">
+                          {entry.skill.category}
+                        </span>
+                        {entry.skill.version ? (
+                          <span className="rounded-full border border-border px-2 py-1">
+                            v{entry.skill.version}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           }
         />
