@@ -1620,11 +1620,14 @@ describe("TasksPage", () => {
 
   it("deletes a template from the templates view", async () => {
     const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderWithRouter(<TasksPage />, "/tasks?view=templates");
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Delete template" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith("Delete template 'Weekly release notes'?");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -1632,6 +1635,22 @@ describe("TasksPage", () => {
         expect.objectContaining({ method: "DELETE" }),
       );
     });
+  });
+
+  it("does not delete a template from the templates view when confirmation is canceled", async () => {
+    const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Delete template" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith("Delete template 'Weekly release notes'?");
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/tasks/template-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 
   it("runs a template immediately and opens the generated task", async () => {
@@ -1740,11 +1759,14 @@ describe("TasksPage", () => {
 
   it("deletes a template from the template detail panel", async () => {
     const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderWithRouter(<TasksPage />, "/tasks?view=templates&template=template-1");
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Delete template" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith("Delete template 'Weekly release notes'?");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(

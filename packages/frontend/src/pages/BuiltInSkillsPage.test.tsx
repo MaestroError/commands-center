@@ -188,6 +188,14 @@ beforeEach(() => {
 });
 
 describe("BuiltInSkillsPage", () => {
+  it("wraps the skills grid in a dedicated scroll panel", () => {
+    renderPage();
+
+    const scrollPanel = screen.getByTestId("skills-scroll-panel");
+
+    expect(scrollPanel).toHaveClass("h-full", "min-h-0", "overflow-y-auto");
+  });
+
   it("filters the skill list by search text and source", () => {
     renderPage();
 
