@@ -5,6 +5,7 @@ import { renameAgentsToSpecialistsMigration } from "./0002-rename-agents-to-spec
 import { sessionArchiveLayoutMigration } from "./0003-session-archive-layout.js";
 import { createSystemPromptsDirectoryMigration } from "./0004-create-system-prompts-directory.js";
 import { createDocumentsAgentsGuideMigration } from "./0005-create-documents-agents-guide.js";
+import { createDocumentsExamplesGuideMigration } from "./0006-create-documents-examples-guide.js";
 
 export const workspaceMigrations = [
   createMigrationSmokeTestDirectoryMigration,
@@ -12,4 +13,5 @@ export const workspaceMigrations = [
   sessionArchiveLayoutMigration,
   createSystemPromptsDirectoryMigration,
   createDocumentsAgentsGuideMigration,
+  createDocumentsExamplesGuideMigration,
 ] satisfies WorkspaceMigration[];
