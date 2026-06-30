@@ -38,6 +38,8 @@ export const queryKeys = {
   taskSubtaskProgress: (taskIds: string[]) => ["task-subtask-progress", taskIds] as const,
   taskRuns: (taskId: string) => ["task-runs", taskId] as const,
   taskRun: (taskId: string, runId: string) => ["task-run", taskId, runId] as const,
+  taskRunFollowups: (taskId: string, runId: string) =>
+    ["task-run-followups", taskId, runId] as const,
   taskRunArtifacts: (taskId: string, runId: string) =>
     ["task-run-artifacts", taskId, runId] as const,
   taskRunSession: (taskId: string, runId: string) => ["task-run-session", taskId, runId] as const,

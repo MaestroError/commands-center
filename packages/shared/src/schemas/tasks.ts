@@ -84,6 +84,10 @@ export const taskRunTriggerSourceSchema = z.enum([
   "system",
 ]);
 
+export const taskRunFollowupKindSchema = z.enum(["operator_reply", "review_answer"]);
+
+export const taskRunFollowupStatusSchema = z.enum(["pending", "sent", "failed"]);
+
 export const taskTodoStatusSchema = z.enum(["pending", "in_progress", "completed"]);
 
 export const taskTodoInputSchema = z.object({
@@ -202,9 +206,34 @@ export const createTaskFeedbackInputSchema = z.object({
   mentionedAgentIds: z.array(z.string().trim().min(1)).max(1).default([]),
 });
 
+export const updateTaskFeedbackInputSchema = z.object({
+  body: z.string().trim().min(1),
+});
+
 export const updateTaskSubtaskInputSchema = z.object({
   description: z.string().trim().optional(),
   agentId: z.string().trim().min(1).optional(),
+});
+
+export const taskRunFollowupSchema = z.object({
+  id: z.string().min(1),
+  taskId: z.string().min(1),
+  runId: z.string().min(1),
+  kind: taskRunFollowupKindSchema,
+  status: taskRunFollowupStatusSchema,
+  body: z.string().min(1),
+  createdAt: z.string().datetime(),
+  sentAt: z.string().datetime().optional(),
+  errorMessage: z.string().optional(),
+});
+
+export const createTaskRunFollowupInputSchema = z.object({
+  body: z.string().trim().min(1),
+  kind: taskRunFollowupKindSchema.default("operator_reply"),
+});
+
+export const updateTaskRunFollowupInputSchema = z.object({
+  body: z.string().trim().min(1),
 });
 
 export const taskSubtaskSchema = taskSubtaskInputSchema.extend({
@@ -372,10 +401,30 @@ export const taskArtifactSharingPreferencesSchema = z.object({
 
 export const updateTaskArtifactSharingPreferencesInputSchema = taskArtifactSharingPreferencesSchema;
 
-export const markTaskRunNeedsReviewInputSchema = z.object({
-  taskRunId: z.string().trim().min(1),
-  reason: z.string().trim().min(1).optional(),
+const reviewSuggestedRepliesSchema = z.array(z.string().trim().min(1).max(200)).max(6);
+
+export const reviewQuestionSchema = z.object({
+  question: z.string().trim().min(1),
+  suggestedReplies: reviewSuggestedRepliesSchema.default([]),
 });
+
+export const markTaskRunNeedsReviewInputSchema = z
+  .object({
+    taskRunId: z.string().trim().min(1),
+    reason: z.string().trim().min(1).optional(),
+    question: z.string().trim().min(1).optional(),
+    suggestedReplies: reviewSuggestedRepliesSchema.optional(),
+  })
+  .refine(
+    (value) =>
+      value.question !== undefined ||
+      value.suggestedReplies === undefined ||
+      value.suggestedReplies.length === 0,
+    {
+      message: "Question is required when suggested replies are provided.",
+      path: ["question"],
+    },
+  );
 
 export const taskSchema = z.object({
   id: z.string().min(1),
@@ -534,6 +583,8 @@ export const taskRunSchema = z.object({
   artifacts: z.array(taskRunArtifactSchema),
   needsHumanReview: z.boolean(),
   humanReviewReason: z.string().optional(),
+  reviewQuestion: reviewQuestionSchema.optional(),
+  pendingFollowupCount: z.number().int().nonnegative().default(0),
   result: looseRecordSchema.optional(),
   errorMessage: z.string().optional(),
   errorDetails: looseRecordSchema.optional(),
@@ -654,10 +705,15 @@ export type TaskContext = z.infer<typeof taskContextSchema>;
 export type TaskContextAttachment = z.infer<typeof taskContextAttachmentSchema>;
 export type AppendTaskContextInput = z.input<typeof appendTaskContextInputSchema>;
 export type CreateTaskFeedbackInput = z.input<typeof createTaskFeedbackInputSchema>;
+export type CreateTaskRunFollowupInput = z.input<typeof createTaskRunFollowupInputSchema>;
+export type ReviewQuestion = z.infer<typeof reviewQuestionSchema>;
 export type TaskFeedbackThread = z.infer<typeof taskFeedbackThreadSchema>;
 export type TaskTemplate = z.infer<typeof taskTemplateSchema>;
 export type TaskPermissionProfile = z.infer<typeof taskPermissionProfileSchema>;
 export type TaskRunArtifact = z.infer<typeof taskRunArtifactSchema>;
+export type TaskRunFollowup = z.infer<typeof taskRunFollowupSchema>;
+export type TaskRunFollowupKind = z.infer<typeof taskRunFollowupKindSchema>;
+export type TaskRunFollowupStatus = z.infer<typeof taskRunFollowupStatusSchema>;
 export type TaskRun = z.infer<typeof taskRunSchema>;
 export type TaskRunOutcome = z.infer<typeof taskRunOutcomeSchema>;
 export type TaskQueuePreview = z.infer<typeof taskQueuePreviewSchema>;
@@ -678,10 +734,12 @@ export type TaskTodo = z.infer<typeof taskTodoSchema>;
 export type TaskRepeatRule = z.infer<typeof taskRepeatRuleSchema>;
 export type TriggerTaskInput = z.input<typeof triggerTaskInputSchema>;
 export type UpdateTaskContextInput = z.input<typeof updateTaskContextInputSchema>;
+export type UpdateTaskFeedbackInput = z.input<typeof updateTaskFeedbackInputSchema>;
 export type UpdateTaskArtifactSharingPreferencesInput = z.input<
   typeof updateTaskArtifactSharingPreferencesInputSchema
 >;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
+export type UpdateTaskRunFollowupInput = z.input<typeof updateTaskRunFollowupInputSchema>;
 export type UpdateTaskRunInput = z.input<typeof updateTaskRunInputSchema>;
 export type UpdateTaskSubtaskInput = z.input<typeof updateTaskSubtaskInputSchema>;
 export type UploadTaskContextAttachmentInput = z.input<

@@ -1,6 +1,6 @@
 # Task-run follow-up messages (replies + review questions)
 
-> **Status: 📝 Proposed.** Implementation plan only — no code changes yet.
+> **Status: 🚧 In progress.** Phases 1-13 (shared schemas + DB + backend follow-up service + continuation path + backend routes + MCP/activity/API/query wiring + notification UI + task panel UI + tests) are complete.
 
 ## Goal
 
@@ -125,53 +125,53 @@ to make it explicit that _the task must be queued for the message to actually be
 
 ### 1. Shared schemas — `packages/shared/src/schemas/tasks.ts`
 
-- [ ] Add `taskRunFollowupKindSchema = z.enum(["operator_reply", "review_answer"])` and
+- [x] Add `taskRunFollowupKindSchema = z.enum(["operator_reply", "review_answer"])` and
       `taskRunFollowupStatusSchema = z.enum(["pending", "sent", "failed"])`.
-- [ ] Add `taskRunFollowupSchema` (`id, taskId, runId, kind, status, body, createdAt, sentAt?`).
-- [ ] Add `createTaskRunFollowupInputSchema` (`body: z.string().trim().min(1)`,
+- [x] Add `taskRunFollowupSchema` (`id, taskId, runId, kind, status, body, createdAt, sentAt?`).
+- [x] Add `createTaskRunFollowupInputSchema` (`body: z.string().trim().min(1)`,
       `kind: taskRunFollowupKindSchema.default("operator_reply")`).
-- [ ] Add `updateTaskRunFollowupInputSchema` (`body: z.string().trim().min(1)`) for editing a
+- [x] Add `updateTaskRunFollowupInputSchema` (`body: z.string().trim().min(1)`) for editing a
       still-`pending` followup.
-- [ ] Add `updateTaskFeedbackInputSchema` (`body: z.string().trim().min(1)`) for editing a feedback
+- [x] Add `updateTaskFeedbackInputSchema` (`body: z.string().trim().min(1)`) for editing a feedback
       comment before its subtask has run.
-- [ ] Add `reviewQuestionSchema = z.object({ question: z.string().trim().min(1),
+- [x] Add `reviewQuestionSchema = z.object({ question: z.string().trim().min(1),
 suggestedReplies: z.array(z.string().trim().min(1).max(200)).max(6).default([]) })`.
-- [ ] Extend `markTaskRunNeedsReviewInputSchema`
+- [x] Extend `markTaskRunNeedsReviewInputSchema`
       ([tasks.ts:368](../packages/shared/src/schemas/tasks.ts#L368)) with optional
       `question` + `suggestedReplies` (or an optional `review` object using `reviewQuestionSchema`).
-- [ ] Extend `taskRunSchema` ([tasks.ts:~510-530](../packages/shared/src/schemas/tasks.ts#L510))
+- [x] Extend `taskRunSchema` ([tasks.ts:~510-530](../packages/shared/src/schemas/tasks.ts#L510))
       with optional `reviewQuestion: reviewQuestionSchema.optional()` and (optional)
       `pendingFollowupCount: z.number().int().nonnegative().default(0)`.
-- [ ] Export the new types alongside the existing task exports.
+- [x] Export the new types alongside the existing task exports.
 
 ### 2. Shared schemas — `packages/shared/src/schemas/activities.ts`
 
-- [ ] Document/extend the `task_needs_review` & `subtask_needs_review` payload to optionally carry
+- [x] Document/extend the `task_needs_review` & `subtask_needs_review` payload to optionally carry
       `question: string` and `suggestedReplies: string[]` (payload is `z.record` so no breaking change;
       add a typed helper/comment for producers + consumers).
 
 ### 3. DB — migration + Drizzle schema (`packages/backend/src/db/...`)
 
-- [ ] New migration `0027_*` (via the project's drizzle workflow) adding:
+- [x] New migration `0027_*` (via the project's drizzle workflow) adding:
   - `task_run_followups` table: `id` (pk), `task_id` (fk tasks), `run_id` (fk task_runs),
     `kind` text, `status` text, `body` text, `created_at`, `sent_at` (nullable),
     `error_message` (nullable). Indexes on `run_id`, `(run_id, status)`, `task_id`.
   - `task_runs.review_question_json` text nullable.
-- [ ] Mirror both in `schema/tasks.ts` (`task_run_followups` table def + new column on `task_runs`),
+- [x] Mirror both in `schema/tasks.ts` (`task_run_followups` table def + new column on `task_runs`),
       export from `schema/index.ts`.
 
 ### 4. Backend service — follow-ups (new `services/task-run-followup-service.ts` or extend `task-service.ts`)
 
-- [ ] `createFollowup(runId, input)` → insert a `pending` row (validate run exists; allow on any run
+- [x] `createFollowup(runId, input)` → insert a `pending` row (validate run exists; allow on any run
       that has an `opencode_session_id`). Return the mapped followup.
-- [ ] `listFollowups(runId)` and `listPendingFollowups(runId)` (ordered by `created_at`).
-- [ ] `updateFollowup(followupId, body)` → update body **only when `status === "pending"`** (throw
+- [x] `listFollowups(runId)` and `listPendingFollowups(runId)` (ordered by `created_at`).
+- [x] `updateFollowup(followupId, body)` → update body **only when `status === "pending"`** (throw
       `ConflictError` otherwise). `deleteFollowup(followupId)` → hard/soft delete, also pending-only.
-- [ ] `markFollowupsSent(ids, sentAt)` / `markFollowupFailed(id, error)`.
-- [ ] `mapTaskRun` ([task-service.ts:~2260](../packages/backend/src/services/task-service.ts#L2260))
+- [x] `markFollowupsSent(ids, sentAt)` / `markFollowupFailed(id, error)`.
+- [x] `mapTaskRun` ([task-service.ts:~2260](../packages/backend/src/services/task-service.ts#L2260))
       reads `review_question_json` → `reviewQuestion`; surface `pendingFollowupCount` where runs are
       returned (or compute lazily in the route).
-- [ ] **Feedback edit** (`task-service.ts`): `updateFeedback(taskId, feedbackId, body)` updates
+- [x] **Feedback edit** (`task-service.ts`): `updateFeedback(taskId, feedbackId, body)` updates
       `task_feedback.body` **and** the description of its derived `task_subtasks`, guarded so it is only
       allowed **before any subtask run has started** (no run with `subtask_id` in
       `queued`/`running`/terminal). Reuse the existing run-state helpers
@@ -180,13 +180,13 @@ suggestedReplies: z.array(z.string().trim().min(1).max(200)).max(6).default([]) 
 
 ### 5. Backend service — review question persistence (`task-service.ts`)
 
-- [ ] `markRunNeedsHumanReview` ([task-service.ts:1665](../packages/backend/src/services/task-service.ts#L1665))
+- [x] `markRunNeedsHumanReview` ([task-service.ts:1665](../packages/backend/src/services/task-service.ts#L1665))
       gains optional `question`/`suggestedReplies`; persist to `review_question_json` (validated via
       `reviewQuestionSchema`) alongside `needsHumanReview`/`humanReviewReason`.
 
 ### 6. Backend execution — continuation path (`services/task-execution-service.ts`)
 
-- [ ] New exported method `continueRunWithFollowups(runId)`:
+- [x] New exported method `continueRunWithFollowups(runId)`:
   1. Load run; require `opencode_session_id` and a non-active status (`completed`/`review`/`failed`,
      i.e. not already `queued`/`running`).
   2. `listPendingFollowups(runId)`; if none, no-op/return run.
@@ -202,48 +202,48 @@ suggestedReplies: z.array(z.string().trim().min(1).max(200)).max(6).default([]) 
   7. Ensure **task status returns to active** — add/confirm a helper that moves the task out of
      `review`/`ready_to_check`/`failed` to `queued` when a run resumes (mirror of
      `applyTaskStatusForTerminalRun`).
-- [ ] Reuse `scheduleAgentDrain` / monitor wiring already present.
-- [ ] Decide single entry point for the route: either `continueRunWithFollowups` directly, or a thin
+- [x] Reuse `scheduleAgentDrain` / monitor wiring already present.
+- [x] Decide single entry point for the route: either `continueRunWithFollowups` directly, or a thin
       `requeueRun(runId)` wrapper.
 
 ### 7. Backend routes — `routes/tasks.ts`
 
-- [ ] `GET  /api/tasks/:id/runs/:runId/followups` → `listFollowups`.
-- [ ] `POST /api/tasks/:id/runs/:runId/followups` (body `createTaskRunFollowupInputSchema`) →
+- [x] `GET  /api/tasks/:id/runs/:runId/followups` → `listFollowups`.
+- [x] `POST /api/tasks/:id/runs/:runId/followups` (body `createTaskRunFollowupInputSchema`) →
       `createFollowup` (status 201). Used by **Send**.
-- [ ] `PATCH  /api/tasks/:id/runs/:runId/followups/:followupId` (body
+- [x] `PATCH  /api/tasks/:id/runs/:runId/followups/:followupId` (body
       `updateTaskRunFollowupInputSchema`) → `updateFollowup` (pending-only). Used by **edit reply**.
-- [ ] `DELETE /api/tasks/:id/runs/:runId/followups/:followupId` → `deleteFollowup` (pending-only).
-- [ ] `POST /api/tasks/:id/runs/:runId/continue` → `executionService.continueRunWithFollowups`.
+- [x] `DELETE /api/tasks/:id/runs/:runId/followups/:followupId` → `deleteFollowup` (pending-only).
+- [x] `POST /api/tasks/:id/runs/:runId/continue` → `executionService.continueRunWithFollowups`.
       Used by **Reply & requeue** / **Send & requeue** for a run.
   - **RESOLVED**: continue is a separate endpoint (not `?requeue=true` on the POST) — client calls
     create-followup then continue.
-- [ ] `PATCH /api/tasks/:id/feedback/:feedbackId` (body `updateTaskFeedbackInputSchema`) →
+- [x] `PATCH /api/tasks/:id/feedback/:feedbackId` (body `updateTaskFeedbackInputSchema`) →
       `updateFeedback` (before-run-only). Used by **edit feedback comment**. (Subtask-only edits can
       still use the existing `PATCH …/subtasks/:subtaskId`.)
-- [ ] Feedback "Send & requeue" needs no new route: client calls existing
+- [x] Feedback "Send & requeue" needs no new route: client calls existing
       `POST /api/tasks/:id/feedback` then `POST /api/tasks/:id/queue`.
 
 ### 8. MCP tool — `mark_needs_human_review`
 
-- [ ] `task-run-outcome-tools.ts` ([:96](../packages/backend/src/mcp/cc-managed/groups/cc-default/tools/task-run-outcome-tools.ts#L96))
+- [x] `task-run-outcome-tools.ts` ([:96](../packages/backend/src/mcp/cc-managed/groups/cc-default/tools/task-run-outcome-tools.ts#L96))
       pass `parsed.question` / `parsed.suggestedReplies` through to `markRunNeedsHumanReview`.
-- [ ] Update the tool description and the global-task system prompt
+- [x] Update the tool description and the global-task system prompt
       ([system-prompts/definitions/global-task.ts:33](../packages/backend/src/system-prompts/definitions/global-task.ts#L33))
       to mention the optional question + suggested replies.
 
 ### 9. Backend activity payload — `services/task-activity.ts`
 
-- [ ] In the `needsReview` branches of `buildTerminalActivity`
+- [x] In the `needsReview` branches of `buildTerminalActivity`
       ([:98](../packages/backend/src/services/task-activity.ts#L98)), include `question` and
       `suggestedReplies` in `payload` when the run has a `reviewQuestion`. `body` stays the reason
       (used as fallback when no question). Extend the `TerminalRun` pick type with `reviewQuestion`.
 
 ### 10. Frontend API client + hooks (`lib/api.ts`, `hooks/use-tasks-query.ts`)
 
-- [ ] `lib/api.ts`: `listRunFollowups`, `createRunFollowup`, `updateRunFollowup`, `deleteRunFollowup`,
+- [x] `lib/api.ts`: `listRunFollowups`, `createRunFollowup`, `updateRunFollowup`, `deleteRunFollowup`,
       `continueRun`, `updateFeedback` (and types).
-- [ ] `use-tasks-query.ts`: `useTaskRunFollowupsQuery`, and mutations `createRunFollowup`,
+- [x] `use-tasks-query.ts`: `useTaskRunFollowupsQuery`, and mutations `createRunFollowup`,
       `updateRunFollowup`, `deleteRunFollowup`, `continueRun`, `updateFeedback`; on success invalidate
       `taskRuns`, `task`, the run-followups query, `activeTaskRuns`, `taskSubtasks`,
       `task-subtask-progress` (mirror existing `queue`/`createFeedback` invalidations,
@@ -251,7 +251,7 @@ suggestedReplies: z.array(z.string().trim().min(1).max(200)).max(6).default([]) 
 
 ### 11. Frontend — notification (`components/activities/ActivityActions.tsx`, `ActivityCard.tsx`)
 
-- [ ] New `ReviewReplyActions` for `task_needs_review` / `subtask_needs_review`:
+- [x] New `ReviewReplyActions` for `task_needs_review` / `subtask_needs_review`:
   - read `question` + `suggestedReplies` from `activity.payload` (+ `taskId`, `taskRunId`).
   - render suggested-reply chips (click → fill textbox) + a manual reply textarea.
   - **Reply & requeue** (primary): `createRunFollowup({ body })` then `continueRun(taskId, runId)`,
@@ -262,32 +262,32 @@ suggestedReplies: z.array(z.string().trim().min(1).max(200)).max(6).default([]) 
     Delete affordances** (`updateRunFollowup` / `deleteRunFollowup`) so the operator can revise
     before requeuing from the notification.
   - **Open task** unchanged.
-- [ ] `ActivityCard`: when `question` present, render the question prominently and **suppress the raw
+- [x] `ActivityCard`: when `question` present, render the question prominently and **suppress the raw
       reason `body`** (keep `body`/reason when absent). Acceptance-criteria block behavior unchanged.
-- [ ] Route `subtask_needs_review` to the new actions component too (currently falls into
+- [x] Route `subtask_needs_review` to the new actions component too (currently falls into
       `InfoActions`, [ActivityActions.tsx:27](../packages/frontend/src/components/activities/ActivityActions.tsx#L27)).
 
 ### 12. Frontend — task panel (`pages/TaskDetailPage.tsx`)
 
-- [ ] **Run comments** in `TaskFeedbackSection` ([:773](../packages/frontend/src/pages/TaskDetailPage.tsx#L773))
+- [x] **Run comments** in `TaskFeedbackSection` ([:773](../packages/frontend/src/pages/TaskDetailPage.tsx#L773))
       and **run history rows** in the Runs section ([:327](../packages/frontend/src/pages/TaskDetailPage.tsx#L327)):
       add a **Reply** affordance that opens a small composer bound to that `run.id`, with **Send**
       (`createRunFollowup`) and **Send & requeue** (`createRunFollowup` + `continueRun`).
   - List the run's pending follow-ups (via `useTaskRunFollowupsQuery`) each with inline **Edit /
     Delete** (`updateRunFollowup` / `deleteRunFollowup`); `sent` followups render read-only.
-- [ ] **Feedback composer** `TaskFeedbackSection` form ([:707](../packages/frontend/src/pages/TaskDetailPage.tsx#L707)):
+- [x] **Feedback composer** `TaskFeedbackSection` form ([:707](../packages/frontend/src/pages/TaskDetailPage.tsx#L707)):
       replace the single "Add feedback" button with **Send** (current `onSubmit`) and **Send & requeue**
       (`onSubmit` then `queue` mutation on the task). Keep the "creates a subtask" helper text.
   - Each existing feedback comment ([:743](../packages/frontend/src/pages/TaskDetailPage.tsx#L743))
     gets an **Edit** affordance (`updateFeedback`) shown only while it has not yet run; hide/disable
     once the subtask is queued/running/terminal (derive from `entry.subtasks` status +
     `props.parentRuns`).
-- [ ] Add a tiny shared `SendButtons` helper (Send / Send & requeue) reused by replies + feedback for
+- [x] Add a tiny shared `SendButtons` helper (Send / Send & requeue) reused by replies + feedback for
       consistent labels and disabled/pending states.
 
 ### 13. Tests
 
-- [ ] **Backend**
+- [x] **Backend**
   - `task-run-followup-service`: create/list/markSent/markFailed; ordering; `updateFollowup` and
     `deleteFollowup` succeed while `pending` and `ConflictError` once `sent`.
   - `updateFeedback`: edits body + subtask description before run; `ConflictError` after the subtask
@@ -300,24 +300,33 @@ suggestedReplies: z.array(z.string().trim().min(1).max(200)).max(6).default([]) 
     without question → body=reason, no question payload.
   - routes: followups GET/POST/PATCH/DELETE, feedback PATCH, continue endpoint happy + 404/conflict
     paths.
-- [ ] **Frontend**
+- [x] **Frontend**
   - `ActivityActions`/`ActivityCard`: question renders chips + textbox and hides reason; no-question
     renders reason + textbox; Reply & requeue calls create-followup then continue then archive.
-  - `TaskDetailPage`: run Reply composer posts a followup to the right run; Send vs Send & requeue;
-    feedback Send & requeue creates feedback then queues; **editing a pending followup** and
-    **editing an un-run feedback comment** call the update mutations and the edit affordance is
-    hidden once sent/run.
+  - [x] `TaskDetailPage`: run Reply composer posts a followup to the right run; Send vs Send & requeue;
+        feedback Send & requeue creates feedback then queues; **editing a pending followup** and
+        **editing an un-run feedback comment** call the update mutations and the edit affordance is
+        hidden once sent/run.
   - notification: editing/deleting a pending followup inline works and is gone after requeue.
 
 ### 14. Verify
 
-- [ ] `pnpm format:fix && pnpm lint && pnpm typecheck`.
-- [ ] Focused: backend task-service / task-execution-service / task routes / task-activity; frontend
+- [x] `pnpm format:fix && pnpm lint && pnpm typecheck`.
+- [x] Focused: backend task-service / task-execution-service / task routes / task-activity; frontend
       activities + TaskDetailPage suites.
 - [ ] Manual: specialist marks needs-review with a question + 2 suggested replies → notification shows
       them → pick one → Reply & requeue → task returns to active and the agent answers in the same chat;
       separately, a Reply from the task panel Runs section continues the run; a Feedback "Send & requeue"
       runs the new subtask.
+
+Verification notes:
+
+- [x] `pnpm format:fix`
+- [x] `pnpm lint`
+- [x] `pnpm typecheck`
+- [x] `pnpm test` (first sandboxed run hit `listen EPERM 127.0.0.1`; escalated rerun passed)
+- [ ] `pnpm test:e2e` (58/60 passed; repeated failures are unrelated mobile pointer-interception
+      timeouts in `provider-connections.spec.ts:48` and `tasks/templates.spec.ts:61`)
 
 ## Files touched (summary)
 
@@ -348,3 +357,35 @@ suggestedReplies: z.array(z.string().trim().min(1).max(200)).max(6).default([]) 
    a recovery turn). Confirm we don't want `failed` restricted to a fresh retry only.
 6. **Suggested-reply cap / length** — proposed ≤ 6 replies, ≤ 200 chars each, question required when
    `suggestedReplies` is non-empty. OK?
+
+## PR Review Follow-Up 2026-06-30
+
+- [x] Add explicit Drizzle `.run()` calls when reactivating a run and task for follow-up continuation.
+- [x] Guard `markFollowupFailed` so only pending follow-ups can transition to failed.
+- [x] Disable the run reply panel composer/actions when a run has no recorded OpenCode session.
+- [x] Add focused tests for the guarded failure transition and no-session reply panel state.
+- [x] Re-run lint, typecheck, and tests before resolving the new review threads.
+
+## PR Review Follow-Up 2026-06-30 Running-Agent Guard
+
+- [x] Guard follow-up continuation when the same agent already has another running run.
+- [x] Translate a race-time running-run SQLite unique constraint into `ConflictError`.
+- [x] Add a focused regression test and rerun checks before resolving the linked thread.
+
+## CI Coverage Follow-Up 2026-06-30
+
+- [x] Wait for task-run inspection messages in async prompt tests before asserting conversation details.
+- [x] Run focused backend test and backend coverage before pushing the CI fix.
+
+## PR Review Follow-Up 2026-06-30 Lazy Followups
+
+- [x] Return `409 Conflict` consistently when continuing a run without an OpenCode session.
+- [x] Preserve blocking `runId` details when the running-run SQLite constraint fires during continuation.
+- [x] Lazy-load run follow-ups in the task detail reply panel unless the composer is open or pending replies exist.
+- [x] Add focused backend/frontend regression tests and rerun checks.
+
+## PR Review Follow-Up 2026-06-30 Scoped Followups
+
+- [x] Restrict follow-up continuation to `completed`, `failed`, and `error` runs.
+- [x] Scope follow-up update/delete service methods by `runId` and remove route-side list checks.
+- [x] Add focused service/route regression tests and rerun checks.

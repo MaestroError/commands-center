@@ -42,11 +42,16 @@ describe("migrateDatabase", () => {
       expect(columnExists(sqlite, "documents", "updated_at")).toBe(true);
       expect(columnExists(sqlite, "documents", "last_seen_at")).toBe(true);
       expect(indexExists(sqlite, "documents_relative_path_unique")).toBe(true);
+      expect(tableExists(sqlite, "task_run_followups")).toBe(true);
       expect(columnExists(sqlite, "task_subtasks", "agent_id")).toBe(true);
       expect(columnExists(sqlite, "task_runs", "subtask_id")).toBe(true);
       expect(columnExists(sqlite, "task_runs", "outcome")).toBe(true);
+      expect(columnExists(sqlite, "task_runs", "review_question_json")).toBe(true);
+      expect(columnExists(sqlite, "task_run_followups", "run_id")).toBe(true);
+      expect(columnExists(sqlite, "task_run_followups", "status")).toBe(true);
       expect(indexExists(sqlite, "tasks_default_agent_id_idx")).toBe(true);
       expect(indexExists(sqlite, "task_runs_subtask_id_idx")).toBe(true);
+      expect(indexExists(sqlite, "task_run_followups_run_status_idx")).toBe(true);
       expect(tableExists(sqlite, "automations")).toBe(false);
       expect(tableExists(sqlite, "automation_runs")).toBe(false);
     } finally {

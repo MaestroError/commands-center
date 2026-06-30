@@ -4,18 +4,24 @@ import {
   addTaskRunArtifactInputSchema,
   boardTaskStatusSchema,
   createTaskFeedbackInputSchema,
+  createTaskRunFollowupInputSchema,
   createTaskRunInputSchema,
   markTaskRunNeedsReviewInputSchema,
   persistedTaskRunArtifactSchema,
   queueTaskInputSchema,
+  reviewQuestionSchema,
   setTaskRunResultInputSchema,
   taskFeedbackThreadSchema,
   taskRunArtifactSchema,
+  taskRunFollowupSchema,
   taskRunOutcomeSchema,
+  taskRunSchema,
   taskRunTriggerSourceSchema,
   taskTemplateRunNowInputSchema,
   taskSubtaskSchema,
   taskTemplateSchema,
+  updateTaskFeedbackInputSchema,
+  updateTaskRunFollowupInputSchema,
 } from "../../src/schemas/tasks.js";
 
 describe("task schemas", () => {
@@ -152,6 +158,14 @@ describe("task schemas", () => {
       ).toMatchObject({
         id: "subtask-1",
         agentId: "agent-1",
+      });
+    });
+
+    it("accepts feedback edits with trimmed bodies", () => {
+      expect(
+        updateTaskFeedbackInputSchema.parse({ body: "  Please revise the summary.  " }),
+      ).toEqual({
+        body: "Please revise the summary.",
       });
     });
   });
@@ -319,6 +333,31 @@ describe("task schemas", () => {
         }),
       ).toEqual({ taskRunId: "run-1", reason: "Needs approval." });
     });
+
+    it("parses review questions with suggested replies", () => {
+      expect(
+        markTaskRunNeedsReviewInputSchema.parse({
+          taskRunId: "run-1",
+          reason: "Needs approval.",
+          question: "Which option should I use?",
+          suggestedReplies: ["Ship option A", "Ship option B"],
+        }),
+      ).toEqual({
+        taskRunId: "run-1",
+        reason: "Needs approval.",
+        question: "Which option should I use?",
+        suggestedReplies: ["Ship option A", "Ship option B"],
+      });
+    });
+
+    it("rejects suggested replies without a question", () => {
+      expect(() =>
+        markTaskRunNeedsReviewInputSchema.parse({
+          taskRunId: "run-1",
+          suggestedReplies: ["Proceed"],
+        }),
+      ).toThrow("Question is required when suggested replies are provided.");
+    });
   });
 
   describe("createTaskRunInputSchema", () => {
@@ -368,6 +407,123 @@ describe("task schemas", () => {
         triggerSource: "api",
         outcome: "success",
         triggerMetadata: { requestId: "request-1" },
+      });
+    });
+  });
+
+  describe("task run followups", () => {
+    it("parses persisted followups", () => {
+      expect(
+        taskRunFollowupSchema.parse({
+          id: "followup-1",
+          taskId: "task-1",
+          runId: "run-1",
+          kind: "review_answer",
+          status: "sent",
+          body: "Proceed with option A.",
+          createdAt: "2026-06-01T12:00:00.000Z",
+          sentAt: "2026-06-01T12:05:00.000Z",
+        }),
+      ).toMatchObject({
+        id: "followup-1",
+        kind: "review_answer",
+        status: "sent",
+      });
+    });
+
+    it("parses failed followup error messages", () => {
+      expect(
+        taskRunFollowupSchema.parse({
+          id: "followup-1",
+          taskId: "task-1",
+          runId: "run-1",
+          kind: "operator_reply",
+          status: "failed",
+          body: "Try again.",
+          createdAt: "2026-06-01T12:00:00.000Z",
+          errorMessage: "transport failed",
+        }),
+      ).toMatchObject({
+        status: "failed",
+        errorMessage: "transport failed",
+      });
+    });
+
+    it("defaults followup creation kind to operator_reply", () => {
+      expect(
+        createTaskRunFollowupInputSchema.parse({ body: "  Please retry with logs.  " }),
+      ).toEqual({
+        body: "Please retry with logs.",
+        kind: "operator_reply",
+      });
+    });
+
+    it("rejects empty followup edits", () => {
+      expect(() => updateTaskRunFollowupInputSchema.parse({ body: "   " })).toThrow();
+    });
+  });
+
+  describe("review questions", () => {
+    it("defaults suggested replies to an empty array", () => {
+      expect(reviewQuestionSchema.parse({ question: "How should I proceed?" })).toEqual({
+        question: "How should I proceed?",
+        suggestedReplies: [],
+      });
+    });
+
+    it("rejects more than six suggested replies", () => {
+      expect(() =>
+        reviewQuestionSchema.parse({
+          question: "Pick one.",
+          suggestedReplies: ["1", "2", "3", "4", "5", "6", "7"],
+        }),
+      ).toThrow();
+    });
+  });
+
+  describe("taskRunSchema", () => {
+    it("defaults pending followup count to zero", () => {
+      expect(
+        taskRunSchema.parse({
+          id: "run-1",
+          taskId: "task-1",
+          agentId: "agent-1",
+          fallbackModels: [],
+          status: "completed",
+          triggerSource: "manual",
+          renderedPrompt: "",
+          artifacts: [],
+          needsHumanReview: false,
+          createdAt: "2026-06-01T12:00:00.000Z",
+          updatedAt: "2026-06-01T12:00:00.000Z",
+        }).pendingFollowupCount,
+      ).toBe(0);
+    });
+
+    it("accepts an attached review question", () => {
+      expect(
+        taskRunSchema.parse({
+          id: "run-1",
+          taskId: "task-1",
+          agentId: "agent-1",
+          fallbackModels: [],
+          status: "completed",
+          triggerSource: "manual",
+          renderedPrompt: "",
+          artifacts: [],
+          needsHumanReview: true,
+          humanReviewReason: "Need operator input.",
+          reviewQuestion: {
+            question: "Which region should I deploy to?",
+            suggestedReplies: ["us-east-1", "eu-west-1"],
+          },
+          pendingFollowupCount: 2,
+          createdAt: "2026-06-01T12:00:00.000Z",
+          updatedAt: "2026-06-01T12:00:00.000Z",
+        }).reviewQuestion,
+      ).toEqual({
+        question: "Which region should I deploy to?",
+        suggestedReplies: ["us-east-1", "eu-west-1"],
       });
     });
   });

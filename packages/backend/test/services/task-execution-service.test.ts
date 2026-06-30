@@ -102,6 +102,7 @@ describe("createTaskExecutionService", () => {
       await expectRunStatus(taskService, run.id, "running");
       await expectRunRuntimeState(taskService, run.id, "waiting_for_opencode");
       const runningRun = await taskService.getRunById(run.id);
+      await expectTaskRunInspectionMessageCount(conversationService, task.id, run.id, 1);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
 
@@ -400,6 +401,501 @@ describe("createTaskExecutionService", () => {
           baselineMessageCount: 0,
         }),
       );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("continues a reviewed run by sending pending followups into the existing session", async () => {
+    const testDb = await createTestDatabase();
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      onPrompt: (input) => prompts.push(input),
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Continue reviewed run" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Continue reviewed run",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await taskService.markRunNeedsHumanReview(
+        run.id,
+        agent.id,
+        "Need a choice.",
+        "Which option should I ship?",
+        ["Option A", "Option B"],
+      );
+      await taskService.setRunStatus(run.id, "completed", {
+        outcome: "needs_human_review",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      await taskService.createFollowup(run.id, { body: "Ship option A." });
+
+      const continued = await executionService.continueRunWithFollowups(run.id);
+      const refreshed = await taskService.getRunById(run.id);
+      const followups = await taskService.listFollowups(run.id);
+      const taskAfter = await taskService.get(task.id);
+
+      expect(continued.status).toBe("running");
+      expect(prompts.map((prompt) => prompt.text)).toEqual(["Ship option A."]);
+      expect(refreshed?.needsHumanReview).toBe(false);
+      expect(refreshed?.reviewQuestion).toBeUndefined();
+      expect(refreshed?.pendingFollowupCount).toBe(0);
+      expect(taskAfter?.status).toBe("queued");
+      expect(followups.map((followup) => followup.status)).toEqual(["sent"]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects continuing a run when the agent already has a running run", async () => {
+    const testDb = await createTestDatabase();
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        onPrompt: (input) => prompts.push(input),
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const reviewedTask = await taskService.create({
+        agentId: agent.id,
+        title: "Reviewed task",
+      });
+      const reviewedRun = await taskService.createRun({
+        taskId: reviewedTask.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: reviewedTask.id,
+        taskRunId: reviewedRun.id,
+        title: "Task: Reviewed task",
+      });
+      await taskService.updateRun(reviewedRun.id, {
+        opencodeSessionId: conversation.opencodeSessionId,
+      });
+      await taskService.setRunStatus(reviewedRun.id, "completed", {
+        outcome: "needs_human_review",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      await taskService.createFollowup(reviewedRun.id, { body: "Please continue." });
+
+      const activeTask = await taskService.create({ agentId: agent.id, title: "Active task" });
+      const activeRun = await taskService.createRun({
+        taskId: activeTask.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Active run.",
+      });
+
+      await expect(executionService.continueRunWithFollowups(reviewedRun.id)).rejects.toMatchObject(
+        {
+          code: "conflict",
+          statusCode: 409,
+          details: { runId: activeRun.id },
+        },
+      );
+      const refreshed = await taskService.getRunById(reviewedRun.id);
+      const followups = await taskService.listFollowups(reviewedRun.id);
+
+      expect(refreshed?.status).toBe("completed");
+      expect(followups.map((followup) => followup.status)).toEqual(["pending"]);
+      expect(prompts).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("reports the blocking run when a continuation hits the running-run constraint", async () => {
+    const testDb = await createTestDatabase();
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    let runningRunChecks = 0;
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskServiceWithRacingPrecheck = {
+      ...taskService,
+      getRunningRunForAgent: async (
+        ...args: Parameters<typeof taskService.getRunningRunForAgent>
+      ): ReturnType<typeof taskService.getRunningRunForAgent> => {
+        runningRunChecks += 1;
+
+        if (runningRunChecks === 1) {
+          return undefined;
+        }
+
+        return taskService.getRunningRunForAgent(...args);
+      },
+    };
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        onPrompt: (input) => prompts.push(input),
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService: taskServiceWithRacingPrecheck,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const reviewedTask = await taskService.create({
+        agentId: agent.id,
+        title: "Race reviewed task",
+      });
+      const reviewedRun = await taskService.createRun({
+        taskId: reviewedTask.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: reviewedTask.id,
+        taskRunId: reviewedRun.id,
+        title: "Task: Race reviewed task",
+      });
+      await taskService.updateRun(reviewedRun.id, {
+        opencodeSessionId: conversation.opencodeSessionId,
+      });
+      await taskService.setRunStatus(reviewedRun.id, "completed", {
+        outcome: "needs_human_review",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      await taskService.createFollowup(reviewedRun.id, { body: "Please continue." });
+
+      const activeTask = await taskService.create({ agentId: agent.id, title: "Race active task" });
+      const activeRun = await taskService.createRun({
+        taskId: activeTask.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Active run.",
+      });
+
+      await expect(executionService.continueRunWithFollowups(reviewedRun.id)).rejects.toMatchObject(
+        {
+          code: "conflict",
+          statusCode: 409,
+          details: { runId: activeRun.id },
+        },
+      );
+      const refreshed = await taskService.getRunById(reviewedRun.id);
+      const followups = await taskService.listFollowups(reviewedRun.id);
+
+      expect(refreshed?.status).toBe("completed");
+      expect(followups.map((followup) => followup.status)).toEqual(["pending"]);
+      expect(prompts).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects continuing a run without an OpenCode session as a conflict", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "No session continue" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+
+      await expect(executionService.continueRunWithFollowups(run.id)).rejects.toMatchObject({
+        code: "conflict",
+        statusCode: 409,
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects continuing cancelled runs", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Cancelled continue" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "cancelled",
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Initial run.",
+        cancelledAt: "2026-06-01T12:00:00.000Z",
+        cancellationReason: "Stopped by operator.",
+      });
+
+      await expect(executionService.continueRunWithFollowups(run.id)).rejects.toMatchObject({
+        code: "bad_request",
+        statusCode: 400,
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects continuing skipped runs", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Skipped continue" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "skipped",
+        triggerSource: "scheduled",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Initial run.",
+        finalMessage: "Task was skipped.",
+      });
+
+      await expect(executionService.continueRunWithFollowups(run.id)).rejects.toMatchObject({
+        code: "bad_request",
+        statusCode: 400,
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns the existing run unchanged when there are no pending followups to continue", async () => {
+    const testDb = await createTestDatabase();
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        onPrompt: (input) => prompts.push(input),
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "No pending followups" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Initial run.",
+      });
+
+      const continued = await executionService.continueRunWithFollowups(run.id);
+
+      expect(continued.status).toBe("completed");
+      expect(prompts).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("marks pending followups failed when continuation prompt delivery fails", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        promptTransportError: createLocalTransportError("ECONNRESET"),
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 5, jitterRatio: 0 },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Failed continuation" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Failed continuation",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await taskService.createFollowup(run.id, { body: "Please retry with logs." });
+
+      const continued = await executionService.continueRunWithFollowups(run.id);
+      const followups = await taskService.listFollowups(run.id);
+      const taskAfter = await taskService.get(task.id);
+
+      expect(continued.status).toBe("error");
+      expect(continued.errorMessage).toBe("fetch failed");
+      expect(followups.map((followup) => followup.status)).toEqual(["failed"]);
+      expect(followups[0]?.errorMessage).toBe("fetch failed");
+      expect(taskAfter?.status).toBe("failed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("notifies terminal runs when followup delivery fails after the run already ended", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    let runId = "";
+    const taskServiceWithTerminalTransition = {
+      ...taskService,
+      markFollowupFailed: async (
+        ...args: Parameters<typeof taskService.markFollowupFailed>
+      ): ReturnType<typeof taskService.markFollowupFailed> => {
+        const followup = await taskService.markFollowupFailed(...args);
+        await taskService.setRunStatus(runId, "completed", {
+          completedAt: "2026-06-01T12:10:00.000Z",
+          finalMessage: "Completed while follow-up delivery failed.",
+        });
+        return followup;
+      },
+    };
+    const terminalRuns: string[] = [];
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        promptTransportError: createLocalTransportError("ECONNRESET"),
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService: taskServiceWithTerminalTransition,
+      conversationService,
+      monitor: { autoStart: false },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 5, jitterRatio: 0 },
+      onRunTerminal: (run) => {
+        terminalRuns.push(run.id);
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Terminal continuation failure",
+      });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      runId = run.id;
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: task.id,
+        taskRunId: run.id,
+        title: "Task: Terminal continuation failure",
+      });
+      await taskService.updateRun(run.id, { opencodeSessionId: conversation.opencodeSessionId });
+      await taskService.createFollowup(run.id, { body: "Please retry with logs." });
+
+      const continued = await executionService.continueRunWithFollowups(run.id);
+
+      expect(continued.status).toBe("completed");
+      expect(terminalRuns).toEqual([run.id]);
     } finally {
       await testDb.cleanup();
     }
@@ -908,6 +1404,7 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
       await expectRunStatus(taskService, run.id, "running");
+      await expectTaskRunInspectionMessageCount(conversationService, task.id, run.id, 1);
       const opened = await conversationService.openTaskRunConversationInChat(task.id, run.id);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
@@ -2385,6 +2882,21 @@ async function expectRunRuntimeState(
   await expect
     .poll(async () => (await taskService.getRunById(runId))?.runtimeState)
     .toBe(runtimeState);
+}
+
+async function expectTaskRunInspectionMessageCount(
+  conversationService: ReturnType<typeof createConversationService>,
+  taskId: string,
+  runId: string,
+  count: number,
+): Promise<void> {
+  await expect
+    .poll(
+      async () =>
+        (await conversationService.inspectTaskRunConversation(taskId, runId)).conversation?.messages
+          .length,
+    )
+    .toBe(count);
 }
 
 async function insertAgent(

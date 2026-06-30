@@ -6,6 +6,7 @@ import {
   cancelTaskRunInputSchema,
   createTaskArtifactShareLinkInputSchema,
   createTaskArtifactShareLinkResponseSchema,
+  createTaskRunFollowupInputSchema,
   createTaskTemplateInputSchema,
   createTaskInputSchema,
   createTaskFeedbackInputSchema,
@@ -20,6 +21,7 @@ import {
   taskFeedbackThreadListSchema,
   taskFeedbackThreadSchema,
   taskListSchema,
+  taskRunFollowupSchema,
   taskRunListSchema,
   taskRunSchema,
   taskRunSessionInspectionSchema,
@@ -34,7 +36,9 @@ import {
   taskTemplateSchema,
   updateTaskArtifactSharingPreferencesInputSchema,
   updateTaskContextInputSchema,
+  updateTaskFeedbackInputSchema,
   updateTaskInputSchema,
+  updateTaskRunFollowupInputSchema,
   updateTaskTemplateInputSchema,
   updateTaskSubtaskInputSchema,
   uploadTaskContextAttachmentInputSchema,
@@ -71,6 +75,14 @@ const taskRunArtifactShareLinkParamsSchema = taskRunArtifactParamsSchema.extend(
 
 const taskSubtaskParamsSchema = taskIdParamsSchema.extend({
   subtaskId: z.string().min(1),
+});
+
+const taskFeedbackParamsSchema = taskIdParamsSchema.extend({
+  feedbackId: z.string().min(1),
+});
+
+const taskRunFollowupParamsSchema = taskRunParamsSchema.extend({
+  followupId: z.string().min(1),
 });
 
 export function registerTaskRoutes(server: AppServer, context: RuntimeContext): void {
@@ -611,6 +623,32 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     },
   );
 
+  app.patch(
+    "/api/tasks/:id/feedback/:feedbackId",
+    {
+      schema: {
+        params: taskFeedbackParamsSchema,
+        body: updateTaskFeedbackInputSchema,
+        response: {
+          200: taskFeedbackThreadSchema,
+        },
+      },
+    },
+    async (request) => {
+      const feedback = await service.updateFeedback(
+        request.params.id,
+        request.params.feedbackId,
+        request.body,
+      );
+
+      if (!feedback) {
+        throw new NotFoundError("Task feedback not found.");
+      }
+
+      return feedback;
+    },
+  );
+
   app.get(
     "/api/tasks/:id/subtasks",
     {
@@ -811,6 +849,127 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       }
 
       return run;
+    },
+  );
+
+  app.get(
+    "/api/tasks/:id/runs/:runId/followups",
+    {
+      schema: {
+        params: taskRunParamsSchema,
+        response: {
+          200: z.array(taskRunFollowupSchema),
+        },
+      },
+    },
+    async (request) => {
+      const run = await service.getRun(request.params.id, request.params.runId);
+
+      if (!run) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      return service.listFollowups(request.params.runId);
+    },
+  );
+
+  app.post(
+    "/api/tasks/:id/runs/:runId/followups",
+    {
+      schema: {
+        params: taskRunParamsSchema,
+        body: createTaskRunFollowupInputSchema,
+        response: {
+          201: taskRunFollowupSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const run = await service.getRun(request.params.id, request.params.runId);
+
+      if (!run) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      reply.code(201);
+      return service.createFollowup(request.params.runId, request.body);
+    },
+  );
+
+  app.patch(
+    "/api/tasks/:id/runs/:runId/followups/:followupId",
+    {
+      schema: {
+        params: taskRunFollowupParamsSchema,
+        body: updateTaskRunFollowupInputSchema,
+        response: {
+          200: taskRunFollowupSchema,
+        },
+      },
+    },
+    async (request) => {
+      const run = await service.getRun(request.params.id, request.params.runId);
+
+      if (!run) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      const followup = await service.updateFollowup(
+        request.params.runId,
+        request.params.followupId,
+        request.body,
+      );
+
+      if (!followup) {
+        throw new NotFoundError("Task run follow-up not found.");
+      }
+
+      return followup;
+    },
+  );
+
+  app.delete(
+    "/api/tasks/:id/runs/:runId/followups/:followupId",
+    {
+      schema: {
+        params: taskRunFollowupParamsSchema,
+      },
+    },
+    async (request, reply) => {
+      const run = await service.getRun(request.params.id, request.params.runId);
+
+      if (!run) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      const deleted = await service.deleteFollowup(request.params.runId, request.params.followupId);
+
+      if (!deleted) {
+        throw new NotFoundError("Task run follow-up not found.");
+      }
+
+      reply.code(204);
+    },
+  );
+
+  app.post(
+    "/api/tasks/:id/runs/:runId/continue",
+    {
+      schema: {
+        params: taskRunParamsSchema,
+        response: {
+          200: taskRunSchema,
+        },
+      },
+    },
+    async (request) => {
+      const run = await service.getRun(request.params.id, request.params.runId);
+
+      if (!run) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      return executionService.continueRunWithFollowups(request.params.runId);
     },
   );
 
