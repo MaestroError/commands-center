@@ -78,12 +78,14 @@ import {
   task_feedback,
   task_run_followups,
   task_runs,
+  task_scheduler_state,
   task_subtasks,
   task_templates,
   tasks,
 } from "../db/schema/index.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
+import { computeNextRecurringRun } from "./task-scheduler-service.js";
 
 // ---------------------------------------------------------------------------
 // Task template file schema  (configuration/task-templates/<id>.json)
@@ -153,6 +155,9 @@ export const taskTemplateReconciler: WorkspaceReconciler = {
 
       fileIds.add(data.id);
 
+      const enabled = data.enabled;
+      const recurrence = data.recurrence;
+      const timestamp = now();
       const payload = {
         agent_id: data.defaultAgentId,
         default_agent_id: data.defaultAgentId,
@@ -161,15 +166,14 @@ export const taskTemplateReconciler: WorkspaceReconciler = {
         title: data.title,
         description: data.description,
         todos_json: JSON.stringify(data.todos),
-        status: data.enabled ? ("enabled" as const) : ("disabled" as const),
-        recurrence_json: data.recurrence ? JSON.stringify(data.recurrence) : null,
+        status: enabled ? ("enabled" as const) : ("disabled" as const),
+        recurrence_json: recurrence ? JSON.stringify(recurrence) : null,
         permission_profile_json: data.permissionProfile
           ? JSON.stringify(data.permissionProfile)
           : null,
-        enabled: data.enabled,
+        enabled,
         archived: false,
-        // Scheduler picks up next_occurrence_at from recurrence on first run.
-        next_occurrence_at: data.recurrence ? new Date(data.recurrence.anchorAt) : null,
+        next_occurrence_at: readTemplateNextOccurrenceAt(recurrence, enabled, timestamp),
         updated_at: new Date(data.updatedAt),
       };
 
@@ -314,6 +318,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         parsed.fallbackModels,
         parsed.model ?? undefined,
       );
+      const recurrence = parsed.recurrence ?? null;
 
       // File-first: persist to configuration/task-templates/<id>.json.
       await writeTemplateFile(options.config, {
@@ -324,7 +329,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         title: parsed.title,
         description: parsed.description,
         todos,
-        recurrence: parsed.recurrence ?? null,
+        recurrence,
         permissionProfile: parsed.permissionProfile ?? null,
         enabled,
         createdAt: timestamp.toISOString(),
@@ -343,13 +348,13 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           description: parsed.description,
           todos_json: JSON.stringify(todos),
           status: enabled ? "enabled" : "disabled",
-          recurrence_json: parsed.recurrence ? JSON.stringify(parsed.recurrence) : null,
+          recurrence_json: recurrence ? JSON.stringify(recurrence) : null,
           permission_profile_json: stringifyOptional(parsed.permissionProfile),
           enabled,
           archived: false,
           latest_final_message: null,
           latest_task_id: null,
-          next_occurrence_at: parsed.recurrence ? new Date(parsed.recurrence.anchorAt) : null,
+          next_occurrence_at: readTemplateNextOccurrenceAt(recurrence, enabled, timestamp),
           last_generated_occurrence_at: null,
           created_at: timestamp,
           updated_at: timestamp,
@@ -390,12 +395,19 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
             ? recurringTaskScheduleSchema.parse(JSON.parse(existing.recurrence_json))
             : null
           : (parsed.recurrence ?? null);
+      const resetSchedulerState =
+        parsed.recurrence !== undefined ||
+        (parsed.enabled !== undefined && parsed.enabled !== existing.enabled);
       const nextOccurrenceAt =
         parsed.recurrence === undefined
-          ? existing.next_occurrence_at
-          : recurrence
-            ? new Date(recurrence.anchorAt)
-            : null;
+          ? resetSchedulerState
+            ? readTemplateNextOccurrenceAt(
+                recurrence,
+                parsed.enabled ?? existing.enabled,
+                timestamp,
+              )
+            : existing.next_occurrence_at
+          : readTemplateNextOccurrenceAt(recurrence, parsed.enabled ?? existing.enabled, timestamp);
       const enabled = parsed.enabled ?? existing.enabled;
       const defaultAgentId =
         parsed.defaultAgentId ?? existing.default_agent_id ?? existing.agent_id;
@@ -449,6 +461,10 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
       if (!row) {
         throw new Error("Failed to update task template record.");
+      }
+
+      if (resetSchedulerState) {
+        await resetTemplateSchedulerState(id);
       }
 
       return mapTaskTemplate(row);
@@ -2213,6 +2229,12 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
     });
   }
 
+  async function resetTemplateSchedulerState(templateId: string): Promise<void> {
+    await options.db
+      .delete(task_scheduler_state)
+      .where(eq(task_scheduler_state.task_id, templateId));
+  }
+
   async function getTemplateTaskIds(templateId: string): Promise<string[]> {
     const rows = await options.db.query.tasks.findMany({
       where: (table, operators) =>
@@ -2248,6 +2270,20 @@ function generatedTasksForTemplateFilter(templateId: string) {
     ),
     isNull(tasks.deleted_at),
   );
+}
+
+function readTemplateNextOccurrenceAt(
+  recurrence: TaskTemplate["recurrence"] | null | undefined,
+  enabled: boolean,
+  timestamp: Date,
+): Date | null {
+  if (!recurrence) {
+    return null;
+  }
+
+  return enabled
+    ? computeNextRecurringRun(recurrence, timestamp, timestamp)
+    : new Date(recurrence.anchorAt);
 }
 
 function taskGenerationSourceLetter(triggerSource: TaskRun["triggerSource"]): string {
