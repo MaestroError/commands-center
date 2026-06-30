@@ -977,11 +977,12 @@ function RunReplyPanel(props: { taskId: string; run: TaskRun }) {
   const [editingFollowupId, setEditingFollowupId] = useState<string>();
   const [editingBody, setEditingBody] = useState("");
   const [error, setError] = useState<string>();
+  const canReply = Boolean(props.run.opencodeSessionId);
 
   async function submit(requeue: boolean): Promise<void> {
     const trimmedBody = body.trim();
 
-    if (!trimmedBody) return;
+    if (!canReply || !trimmedBody) return;
 
     setError(undefined);
 
@@ -1053,24 +1054,33 @@ function RunReplyPanel(props: { taskId: string; run: TaskRun }) {
         </div>
         <button
           className="cc-button cc-button-secondary"
+          disabled={!canReply}
           onClick={() => setIsComposerOpen((current) => !current)}
+          title={canReply ? undefined : "Replies require a recorded OpenCode session."}
           type="button"
         >
           Reply
         </button>
       </div>
 
+      {!canReply ? (
+        <p className="rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-text-secondary">
+          Replies are unavailable because this run has no recorded OpenCode session.
+        </p>
+      ) : null}
+
       {isComposerOpen ? (
         <div className="grid gap-2">
           <textarea
             aria-label={`Reply to run ${props.run.id}`}
             className="cc-input min-h-24"
+            disabled={!canReply}
             onChange={(event) => setBody(event.target.value)}
             placeholder="Add a short follow-up for the specialist."
             value={body}
           />
           <SendButtons
-            disabled={!body.trim()}
+            disabled={!canReply || !body.trim()}
             isRequeueing={isSending}
             isSending={isSending}
             onSend={() => void submit(false)}

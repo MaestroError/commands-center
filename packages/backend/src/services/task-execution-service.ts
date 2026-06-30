@@ -668,7 +668,7 @@ export function createTaskExecutionService(options: {
     }
 
     const timestamp = new Date();
-    await options.db
+    options.db
       .update(task_runs)
       .set({
         status: "running",
@@ -683,15 +683,17 @@ export function createTaskExecutionService(options: {
         cancellation_reason: null,
         updated_at: timestamp,
       })
-      .where(eq(task_runs.id, run.id));
+      .where(eq(task_runs.id, run.id))
+      .run();
 
-    await options.db
+    options.db
       .update(tasks)
       .set({
         status: "queued",
         updated_at: timestamp,
       })
-      .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)));
+      .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)))
+      .run();
 
     const resumed = await options.taskService.getRunById(run.id);
 

@@ -1088,7 +1088,9 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           error_message: errorMessage,
           updated_at: now(),
         })
-        .where(eq(task_run_followups.id, followupId))
+        .where(
+          and(eq(task_run_followups.id, followupId), eq(task_run_followups.status, "pending")),
+        )
         .returning();
 
       return row ? mapTaskRunFollowup(row) : undefined;

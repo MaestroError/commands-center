@@ -734,6 +734,39 @@ describe("createTaskService", () => {
     }
   });
 
+  it("does not mark non-pending followups failed", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Followup failed guard" });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Do the task.",
+      });
+      const pending = await service.createFollowup(run.id, { body: "Fail me." });
+      const sent = await service.createFollowup(run.id, { body: "Already sent." });
+      await service.markFollowupsSent([sent.id], "2026-06-01T11:00:00.000Z");
+
+      const failedPending = await service.markFollowupFailed(pending.id, "transport failed");
+      const failedSent = await service.markFollowupFailed(sent.id, "late transport failed");
+      const followups = await service.listFollowups(run.id);
+
+      expect(failedPending?.status).toBe("failed");
+      expect(failedSent).toBeUndefined();
+      expect(followups.find((followup) => followup.id === sent.id)?.status).toBe("sent");
+      expect(followups.find((followup) => followup.id === sent.id)?.sentAt).toBe(
+        "2026-06-01T11:00:00.000Z",
+      );
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("maps review questions and pending followup counts on runs", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });

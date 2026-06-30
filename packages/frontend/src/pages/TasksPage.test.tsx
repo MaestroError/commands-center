@@ -2401,6 +2401,38 @@ describe("TaskDetailPage", () => {
     expect(within(comments).getAllByRole("link", { name: "Tool list" })).toHaveLength(2);
   });
 
+  it("disables feedback run replies when the run has no recorded session", async () => {
+    const noSessionFeedback: TaskFeedbackThread = {
+      ...feedbackThread,
+      subtasks: feedbackThread.subtasks.map((subtask) => ({
+        ...subtask,
+        latestRun: subtask.latestRun
+          ? { ...subtask.latestRun, opencodeSessionId: undefined }
+          : subtask.latestRun,
+        replies: subtask.replies.map((reply) => ({
+          ...reply,
+          run: { ...reply.run, opencodeSessionId: undefined },
+        })),
+      })),
+    };
+    mockFetch({
+      feedbackPayload: [noSessionFeedback],
+      runsPayload: [{ ...run, opencodeSessionId: undefined }],
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const comments = await screen.findByRole("region", { name: "Feedback comments" });
+    const replyButtons = within(comments).getAllByRole("button", { name: "Reply" });
+
+    expect(
+      within(comments).getAllByText(
+        "Replies are unavailable because this run has no recorded OpenCode session.",
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(replyButtons.every((button) => button.hasAttribute("disabled"))).toBe(true);
+  });
+
   it("updates the task detail page title from inline edit mode", async () => {
     const fetchMock = mockFetch();
 

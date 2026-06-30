@@ -357,3 +357,11 @@ Verification notes:
    a recovery turn). Confirm we don't want `failed` restricted to a fresh retry only.
 6. **Suggested-reply cap / length** — proposed ≤ 6 replies, ≤ 200 chars each, question required when
    `suggestedReplies` is non-empty. OK?
+
+## PR Review Follow-Up 2026-06-30
+
+- [x] Add explicit Drizzle `.run()` calls when reactivating a run and task for follow-up continuation.
+- [x] Guard `markFollowupFailed` so only pending follow-ups can transition to failed.
+- [x] Disable the run reply panel composer/actions when a run has no recorded OpenCode session.
+- [x] Add focused tests for the guarded failure transition and no-session reply panel state.
+- [x] Re-run lint, typecheck, and tests before resolving the new review threads.
