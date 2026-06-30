@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveDocumentAssetUrl } from "./document-asset";
+import {
+  buildWorkspaceInsertMarkdown,
+  isImagePath,
+  resolveDocumentAssetUrl,
+} from "./document-asset";
 
 describe("resolveDocumentAssetUrl", () => {
   it("passes through http(s) URLs unchanged", () => {
@@ -30,6 +34,34 @@ describe("resolveDocumentAssetUrl", () => {
   it("strips leading slashes", () => {
     expect(resolveDocumentAssetUrl("/Documents/img.png")).toBe(
       "/api/documents/asset?path=Documents%2Fimg.png",
+    );
+  });
+});
+
+describe("isImagePath", () => {
+  it("recognizes common image extensions", () => {
+    expect(isImagePath("a/b/diagram.png")).toBe(true);
+    expect(isImagePath("photo.JPEG")).toBe(true);
+    expect(isImagePath("icon.svg")).toBe(true);
+  });
+
+  it("returns false for non-images and extensionless paths", () => {
+    expect(isImagePath("report.pdf")).toBe(false);
+    expect(isImagePath("notes.md")).toBe(false);
+    expect(isImagePath("Makefile")).toBe(false);
+  });
+});
+
+describe("buildWorkspaceInsertMarkdown", () => {
+  it("embeds images as a portable workspace reference", () => {
+    expect(buildWorkspaceInsertMarkdown("tools/researcher/diagram.png", "/files?ignored=1")).toBe(
+      "![diagram.png](workspace:tools/researcher/diagram.png)",
+    );
+  });
+
+  it("links non-image files to the File Manager href with the path as label", () => {
+    expect(buildWorkspaceInsertMarkdown("tools/researcher/report.pdf", "/files?x=1")).toBe(
+      "[tools/researcher/report.pdf](/files?x=1)",
     );
   });
 });

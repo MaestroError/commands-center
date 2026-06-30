@@ -29,3 +29,38 @@ export function resolveDocumentAssetUrl(originalUrl: string): string {
 function isExternalUrl(url: string): boolean {
   return /^(https?:|data:|blob:)/i.test(url);
 }
+
+const IMAGE_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".avif",
+  ".bmp",
+  ".ico",
+  ".svg",
+]);
+
+/** True when a workspace path points at an image we can render inline. */
+export function isImagePath(path: string): boolean {
+  const lower = path.toLowerCase();
+  const dot = lower.lastIndexOf(".");
+  if (dot === -1) {
+    return false;
+  }
+  return IMAGE_EXTENSIONS.has(lower.slice(dot));
+}
+
+/**
+ * Builds the markdown to insert when referencing a workspace file:
+ * - images render inline via a portable `workspace:` reference;
+ * - other files become a link (label = path) that opens in the File Manager.
+ */
+export function buildWorkspaceInsertMarkdown(path: string, fileManagerHref: string): string {
+  const name = path.split("/").pop() ?? path;
+  if (isImagePath(path)) {
+    return `![${name}](workspace:${path})`;
+  }
+  return `[${path}](${fileManagerHref})`;
+}
