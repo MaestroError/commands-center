@@ -35,9 +35,13 @@ function isHiddenOrExcluded(name: string): boolean {
 // can't smuggle a hidden segment past the per-segment checks (e.g. on Windows
 // `foo\.hidden\bar.md` would otherwise be treated as a single segment).
 const PATH_SEPARATORS = /[\\/]/;
+// Windows drive-letter prefix (e.g. `C:` in `C:\notes.md`), which is absolute
+// on Windows even without a leading separator — `resolve()` would then ignore
+// the Documents root and target an arbitrary location.
+const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
 
 function validateRelativePath(path: string): void {
-  if (!path || PATH_SEPARATORS.test(path[0] ?? "")) {
+  if (!path || PATH_SEPARATORS.test(path[0] ?? "") || WINDOWS_DRIVE_PREFIX.test(path)) {
     throw new BadRequestError("Path must be relative.");
   }
   if (path.includes("..")) {

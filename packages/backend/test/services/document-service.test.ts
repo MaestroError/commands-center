@@ -162,6 +162,19 @@ describe("document service", () => {
       }
     });
 
+    it("rejects Windows drive-letter absolute paths", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        await expect(service.create({ path: "C:\\notes.md" })).rejects.toThrow("relative");
+        await expect(service.create({ path: "C:/notes.md" })).rejects.toThrow("relative");
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
     it("rejects non-markdown extensions", async () => {
       const testDb = await createTestDatabase();
       const service = makeService(testDb);
