@@ -2401,6 +2401,23 @@ describe("TaskDetailPage", () => {
     expect(within(comments).getAllByRole("link", { name: "Tool list" })).toHaveLength(2);
   });
 
+  it("does not eagerly load followups for closed feedback reply panels", async () => {
+    const fetchMock = mockFetch({ feedbackPayload: [feedbackThread], runsPayload: [run] });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    await screen.findByRole("region", { name: "Feedback comments" });
+
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const url = input instanceof Request ? input.url : String(input);
+        const method = input instanceof Request ? input.method : (init?.method ?? "GET");
+
+        return url.includes("/followups") && method === "GET";
+      }),
+    ).toBe(false);
+  });
+
   it("disables feedback run replies when the run has no recorded session", async () => {
     const noSessionFeedback: TaskFeedbackThread = {
       ...feedbackThread,
@@ -2660,7 +2677,7 @@ describe("TaskDetailPage", () => {
 
   it("edits a pending run followup and leaves sent followups read-only", async () => {
     const fetchMock = mockFetch({
-      runsPayload: [run],
+      runsPayload: [{ ...run, pendingFollowupCount: 1 }],
       followupsPayload: [pendingFollowup, sentFollowup],
     });
 
@@ -2703,7 +2720,7 @@ describe("TaskDetailPage", () => {
 
   it("deletes a pending run followup", async () => {
     const fetchMock = mockFetch({
-      runsPayload: [run],
+      runsPayload: [{ ...run, pendingFollowupCount: 1 }],
       followupsPayload: [pendingFollowup],
     });
 

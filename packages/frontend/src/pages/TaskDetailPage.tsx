@@ -970,14 +970,18 @@ function SendButtons(props: {
 }
 
 function RunReplyPanel(props: { taskId: string; run: TaskRun }) {
-  const followupsQuery = useTaskRunFollowupsQuery(props.taskId, props.run.id);
-  const mutations = useTaskMutations();
   const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [hasRequestedFollowups, setHasRequestedFollowups] = useState(false);
   const [body, setBody] = useState("");
   const [editingFollowupId, setEditingFollowupId] = useState<string>();
   const [editingBody, setEditingBody] = useState("");
   const [error, setError] = useState<string>();
   const canReply = Boolean(props.run.opencodeSessionId);
+  const shouldLoadFollowups = hasRequestedFollowups || props.run.pendingFollowupCount > 0;
+  const followupsQuery = useTaskRunFollowupsQuery(props.taskId, props.run.id, {
+    enabled: shouldLoadFollowups,
+  });
+  const mutations = useTaskMutations();
 
   async function submit(requeue: boolean): Promise<void> {
     const trimmedBody = body.trim();
@@ -1055,7 +1059,13 @@ function RunReplyPanel(props: { taskId: string; run: TaskRun }) {
         <button
           className="cc-button cc-button-secondary"
           disabled={!canReply}
-          onClick={() => setIsComposerOpen((current) => !current)}
+          onClick={() => {
+            if (!isComposerOpen) {
+              setHasRequestedFollowups(true);
+            }
+
+            setIsComposerOpen((current) => !current);
+          }}
           title={canReply ? undefined : "Replies require a recorded OpenCode session."}
           type="button"
         >

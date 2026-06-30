@@ -632,6 +632,34 @@ describe("task routes", () => {
     }
   });
 
+  it("returns conflict when continuing a run without a recorded session", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const agent = await insertAgent(harness.testDb.client.db);
+      const task = await harness.taskService.create({
+        agentId: agent.id,
+        title: "No session continue route",
+      });
+      const run = await harness.taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/continue`,
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.message).toBe("Task run does not have an OpenCode session.");
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("returns not found when a followup route uses a run from another task", async () => {
     const harness = await createTaskRouteHarness();
 

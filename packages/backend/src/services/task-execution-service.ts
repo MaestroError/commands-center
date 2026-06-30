@@ -567,7 +567,7 @@ export function createTaskExecutionService(options: {
     const run = await findRun(runId);
 
     if (!run.opencodeSessionId) {
-      throw new BadRequestError("Task run does not have an OpenCode session.");
+      throw new ConflictError("Task run does not have an OpenCode session.");
     }
 
     if (run.status === "queued" || run.status === "running") {
@@ -694,7 +694,11 @@ export function createTaskExecutionService(options: {
         .run();
     } catch (error) {
       if (isRunningAgentConstraintError(error)) {
-        throw new ConflictError("Agent already has a running task run.");
+        const running = await options.taskService.getRunningRunForAgent(run.agentId);
+        throw new ConflictError(
+          "Agent already has a running task run.",
+          running ? { runId: running.id } : undefined,
+        );
       }
 
       throw error;

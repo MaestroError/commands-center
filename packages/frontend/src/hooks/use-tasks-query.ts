@@ -159,11 +159,15 @@ export function useTaskRunQuery(taskId?: string, runId?: string) {
   });
 }
 
-export function useTaskRunFollowupsQuery(taskId?: string, runId?: string) {
+export function useTaskRunFollowupsQuery(
+  taskId?: string,
+  runId?: string,
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: queryKeys.taskRunFollowups(taskId ?? "missing", runId ?? "missing"),
     queryFn: () => listRunFollowups(taskId ?? "", runId ?? ""),
-    enabled: Boolean(taskId && runId),
+    enabled: Boolean(taskId && runId && (options.enabled ?? true)),
   });
 }
 

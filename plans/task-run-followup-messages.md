@@ -376,3 +376,10 @@ Verification notes:
 
 - [x] Wait for task-run inspection messages in async prompt tests before asserting conversation details.
 - [x] Run focused backend test and backend coverage before pushing the CI fix.
+
+## PR Review Follow-Up 2026-06-30 Lazy Followups
+
+- [x] Return `409 Conflict` consistently when continuing a run without an OpenCode session.
+- [x] Preserve blocking `runId` details when the running-run SQLite constraint fires during continuation.
+- [x] Lazy-load run follow-ups in the task detail reply panel unless the composer is open or pending replies exist.
+- [x] Add focused backend/frontend regression tests and rerun checks.

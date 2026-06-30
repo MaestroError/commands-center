@@ -302,6 +302,7 @@ describe("use task queries", () => {
         runs: useTaskRunsQuery(undefined),
         run: useTaskRunQuery(undefined, "run-1"),
         followups: useTaskRunFollowupsQuery("task-1", undefined),
+        disabledFollowups: useTaskRunFollowupsQuery("task-1", "run-1", { enabled: false }),
         session: useTaskRunSessionQuery("task-1", undefined),
         feedback: useTaskFeedbackQuery(undefined),
         subtasks: useTaskSubtasksQuery(undefined),
