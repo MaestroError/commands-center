@@ -490,10 +490,16 @@ export const createTaskTemplateInputSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
-export const updateTaskTemplateInputSchema = createTaskTemplateInputSchema.partial().extend({
+export const updateTaskTemplateInputSchema = z.object({
+  defaultAgentId: z.string().trim().min(1).optional(),
+  title: z.string().trim().min(1).optional(),
+  description: z.string().trim().optional(),
+  todos: z.array(taskTodoInputSchema).optional(),
   recurrence: recurringTaskScheduleSchema.nullish(),
   model: z.string().trim().min(1).nullish(),
   fallbackModels: fallbackModelsBaseSchema.optional(),
+  permissionProfile: taskPermissionProfileSchema.optional(),
+  enabled: z.boolean().optional(),
 });
 
 export const createTaskRunInputSchema = z.object({

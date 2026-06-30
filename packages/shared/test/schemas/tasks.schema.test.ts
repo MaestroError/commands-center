@@ -20,6 +20,7 @@ import {
   taskTemplateRunNowInputSchema,
   taskSubtaskSchema,
   taskTemplateSchema,
+  updateTaskTemplateInputSchema,
   updateTaskFeedbackInputSchema,
   updateTaskRunFollowupInputSchema,
 } from "../../src/schemas/tasks.js";
@@ -171,6 +172,12 @@ describe("task schemas", () => {
   });
 
   describe("taskTemplateSchema", () => {
+    it("keeps omitted fields absent in template updates", () => {
+      expect(updateTaskTemplateInputSchema.parse({ enabled: true })).toEqual({
+        enabled: true,
+      });
+    });
+
     it("accepts recurring task generator contracts", () => {
       expect(
         taskTemplateSchema.parse({

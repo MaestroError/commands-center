@@ -357,6 +357,36 @@ describe("createTaskService", () => {
     }
   });
 
+  it("toggles template active status without changing template content", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await service.createTemplate({
+        defaultAgentId: agent.id,
+        model: "openai/gpt-4.1",
+        fallbackModels: ["anthropic/claude-sonnet-4"],
+        title: "Review pull requests",
+        description: "Review one eligible pull request.",
+        todos: [{ content: "Post review comments" }],
+        enabled: false,
+      });
+
+      const enabled = await service.enableTemplate(template.id);
+      const disabled = await service.disableTemplate(template.id);
+
+      expect(enabled?.description).toBe("Review one eligible pull request.");
+      expect(enabled?.todos.map((todo) => todo.content)).toEqual(["Post review comments"]);
+      expect(enabled?.fallbackModels).toEqual(["anthropic/claude-sonnet-4"]);
+      expect(disabled?.description).toBe("Review one eligible pull request.");
+      expect(disabled?.todos.map((todo) => todo.content)).toEqual(["Post review comments"]);
+      expect(disabled?.fallbackModels).toEqual(["anthropic/claude-sonnet-4"]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("refuses to generate from a disabled template unless explicitly allowed", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
