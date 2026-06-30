@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { ActivityBell } from "@/components/activities/ActivityBell";
 import { DocumentsSidebarSection } from "@/components/documents/DocumentsSidebarSection";
+import { ManageSidebarSection } from "@/components/shell/ManageSidebarSection";
 import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { AppLogo } from "@/components/common/AppLogo";
 import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
@@ -17,6 +18,7 @@ import {
   dashboardSidebarRoute,
   getRouteTitle,
   isRouteActive,
+  manageSidebarRoutePaths,
   secondarySidebarRoutes,
 } from "@/app/routes";
 import { readRecentSpecialists } from "@/lib/recent-specialists";
@@ -385,16 +387,36 @@ function SidebarContent(props: {
             {dashboardSidebarRoute.navIcon}
           </SidebarRouteLink>
         ) : null}
-        {secondarySidebarRoutes.map((route) =>
-          route.path === "/documents" ? (
-            <DocumentsSidebarSection
-              collapsed={props.collapsed}
-              key={route.path}
-              onNavigate={props.onNavigate}
-              onOpenSearch={props.onOpenSearch}
-              pathname={props.pathname}
-            />
-          ) : (
+        {secondarySidebarRoutes.map((route) => {
+          if (route.path === "/documents") {
+            return (
+              <DocumentsSidebarSection
+                collapsed={props.collapsed}
+                key={route.path}
+                onNavigate={props.onNavigate}
+                onOpenSearch={props.onOpenSearch}
+                pathname={props.pathname}
+              />
+            );
+          }
+
+          if ((manageSidebarRoutePaths as readonly string[]).includes(route.path)) {
+            // Render the whole "Manage" group once, at the first member's
+            // position; skip the rest so they don't also render standalone.
+            if (route.path !== manageSidebarRoutePaths[0]) {
+              return null;
+            }
+            return (
+              <ManageSidebarSection
+                collapsed={props.collapsed}
+                key="manage"
+                onNavigate={props.onNavigate}
+                pathname={props.pathname}
+              />
+            );
+          }
+
+          return (
             <SidebarRouteLink
               collapsed={props.collapsed}
               isActive={isRouteActive(props.pathname, route.path, route.navigationMatch)}
@@ -405,8 +427,8 @@ function SidebarContent(props: {
             >
               {route.navIcon}
             </SidebarRouteLink>
-          ),
-        )}
+          );
+        })}
       </nav>
     </div>
   );

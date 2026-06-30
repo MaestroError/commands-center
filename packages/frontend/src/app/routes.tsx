@@ -197,6 +197,19 @@ export const secondarySidebarRoutes = sidebarRoutes.filter(
   (route) => route.path !== "/" && route.path !== "/specialists",
 );
 
+/** Paths grouped under the collapsible "Manage" sidebar section. */
+export const manageSidebarRoutePaths = [
+  "/files",
+  "/terminal",
+  "/tools",
+  "/providers",
+  "/developer-api",
+] as const;
+
+export const manageSidebarRoutes = sidebarRoutes.filter((route) =>
+  (manageSidebarRoutePaths as readonly string[]).includes(route.path),
+);
+
 export const appRouteObjects = appRoutes.map((route) => ({
   path: route.path,
   element: route.element,

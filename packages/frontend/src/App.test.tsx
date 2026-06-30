@@ -79,7 +79,7 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Tasks" })).toHaveAttribute("href", "/tasks");
     expect(screen.queryByText("Automations")).not.toBeInTheDocument();
-    expect(screen.getByText("Provider Connections")).toBeInTheDocument();
+    expect(screen.getByText("Manage")).toBeInTheDocument();
     expect(screen.getByTestId("recent-specialists-section")).toBeInTheDocument();
   });
 
@@ -459,6 +459,7 @@ describe("App", () => {
     render(<App />);
 
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Expand Manage" }));
     await user.click(await screen.findByRole("link", { name: "Provider Connections" }));
 
     await screen.findByRole("heading", { name: "OpenAI", level: 2 });
