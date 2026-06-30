@@ -59,6 +59,7 @@ import {
   documentReadResponseSchema,
   documentTreeResponseSchema,
   saveDocumentContentInputSchema,
+  saveDocumentContentResponseSchema,
   searchDocumentsResponseSchema,
   updateDocumentMetadataInputSchema,
   globalSearchQuerySchema,
@@ -180,6 +181,7 @@ import {
   type DocumentReadResponse,
   type DocumentTreeResponse,
   type SaveDocumentContentInput,
+  type SaveDocumentContentResponse,
   type SearchDocumentsResponse,
   type UpdateDocumentMetadataInput,
   type GlobalSearchWorkspaceFilesResponse,
@@ -637,10 +639,10 @@ export async function updateDocumentMetadata(
 
 export async function saveDocumentContent(
   input: SaveDocumentContentInput,
-): Promise<{ revision: FileManagerFileRevision }> {
-  return requestJson<{ revision: FileManagerFileRevision }>(
+): Promise<SaveDocumentContentResponse> {
+  return requestJson<SaveDocumentContentResponse>(
     "/api/documents/content",
-    { parse: (v: unknown) => v as { revision: FileManagerFileRevision } },
+    saveDocumentContentResponseSchema,
     {
       method: "PUT",
       body: saveDocumentContentInputSchema.parse(input),

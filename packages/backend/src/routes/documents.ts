@@ -9,6 +9,7 @@ import {
   documentReadResponseSchema,
   documentTreeResponseSchema,
   saveDocumentContentInputSchema,
+  saveDocumentContentResponseSchema,
   searchDocumentsQuerySchema,
   searchDocumentsResponseSchema,
   updateDocumentMetadataInputSchema,
@@ -116,6 +117,7 @@ export function registerDocumentRoutes(server: AppServer, context: RuntimeContex
     {
       schema: {
         body: saveDocumentContentInputSchema,
+        response: { 200: saveDocumentContentResponseSchema },
       },
     },
     async (request) => service.saveContent(request.body),

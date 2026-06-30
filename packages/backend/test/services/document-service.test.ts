@@ -150,6 +150,18 @@ describe("document service", () => {
       }
     });
 
+    it("rejects hidden segments split by a backslash separator", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        await expect(service.create({ path: "foo\\.hidden\\bar.md" })).rejects.toThrow("hidden");
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
     it("rejects non-markdown extensions", async () => {
       const testDb = await createTestDatabase();
       const service = makeService(testDb);

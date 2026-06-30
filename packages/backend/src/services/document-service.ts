@@ -31,14 +31,19 @@ function isHiddenOrExcluded(name: string): boolean {
   return name.startsWith(".") || name === "node_modules";
 }
 
+// Split on both POSIX (`/`) and Windows (`\`) separators so a backslash path
+// can't smuggle a hidden segment past the per-segment checks (e.g. on Windows
+// `foo\.hidden\bar.md` would otherwise be treated as a single segment).
+const PATH_SEPARATORS = /[\\/]/;
+
 function validateRelativePath(path: string): void {
-  if (!path || path.startsWith("/")) {
+  if (!path || PATH_SEPARATORS.test(path[0] ?? "")) {
     throw new BadRequestError("Path must be relative.");
   }
   if (path.includes("..")) {
     throw new BadRequestError("Path must not contain '..'.");
   }
-  const segments = path.split("/");
+  const segments = path.split(PATH_SEPARATORS);
   if (segments.some((s) => s === "" || s.startsWith("."))) {
     throw new BadRequestError("Path must not contain empty or hidden segments.");
   }

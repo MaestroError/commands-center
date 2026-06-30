@@ -4,13 +4,17 @@ import { fileManagerFileRevisionSchema } from "./file-manager.js";
 
 const MARKDOWN_EXTENSIONS = [".md", ".markdown"] as const;
 
+// Treat both POSIX (`/`) and Windows (`\`) separators when validating, so a
+// backslash path cannot smuggle a hidden segment past the per-segment checks.
+const PATH_SEPARATORS = /[\\/]/;
+
 const documentRelativePathSchema = z
   .string()
   .trim()
   .min(1)
-  .refine((p) => !p.startsWith("/"), { message: "Path must be relative" })
+  .refine((p) => !PATH_SEPARATORS.test(p[0] ?? ""), { message: "Path must be relative" })
   .refine((p) => !p.includes(".."), { message: "Path must not contain .." })
-  .refine((p) => !p.split("/").some((s) => s === "" || s.startsWith(".")), {
+  .refine((p) => !p.split(PATH_SEPARATORS).some((s) => s === "" || s.startsWith(".")), {
     message: "Path must not contain empty or hidden segments",
   })
   .refine((p) => MARKDOWN_EXTENSIONS.some((ext) => p.toLowerCase().endsWith(ext)), {
@@ -21,9 +25,9 @@ const documentFolderPathSchema = z
   .string()
   .trim()
   .min(1)
-  .refine((p) => !p.startsWith("/"), { message: "Path must be relative" })
+  .refine((p) => !PATH_SEPARATORS.test(p[0] ?? ""), { message: "Path must be relative" })
   .refine((p) => !p.includes(".."), { message: "Path must not contain .." })
-  .refine((p) => !p.split("/").some((s) => s === "" || s.startsWith(".")), {
+  .refine((p) => !p.split(PATH_SEPARATORS).some((s) => s === "" || s.startsWith(".")), {
     message: "Path must not contain empty or hidden segments",
   });
 
@@ -101,6 +105,10 @@ export const saveDocumentContentInputSchema = z.object({
   expectedRevision: fileManagerFileRevisionSchema,
 });
 
+export const saveDocumentContentResponseSchema = z.object({
+  revision: fileManagerFileRevisionSchema,
+});
+
 export const searchDocumentsQuerySchema = z.object({
   query: z.string().trim().min(1),
 });
@@ -125,5 +133,6 @@ export type CreateDocumentInput = z.infer<typeof createDocumentInputSchema>;
 export type CreateDocumentFolderInput = z.infer<typeof createDocumentFolderInputSchema>;
 export type UpdateDocumentMetadataInput = z.infer<typeof updateDocumentMetadataInputSchema>;
 export type SaveDocumentContentInput = z.infer<typeof saveDocumentContentInputSchema>;
+export type SaveDocumentContentResponse = z.infer<typeof saveDocumentContentResponseSchema>;
 export type SearchDocumentsQuery = z.infer<typeof searchDocumentsQuerySchema>;
 export type SearchDocumentsResponse = z.infer<typeof searchDocumentsResponseSchema>;

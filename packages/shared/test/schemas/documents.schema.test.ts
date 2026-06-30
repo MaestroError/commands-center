@@ -128,6 +128,18 @@ describe("document schemas", () => {
       );
     });
 
+    it("rejects hidden segments split by a backslash separator", () => {
+      expect(() => createDocumentInputSchema.parse({ path: "foo\\.hidden\\bar.md" })).toThrow(
+        "Path must not contain empty or hidden segments",
+      );
+    });
+
+    it("rejects a leading backslash as a non-relative path", () => {
+      expect(() => createDocumentInputSchema.parse({ path: "\\notes.md" })).toThrow(
+        "Path must be relative",
+      );
+    });
+
     it("rejects empty segments", () => {
       expect(() => createDocumentInputSchema.parse({ path: "notes//file.md" })).toThrow(
         "Path must not contain empty or hidden segments",
