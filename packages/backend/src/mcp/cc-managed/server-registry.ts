@@ -62,6 +62,11 @@ import {
   runSelfTaskTemplateNowToolMetadata,
 } from "./groups/cc-default/tools/self-task-template-tools.js";
 import {
+  createDocumentToolDefinitions,
+  listProjectDocumentsToolMetadata,
+  registerProjectDocumentToolMetadata,
+} from "./groups/cc-default/tools/document-tools.js";
+import {
   createSelfConversationToolDefinitions,
   getSelfConversationToolMetadata,
   listSelfConversationsToolMetadata,
@@ -320,6 +325,12 @@ export function createCcManagedMcpServerRegistry(options: {
           }),
         ]
       : []),
+    ...(options.db && options.config
+      ? createDocumentToolDefinitions({
+          db: options.db,
+          config: options.config,
+        })
+      : []),
     ...(options.db && options.conversationService
       ? createSelfConversationToolDefinitions({
           db: options.db,
@@ -369,6 +380,8 @@ export function createCcManagedMcpServerRegistry(options: {
         listSelfTaskRunArtifactsToolMetadata,
         listSelfConversationsToolMetadata,
         getSelfConversationToolMetadata,
+        listProjectDocumentsToolMetadata,
+        registerProjectDocumentToolMetadata,
       ],
       tools: defaultTools,
     },

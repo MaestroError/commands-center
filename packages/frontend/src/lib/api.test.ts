@@ -566,6 +566,7 @@ describe("searchWorkspaceFiles", () => {
     await expect(searchWorkspaceFiles("index")).resolves.toEqual({
       nameMatches: [{ path: "src/index.ts" }],
       contentMatches: [{ path: "README.md", lineNumber: 3, lineText: "hello world" }],
+      documentMatches: [],
     });
 
     expect(fetchSpy).toHaveBeenCalledWith("/api/search/files?query=index", {

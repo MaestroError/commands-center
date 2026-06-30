@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  BookOpenText,
   Code2,
   Clock3,
   FolderKanban,
@@ -16,6 +17,7 @@ import {
 import type { RouteObject } from "react-router-dom";
 
 import { DashboardPage } from "@/pages/DashboardPage";
+import { DocumentsPage } from "@/pages/DocumentsPage";
 import { ApiPage } from "@/pages/ApiPage";
 import { FileManagerPage } from "@/pages/FileManagerPage";
 import { SpecialistEditorPage } from "@/pages/SpecialistEditorPage";
@@ -116,6 +118,13 @@ export const appRoutes = [
     element: <TasksPage mode="template-edit" />,
   },
   {
+    path: "/documents",
+    title: "Documents",
+    navLabel: "Documents",
+    navIcon: <BookOpenText className="h-4 w-4 shrink-0" />,
+    element: <DocumentsPage />,
+  },
+  {
     path: "/skills",
     title: "Skills Library",
     navLabel: "Skills",
@@ -186,6 +195,19 @@ export const specialistsSidebarRoute = sidebarRoutes.find((route) => route.path 
 
 export const secondarySidebarRoutes = sidebarRoutes.filter(
   (route) => route.path !== "/" && route.path !== "/specialists",
+);
+
+/** Paths grouped under the collapsible "Manage" sidebar section. */
+export const manageSidebarRoutePaths = [
+  "/files",
+  "/terminal",
+  "/tools",
+  "/providers",
+  "/developer-api",
+] as const;
+
+export const manageSidebarRoutes = sidebarRoutes.filter((route) =>
+  (manageSidebarRoutePaths as readonly string[]).includes(route.path),
 );
 
 export const appRouteObjects = appRoutes.map((route) => ({

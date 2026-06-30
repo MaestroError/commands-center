@@ -3,6 +3,8 @@ import { ChevronLeft, Clock3, ListChecks, Menu, Search } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { ActivityBell } from "@/components/activities/ActivityBell";
+import { DocumentsSidebarSection } from "@/components/documents/DocumentsSidebarSection";
+import { ManageSidebarSection } from "@/components/shell/ManageSidebarSection";
 import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { AppLogo } from "@/components/common/AppLogo";
 import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
@@ -16,6 +18,7 @@ import {
   dashboardSidebarRoute,
   getRouteTitle,
   isRouteActive,
+  manageSidebarRoutePaths,
   secondarySidebarRoutes,
 } from "@/app/routes";
 import { readRecentSpecialists } from "@/lib/recent-specialists";
@@ -104,6 +107,7 @@ export function AppShell() {
               pathname={pathname}
               recentSpecialists={recentSpecialists}
               onNavigate={() => undefined}
+              onOpenSearch={() => setSearchPaletteOpen(true)}
               onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
             />
           </aside>
@@ -125,6 +129,7 @@ export function AppShell() {
                 pathname={pathname}
                 recentSpecialists={recentSpecialists}
                 onNavigate={() => setMobileSidebarOpen(false)}
+                onOpenSearch={() => setSearchPaletteOpen(true)}
                 onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
               />
             </aside>
@@ -241,6 +246,7 @@ function SidebarContent(props: {
   collapsed: boolean;
   recentSpecialists: ReturnType<typeof readRecentSpecialists>;
   onNavigate: () => void;
+  onOpenSearch: () => void;
   onToggleCollapsed: () => void;
 }) {
   return (
@@ -381,18 +387,48 @@ function SidebarContent(props: {
             {dashboardSidebarRoute.navIcon}
           </SidebarRouteLink>
         ) : null}
-        {secondarySidebarRoutes.map((route) => (
-          <SidebarRouteLink
-            collapsed={props.collapsed}
-            isActive={isRouteActive(props.pathname, route.path, route.navigationMatch)}
-            key={route.path}
-            label={route.navLabel ?? route.title}
-            onNavigate={props.onNavigate}
-            to={route.path}
-          >
-            {route.navIcon}
-          </SidebarRouteLink>
-        ))}
+        {secondarySidebarRoutes.map((route) => {
+          if (route.path === "/documents") {
+            return (
+              <DocumentsSidebarSection
+                collapsed={props.collapsed}
+                key={route.path}
+                onNavigate={props.onNavigate}
+                onOpenSearch={props.onOpenSearch}
+                pathname={props.pathname}
+              />
+            );
+          }
+
+          if ((manageSidebarRoutePaths as readonly string[]).includes(route.path)) {
+            // Render the whole "Manage" group once, at the first member's
+            // position; skip the rest so they don't also render standalone.
+            if (route.path !== manageSidebarRoutePaths[0]) {
+              return null;
+            }
+            return (
+              <ManageSidebarSection
+                collapsed={props.collapsed}
+                key="manage"
+                onNavigate={props.onNavigate}
+                pathname={props.pathname}
+              />
+            );
+          }
+
+          return (
+            <SidebarRouteLink
+              collapsed={props.collapsed}
+              isActive={isRouteActive(props.pathname, route.path, route.navigationMatch)}
+              key={route.path}
+              label={route.navLabel ?? route.title}
+              onNavigate={props.onNavigate}
+              to={route.path}
+            >
+              {route.navIcon}
+            </SidebarRouteLink>
+          );
+        })}
       </nav>
     </div>
   );

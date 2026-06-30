@@ -242,6 +242,7 @@ describe("file manager routes", () => {
       expect(response.json()).toEqual({
         nameMatches: [{ path: "src/index.ts" }, { path: "docs/README.md" }],
         contentMatches: [{ path: "README.md", lineNumber: 7, lineText: "plan the release" }],
+        documentMatches: [],
       });
       expect(opencodeService.findFiles).toHaveBeenCalledWith(testDb.config.paths.workspaceDir, {
         query: "plan",
@@ -252,6 +253,48 @@ describe("file manager routes", () => {
         testDb.config.paths.workspaceDir,
         "plan",
       );
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("caps document matches in global search to keep the payload bounded", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    // Only documents should populate results here.
+    vi.mocked(opencodeService.findFiles).mockResolvedValue([]);
+    vi.mocked(opencodeService.findText).mockResolvedValue([]);
+
+    const documentsDir = testDb.config.paths.subdirectories.documents;
+    await mkdir(documentsDir, { recursive: true });
+    for (let i = 0; i < 25; i += 1) {
+      await writeFile(join(documentsDir, `report-${String(i).padStart(2, "0")}.md`), "# Report", {
+        encoding: "utf8",
+      });
+    }
+
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService,
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/search/files?query=report",
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ documentMatches: unknown[] }>();
+      expect(body.documentMatches).toHaveLength(20);
     } finally {
       await server.close();
       await testDb.cleanup();

@@ -35,10 +35,55 @@ describe("GlobalSearchPalette", () => {
     vi.restoreAllMocks();
   });
 
+  it("renders document search results and routes to the documents page", async () => {
+    vi.mocked(searchWorkspaceFiles).mockResolvedValue({
+      nameMatches: [],
+      contentMatches: [],
+      documentMatches: [
+        {
+          relativePath: "design/overview.md",
+          fullPath: "/workspace/Documents/design/overview.md",
+          title: "Architecture Overview",
+          description: "System architecture notes",
+        },
+      ],
+    });
+
+    const user = userEvent.setup();
+    renderWithProviders(
+      <Routes>
+        <Route
+          element={
+            <>
+              <GlobalSearchPalette onClose={() => undefined} open />
+              <LocationProbe />
+            </>
+          }
+          path="*"
+        />
+      </Routes>,
+      ["/"],
+    );
+
+    await user.type(screen.getByRole("textbox", { name: "Search resources" }), "architecture");
+
+    expect(await screen.findByText("System architecture notes")).toBeInTheDocument();
+
+    const docButton = screen.getByRole("button", { name: /Architecture Overview/ });
+    await user.click(docButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location-probe")).toHaveTextContent(
+        "/documents?path=design%2Foverview.md",
+      );
+    });
+  });
+
   it("renders icon-only file secondary actions and routes them correctly", async () => {
     vi.mocked(searchWorkspaceFiles).mockResolvedValue({
       nameMatches: [{ path: "src/index.ts" }],
       contentMatches: [],
+      documentMatches: [],
     });
 
     const user = userEvent.setup();
@@ -284,5 +329,9 @@ function mockGlobalSearchSources() {
     appMcpServers: [],
     customTools: [],
   });
-  vi.mocked(searchWorkspaceFiles).mockResolvedValue({ nameMatches: [], contentMatches: [] });
+  vi.mocked(searchWorkspaceFiles).mockResolvedValue({
+    nameMatches: [],
+    contentMatches: [],
+    documentMatches: [],
+  });
 }

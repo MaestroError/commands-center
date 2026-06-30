@@ -33,7 +33,14 @@ export const setTaskResultToolMetadata = {
 
 export const addTaskArtifactToolMetadata = {
   name: "add_task_artifact",
-  description: "Attach a generated file, URL, or other artifact to the active task.",
+  description:
+    "Attach a generated artifact to the active task. Set `artifact.type` to one of: " +
+    '"document" for a markdown file in the Documents module (set `link` to the path ' +
+    'relative to Documents/, e.g. "design/overview.md"; the UI opens it in the Documents ' +
+    'editor), "file" for any other workspace file (set `link` to the workspace-relative ' +
+    'path; opens in the File Manager), or "url" for an external link. When a task creates ' +
+    "or updates a project document (e.g. via register_project_document), attach it here " +
+    'with type "document" so the user can open it directly in the Documents module.',
   context: "task_run",
 } as const;
 

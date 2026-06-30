@@ -1,4 +1,6 @@
 export const queryKeys = {
+  documentTree: ["document-tree"] as const,
+  documentContent: (path: string) => ["document-content", path] as const,
   engineStatus: ["engine-status"] as const,
   systemVersion: ["system-version"] as const,
   systemUpdatePreferences: ["system-update-preferences"] as const,

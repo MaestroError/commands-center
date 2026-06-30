@@ -7,6 +7,7 @@ import { registerCcManagedMcpRoutes } from "./cc-managed-mcp.js";
 import { registerConversationEventRoutes } from "./conversation-events.js";
 import { registerConversationRoutes } from "./conversations.js";
 import { registerCustomToolRoutes } from "./custom-tools.js";
+import { registerDocumentRoutes } from "./documents.js";
 import { registerFileManagerRoutes } from "./file-manager.js";
 import { registerHealthRoutes } from "./health.js";
 import { registerLiveRequestRoutes } from "./live-requests.js";
@@ -35,6 +36,7 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerConversationEventRoutes(server, context);
   registerLiveRequestRoutes(server, context);
   registerCustomToolRoutes(server, context);
+  registerDocumentRoutes(server, context);
   registerWorkspaceSkillRoutes(server, context);
   registerFileManagerRoutes(server, context);
   registerSearchRoutes(server, context);

@@ -228,6 +228,28 @@ describe("task schemas", () => {
       });
     });
 
+    it("accepts document artifacts with a Documents-relative link", () => {
+      expect(
+        taskRunArtifactSchema.parse({
+          title: "Architecture Overview",
+          description: "System design document.",
+          type: "document",
+          link: "design/overview.md",
+        }),
+      ).toEqual({
+        title: "Architecture Overview",
+        description: "System design document.",
+        type: "document",
+        link: "design/overview.md",
+      });
+    });
+
+    it("rejects document artifacts with an empty link", () => {
+      expect(() =>
+        taskRunArtifactSchema.parse({ title: "Doc", type: "document", link: "" }),
+      ).toThrow();
+    });
+
     it("rejects artifacts without a type", () => {
       expect(() =>
         taskRunArtifactSchema.parse({ title: "Missing output", link: "reports/output.md" }),
