@@ -1,0 +1,5 @@
+- [x] Trace scheduler state ownership for disabled and newly enabled templates.
+- [x] Implement activation behavior that schedules the next future occurrence instead of running missed occurrences.
+- [x] Preserve catch-up behavior for templates that were already active with existing scheduler state.
+- [x] Add regression tests for disabled-created and disabled-then-enabled templates.
+- [x] Run eslint --fix, lint, and targeted tests.

@@ -217,6 +217,7 @@ describe("createTaskSchedulerService", () => {
         },
       });
 
+      await schedulerService.reconcile(new Date("2026-06-01T11:00:00.000Z"));
       await schedulerService.tick(new Date("2026-06-02T12:00:00.000Z"));
 
       const runs = await taskService.listRuns(template.id);
@@ -236,6 +237,137 @@ describe("createTaskSchedulerService", () => {
       expect(occurrences[0]?.title).toBe("Recurring #S1");
       expect(occurrences[0]?.sourceTemplateId).toBe(template.id);
       expect(occurrences[0]?.sourceOccurrenceAt).toBe("2026-06-02T12:00:00.000Z");
+    } finally {
+      schedulerService.stop();
+      await testDb.cleanup();
+    }
+  });
+
+  it("schedules newly discovered overdue templates for the next future run", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const executionService = createTaskExecutionService({ taskService });
+    const schedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const template = await taskService.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Newly discovered recurring",
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-06-01T12:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "day", interval: 1 },
+        },
+      });
+
+      await schedulerService.tick(new Date("2026-06-02T12:00:00.000Z"));
+
+      const runs = await taskService.listRuns(template.id);
+      const state = (await schedulerService.listStates()).find(
+        (entry) => entry.taskId === template.id,
+      );
+
+      expect(runs).toHaveLength(0);
+      expect(state?.nextRunAt).toBe("2026-06-03T12:00:00.000Z");
+    } finally {
+      schedulerService.stop();
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not run missed occurrences when enabling a disabled overdue template", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const executionService = createTaskExecutionService({ taskService });
+    const schedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const at = new Date();
+      const anchorAt = new Date(at.getTime() - 25 * 60 * 60 * 1000);
+      const template = await taskService.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Enable overdue",
+        enabled: false,
+        recurrence: {
+          mode: "recurring",
+          anchorAt: anchorAt.toISOString(),
+          timezone: "UTC",
+          repeatRule: { frequency: "day", interval: 1 },
+        },
+      });
+
+      await taskService.enableTemplate(template.id);
+      await schedulerService.tick(at);
+
+      const runs = await taskService.listRuns(template.id);
+      const state = (await schedulerService.listStates()).find(
+        (entry) => entry.taskId === template.id,
+      );
+
+      expect(runs).toHaveLength(0);
+      expect(state?.nextRunAt ? new Date(state.nextRunAt) > at : false).toBe(true);
+    } finally {
+      schedulerService.stop();
+      await testDb.cleanup();
+    }
+  });
+
+  it("clears stale scheduler state before re-enabling a template", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const executionService = createTaskExecutionService({ taskService });
+    const schedulerService = createTaskSchedulerService({
+      db: testDb.client.db,
+      taskService,
+      executionService,
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const at = new Date();
+      const anchorAt = new Date(at.getTime() - 25 * 60 * 60 * 1000);
+      const dueAt = new Date(at.getTime() - 60 * 60 * 1000);
+      const template = await taskService.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Stale state",
+        recurrence: {
+          mode: "recurring",
+          anchorAt: anchorAt.toISOString(),
+          timezone: "UTC",
+          repeatRule: { frequency: "day", interval: 1 },
+        },
+      });
+
+      await testDb.client.db.insert(task_scheduler_state).values({
+        task_id: template.id,
+        next_run_at: dueAt,
+        last_scheduled_at: null,
+        last_error: null,
+        created_at: dueAt,
+        updated_at: dueAt,
+      });
+      await taskService.disableTemplate(template.id);
+      await taskService.enableTemplate(template.id);
+      await schedulerService.tick(at);
+
+      const runs = await taskService.listRuns(template.id);
+      const state = (await schedulerService.listStates()).find(
+        (entry) => entry.taskId === template.id,
+      );
+
+      expect(runs).toHaveLength(0);
+      expect(state?.nextRunAt ? new Date(state.nextRunAt) > at : false).toBe(true);
     } finally {
       schedulerService.stop();
       await testDb.cleanup();
@@ -271,6 +403,7 @@ describe("createTaskSchedulerService", () => {
         },
       });
 
+      await schedulerService.reconcile(new Date("2026-06-01T11:00:00.000Z"));
       await schedulerService.tick(new Date("2026-06-02T12:00:00.000Z"));
       await schedulerService.tick(new Date("2026-06-02T12:00:00.000Z"));
 
@@ -517,6 +650,7 @@ describe("createTaskSchedulerService", () => {
         },
       });
 
+      await schedulerService.reconcile(new Date("2026-06-01T08:00:00.000Z"));
       await schedulerService.tick(new Date("2026-06-08T12:00:00.000Z"));
 
       const runs = await taskService.listRuns(template.id);
@@ -566,6 +700,7 @@ describe("createTaskSchedulerService", () => {
         },
       });
 
+      await schedulerService.reconcile(new Date("2026-06-01T08:00:00.000Z"));
       await schedulerService.tick(new Date("2026-06-06T14:30:00.000Z"));
 
       await expect
@@ -611,6 +746,7 @@ describe("createTaskSchedulerService", () => {
         },
       });
 
+      await schedulerService.reconcile(new Date("2026-06-01T08:00:00.000Z"));
       await schedulerService.tick(new Date("2027-06-01T12:30:00.000Z"));
 
       await expect
@@ -657,6 +793,7 @@ describe("createTaskSchedulerService", () => {
         },
       });
 
+      await schedulerService.reconcile(new Date("2026-06-01T08:00:00.000Z"));
       await schedulerService.tick(new Date("2026-06-01T10:30:00.000Z"));
 
       const runs = await taskService.listRuns(template.id);

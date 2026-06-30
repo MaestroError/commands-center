@@ -470,7 +470,6 @@ describe("task actions", () => {
       body: JSON.stringify({
         title: "Updated template",
         description: "Updated prompt.",
-        todos: [],
       }),
       headers: { "content-type": "application/json" },
     });

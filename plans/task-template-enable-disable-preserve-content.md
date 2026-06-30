@@ -1,0 +1,4 @@
+- [x] Make task template update validation truly partial so omitted fields do not receive create-time defaults.
+- [x] Add schema coverage proving enable-style updates do not materialize description/todo defaults.
+- [x] Add service coverage proving enable/disable preserves template content.
+- [x] Run eslint --fix and relevant tests.

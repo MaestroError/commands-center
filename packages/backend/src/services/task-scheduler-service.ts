@@ -363,7 +363,7 @@ export function createTaskSchedulerService(options: {
 
     if (entry.kind === "template") {
       if (!existing) {
-        return upsertState(task, new Date(entry.template.recurrence!.anchorAt));
+        return upsertState(task, computeTemplateNextRunAtAfter(entry.template, from, from));
       }
 
       return upsertState(
