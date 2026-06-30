@@ -668,6 +668,81 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("rejects continuing cancelled runs", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Cancelled continue" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "cancelled",
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Initial run.",
+        cancelledAt: "2026-06-01T12:00:00.000Z",
+        cancellationReason: "Stopped by operator.",
+      });
+
+      await expect(executionService.continueRunWithFollowups(run.id)).rejects.toMatchObject({
+        code: "bad_request",
+        statusCode: 400,
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects continuing skipped runs", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Skipped continue" });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "skipped",
+        triggerSource: "scheduled",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Initial run.",
+        finalMessage: "Task was skipped.",
+      });
+
+      await expect(executionService.continueRunWithFollowups(run.id)).rejects.toMatchObject({
+        code: "bad_request",
+        statusCode: 400,
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("returns the existing run unchanged when there are no pending followups to continue", async () => {
     const testDb = await createTestDatabase();
     const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];

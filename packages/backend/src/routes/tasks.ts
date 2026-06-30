@@ -914,14 +914,11 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
         throw new NotFoundError("Task run not found.");
       }
 
-      const followups = await service.listFollowups(request.params.runId);
-      const exists = followups.some((followup) => followup.id === request.params.followupId);
-
-      if (!exists) {
-        throw new NotFoundError("Task run follow-up not found.");
-      }
-
-      const followup = await service.updateFollowup(request.params.followupId, request.body);
+      const followup = await service.updateFollowup(
+        request.params.runId,
+        request.params.followupId,
+        request.body,
+      );
 
       if (!followup) {
         throw new NotFoundError("Task run follow-up not found.");
@@ -945,14 +942,12 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
         throw new NotFoundError("Task run not found.");
       }
 
-      const followups = await service.listFollowups(request.params.runId);
-      const exists = followups.some((followup) => followup.id === request.params.followupId);
+      const deleted = await service.deleteFollowup(request.params.runId, request.params.followupId);
 
-      if (!exists) {
+      if (!deleted) {
         throw new NotFoundError("Task run follow-up not found.");
       }
 
-      await service.deleteFollowup(request.params.followupId);
       reply.code(204);
     },
   );

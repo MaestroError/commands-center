@@ -720,6 +720,32 @@ describe("task routes", () => {
     }
   });
 
+  it("returns not found when updating a followup from another run", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Wrong run followup update");
+      const otherRun = await harness.taskService.createRun({
+        taskId: task.id,
+        agentId: task.agentId,
+        triggerSource: "manual",
+        opencodeSessionId: "other-session",
+        renderedPrompt: "Other run.",
+      });
+      const followup = await harness.taskService.createFollowup(run.id, { body: "Keep this." });
+      const response = await harness.server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/runs/${otherRun.id}/followups/${followup.id}`,
+        payload: { body: "Change this." },
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().error.message).toBe("Task run follow-up not found.");
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("returns not found when deleting a missing followup id", async () => {
     const harness = await createTaskRouteHarness();
 
@@ -728,6 +754,31 @@ describe("task routes", () => {
       const response = await harness.server.inject({
         method: "DELETE",
         url: `/api/tasks/${task.id}/runs/${run.id}/followups/missing-followup`,
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().error.message).toBe("Task run follow-up not found.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("returns not found when deleting a followup from another run", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Wrong run followup delete");
+      const otherRun = await harness.taskService.createRun({
+        taskId: task.id,
+        agentId: task.agentId,
+        triggerSource: "manual",
+        opencodeSessionId: "other-session",
+        renderedPrompt: "Other run.",
+      });
+      const followup = await harness.taskService.createFollowup(run.id, { body: "Keep this." });
+      const response = await harness.server.inject({
+        method: "DELETE",
+        url: `/api/tasks/${task.id}/runs/${otherRun.id}/followups/${followup.id}`,
       });
 
       expect(response.statusCode).toBe(404);

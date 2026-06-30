@@ -991,7 +991,11 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return mapTaskRunFollowup(row);
     },
 
-    async updateFollowup(followupId: string, input: unknown): Promise<TaskRunFollowup | undefined> {
+    async updateFollowup(
+      runId: string,
+      followupId: string,
+      input: unknown,
+    ): Promise<TaskRunFollowup | undefined> {
       const parsed = updateTaskRunFollowupInputSchema.parse(input);
 
       return await Promise.resolve(
@@ -999,7 +1003,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           const existing = tx
             .select()
             .from(task_run_followups)
-            .where(eq(task_run_followups.id, followupId))
+            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
             .get();
 
           if (!existing) {
@@ -1016,7 +1020,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
               body: parsed.body,
               updated_at: now(),
             })
-            .where(eq(task_run_followups.id, followupId))
+            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
             .returning()
             .get();
 
@@ -1029,13 +1033,13 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       );
     },
 
-    async deleteFollowup(followupId: string): Promise<boolean> {
+    async deleteFollowup(runId: string, followupId: string): Promise<boolean> {
       return await Promise.resolve(
         options.db.transaction((tx) => {
           const existing = tx
             .select()
             .from(task_run_followups)
-            .where(eq(task_run_followups.id, followupId))
+            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
             .get();
 
           if (!existing) {
@@ -1046,7 +1050,9 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
             throw new ConflictError("Only pending follow-ups can be deleted.");
           }
 
-          tx.delete(task_run_followups).where(eq(task_run_followups.id, followupId)).run();
+          tx.delete(task_run_followups)
+            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
+            .run();
           return true;
         }),
       );

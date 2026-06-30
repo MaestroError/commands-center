@@ -583,9 +583,46 @@ describe("createTaskService", () => {
         renderedPrompt: "Do the task.",
       });
       const followup = await service.createFollowup(run.id, { body: "First body." });
-      const updated = await service.updateFollowup(followup.id, { body: "Updated body." });
+      const updated = await service.updateFollowup(run.id, followup.id, {
+        body: "Updated body.",
+      });
 
       expect(updated?.body).toBe("Updated body.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not update followups from another run", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Scoped followup edit" });
+      const firstRun = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Do the first task.",
+      });
+      const secondRun = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-2",
+        renderedPrompt: "Do the second task.",
+      });
+      const followup = await service.createFollowup(firstRun.id, { body: "First body." });
+
+      const updated = await service.updateFollowup(secondRun.id, followup.id, {
+        body: "Wrong run.",
+      });
+      const followups = await service.listFollowups(firstRun.id);
+
+      expect(updated).toBeUndefined();
+      expect(followups[0]?.body).toBe("First body.");
     } finally {
       await testDb.cleanup();
     }
@@ -607,8 +644,38 @@ describe("createTaskService", () => {
       });
       const followup = await service.createFollowup(run.id, { body: "Remove me." });
 
-      await expect(service.deleteFollowup(followup.id)).resolves.toBe(true);
+      await expect(service.deleteFollowup(run.id, followup.id)).resolves.toBe(true);
       await expect(service.listFollowups(run.id)).resolves.toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not delete followups from another run", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({ agentId: agent.id, title: "Scoped followup delete" });
+      const firstRun = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Do the first task.",
+      });
+      const secondRun = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        opencodeSessionId: "session-2",
+        renderedPrompt: "Do the second task.",
+      });
+      const followup = await service.createFollowup(firstRun.id, { body: "Keep me." });
+
+      await expect(service.deleteFollowup(secondRun.id, followup.id)).resolves.toBe(false);
+      await expect(service.listFollowups(firstRun.id)).resolves.toHaveLength(1);
     } finally {
       await testDb.cleanup();
     }
@@ -631,7 +698,7 @@ describe("createTaskService", () => {
       const followup = await service.createFollowup(run.id, { body: "Keep me." });
       await service.markFollowupsSent([followup.id], "2026-06-01T12:00:00.000Z");
 
-      await expect(service.updateFollowup(followup.id, { body: "Nope." })).rejects.toThrow(
+      await expect(service.updateFollowup(run.id, followup.id, { body: "Nope." })).rejects.toThrow(
         "Only pending follow-ups can be edited.",
       );
     } finally {
@@ -656,7 +723,7 @@ describe("createTaskService", () => {
       const followup = await service.createFollowup(run.id, { body: "Keep me." });
       await service.markFollowupsSent([followup.id], "2026-06-01T12:00:00.000Z");
 
-      await expect(service.deleteFollowup(followup.id)).rejects.toThrow(
+      await expect(service.deleteFollowup(run.id, followup.id)).rejects.toThrow(
         "Only pending follow-ups can be deleted.",
       );
     } finally {

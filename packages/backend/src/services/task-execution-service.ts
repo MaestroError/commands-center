@@ -566,12 +566,12 @@ export function createTaskExecutionService(options: {
 
     const run = await findRun(runId);
 
-    if (!run.opencodeSessionId) {
-      throw new ConflictError("Task run does not have an OpenCode session.");
+    if (run.status !== "completed" && run.status !== "failed" && run.status !== "error") {
+      throw new BadRequestError("Only completed, failed, or error task runs can be continued.");
     }
 
-    if (run.status === "queued" || run.status === "running") {
-      throw new BadRequestError("Only terminal task runs can be continued.");
+    if (!run.opencodeSessionId) {
+      throw new ConflictError("Task run does not have an OpenCode session.");
     }
 
     const pendingFollowups = await options.taskService.listPendingFollowups(run.id);

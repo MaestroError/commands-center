@@ -383,3 +383,9 @@ Verification notes:
 - [x] Preserve blocking `runId` details when the running-run SQLite constraint fires during continuation.
 - [x] Lazy-load run follow-ups in the task detail reply panel unless the composer is open or pending replies exist.
 - [x] Add focused backend/frontend regression tests and rerun checks.
+
+## PR Review Follow-Up 2026-06-30 Scoped Followups
+
+- [x] Restrict follow-up continuation to `completed`, `failed`, and `error` runs.
+- [x] Scope follow-up update/delete service methods by `runId` and remove route-side list checks.
+- [x] Add focused service/route regression tests and rerun checks.
