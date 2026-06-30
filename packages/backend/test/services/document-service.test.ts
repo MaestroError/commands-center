@@ -536,6 +536,26 @@ describe("document service", () => {
         await testDb.cleanup();
       }
     });
+
+    it("skips the fallback description read for an oversized markdown file", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        // Dropped in directly (bypassing the create/save cap); listing must not
+        // read the whole file just to derive a fallback description.
+        const oversized = `# Big\n\n${"a".repeat(5 * 1024 * 1024 + 1)}`;
+        await writeFile(service.fullPath("big.md"), oversized, "utf8");
+
+        const items = await service.list();
+        expect(items).toHaveLength(1);
+        expect(items[0]?.relativePath).toBe("big.md");
+        expect(items[0]?.description).toBeNull();
+      } finally {
+        await testDb.cleanup();
+      }
+    });
   });
 
   describe("search", () => {

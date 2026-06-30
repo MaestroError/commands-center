@@ -10,6 +10,8 @@ import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { createDocumentService } from "../services/document-service.js";
 import { resolveFileManagerRoot } from "../services/file-manager-service.js";
 
+const MAX_SEARCH_RESULTS = 20;
+
 export function registerSearchRoutes(server: AppServer, context: RuntimeContext): void {
   const app = server.withTypeProvider<ZodTypeProvider>();
   const documentService = createDocumentService({
@@ -35,7 +37,7 @@ export function registerSearchRoutes(server: AppServer, context: RuntimeContext)
         context.opencodeService.findFiles(root.basePath, {
           query,
           type: "file",
-          limit: 20,
+          limit: MAX_SEARCH_RESULTS,
         }),
         context.opencodeService.findText(root.basePath, query),
         documentService.search(query),
@@ -53,7 +55,9 @@ export function registerSearchRoutes(server: AppServer, context: RuntimeContext)
           lineNumber: match.line_number,
           lineText: match.lines.text,
         })),
-        documentMatches: documentMatches.map((doc) => ({
+        // Cap documents to keep the response payload bounded, matching the
+        // filename-match limit above.
+        documentMatches: documentMatches.slice(0, MAX_SEARCH_RESULTS).map((doc) => ({
           relativePath: doc.relativePath,
           fullPath: doc.fullPath,
           title: doc.title,

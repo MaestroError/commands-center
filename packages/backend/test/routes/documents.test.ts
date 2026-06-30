@@ -171,6 +171,25 @@ describe("document routes", () => {
       }
     });
 
+    it("rejects Windows drive-letter absolute paths with 400", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        for (const path of ["C:\\notes.md", "C:/notes.md"]) {
+          const response = await server.inject({
+            method: "POST",
+            url: "/api/documents",
+            payload: { path },
+          });
+          expect(response.statusCode).toBe(400);
+        }
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
     it("returns 409 for duplicate documents", async () => {
       const testDb = await createTestDatabase();
       const server = await createRouteServer(testDb);

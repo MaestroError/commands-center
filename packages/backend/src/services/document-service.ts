@@ -474,7 +474,10 @@ export function createDocumentService(options: {
         });
 
         let description = row?.description ?? null;
-        if (!description) {
+        // Only read the file for a fallback description when it's within the
+        // size cap. A very large .md dropped in directly (bypassing the
+        // create/save cap) would otherwise make listing/search read it in full.
+        if (!description && entryStat.size <= MAX_CONTENT_BYTES) {
           const content = await readFile(entryPath, "utf8").catch(() => "");
           description = descriptionFromContent(content);
         }
