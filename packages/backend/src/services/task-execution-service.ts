@@ -22,7 +22,7 @@ import { z } from "zod";
 import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
 import { task_runs, tasks } from "../db/schema/index.js";
-import { BadRequestError, NotFoundError } from "../lib/api-error.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { OpenCodeOrchestrator } from "../orchestrator/opencode-orchestrator.js";
 import {
   TaskRunPromptError,
@@ -667,24 +667,38 @@ export function createTaskExecutionService(options: {
       throw new Error("Database client is required to continue task runs.");
     }
 
+    const running = await options.taskService.getRunningRunForAgent(run.agentId);
+
+    if (running && running.id !== run.id) {
+      throw new ConflictError("Agent already has a running task run.", { runId: running.id });
+    }
+
     const timestamp = new Date();
-    options.db
-      .update(task_runs)
-      .set({
-        status: "running",
-        outcome: null,
-        needs_human_review: false,
-        human_review_reason: null,
-        review_question_json: null,
-        error_message: null,
-        error_details_json: null,
-        completed_at: null,
-        cancelled_at: null,
-        cancellation_reason: null,
-        updated_at: timestamp,
-      })
-      .where(eq(task_runs.id, run.id))
-      .run();
+    try {
+      options.db
+        .update(task_runs)
+        .set({
+          status: "running",
+          outcome: null,
+          needs_human_review: false,
+          human_review_reason: null,
+          review_question_json: null,
+          error_message: null,
+          error_details_json: null,
+          completed_at: null,
+          cancelled_at: null,
+          cancellation_reason: null,
+          updated_at: timestamp,
+        })
+        .where(eq(task_runs.id, run.id))
+        .run();
+    } catch (error) {
+      if (isRunningAgentConstraintError(error)) {
+        throw new ConflictError("Agent already has a running task run.");
+      }
+
+      throw error;
+    }
 
     options.db
       .update(tasks)
@@ -702,6 +716,14 @@ export function createTaskExecutionService(options: {
     }
 
     return resumed;
+  }
+
+  function isRunningAgentConstraintError(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      (error.message.includes("task_runs_agent_running_unique_idx") ||
+        error.message.includes("UNIQUE constraint failed: task_runs.agent_id"))
+    );
   }
 
   async function getOrCreateTaskRunConversation(

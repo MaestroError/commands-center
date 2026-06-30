@@ -365,3 +365,9 @@ Verification notes:
 - [x] Disable the run reply panel composer/actions when a run has no recorded OpenCode session.
 - [x] Add focused tests for the guarded failure transition and no-session reply panel state.
 - [x] Re-run lint, typecheck, and tests before resolving the new review threads.
+
+## PR Review Follow-Up 2026-06-30 Running-Agent Guard
+
+- [x] Guard follow-up continuation when the same agent already has another running run.
+- [x] Translate a race-time running-run SQLite unique constraint into `ConflictError`.
+- [x] Add a focused regression test and rerun checks before resolving the linked thread.

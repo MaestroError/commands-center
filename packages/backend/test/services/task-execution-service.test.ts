@@ -471,6 +471,79 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("rejects continuing a run when the agent already has a running run", async () => {
+    const testDb = await createTestDatabase();
+    const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService({
+        onPrompt: (input) => prompts.push(input),
+      }),
+    });
+    const executionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+      monitor: { autoStart: false },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const reviewedTask = await taskService.create({
+        agentId: agent.id,
+        title: "Reviewed task",
+      });
+      const reviewedRun = await taskService.createRun({
+        taskId: reviewedTask.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      const conversation = await conversationService.createTaskRunConversation({
+        agentId: agent.id,
+        taskId: reviewedTask.id,
+        taskRunId: reviewedRun.id,
+        title: "Task: Reviewed task",
+      });
+      await taskService.updateRun(reviewedRun.id, {
+        opencodeSessionId: conversation.opencodeSessionId,
+      });
+      await taskService.setRunStatus(reviewedRun.id, "completed", {
+        outcome: "needs_human_review",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+      await taskService.createFollowup(reviewedRun.id, { body: "Please continue." });
+
+      const activeTask = await taskService.create({ agentId: agent.id, title: "Active task" });
+      const activeRun = await taskService.createRun({
+        taskId: activeTask.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        renderedPrompt: "Active run.",
+      });
+
+      await expect(executionService.continueRunWithFollowups(reviewedRun.id)).rejects.toMatchObject(
+        {
+          code: "conflict",
+          statusCode: 409,
+          details: { runId: activeRun.id },
+        },
+      );
+      const refreshed = await taskService.getRunById(reviewedRun.id);
+      const followups = await taskService.listFollowups(reviewedRun.id);
+
+      expect(refreshed?.status).toBe("completed");
+      expect(followups.map((followup) => followup.status)).toEqual(["pending"]);
+      expect(prompts).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("returns the existing run unchanged when there are no pending followups to continue", async () => {
     const testDb = await createTestDatabase();
     const prompts: { model?: { providerID: string; modelID: string }; text: string }[] = [];
