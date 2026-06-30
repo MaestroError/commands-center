@@ -371,3 +371,8 @@ Verification notes:
 - [x] Guard follow-up continuation when the same agent already has another running run.
 - [x] Translate a race-time running-run SQLite unique constraint into `ConflictError`.
 - [x] Add a focused regression test and rerun checks before resolving the linked thread.
+
+## CI Coverage Follow-Up 2026-06-30
+
+- [x] Wait for task-run inspection messages in async prompt tests before asserting conversation details.
+- [x] Run focused backend test and backend coverage before pushing the CI fix.

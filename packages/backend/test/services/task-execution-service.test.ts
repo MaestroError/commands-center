@@ -102,6 +102,7 @@ describe("createTaskExecutionService", () => {
       await expectRunStatus(taskService, run.id, "running");
       await expectRunRuntimeState(taskService, run.id, "waiting_for_opencode");
       const runningRun = await taskService.getRunById(run.id);
+      await expectTaskRunInspectionMessageCount(conversationService, task.id, run.id, 1);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
 
@@ -1205,6 +1206,7 @@ describe("createTaskExecutionService", () => {
 
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
       await expectRunStatus(taskService, run.id, "running");
+      await expectTaskRunInspectionMessageCount(conversationService, task.id, run.id, 1);
       const opened = await conversationService.openTaskRunConversationInChat(task.id, run.id);
       const inspection = await conversationService.inspectTaskRunConversation(task.id, run.id);
       const conversations = await conversationService.list(agent.id);
@@ -2682,6 +2684,21 @@ async function expectRunRuntimeState(
   await expect
     .poll(async () => (await taskService.getRunById(runId))?.runtimeState)
     .toBe(runtimeState);
+}
+
+async function expectTaskRunInspectionMessageCount(
+  conversationService: ReturnType<typeof createConversationService>,
+  taskId: string,
+  runId: string,
+  count: number,
+): Promise<void> {
+  await expect
+    .poll(
+      async () =>
+        (await conversationService.inspectTaskRunConversation(taskId, runId)).conversation?.messages
+          .length,
+    )
+    .toBe(count);
 }
 
 async function insertAgent(
