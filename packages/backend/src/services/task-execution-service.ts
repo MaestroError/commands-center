@@ -15,12 +15,14 @@ import {
   type TaskRun,
   type TaskSubtask,
 } from "@cc/shared/schemas";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Logger } from "pino";
 import { z } from "zod";
 
 import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
-import { BadRequestError, NotFoundError } from "../lib/api-error.js";
+import { task_runs, tasks } from "../db/schema/index.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { OpenCodeOrchestrator } from "../orchestrator/opencode-orchestrator.js";
 import {
   TaskRunPromptError,
@@ -187,6 +189,10 @@ export function createTaskExecutionService(options: {
 
     async runQueuedTask(runId: string): Promise<TaskRun> {
       return runQueuedTask(runId);
+    },
+
+    async continueRunWithFollowups(runId: string): Promise<TaskRun> {
+      return continueRunWithFollowups(runId);
     },
 
     startTaskRunMonitor(runId: string): void {
@@ -547,6 +553,181 @@ export function createTaskExecutionService(options: {
       await handleTerminalRun(errored, { triggerContext: readRunContext(running) });
       return errored;
     }
+  }
+
+  async function continueRunWithFollowups(runId: string): Promise<TaskRun> {
+    if (!options.db) {
+      throw new Error("Database client is required to continue task runs.");
+    }
+
+    if (!options.conversationService) {
+      throw new Error("Conversation service is required to continue task runs.");
+    }
+
+    const run = await findRun(runId);
+
+    if (run.status !== "completed" && run.status !== "failed" && run.status !== "error") {
+      throw new BadRequestError("Only completed, failed, or error task runs can be continued.");
+    }
+
+    if (!run.opencodeSessionId) {
+      throw new ConflictError("Task run does not have an OpenCode session.");
+    }
+
+    const pendingFollowups = await options.taskService.listPendingFollowups(run.id);
+
+    if (pendingFollowups.length === 0) {
+      return run;
+    }
+
+    const inspection = await options.conversationService.inspectTaskRunConversation(
+      run.taskId,
+      run.id,
+    );
+    const conversation = inspection.conversation;
+
+    if (!conversation) {
+      throw new NotFoundError("Task run session not found.");
+    }
+
+    const resumed = await reactivateRunForFollowups(run);
+    const promptText = pendingFollowups.map((followup) => followup.body).join("\n\n");
+
+    try {
+      const promptStart = await startTaskRunPromptWithRetry(resumed, conversation, {
+        text: promptText,
+        attachments: [],
+        model: resumed.model,
+      });
+
+      let accepted: TaskRun;
+      if (promptStart.type === "accepted") {
+        accepted = await resumeAcceptedPromptRun(resumed, promptStart.evidence);
+      } else {
+        const updated = await options.taskService.updateRun(resumed.id, {
+          triggerMetadata: mergeOpencodeMonitorMetadata(resumed.triggerMetadata, {
+            conversationId: promptStart.promptStart.conversationId,
+            opencodeSessionId: promptStart.promptStart.opencodeSessionId,
+            attemptedModel: promptStart.promptStart.attemptedModel,
+            baselineMessageCount: promptStart.promptStart.baselineMessageCount,
+            promptAcceptedAt: promptStart.promptStart.promptAcceptedAt,
+          }),
+        });
+
+        if (!updated) {
+          throw new NotFoundError("Task run not found.");
+        }
+
+        accepted = updated;
+        if (monitorConfig.autoStart) {
+          monitorService.start(accepted.id);
+        }
+      }
+
+      await options.taskService.markFollowupsSent(
+        pendingFollowups.map((followup) => followup.id),
+        new Date().toISOString(),
+      );
+
+      return (await options.taskService.getRunById(accepted.id)) ?? accepted;
+    } catch (error) {
+      await Promise.all(
+        pendingFollowups.map((followup) =>
+          options.taskService.markFollowupFailed(
+            followup.id,
+            error instanceof Error ? error.message : "Failed to deliver follow-up.",
+          ),
+        ),
+      );
+
+      const latest = await findRun(resumed.id);
+
+      if (latest.status !== "running") {
+        await handleTerminalRun(latest, { triggerContext: readRunContext(latest) });
+        return latest;
+      }
+
+      const errored = await options.taskService.setRunStatus(resumed.id, "error", {
+        completedAt: new Date().toISOString(),
+        errorMessage: error instanceof Error ? error.message : "Task execution failed.",
+        errorDetails: buildTaskRunErrorDetails(error, resumed),
+      });
+
+      if (!errored) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      await handleTerminalRun(errored, { triggerContext: readRunContext(resumed) });
+      return errored;
+    }
+  }
+
+  async function reactivateRunForFollowups(run: TaskRun): Promise<TaskRun> {
+    if (!options.db) {
+      throw new Error("Database client is required to continue task runs.");
+    }
+
+    const running = await options.taskService.getRunningRunForAgent(run.agentId);
+
+    if (running && running.id !== run.id) {
+      throw new ConflictError("Agent already has a running task run.", { runId: running.id });
+    }
+
+    const timestamp = new Date();
+    try {
+      options.db
+        .update(task_runs)
+        .set({
+          status: "running",
+          outcome: null,
+          needs_human_review: false,
+          human_review_reason: null,
+          review_question_json: null,
+          error_message: null,
+          error_details_json: null,
+          completed_at: null,
+          cancelled_at: null,
+          cancellation_reason: null,
+          updated_at: timestamp,
+        })
+        .where(eq(task_runs.id, run.id))
+        .run();
+    } catch (error) {
+      if (isRunningAgentConstraintError(error)) {
+        const running = await options.taskService.getRunningRunForAgent(run.agentId);
+        throw new ConflictError(
+          "Agent already has a running task run.",
+          running ? { runId: running.id } : undefined,
+        );
+      }
+
+      throw error;
+    }
+
+    options.db
+      .update(tasks)
+      .set({
+        status: "queued",
+        updated_at: timestamp,
+      })
+      .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)))
+      .run();
+
+    const resumed = await options.taskService.getRunById(run.id);
+
+    if (!resumed) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    return resumed;
+  }
+
+  function isRunningAgentConstraintError(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      (error.message.includes("task_runs_agent_running_unique_idx") ||
+        error.message.includes("UNIQUE constraint failed: task_runs.agent_id"))
+    );
   }
 
   async function getOrCreateTaskRunConversation(

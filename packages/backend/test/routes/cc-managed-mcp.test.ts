@@ -1663,7 +1663,12 @@ describe("cc-managed MCP routes", () => {
         "tools/call",
         {
           name: "mark_needs_human_review",
-          arguments: { taskRunId: run.id, reason: "Approve before publishing." },
+          arguments: {
+            taskRunId: run.id,
+            reason: "Approve before publishing.",
+            question: "Should I publish the draft?",
+            suggestedReplies: ["Publish it", "Revise it first"],
+          },
         },
         23,
       );
@@ -1682,6 +1687,10 @@ describe("cc-managed MCP routes", () => {
           structuredContent: {
             needsHumanReview: true,
             humanReviewReason: "Approve before publishing.",
+            reviewQuestion: {
+              question: "Should I publish the draft?",
+              suggestedReplies: ["Publish it", "Revise it first"],
+            },
           },
         },
       });

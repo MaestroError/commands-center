@@ -11,6 +11,7 @@ import type {
   Task,
   TaskFeedbackThread,
   TaskRun,
+  TaskRunFollowup,
   TaskSchedulerState,
   TaskSubtaskProgress,
   TaskTemplate,
@@ -142,6 +143,7 @@ const run: TaskRun = {
   ],
   needsHumanReview: true,
   humanReviewReason: "Confirm the generated tool list is complete.",
+  pendingFollowupCount: 0,
   result: { messageCount: 2 },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -188,6 +190,24 @@ const feedbackThread: TaskFeedbackThread = {
     },
   ],
   createdAt: "2026-01-01T00:00:00.000Z",
+};
+
+const pendingFollowup: TaskRunFollowup = {
+  id: "followup-1",
+  taskId: "task-1",
+  runId: "run-1",
+  kind: "operator_reply",
+  status: "pending",
+  body: "Please verify the release notes.",
+  createdAt: "2026-01-01T00:02:00.000Z",
+};
+
+const sentFollowup: TaskRunFollowup = {
+  ...pendingFollowup,
+  id: "followup-2",
+  status: "sent",
+  body: "Already delivered.",
+  sentAt: "2026-01-01T00:03:00.000Z",
 };
 
 const subtaskProgress: TaskSubtaskProgress = {
@@ -302,6 +322,7 @@ type MockFetchOptions = {
   templatePayload?: TaskTemplate;
   templateTasksPayload?: Task[];
   feedbackPayload?: TaskFeedbackThread[];
+  followupsPayload?: TaskRunFollowup[];
   subtaskProgressPayload?: TaskSubtaskProgress[];
   duplicateResponse?: Response;
 };
@@ -2380,6 +2401,55 @@ describe("TaskDetailPage", () => {
     expect(within(comments).getAllByRole("link", { name: "Tool list" })).toHaveLength(2);
   });
 
+  it("does not eagerly load followups for closed feedback reply panels", async () => {
+    const fetchMock = mockFetch({ feedbackPayload: [feedbackThread], runsPayload: [run] });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    await screen.findByRole("region", { name: "Feedback comments" });
+
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const url = input instanceof Request ? input.url : String(input);
+        const method = input instanceof Request ? input.method : (init?.method ?? "GET");
+
+        return url.includes("/followups") && method === "GET";
+      }),
+    ).toBe(false);
+  });
+
+  it("disables feedback run replies when the run has no recorded session", async () => {
+    const noSessionFeedback: TaskFeedbackThread = {
+      ...feedbackThread,
+      subtasks: feedbackThread.subtasks.map((subtask) => ({
+        ...subtask,
+        latestRun: subtask.latestRun
+          ? { ...subtask.latestRun, opencodeSessionId: undefined }
+          : subtask.latestRun,
+        replies: subtask.replies.map((reply) => ({
+          ...reply,
+          run: { ...reply.run, opencodeSessionId: undefined },
+        })),
+      })),
+    };
+    mockFetch({
+      feedbackPayload: [noSessionFeedback],
+      runsPayload: [{ ...run, opencodeSessionId: undefined }],
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const comments = await screen.findByRole("region", { name: "Feedback comments" });
+    const replyButtons = within(comments).getAllByRole("button", { name: "Reply" });
+
+    expect(
+      within(comments).getAllByText(
+        "Replies are unavailable because this run has no recorded OpenCode session.",
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(replyButtons.every((button) => button.hasAttribute("disabled"))).toBe(true);
+  });
+
   it("updates the task detail page title from inline edit mode", async () => {
     const fetchMock = mockFetch();
 
@@ -2517,6 +2587,234 @@ describe("TaskDetailPage", () => {
     expect(screen.getByText("Subtask: Please retest the release flow.")).toBeInTheDocument();
     expect(screen.getByText("1m 30s")).toBeInTheDocument();
     expect(screen.getByText("Recorded")).toBeInTheDocument();
+  });
+
+  it("sends a run reply from the run history row", async () => {
+    const fetchMock = mockFetch({ runsPayload: [run] });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Runs" }));
+    const runHistory = screen.getByRole("heading", { name: "Run history" }).closest("section");
+    expect(runHistory).not.toBeNull();
+
+    await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1"));
+    const replyButtons = within(runHistory as HTMLElement).getAllByRole("button", {
+      name: "Reply",
+    });
+    const composerReplyButton = replyButtons[1];
+    if (!composerReplyButton) throw new Error("Expected run reply composer button.");
+    await user.click(composerReplyButton);
+    await user.type(
+      within(runHistory as HTMLElement).getByLabelText("Reply to run run-1"),
+      "Please double-check the changelog.",
+    );
+    await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-send-run-1"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/runs/run-1/followups",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            body: "Please double-check the changelog.",
+            kind: "operator_reply",
+          }),
+        }),
+      );
+    });
+  });
+
+  it("disables run replies when the run has no recorded session", async () => {
+    mockFetch({ runsPayload: [{ ...run, opencodeSessionId: undefined }] });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Runs" }));
+    const runHistory = screen.getByRole("heading", { name: "Run history" }).closest("section");
+    expect(runHistory).not.toBeNull();
+
+    expect(within(runHistory as HTMLElement).getByText("Unavailable")).toBeInTheDocument();
+    expect(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1")).toBeDisabled();
+  });
+
+  it("sends and requeues a run reply from the run history row", async () => {
+    const fetchMock = mockFetch({ runsPayload: [run] });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Runs" }));
+    const runHistory = screen.getByRole("heading", { name: "Run history" }).closest("section");
+    expect(runHistory).not.toBeNull();
+
+    await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1"));
+    const replyButtons = within(runHistory as HTMLElement).getAllByRole("button", {
+      name: "Reply",
+    });
+    const composerReplyButton = replyButtons[1];
+    if (!composerReplyButton) throw new Error("Expected run reply composer button.");
+    await user.click(composerReplyButton);
+    await user.type(
+      within(runHistory as HTMLElement).getByLabelText("Reply to run run-1"),
+      "Please continue with this context.",
+    );
+    await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-requeue-run-1"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/runs/run-1/followups",
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/runs/run-1/continue",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("edits a pending run followup and leaves sent followups read-only", async () => {
+    const fetchMock = mockFetch({
+      runsPayload: [{ ...run, pendingFollowupCount: 1 }],
+      followupsPayload: [pendingFollowup, sentFollowup],
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Runs" }));
+    const runHistory = screen.getByRole("heading", { name: "Run history" }).closest("section");
+    expect(runHistory).not.toBeNull();
+
+    await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1"));
+    const pendingItem = (
+      await within(runHistory as HTMLElement).findByText("Please verify the release notes.")
+    ).closest("article");
+    const sentItem = within(runHistory as HTMLElement)
+      .getByText("Already delivered.")
+      .closest("article");
+    expect(pendingItem).not.toBeNull();
+    expect(sentItem).not.toBeNull();
+    expect(
+      within(sentItem as HTMLElement).queryByRole("button", { name: "Edit" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(within(pendingItem as HTMLElement).getByRole("button", { name: "Edit" }));
+    const editor = within(pendingItem as HTMLElement).getByLabelText("Edit pending reply");
+    await user.clear(editor);
+    await user.type(editor, "Please verify the release checklist.");
+    await user.click(within(pendingItem as HTMLElement).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/runs/run-1/followups/followup-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ body: "Please verify the release checklist." }),
+        }),
+      );
+    });
+  });
+
+  it("deletes a pending run followup", async () => {
+    const fetchMock = mockFetch({
+      runsPayload: [{ ...run, pendingFollowupCount: 1 }],
+      followupsPayload: [pendingFollowup],
+    });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Runs" }));
+    const runHistory = screen.getByRole("heading", { name: "Run history" }).closest("section");
+    expect(runHistory).not.toBeNull();
+
+    await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1"));
+    const pendingItem = (
+      await within(runHistory as HTMLElement).findByText("Please verify the release notes.")
+    ).closest("article");
+    expect(pendingItem).not.toBeNull();
+    await user.click(within(pendingItem as HTMLElement).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/runs/run-1/followups/followup-1",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
+  it("creates feedback and queues the task from Send and requeue", async () => {
+    const fetchMock = mockFetch();
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Leave comment" }));
+    await user.type(await screen.findByLabelText("Feedback"), "Retest the release flow.");
+    await user.click(screen.getByRole("button", { name: "Send & requeue" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/feedback",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            body: "Retest the release flow.",
+            mentionedAgentIds: [],
+          }),
+        }),
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/queue",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("edits feedback before its subtask has run", async () => {
+    const editableFeedbackThread: TaskFeedbackThread = {
+      ...feedbackThread,
+      body: "Draft feedback.",
+      subtasks: feedbackThread.subtasks.map((subtask) => ({
+        ...subtask,
+        status: "backlog",
+        latestRun: undefined,
+        replies: [],
+      })),
+    };
+    const fetchMock = mockFetch({ feedbackPayload: [editableFeedbackThread], runsPayload: [] });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const user = userEvent.setup();
+    const comment = await screen.findByTestId("task-feedback-comment-feedback-1");
+    await user.click(within(comment).getByRole("button", { name: "Edit" }));
+    const editor = within(comment).getByLabelText("Edit feedback");
+    await user.clear(editor);
+    await user.type(editor, "Updated draft feedback.");
+    await user.click(within(comment).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/feedback/feedback-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ body: "Updated draft feedback." }),
+        }),
+      );
+    });
+  });
+
+  it("hides feedback edit once its subtask has run", async () => {
+    mockFetch({ feedbackPayload: [feedbackThread], runsPayload: [] });
+
+    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
+
+    const comment = await screen.findByTestId("task-feedback-comment-feedback-1");
+    expect(within(comment).queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   });
 
   it("preserves tasks view context from full-page detail", async () => {
@@ -2973,6 +3271,7 @@ function mockFetch(options: MockFetchOptions = {}) {
   const templatePayload = options.templatePayload ?? taskTemplate;
   const templateTasksPayload = options.templateTasksPayload ?? [generatedTask];
   const feedbackPayload = options.feedbackPayload ?? [];
+  const followupsPayload = options.followupsPayload ?? [];
   const subtaskProgressPayload = options.subtaskProgressPayload ?? [];
 
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
@@ -3075,6 +3374,24 @@ function mockFetch(options: MockFetchOptions = {}) {
         jsonResponse(200, { ...taskPayload, context: { ...taskPayload.context, ...body } }),
       );
     }
+    const feedbackPatchMatch = url.match(/^\/api\/tasks\/task-1\/feedback\/([^/]+)$/);
+    if (feedbackPatchMatch) {
+      const feedbackId = feedbackPatchMatch[1] ?? "";
+      const body =
+        typeof init?.body === "string" ? (JSON.parse(init.body) as { body?: string }) : {};
+      const current = feedbackPayload.find((entry) => entry.id === feedbackId) ?? feedbackThread;
+
+      return Promise.resolve(
+        jsonResponse(200, {
+          ...current,
+          body: body.body ?? current.body,
+          subtasks: current.subtasks.map((subtask) => ({
+            ...subtask,
+            description: body.body ?? subtask.description,
+          })),
+        }),
+      );
+    }
     if (url === "/api/tasks/task-1/feedback") {
       const method = input instanceof Request ? input.method : init?.method;
       return Promise.resolve(
@@ -3110,6 +3427,55 @@ function mockFetch(options: MockFetchOptions = {}) {
     }
     if (url === "/api/tasks/template-1") return Promise.resolve(jsonResponse(204, null));
     if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, runsPayload));
+    const followupsMatch = url.match(
+      /^\/api\/tasks\/task-1\/runs\/([^/]+)\/followups(?:\/([^/]+))?$/,
+    );
+    if (followupsMatch) {
+      const method = input instanceof Request ? input.method : init?.method;
+      const runId = followupsMatch[1] ?? "";
+      const followupId = followupsMatch[2];
+
+      if (method === "POST") {
+        const body =
+          typeof init?.body === "string" ? (JSON.parse(init.body) as { body?: string }) : {};
+        return Promise.resolve(
+          jsonResponse(201, {
+            ...pendingFollowup,
+            runId,
+            body: body.body ?? pendingFollowup.body,
+          }),
+        );
+      }
+
+      if (method === "PATCH") {
+        const body =
+          typeof init?.body === "string" ? (JSON.parse(init.body) as { body?: string }) : {};
+        const current =
+          followupsPayload.find((followup) => followup.id === followupId) ?? pendingFollowup;
+        return Promise.resolve(jsonResponse(200, { ...current, body: body.body ?? current.body }));
+      }
+
+      if (method === "DELETE") {
+        return Promise.resolve(jsonResponse(204, null));
+      }
+
+      return Promise.resolve(
+        jsonResponse(
+          200,
+          followupsPayload.filter((followup) => followup.runId === runId),
+        ),
+      );
+    }
+    const continueMatch = url.match(/^\/api\/tasks\/task-1\/runs\/([^/]+)\/continue$/);
+    if (continueMatch) {
+      return Promise.resolve(
+        jsonResponse(200, {
+          ...run,
+          id: continueMatch[1] ?? run.id,
+          status: "running",
+        }),
+      );
+    }
     if (url === "/api/tasks/task-1/runs/run-1")
       return Promise.resolve(jsonResponse(200, sessionRun));
     if (url === "/api/tasks/task-1/runs/run-1/session") {

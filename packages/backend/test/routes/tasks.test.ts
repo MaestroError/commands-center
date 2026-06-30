@@ -33,7 +33,11 @@ describe("task routes", () => {
       config: testDb.config,
       opencodeService,
     });
-    const taskExecutionService = createTaskExecutionService({ taskService, conversationService });
+    const taskExecutionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      conversationService,
+    });
     const taskSchedulerService = createTaskSchedulerService({
       db: testDb.client.db,
       taskService,
@@ -231,7 +235,10 @@ describe("task routes", () => {
     const testDb = await createTestDatabase();
     const config = { ...testDb.config, tasks: { maxTasks: 1 } };
     const taskService = createTaskService({ db: testDb.client.db, config });
-    const taskExecutionService = createTaskExecutionService({ taskService });
+    const taskExecutionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+    });
     const taskSchedulerService = createTaskSchedulerService({
       db: testDb.client.db,
       taskService,
@@ -289,6 +296,7 @@ describe("task routes", () => {
       taskService,
     });
     const taskExecutionService = createTaskExecutionService({
+      db: testDb.client.db,
       taskService,
       taskContextAttachmentService,
     });
@@ -507,7 +515,427 @@ describe("task routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("creates pending followups through the route", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Create followup");
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
+        payload: { body: "Please double-check the docs." },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(response.json()).toMatchObject({
+        taskId: task.id,
+        runId: run.id,
+        kind: "operator_reply",
+        status: "pending",
+        body: "Please double-check the docs.",
+      });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("lists followups for the requested run", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "List followups");
+      await harness.taskService.createFollowup(run.id, { body: "First reply." });
+      await harness.taskService.createFollowup(run.id, { body: "Second reply." });
+
+      const response = await harness.server.inject({
+        method: "GET",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toHaveLength(2);
+      expect(response.json()).toMatchObject([
+        { body: "First reply.", status: "pending" },
+        { body: "Second reply.", status: "pending" },
+      ]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("updates pending followups through the route", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Update followup");
+      const followup = await harness.taskService.createFollowup(run.id, { body: "Old reply." });
+      const response = await harness.server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups/${followup.id}`,
+        payload: { body: "New reply." },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        id: followup.id,
+        body: "New reply.",
+        status: "pending",
+      });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("deletes pending followups through the route", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Delete followup");
+      const followup = await harness.taskService.createFollowup(run.id, { body: "Delete me." });
+      const deleted = await harness.server.inject({
+        method: "DELETE",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups/${followup.id}`,
+      });
+      const listed = await harness.server.inject({
+        method: "GET",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
+      });
+
+      expect(deleted.statusCode).toBe(204);
+      expect(listed.statusCode).toBe(200);
+      expect(listed.json()).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("continues a terminal run from the continue route", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Continue route");
+      await harness.taskService.createFollowup(run.id, { body: "Please fix the last issue." });
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/continue`,
+      });
+      const followups = await harness.taskService.listFollowups(run.id);
+      const taskAfter = await harness.taskService.get(task.id);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().status).toBe("running");
+      expect(followups.map((followup) => followup.status)).toEqual(["sent"]);
+      expect(taskAfter?.status).toBe("queued");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("returns conflict when continuing a run without a recorded session", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const agent = await insertAgent(harness.testDb.client.db);
+      const task = await harness.taskService.create({
+        agentId: agent.id,
+        title: "No session continue route",
+      });
+      const run = await harness.taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Initial run.",
+      });
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/continue`,
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.message).toBe("Task run does not have an OpenCode session.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("returns not found when a followup route uses a run from another task", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Wrong task followups");
+      const otherTask = await harness.taskService.create({
+        agentId: task.agentId,
+        title: "Other task",
+      });
+      const response = await harness.server.inject({
+        method: "GET",
+        url: `/api/tasks/${otherTask.id}/runs/${run.id}/followups`,
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().error.message).toBe("Task run not found.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("returns not found when a continue route uses a run from another task", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Wrong task continue");
+      const otherTask = await harness.taskService.create({
+        agentId: task.agentId,
+        title: "Other task",
+      });
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${otherTask.id}/runs/${run.id}/continue`,
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().error.message).toBe("Task run not found.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("returns not found when updating a missing followup id", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Missing followup update");
+      const response = await harness.server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups/missing-followup`,
+        payload: { body: "Change this." },
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().error.message).toBe("Task run follow-up not found.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("returns not found when updating a followup from another run", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Wrong run followup update");
+      const otherRun = await harness.taskService.createRun({
+        taskId: task.id,
+        agentId: task.agentId,
+        triggerSource: "manual",
+        opencodeSessionId: "other-session",
+        renderedPrompt: "Other run.",
+      });
+      const followup = await harness.taskService.createFollowup(run.id, { body: "Keep this." });
+      const response = await harness.server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/runs/${otherRun.id}/followups/${followup.id}`,
+        payload: { body: "Change this." },
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().error.message).toBe("Task run follow-up not found.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("returns not found when deleting a missing followup id", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Missing followup delete");
+      const response = await harness.server.inject({
+        method: "DELETE",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups/missing-followup`,
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().error.message).toBe("Task run follow-up not found.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("returns not found when deleting a followup from another run", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Wrong run followup delete");
+      const otherRun = await harness.taskService.createRun({
+        taskId: task.id,
+        agentId: task.agentId,
+        triggerSource: "manual",
+        opencodeSessionId: "other-session",
+        renderedPrompt: "Other run.",
+      });
+      const followup = await harness.taskService.createFollowup(run.id, { body: "Keep this." });
+      const response = await harness.server.inject({
+        method: "DELETE",
+        url: `/api/tasks/${task.id}/runs/${otherRun.id}/followups/${followup.id}`,
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().error.message).toBe("Task run follow-up not found.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("rejects followup edits once the followup has been sent", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "Sent followup edit");
+      const followup = await harness.taskService.createFollowup(run.id, { body: "Keep this." });
+      await harness.taskExecutionService.continueRunWithFollowups(run.id);
+      const response = await harness.server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups/${followup.id}`,
+        payload: { body: "Change this." },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.message).toBe("Only pending follow-ups can be edited.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("updates feedback through the route before a derived subtask run starts", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const agent = await insertAgent(harness.testDb.client.db);
+      const task = await harness.taskService.create({ agentId: agent.id, title: "Feedback edit" });
+      const feedback = await harness.taskService.createFeedback(task.id, { body: "Old feedback." });
+      const response = await harness.server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/feedback/${feedback.id}`,
+        payload: { body: "Updated feedback." },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        id: feedback.id,
+        body: "Updated feedback.",
+        subtasks: [expect.objectContaining({ description: "Updated feedback." })],
+      });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("rejects feedback edits after a derived subtask run has started", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const agent = await insertAgent(harness.testDb.client.db);
+      const task = await harness.taskService.create({
+        agentId: agent.id,
+        title: "Locked feedback",
+      });
+      const feedback = await harness.taskService.createFeedback(task.id, { body: "Old feedback." });
+      await harness.taskExecutionService.queue(task.id, { triggerSource: "manual" });
+      const response = await harness.server.inject({
+        method: "PATCH",
+        url: `/api/tasks/${task.id}/feedback/${feedback.id}`,
+        payload: { body: "Updated feedback." },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.message).toBe(
+        "Feedback cannot be edited after a subtask run has started.",
+      );
+    } finally {
+      await harness.close();
+    }
+  });
 });
+
+async function createTaskRouteHarness() {
+  const testDb = await createTestDatabase();
+  const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+  const opencodeService = createMockOpenCodeService();
+  const conversationService = createConversationService({
+    db: testDb.client.db,
+    config: testDb.config,
+    opencodeService,
+  });
+  const taskContextAttachmentService = createTaskContextAttachmentService({
+    config: testDb.config,
+    taskService,
+  });
+  const taskExecutionService = createTaskExecutionService({
+    db: testDb.client.db,
+    taskService,
+    conversationService,
+    taskContextAttachmentService,
+  });
+  const taskSchedulerService = createTaskSchedulerService({
+    db: testDb.client.db,
+    taskService,
+    executionService: taskExecutionService,
+  });
+  const server = createServer({
+    config: testDb.config,
+    logger: createLogger(testDb.config),
+    database: testDb.client,
+    apiTokenService: createApiTokenService({ db: testDb.client.db }),
+    orchestrator: createOrchestrator(),
+    opencodeService,
+    openCodeEventService: { subscribe: () => {} },
+    secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    scheduler: createSchedulerService({ delegate: taskSchedulerService }),
+    taskService,
+    taskExecutionService,
+    taskSchedulerService,
+  });
+
+  return {
+    testDb,
+    taskService,
+    taskExecutionService,
+    server,
+    close: async () => {
+      taskSchedulerService.stop();
+      await server.close();
+      await testDb.cleanup();
+    },
+  };
+}
+
+async function createTerminalRunFixture(
+  harness: Awaited<ReturnType<typeof createTaskRouteHarness>>,
+  title: string,
+) {
+  const agent = await insertAgent(harness.testDb.client.db);
+  const task = await harness.taskService.create({ agentId: agent.id, title });
+  const queued = await harness.taskExecutionService.queue(task.id, { triggerSource: "manual" });
+
+  await expect
+    .poll(async () => (await harness.taskService.getRunById(queued.id))?.status)
+    .toBe("running");
+
+  await harness.taskService.setRunStatus(queued.id, "completed", {
+    completedAt: "2026-06-01T12:30:00.000Z",
+    finalMessage: "Finished.",
+  });
+
+  const run = await harness.taskService.getRunById(queued.id);
+
+  if (!run) {
+    throw new Error("Expected queued run.");
+  }
+
+  return { task, run };
+}
 
 async function insertAgent(db: AppDb): Promise<typeof agents.$inferSelect> {
   const timestamp = new Date();

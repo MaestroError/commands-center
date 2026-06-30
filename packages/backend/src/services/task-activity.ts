@@ -22,6 +22,7 @@ type TerminalRun = Pick<
   | "errorMessage"
   | "needsHumanReview"
   | "humanReviewReason"
+  | "reviewQuestion"
   | "artifacts"
 >;
 
@@ -64,6 +65,12 @@ export function buildTerminalActivity(args: {
     ...basePayload,
     ...((run.artifacts?.length ?? 0) > 0 ? { artifacts: run.artifacts } : {}),
   };
+  const reviewQuestionPayload: Record<string, unknown> = run.reviewQuestion
+    ? {
+        question: run.reviewQuestion.question,
+        suggestedReplies: run.reviewQuestion.suggestedReplies,
+      }
+    : {};
 
   if (failed) {
     return {
@@ -107,7 +114,7 @@ export function buildTerminalActivity(args: {
         level: "action_required",
         title: `Task needs review: ${taskTitle}`,
         body: run.humanReviewReason ?? run.resultText ?? run.finalMessage ?? null,
-        payload: outcomePayload,
+        payload: { ...outcomePayload, ...reviewQuestionPayload },
         dedupeKey: `task_needs_review:${run.id}`,
       };
     }
@@ -117,7 +124,7 @@ export function buildTerminalActivity(args: {
         level: "action_required",
         title: `Feedback needs review: ${taskTitle}`,
         body: run.humanReviewReason ?? run.resultText ?? run.finalMessage ?? null,
-        payload: basePayload,
+        payload: { ...basePayload, ...reviewQuestionPayload },
         dedupeKey: `subtask_needs_review:${run.id}`,
       };
     }

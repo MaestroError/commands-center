@@ -1,7 +1,7 @@
 import { readdir, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { and, count, eq, isNull, ne, or } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { readConfigFile, writeConfigFileAtomic } from "../lib/config-file.js";
@@ -20,8 +20,10 @@ import {
   MAX_FALLBACK_MODELS,
   queueTaskInputSchema,
   recurringTaskScheduleSchema,
+  reviewQuestionSchema,
   setTaskRunResultInputSchema,
   createTaskFeedbackInputSchema,
+  createTaskRunFollowupInputSchema,
   taskFeedbackThreadListSchema,
   taskFeedbackThreadSchema,
   taskContextInputSchema,
@@ -29,6 +31,7 @@ import {
   taskListSchema,
   taskPermissionProfileSchema,
   persistedTaskRunArtifactSchema,
+  taskRunFollowupSchema,
   taskRunListSchema,
   taskRunSchema,
   taskSchema,
@@ -41,18 +44,21 @@ import {
   taskTodoInputSchema,
   taskTodoSchema,
   updateTaskInputSchema,
+  updateTaskFeedbackInputSchema,
   updateTaskTemplateInputSchema,
+  updateTaskRunFollowupInputSchema,
   updateTaskRunInputSchema,
   updateTaskSubtaskInputSchema,
   type AppendTaskContextInput,
   type CreateTaskTemplateInput,
   type CreateTaskRunInput,
-  type TaskRunArtifact,
   type ListTaskRunsQuery,
   type ListTasksQuery,
   type Task,
   type TaskContext,
   type TaskFeedbackThread,
+  type TaskRunArtifact,
+  type TaskRunFollowup,
   type TaskRun,
   type TaskRunStatus,
   type TaskSubtask,
@@ -70,6 +76,7 @@ import type { AppDb } from "../db/client.js";
 import { createId, now } from "../db/ids.js";
 import {
   task_feedback,
+  task_run_followups,
   task_runs,
   task_subtasks,
   task_templates,
@@ -876,6 +883,223 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       });
     },
 
+    async updateFeedback(taskId: string, feedbackId: string, input: unknown) {
+      await requireTask(taskId, { includeArchived: true });
+      const parsed = updateTaskFeedbackInputSchema.parse(input);
+      const feedback = await options.db.query.task_feedback.findFirst({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.id, feedbackId),
+            operators.eq(table.task_id, taskId),
+            operators.isNull(table.deleted_at),
+          ),
+      });
+
+      if (!feedback) {
+        return undefined;
+      }
+
+      const subtasks = await options.db.query.task_subtasks.findMany({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.feedback_id, feedbackId),
+            operators.isNull(table.deleted_at),
+          ),
+      });
+      const subtaskIds = subtasks.map((subtask) => subtask.id);
+
+      if (subtaskIds.length > 0) {
+        const existingRun = await options.db.query.task_runs.findFirst({
+          where: (table, operators) => operators.inArray(table.subtask_id, subtaskIds),
+        });
+
+        if (existingRun) {
+          throw new ConflictError("Feedback cannot be edited after a subtask run has started.");
+        }
+      }
+
+      const timestamp = now();
+      options.db.transaction((tx) => {
+        tx.update(task_feedback)
+          .set({
+            body: parsed.body,
+            updated_at: timestamp,
+          })
+          .where(eq(task_feedback.id, feedbackId))
+          .run();
+
+        if (subtaskIds.length > 0) {
+          tx.update(task_subtasks)
+            .set({
+              description: parsed.body,
+              updated_at: timestamp,
+            })
+            .where(and(eq(task_subtasks.feedback_id, feedbackId), isNull(task_subtasks.deleted_at)))
+            .run();
+        }
+      });
+
+      const threads = await this.listFeedback(taskId);
+      return threads.find((thread) => thread.id === feedbackId);
+    },
+
+    async listFollowups(runId: string): Promise<TaskRunFollowup[]> {
+      await requireTaskRun(runId);
+      const rows = await options.db.query.task_run_followups.findMany({
+        where: (table, operators) => operators.eq(table.run_id, runId),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+
+      return rows.map(mapTaskRunFollowup);
+    },
+
+    async listPendingFollowups(runId: string): Promise<TaskRunFollowup[]> {
+      await requireTaskRun(runId);
+      const rows = await options.db.query.task_run_followups.findMany({
+        where: (table, operators) =>
+          operators.and(operators.eq(table.run_id, runId), operators.eq(table.status, "pending")),
+        orderBy: (table, operators) => [operators.asc(table.created_at)],
+      });
+
+      return rows.map(mapTaskRunFollowup);
+    },
+
+    async createFollowup(runId: string, input: unknown): Promise<TaskRunFollowup> {
+      const parsed = createTaskRunFollowupInputSchema.parse(input);
+      const run = await requireTaskRunWithSession(runId);
+      const timestamp = now();
+      const [row] = await options.db
+        .insert(task_run_followups)
+        .values({
+          id: createId(),
+          task_id: run.task_id,
+          run_id: run.id,
+          kind: parsed.kind,
+          status: "pending",
+          body: parsed.body,
+          sent_at: null,
+          error_message: null,
+          created_at: timestamp,
+          updated_at: timestamp,
+        })
+        .returning();
+
+      if (!row) {
+        throw new Error("Failed to create task run follow-up record.");
+      }
+
+      return mapTaskRunFollowup(row);
+    },
+
+    async updateFollowup(
+      runId: string,
+      followupId: string,
+      input: unknown,
+    ): Promise<TaskRunFollowup | undefined> {
+      const parsed = updateTaskRunFollowupInputSchema.parse(input);
+
+      return await Promise.resolve(
+        options.db.transaction((tx) => {
+          const existing = tx
+            .select()
+            .from(task_run_followups)
+            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
+            .get();
+
+          if (!existing) {
+            return undefined;
+          }
+
+          if (existing.status !== "pending") {
+            throw new ConflictError("Only pending follow-ups can be edited.");
+          }
+
+          const updated = tx
+            .update(task_run_followups)
+            .set({
+              body: parsed.body,
+              updated_at: now(),
+            })
+            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
+            .returning()
+            .get();
+
+          if (!updated) {
+            throw new Error("Failed to update task run follow-up record.");
+          }
+
+          return mapTaskRunFollowup(updated);
+        }),
+      );
+    },
+
+    async deleteFollowup(runId: string, followupId: string): Promise<boolean> {
+      return await Promise.resolve(
+        options.db.transaction((tx) => {
+          const existing = tx
+            .select()
+            .from(task_run_followups)
+            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
+            .get();
+
+          if (!existing) {
+            return false;
+          }
+
+          if (existing.status !== "pending") {
+            throw new ConflictError("Only pending follow-ups can be deleted.");
+          }
+
+          tx.delete(task_run_followups)
+            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
+            .run();
+          return true;
+        }),
+      );
+    },
+
+    async markFollowupsSent(followupIds: string[], sentAt: string): Promise<TaskRunFollowup[]> {
+      if (followupIds.length === 0) {
+        return [];
+      }
+
+      const sentAtDate = new Date(z.string().datetime().parse(sentAt));
+      const rows = await options.db
+        .update(task_run_followups)
+        .set({
+          status: "sent",
+          sent_at: sentAtDate,
+          error_message: null,
+          updated_at: now(),
+        })
+        .where(
+          and(
+            inArray(task_run_followups.id, followupIds),
+            eq(task_run_followups.status, "pending"),
+          ),
+        )
+        .returning();
+
+      return rows.map(mapTaskRunFollowup);
+    },
+
+    async markFollowupFailed(
+      followupId: string,
+      errorMessage: string,
+    ): Promise<TaskRunFollowup | undefined> {
+      const [row] = await options.db
+        .update(task_run_followups)
+        .set({
+          status: "failed",
+          error_message: errorMessage,
+          updated_at: now(),
+        })
+        .where(and(eq(task_run_followups.id, followupId), eq(task_run_followups.status, "pending")))
+        .returning();
+
+      return row ? mapTaskRunFollowup(row) : undefined;
+    },
+
     async listSubtasks(taskId: string): Promise<TaskSubtask[]> {
       await requireTask(taskId, { includeArchived: true });
       const rows = await options.db.query.task_subtasks.findMany({
@@ -1276,7 +1500,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         orderBy: (table, operators) => [operators.desc(table.created_at)],
       });
 
-      return taskRunListSchema.parse(rows.map(mapTaskRun));
+      return taskRunListSchema.parse(await mapTaskRunsWithPendingFollowups(options.db, rows));
     },
 
     async getRun(taskId: string, runId: string): Promise<TaskRun | undefined> {
@@ -1298,7 +1522,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           operators.and(operators.inArray(table.task_id, taskIds), operators.eq(table.id, runId)),
       });
 
-      return row ? mapTaskRun(row) : undefined;
+      return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
     },
 
     async getRunById(runId: string): Promise<TaskRun | undefined> {
@@ -1306,7 +1530,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         where: (table, operators) => operators.eq(table.id, runId),
       });
 
-      return row ? mapTaskRun(row) : undefined;
+      return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
     },
 
     async listActiveRuns(): Promise<TaskRun[]> {
@@ -1315,7 +1539,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         orderBy: (table, operators) => [operators.desc(table.created_at)],
       });
 
-      return taskRunListSchema.parse(rows.map(mapTaskRun));
+      return taskRunListSchema.parse(await mapTaskRunsWithPendingFollowups(options.db, rows));
     },
 
     async getActiveRunForTask(taskId: string, subtaskId?: string): Promise<TaskRun | undefined> {
@@ -1331,7 +1555,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         orderBy: (table, operators) => [operators.desc(table.created_at)],
       });
 
-      return row ? mapTaskRun(row) : undefined;
+      return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
     },
 
     async getRunningRunForAgent(agentId: string): Promise<TaskRun | undefined> {
@@ -1344,7 +1568,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         orderBy: (table, operators) => [operators.asc(table.created_at)],
       });
 
-      return row ? mapTaskRun(row) : undefined;
+      return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
     },
 
     async getNextQueuedRunForAgent(agentId: string): Promise<TaskRun | undefined> {
@@ -1357,7 +1581,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         orderBy: (table, operators) => [operators.asc(table.created_at)],
       });
 
-      return row ? mapTaskRun(row) : undefined;
+      return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
     },
 
     async tryStartQueuedRun(
@@ -1389,7 +1613,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           .where(and(eq(task_runs.id, id), eq(task_runs.status, "queued")))
           .returning();
 
-        return row ? mapTaskRun(row) : undefined;
+        return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
       } catch (error) {
         if (isRunningAgentConstraintError(error)) {
           return undefined;
@@ -1517,7 +1741,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         throw new Error("Failed to create task run record.");
       }
 
-      return mapTaskRun(row);
+      return mapTaskRunWithPendingFollowups(options.db, row);
     },
 
     async updateRun(id: string, input: UpdateTaskRunInput): Promise<TaskRun | undefined> {
@@ -1587,7 +1811,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         throw new Error("Failed to update task run record.");
       }
 
-      return mapTaskRun(row);
+      return mapTaskRunWithPendingFollowups(options.db, row);
     },
 
     async setRunStatus(
@@ -1666,19 +1890,38 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       taskRunId: string,
       agentId: string,
       reason?: string,
+      question?: string,
+      suggestedReplies?: string[],
     ): Promise<TaskRun> {
-      const parsed = markTaskRunNeedsReviewInputSchema.parse({ taskRunId, reason });
-      await requireWritableRun(parsed.taskRunId, agentId);
-      const updated = await this.updateRun(parsed.taskRunId, {
-        needsHumanReview: true,
-        humanReviewReason: parsed.reason,
+      const parsed = markTaskRunNeedsReviewInputSchema.parse({
+        taskRunId,
+        reason,
+        question,
+        suggestedReplies,
       });
+      await requireWritableRun(parsed.taskRunId, agentId);
+      const reviewQuestion = parsed.question
+        ? reviewQuestionSchema.parse({
+            question: parsed.question,
+            suggestedReplies: parsed.suggestedReplies,
+          })
+        : undefined;
+      const [updated] = await options.db
+        .update(task_runs)
+        .set({
+          needs_human_review: true,
+          human_review_reason: parsed.reason ?? null,
+          review_question_json: reviewQuestion ? JSON.stringify(reviewQuestion) : null,
+          updated_at: now(),
+        })
+        .where(eq(task_runs.id, parsed.taskRunId))
+        .returning();
 
       if (!updated) {
         throw new NotFoundError("Task run not found.");
       }
 
-      return updated;
+      return mapTaskRunWithPendingFollowups(options.db, updated);
     },
   };
 
@@ -1700,6 +1943,30 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
     }
 
     return mapTaskRun(run);
+  }
+
+  async function requireTaskRun(taskRunId: string): Promise<typeof task_runs.$inferSelect> {
+    const run = await options.db.query.task_runs.findFirst({
+      where: (table, operators) => operators.eq(table.id, taskRunId),
+    });
+
+    if (!run) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    return run;
+  }
+
+  async function requireTaskRunWithSession(
+    taskRunId: string,
+  ): Promise<typeof task_runs.$inferSelect> {
+    const run = await requireTaskRun(taskRunId);
+
+    if (!run.opencode_session_id) {
+      throw new ConflictError("Task run does not have an OpenCode session.");
+    }
+
+    return run;
   }
 
   async function applyTaskStatusForTerminalRun(run: TaskRun): Promise<void> {
@@ -2289,6 +2556,7 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
     artifacts: parseTaskRunArtifacts(row.artifacts_json),
     needsHumanReview: row.needs_human_review ?? false,
     humanReviewReason: row.human_review_reason ?? undefined,
+    reviewQuestion: parseOptional(row.review_question_json, reviewQuestionSchema),
     result: parseJsonRecord(row.result_json),
     errorMessage: row.error_message ?? undefined,
     errorDetails: parseJsonRecord(row.error_details_json),
@@ -2299,6 +2567,75 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   });
+}
+
+function mapTaskRunFollowup(row: typeof task_run_followups.$inferSelect): TaskRunFollowup {
+  return taskRunFollowupSchema.parse({
+    id: row.id,
+    taskId: row.task_id,
+    runId: row.run_id,
+    kind: row.kind,
+    status: row.status,
+    body: row.body,
+    createdAt: row.created_at.toISOString(),
+    sentAt: row.sent_at?.toISOString(),
+    errorMessage: row.error_message ?? undefined,
+  });
+}
+
+async function mapTaskRunWithPendingFollowups(
+  db: AppDb,
+  row: typeof task_runs.$inferSelect,
+): Promise<TaskRun> {
+  const [run] = await mapTaskRunsWithPendingFollowups(db, [row]);
+  return run ?? mapTaskRun(row);
+}
+
+async function mapTaskRunsWithPendingFollowups(
+  db: AppDb,
+  rows: Array<typeof task_runs.$inferSelect>,
+): Promise<TaskRun[]> {
+  const runs = rows.map(mapTaskRun);
+  if (runs.length === 0) {
+    return runs;
+  }
+
+  const pendingCounts = await getPendingFollowupCountByRunId(
+    db,
+    runs.map((run) => run.id),
+  );
+
+  return runs.map((run) => ({
+    ...run,
+    pendingFollowupCount: pendingCounts.get(run.id) ?? 0,
+  }));
+}
+
+async function getPendingFollowupCountByRunId(
+  db: AppDb,
+  runIds: string[],
+): Promise<Map<string, number>> {
+  const uniqueRunIds = Array.from(new Set(runIds.filter(Boolean)));
+
+  if (uniqueRunIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await db
+    .select({
+      runId: task_run_followups.run_id,
+      value: count(),
+    })
+    .from(task_run_followups)
+    .where(
+      and(
+        inArray(task_run_followups.run_id, uniqueRunIds),
+        eq(task_run_followups.status, "pending"),
+      ),
+    )
+    .groupBy(task_run_followups.run_id);
+
+  return new Map(rows.map((row) => [row.runId, row.value]));
 }
 
 /**

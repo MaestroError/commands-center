@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { taskRunArtifactSchema } from "./tasks.js";
+
 /**
  * Activity kinds. `task_run_approval` is included now (produced by the task-run
  * approval feature) so adding it later needs no schema change. Phase 1 ships the
@@ -18,6 +20,34 @@ export const activityKindSchema = z.enum([
 export const activityLevelSchema = z.enum(["action_required", "info"]);
 
 export const activityStatusSchema = z.enum(["pending", "archived"]);
+
+const reviewSuggestedRepliesSchema = z.array(z.string().trim().min(1).max(200)).max(6);
+
+/**
+ * Shared payload helper for `task_needs_review` and `subtask_needs_review`.
+ * `activitySchema.payload` stays opaque at the API boundary, but producers and
+ * consumers can use this helper when they need typed access to review-question
+ * fields on those activity kinds.
+ */
+export const reviewActivityPayloadSchema = z
+  .object({
+    taskId: z.string().min(1),
+    taskRunId: z.string().min(1),
+    subtaskId: z.string().min(1).optional(),
+    question: z.string().trim().min(1).optional(),
+    suggestedReplies: reviewSuggestedRepliesSchema.optional(),
+    artifacts: z.array(taskRunArtifactSchema).optional(),
+  })
+  .refine(
+    (value) =>
+      value.question !== undefined ||
+      value.suggestedReplies === undefined ||
+      value.suggestedReplies.length === 0,
+    {
+      message: "Question is required when suggested replies are provided.",
+      path: ["question"],
+    },
+  );
 
 export const activitySchema = z.object({
   id: z.string().min(1),
@@ -44,3 +74,4 @@ export type ActivityLevel = z.infer<typeof activityLevelSchema>;
 export type ActivityStatus = z.infer<typeof activityStatusSchema>;
 export type Activity = z.infer<typeof activitySchema>;
 export type ActivityListResponse = z.infer<typeof activityListResponseSchema>;
+export type ReviewActivityPayload = z.infer<typeof reviewActivityPayloadSchema>;

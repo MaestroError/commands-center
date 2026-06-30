@@ -1,4 +1,5 @@
 import {
+  reviewActivityPayloadSchema,
   taskRunArtifactSchema,
   type Activity,
   type ActivityKind,
@@ -55,6 +56,7 @@ export function ActivityCard({
   const meta = getActivityKindMeta(activity.kind);
   const Icon = meta.icon;
   const actionRequired = activity.level === "action_required";
+  const reviewQuestion = readReviewQuestion(activity);
 
   return (
     <div
@@ -81,7 +83,13 @@ export function ActivityCard({
               {relativeTime(activity.createdAt)}
             </span>
           </div>
-          {activity.body && !compact ? (
+          {reviewQuestion && !compact ? (
+            <div className="mt-1.5 rounded-md border border-accent/20 bg-accent/5 px-2 py-1.5">
+              <p className="break-words text-xs font-medium text-text-primary [overflow-wrap:anywhere]">
+                {reviewQuestion}
+              </p>
+            </div>
+          ) : activity.body && !compact ? (
             <div className="mt-1.5 max-h-48 overflow-auto break-words text-xs text-text-secondary">
               <Markdown content={activity.body} />
             </div>
@@ -185,4 +193,13 @@ function readActivityArtifacts(activity: Activity): TaskRunArtifact[] {
     .map((artifact) => taskRunArtifactSchema.safeParse(artifact))
     .filter((result) => result.success)
     .map((result) => result.data);
+}
+
+function readReviewQuestion(activity: Activity): string | undefined {
+  if (activity.kind !== "task_needs_review" && activity.kind !== "subtask_needs_review") {
+    return undefined;
+  }
+
+  const parsed = reviewActivityPayloadSchema.safeParse(activity.payload);
+  return parsed.success ? parsed.data.question : undefined;
 }

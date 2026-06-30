@@ -31,6 +31,7 @@ import {
   createMcpServerInputSchema,
   createTaskFeedbackInputSchema,
   createTaskInputSchema,
+  createTaskRunFollowupInputSchema,
   createTaskTemplateInputSchema,
   engineStatusSchema,
   fileManagerCreateEntryInputSchema,
@@ -93,6 +94,7 @@ import {
   taskFeedbackThreadSchema,
   taskQueuePreviewInputSchema,
   taskQueuePreviewSchema,
+  taskRunFollowupSchema,
   taskRunListSchema,
   taskRunSchema,
   taskRunSessionInspectionSchema,
@@ -105,6 +107,8 @@ import {
   taskTemplateSchema,
   updateTaskContextInputSchema,
   updateTaskArtifactSharingPreferencesInputSchema,
+  updateTaskFeedbackInputSchema,
+  updateTaskRunFollowupInputSchema,
   updateTaskTemplateInputSchema,
   terminalListResponseSchema,
   terminalResizeInputSchema,
@@ -134,6 +138,7 @@ import {
   type CreateTaskArtifactShareLinkInput,
   type CreateTaskArtifactShareLinkResponse,
   type CreateTaskInput,
+  type CreateTaskRunFollowupInput,
   type CreateTaskTemplateInput,
   type ConversationDetail,
   type ConversationSnapshot,
@@ -195,6 +200,7 @@ import {
   type TaskTemplate,
   type TaskTemplateRunNowInput,
   type TaskRun,
+  type TaskRunFollowup,
   type TaskRunMonitorSettings,
   type TaskRunSessionInspection,
   type TaskSchedulerState,
@@ -208,6 +214,8 @@ import {
   type UpdateTaskInput,
   type UpdateTaskArtifactSharingPreferencesInput,
   type UpdateTaskContextInput,
+  type UpdateTaskFeedbackInput,
+  type UpdateTaskRunFollowupInput,
   type UpdateTaskTemplateInput,
   type UpdateSystemUpdatePreferencesInput,
   type UpdateWorkspaceSkillCategoryInput,
@@ -922,6 +930,21 @@ export async function createTaskFeedback(
   );
 }
 
+export async function updateTaskFeedback(
+  taskId: string,
+  feedbackId: string,
+  input: UpdateTaskFeedbackInput,
+): Promise<TaskFeedbackThread> {
+  return requestJson<TaskFeedbackThread>(
+    `/api/tasks/${encodeURIComponent(taskId)}/feedback/${encodeURIComponent(feedbackId)}`,
+    taskFeedbackThreadSchema,
+    {
+      method: "PATCH",
+      body: updateTaskFeedbackInputSchema.parse(input),
+    },
+  );
+}
+
 export async function listTaskSubtasks(taskId: string): Promise<TaskSubtask[]> {
   return requestJson<TaskSubtask[]>(
     `/api/tasks/${encodeURIComponent(taskId)}/subtasks`,
@@ -1005,6 +1028,68 @@ export async function getTaskRun(taskId: string, runId: string): Promise<TaskRun
   return requestJson<TaskRun>(
     `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}`,
     taskRunSchema,
+  );
+}
+
+export async function listRunFollowups(taskId: string, runId: string): Promise<TaskRunFollowup[]> {
+  return requestJson<TaskRunFollowup[]>(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/followups`,
+    taskRunFollowupSchema.array(),
+  );
+}
+
+export async function createRunFollowup(
+  taskId: string,
+  runId: string,
+  input: CreateTaskRunFollowupInput,
+): Promise<TaskRunFollowup> {
+  return requestJson<TaskRunFollowup>(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/followups`,
+    taskRunFollowupSchema,
+    {
+      method: "POST",
+      body: createTaskRunFollowupInputSchema.parse(input),
+    },
+  );
+}
+
+export async function updateRunFollowup(
+  taskId: string,
+  runId: string,
+  followupId: string,
+  input: UpdateTaskRunFollowupInput,
+): Promise<TaskRunFollowup> {
+  return requestJson<TaskRunFollowup>(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/followups/${encodeURIComponent(followupId)}`,
+    taskRunFollowupSchema,
+    {
+      method: "PATCH",
+      body: updateTaskRunFollowupInputSchema.parse(input),
+    },
+  );
+}
+
+export async function deleteRunFollowup(
+  taskId: string,
+  runId: string,
+  followupId: string,
+): Promise<void> {
+  const response = await apiFetch(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/followups/${encodeURIComponent(followupId)}`,
+    { method: "DELETE" },
+  );
+
+  if (!response.ok && response.status !== 204) {
+    const payload = (await response.json().catch(() => undefined)) as unknown;
+    throw new Error(readApiError(payload, response.status, response.statusText));
+  }
+}
+
+export async function continueRun(taskId: string, runId: string): Promise<TaskRun> {
+  return requestJson<TaskRun>(
+    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/continue`,
+    taskRunSchema,
+    { method: "POST" },
   );
 }
 
