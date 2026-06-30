@@ -156,11 +156,11 @@ function ReviewReplyActions({ activity, onArchive, archiving }: ActivityActionsP
     <div className="grid gap-2">
       {suggestedReplies.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
-          {suggestedReplies.map((suggestedReply) => (
+          {suggestedReplies.map((suggestedReply, index) => (
             <button
               aria-label={`Use suggested reply: ${suggestedReply}`}
               className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-text-primary transition hover:border-accent/50 hover:text-accent"
-              key={suggestedReply}
+              key={`${index}-${suggestedReply}`}
               type="button"
               onClick={() => setReply(suggestedReply)}
             >
