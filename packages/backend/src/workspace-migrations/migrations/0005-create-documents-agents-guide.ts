@@ -18,74 +18,68 @@ function agentsGuidePath(workspaceDir: string): string {
  */
 export const DOCUMENTS_AGENTS_GUIDE = `# Documents
 
-This folder holds the project's **Documents** — shared, human-readable markdown
-files that capture lasting project context (specs, plans, overviews, decisions).
-They are first-class, portable workspace files: the markdown on disk is the
-source of truth. SQLite only stores derived metadata (title, description,
-author, timestamps) and is rebuilt from these files on boot.
+This folder holds the project's **Documents**: shared markdown files that capture
+lasting project context (specs, plans, overviews, decisions, references) so it
+persists across sessions and is available to every specialist.
 
-## What lives here
+Documents are markdown files (\`.md\` / \`.markdown\`) under \`Documents/\`, organized
+in folders.
 
-- Markdown files (\`.md\` or \`.markdown\`) under \`Documents/\`, organized in folders.
-- This \`AGENTS.md\` guide.
-- Hidden files/folders, \`node_modules\`, and non-markdown files are ignored by the
-  Documents tree (but markdown can still *reference* other workspace files — see
-  "Referencing workspace files" below).
+## Creating a new document
 
-## How they are accessed
+Create new documents **only** with the \`register_project_document\` MCP tool. Give
+it a \`path\` relative to \`Documents/\` (e.g. \`design/overview.md\`); it creates the
+file and registers it. Do not create documents by other means — this keeps them
+registered and discoverable.
 
-- **Documents page** (UI): a WYSIWYG markdown editor (Milkdown). Browse the tree
-  from the left sidebar; open a document to edit it.
-- **Global search**: documents appear in a dedicated "Documents" group.
-- **Mentions**: type \`#\` in chat/task composers to reference a document; selecting
-  one inserts \`Documents/<relative-path>\`.
-- **HTTP API**: \`/api/documents/*\` (tree, search, file, content, metadata, asset).
+## Editing an existing document
 
-## How specialists create / update documents
+Edit existing documents by editing the \`.md\` file directly with your normal file
+editing tools. Do not use MCP tools to rewrite document content;
+\`register_project_document\` is for creation and metadata only and will not
+overwrite an existing file's body.
 
-Use the default MCP tools:
+## Finding documents
 
-- \`list_project_documents\` — list documents with relative path, full path,
-  title, and short description.
-- \`register_project_document\` — create a markdown file if missing, or update its
-  metadata without overwriting content. \`path\` is relative to \`Documents/\`
-  (e.g. \`design/overview.md\`).
+Use \`list_project_documents\` to list documents with their relative path, full
+path, title, and short description.
 
-When running inside a task, also attach the document with \`add_task_artifact\`
-using \`type: "document"\` and the same \`Documents/\`-relative path, so the user can
-open it directly in the Documents module.
+## Linking a document to a task
 
-You may also write \`.md\` files here directly with normal file tools. New
-documents created through the UI default to the \`.md\` extension.
+When you create or update a document during a task run, attach it with
+\`add_task_artifact\` using \`type: "document"\` and the same \`Documents/\`-relative
+path, so it is surfaced as a task artifact.
 
 ## What documents support
 
 - CommonMark + GFM markdown.
-- Metadata: title, short description, and author (stored separately; editing
-  metadata does not rewrite the document body).
-- Images: uploaded/pasted images are embedded inline as base64 data URIs so the
-  document stays self-contained.
+- Metadata: title, short description, and author.
+- Images embedded inline, or references to existing workspace files (below).
 
 ## Referencing workspace files and images
 
-To reference an existing file already in the workspace (for example an image a
-specialist produced elsewhere) instead of embedding a copy, use a
-\`workspace:\`-prefixed path that is **relative to the workspace root**:
+To reference a file that already exists in the workspace (for example an image
+produced elsewhere) instead of embedding a copy, use a \`workspace:\`-prefixed path
+relative to the workspace root:
 
 \`\`\`markdown
 ![Architecture diagram](workspace:tools/researcher/diagram.png)
 \`\`\`
 
-The editor resolves \`workspace:\` references through \`/api/documents/asset\` for
-display while keeping the reference itself in the markdown, so the document stays
-portable. Plain \`http(s):\` and \`data:\` URLs are used as-is.
+Plain \`http(s):\` and \`data:\` URLs are used as-is.
 
 ## Path rules
 
-- Document paths are relative to \`Documents/\`, must use \`/\` separators, and must
-  not contain \`..\`, empty, or hidden segments.
-- \`workspace:\` asset references are relative to the workspace root and must stay
-  inside it.
+- Document paths are relative to \`Documents/\`, use \`/\` separators, and must not
+  contain \`..\`, empty, or hidden segments.
+- \`workspace:\` references are relative to the workspace root and must stay inside
+  it.
+
+## Note on human access
+
+The operator can browse, open, edit, and manage these documents through the app's
+Documents UI (a rich markdown editor with search and a folder tree). Documents you
+create or update here are immediately visible to them there.
 `;
 
 export const createDocumentsAgentsGuideMigration = {

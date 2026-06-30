@@ -804,6 +804,9 @@ select.cc-input {
   --crepe-color-outline: var(--border);
   --crepe-color-hover: var(--surface-elevated);
   --crepe-color-selected: var(--surface-elevated);
+  /* Align inline code with the theme instead of the default red. */
+  --crepe-color-inline-code: var(--text-primary);
+  --crepe-color-inline-area: var(--app-bg);
 }
 
 .milkdown-editor-wrapper {
@@ -813,4 +816,43 @@ select.cc-input {
 .milkdown-editor-wrapper .milkdown .editor {
   min-height: 14rem;
   padding: 1rem 1.25rem;
+}
+
+/* Inline code + fenced code blocks share one palette so they read as a set. */
+.milkdown-editor-wrapper .milkdown :not(pre) > code {
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.1em 0.35em;
+  color: var(--text-primary);
+  font-size: 0.875em;
+}
+
+.milkdown-editor-wrapper .milkdown pre,
+.milkdown-editor-wrapper .milkdown .cm-editor {
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--text-primary);
+}
+
+.milkdown-editor-wrapper .milkdown pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+
+/* Make table grid lines clearly visible (the default border is near-invisible). */
+.milkdown-editor-wrapper .milkdown table {
+  border-collapse: collapse;
+}
+
+.milkdown-editor-wrapper .milkdown table th,
+.milkdown-editor-wrapper .milkdown table td {
+  border: 1px solid color-mix(in srgb, var(--text-secondary) 45%, transparent);
+}
+
+.milkdown-editor-wrapper .milkdown table th {
+  background: var(--surface-elevated);
 }
