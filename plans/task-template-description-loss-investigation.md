@@ -1,5 +1,0 @@
-- [x] Capture the reported reproduction details from the attachment.
-- [x] Trace Task Template persistence and MCP creation paths.
-- [x] Trace the enable/update flow that schedules or triggers a template.
-- [x] Trace task/run creation from a template and verify which fields are copied.
-- [x] Identify the root cause and report it without code changes.
