@@ -150,13 +150,14 @@ describe("document service", () => {
       }
     });
 
-    it("rejects hidden segments split by a backslash separator", async () => {
+    it("rejects backslashes so persisted paths stay portable", async () => {
       const testDb = await createTestDatabase();
       const service = makeService(testDb);
 
       try {
         await setupDocsDir(testDb);
-        await expect(service.create({ path: "foo\\.hidden\\bar.md" })).rejects.toThrow("hidden");
+        await expect(service.create({ path: "design\\overview.md" })).rejects.toThrow("backslash");
+        await expect(service.create({ path: "foo\\.hidden\\bar.md" })).rejects.toThrow("backslash");
       } finally {
         await testDb.cleanup();
       }

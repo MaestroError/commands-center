@@ -4,26 +4,29 @@ import { fileManagerFileRevisionSchema } from "./file-manager.js";
 
 const MARKDOWN_EXTENSIONS = [".md", ".markdown"] as const;
 
-// Treat both POSIX (`/`) and Windows (`\`) separators when validating, so a
-// backslash path cannot smuggle a hidden segment past the per-segment checks.
-const PATH_SEPARATORS = /[\\/]/;
 // Windows drive-letter prefix (e.g. `C:` in `C:\notes.md` or `C:/notes.md`),
 // which is absolute on Windows even without a leading separator.
 const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
+const BACKSLASH_MESSAGE = "Path must use '/' separators, not backslashes";
 
 // A document path must be relative to Documents/: no leading separator and no
 // Windows drive-letter prefix, otherwise `path.resolve` would ignore the root.
 function isRelativeDocumentPath(p: string): boolean {
-  return !PATH_SEPARATORS.test(p[0] ?? "") && !WINDOWS_DRIVE_PREFIX.test(p);
+  return !p.startsWith("/") && !WINDOWS_DRIVE_PREFIX.test(p);
 }
 
+// Document paths are always `/`-separated for portability. Backslashes are
+// rejected outright (rather than split as separators) so the same path means
+// the same thing on every OS — on POSIX a `\` would otherwise become a literal
+// filename character, on Windows a directory separator.
 const documentRelativePathSchema = z
   .string()
   .trim()
   .min(1)
   .refine(isRelativeDocumentPath, { message: "Path must be relative" })
+  .refine((p) => !p.includes("\\"), { message: BACKSLASH_MESSAGE })
   .refine((p) => !p.includes(".."), { message: "Path must not contain .." })
-  .refine((p) => !p.split(PATH_SEPARATORS).some((s) => s === "" || s.startsWith(".")), {
+  .refine((p) => !p.split("/").some((s) => s === "" || s.startsWith(".")), {
     message: "Path must not contain empty or hidden segments",
   })
   .refine((p) => MARKDOWN_EXTENSIONS.some((ext) => p.toLowerCase().endsWith(ext)), {
@@ -35,8 +38,9 @@ const documentFolderPathSchema = z
   .trim()
   .min(1)
   .refine(isRelativeDocumentPath, { message: "Path must be relative" })
+  .refine((p) => !p.includes("\\"), { message: BACKSLASH_MESSAGE })
   .refine((p) => !p.includes(".."), { message: "Path must not contain .." })
-  .refine((p) => !p.split(PATH_SEPARATORS).some((s) => s === "" || s.startsWith(".")), {
+  .refine((p) => !p.split("/").some((s) => s === "" || s.startsWith(".")), {
     message: "Path must not contain empty or hidden segments",
   });
 

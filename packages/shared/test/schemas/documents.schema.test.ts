@@ -128,15 +128,17 @@ describe("document schemas", () => {
       );
     });
 
-    it("rejects hidden segments split by a backslash separator", () => {
-      expect(() => createDocumentInputSchema.parse({ path: "foo\\.hidden\\bar.md" })).toThrow(
-        "Path must not contain empty or hidden segments",
+    it("rejects backslashes anywhere in the path so paths stay portable", () => {
+      // A backslash would be a literal filename char on POSIX but a separator
+      // on Windows; reject it outright instead of accepting an OS-dependent path.
+      expect(() => createDocumentInputSchema.parse({ path: "design\\overview.md" })).toThrow(
+        "Path must use '/' separators",
       );
-    });
-
-    it("rejects a leading backslash as a non-relative path", () => {
+      expect(() => createDocumentInputSchema.parse({ path: "foo\\.hidden\\bar.md" })).toThrow(
+        "Path must use '/' separators",
+      );
       expect(() => createDocumentInputSchema.parse({ path: "\\notes.md" })).toThrow(
-        "Path must be relative",
+        "Path must use '/' separators",
       );
     });
 
@@ -185,6 +187,12 @@ describe("document schemas", () => {
       );
       expect(() => createDocumentFolderInputSchema.parse({ path: "C:/foo" })).toThrow(
         "Path must be relative",
+      );
+    });
+
+    it("rejects backslashes so folder paths stay portable", () => {
+      expect(() => createDocumentFolderInputSchema.parse({ path: "design\\specs" })).toThrow(
+        "Path must use '/' separators",
       );
     });
 

@@ -31,23 +31,25 @@ function isHiddenOrExcluded(name: string): boolean {
   return name.startsWith(".") || name === "node_modules";
 }
 
-// Split on both POSIX (`/`) and Windows (`\`) separators so a backslash path
-// can't smuggle a hidden segment past the per-segment checks (e.g. on Windows
-// `foo\.hidden\bar.md` would otherwise be treated as a single segment).
-const PATH_SEPARATORS = /[\\/]/;
 // Windows drive-letter prefix (e.g. `C:` in `C:\notes.md`), which is absolute
 // on Windows even without a leading separator — `resolve()` would then ignore
 // the Documents root and target an arbitrary location.
 const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
 
 function validateRelativePath(path: string): void {
-  if (!path || PATH_SEPARATORS.test(path[0] ?? "") || WINDOWS_DRIVE_PREFIX.test(path)) {
+  if (!path || path.startsWith("/") || WINDOWS_DRIVE_PREFIX.test(path)) {
     throw new BadRequestError("Path must be relative.");
+  }
+  // Reject backslashes outright so persisted paths are always `/`-separated and
+  // portable (a `\` is a literal filename char on POSIX but a separator on
+  // Windows). This is the real gate for the MCP register_project_document path.
+  if (path.includes("\\")) {
+    throw new BadRequestError("Path must use '/' separators, not backslashes.");
   }
   if (path.includes("..")) {
     throw new BadRequestError("Path must not contain '..'.");
   }
-  const segments = path.split(PATH_SEPARATORS);
+  const segments = path.split("/");
   if (segments.some((s) => s === "" || s.startsWith("."))) {
     throw new BadRequestError("Path must not contain empty or hidden segments.");
   }
