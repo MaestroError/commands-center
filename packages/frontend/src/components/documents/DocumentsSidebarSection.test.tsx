@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", () => ({
@@ -53,6 +53,40 @@ function renderSidebar(
 
 function tree(...nodes: DocumentTreeResponse["tree"]): DocumentTreeResponse {
   return { tree: nodes };
+}
+
+/**
+ * Unlike `renderSidebar`, this harness reads the live route via `useLocation`
+ * and forwards it as `pathname`, the way `AppShell` does — so navigating
+ * within the test actually changes `isActive` and exercises the
+ * auto-expand/collapse effect.
+ */
+function renderWithNavigation(initialEntries: string[] = ["/documents"]) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  function Harness() {
+    const location = useLocation();
+    return (
+      <>
+        <DocumentsSidebarSection
+          collapsed={false}
+          onNavigate={() => undefined}
+          onOpenSearch={() => undefined}
+          pathname={location.pathname}
+        />
+        <Link to="/documents">Go to Documents</Link>
+        <Link to="/tasks">Go to Tasks</Link>
+      </>
+    );
+  }
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={initialEntries}>
+        <Harness />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 beforeEach(() => {
@@ -217,6 +251,78 @@ describe("DocumentsSidebarSection", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByDisplayValue("ProjectInfo/")).toBeInTheDocument();
+  });
+
+  it("auto-collapses the Documents tree when navigating to another page", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(
+      tree({
+        name: "ProjectInfo",
+        relativePath: "ProjectInfo",
+        type: "directory",
+        title: null,
+        children: [],
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithNavigation(["/documents"]);
+
+    expect(await screen.findByText("ProjectInfo")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Collapse Documents" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "Go to Tasks" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Expand Documents" })).toBeInTheDocument();
+    });
+    expect(screen.queryByText("ProjectInfo")).not.toBeInTheDocument();
+  });
+
+  it("auto-expands the Documents tree when navigating back into Documents", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(
+      tree({
+        name: "ProjectInfo",
+        relativePath: "ProjectInfo",
+        type: "directory",
+        title: null,
+        children: [],
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithNavigation(["/tasks"]);
+
+    expect(screen.getByRole("button", { name: "Expand Documents" })).toBeInTheDocument();
+    expect(screen.queryByText("ProjectInfo")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "Go to Documents" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Collapse Documents" })).toBeInTheDocument();
+    });
+    expect(await screen.findByText("ProjectInfo")).toBeInTheDocument();
+  });
+
+  it("does not override a manual toggle while staying on the Documents page", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(
+      tree({
+        name: "ProjectInfo",
+        relativePath: "ProjectInfo",
+        type: "directory",
+        title: null,
+        children: [],
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithNavigation(["/documents"]);
+
+    expect(await screen.findByText("ProjectInfo")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Collapse Documents" }));
+
+    expect(screen.queryByText("ProjectInfo")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand Documents" })).toBeInTheDocument();
   });
 });
 

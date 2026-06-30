@@ -33,10 +33,13 @@ export function DocumentsSidebarSection(props: DocumentsSidebarSectionProps) {
   const [createDocFolder, setCreateDocFolder] = useState<string | null>(null);
   const [createFolderParent, setCreateFolderParent] = useState<string | null>(null);
 
+  // Auto-expand on navigating into the Documents page, auto-collapse on
+  // navigating away to any other page. Only fires on route transitions (not
+  // on every render), so manually toggling the section while staying on the
+  // Documents page is unaffected. Nested folder/document expand state lives
+  // in each DocumentSidebarNode and is untouched by this.
   useEffect(() => {
-    if (isActive) {
-      setOpen(true);
-    }
+    setOpen(isActive);
   }, [isActive]);
 
   const treeQuery = useQuery({
