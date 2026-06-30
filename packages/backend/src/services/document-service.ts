@@ -51,6 +51,12 @@ function validateDocumentPath(path: string): void {
   }
 }
 
+function assertContentSize(content: string): void {
+  if (Buffer.byteLength(content, "utf8") > MAX_CONTENT_BYTES) {
+    throw new BadRequestError("Document content exceeds the maximum allowed size.");
+  }
+}
+
 function titleFromFilename(filename: string): string {
   const name = basename(filename, extname(filename));
   return name.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -261,10 +267,12 @@ export function createDocumentService(options: {
         throw new ConflictError(`Document already exists: ${input.path}`);
       }
 
+      const content = input.content ?? "";
+      assertContentSize(content);
+
       const parentDir = resolve(absPath, "..");
       await mkdir(parentDir, { recursive: true });
 
-      const content = input.content ?? "";
       await writeFile(absPath, content, "utf8");
 
       const id = createId();
@@ -300,6 +308,7 @@ export function createDocumentService(options: {
       input: SaveDocumentContentInput,
     ): Promise<{ revision: { mtimeMs: number; sizeBytes: number } }> {
       validateDocumentPath(input.path);
+      assertContentSize(input.content);
       const absPath = fullPath(input.path);
 
       let currentStat;

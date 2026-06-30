@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { AppDb } from "../../../../../db/client.js";
+import { ConflictError } from "../../../../../lib/api-error.js";
 import type { RuntimeConfig } from "../../../../../lib/runtime-config.js";
 import { createDocumentService } from "../../../../../services/document-service.js";
 
@@ -115,7 +116,7 @@ export function createDocumentToolDefinitions(options: { db: AppDb; config: Runt
             });
             created = true;
           } catch (error) {
-            if (error instanceof Error && error.message.includes("already exists")) {
+            if (error instanceof ConflictError) {
               doc = await service.updateMetadata({
                 path: parsed.path,
                 title: parsed.title,

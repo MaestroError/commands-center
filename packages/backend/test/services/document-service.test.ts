@@ -161,6 +161,22 @@ describe("document service", () => {
         await testDb.cleanup();
       }
     });
+
+    it("rejects content exceeding the maximum allowed size without writing a file", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        const oversized = "a".repeat(5 * 1024 * 1024 + 1);
+        await expect(service.create({ path: "big.md", content: oversized })).rejects.toThrow(
+          "exceeds the maximum allowed size",
+        );
+        await expect(stat(service.fullPath("big.md"))).rejects.toMatchObject({ code: "ENOENT" });
+      } finally {
+        await testDb.cleanup();
+      }
+    });
   });
 
   describe("createFolder", () => {
@@ -311,6 +327,31 @@ describe("document service", () => {
             expectedRevision: { mtimeMs: 0, sizeBytes: 0 },
           }),
         ).rejects.toThrow("not found");
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects content exceeding the maximum allowed size without overwriting the file", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        await service.create({ path: "notes.md", content: "original" });
+        const doc = await service.read("notes.md");
+
+        const oversized = "a".repeat(5 * 1024 * 1024 + 1);
+        await expect(
+          service.saveContent({
+            path: "notes.md",
+            content: oversized,
+            expectedRevision: doc.revision,
+          }),
+        ).rejects.toThrow("exceeds the maximum allowed size");
+
+        const content = await readFile(service.fullPath("notes.md"), "utf8");
+        expect(content).toBe("original");
       } finally {
         await testDb.cleanup();
       }
