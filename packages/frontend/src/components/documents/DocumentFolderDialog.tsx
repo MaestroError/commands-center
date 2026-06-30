@@ -22,10 +22,17 @@ export function DocumentFolderDialog(props: DocumentFolderDialogProps) {
     },
   });
 
+  const trimmedPath = path.trim();
+  // The default value is prefilled as "<parent>/" (a user can also type a
+  // trailing slash). A path ending in "/" has an empty final segment and is
+  // rejected by the backend schema, so keep Create disabled until it's gone
+  // rather than silently stripping it — stripping "<parent>/" on its own
+  // would submit the existing parent folder as if it were a new one.
+  const canSubmit = trimmedPath.length > 0 && !trimmedPath.endsWith("/");
+
   const handleSubmit = () => {
-    const trimmed = path.trim();
-    if (!trimmed) return;
-    mutation.mutate({ path: trimmed });
+    if (!canSubmit) return;
+    mutation.mutate({ path: trimmedPath });
   };
 
   return (
@@ -72,7 +79,7 @@ export function DocumentFolderDialog(props: DocumentFolderDialogProps) {
           </button>
           <button
             className="cc-button"
-            disabled={!path.trim() || mutation.isPending}
+            disabled={!canSubmit || mutation.isPending}
             onClick={handleSubmit}
             type="button"
           >

@@ -26,7 +26,10 @@ export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
   });
 
   const trimmedPath = path.trim();
-  const titleSlug = title.trim() ? `${slugify(title.trim())}.md` : "";
+  const titleSlugBase = title.trim() ? slugify(title.trim()) : "";
+  // slugify() can return "" for a title with no alphanumeric characters (e.g.
+  // "!!!"); guard so we never derive a hidden-segment path like ".md".
+  const titleSlug = titleSlugBase ? `${titleSlugBase}.md` : "";
   // When the path points to a concrete file, use it. Otherwise (empty or ends
   // with "/", i.e. just a folder prefix) combine the folder with the title slug.
   const derivedPath =
