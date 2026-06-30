@@ -95,15 +95,16 @@ test.describe("task templates", { tag: "@tasks" }, () => {
         response.url().endsWith("/api/tasks/template-manual") &&
         response.request().method() === "DELETE",
     );
-    const dialogPromise = page.waitForEvent("dialog");
+    const dialogPromise = page.waitForEvent("dialog").then(async (dialog) => {
+      expect(dialog.type()).toBe("confirm");
+      expect(dialog.message()).toBe("Delete template 'Reusable release checklist'?");
+      await dialog.accept();
+    });
     await page
       .getByTestId("task-template-card-template-manual")
       .getByTestId("task-card-action-delete-template")
       .click();
-    const dialog = await dialogPromise;
-    expect(dialog.type()).toBe("confirm");
-    expect(dialog.message()).toBe("Delete template 'Reusable release checklist'?");
-    await dialog.accept();
+    await dialogPromise;
     await remove;
 
     await expect(page.getByTestId("task-template-card-template-manual")).toHaveCount(0);
