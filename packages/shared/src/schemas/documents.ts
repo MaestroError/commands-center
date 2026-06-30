@@ -7,12 +7,21 @@ const MARKDOWN_EXTENSIONS = [".md", ".markdown"] as const;
 // Treat both POSIX (`/`) and Windows (`\`) separators when validating, so a
 // backslash path cannot smuggle a hidden segment past the per-segment checks.
 const PATH_SEPARATORS = /[\\/]/;
+// Windows drive-letter prefix (e.g. `C:` in `C:\notes.md` or `C:/notes.md`),
+// which is absolute on Windows even without a leading separator.
+const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
+
+// A document path must be relative to Documents/: no leading separator and no
+// Windows drive-letter prefix, otherwise `path.resolve` would ignore the root.
+function isRelativeDocumentPath(p: string): boolean {
+  return !PATH_SEPARATORS.test(p[0] ?? "") && !WINDOWS_DRIVE_PREFIX.test(p);
+}
 
 const documentRelativePathSchema = z
   .string()
   .trim()
   .min(1)
-  .refine((p) => !PATH_SEPARATORS.test(p[0] ?? ""), { message: "Path must be relative" })
+  .refine(isRelativeDocumentPath, { message: "Path must be relative" })
   .refine((p) => !p.includes(".."), { message: "Path must not contain .." })
   .refine((p) => !p.split(PATH_SEPARATORS).some((s) => s === "" || s.startsWith(".")), {
     message: "Path must not contain empty or hidden segments",
@@ -25,7 +34,7 @@ const documentFolderPathSchema = z
   .string()
   .trim()
   .min(1)
-  .refine((p) => !PATH_SEPARATORS.test(p[0] ?? ""), { message: "Path must be relative" })
+  .refine(isRelativeDocumentPath, { message: "Path must be relative" })
   .refine((p) => !p.includes(".."), { message: "Path must not contain .." })
   .refine((p) => !p.split(PATH_SEPARATORS).some((s) => s === "" || s.startsWith(".")), {
     message: "Path must not contain empty or hidden segments",

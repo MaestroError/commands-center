@@ -140,6 +140,15 @@ describe("document schemas", () => {
       );
     });
 
+    it("rejects Windows drive-letter absolute paths", () => {
+      expect(() => createDocumentInputSchema.parse({ path: "C:\\notes.md" })).toThrow(
+        "Path must be relative",
+      );
+      expect(() => createDocumentInputSchema.parse({ path: "C:/notes.md" })).toThrow(
+        "Path must be relative",
+      );
+    });
+
     it("rejects empty segments", () => {
       expect(() => createDocumentInputSchema.parse({ path: "notes//file.md" })).toThrow(
         "Path must not contain empty or hidden segments",
@@ -166,6 +175,15 @@ describe("document schemas", () => {
 
     it("rejects absolute paths", () => {
       expect(() => createDocumentFolderInputSchema.parse({ path: "/absolute" })).toThrow(
+        "Path must be relative",
+      );
+    });
+
+    it("rejects Windows drive-letter absolute paths", () => {
+      expect(() => createDocumentFolderInputSchema.parse({ path: "C:\\foo" })).toThrow(
+        "Path must be relative",
+      );
+      expect(() => createDocumentFolderInputSchema.parse({ path: "C:/foo" })).toThrow(
         "Path must be relative",
       );
     });
