@@ -145,7 +145,7 @@ describe("DocumentsSidebarSection", () => {
     renderSidebar();
 
     expect(await screen.findByText("ProjectInfo")).toBeInTheDocument();
-    expect(screen.getByText("Overview")).toBeInTheDocument();
+    expect(screen.queryByText("Overview")).not.toBeInTheDocument();
   });
 
   it("navigates to the document path when a document is clicked", async () => {
@@ -169,6 +169,7 @@ describe("DocumentsSidebarSection", () => {
     const user = userEvent.setup();
     renderSidebar();
 
+    await user.click(await screen.findByRole("button", { name: "Expand ProjectInfo" }));
     await user.click(await screen.findByText("Overview"));
 
     await waitFor(() => {
@@ -200,14 +201,43 @@ describe("DocumentsSidebarSection", () => {
     // a/b/c/d/e is depth 5 (5 path segments).
     vi.mocked(getDocumentTree).mockResolvedValue(tree(nestedFolder(["a", "b", "c", "d", "e"])));
 
+    const user = userEvent.setup();
     renderSidebar();
 
-    // All folders default to expanded, so the depth-5 folder is visible.
+    await user.click(await screen.findByRole("button", { name: "Expand a" }));
+    await user.click(await screen.findByRole("button", { name: "Expand b" }));
+    await user.click(await screen.findByRole("button", { name: "Expand c" }));
+    await user.click(await screen.findByRole("button", { name: "Expand d" }));
+
     expect(await screen.findByText("e")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New folder in e" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New document in e" })).toBeInTheDocument();
-    // sanity: a depth-4 folder ("d") still allows subfolders.
     expect(screen.getByRole("button", { name: "New folder in d" })).toBeInTheDocument();
+  });
+
+  it("keeps folders collapsed by default when the Documents section opens", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(
+      tree({
+        name: "ProjectInfo",
+        relativePath: "ProjectInfo",
+        type: "directory",
+        title: null,
+        children: [
+          {
+            name: "overview.md",
+            relativePath: "ProjectInfo/overview.md",
+            type: "file",
+            title: "Overview",
+          },
+        ],
+      }),
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("ProjectInfo")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand ProjectInfo" })).toBeInTheDocument();
+    expect(screen.queryByText("Overview")).not.toBeInTheDocument();
   });
 
   it("prefills the document path with the clicked folder when adding a document", async () => {

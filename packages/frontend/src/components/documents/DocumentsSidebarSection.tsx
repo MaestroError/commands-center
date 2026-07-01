@@ -166,7 +166,7 @@ type DocumentSidebarNodeProps = {
 
 function DocumentSidebarNode(props: DocumentSidebarNodeProps) {
   const { node, depth } = props;
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   if (node.type === "directory") {
     const canAddFolder = depth < MAX_FOLDER_DEPTH;
