@@ -55,7 +55,17 @@ registers the key as unset; it does not pause your turn. The value only becomes
 available after the operator provides it (which restarts the AI engine), so do
 not assume the secret is set in the same turn — tell the operator what you need
 and continue with anything that does not depend on it.
-</missing-secrets>`;
+</missing-secrets>
+
+<recording-results>
+When this conversation produces a concrete deliverable — a file you created in
+the workspace, a project document, or an external URL the operator should keep —
+register it as an artifact with cc_default_add_artifact so it appears in the
+chat's Results panel. Use type "file" with the workspace-relative path,
+"document" with the Documents/-relative path, or "url" with the external link.
+Register results as you finish them; do not wait until the end of the
+conversation.
+</recording-results>`;
 
 export const globalChatPrompt: SystemPromptDefinition = {
   id: "global-chat",

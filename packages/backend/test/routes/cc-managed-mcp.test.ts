@@ -18,7 +18,6 @@ import { createSessionArchiveService } from "../../src/services/session-archive-
 import { createSessionArchiveSettingsService } from "../../src/services/session-archive-settings-service";
 import { createCcManagedMcpAuthStateStore } from "../../src/mcp/cc-managed/auth-state-store";
 import { createCcManagedMcpAuthTokenService } from "../../src/mcp/cc-managed/auth-token-service";
-import type { CcManagedMcpTokenContextMode } from "../../src/mcp/cc-managed/auth-token-service";
 import { createTestDatabase } from "../helpers/db";
 
 type InjectServer = Awaited<ReturnType<typeof createServer>>;
@@ -950,7 +949,10 @@ describe("cc-managed MCP routes", () => {
 
       expect(listToolsResponse.statusCode).toBe(200);
       expect(listToolsResponse.body).toContain('"name":"list_specialists"');
-      expect(listToolsResponse.body).not.toContain('"name":"set_task_result"');
+      // `context` is advisory now: task-run-oriented tools are always listed,
+      // even in a chat session (with a "Recommended to use in Task Run" hint).
+      expect(listToolsResponse.body).toContain('"name":"set_task_result"');
+      expect(listToolsResponse.body).toContain("Recommended to use in Task Run.");
       const listed = parseSseJson(listSpecialistsResponse.body) as {
         result: { structuredContent: { specialists: Array<Record<string, unknown>> } };
       };
@@ -1621,6 +1623,13 @@ describe("cc-managed MCP routes", () => {
         triggerSource: "manual",
         renderedPrompt: "Do the task.",
       });
+      await insertConversation(testDb.client.db, {
+        id: `conv-${run.id}`,
+        agentId: agent.id,
+        source: "task_run",
+        taskId: task.id,
+        taskRunId: run.id,
+      });
 
       const listToolsResponse = await callMcpToolRouteForServer(
         server,
@@ -2223,7 +2232,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("exposes create_self_task and self context tools only in task-run context", async () => {
+  it("lists self task tools in chat regardless of their recommended context", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const taskExecutionService = createTaskExecutionService({ taskService });
@@ -2269,15 +2278,18 @@ describe("cc-managed MCP routes", () => {
       ]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
-      // task-run-only self tools must not appear in chat.
+      // `context` is advisory: task-run-oriented self tools are still listed in
+      // chat, just annotated with a "Recommended to use in Task Run" hint.
       for (const toolName of [
         "create_self_task",
         "read_self_task_context",
         "append_self_task_context",
       ]) {
-        expect(listToolsResponse.body).not.toContain(`"name":"${toolName}"`);
+        expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
-      // run_self_task is in cc_default_interactive, not cc_default.
+      expect(listToolsResponse.body).toContain("Recommended to use in Task Run.");
+      // run_self_task/queue_self_task live in cc_default_interactive, not
+      // cc_default — that is server membership, unaffected by the context change.
       expect(listToolsResponse.body).not.toContain('"name":"run_self_task"');
       expect(listToolsResponse.body).not.toContain('"name":"queue_self_task"');
     } finally {
@@ -2409,7 +2421,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("lists draft self task tools in chat context and hides them in task-run", async () => {
+  it("lists draft and run self task tools in both chat and task-run", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const taskExecutionService = createTaskExecutionService({ taskService });
@@ -2471,13 +2483,15 @@ describe("cc-managed MCP routes", () => {
         61,
       );
 
+      // `context` is advisory: chat-oriented tools are still listed for a
+      // task-run session (annotated with a "Recommended to use in Chat" hint).
       expect(taskRunListResponse.statusCode).toBe(200);
-      expect(taskRunListResponse.body).not.toContain('"name":"draft_self_task"');
-      expect(taskRunListResponse.body).not.toContain('"name":"draft_self_task_update"');
-      expect(taskRunListResponse.body).not.toContain('"name":"draft_self_task_template_update"');
-      // run_self_task is chat-only and must not appear in task_run.
+      expect(taskRunListResponse.body).toContain('"name":"draft_self_task"');
+      expect(taskRunListResponse.body).toContain('"name":"draft_self_task_update"');
+      expect(taskRunListResponse.body).toContain('"name":"draft_self_task_template_update"');
       expect(chatListResponse.body).toContain('"name":"run_self_task"');
-      expect(taskRunListResponse.body).not.toContain('"name":"run_self_task"');
+      expect(taskRunListResponse.body).toContain('"name":"run_self_task"');
+      expect(taskRunListResponse.body).toContain("Recommended to use in Chat.");
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -3366,7 +3380,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("create_self_task_template and update_self_task_template are hidden in chat context", async () => {
+  it("lists create/update self_task_template in chat with a task-run recommendation", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const taskExecutionService = createTaskExecutionService({ taskService });
@@ -3417,9 +3431,11 @@ describe("cc-managed MCP routes", () => {
         79,
       );
 
-      // create_self_task_template and update_self_task_template are task_run only.
-      expect(chatListResponse.body).not.toContain('"name":"create_self_task_template"');
-      expect(chatListResponse.body).not.toContain('"name":"update_self_task_template"');
+      // create/update_self_task_template are recommended for task runs but,
+      // since `context` is advisory, they are listed in chat too (with the hint).
+      expect(chatListResponse.body).toContain('"name":"create_self_task_template"');
+      expect(chatListResponse.body).toContain('"name":"update_self_task_template"');
+      expect(chatListResponse.body).toContain("Recommended to use in Task Run.");
       expect(taskRunListResponse.body).toContain('"name":"create_self_task_template"');
       expect(taskRunListResponse.body).toContain('"name":"update_self_task_template"');
       // list/get/run/instantiate/enable/disable are both-context.
@@ -3690,6 +3706,13 @@ describe("cc-managed MCP routes", () => {
         triggerSource: "manual",
         renderedPrompt: "Run it.",
       });
+      await insertConversation(testDb.client.db, {
+        id: `conv-${run.id}`,
+        agentId: agent.id,
+        source: "task_run",
+        taskId: task.id,
+        taskRunId: run.id,
+      });
       await taskService.addRunArtifact(run.id, agent.id, {
         title: "Report",
         description: "Weekly summary.",
@@ -3867,6 +3890,13 @@ describe("cc-managed MCP routes", () => {
         status: "running",
         triggerSource: "manual",
         renderedPrompt: "Do it.",
+      });
+      await insertConversation(testDb.client.db, {
+        id: `conv-${ownerRun.id}`,
+        agentId: owner.id,
+        source: "task_run",
+        taskId: ownerTask.id,
+        taskRunId: ownerRun.id,
       });
       await taskService.addRunArtifact(ownerRun.id, owner.id, {
         title: "Secret report",
@@ -4527,12 +4557,15 @@ async function issueAuthHeader(
   config: TestConfig,
   specialistSlug: string,
   serverName: string,
-  contextMode?: CcManagedMcpTokenContextMode,
+  // Accepted for call-site compatibility but ignored: tokens are no longer
+  // context-scoped. Retained so existing "chat"/"task_run" call sites still
+  // read as documentation of the scenario under test.
+  _contextMode?: "chat" | "task_run",
 ): Promise<string> {
   const tokenService = createCcManagedMcpAuthTokenService({
     authStateStore: createCcManagedMcpAuthStateStore(config),
   });
-  return `Bearer ${await tokenService.issueToken(specialistSlug, serverName, contextMode)}`;
+  return `Bearer ${await tokenService.issueToken(specialistSlug, serverName)}`;
 }
 
 async function insertAgentWithTasksManagement(db: AppDb) {

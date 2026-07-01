@@ -16,19 +16,19 @@ export function createCcManagedMcpToolAccessService() {
       return selection.enabled !== false && selection.action !== "deny";
     },
 
+    // Tool listing is context-agnostic: every capability-enabled tool is
+    // advertised for both chat and task-run sessions. `context` is advisory
+    // metadata surfaced in the tool description, not a visibility gate.
     listEnabledTools(
       capabilities: SpecialistCapabilitySelection,
       server: CcManagedMcpServerDefinition,
-      context?: "chat" | "task_run",
     ): readonly CcManagedToolDefinition[] {
       if (!this.isServerEnabled(capabilities, server)) {
         return [];
       }
 
       return server.tools.filter(
-        (tool) =>
-          (context === undefined || isToolAvailableInContext(tool, context)) &&
-          this.getToolAction(capabilities, server.name, tool.name) !== "deny",
+        (tool) => this.getToolAction(capabilities, server.name, tool.name) !== "deny",
       );
     },
 
@@ -48,13 +48,6 @@ export function createCcManagedMcpToolAccessService() {
       return "allow";
     },
   };
-}
-
-export function isToolAvailableInContext(
-  tool: CcManagedToolDefinition | { context: CcManagedToolDefinition["context"] },
-  context: "chat" | "task_run",
-): boolean {
-  return tool.context === "both" || tool.context === context;
 }
 
 export function buildCcManagedToolPermissionPattern(serverName: string, toolName: string): string {

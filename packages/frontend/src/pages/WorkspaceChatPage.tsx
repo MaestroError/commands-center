@@ -12,6 +12,7 @@ import { QuestionDock } from "@/components/chat/QuestionDock";
 import { SystemPromptsTab } from "@/components/chat/SystemPromptsTab";
 import { TodoDock } from "@/components/chat/TodoDock";
 import { ToolsTab } from "@/components/chat/ToolsTab";
+import { ChatResultsPanel } from "@/components/chat/ChatResultsPanel";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { QuickFileModal } from "@/components/workspace/QuickFileModal";
@@ -259,6 +260,7 @@ export function WorkspaceChatPage() {
             },
           ],
           defaultTabId: "files",
+          footer: <ChatResultsPanel conversationId={conv.conversation.id} />,
         }}
         bottomPane={
           terminalOpen

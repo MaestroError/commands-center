@@ -1,48 +1,35 @@
 import { useState } from "react";
 import { Copy, Link2, X } from "lucide-react";
 
-import type { TaskRunArtifact } from "@cc/shared/schemas";
+import type { Artifact } from "@cc/shared/schemas";
 
-import { useTaskMutations, useTaskRunArtifactsQuery } from "@/hooks/use-tasks-query";
+import { useTaskMutations } from "@/hooks/use-tasks-query";
 
 type ArtifactShareControlsProps = {
-  taskId: string;
-  runId: string;
-  artifact: TaskRunArtifact;
+  artifact: Artifact;
+  // Optional owning task, used to refresh the task's runs after a share change.
+  taskId?: string;
 };
 
 export function ArtifactShareControls(props: ArtifactShareControlsProps) {
-  const artifactsQuery = useTaskRunArtifactsQuery(props.taskId, props.runId);
   const mutations = useTaskMutations();
   const [createdUrl, setCreatedUrl] = useState<string>();
   const [copied, setCopied] = useState(false);
 
+  // Only file artifacts can be published for download.
   if (props.artifact.type !== "file") {
     return null;
   }
 
-  const candidate = artifactsQuery.data?.artifacts.find(
-    (artifact) =>
-      artifact.title === props.artifact.title &&
-      artifact.originalFilename === basename(props.artifact.link),
-  );
   const busy =
     mutations.createArtifactShareLink.isPending || mutations.revokeArtifactShareLink.isPending;
-
-  if (artifactsQuery.isLoading) {
-    return <span className="text-xs text-text-muted">Loading share state...</span>;
-  }
-
-  if (!candidate) {
-    return <span className="text-xs text-text-muted">Source file unavailable for sharing.</span>;
-  }
+  const shareLinks = props.artifact.shareLinks.filter((link) => link.revokedAt === null);
 
   async function createLink() {
-    if (!candidate) return;
     const response = await mutations.createArtifactShareLink.mutateAsync({
+      artifactId: props.artifact.id,
+      conversationId: props.artifact.conversationId,
       taskId: props.taskId,
-      runId: props.runId,
-      artifactId: candidate.id,
     });
     setCreatedUrl(response.url);
     try {
@@ -54,11 +41,10 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
   }
 
   async function revokeLink(shareId: string) {
-    if (!candidate) return;
     await mutations.revokeArtifactShareLink.mutateAsync({
+      artifactId: props.artifact.id,
+      conversationId: props.artifact.conversationId,
       taskId: props.taskId,
-      runId: props.runId,
-      artifactId: candidate.id,
       shareId,
     });
     setCreatedUrl(undefined);
@@ -100,9 +86,9 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
       {createdUrl ? (
         <p className="break-all text-xs text-text-muted [overflow-wrap:anywhere]">{createdUrl}</p>
       ) : null}
-      {candidate.shareLinks.length > 0 ? (
+      {shareLinks.length > 0 ? (
         <ul className="grid gap-1" aria-label="Active artifact share links">
-          {candidate.shareLinks.map((link) => (
+          {shareLinks.map((link) => (
             <li
               className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-app-bg px-3 py-2 text-xs text-text-secondary"
               key={link.id}
@@ -132,9 +118,4 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
 
 async function copyText(value: string): Promise<void> {
   await navigator.clipboard?.writeText(value);
-}
-
-function basename(path: string): string {
-  const segments = path.split("/").filter(Boolean);
-  return segments[segments.length - 1] ?? "";
 }

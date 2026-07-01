@@ -23,6 +23,9 @@ type WorkspaceLayoutProps = {
     defaultTabId?: string;
     activeTabId?: string;
     onTabChange?: (tabId: string) => void;
+    // Optional compact section pinned below the tab content, at the bottom of
+    // the pane (e.g. a conversation Results/artifacts strip).
+    footer?: ReactNode;
   };
   bottomPane?: {
     title: string;
@@ -197,6 +200,9 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                   tabs={contextTabs}
                 />
                 <div className="min-h-0 flex-1 overflow-auto p-2">{activeContextContent}</div>
+                {props.contextPane.footer ? (
+                  <div className="shrink-0 border-t border-border">{props.contextPane.footer}</div>
+                ) : null}
               </aside>
               {contextCollapsed ? (
                 <button
@@ -326,6 +332,9 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
             tabs={contextTabs}
           />
           <div className="mt-4">{activeContextContent}</div>
+          {props.contextPane.footer ? (
+            <div className="mt-4 border-t border-border pt-3">{props.contextPane.footer}</div>
+          ) : null}
         </MobilePane>
       ) : null}
 

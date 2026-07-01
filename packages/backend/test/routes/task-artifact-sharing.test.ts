@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
 import type { AppDb } from "../../src/db/client";
-import { agents, task_artifact_share_links } from "../../src/db/schema/index";
+import { agents, artifact_share_links, conversations } from "../../src/db/schema/index";
 import { createLogger } from "../../src/lib/logger";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
 import { createApiTokenService } from "../../src/services/api-token-service";
@@ -57,13 +57,13 @@ describe("task artifact sharing", () => {
       });
       expect(listed.statusCode).toBe(200);
       const artifact = listed.json<{
-        artifacts: Array<{ id: string; storageKey: string | null; shareLinks: unknown[] }>;
+        artifacts: Array<{ id: string; type: string; shareLinks: unknown[] }>;
       }>().artifacts[0];
-      expect(artifact?.storageKey).toBeNull();
+      expect(artifact?.type).toBe("file");
 
       const created = await server.inject({
         method: "POST",
-        url: `/api/tasks/${taskId}/runs/${runId}/artifacts/${artifact?.id}/share-links`,
+        url: `/api/artifacts/${artifact?.id}/share-links`,
         payload: {},
       });
       expect(created.statusCode).toBe(200);
@@ -71,7 +71,7 @@ describe("task artifact sharing", () => {
       expect(share.url).toContain("https://cc.example.test/api/public/v1/task-artifacts/download/");
       expect(share.expiresAt).toMatch(/Z$/);
 
-      const row = await testDb.client.db.query.task_artifact_share_links.findFirst({
+      const row = await testDb.client.db.query.artifact_share_links.findFirst({
         where: (table, operators) => operators.eq(table.id, share.shareId),
       });
       const rawToken = new URL(share.url).searchParams.get("token");
@@ -90,7 +90,7 @@ describe("task artifact sharing", () => {
       expect(downloaded.headers["cache-control"]).toBe("no-store, max-age=0");
       expect(downloaded.headers["content-disposition"]).toContain("release.md");
 
-      const afterDownload = await testDb.client.db.query.task_artifact_share_links.findFirst({
+      const afterDownload = await testDb.client.db.query.artifact_share_links.findFirst({
         where: (table, operators) => operators.eq(table.id, share.shareId),
       });
       expect(afterDownload?.download_count).toBe(1);
@@ -127,7 +127,7 @@ describe("task artifact sharing", () => {
 
       const created = await server.inject({
         method: "POST",
-        url: `/api/tasks/${taskId}/runs/${runId}/artifacts/${artifact?.id}/share-links`,
+        url: `/api/artifacts/${artifact?.id}/share-links`,
         payload: {},
       });
       const share = created.json<{ shareId: string; url: string }>();
@@ -140,9 +140,9 @@ describe("task artifact sharing", () => {
       expect(badToken.statusCode).toBe(404);
 
       await testDb.client.db
-        .update(task_artifact_share_links)
+        .update(artifact_share_links)
         .set({ expires_at: new Date("2000-01-01T00:00:00.000Z") })
-        .where(eq(task_artifact_share_links.id, share.shareId));
+        .where(eq(artifact_share_links.id, share.shareId));
       const expired = await server.inject({
         method: "GET",
         url: `${url.pathname}${url.search}`,
@@ -150,12 +150,12 @@ describe("task artifact sharing", () => {
       expect(expired.statusCode).toBe(404);
 
       await testDb.client.db
-        .update(task_artifact_share_links)
+        .update(artifact_share_links)
         .set({ expires_at: new Date("2999-01-01T00:00:00.000Z") })
-        .where(eq(task_artifact_share_links.id, share.shareId));
+        .where(eq(artifact_share_links.id, share.shareId));
       const revokedResponse = await server.inject({
         method: "DELETE",
-        url: `/api/tasks/${taskId}/runs/${runId}/artifacts/${artifact?.id}/share-links/${share.shareId}`,
+        url: `/api/artifacts/${artifact?.id}/share-links/${share.shareId}`,
       });
       expect(revokedResponse.statusCode).toBe(200);
       const revoked = await server.inject({
@@ -214,14 +214,14 @@ describe("task artifact sharing", () => {
 
       const created = await server.inject({
         method: "POST",
-        url: `/api/tasks/${taskId}/runs/${runId}/artifacts/${artifact?.id}/share-links`,
+        url: `/api/artifacts/${artifact?.id}/share-links`,
         payload: {},
       });
       expect(created.statusCode).toBe(200);
       const share = created.json<{ shareId: string; url: string; expiresAt: string | null }>();
       expect(share.expiresAt).toBeNull();
 
-      const row = await testDb.client.db.query.task_artifact_share_links.findFirst({
+      const row = await testDb.client.db.query.artifact_share_links.findFirst({
         where: (table, operators) => operators.eq(table.id, share.shareId),
       });
       expect(row?.expires_at).toBeNull();
@@ -239,7 +239,29 @@ describe("task artifact sharing", () => {
     }
   });
 
-  it("rejects artifact paths outside the workspace", async () => {
+  it("returns 404 when the run does not belong to the given task id", async () => {
+    const { testDb, taskService, server } = await setup();
+
+    try {
+      const { runId } = await createRunWithArtifact(testDb.client.db, taskService, {
+        workspaceDir: testDb.config.paths.workspaceDir,
+        artifactPath: "reports/mismatch.md",
+        content: "mismatch",
+      });
+
+      const listed = await server.inject({
+        method: "GET",
+        url: `/api/tasks/not-the-owning-task/runs/${runId}/artifacts`,
+      });
+
+      expect(listed.statusCode).toBe(404);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects sharing an artifact whose path escapes the workspace", async () => {
     const { testDb, taskService, server } = await setup();
 
     try {
@@ -252,18 +274,27 @@ describe("task artifact sharing", () => {
         triggerSource: "manual",
         renderedPrompt: "Create report.",
       });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
       await taskService.addRunArtifact(run.id, agent.id, {
         title: "Escaped report",
         type: "file",
         link: "../secret.md",
       });
 
-      const listed = await server.inject({
-        method: "GET",
-        url: `/api/tasks/${task.id}/runs/${run.id}/artifacts`,
+      const artifact = (
+        await server.inject({
+          method: "GET",
+          url: `/api/tasks/${task.id}/runs/${run.id}/artifacts`,
+        })
+      ).json<{ artifacts: Array<{ id: string }> }>().artifacts[0];
+
+      const created = await server.inject({
+        method: "POST",
+        url: `/api/artifacts/${artifact?.id}/share-links`,
+        payload: {},
       });
 
-      expect(listed.statusCode).toBe(400);
+      expect(created.statusCode).toBe(400);
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -285,6 +316,7 @@ async function createRunWithArtifact(
     triggerSource: "manual",
     renderedPrompt: "Create report.",
   });
+  await seedRunConversation(db, run.id, agent.id);
   const absolutePath = join(options.workspaceDir, options.artifactPath);
   await mkdir(dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, options.content, "utf8");
@@ -295,6 +327,24 @@ async function createRunWithArtifact(
   });
 
   return { taskId: task.id, runId: run.id };
+}
+
+// Artifacts anchor to a run's task-run conversation; addRunArtifact requires it
+// to exist.
+async function seedRunConversation(db: AppDb, runId: string, agentId: string): Promise<void> {
+  const timestamp = new Date();
+  await db.insert(conversations).values({
+    id: `conv-${runId}`,
+    agent_id: agentId,
+    opencode_session_id: `session-${runId}`,
+    title: null,
+    status: "active",
+    source: "task_run",
+    is_current: false,
+    task_run_id: runId,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
 }
 
 async function insertAgent(db: AppDb): Promise<typeof agents.$inferSelect> {

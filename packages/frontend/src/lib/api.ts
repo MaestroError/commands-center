@@ -7,8 +7,8 @@ import {
   apiTokenListResponseSchema,
   cancelTaskRunInputSchema,
   copyCustomToolToAgentsInputSchema as copyCustomToolToSpecialistsInputSchema,
-  createTaskArtifactShareLinkInputSchema,
-  createTaskArtifactShareLinkResponseSchema,
+  createArtifactShareLinkInputSchema,
+  createArtifactShareLinkResponseSchema,
   customToolAgentCopyListSchema,
   customToolBulkCopyResultSchema,
   customToolListSchema,
@@ -95,8 +95,8 @@ import {
   systemUpdateResultSchema,
   systemUpdatePreferencesSchema,
   systemVersionSchema,
-  taskArtifactListResponseSchema,
-  taskArtifactSharingPreferencesSchema,
+  artifactListResponseSchema,
+  artifactSharingPreferencesSchema,
   taskRunMonitorSettingsSchema,
   taskListSchema,
   taskFeedbackThreadListSchema,
@@ -115,9 +115,8 @@ import {
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
   updateTaskContextInputSchema,
-  updateTaskArtifactSharingPreferencesInputSchema,
+  updateArtifactSharingPreferencesInputSchema,
   updateTaskFeedbackInputSchema,
-  updateTaskRunFollowupInputSchema,
   updateTaskTemplateInputSchema,
   terminalListResponseSchema,
   terminalResizeInputSchema,
@@ -144,8 +143,8 @@ import {
   type CreateApiTokenResponse,
   type CreateMcpServerInput,
   type CreateTaskFeedbackInput,
-  type CreateTaskArtifactShareLinkInput,
-  type CreateTaskArtifactShareLinkResponse,
+  type CreateArtifactShareLinkInput,
+  type CreateArtifactShareLinkResponse,
   type CreateTaskInput,
   type CreateTaskRunFollowupInput,
   type CreateTaskTemplateInput,
@@ -212,8 +211,8 @@ import {
   type SystemUpdatePreferences,
   type SystemVersion,
   type Task,
-  type TaskArtifactListResponse,
-  type TaskArtifactSharingPreferences,
+  type ArtifactListResponse,
+  type ArtifactSharingPreferences,
   type TaskFeedbackThread,
   type TaskQueuePreview,
   type TaskTemplate,
@@ -231,10 +230,9 @@ import {
   type UpdateSpecialistInput,
   type UpdateMcpServerInput,
   type UpdateTaskInput,
-  type UpdateTaskArtifactSharingPreferencesInput,
+  type UpdateArtifactSharingPreferencesInput,
   type UpdateTaskContextInput,
   type UpdateTaskFeedbackInput,
-  type UpdateTaskRunFollowupInput,
   type UpdateTaskTemplateInput,
   type UpdateSystemUpdatePreferencesInput,
   type UpdateWorkspaceSkillCategoryInput,
@@ -350,22 +348,22 @@ export async function updateSystemUpdatePreferences(
   );
 }
 
-export async function getTaskArtifactSharingPreferences(): Promise<TaskArtifactSharingPreferences> {
-  return requestJson<TaskArtifactSharingPreferences>(
+export async function getTaskArtifactSharingPreferences(): Promise<ArtifactSharingPreferences> {
+  return requestJson<ArtifactSharingPreferences>(
     "/api/tasks/artifact-sharing/preferences",
-    taskArtifactSharingPreferencesSchema,
+    artifactSharingPreferencesSchema,
   );
 }
 
 export async function updateTaskArtifactSharingPreferences(
-  input: UpdateTaskArtifactSharingPreferencesInput,
-): Promise<TaskArtifactSharingPreferences> {
-  return requestJson<TaskArtifactSharingPreferences>(
+  input: UpdateArtifactSharingPreferencesInput,
+): Promise<ArtifactSharingPreferences> {
+  return requestJson<ArtifactSharingPreferences>(
     "/api/tasks/artifact-sharing/preferences",
-    taskArtifactSharingPreferencesSchema,
+    artifactSharingPreferencesSchema,
     {
       method: "PUT",
-      body: updateTaskArtifactSharingPreferencesInputSchema.parse(input),
+      body: updateArtifactSharingPreferencesInputSchema.parse(input),
     },
   );
 }
@@ -1140,80 +1138,44 @@ export async function createRunFollowup(
   );
 }
 
-export async function updateRunFollowup(
-  taskId: string,
-  runId: string,
-  followupId: string,
-  input: UpdateTaskRunFollowupInput,
-): Promise<TaskRunFollowup> {
-  return requestJson<TaskRunFollowup>(
-    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/followups/${encodeURIComponent(followupId)}`,
-    taskRunFollowupSchema,
-    {
-      method: "PATCH",
-      body: updateTaskRunFollowupInputSchema.parse(input),
-    },
-  );
-}
-
-export async function deleteRunFollowup(
-  taskId: string,
-  runId: string,
-  followupId: string,
-): Promise<void> {
-  const response = await apiFetch(
-    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/followups/${encodeURIComponent(followupId)}`,
-    { method: "DELETE" },
-  );
-
-  if (!response.ok && response.status !== 204) {
-    const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status, response.statusText));
-  }
-}
-
-export async function continueRun(taskId: string, runId: string): Promise<TaskRun> {
-  return requestJson<TaskRun>(
-    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/continue`,
-    taskRunSchema,
-    { method: "POST" },
-  );
-}
-
 export async function listTaskRunArtifacts(
   taskId: string,
   runId: string,
-): Promise<TaskArtifactListResponse> {
-  return requestJson<TaskArtifactListResponse>(
+): Promise<ArtifactListResponse> {
+  return requestJson<ArtifactListResponse>(
     `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/artifacts`,
-    taskArtifactListResponseSchema,
+    artifactListResponseSchema,
   );
 }
 
-export async function createTaskArtifactShareLink(
-  taskId: string,
-  runId: string,
+export async function listConversationArtifacts(
+  conversationId: string,
+): Promise<ArtifactListResponse> {
+  return requestJson<ArtifactListResponse>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/artifacts`,
+    artifactListResponseSchema,
+  );
+}
+
+// Sharing is artifact-centric and origin-agnostic — a link is keyed only by the
+// artifact id, so the same endpoints serve chat and task-run artifacts.
+export async function createArtifactShareLink(
   artifactId: string,
-  input: CreateTaskArtifactShareLinkInput = {},
-): Promise<CreateTaskArtifactShareLinkResponse> {
-  return requestJson<CreateTaskArtifactShareLinkResponse>(
-    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}/share-links`,
-    createTaskArtifactShareLinkResponseSchema,
+  input: CreateArtifactShareLinkInput = {},
+): Promise<CreateArtifactShareLinkResponse> {
+  return requestJson<CreateArtifactShareLinkResponse>(
+    `/api/artifacts/${encodeURIComponent(artifactId)}/share-links`,
+    createArtifactShareLinkResponseSchema,
     {
       method: "POST",
-      body: createTaskArtifactShareLinkInputSchema.parse(input),
+      body: createArtifactShareLinkInputSchema.parse(input),
     },
   );
 }
 
-export async function revokeTaskArtifactShareLink(
-  taskId: string,
-  runId: string,
-  artifactId: string,
-  shareId: string,
-): Promise<void> {
+export async function revokeArtifactShareLink(artifactId: string, shareId: string): Promise<void> {
   const response = await apiFetch(
-    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}/share-links/${encodeURIComponent(shareId)}`,
+    `/api/artifacts/${encodeURIComponent(artifactId)}/share-links/${encodeURIComponent(shareId)}`,
     { method: "DELETE" },
   );
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AppDb } from "../../src/db/client";
-import { agents, task_subtasks } from "../../src/db/schema/index";
+import { agents, artifacts, conversations, task_subtasks } from "../../src/db/schema/index";
 import { createTaskRunContextService } from "../../src/services/task-run-context-service";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
@@ -123,7 +123,13 @@ describe("createTaskRunContextService", () => {
         renderedPrompt: "Previous prompt.",
         resultText: "Previous result.",
         finalMessage: "Previous summary.",
-        artifacts: [{ title: "Report", type: "file", link: ".cc/artifacts/report.md" }],
+      });
+      await seedRunArtifact(testDb.client.db, {
+        runId: "previous-run",
+        agentId: agent.id,
+        title: "Report",
+        type: "file",
+        link: ".cc/artifacts/report.md",
       });
       await taskService.createRun({
         id: "duplicate-artifact-run",
@@ -133,7 +139,13 @@ describe("createTaskRunContextService", () => {
         triggerSource: "manual",
         renderedPrompt: "Duplicate artifact prompt.",
         finalMessage: "Duplicate artifact summary.",
-        artifacts: [{ title: "Duplicate report", type: "file", link: ".cc/artifacts/report.md" }],
+      });
+      await seedRunArtifact(testDb.client.db, {
+        runId: "duplicate-artifact-run",
+        agentId: agent.id,
+        title: "Duplicate report",
+        type: "file",
+        link: ".cc/artifacts/report.md",
       });
 
       const built = await contextService.build({
@@ -164,6 +176,55 @@ describe("createTaskRunContextService", () => {
       expect(built.renderedPrompt).toContain("<artifacts>\n- sourceRunId: previous-run");
       expect(built.renderedPrompt).toContain("file: .cc/artifacts/report.md");
       expect(built.renderedPrompt).not.toContain("Duplicate report");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("renders document artifacts in run history context", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const contextService = createTaskRunContextService({ db: testDb.client.db });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Doc task" });
+
+      await taskService.createRun({
+        id: "doc-run",
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Wrote a doc.",
+        finalMessage: "Doc written.",
+      });
+      await seedRunArtifact(testDb.client.db, {
+        runId: "doc-run",
+        agentId: agent.id,
+        title: "Design overview",
+        type: "document",
+        link: "design/overview.md",
+      });
+
+      // A document artifact must not break context rendering (the lean context
+      // schema previously only accepted url/file).
+      const built = await contextService.build({
+        task,
+        runId: "retry-run",
+        runAgentId: agent.id,
+        trigger: { triggerSource: "manual" },
+      });
+
+      expect(built.renderedContext["artifacts"]).toEqual([
+        {
+          title: "Design overview",
+          type: "document",
+          link: "design/overview.md",
+          sourceRunId: "doc-run",
+        },
+      ]);
+      expect(built.renderedPrompt).toContain("document: design/overview.md");
     } finally {
       await testDb.cleanup();
     }
@@ -441,6 +502,53 @@ describe("createTaskRunContextService", () => {
     }
   });
 });
+
+// Anchor an artifact to a run's conversation (runs are 1:1 with a task-run
+// conversation). Creates the conversation lazily if one is not present yet.
+async function seedRunArtifact(
+  db: AppDb,
+  input: {
+    runId: string;
+    agentId: string;
+    title: string;
+    type: "url" | "file" | "document";
+    link: string;
+    description?: string;
+  },
+): Promise<void> {
+  const timestamp = new Date();
+  let conversation = await db.query.conversations.findFirst({
+    where: (table, operators) => operators.eq(table.task_run_id, input.runId),
+    columns: { id: true },
+  });
+
+  if (!conversation) {
+    const conversationId = `conv-${input.runId}`;
+    await db.insert(conversations).values({
+      id: conversationId,
+      agent_id: input.agentId,
+      opencode_session_id: `session-${input.runId}`,
+      title: null,
+      status: "active",
+      source: "task_run",
+      is_current: false,
+      task_run_id: input.runId,
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    conversation = { id: conversationId };
+  }
+
+  await db.insert(artifacts).values({
+    id: `artifact-${input.runId}-${crypto.randomUUID()}`,
+    conversation_id: conversation.id,
+    title: input.title,
+    description: input.description ?? null,
+    type: input.type,
+    link: input.link,
+    created_at: timestamp,
+  });
+}
 
 async function insertAgent(
   db: AppDb,

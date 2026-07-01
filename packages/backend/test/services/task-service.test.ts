@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import type { AppDb } from "../../src/db/client";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
-import { agents, task_runs, task_templates } from "../../src/db/schema/index";
+import { agents, conversations, task_runs, task_templates } from "../../src/db/schema/index";
 
 describe("createTaskService", () => {
   it("creates backlog and scheduled tasks", async () => {
@@ -510,6 +510,80 @@ describe("createTaskService", () => {
     }
   });
 
+  it("freezes the run's outcome comment on first completion and keeps it stable across later reactivation", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Run me",
+      });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        renderedPrompt: "Do the task.",
+      });
+
+      const firstCompletion = await service.updateRun(run.id, {
+        status: "completed",
+        finalMessage: "First answer.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+
+      expect(firstCompletion?.initialOutcomeText).toBe("First answer.");
+      expect(firstCompletion?.initialOutcomeAt).toBe("2026-06-01T12:00:00.000Z");
+
+      // Simulate a reply reactivating the run, then completing again with a
+      // different message (the specialist's answer to the follow-up).
+      await service.updateRun(run.id, { status: "running", completedAt: undefined });
+      const secondCompletion = await service.updateRun(run.id, {
+        status: "completed",
+        finalMessage: "Second answer, after a reply.",
+        completedAt: "2026-06-01T13:00:00.000Z",
+      });
+
+      expect(secondCompletion?.finalMessage).toBe("Second answer, after a reply.");
+      expect(secondCompletion?.initialOutcomeText).toBe("First answer.");
+      expect(secondCompletion?.initialOutcomeAt).toBe("2026-06-01T12:00:00.000Z");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("prefers the explicit result text over the last message when freezing the outcome comment", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Run me",
+      });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        renderedPrompt: "Do the task.",
+      });
+
+      await service.updateRun(run.id, { status: "running" });
+      await service.setRunResultText(run.id, agent.id, "Explicit result.");
+      const completed = await service.updateRun(run.id, {
+        status: "completed",
+        finalMessage: "Last message text.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+
+      expect(completed?.initialOutcomeText).toBe("Explicit result.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("maps legacy null task run outcome fields to defaults", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -530,7 +604,6 @@ describe("createTaskService", () => {
       await testDb.client.db
         .update(task_runs)
         .set({
-          artifacts_json: null as unknown as string,
           needs_human_review: null as unknown as boolean,
         })
         .where(eq(task_runs.id, run.id));
@@ -544,7 +617,7 @@ describe("createTaskService", () => {
     }
   });
 
-  it("creates and lists pending followups for a run with an existing session", async () => {
+  it("creates and lists replies for a run with an existing session", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
 
@@ -559,209 +632,30 @@ describe("createTaskService", () => {
         renderedPrompt: "Do the task.",
       });
 
-      const first = await service.createFollowup(run.id, { body: "Please add logs." });
-      const second = await service.createFollowup(run.id, {
+      const first = await service.insertFollowup(run, { body: "Please add logs." });
+      const inFlight = await service.findInFlightFollowup(run.id);
+      await service.markFollowupAnswered(first.id, {
+        answerBody: "Added.",
+        answeredAt: "2026-06-01T12:00:00.000Z",
+      });
+      const second = await service.insertFollowup(run, {
         body: "Should I retry option B?",
         kind: "review_answer",
       });
       const listed = await service.listFollowups(run.id);
-      const pending = await service.listPendingFollowups(run.id);
 
       expect(first.kind).toBe("operator_reply");
       expect(second.kind).toBe("review_answer");
+      expect(inFlight?.id).toBe(first.id);
       expect(listed.map((followup) => followup.id)).toEqual([first.id, second.id]);
-      expect(pending.map((followup) => followup.status)).toEqual(["pending", "pending"]);
+      expect(listed.find((followup) => followup.id === first.id)?.status).toBe("answered");
+      expect(listed.find((followup) => followup.id === second.id)?.status).toBe("sending");
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("rejects followups for runs without an OpenCode session", async () => {
-    const testDb = await createTestDatabase();
-    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await service.create({ agentId: agent.id, title: "No session" });
-      const run = await service.createRun({
-        taskId: task.id,
-        agentId: agent.id,
-        triggerSource: "manual",
-        renderedPrompt: "Do the task.",
-      });
-
-      await expect(service.createFollowup(run.id, { body: "Please continue." })).rejects.toThrow(
-        "Task run does not have an OpenCode session.",
-      );
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("updates pending followups", async () => {
-    const testDb = await createTestDatabase();
-    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await service.create({ agentId: agent.id, title: "Edit followup" });
-      const run = await service.createRun({
-        taskId: task.id,
-        agentId: agent.id,
-        triggerSource: "manual",
-        opencodeSessionId: "session-1",
-        renderedPrompt: "Do the task.",
-      });
-      const followup = await service.createFollowup(run.id, { body: "First body." });
-      const updated = await service.updateFollowup(run.id, followup.id, {
-        body: "Updated body.",
-      });
-
-      expect(updated?.body).toBe("Updated body.");
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("does not update followups from another run", async () => {
-    const testDb = await createTestDatabase();
-    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await service.create({ agentId: agent.id, title: "Scoped followup edit" });
-      const firstRun = await service.createRun({
-        taskId: task.id,
-        agentId: agent.id,
-        triggerSource: "manual",
-        opencodeSessionId: "session-1",
-        renderedPrompt: "Do the first task.",
-      });
-      const secondRun = await service.createRun({
-        taskId: task.id,
-        agentId: agent.id,
-        triggerSource: "manual",
-        opencodeSessionId: "session-2",
-        renderedPrompt: "Do the second task.",
-      });
-      const followup = await service.createFollowup(firstRun.id, { body: "First body." });
-
-      const updated = await service.updateFollowup(secondRun.id, followup.id, {
-        body: "Wrong run.",
-      });
-      const followups = await service.listFollowups(firstRun.id);
-
-      expect(updated).toBeUndefined();
-      expect(followups[0]?.body).toBe("First body.");
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("deletes pending followups", async () => {
-    const testDb = await createTestDatabase();
-    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await service.create({ agentId: agent.id, title: "Delete followup" });
-      const run = await service.createRun({
-        taskId: task.id,
-        agentId: agent.id,
-        triggerSource: "manual",
-        opencodeSessionId: "session-1",
-        renderedPrompt: "Do the task.",
-      });
-      const followup = await service.createFollowup(run.id, { body: "Remove me." });
-
-      await expect(service.deleteFollowup(run.id, followup.id)).resolves.toBe(true);
-      await expect(service.listFollowups(run.id)).resolves.toEqual([]);
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("does not delete followups from another run", async () => {
-    const testDb = await createTestDatabase();
-    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await service.create({ agentId: agent.id, title: "Scoped followup delete" });
-      const firstRun = await service.createRun({
-        taskId: task.id,
-        agentId: agent.id,
-        triggerSource: "manual",
-        opencodeSessionId: "session-1",
-        renderedPrompt: "Do the first task.",
-      });
-      const secondRun = await service.createRun({
-        taskId: task.id,
-        agentId: agent.id,
-        triggerSource: "manual",
-        opencodeSessionId: "session-2",
-        renderedPrompt: "Do the second task.",
-      });
-      const followup = await service.createFollowup(firstRun.id, { body: "Keep me." });
-
-      await expect(service.deleteFollowup(secondRun.id, followup.id)).resolves.toBe(false);
-      await expect(service.listFollowups(firstRun.id)).resolves.toHaveLength(1);
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("rejects editing sent followups", async () => {
-    const testDb = await createTestDatabase();
-    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await service.create({ agentId: agent.id, title: "Sent followup" });
-      const run = await service.createRun({
-        taskId: task.id,
-        agentId: agent.id,
-        triggerSource: "manual",
-        opencodeSessionId: "session-1",
-        renderedPrompt: "Do the task.",
-      });
-      const followup = await service.createFollowup(run.id, { body: "Keep me." });
-      await service.markFollowupsSent([followup.id], "2026-06-01T12:00:00.000Z");
-
-      await expect(service.updateFollowup(run.id, followup.id, { body: "Nope." })).rejects.toThrow(
-        "Only pending follow-ups can be edited.",
-      );
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("rejects deleting sent followups", async () => {
-    const testDb = await createTestDatabase();
-    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await service.create({ agentId: agent.id, title: "Sent followup delete" });
-      const run = await service.createRun({
-        taskId: task.id,
-        agentId: agent.id,
-        triggerSource: "manual",
-        opencodeSessionId: "session-1",
-        renderedPrompt: "Do the task.",
-      });
-      const followup = await service.createFollowup(run.id, { body: "Keep me." });
-      await service.markFollowupsSent([followup.id], "2026-06-01T12:00:00.000Z");
-
-      await expect(service.deleteFollowup(run.id, followup.id)).rejects.toThrow(
-        "Only pending follow-ups can be deleted.",
-      );
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("marks followups sent and failed", async () => {
+  it("marks a followup answered and a followup failed", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
 
@@ -775,30 +669,32 @@ describe("createTaskService", () => {
         opencodeSessionId: "session-1",
         renderedPrompt: "Do the task.",
       });
-      const sent = await service.createFollowup(run.id, { body: "Deliver me." });
-      const failed = await service.createFollowup(run.id, { body: "I failed." });
+      const answered = await service.insertFollowup(run, { body: "Deliver me." });
+      const failed = await service.insertFollowup(run, { body: "I failed." });
 
-      const [sentFollowup] = await service.markFollowupsSent([sent.id], "2026-06-01T12:00:00.000Z");
+      const answeredFollowup = await service.markFollowupAnswered(answered.id, {
+        answerBody: "Done.",
+        answeredAt: "2026-06-01T12:00:00.000Z",
+      });
       const failedFollowup = await service.markFollowupFailed(failed.id, "transport failed");
-      const pending = await service.listPendingFollowups(run.id);
 
-      expect(sentFollowup?.status).toBe("sent");
-      expect(sentFollowup?.sentAt).toBe("2026-06-01T12:00:00.000Z");
+      expect(answeredFollowup?.status).toBe("answered");
+      expect(answeredFollowup?.answerBody).toBe("Done.");
+      expect(answeredFollowup?.answeredAt).toBe("2026-06-01T12:00:00.000Z");
       expect(failedFollowup?.status).toBe("failed");
       expect(failedFollowup?.errorMessage).toBe("transport failed");
-      expect(pending).toEqual([]);
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("does not mark non-pending followups sent", async () => {
+  it("does not mark a non-sending followup answered or failed", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      const task = await service.create({ agentId: agent.id, title: "Followup sent guard" });
+      const task = await service.create({ agentId: agent.id, title: "Followup guard" });
       const run = await service.createRun({
         taskId: task.id,
         agentId: agent.id,
@@ -806,65 +702,29 @@ describe("createTaskService", () => {
         opencodeSessionId: "session-1",
         renderedPrompt: "Do the task.",
       });
-      const pending = await service.createFollowup(run.id, { body: "Deliver me." });
-      const failed = await service.createFollowup(run.id, { body: "I failed." });
-      const sent = await service.createFollowup(run.id, { body: "Already sent." });
-      await service.markFollowupFailed(failed.id, "transport failed");
-      await service.markFollowupsSent([sent.id], "2026-06-01T11:00:00.000Z");
-
-      const marked = await service.markFollowupsSent(
-        [pending.id, failed.id, sent.id],
-        "2026-06-01T12:00:00.000Z",
-      );
-      const followups = await service.listFollowups(run.id);
-
-      expect(marked.map((followup) => followup.id)).toEqual([pending.id]);
-      expect(followups.find((followup) => followup.id === failed.id)?.status).toBe("failed");
-      expect(followups.find((followup) => followup.id === failed.id)?.errorMessage).toBe(
-        "transport failed",
-      );
-      expect(followups.find((followup) => followup.id === sent.id)?.sentAt).toBe(
-        "2026-06-01T11:00:00.000Z",
-      );
-    } finally {
-      await testDb.cleanup();
-    }
-  });
-
-  it("does not mark non-pending followups failed", async () => {
-    const testDb = await createTestDatabase();
-    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
-
-    try {
-      const agent = await insertAgent(testDb.client.db);
-      const task = await service.create({ agentId: agent.id, title: "Followup failed guard" });
-      const run = await service.createRun({
-        taskId: task.id,
-        agentId: agent.id,
-        triggerSource: "manual",
-        opencodeSessionId: "session-1",
-        renderedPrompt: "Do the task.",
+      const followup = await service.insertFollowup(run, { body: "Already answered." });
+      await service.markFollowupAnswered(followup.id, {
+        answerBody: "Done.",
+        answeredAt: "2026-06-01T11:00:00.000Z",
       });
-      const pending = await service.createFollowup(run.id, { body: "Fail me." });
-      const sent = await service.createFollowup(run.id, { body: "Already sent." });
-      await service.markFollowupsSent([sent.id], "2026-06-01T11:00:00.000Z");
 
-      const failedPending = await service.markFollowupFailed(pending.id, "transport failed");
-      const failedSent = await service.markFollowupFailed(sent.id, "late transport failed");
+      const reAnswered = await service.markFollowupAnswered(followup.id, {
+        answerBody: "Done again.",
+        answeredAt: "2026-06-01T12:00:00.000Z",
+      });
+      const failedAfterAnswered = await service.markFollowupFailed(followup.id, "too late");
       const followups = await service.listFollowups(run.id);
 
-      expect(failedPending?.status).toBe("failed");
-      expect(failedSent).toBeUndefined();
-      expect(followups.find((followup) => followup.id === sent.id)?.status).toBe("sent");
-      expect(followups.find((followup) => followup.id === sent.id)?.sentAt).toBe(
-        "2026-06-01T11:00:00.000Z",
-      );
+      expect(reAnswered).toBeUndefined();
+      expect(failedAfterAnswered).toBeUndefined();
+      expect(followups[0]?.status).toBe("answered");
+      expect(followups[0]?.answerBody).toBe("Done.");
     } finally {
       await testDb.cleanup();
     }
   });
 
-  it("maps review questions and pending followup counts on runs", async () => {
+  it("maps review questions and active-reply state on runs", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });
 
@@ -889,17 +749,19 @@ describe("createTaskService", () => {
         })
         .where(eq(task_runs.id, run.id));
 
-      const first = await service.createFollowup(run.id, { body: "One" });
-      const second = await service.createFollowup(run.id, { body: "Two" });
-      await service.markFollowupsSent([first.id], "2026-06-01T12:00:00.000Z");
+      const first = await service.insertFollowup(run, { body: "One" });
+      await service.insertFollowup(run, { body: "Two" });
+      await service.markFollowupAnswered(first.id, {
+        answerBody: "Answered.",
+        answeredAt: "2026-06-01T12:00:00.000Z",
+      });
       const fetched = await service.getRun(task.id, run.id);
 
       expect(fetched?.reviewQuestion).toEqual({
         question: "Which option should I ship?",
         suggestedReplies: ["Option A", "Option B"],
       });
-      expect(fetched?.pendingFollowupCount).toBe(1);
-      expect(second.status).toBe("pending");
+      expect(fetched?.hasActiveReply).toBe(true);
     } finally {
       await testDb.cleanup();
     }
@@ -946,6 +808,7 @@ describe("createTaskService", () => {
         triggerSource: "manual",
         renderedPrompt: "Do the task.",
       });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
 
       await service.setRunResultText(run.id, agent.id, "Done with details.");
       await service.addRunArtifact(run.id, agent.id, {
@@ -961,7 +824,11 @@ describe("createTaskService", () => {
 
       expect(reviewed.resultText).toBe("Done with details.");
       expect(reviewed.artifacts).toEqual([
-        { title: "Article", type: "file", link: ".cc/artifacts/article.md" },
+        expect.objectContaining({
+          title: "Article",
+          type: "file",
+          link: ".cc/artifacts/article.md",
+        }),
       ]);
       expect(reviewed.needsHumanReview).toBe(true);
       expect(reviewed.humanReviewReason).toBe("Send the post manually.");
@@ -1121,6 +988,7 @@ describe("createTaskService", () => {
         triggerSource: "manual",
         renderedPrompt: "Do the task.",
       });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
 
       await Promise.all([
         service.addRunArtifact(run.id, agent.id, {
@@ -1137,10 +1005,21 @@ describe("createTaskService", () => {
 
       const updated = await service.getRun(task.id, run.id);
 
-      expect(updated?.artifacts).toEqual([
-        { title: "First artifact", type: "file", link: ".cc/artifacts/first.md" },
-        { title: "Second artifact", type: "file", link: ".cc/artifacts/second.md" },
-      ]);
+      expect(updated?.artifacts).toHaveLength(2);
+      expect(updated?.artifacts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: "First artifact",
+            type: "file",
+            link: ".cc/artifacts/first.md",
+          }),
+          expect.objectContaining({
+            title: "Second artifact",
+            type: "file",
+            link: ".cc/artifacts/second.md",
+          }),
+        ]),
+      );
     } finally {
       await testDb.cleanup();
     }
@@ -1886,6 +1765,23 @@ describe("createTaskService", () => {
     }
   });
 });
+
+// Artifacts anchor to a run's task-run conversation; addRunArtifact needs it.
+async function seedRunConversation(db: AppDb, runId: string, agentId: string): Promise<void> {
+  const timestamp = new Date();
+  await db.insert(conversations).values({
+    id: `conv-${runId}`,
+    agent_id: agentId,
+    opencode_session_id: `session-${runId}`,
+    title: null,
+    status: "active",
+    source: "task_run",
+    is_current: false,
+    task_run_id: runId,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+}
 
 async function insertAgent(
   db: AppDb,

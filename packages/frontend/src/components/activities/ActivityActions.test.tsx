@@ -9,29 +9,9 @@ import { ActivityActions } from "./ActivityActions";
 
 import * as api from "@/lib/api";
 
-const {
-  acceptMutate,
-  continueRunMutateAsync,
-  createRunFollowupMutateAsync,
-  deleteRunFollowupMutateAsync,
-  pendingFollowups,
-  updateRunFollowupMutateAsync,
-} = vi.hoisted(() => ({
+const { acceptMutate, createRunFollowupMutateAsync } = vi.hoisted(() => ({
   acceptMutate: vi.fn(),
-  continueRunMutateAsync: vi.fn(),
   createRunFollowupMutateAsync: vi.fn(),
-  deleteRunFollowupMutateAsync: vi.fn(),
-  pendingFollowups: [] as Array<{
-    id: string;
-    taskId: string;
-    runId: string;
-    kind: "operator_reply" | "review_answer";
-    status: "pending" | "sent" | "failed";
-    body: string;
-    createdAt: string;
-    sentAt?: string;
-  }>,
-  updateRunFollowupMutateAsync: vi.fn(),
 }));
 
 vi.mock("@/lib/api", async (importOriginal) => ({
@@ -40,22 +20,10 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 }));
 
 vi.mock("@/hooks/use-tasks-query", () => ({
-  useTaskRunFollowupsQuery: () => ({ data: pendingFollowups }),
   useTaskMutations: () => ({
     accept: { mutate: acceptMutate, isPending: false, isError: false },
-    continueRun: { mutateAsync: continueRunMutateAsync, isPending: false, isError: false },
     createRunFollowup: {
       mutateAsync: createRunFollowupMutateAsync,
-      isPending: false,
-      isError: false,
-    },
-    deleteRunFollowup: {
-      mutateAsync: deleteRunFollowupMutateAsync,
-      isPending: false,
-      isError: false,
-    },
-    updateRunFollowup: {
-      mutateAsync: updateRunFollowupMutateAsync,
       isPending: false,
       isError: false,
     },
@@ -103,20 +71,13 @@ function renderActions(value: Activity, onArchive = vi.fn()) {
 
 beforeEach(() => {
   vi.mocked(api.fillSecret).mockReset();
-  pendingFollowups.splice(0, pendingFollowups.length);
   // Simulate a successful accept so the onSuccess archive callback fires.
   acceptMutate.mockReset();
   acceptMutate.mockImplementation((_id: string, opts?: { onSuccess?: () => void }) =>
     opts?.onSuccess?.(),
   );
-  continueRunMutateAsync.mockReset();
-  continueRunMutateAsync.mockResolvedValue(undefined);
   createRunFollowupMutateAsync.mockReset();
   createRunFollowupMutateAsync.mockResolvedValue(undefined);
-  deleteRunFollowupMutateAsync.mockReset();
-  deleteRunFollowupMutateAsync.mockResolvedValue(undefined);
-  updateRunFollowupMutateAsync.mockReset();
-  updateRunFollowupMutateAsync.mockResolvedValue(undefined);
 });
 
 describe("ActivityActions", () => {
@@ -165,7 +126,7 @@ describe("ActivityActions", () => {
     expect(screen.getByLabelText("Review reply")).toHaveValue("Publish");
   });
 
-  it("task_needs_review: replies and requeues before archiving the card", async () => {
+  it("task_needs_review: replies and archives the card in one action", async () => {
     const { onArchive } = renderActions(
       activity({
         id: "a1",
@@ -180,7 +141,7 @@ describe("ActivityActions", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Review reply"), { target: { value: "Publish" } });
-    fireEvent.click(screen.getByText("Reply & requeue"));
+    fireEvent.click(screen.getByText("Reply"));
 
     await waitFor(() => {
       expect(createRunFollowupMutateAsync).toHaveBeenCalledWith({
@@ -189,11 +150,10 @@ describe("ActivityActions", () => {
         input: { body: "Publish", kind: "review_answer" },
       });
     });
-    expect(continueRunMutateAsync).toHaveBeenCalledWith({ taskId: "t1", runId: "r1" });
     expect(onArchive).toHaveBeenCalledWith("a1");
   });
 
-  it("subtask_needs_review: saves replies without archiving", async () => {
+  it("subtask_needs_review: replies and archives the card", async () => {
     const { onArchive } = renderActions(
       activity({
         id: "a1",
@@ -214,52 +174,7 @@ describe("ActivityActions", () => {
         input: { body: "Try the smaller patch.", kind: "review_answer" },
       });
     });
-    expect(continueRunMutateAsync).not.toHaveBeenCalled();
-    expect(onArchive).not.toHaveBeenCalled();
-  });
-
-  it("task_needs_review: edits and deletes pending replies inline", async () => {
-    pendingFollowups.push({
-      id: "f1",
-      taskId: "t1",
-      runId: "r1",
-      kind: "review_answer",
-      status: "pending",
-      body: "Old reply",
-      createdAt: "2026-01-01T00:00:00.000Z",
-    });
-    renderActions(
-      activity({
-        id: "a1",
-        kind: "task_needs_review",
-        payload: { taskId: "t1", taskRunId: "r1" },
-      }),
-    );
-
-    fireEvent.click(screen.getByText("Edit"));
-    fireEvent.change(screen.getByLabelText("Edit pending reply"), {
-      target: { value: "Updated reply" },
-    });
-    fireEvent.click(screen.getByText("Save"));
-
-    await waitFor(() => {
-      expect(updateRunFollowupMutateAsync).toHaveBeenCalledWith({
-        taskId: "t1",
-        runId: "r1",
-        followupId: "f1",
-        input: { body: "Updated reply" },
-      });
-    });
-
-    fireEvent.click(screen.getByText("Delete"));
-
-    await waitFor(() => {
-      expect(deleteRunFollowupMutateAsync).toHaveBeenCalledWith({
-        taskId: "t1",
-        runId: "r1",
-        followupId: "f1",
-      });
-    });
+    expect(onArchive).toHaveBeenCalledWith("a1");
   });
 
   it("task_run_failed: opens the task and marks read", () => {

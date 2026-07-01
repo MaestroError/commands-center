@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import type {
   CancelTaskRunInput,
@@ -12,11 +12,10 @@ import type {
   TaskFeedbackThread,
   TaskRunFollowup,
   TaskTemplateRunNowInput,
-  CreateTaskArtifactShareLinkInput,
+  CreateArtifactShareLinkInput,
   UpdateTaskContextInput,
   UpdateTaskFeedbackInput,
   UpdateTaskInput,
-  UpdateTaskRunFollowupInput,
   UpdateTaskTemplateInput,
   UploadTaskContextAttachmentInput,
 } from "@cc/shared/schemas";
@@ -25,8 +24,7 @@ import {
   acceptTask,
   archiveTask,
   cancelTaskRun,
-  continueRun,
-  createTaskArtifactShareLink,
+  createArtifactShareLink,
   createRunFollowup,
   createTask,
   createTaskFeedback,
@@ -35,7 +33,6 @@ import {
   disableTaskTemplate,
   enableTaskTemplate,
   deleteTask,
-  deleteRunFollowup,
   disableTask,
   duplicateTask,
   enableTask,
@@ -44,7 +41,7 @@ import {
   getTaskRun,
   inspectTaskRunSession,
   listRunFollowups,
-  listTaskRunArtifacts,
+  listConversationArtifacts,
   listArchivedTasks,
   listActiveTaskRuns,
   listTaskTemplateTasks,
@@ -59,9 +56,8 @@ import {
   previewTaskQueue,
   queueTask,
   restoreTask,
-  revokeTaskArtifactShareLink,
+  revokeArtifactShareLink,
   runTaskTemplateNow,
-  updateRunFollowup,
   updateTask,
   updateTaskContext,
   updateTaskFeedback,
@@ -168,6 +164,8 @@ export function useTaskRunFollowupsQuery(
     queryKey: queryKeys.taskRunFollowups(taskId ?? "missing", runId ?? "missing"),
     queryFn: () => listRunFollowups(taskId ?? "", runId ?? ""),
     enabled: Boolean(taskId && runId && (options.enabled ?? true)),
+    refetchInterval: (query) =>
+      query.state.data?.some((followup) => followup.status === "sending") ? 5_000 : false,
   });
 }
 
@@ -179,11 +177,11 @@ export function useTaskRunSessionQuery(taskId?: string, runId?: string) {
   });
 }
 
-export function useTaskRunArtifactsQuery(taskId?: string, runId?: string) {
+export function useConversationArtifactsQuery(conversationId?: string) {
   return useQuery({
-    queryKey: queryKeys.taskRunArtifacts(taskId ?? "missing", runId ?? "missing"),
-    queryFn: () => listTaskRunArtifacts(taskId ?? "", runId ?? ""),
-    enabled: Boolean(taskId && runId),
+    queryKey: queryKeys.conversationArtifacts(conversationId ?? "missing"),
+    queryFn: () => listConversationArtifacts(conversationId ?? ""),
+    enabled: Boolean(conversationId),
   });
 }
 
@@ -412,52 +410,6 @@ export function useTaskMutations() {
         await invalidateRunFollowups(variables.taskId, variables.runId);
       },
     }),
-    updateRunFollowup: useMutation({
-      mutationFn: ({
-        taskId,
-        runId,
-        followupId,
-        input,
-      }: {
-        taskId: string;
-        runId: string;
-        followupId: string;
-        input: UpdateTaskRunFollowupInput;
-      }) => updateRunFollowup(taskId, runId, followupId, input),
-      onSuccess: async (followup, variables) => {
-        queryClient.setQueryData<TaskRunFollowup[]>(
-          queryKeys.taskRunFollowups(variables.taskId, variables.runId),
-          (current = []) => current.map((entry) => (entry.id === followup.id ? followup : entry)),
-        );
-        await invalidateRunFollowups(variables.taskId, variables.runId);
-      },
-    }),
-    deleteRunFollowup: useMutation({
-      mutationFn: ({
-        taskId,
-        runId,
-        followupId,
-      }: {
-        taskId: string;
-        runId: string;
-        followupId: string;
-      }) => deleteRunFollowup(taskId, runId, followupId),
-      onSuccess: async (_result, variables) => {
-        queryClient.setQueryData<TaskRunFollowup[]>(
-          queryKeys.taskRunFollowups(variables.taskId, variables.runId),
-          (current = []) => current.filter((entry) => entry.id !== variables.followupId),
-        );
-        await invalidateRunFollowups(variables.taskId, variables.runId);
-      },
-    }),
-    continueRun: useMutation({
-      mutationFn: ({ taskId, runId }: { taskId: string; runId: string }) =>
-        continueRun(taskId, runId),
-      onSuccess: async (run) => {
-        queryClient.setQueryData(queryKeys.taskRun(run.taskId, run.id), run);
-        await invalidateRunFollowups(run.taskId, run.id);
-      },
-    }),
     previewQueue: useMutation({
       mutationFn: ({
         id,
@@ -517,39 +469,56 @@ export function useTaskMutations() {
     }),
     createArtifactShareLink: useMutation({
       mutationFn: ({
-        taskId,
-        runId,
         artifactId,
         input,
       }: {
-        taskId: string;
-        runId: string;
         artifactId: string;
-        input?: CreateTaskArtifactShareLinkInput;
-      }) => createTaskArtifactShareLink(taskId, runId, artifactId, input),
+        conversationId?: string;
+        taskId?: string;
+        input?: CreateArtifactShareLinkInput;
+      }) => createArtifactShareLink(artifactId, input),
       onSuccess: async (_result, variables) => {
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.taskRunArtifacts(variables.taskId, variables.runId),
-        });
+        await invalidateArtifactContainers(queryClient, variables);
       },
     }),
     revokeArtifactShareLink: useMutation({
       mutationFn: ({
-        taskId,
-        runId,
         artifactId,
         shareId,
       }: {
-        taskId: string;
-        runId: string;
         artifactId: string;
+        conversationId?: string;
+        taskId?: string;
         shareId: string;
-      }) => revokeTaskArtifactShareLink(taskId, runId, artifactId, shareId),
+      }) => revokeArtifactShareLink(artifactId, shareId),
       onSuccess: async (_result, variables) => {
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.taskRunArtifacts(variables.taskId, variables.runId),
-        });
+        await invalidateArtifactContainers(queryClient, variables);
       },
     }),
   };
+}
+
+// A share-link change updates the artifact's inline shareLinks; refresh whichever
+// queries surface that artifact (the chat conversation panel and/or the task's
+// runs).
+async function invalidateArtifactContainers(
+  queryClient: QueryClient,
+  variables: { conversationId?: string; taskId?: string },
+): Promise<void> {
+  const invalidations: Promise<unknown>[] = [];
+  if (variables.conversationId) {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.conversationArtifacts(variables.conversationId),
+      }),
+    );
+  }
+  if (variables.taskId) {
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: queryKeys.task(variables.taskId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(variables.taskId) }),
+    );
+  }
+  invalidations.push(queryClient.invalidateQueries({ queryKey: queryKeys.activeTaskRuns }));
+  await Promise.all(invalidations);
 }

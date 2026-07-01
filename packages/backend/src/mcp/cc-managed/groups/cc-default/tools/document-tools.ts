@@ -58,6 +58,13 @@ export const registerProjectDocumentToolMetadata = {
   context: "both",
 } as const;
 
+// Appends the full structured result to the tool's text output so the UI's
+// tool-call log (and any consumer reading content[].text) shows the exact
+// data the specialist received, not just a short confirmation string.
+function withData(message: string, structuredContent: Record<string, unknown>): string {
+  return `${message}\n\n${JSON.stringify(structuredContent, null, 2)}`;
+}
+
 export function createDocumentToolDefinitions(options: { db: AppDb; config: RuntimeConfig }) {
   const service = createDocumentService({ db: options.db, config: options.config });
 
@@ -72,17 +79,14 @@ export function createDocumentToolDefinitions(options: { db: AppDb; config: Runt
           const docs = await service.list();
           const structuredContent = listProjectDocumentsOutputSchema.parse({ documents: docs });
 
+          const message =
+            docs.length === 0
+              ? "No documents found in Documents/."
+              : `Found ${docs.length} document(s) in Documents/.`;
+
           return {
             structuredContent,
-            content: [
-              {
-                type: "text" as const,
-                text:
-                  docs.length === 0
-                    ? "No documents found in Documents/."
-                    : `Found ${docs.length} document(s) in Documents/.`,
-              },
-            ],
+            content: [{ type: "text" as const, text: withData(message, structuredContent) }],
           };
         } catch (error) {
           const message = error instanceof Error ? error.message : "Failed to list documents.";
@@ -133,16 +137,13 @@ export function createDocumentToolDefinitions(options: { db: AppDb; config: Runt
             created,
           });
 
+          const message = created
+            ? `Created document '${parsed.path}'.`
+            : `Updated metadata for existing document '${parsed.path}'.`;
+
           return {
             structuredContent,
-            content: [
-              {
-                type: "text" as const,
-                text: created
-                  ? `Created document '${parsed.path}'.`
-                  : `Updated metadata for existing document '${parsed.path}'.`,
-              },
-            ],
+            content: [{ type: "text" as const, text: withData(message, structuredContent) }],
           };
         } catch (error) {
           const message = error instanceof Error ? error.message : "Failed to register document.";

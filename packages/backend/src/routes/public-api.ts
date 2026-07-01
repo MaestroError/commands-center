@@ -30,8 +30,8 @@ import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { createSpecialistService } from "../services/specialist-service.js";
 import { createConversationService } from "../services/conversation-service.js";
-import { createTaskArtifactService } from "../services/task-artifact-service.js";
-import { createTaskArtifactShareLinkService } from "../services/task-artifact-share-link-service.js";
+import { createArtifactService } from "../services/artifact-service.js";
+import { createArtifactShareLinkService } from "../services/artifact-share-link-service.js";
 import { createPublicTaskApiService } from "../services/public-task-api-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
@@ -123,14 +123,14 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
     config: context.config,
     opencodeService: context.opencodeService,
   });
-  const taskArtifactService = createTaskArtifactService({
-    config: context.config,
-    taskService,
-  });
-  const taskArtifactShareLinkService = createTaskArtifactShareLinkService({
+  const artifactService = createArtifactService({
     db: context.database.db,
     config: context.config,
-    artifactService: taskArtifactService,
+  });
+  const artifactShareLinkService = createArtifactShareLinkService({
+    db: context.database.db,
+    config: context.config,
+    artifactService,
   });
 
   const service = createPublicTaskApiService({
@@ -149,7 +149,7 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
       },
     },
     async (request, reply) => {
-      const artifact = await taskArtifactShareLinkService.validateDownload({
+      const artifact = await artifactShareLinkService.validateDownload({
         shareId: request.params.shareId,
         token: request.query.token,
       });
@@ -158,7 +158,7 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
         throw new NotFoundError("Task artifact share link not found.");
       }
 
-      const path = taskArtifactService.resolveArtifactPath(artifact.storageKey);
+      const path = artifactService.resolveArtifactPath(artifact.storageKey);
       const details = await stat(path).catch((error: unknown) => {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           throw new NotFoundError("Task artifact share link not found.");

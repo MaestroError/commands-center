@@ -1,3 +1,4 @@
+import { asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -11,7 +12,11 @@ import {
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../db/client.js";
-import type { task_subtasks } from "../db/schema/index.js";
+import {
+  artifacts as artifactsTable,
+  conversations as conversationsTable,
+  type task_subtasks,
+} from "../db/schema/index.js";
 
 const TASK_CONTEXT_ATTACHMENT_PATH_PREFIX = ".cc/workspace/sessions";
 
@@ -27,6 +32,13 @@ const renderedArtifactSchema = z.discriminatedUnion("type", [
     title: z.string(),
     description: z.string().optional(),
     type: z.literal("file"),
+    link: z.string().min(1),
+    sourceRunId: z.string(),
+  }),
+  z.object({
+    title: z.string(),
+    description: z.string().optional(),
+    type: z.literal("document"),
     link: z.string().min(1),
     sourceRunId: z.string(),
   }),
@@ -186,6 +198,10 @@ export function createTaskRunContextService(options: { db?: AppDb }) {
         operators.and(operators.eq(table.task_id, taskId), operators.ne(table.id, runId)),
       orderBy: (table, operators) => [operators.asc(table.created_at)],
     });
+    const artifactsByRun = await loadArtifactsByRunIds(
+      options.db,
+      rows.map((row) => row.id),
+    );
     const subtasks = await options.db.query.task_subtasks.findMany({
       where: (table, operators) =>
         operators.and(operators.eq(table.task_id, taskId), operators.isNull(table.deleted_at)),
@@ -209,7 +225,7 @@ export function createTaskRunContextService(options: { db?: AppDb }) {
       humanReviewReason: row.human_review_reason ?? undefined,
       errorMessage: row.error_message ?? undefined,
       errorDetails: parseJsonRecord(row.error_details_json),
-      artifacts: parseArtifacts(row.artifacts_json),
+      artifacts: artifactsByRun.get(row.id) ?? [],
       startedAt: row.started_at?.toISOString(),
       completedAt: row.completed_at?.toISOString(),
       cancelledAt: row.cancelled_at?.toISOString(),
@@ -464,8 +480,52 @@ function parseJsonRecord(value: string | null): Record<string, unknown> | undefi
   return value ? z.record(z.string(), z.unknown()).parse(JSON.parse(value)) : undefined;
 }
 
-function parseArtifacts(value: string | null): TaskRunArtifact[] {
-  return value ? persistedTaskRunArtifactSchema.array().parse(JSON.parse(value)) : [];
+// Load each run's conversation-anchored artifacts (as the lean history shape),
+// keyed by run id, via the run's task-run conversation.
+async function loadArtifactsByRunIds(
+  db: AppDb,
+  runIds: string[],
+): Promise<Map<string, TaskRunArtifact[]>> {
+  const grouped = new Map<string, TaskRunArtifact[]>();
+  const uniqueRunIds = Array.from(new Set(runIds.filter(Boolean)));
+
+  if (uniqueRunIds.length === 0) {
+    return grouped;
+  }
+
+  const rows = await db
+    .select({
+      runId: conversationsTable.task_run_id,
+      title: artifactsTable.title,
+      description: artifactsTable.description,
+      type: artifactsTable.type,
+      link: artifactsTable.link,
+      createdAt: artifactsTable.created_at,
+    })
+    .from(artifactsTable)
+    .innerJoin(conversationsTable, eq(artifactsTable.conversation_id, conversationsTable.id))
+    .where(inArray(conversationsTable.task_run_id, uniqueRunIds))
+    .orderBy(asc(artifactsTable.created_at));
+
+  for (const row of rows) {
+    if (!row.runId) {
+      continue;
+    }
+    const artifact = persistedTaskRunArtifactSchema.parse({
+      title: row.title,
+      description: row.description ?? undefined,
+      type: row.type,
+      link: row.link,
+    });
+    const existing = grouped.get(row.runId);
+    if (existing) {
+      existing.push(artifact);
+    } else {
+      grouped.set(row.runId, [artifact]);
+    }
+  }
+
+  return grouped;
 }
 
 function tag(name: string, content: string, options: { escape?: boolean } = {}): string {

@@ -1,13 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type DragEvent,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import {
   Archive,
   Calendar,
@@ -42,11 +33,9 @@ import {
   type Specialist,
   type SpecialistCatalog,
   type BoardTaskStatus,
-  type CreateTaskFeedbackInput,
   type CreateTaskInput,
   type CreateTaskTemplateInput,
   type Task,
-  type TaskFeedbackThread,
   type TaskQueuePreview,
   type TaskRun,
   type TaskRunArtifact,
@@ -69,8 +58,8 @@ import { Markdown } from "@/components/chat/Markdown";
 import { ModelSelector } from "@/components/chat/ModelSelector";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
-import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { RunTaskContextDialog } from "@/components/tasks/RunTaskContextDialog";
+import { TaskFeedbackPanelSection } from "@/components/tasks/task-feedback-section";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import {
   formatDate,
@@ -90,7 +79,6 @@ import {
   useActiveTaskRunsQuery,
   useArchivedTasksQuery,
   useTaskMutations,
-  useTaskFeedbackQuery,
   useTaskQuery,
   useTaskSchedulerStateQuery,
   useTaskTemplateQuery,
@@ -1947,50 +1935,6 @@ function TaskPanelArtifactSection(props: { runs: TaskRun[] }) {
   );
 }
 
-function TaskFeedbackPanelSection(props: {
-  task: Task;
-  taskId: string;
-  agent?: Specialist;
-  agents: Specialist[];
-  runs: TaskRun[];
-}) {
-  const feedbackQuery = useTaskFeedbackQuery(props.taskId);
-  const catalogQuery = useSpecialistCatalogQuery();
-  const mutations = useTaskMutations();
-  const feedbackSkills = useTaskComposerSkills(props.agent, catalogQuery.data);
-
-  return (
-    <section
-      className="cc-panel grid gap-4 p-4"
-      aria-label="Feedback comments"
-      data-testid="task-feedback-section"
-    >
-      <div>
-        <h3 className="font-semibold text-text-primary">Feedback</h3>
-        <p className="mt-1 text-sm text-text-secondary">
-          Comments, follow-up requests, and specialist replies for this task.
-        </p>
-      </div>
-      <TaskFeedbackSection
-        agents={props.agents}
-        error={feedbackQuery.error}
-        feedback={feedbackQuery.data ?? []}
-        isLoading={feedbackQuery.isLoading}
-        isSubmitting={mutations.createFeedback.isPending}
-        onSubmit={(input, options) =>
-          mutations.createFeedback.mutate(
-            { id: props.taskId, input },
-            { onSuccess: options.onSuccess },
-          )
-        }
-        parentRuns={props.runs}
-        skills={feedbackSkills}
-        task={props.task}
-      />
-    </section>
-  );
-}
-
 function useTaskComposerSkills(
   agent: Specialist | undefined,
   catalog: SpecialistCatalog | undefined,
@@ -2051,282 +1995,6 @@ function QueuePreviewSummary(props: { preview: TaskQueuePreview }) {
         </div>
       ) : null}
     </div>
-  );
-}
-
-function TaskFeedbackSection(props: {
-  task: Task;
-  agents: Specialist[];
-  skills: { slug: string; description?: string }[];
-  feedback: TaskFeedbackThread[];
-  parentRuns: TaskRun[];
-  isLoading: boolean;
-  error: unknown;
-  isSubmitting: boolean;
-  onSubmit: (input: CreateTaskFeedbackInput, options: { onSuccess: () => void }) => void;
-}) {
-  const [prompt, setPrompt] = useState<TaskPromptValue>(() => createTaskPromptValue());
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const timelineItems = buildFeedbackTimelineItems(props.feedback, props.parentRuns);
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const body = buildTaskPromptText(prompt);
-
-    if (!body) {
-      return;
-    }
-
-    props.onSubmit(
-      {
-        body,
-        mentionedAgentIds: prompt.mentionedAgents.map((agent) => agent.id),
-      },
-      {
-        onSuccess: () => {
-          setPrompt(createTaskPromptValue());
-          setIsEditorOpen(false);
-        },
-      },
-    );
-  }
-
-  return (
-    <div className="grid gap-4">
-      {isEditorOpen ? (
-        <form
-          className="grid gap-3 rounded-lg border border-border bg-surface p-3"
-          onSubmit={handleSubmit}
-        >
-          <section className="grid gap-2 text-sm text-text-secondary">
-            <div>
-              <p className="text-xs text-text-secondary">
-                Use # for files, / for skills, and @ to mention specialists for subtasks.
-              </p>
-            </div>
-            <TaskPromptComposer
-              agentId={props.task.agentId}
-              agents={props.agents}
-              autoFocus
-              fileSearchAgentId={prompt.mentionedAgents[0]?.id ?? null}
-              label="Feedback"
-              onChange={setPrompt}
-              placeholder="Describe the follow-up work or correction needed."
-              skills={props.skills}
-              testId="task-feedback-input"
-              value={prompt}
-            />
-          </section>
-          <p className="text-xs text-text-secondary italic">
-            If no specialist is mentioned, feedback creates one subtask for the task default
-            specialist.
-          </p>
-          <button
-            className="cc-button w-fit"
-            data-testid="task-feedback-submit"
-            disabled={props.isSubmitting}
-            type="submit"
-          >
-            {props.isSubmitting ? "Adding..." : "Add feedback"}
-          </button>
-        </form>
-      ) : (
-        <button
-          className="flex min-h-11 w-full items-center rounded-lg border border-border bg-surface px-3 text-left text-sm text-text-secondary transition hover:border-accent/40 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
-          data-testid="task-feedback-open"
-          onClick={() => setIsEditorOpen(true)}
-          type="button"
-        >
-          Leave comment
-        </button>
-      )}
-
-      {props.isLoading ? <LoadingState testId="task-feedback-loading" /> : null}
-      {props.error ? (
-        <ErrorState
-          description={readError(props.error) ?? "Request failed."}
-          title="Feedback could not be loaded."
-        />
-      ) : null}
-      {!props.isLoading &&
-      props.feedback.length === 0 &&
-      !hasParentRunComments(props.parentRuns) ? (
-        <EmptyState
-          description="Feedback added here creates specialist-assigned subtasks, and completed task runs appear as specialist comments."
-          title="No feedback yet"
-        />
-      ) : null}
-      {timelineItems.length > 0 ? (
-        <div className="grid gap-4">
-          {timelineItems.map((item) => {
-            if (item.type === "feedback") {
-              const entry = item.feedback;
-              return (
-                <article
-                  className="grid gap-3"
-                  data-testid={`task-feedback-comment-${entry.id}`}
-                  key={entry.id}
-                >
-                  <FeedbackComment
-                    author="Me"
-                    body={entry.body}
-                    meta={
-                      <>
-                        <span>{formatDate(entry.createdAt)}</span>
-                        {entry.targetAgentIds.map((agentId) => (
-                          <span
-                            className="rounded-full border border-border px-2 py-0.5"
-                            key={agentId}
-                          >
-                            @{readAgentName(props.agents, agentId)}
-                          </span>
-                        ))}
-                      </>
-                    }
-                    tone="operator"
-                  />
-                  <FeedbackReplies agents={props.agents} subtasks={entry.subtasks} />
-                </article>
-              );
-            }
-
-            const run = item.run;
-            const agent = props.agents.find((entry) => entry.id === run.agentId);
-            return (
-              <FeedbackComment
-                author={`${agent?.name ?? run.agentId} commented`}
-                agent={agent}
-                body={readRunCommentBody(run)}
-                resultText={run.resultText}
-                key={run.id}
-                meta={
-                  <>
-                    <StatusBadge status={run.status} />
-                    <span>{formatDate(run.completedAt ?? run.updatedAt)}</span>
-                    <Link
-                      className="font-medium text-accent underline-offset-4 hover:underline"
-                      to={`/tasks/${props.task.id}/runs/${run.id}`}
-                    >
-                      Open run
-                    </Link>
-                  </>
-                }
-                artifacts={run.artifacts}
-                taskId={props.task.id}
-                runId={run.id}
-                tone="agent"
-              />
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function FeedbackComment(props: {
-  author: string;
-  agent?: Specialist;
-  body: string;
-  resultText?: string;
-  artifacts?: TaskRunArtifact[];
-  taskId?: string;
-  runId?: string;
-  meta: ReactNode;
-  tone: "operator" | "agent";
-}) {
-  return (
-    <div className="flex gap-3 rounded-lg border border-border bg-surface-elevated p-3 shadow-sm">
-      {props.agent ? (
-        <SpecialistAvatar iconPath={props.agent.iconPath} name={props.agent.name} size="sm" />
-      ) : (
-        <div
-          aria-hidden="true"
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${
-            props.tone === "agent"
-              ? "bg-accent/15 text-accent"
-              : "bg-surface-muted text-text-primary"
-          }`}
-        >
-          {props.author.slice(0, 2).toUpperCase()}
-        </div>
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-          <span className="font-medium text-text-primary">{props.author}</span>
-          {props.meta}
-        </div>
-        <Markdown
-          className="mt-1 text-sm leading-6 text-text-secondary [&_*:first-child]:mt-0 [&_*:last-child]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:text-inherit"
-          content={props.body}
-        />
-        {props.resultText && props.resultText !== props.body ? (
-          <div className={`mt-2 ${RESULT_BOX_CLASS}`}>
-            <ClampedResultText
-              className="text-xs italic leading-5 text-text-primary"
-              expandable
-              text={props.resultText}
-            />
-          </div>
-        ) : null}
-        <RunArtifactAttachments
-          artifacts={props.artifacts ?? []}
-          taskId={props.taskId}
-          runId={props.runId}
-        />
-      </div>
-    </div>
-  );
-}
-
-function RunArtifactAttachments(props: {
-  artifacts: TaskRunArtifact[];
-  taskId?: string;
-  runId?: string;
-}) {
-  if (props.artifacts.length === 0) {
-    return null;
-  }
-
-  return (
-    <ul className="mt-3 grid gap-2" aria-label="Run artifacts">
-      {props.artifacts.map((artifact) => {
-        const href =
-          artifact.type === "file"
-            ? buildFileManagerHref({ path: artifact.link, openInEditor: true })
-            : artifact.link;
-        return (
-          <li
-            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
-            key={`${artifact.type}:${artifact.link}:${artifact.title}`}
-          >
-            <span className="min-w-0">
-              <a
-                className="break-words font-medium text-accent underline-offset-4 hover:underline [overflow-wrap:anywhere]"
-                href={href}
-                rel="noreferrer"
-                target={artifact.type === "file" ? undefined : "_blank"}
-              >
-                {artifact.title}
-              </a>
-              <span className="block text-xs text-text-muted [overflow-wrap:anywhere]">
-                {artifact.link}
-              </span>
-              <span className="mt-2 block text-xs text-text-secondary">
-                {artifact.description ?? artifact.title}
-              </span>
-              {props.taskId && props.runId ? (
-                <ArtifactShareControls
-                  artifact={artifact}
-                  taskId={props.taskId}
-                  runId={props.runId}
-                />
-              ) : null}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 
@@ -2402,52 +2070,6 @@ function TaskSubtasksSection(props: {
         </div>
       ) : null}
     </section>
-  );
-}
-
-function FeedbackReplies(props: {
-  agents: Specialist[];
-  subtasks: TaskFeedbackThread["subtasks"];
-}) {
-  const replies = props.subtasks.flatMap((subtask) =>
-    subtask.replies.map((reply) => ({ ...reply, agentId: subtask.agentId })),
-  );
-
-  if (replies.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="ml-6 grid gap-3 border-l border-border pl-4">
-      {replies.map((reply) => {
-        const agent = props.agents.find((entry) => entry.id === reply.agentId);
-        return (
-          <FeedbackComment
-            author={`${agent?.name ?? reply.agentId} replied`}
-            agent={agent}
-            body={readRunCommentBody(reply.run)}
-            resultText={reply.run.resultText}
-            key={reply.run.id}
-            meta={
-              <>
-                <StatusBadge status={reply.status} />
-                <span>{formatDate(reply.run.completedAt ?? reply.run.updatedAt)}</span>
-                <Link
-                  className="font-medium text-accent underline-offset-4 hover:underline"
-                  to={`/tasks/${reply.run.taskId}/runs/${reply.run.id}`}
-                >
-                  Open run
-                </Link>
-              </>
-            }
-            artifacts={reply.run.artifacts}
-            taskId={reply.run.taskId}
-            runId={reply.run.id}
-            tone="agent"
-          />
-        );
-      })}
-    </div>
   );
 }
 
@@ -4599,42 +4221,6 @@ function readLatestRunResult(runs: TaskRun[]): { content: string; run: TaskRun }
     : undefined;
 
   return latestRun && content ? { content, run: latestRun } : undefined;
-}
-
-function hasRunOutcomeSummary(run: TaskRun): boolean {
-  return Boolean(!run.subtaskId && (run.finalMessage || run.resultText || run.errorMessage));
-}
-
-function hasParentRunComments(runs: TaskRun[]): boolean {
-  return runs.some(hasRunOutcomeSummary);
-}
-
-type FeedbackTimelineItem =
-  | { type: "feedback"; id: string; timestamp: string; feedback: TaskFeedbackThread }
-  | { type: "run"; id: string; timestamp: string; run: TaskRun };
-
-function buildFeedbackTimelineItems(
-  feedback: TaskFeedbackThread[],
-  runs: TaskRun[],
-): FeedbackTimelineItem[] {
-  return [
-    ...feedback.map((entry) => ({
-      type: "feedback" as const,
-      id: entry.id,
-      timestamp: entry.createdAt,
-      feedback: entry,
-    })),
-    ...runs.filter(hasRunOutcomeSummary).map((run) => ({
-      type: "run" as const,
-      id: run.id,
-      timestamp: run.completedAt ?? run.updatedAt,
-      run,
-    })),
-  ].sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
-}
-
-function readRunCommentBody(run: TaskRun): string {
-  return run.finalMessage ?? run.resultText ?? run.errorMessage ?? "No result yet.";
 }
 
 type AggregatedRunArtifact = {

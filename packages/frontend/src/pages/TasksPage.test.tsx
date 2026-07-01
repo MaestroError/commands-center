@@ -135,6 +135,10 @@ const run: TaskRun = {
   resultText: "Saved all 24 available tools to `tools-23.md`.",
   artifacts: [
     {
+      id: "art-tool-list",
+      conversationId: "conv-test",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      shareLinks: [],
       title: "Tool list",
       type: "file",
       link: "tools-23.md",
@@ -143,7 +147,7 @@ const run: TaskRun = {
   ],
   needsHumanReview: true,
   humanReviewReason: "Confirm the generated tool list is complete.",
-  pendingFollowupCount: 0,
+  hasActiveReply: false,
   result: { messageCount: 2 },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -197,7 +201,7 @@ const pendingFollowup: TaskRunFollowup = {
   taskId: "task-1",
   runId: "run-1",
   kind: "operator_reply",
-  status: "pending",
+  status: "sending",
   body: "Please verify the release notes.",
   createdAt: "2026-01-01T00:02:00.000Z",
 };
@@ -205,9 +209,10 @@ const pendingFollowup: TaskRunFollowup = {
 const sentFollowup: TaskRunFollowup = {
   ...pendingFollowup,
   id: "followup-2",
-  status: "sent",
+  status: "answered",
   body: "Already delivered.",
-  sentAt: "2026-01-01T00:03:00.000Z",
+  answerBody: "Verified, all good.",
+  answeredAt: "2026-01-01T00:03:00.000Z",
 };
 
 const subtaskProgress: TaskSubtaskProgress = {
@@ -653,18 +658,30 @@ describe("TasksPage", () => {
       finalMessage: "Published release artifacts.",
       artifacts: [
         {
+          id: "art-tool-list-update",
+          conversationId: "conv-test",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          shareLinks: [],
           title: "Tool list update",
           type: "file",
           link: "tools-23.md",
           description: "Updated generated tool inventory.",
         },
         {
+          id: "art-release-report",
+          conversationId: "conv-test",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          shareLinks: [],
           title: "Release report",
           type: "file",
           link: "reports/release.md",
           description: "Generated release report.",
         },
         {
+          id: "art-pr-4",
+          conversationId: "conv-test",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          shareLinks: [],
           title: "PR #4",
           type: "url",
           link: "https://github.com/RedberryProducts/pest-plugin-evals/pull/4",
@@ -943,7 +960,10 @@ describe("TasksPage", () => {
       subtasks: [],
       createdAt: "2026-01-01T00:20:00.000Z",
     };
-    mockFetch({ feedbackPayload: [feedbackThread, newerFeedbackThread], runsPayload: [run] });
+    mockFetch({
+      feedbackPayload: [feedbackThread, newerFeedbackThread],
+      runsPayload: [{ ...run, resultText: undefined }],
+    });
 
     renderWithRouter(<TasksPage />, "/tasks");
 
@@ -977,6 +997,37 @@ describe("TasksPage", () => {
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
+  it("shows the frozen outcome comment for a run, not its live final message", async () => {
+    // Regression coverage: once a reply reactivates a run, its finalMessage/
+    // resultText columns keep changing with each answer, but the top-level
+    // "commented" entry in the Feedback timeline must keep showing the run's
+    // original outcome (captured once, server-side, as initialOutcomeText) —
+    // not whatever the run's live fields currently hold.
+    mockFetch({
+      feedbackPayload: [],
+      runsPayload: [
+        {
+          ...run,
+          finalMessage: "Second answer, after a reply.",
+          resultText: "Second answer, after a reply.",
+          initialOutcomeText: "Saved all 24 available tools to tools-23.md.",
+          initialOutcomeAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const comments = await screen.findByRole("region", { name: "Feedback comments" });
+    expect(
+      within(comments).getByText("Saved all 24 available tools to tools-23.md."),
+    ).toBeInTheDocument();
+    expect(within(comments).queryByText("Second answer, after a reply.")).not.toBeInTheDocument();
+  });
+
   it("opens subtask runs from the subtask tab", async () => {
     mockFetch({
       feedbackPayload: [feedbackThread],
@@ -1000,6 +1051,40 @@ describe("TasksPage", () => {
       "/tasks/task-1/runs/run-subtask-1",
     );
     expect(screen.queryByRole("button", { name: "Retry subtask" })).not.toBeInTheDocument();
+  });
+
+  it("sends a run reply from the board's quick-view panel", async () => {
+    // Regression coverage: the board panel used to have its own, older copy of
+    // the feedback section with no reply affordance at all. Now that it shares
+    // the same component as the full task detail page, replying should work
+    // here too.
+    const fetchMock = mockFetch({ feedbackPayload: [feedbackThread], runsPayload: [run] });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    const comments = await screen.findByRole("region", { name: "Feedback comments" });
+
+    await user.click(within(comments).getByRole("button", { name: "Reply" }));
+    await user.type(
+      within(comments).getByLabelText("Reply to run run-1"),
+      "Please double-check the changelog.",
+    );
+    await user.click(within(comments).getByTestId("task-run-reply-send-run-1"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/runs/run-1/followups",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            body: "Please double-check the changelog.",
+            kind: "operator_reply",
+          }),
+        }),
+      );
+    });
   });
 
   it("submits feedback with file, skill, and specialist mentions from the board panel", async () => {
@@ -1026,7 +1111,7 @@ describe("TasksPage", () => {
     await user.click(await screen.findByRole("button", { name: /GOAL\.md/i }));
     await user.type(feedbackInput, "Please coordinate with @review");
     await user.click(await screen.findByRole("button", { name: "@Reviewer" }));
-    await user.click(screen.getByRole("button", { name: "Add feedback" }));
+    await user.click(screen.getByTestId("task-feedback-submit"));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/search/files?query=GOAL", { method: "GET" });
@@ -1059,7 +1144,7 @@ describe("TasksPage", () => {
     const feedbackInput = await screen.findByLabelText("Feedback");
     await user.type(feedbackInput, "Please coordinate with @review");
     await user.click(await screen.findByRole("button", { name: "@Reviewer" }));
-    await user.click(screen.getByRole("button", { name: "Add feedback" }));
+    await user.click(screen.getByTestId("task-feedback-submit"));
 
     const comments = await screen.findByRole("region", { name: "Feedback comments" });
     expect(within(comments).getByText("Please retest the release flow.")).toBeInTheDocument();
@@ -1089,7 +1174,7 @@ describe("TasksPage", () => {
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
     await user.click(await screen.findByRole("button", { name: "Leave comment" }));
     await user.type(await screen.findByLabelText("Feedback"), "Follow up please");
-    await user.click(screen.getByRole("button", { name: "Add feedback" }));
+    await user.click(screen.getByTestId("task-feedback-submit"));
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Feedback")).not.toBeInTheDocument();
@@ -2423,13 +2508,23 @@ describe("TaskDetailPage", () => {
     expect(within(comments).getAllByRole("link", { name: "Tool list" })).toHaveLength(2);
   });
 
-  it("does not eagerly load followups for closed feedback reply panels", async () => {
-    const fetchMock = mockFetch({ feedbackPayload: [feedbackThread], runsPayload: [run] });
+  it("eagerly loads and shows existing replies without requiring the Reply toggle", async () => {
+    // Regression coverage: replies used to only load once the operator clicked
+    // "Reply" to open the composer, so a page refresh showed only the toggle
+    // button until clicked. Existing replies and their answers should always
+    // be visible; the toggle only controls the compose box.
+    const fetchMock = mockFetch({
+      feedbackPayload: [feedbackThread],
+      runsPayload: [{ ...run, hasActiveReply: false }],
+      followupsPayload: [sentFollowup],
+    });
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
-    await screen.findByRole("region", { name: "Feedback comments" });
+    const comments = await screen.findByRole("region", { name: "Feedback comments" });
 
+    expect(await within(comments).findByText("Already delivered.")).toBeInTheDocument();
+    expect(within(comments).getByText("Verified, all good.")).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([input, init]) => {
         const url = input instanceof Request ? input.url : String(input);
@@ -2437,7 +2532,7 @@ describe("TaskDetailPage", () => {
 
         return url.includes("/followups") && method === "GET";
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("disables feedback run replies when the run has no recorded session", async () => {
@@ -2465,9 +2560,7 @@ describe("TaskDetailPage", () => {
     const replyButtons = within(comments).getAllByRole("button", { name: "Reply" });
 
     expect(
-      within(comments).getAllByText(
-        "Replies are unavailable because this run has no recorded OpenCode session.",
-      ).length,
+      within(comments).getAllByText("Replies require a recorded OpenCode session.").length,
     ).toBeGreaterThan(0);
     expect(replyButtons.every((button) => button.hasAttribute("disabled"))).toBe(true);
   });
@@ -2508,18 +2601,30 @@ describe("TaskDetailPage", () => {
       finalMessage: "Updated tool inventory.",
       artifacts: [
         {
+          id: "art-tool-list-update",
+          conversationId: "conv-test",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          shareLinks: [],
           title: "Tool list update",
           type: "file",
           link: "tools-23.md",
           description: "Updated generated tool inventory.",
         },
         {
+          id: "art-release-report",
+          conversationId: "conv-test",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          shareLinks: [],
           title: "Release report",
           type: "file",
           link: "reports/release.md",
           description: "Generated release report.",
         },
         {
+          id: "art-pr-4",
+          conversationId: "conv-test",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          shareLinks: [],
           title: "PR #4",
           type: "url",
           link: "https://github.com/RedberryProducts/pest-plugin-evals/pull/4",
@@ -2662,8 +2767,8 @@ describe("TaskDetailPage", () => {
     expect(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1")).toBeDisabled();
   });
 
-  it("sends and requeues a run reply from the run history row", async () => {
-    const fetchMock = mockFetch({ runsPayload: [run] });
+  it("disables run replies while the run is in progress", async () => {
+    mockFetch({ runsPayload: [{ ...run, status: "running" }] });
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
@@ -2672,34 +2777,26 @@ describe("TaskDetailPage", () => {
     const runHistory = screen.getByRole("heading", { name: "Run history" }).closest("section");
     expect(runHistory).not.toBeNull();
 
+    // The row-level toggle stays enabled (viewing the reply thread is always
+    // allowed); only the panel's own Reply control is disabled while running.
     await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1"));
     const replyButtons = within(runHistory as HTMLElement).getAllByRole("button", {
       name: "Reply",
     });
-    const composerReplyButton = replyButtons[1];
-    if (!composerReplyButton) throw new Error("Expected run reply composer button.");
-    await user.click(composerReplyButton);
-    await user.type(
-      within(runHistory as HTMLElement).getByLabelText("Reply to run run-1"),
-      "Please continue with this context.",
-    );
-    await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-requeue-run-1"));
+    const panelReplyButton = replyButtons[1];
+    if (!panelReplyButton) throw new Error("Expected run reply panel button.");
 
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/runs/run-1/followups",
-        expect.objectContaining({ method: "POST" }),
-      );
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/runs/run-1/continue",
-        expect.objectContaining({ method: "POST" }),
-      );
-    });
+    expect(panelReplyButton).toBeDisabled();
+    expect(
+      within(runHistory as HTMLElement).getByText(
+        "Replies are disabled while the run is in progress.",
+      ),
+    ).toBeInTheDocument();
   });
 
-  it("edits a pending run followup and leaves sent followups read-only", async () => {
-    const fetchMock = mockFetch({
-      runsPayload: [{ ...run, pendingFollowupCount: 1 }],
+  it("shows a waiting placeholder for a reply still in flight and the answer once delivered", async () => {
+    mockFetch({
+      runsPayload: [{ ...run, hasActiveReply: true }],
       followupsPayload: [pendingFollowup, sentFollowup],
     });
 
@@ -2711,61 +2808,15 @@ describe("TaskDetailPage", () => {
     expect(runHistory).not.toBeNull();
 
     await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1"));
-    const pendingItem = (
-      await within(runHistory as HTMLElement).findByText("Please verify the release notes.")
-    ).closest("article");
-    const sentItem = within(runHistory as HTMLElement)
-      .getByText("Already delivered.")
-      .closest("article");
-    expect(pendingItem).not.toBeNull();
-    expect(sentItem).not.toBeNull();
+
     expect(
-      within(sentItem as HTMLElement).queryByRole("button", { name: "Edit" }),
-    ).not.toBeInTheDocument();
-
-    await user.click(within(pendingItem as HTMLElement).getByRole("button", { name: "Edit" }));
-    const editor = within(pendingItem as HTMLElement).getByLabelText("Edit pending reply");
-    await user.clear(editor);
-    await user.type(editor, "Please verify the release checklist.");
-    await user.click(within(pendingItem as HTMLElement).getByRole("button", { name: "Save" }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/runs/run-1/followups/followup-1",
-        expect.objectContaining({
-          method: "PATCH",
-          body: JSON.stringify({ body: "Please verify the release checklist." }),
-        }),
-      );
-    });
-  });
-
-  it("deletes a pending run followup", async () => {
-    const fetchMock = mockFetch({
-      runsPayload: [{ ...run, pendingFollowupCount: 1 }],
-      followupsPayload: [pendingFollowup],
-    });
-
-    renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("tab", { name: "Runs" }));
-    const runHistory = screen.getByRole("heading", { name: "Run history" }).closest("section");
-    expect(runHistory).not.toBeNull();
-
-    await user.click(within(runHistory as HTMLElement).getByTestId("task-run-reply-run-1"));
-    const pendingItem = (
-      await within(runHistory as HTMLElement).findByText("Please verify the release notes.")
-    ).closest("article");
-    expect(pendingItem).not.toBeNull();
-    await user.click(within(pendingItem as HTMLElement).getByRole("button", { name: "Delete" }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/tasks/task-1/runs/run-1/followups/followup-1",
-        expect.objectContaining({ method: "DELETE" }),
-      );
-    });
+      await within(runHistory as HTMLElement).findByText("Please verify the release notes."),
+    ).toBeInTheDocument();
+    expect(
+      within(runHistory as HTMLElement).getByText("Waiting for a response…"),
+    ).toBeInTheDocument();
+    expect(within(runHistory as HTMLElement).getByText("Already delivered.")).toBeInTheDocument();
+    expect(within(runHistory as HTMLElement).getByText("Verified, all good.")).toBeInTheDocument();
   });
 
   it("creates feedback and queues the task from Send and requeue", async () => {
@@ -3449,13 +3500,10 @@ function mockFetch(options: MockFetchOptions = {}) {
     }
     if (url === "/api/tasks/template-1") return Promise.resolve(jsonResponse(204, null));
     if (url === "/api/tasks/task-1/runs") return Promise.resolve(jsonResponse(200, runsPayload));
-    const followupsMatch = url.match(
-      /^\/api\/tasks\/task-1\/runs\/([^/]+)\/followups(?:\/([^/]+))?$/,
-    );
+    const followupsMatch = url.match(/^\/api\/tasks\/task-1\/runs\/([^/]+)\/followups$/);
     if (followupsMatch) {
       const method = input instanceof Request ? input.method : init?.method;
       const runId = followupsMatch[1] ?? "";
-      const followupId = followupsMatch[2];
 
       if (method === "POST") {
         const body =
@@ -3469,33 +3517,11 @@ function mockFetch(options: MockFetchOptions = {}) {
         );
       }
 
-      if (method === "PATCH") {
-        const body =
-          typeof init?.body === "string" ? (JSON.parse(init.body) as { body?: string }) : {};
-        const current =
-          followupsPayload.find((followup) => followup.id === followupId) ?? pendingFollowup;
-        return Promise.resolve(jsonResponse(200, { ...current, body: body.body ?? current.body }));
-      }
-
-      if (method === "DELETE") {
-        return Promise.resolve(jsonResponse(204, null));
-      }
-
       return Promise.resolve(
         jsonResponse(
           200,
           followupsPayload.filter((followup) => followup.runId === runId),
         ),
-      );
-    }
-    const continueMatch = url.match(/^\/api\/tasks\/task-1\/runs\/([^/]+)\/continue$/);
-    if (continueMatch) {
-      return Promise.resolve(
-        jsonResponse(200, {
-          ...run,
-          id: continueMatch[1] ?? run.id,
-          status: "running",
-        }),
       );
     }
     if (url === "/api/tasks/task-1/runs/run-1")

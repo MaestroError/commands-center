@@ -516,130 +516,95 @@ describe("task routes", () => {
     }
   });
 
-  it("creates pending followups through the route", async () => {
+  it("sends a reply through the route and reactivates the run", async () => {
     const harness = await createTaskRouteHarness();
 
     try {
-      const { task, run } = await createTerminalRunFixture(harness, "Create followup");
+      const { task, run } = await createTerminalRunFixture(harness, "Send reply");
       const response = await harness.server.inject({
         method: "POST",
         url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
         payload: { body: "Please double-check the docs." },
       });
+      const reactivated = await harness.taskService.getRunById(run.id);
+      const taskAfter = await harness.taskService.get(task.id);
 
       expect(response.statusCode).toBe(201);
       expect(response.json()).toMatchObject({
         taskId: task.id,
         runId: run.id,
         kind: "operator_reply",
-        status: "pending",
+        status: "sending",
         body: "Please double-check the docs.",
       });
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("lists followups for the requested run", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const { task, run } = await createTerminalRunFixture(harness, "List followups");
-      await harness.taskService.createFollowup(run.id, { body: "First reply." });
-      await harness.taskService.createFollowup(run.id, { body: "Second reply." });
-
-      const response = await harness.server.inject({
-        method: "GET",
-        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
-      });
-
-      expect(response.statusCode).toBe(200);
-      expect(response.json()).toHaveLength(2);
-      expect(response.json()).toMatchObject([
-        { body: "First reply.", status: "pending" },
-        { body: "Second reply.", status: "pending" },
-      ]);
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("updates pending followups through the route", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const { task, run } = await createTerminalRunFixture(harness, "Update followup");
-      const followup = await harness.taskService.createFollowup(run.id, { body: "Old reply." });
-      const response = await harness.server.inject({
-        method: "PATCH",
-        url: `/api/tasks/${task.id}/runs/${run.id}/followups/${followup.id}`,
-        payload: { body: "New reply." },
-      });
-
-      expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({
-        id: followup.id,
-        body: "New reply.",
-        status: "pending",
-      });
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("deletes pending followups through the route", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const { task, run } = await createTerminalRunFixture(harness, "Delete followup");
-      const followup = await harness.taskService.createFollowup(run.id, { body: "Delete me." });
-      const deleted = await harness.server.inject({
-        method: "DELETE",
-        url: `/api/tasks/${task.id}/runs/${run.id}/followups/${followup.id}`,
-      });
-      const listed = await harness.server.inject({
-        method: "GET",
-        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
-      });
-
-      expect(deleted.statusCode).toBe(204);
-      expect(listed.statusCode).toBe(200);
-      expect(listed.json()).toEqual([]);
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("continues a terminal run from the continue route", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const { task, run } = await createTerminalRunFixture(harness, "Continue route");
-      await harness.taskService.createFollowup(run.id, { body: "Please fix the last issue." });
-      const response = await harness.server.inject({
-        method: "POST",
-        url: `/api/tasks/${task.id}/runs/${run.id}/continue`,
-      });
-      const followups = await harness.taskService.listFollowups(run.id);
-      const taskAfter = await harness.taskService.get(task.id);
-
-      expect(response.statusCode).toBe(200);
-      expect(response.json().status).toBe("running");
-      expect(followups.map((followup) => followup.status)).toEqual(["sent"]);
+      expect(reactivated?.status).toBe("running");
       expect(taskAfter?.status).toBe("queued");
     } finally {
       await harness.close();
     }
   });
 
-  it("returns conflict when continuing a run without a recorded session", async () => {
+  it("rejects sending a reply while the run is in progress", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const agent = await insertAgent(harness.testDb.client.db);
+      const task = await harness.taskService.create({ agentId: agent.id, title: "Running reply" });
+      const run = await harness.taskService.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        status: "running",
+        triggerSource: "manual",
+        opencodeSessionId: "session-1",
+        renderedPrompt: "Initial run.",
+      });
+      const response = await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
+        payload: { body: "Are you still working on this?" },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.message).toBe(
+        "Cannot send a reply while the run is in progress.",
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("lists replies for the requested run", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const { task, run } = await createTerminalRunFixture(harness, "List followups");
+      await harness.server.inject({
+        method: "POST",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
+        payload: { body: "First reply." },
+      });
+
+      const response = await harness.server.inject({
+        method: "GET",
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toHaveLength(1);
+      expect(response.json()).toMatchObject([{ body: "First reply.", status: "sending" }]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("returns conflict when sending a reply to a run without a recorded session", async () => {
     const harness = await createTaskRouteHarness();
 
     try {
       const agent = await insertAgent(harness.testDb.client.db);
       const task = await harness.taskService.create({
         agentId: agent.id,
-        title: "No session continue route",
+        title: "No session reply route",
       });
       const run = await harness.taskService.createRun({
         taskId: task.id,
@@ -650,7 +615,8 @@ describe("task routes", () => {
       });
       const response = await harness.server.inject({
         method: "POST",
-        url: `/api/tasks/${task.id}/runs/${run.id}/continue`,
+        url: `/api/tasks/${task.id}/runs/${run.id}/followups`,
+        payload: { body: "Please retry." },
       });
 
       expect(response.statusCode).toBe(409);
@@ -676,133 +642,6 @@ describe("task routes", () => {
 
       expect(response.statusCode).toBe(404);
       expect(response.json().error.message).toBe("Task run not found.");
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("returns not found when a continue route uses a run from another task", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const { task, run } = await createTerminalRunFixture(harness, "Wrong task continue");
-      const otherTask = await harness.taskService.create({
-        agentId: task.agentId,
-        title: "Other task",
-      });
-      const response = await harness.server.inject({
-        method: "POST",
-        url: `/api/tasks/${otherTask.id}/runs/${run.id}/continue`,
-      });
-
-      expect(response.statusCode).toBe(404);
-      expect(response.json().error.message).toBe("Task run not found.");
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("returns not found when updating a missing followup id", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const { task, run } = await createTerminalRunFixture(harness, "Missing followup update");
-      const response = await harness.server.inject({
-        method: "PATCH",
-        url: `/api/tasks/${task.id}/runs/${run.id}/followups/missing-followup`,
-        payload: { body: "Change this." },
-      });
-
-      expect(response.statusCode).toBe(404);
-      expect(response.json().error.message).toBe("Task run follow-up not found.");
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("returns not found when updating a followup from another run", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const { task, run } = await createTerminalRunFixture(harness, "Wrong run followup update");
-      const otherRun = await harness.taskService.createRun({
-        taskId: task.id,
-        agentId: task.agentId,
-        triggerSource: "manual",
-        opencodeSessionId: "other-session",
-        renderedPrompt: "Other run.",
-      });
-      const followup = await harness.taskService.createFollowup(run.id, { body: "Keep this." });
-      const response = await harness.server.inject({
-        method: "PATCH",
-        url: `/api/tasks/${task.id}/runs/${otherRun.id}/followups/${followup.id}`,
-        payload: { body: "Change this." },
-      });
-
-      expect(response.statusCode).toBe(404);
-      expect(response.json().error.message).toBe("Task run follow-up not found.");
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("returns not found when deleting a missing followup id", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const { task, run } = await createTerminalRunFixture(harness, "Missing followup delete");
-      const response = await harness.server.inject({
-        method: "DELETE",
-        url: `/api/tasks/${task.id}/runs/${run.id}/followups/missing-followup`,
-      });
-
-      expect(response.statusCode).toBe(404);
-      expect(response.json().error.message).toBe("Task run follow-up not found.");
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("returns not found when deleting a followup from another run", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const { task, run } = await createTerminalRunFixture(harness, "Wrong run followup delete");
-      const otherRun = await harness.taskService.createRun({
-        taskId: task.id,
-        agentId: task.agentId,
-        triggerSource: "manual",
-        opencodeSessionId: "other-session",
-        renderedPrompt: "Other run.",
-      });
-      const followup = await harness.taskService.createFollowup(run.id, { body: "Keep this." });
-      const response = await harness.server.inject({
-        method: "DELETE",
-        url: `/api/tasks/${task.id}/runs/${otherRun.id}/followups/${followup.id}`,
-      });
-
-      expect(response.statusCode).toBe(404);
-      expect(response.json().error.message).toBe("Task run follow-up not found.");
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("rejects followup edits once the followup has been sent", async () => {
-    const harness = await createTaskRouteHarness();
-
-    try {
-      const { task, run } = await createTerminalRunFixture(harness, "Sent followup edit");
-      const followup = await harness.taskService.createFollowup(run.id, { body: "Keep this." });
-      await harness.taskExecutionService.continueRunWithFollowups(run.id);
-      const response = await harness.server.inject({
-        method: "PATCH",
-        url: `/api/tasks/${task.id}/runs/${run.id}/followups/${followup.id}`,
-        payload: { body: "Change this." },
-      });
-
-      expect(response.statusCode).toBe(409);
-      expect(response.json().error.message).toBe("Only pending follow-ups can be edited.");
     } finally {
       await harness.close();
     }

@@ -1,13 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { TaskRunArtifact } from "@cc/shared/schemas";
+import type { Artifact } from "@cc/shared/schemas";
 
 import { ArtifactShareControls } from "./ArtifactShareControls";
-import { useTaskMutations, useTaskRunArtifactsQuery } from "@/hooks/use-tasks-query";
+import { useTaskMutations } from "@/hooks/use-tasks-query";
 
 vi.mock("@/hooks/use-tasks-query", () => ({
-  useTaskRunArtifactsQuery: vi.fn(),
   useTaskMutations: vi.fn(),
 }));
 
@@ -27,30 +26,13 @@ function setMutations(overrides: { createPending?: boolean; revokePending?: bool
   } as unknown as ReturnType<typeof useTaskMutations>);
 }
 
-function setArtifacts(data: unknown, isLoading = false): void {
-  vi.mocked(useTaskRunArtifactsQuery).mockReturnValue({
-    data,
-    isLoading,
-  } as unknown as ReturnType<typeof useTaskRunArtifactsQuery>);
-}
-
-const artifact: TaskRunArtifact = {
-  title: "Report",
-  type: "file",
-  link: "/runs/run-1/report.pdf",
-};
-
-function registered(overrides: Record<string, unknown> = {}) {
+function artifact(overrides: Partial<Artifact> = {}): Artifact {
   return {
     id: "art-1",
-    taskId: "task-1",
-    runId: "run-1",
+    conversationId: "conv-1",
     title: "Report",
-    originalFilename: "report.pdf",
-    mimeType: "application/pdf",
-    sizeBytes: 100,
-    checksum: "abc",
-    storageKey: "key",
+    type: "file",
+    link: "runs/run-1/report.pdf",
     createdAt: "2026-01-01T00:00:00.000Z",
     shareLinks: [],
     ...overrides,
@@ -68,46 +50,28 @@ beforeEach(() => {
 });
 
 describe("ArtifactShareControls", () => {
-  it("renders nothing for a URL-only artifact without a path", () => {
-    setArtifacts({ artifacts: [] });
+  it("renders nothing for a non-file artifact", () => {
     const { container } = render(
-      <ArtifactShareControls
-        taskId="task-1"
-        runId="run-1"
-        artifact={{ title: "External", type: "url", link: "https://example.com" }}
-      />,
+      <ArtifactShareControls artifact={artifact({ type: "url", link: "https://example.com" })} />,
     );
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("shows a loading placeholder while artifacts load", () => {
-    setArtifacts(undefined, true);
-    render(<ArtifactShareControls taskId="task-1" runId="run-1" artifact={artifact} />);
-    expect(screen.getByText("Loading share state...")).toBeInTheDocument();
-  });
-
-  it("explains when no matching source file is registered", () => {
-    setArtifacts({ artifacts: [registered({ originalFilename: "other.pdf" })] });
-    render(<ArtifactShareControls taskId="task-1" runId="run-1" artifact={artifact} />);
-    expect(screen.getByText("Source file unavailable for sharing.")).toBeInTheDocument();
-  });
-
   it("creates a signed link and copies it to the clipboard", async () => {
-    setArtifacts({ artifacts: [registered()] });
     createMutateAsync.mockResolvedValue({
       shareId: "share-1",
       url: "https://share.example/abc",
       expiresAt: null,
     });
-    render(<ArtifactShareControls taskId="task-1" runId="run-1" artifact={artifact} />);
+    render(<ArtifactShareControls artifact={artifact()} taskId="task-1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
 
     expect(await screen.findByText("https://share.example/abc")).toBeInTheDocument();
     expect(createMutateAsync).toHaveBeenCalledWith({
-      taskId: "task-1",
-      runId: "run-1",
       artifactId: "art-1",
+      conversationId: "conv-1",
+      taskId: "task-1",
     });
     await waitFor(() =>
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith("https://share.example/abc"),
@@ -124,31 +88,29 @@ describe("ArtifactShareControls", () => {
       value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
       configurable: true,
     });
-    setArtifacts({ artifacts: [registered()] });
     createMutateAsync.mockResolvedValue({
       shareId: "share-1",
       url: "https://share.example/abc",
       expiresAt: null,
     });
-    render(<ArtifactShareControls taskId="task-1" runId="run-1" artifact={artifact} />);
+    render(<ArtifactShareControls artifact={artifact()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
 
-    // The URL is shown even though the clipboard write rejected.
     expect(await screen.findByText("https://share.example/abc")).toBeInTheDocument();
-    // The copy state never flips to "Copied" because the write failed.
     expect(await screen.findByRole("button", { name: "Copy link" })).toBeInTheDocument();
 
-    // Clicking the explicit copy button also swallows the rejection.
     fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(2));
     expect(screen.getByRole("button", { name: "Copy link" })).toBeInTheDocument();
   });
 
   it("lists existing share links and revokes one", async () => {
-    setArtifacts({
-      artifacts: [
-        registered({
+    revokeMutateAsync.mockResolvedValue(undefined);
+    render(
+      <ArtifactShareControls
+        taskId="task-1"
+        artifact={artifact({
           shareLinks: [
             {
               id: "share-9",
@@ -160,11 +122,9 @@ describe("ArtifactShareControls", () => {
               createdAt: "2026-01-01T00:00:00.000Z",
             },
           ],
-        }),
-      ],
-    });
-    revokeMutateAsync.mockResolvedValue(undefined);
-    render(<ArtifactShareControls taskId="task-1" runId="run-1" artifact={artifact} />);
+        })}
+      />,
+    );
 
     expect(screen.getByLabelText("Active artifact share links")).toBeInTheDocument();
     expect(screen.getByText(/1 download$/)).toBeInTheDocument();
@@ -172,9 +132,9 @@ describe("ArtifactShareControls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
     await waitFor(() =>
       expect(revokeMutateAsync).toHaveBeenCalledWith({
-        taskId: "task-1",
-        runId: "run-1",
         artifactId: "art-1",
+        conversationId: "conv-1",
+        taskId: "task-1",
         shareId: "share-9",
       }),
     );

@@ -39,6 +39,10 @@ describe("buildTerminalActivity", () => {
         outcome: "success",
         artifacts: [
           {
+            id: "art-pr-4",
+            conversationId: "conv-1",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            shareLinks: [],
             title: "PR #4",
             type: "url",
             link: "https://github.com/RedberryProducts/pest-plugin-evals/pull/4",
@@ -100,6 +104,10 @@ describe("buildTerminalActivity", () => {
         outcome: "needs_human_review",
         artifacts: [
           {
+            id: "art-review",
+            conversationId: "conv-1",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            shareLinks: [],
             title: "Review report",
             type: "file",
             link: "reports/review.md",

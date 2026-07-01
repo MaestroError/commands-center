@@ -9,6 +9,7 @@ import type { AppDb } from "../../db/client.js";
 import {
   getCcManagedMcpServerByRouteSegment,
   type CcManagedMcpServerDefinition,
+  type CcManagedToolContextMode,
 } from "./server-registry.js";
 import { createCcManagedMcpToolAccessService } from "./tool-access-service.js";
 import {
@@ -18,7 +19,6 @@ import {
 import {
   createCcManagedMcpAuthTokenService,
   type CcManagedMcpAuthTokenService,
-  type CcManagedMcpTokenContextMode,
 } from "./auth-token-service.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 
@@ -99,7 +99,7 @@ export function createCcManagedMcpService(options: {
 
     try {
       ensureDrainCompatibleSocket(context.rawRequest);
-      const session = await createSession(definition, context.routeAgentSlug, auth.contextMode);
+      const session = await createSession(definition, context.routeAgentSlug);
 
       await session.transport.handleRequest(
         context.rawRequest,
@@ -149,7 +149,6 @@ export function createCcManagedMcpService(options: {
   async function createSession(
     definition: CcManagedMcpServerDefinition,
     agentSlug: string,
-    contextMode: CcManagedMcpTokenContextMode,
   ): Promise<{ transport: StreamableHTTPServerTransport; server: McpServer }> {
     const agent = await loadAgent(agentSlug);
 
@@ -161,7 +160,7 @@ export function createCcManagedMcpService(options: {
       throw new Error(`MCP server '${definition.name}' is disabled for agent '${agentSlug}'.`);
     }
 
-    const tools = toolAccessService.listEnabledTools(agent.capabilities, definition, contextMode);
+    const tools = toolAccessService.listEnabledTools(agent.capabilities, definition);
     const server = new McpServer(
       {
         name: definition.name,
@@ -181,7 +180,7 @@ export function createCcManagedMcpService(options: {
       server.registerTool(
         tool.name,
         {
-          description: tool.description,
+          description: withContextRecommendation(tool.description, tool.context),
           inputSchema: tool.inputSchema,
           outputSchema: tool.outputSchema,
         },
@@ -201,10 +200,7 @@ export function createCcManagedMcpService(options: {
     request: IncomingMessage,
     agentSlug: string,
     serverName: string,
-  ): Promise<
-    | { ok: true; contextMode: CcManagedMcpTokenContextMode }
-    | { ok: false; statusCode: number; message: string }
-  > {
+  ): Promise<{ ok: true } | { ok: false; statusCode: number; message: string }> {
     const token = readBearerToken(request.headers.authorization);
 
     if (!token) {
@@ -233,7 +229,7 @@ export function createCcManagedMcpService(options: {
       };
     }
 
-    return { ok: true, contextMode: verified.contextMode };
+    return { ok: true };
   }
 
   async function loadAgent(slug: string): Promise<
@@ -260,6 +256,22 @@ export function createCcManagedMcpService(options: {
       capabilities: specialistCapabilitySelectionSchema.parse(JSON.parse(row.capabilities_json)),
     };
   }
+}
+
+// `context` is advisory only — tools are always listed regardless of whether
+// the session is a chat or a task run. We surface the intended context to the
+// model as a recommendation appended to the description instead of hiding the
+// tool. "both" tools get no suffix.
+function withContextRecommendation(description: string, context: CcManagedToolContextMode): string {
+  if (context === "chat") {
+    return `${description} Recommended to use in Chat.`;
+  }
+
+  if (context === "task_run") {
+    return `${description} Recommended to use in Task Run.`;
+  }
+
+  return description;
 }
 
 function readBearerToken(header: string | string[] | undefined): string | undefined {
