@@ -1623,6 +1623,13 @@ describe("cc-managed MCP routes", () => {
         triggerSource: "manual",
         renderedPrompt: "Do the task.",
       });
+      await insertConversation(testDb.client.db, {
+        id: `conv-${run.id}`,
+        agentId: agent.id,
+        source: "task_run",
+        taskId: task.id,
+        taskRunId: run.id,
+      });
 
       const listToolsResponse = await callMcpToolRouteForServer(
         server,
@@ -3517,6 +3524,13 @@ describe("cc-managed MCP routes", () => {
         triggerSource: "manual",
         renderedPrompt: "Run it.",
       });
+      await insertConversation(testDb.client.db, {
+        id: `conv-${run.id}`,
+        agentId: agent.id,
+        source: "task_run",
+        taskId: task.id,
+        taskRunId: run.id,
+      });
       await taskService.addRunArtifact(run.id, agent.id, {
         title: "Report",
         description: "Weekly summary.",
@@ -3694,6 +3708,13 @@ describe("cc-managed MCP routes", () => {
         status: "running",
         triggerSource: "manual",
         renderedPrompt: "Do it.",
+      });
+      await insertConversation(testDb.client.db, {
+        id: `conv-${ownerRun.id}`,
+        agentId: owner.id,
+        source: "task_run",
+        taskId: ownerTask.id,
+        taskRunId: ownerRun.id,
       });
       await taskService.addRunArtifact(ownerRun.id, owner.id, {
         title: "Secret report",

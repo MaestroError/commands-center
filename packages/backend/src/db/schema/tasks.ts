@@ -171,7 +171,6 @@ export const task_runs = sqliteTable(
     result_text: text("result_text"),
     initial_outcome_text: text("initial_outcome_text"),
     initial_outcome_at: integer("initial_outcome_at", { mode: "timestamp_ms" }),
-    artifacts_json: text("artifacts_json").default("[]"),
     needs_human_review: integer("needs_human_review", { mode: "boolean" }).default(false),
     human_review_reason: text("human_review_reason"),
     review_question_json: text("review_question_json"),
@@ -222,32 +221,6 @@ export const task_run_followups = sqliteTable(
     index("task_run_followups_run_id_idx").on(table.run_id),
     index("task_run_followups_run_status_idx").on(table.run_id, table.status),
     index("task_run_followups_created_at_idx").on(table.created_at),
-  ],
-);
-
-export const task_artifact_share_links = sqliteTable(
-  "task_artifact_share_links",
-  {
-    id: text("id").primaryKey(),
-    artifact_id: text("artifact_id").notNull(),
-    task_id: text("task_id")
-      .notNull()
-      .references(() => tasks.id),
-    run_id: text("run_id")
-      .notNull()
-      .references(() => task_runs.id),
-    token_hash: text("token_hash").notNull().unique(),
-    token_prefix: text("token_prefix").notNull(),
-    created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    expires_at: integer("expires_at", { mode: "timestamp_ms" }),
-    revoked_at: integer("revoked_at", { mode: "timestamp_ms" }),
-    last_used_at: integer("last_used_at", { mode: "timestamp_ms" }),
-    download_count: integer("download_count").notNull().default(0),
-  },
-  (table) => [
-    index("task_artifact_share_links_artifact_id_idx").on(table.artifact_id),
-    index("task_artifact_share_links_task_run_idx").on(table.task_id, table.run_id),
-    index("task_artifact_share_links_expires_at_idx").on(table.expires_at),
   ],
 );
 

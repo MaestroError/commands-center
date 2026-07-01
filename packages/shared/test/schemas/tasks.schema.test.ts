@@ -381,7 +381,6 @@ describe("task schemas", () => {
         status: "queued",
         triggerSource: "manual",
         renderedPrompt: "",
-        artifacts: [],
         needsHumanReview: false,
       });
     });

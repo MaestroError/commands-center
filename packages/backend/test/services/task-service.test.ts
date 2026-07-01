@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import type { AppDb } from "../../src/db/client";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
-import { agents, task_runs, task_templates } from "../../src/db/schema/index";
+import { agents, conversations, task_runs, task_templates } from "../../src/db/schema/index";
 
 describe("createTaskService", () => {
   it("creates backlog and scheduled tasks", async () => {
@@ -604,7 +604,6 @@ describe("createTaskService", () => {
       await testDb.client.db
         .update(task_runs)
         .set({
-          artifacts_json: null as unknown as string,
           needs_human_review: null as unknown as boolean,
         })
         .where(eq(task_runs.id, run.id));
@@ -809,6 +808,7 @@ describe("createTaskService", () => {
         triggerSource: "manual",
         renderedPrompt: "Do the task.",
       });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
 
       await service.setRunResultText(run.id, agent.id, "Done with details.");
       await service.addRunArtifact(run.id, agent.id, {
@@ -824,7 +824,11 @@ describe("createTaskService", () => {
 
       expect(reviewed.resultText).toBe("Done with details.");
       expect(reviewed.artifacts).toEqual([
-        { title: "Article", type: "file", link: ".cc/artifacts/article.md" },
+        expect.objectContaining({
+          title: "Article",
+          type: "file",
+          link: ".cc/artifacts/article.md",
+        }),
       ]);
       expect(reviewed.needsHumanReview).toBe(true);
       expect(reviewed.humanReviewReason).toBe("Send the post manually.");
@@ -984,6 +988,7 @@ describe("createTaskService", () => {
         triggerSource: "manual",
         renderedPrompt: "Do the task.",
       });
+      await seedRunConversation(testDb.client.db, run.id, agent.id);
 
       await Promise.all([
         service.addRunArtifact(run.id, agent.id, {
@@ -1000,10 +1005,21 @@ describe("createTaskService", () => {
 
       const updated = await service.getRun(task.id, run.id);
 
-      expect(updated?.artifacts).toEqual([
-        { title: "First artifact", type: "file", link: ".cc/artifacts/first.md" },
-        { title: "Second artifact", type: "file", link: ".cc/artifacts/second.md" },
-      ]);
+      expect(updated?.artifacts).toHaveLength(2);
+      expect(updated?.artifacts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: "First artifact",
+            type: "file",
+            link: ".cc/artifacts/first.md",
+          }),
+          expect.objectContaining({
+            title: "Second artifact",
+            type: "file",
+            link: ".cc/artifacts/second.md",
+          }),
+        ]),
+      );
     } finally {
       await testDb.cleanup();
     }
@@ -1749,6 +1765,23 @@ describe("createTaskService", () => {
     }
   });
 });
+
+// Artifacts anchor to a run's task-run conversation; addRunArtifact needs it.
+async function seedRunConversation(db: AppDb, runId: string, agentId: string): Promise<void> {
+  const timestamp = new Date();
+  await db.insert(conversations).values({
+    id: `conv-${runId}`,
+    agent_id: agentId,
+    opencode_session_id: `session-${runId}`,
+    title: null,
+    status: "active",
+    source: "task_run",
+    is_current: false,
+    task_run_id: runId,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+}
 
 async function insertAgent(
   db: AppDb,

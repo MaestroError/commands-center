@@ -8,10 +8,11 @@ import {
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
 } from "../schemas/conversations.js";
-import { resolvedSystemPromptSchema } from "@cc/shared/schemas";
+import { artifactListResponseSchema, resolvedSystemPromptSchema } from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
+import { createArtifactService } from "../services/artifact-service.js";
 import { createConversationService } from "../services/conversation-service.js";
 
 const agentIdParamsSchema = z.object({
@@ -42,6 +43,25 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
     archiveSettingsService: context.sessionArchiveSettingsService,
     systemPromptService: context.systemPromptService,
   });
+  const artifactService = createArtifactService({
+    db: context.database.db,
+    config: context.config,
+  });
+
+  app.get(
+    "/api/conversations/:conversationId/artifacts",
+    {
+      schema: {
+        params: conversationParamsSchema,
+        response: {
+          200: artifactListResponseSchema,
+        },
+      },
+    },
+    async (request) => ({
+      artifacts: await artifactService.listByConversation(request.params.conversationId),
+    }),
+  );
 
   app.get(
     "/api/specialists/:id/conversations/active",

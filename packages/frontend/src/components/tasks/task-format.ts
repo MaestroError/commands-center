@@ -1,4 +1,4 @@
-import type { Specialist, TaskRepeatRule, TaskRunArtifact } from "@cc/shared/schemas";
+import type { ArtifactType, Specialist, TaskRepeatRule } from "@cc/shared/schemas";
 
 import { buildDocumentHref } from "@/lib/document-href";
 import { buildFileManagerHref } from "@/lib/file-manager-href";
@@ -29,7 +29,7 @@ export function readAgentName(agents: Specialist[], agentId: string): string {
   return agents.find((agent) => agent.id === agentId)?.name ?? agentId;
 }
 
-export function buildArtifactHref(artifact: TaskRunArtifact): string {
+export function buildArtifactHref(artifact: { type: ArtifactType; link: string }): string {
   switch (artifact.type) {
     case "document":
       return buildDocumentHref(artifact.link);

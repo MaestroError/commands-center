@@ -2,13 +2,13 @@ import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import type {
+  Artifact,
   CreateTaskFeedbackInput,
   Specialist,
   SpecialistCatalog,
   Task,
   TaskFeedbackThread,
   TaskRun,
-  TaskRunArtifact,
   TaskRunFollowup,
 } from "@cc/shared/schemas";
 
@@ -535,7 +535,7 @@ function FeedbackComment(props: {
   author: string;
   agent?: Specialist;
   body: string;
-  artifacts?: TaskRunArtifact[];
+  artifacts?: Artifact[];
   taskId?: string;
   runId?: string;
   meta: ReactNode;
@@ -578,11 +578,7 @@ function FeedbackComment(props: {
   );
 }
 
-function RunArtifactAttachments(props: {
-  artifacts: TaskRunArtifact[];
-  taskId?: string;
-  runId?: string;
-}) {
+function RunArtifactAttachments(props: { artifacts: Artifact[]; taskId?: string; runId?: string }) {
   if (props.artifacts.length === 0) {
     return null;
   }
@@ -594,7 +590,7 @@ function RunArtifactAttachments(props: {
         return (
           <li
             className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 text-sm text-text-secondary"
-            key={`${artifact.type}:${artifact.link}:${artifact.title}`}
+            key={artifact.id}
           >
             <span className="min-w-0">
               <a
@@ -611,12 +607,8 @@ function RunArtifactAttachments(props: {
               <span className="mt-2 block text-xs text-text-secondary">
                 {artifact.description ?? artifact.title}
               </span>
-              {props.taskId && props.runId ? (
-                <ArtifactShareControls
-                  artifact={artifact}
-                  taskId={props.taskId}
-                  runId={props.runId}
-                />
+              {props.taskId ? (
+                <ArtifactShareControls artifact={artifact} taskId={props.taskId} />
               ) : null}
             </span>
           </li>

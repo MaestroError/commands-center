@@ -1,7 +1,7 @@
 import { readdir, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { and, count, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { readConfigFile, writeConfigFileAtomic } from "../lib/config-file.js";
@@ -28,9 +28,9 @@ import {
   taskFeedbackThreadSchema,
   taskContextInputSchema,
   taskContextSchema,
+  artifactSchema,
   taskListSchema,
   taskPermissionProfileSchema,
-  persistedTaskRunArtifactSchema,
   taskRunFollowupSchema,
   taskRunListSchema,
   taskRunSchema,
@@ -53,6 +53,8 @@ import {
   type CreateTaskRunInput,
   type ListTaskRunsQuery,
   type ListTasksQuery,
+  type Artifact,
+  type ArtifactShareLink,
   type Task,
   type TaskContext,
   type TaskFeedbackThread,
@@ -74,6 +76,9 @@ import {
 import type { AppDb } from "../db/client.js";
 import { createId, now } from "../db/ids.js";
 import {
+  artifacts as artifactsTable,
+  artifact_share_links,
+  conversations as conversationsTable,
   task_feedback,
   task_run_followups,
   task_runs,
@@ -84,6 +89,7 @@ import {
 } from "../db/schema/index.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
+import { createArtifactService } from "./artifact-service.js";
 import { computeNextRecurringRun } from "./task-scheduler-service.js";
 
 // ---------------------------------------------------------------------------
@@ -238,6 +244,8 @@ type CreateTaskFromTemplateInput = {
 };
 
 export function createTaskService(options: { db: AppDb; config: RuntimeConfig }) {
+  const artifactService = createArtifactService({ db: options.db, config: options.config });
+
   return {
     async list(query: Partial<ListTasksQuery> = {}): Promise<Task[]> {
       const parsed = listTasksQuerySchema.parse(query);
@@ -1664,7 +1672,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           effective_permissions_json: stringifyOptional(parsed.effectivePermissions),
           final_message: parsed.finalMessage ?? null,
           result_text: parsed.resultText ?? null,
-          artifacts_json: JSON.stringify(parsed.artifacts),
           needs_human_review: parsed.needsHumanReview,
           human_review_reason: parsed.humanReviewReason ?? null,
           result_json: stringifyOptional(parsed.result),
@@ -1751,10 +1758,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
               ? new Date(parsed.completedAt)
               : (existing.completed_at ?? now())
             : existing.initial_outcome_at,
-          artifacts_json:
-            parsed.artifacts === undefined
-              ? existing.artifacts_json
-              : JSON.stringify(parsed.artifacts),
           needs_human_review: parsed.needsHumanReview ?? existing.needs_human_review,
           human_review_reason: parsed.humanReviewReason ?? existing.human_review_reason,
           result_json:
@@ -1810,46 +1813,40 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return updated;
     },
 
-    addRunArtifact(
+    async addRunArtifact(
       taskRunId: string,
       agentId: string,
       artifact: TaskRunArtifact,
     ): Promise<TaskRun> {
       const parsed = addTaskRunArtifactInputSchema.parse({ taskRunId, artifact });
+      const run = await requireWritableRun(parsed.taskRunId, agentId);
 
-      return Promise.resolve(
-        options.db.transaction((tx) => {
-          const run = tx.select().from(task_runs).where(eq(task_runs.id, parsed.taskRunId)).get();
+      // Artifacts are conversation-anchored; resolve the run's own conversation
+      // and record the artifact there.
+      const conversation = await options.db.query.conversations.findFirst({
+        where: (table, operators) => operators.eq(table.task_run_id, parsed.taskRunId),
+        columns: { id: true },
+      });
 
-          if (!run) {
-            throw new NotFoundError("Task run not found.");
-          }
+      if (!conversation) {
+        throw new NotFoundError("Task run session not found.");
+      }
 
-          if (run.agent_id !== agentId) {
-            throw new BadRequestError("Task run agent must match the calling agent.");
-          }
+      await artifactService.create({
+        conversationId: conversation.id,
+        title: parsed.artifact.title,
+        description: parsed.artifact.description,
+        type: parsed.artifact.type,
+        link: parsed.artifact.link,
+      });
 
-          if (run.status !== "running") {
-            throw new ConflictError("Only running task runs can be updated by an agent.");
-          }
+      const refreshed = await this.getRunById(run.id);
 
-          const updated = tx
-            .update(task_runs)
-            .set({
-              artifacts_json: JSON.stringify([...mapTaskRun(run).artifacts, parsed.artifact]),
-              updated_at: now(),
-            })
-            .where(eq(task_runs.id, parsed.taskRunId))
-            .returning()
-            .get();
+      if (!refreshed) {
+        throw new NotFoundError("Task run not found.");
+      }
 
-          if (!updated) {
-            throw new NotFoundError("Task run not found.");
-          }
-
-          return mapTaskRun(updated);
-        }),
-      );
+      return refreshed;
     },
 
     async markRunNeedsHumanReview(
@@ -2529,7 +2526,9 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
     resultText: row.result_text ?? undefined,
     initialOutcomeText: row.initial_outcome_text ?? undefined,
     initialOutcomeAt: row.initial_outcome_at?.toISOString(),
-    artifacts: parseTaskRunArtifacts(row.artifacts_json),
+    // Artifacts are conversation-anchored and attached during the async
+    // enrichment step (mapTaskRunsWithReplyState); the base mapping leaves the
+    // schema default of [].
     needsHumanReview: row.needs_human_review ?? false,
     humanReviewReason: row.human_review_reason ?? undefined,
     reviewQuestion: parseOptional(row.review_question_json, reviewQuestionSchema),
@@ -2577,15 +2576,114 @@ async function mapTaskRunsWithReplyState(
     return runs;
   }
 
-  const activeReplyRunIds = await getActiveReplyRunIds(
-    db,
-    runs.map((run) => run.id),
-  );
+  const runIds = runs.map((run) => run.id);
+  const [activeReplyRunIds, artifactsByRunId] = await Promise.all([
+    getActiveReplyRunIds(db, runIds),
+    getArtifactsByRunIds(db, runIds),
+  ]);
 
   return runs.map((run) => ({
     ...run,
     hasActiveReply: activeReplyRunIds.has(run.id),
+    artifacts: artifactsByRunId.get(run.id) ?? [],
   }));
+}
+
+// Load each run's conversation-anchored artifacts (with active share links),
+// keyed by run id. A run maps 1:1 to its task-run conversation.
+async function getArtifactsByRunIds(db: AppDb, runIds: string[]): Promise<Map<string, Artifact[]>> {
+  const grouped = new Map<string, Artifact[]>();
+  const uniqueRunIds = Array.from(new Set(runIds.filter(Boolean)));
+
+  if (uniqueRunIds.length === 0) {
+    return grouped;
+  }
+
+  const rows = await db
+    .select({ runId: conversationsTable.task_run_id, artifact: artifactsTable })
+    .from(artifactsTable)
+    .innerJoin(conversationsTable, eq(artifactsTable.conversation_id, conversationsTable.id))
+    .where(inArray(conversationsTable.task_run_id, uniqueRunIds))
+    .orderBy(desc(artifactsTable.created_at));
+
+  const shareLinks = await getShareLinksByArtifactIds(
+    db,
+    rows.map((row) => row.artifact.id),
+  );
+
+  for (const { runId, artifact } of rows) {
+    if (!runId) {
+      continue;
+    }
+    const mapped = mapArtifactRow(artifact, shareLinks.get(artifact.id) ?? []);
+    const existing = grouped.get(runId);
+    if (existing) {
+      existing.push(mapped);
+    } else {
+      grouped.set(runId, [mapped]);
+    }
+  }
+
+  return grouped;
+}
+
+async function getShareLinksByArtifactIds(
+  db: AppDb,
+  artifactIds: string[],
+): Promise<Map<string, ArtifactShareLink[]>> {
+  const grouped = new Map<string, ArtifactShareLink[]>();
+  const uniqueIds = Array.from(new Set(artifactIds.filter(Boolean)));
+
+  if (uniqueIds.length === 0) {
+    return grouped;
+  }
+
+  const rows = await db
+    .select()
+    .from(artifact_share_links)
+    .where(
+      and(
+        inArray(artifact_share_links.artifact_id, uniqueIds),
+        isNull(artifact_share_links.revoked_at),
+      ),
+    )
+    .orderBy(desc(artifact_share_links.created_at));
+
+  for (const row of rows) {
+    const link: ArtifactShareLink = {
+      id: row.id,
+      artifactId: row.artifact_id,
+      expiresAt: row.expires_at?.toISOString() ?? null,
+      revokedAt: row.revoked_at?.toISOString() ?? null,
+      lastUsedAt: row.last_used_at?.toISOString() ?? null,
+      downloadCount: row.download_count,
+      createdAt: row.created_at.toISOString(),
+    };
+    const existing = grouped.get(row.artifact_id);
+    if (existing) {
+      existing.push(link);
+    } else {
+      grouped.set(row.artifact_id, [link]);
+    }
+  }
+
+  return grouped;
+}
+
+function mapArtifactRow(
+  row: typeof artifactsTable.$inferSelect,
+  shareLinks: ArtifactShareLink[],
+): Artifact {
+  return artifactSchema.parse({
+    id: row.id,
+    conversationId: row.conversation_id,
+    title: row.title,
+    description: row.description ?? undefined,
+    type: row.type,
+    link: row.link,
+    createdAt: row.created_at.toISOString(),
+    shareLinks,
+  });
 }
 
 async function getActiveReplyRunIds(db: AppDb, runIds: string[]): Promise<Set<string>> {
@@ -2692,10 +2790,6 @@ function stringifyOptional(value: unknown): string | null {
 
 function parseJsonRecord(value: string | null): Record<string, unknown> | undefined {
   return value ? z.record(z.string(), z.unknown()).parse(JSON.parse(value)) : undefined;
-}
-
-function parseTaskRunArtifacts(value: string | null): TaskRunArtifact[] {
-  return value ? persistedTaskRunArtifactSchema.array().parse(JSON.parse(value)) : [];
 }
 
 function parseOptional<T>(

@@ -1,6 +1,7 @@
 export { activities } from "./activities.js";
 export { api_tokens } from "./api-tokens.js";
 export { agents } from "./agents.js";
+export { artifacts, artifact_share_links } from "./artifacts.js";
 export { conversations, messages } from "./conversations.js";
 export { documents } from "./documents.js";
 export { mcp_servers } from "./mcp-servers.js";
@@ -9,7 +10,6 @@ export { secrets } from "./secrets.js";
 export { settings } from "./settings.js";
 export {
   task_feedback,
-  task_artifact_share_links,
   task_run_followups,
   task_runs,
   task_scheduler_state,

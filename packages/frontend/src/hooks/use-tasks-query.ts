@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import type {
   CancelTaskRunInput,
@@ -12,7 +12,7 @@ import type {
   TaskFeedbackThread,
   TaskRunFollowup,
   TaskTemplateRunNowInput,
-  CreateTaskArtifactShareLinkInput,
+  CreateArtifactShareLinkInput,
   UpdateTaskContextInput,
   UpdateTaskFeedbackInput,
   UpdateTaskInput,
@@ -24,7 +24,7 @@ import {
   acceptTask,
   archiveTask,
   cancelTaskRun,
-  createTaskArtifactShareLink,
+  createArtifactShareLink,
   createRunFollowup,
   createTask,
   createTaskFeedback,
@@ -41,7 +41,7 @@ import {
   getTaskRun,
   inspectTaskRunSession,
   listRunFollowups,
-  listTaskRunArtifacts,
+  listConversationArtifacts,
   listArchivedTasks,
   listActiveTaskRuns,
   listTaskTemplateTasks,
@@ -56,7 +56,7 @@ import {
   previewTaskQueue,
   queueTask,
   restoreTask,
-  revokeTaskArtifactShareLink,
+  revokeArtifactShareLink,
   runTaskTemplateNow,
   updateTask,
   updateTaskContext,
@@ -177,11 +177,11 @@ export function useTaskRunSessionQuery(taskId?: string, runId?: string) {
   });
 }
 
-export function useTaskRunArtifactsQuery(taskId?: string, runId?: string) {
+export function useConversationArtifactsQuery(conversationId?: string) {
   return useQuery({
-    queryKey: queryKeys.taskRunArtifacts(taskId ?? "missing", runId ?? "missing"),
-    queryFn: () => listTaskRunArtifacts(taskId ?? "", runId ?? ""),
-    enabled: Boolean(taskId && runId),
+    queryKey: queryKeys.conversationArtifacts(conversationId ?? "missing"),
+    queryFn: () => listConversationArtifacts(conversationId ?? ""),
+    enabled: Boolean(conversationId),
   });
 }
 
@@ -469,39 +469,56 @@ export function useTaskMutations() {
     }),
     createArtifactShareLink: useMutation({
       mutationFn: ({
-        taskId,
-        runId,
         artifactId,
         input,
       }: {
-        taskId: string;
-        runId: string;
         artifactId: string;
-        input?: CreateTaskArtifactShareLinkInput;
-      }) => createTaskArtifactShareLink(taskId, runId, artifactId, input),
+        conversationId?: string;
+        taskId?: string;
+        input?: CreateArtifactShareLinkInput;
+      }) => createArtifactShareLink(artifactId, input),
       onSuccess: async (_result, variables) => {
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.taskRunArtifacts(variables.taskId, variables.runId),
-        });
+        await invalidateArtifactContainers(queryClient, variables);
       },
     }),
     revokeArtifactShareLink: useMutation({
       mutationFn: ({
-        taskId,
-        runId,
         artifactId,
         shareId,
       }: {
-        taskId: string;
-        runId: string;
         artifactId: string;
+        conversationId?: string;
+        taskId?: string;
         shareId: string;
-      }) => revokeTaskArtifactShareLink(taskId, runId, artifactId, shareId),
+      }) => revokeArtifactShareLink(artifactId, shareId),
       onSuccess: async (_result, variables) => {
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.taskRunArtifacts(variables.taskId, variables.runId),
-        });
+        await invalidateArtifactContainers(queryClient, variables);
       },
     }),
   };
+}
+
+// A share-link change updates the artifact's inline shareLinks; refresh whichever
+// queries surface that artifact (the chat conversation panel and/or the task's
+// runs).
+async function invalidateArtifactContainers(
+  queryClient: QueryClient,
+  variables: { conversationId?: string; taskId?: string },
+): Promise<void> {
+  const invalidations: Promise<unknown>[] = [];
+  if (variables.conversationId) {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.conversationArtifacts(variables.conversationId),
+      }),
+    );
+  }
+  if (variables.taskId) {
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: queryKeys.task(variables.taskId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns(variables.taskId) }),
+    );
+  }
+  invalidations.push(queryClient.invalidateQueries({ queryKey: queryKeys.activeTaskRuns }));
+  await Promise.all(invalidations);
 }

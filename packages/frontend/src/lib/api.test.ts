@@ -16,7 +16,7 @@ import {
   createRunFollowup,
   createTaskFromTemplate,
   createApiToken,
-  createTaskArtifactShareLink,
+  createArtifactShareLink,
   createTaskTemplate,
   getTaskArtifactSharingPreferences,
   deleteConversation,
@@ -30,7 +30,7 @@ import {
   getWorkspaceTree,
   listRunFollowups,
   listApiTokens,
-  listTaskRunArtifacts,
+  listConversationArtifacts,
   listTaskSubtaskProgress,
   listTaskTemplateTasks,
   loginOwner,
@@ -40,7 +40,7 @@ import {
   previewTaskQueue,
   removeMcpAuth,
   revokeApiToken,
-  revokeTaskArtifactShareLink,
+  revokeArtifactShareLink,
   resizeTerminalSession,
   restartEngine,
   updateTaskArtifactSharingPreferences,
@@ -821,20 +821,16 @@ describe("additional request wrapper coverage", () => {
     );
   });
 
-  it("lists task run artifacts with encoded ids", async () => {
+  it("lists conversation artifacts with an encoded id", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       makeJsonResponse({
         artifacts: [
           {
             id: "art-1",
-            taskId: "task 1",
-            runId: "run 1",
+            conversationId: "conv 1",
             title: "Report",
-            originalFilename: "report.pdf",
-            mimeType: "application/pdf",
-            sizeBytes: 10,
-            checksum: "abc",
-            storageKey: "key",
+            type: "file",
+            link: "report.pdf",
             createdAt: "2026-01-01T00:00:00.000Z",
             shareLinks: [],
           },
@@ -842,16 +838,16 @@ describe("additional request wrapper coverage", () => {
       }),
     );
 
-    await expect(listTaskRunArtifacts("task 1", "run 1")).resolves.toMatchObject({
+    await expect(listConversationArtifacts("conv 1")).resolves.toMatchObject({
       artifacts: [{ id: "art-1" }],
     });
     expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/tasks/task%201/runs/run%201/artifacts",
+      "/api/conversations/conv%201/artifacts",
       expect.anything(),
     );
   });
 
-  it("creates an artifact share link", async () => {
+  it("creates an artifact share link keyed by artifact id", async () => {
     document.cookie = "cc_csrf_token=csrf-token; path=/";
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       makeJsonResponse({
@@ -861,11 +857,11 @@ describe("additional request wrapper coverage", () => {
       }),
     );
 
-    await expect(
-      createTaskArtifactShareLink("task-1", "run-1", "art-1", { expiresInMinutes: 60 }),
-    ).resolves.toMatchObject({ shareId: "share-1" });
+    await expect(createArtifactShareLink("art-1", { expiresInMinutes: 60 })).resolves.toMatchObject(
+      { shareId: "share-1" },
+    );
     expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/tasks/task-1/runs/run-1/artifacts/art-1/share-links",
+      "/api/artifacts/art-1/share-links",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ expiresInMinutes: 60 }),
@@ -878,11 +874,9 @@ describe("additional request wrapper coverage", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
-    await expect(
-      revokeTaskArtifactShareLink("task-1", "run-1", "art-1", "share-1"),
-    ).resolves.toBeUndefined();
+    await expect(revokeArtifactShareLink("art-1", "share-1")).resolves.toBeUndefined();
     expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/tasks/task-1/runs/run-1/artifacts/art-1/share-links/share-1",
+      "/api/artifacts/art-1/share-links/share-1",
       expect.objectContaining({ method: "DELETE" }),
     );
   });

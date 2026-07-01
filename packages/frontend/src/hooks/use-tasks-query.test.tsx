@@ -19,7 +19,7 @@ vi.mock("@/lib/api", () => ({
   createRunFollowup: vi.fn(),
   createTaskFromTemplate: vi.fn(),
   createTaskTemplate: vi.fn(),
-  createTaskArtifactShareLink: vi.fn(),
+  createArtifactShareLink: vi.fn(),
   deleteTask: vi.fn(),
   disableTask: vi.fn(),
   duplicateTask: vi.fn(),
@@ -31,7 +31,7 @@ vi.mock("@/lib/api", () => ({
   listActiveTaskRuns: vi.fn(),
   listArchivedTasks: vi.fn(),
   listRunFollowups: vi.fn(),
-  listTaskRunArtifacts: vi.fn(),
+  listConversationArtifacts: vi.fn(),
   listTaskFeedback: vi.fn(),
   listTaskRuns: vi.fn(),
   listTaskSchedulerState: vi.fn(),
@@ -44,7 +44,7 @@ vi.mock("@/lib/api", () => ({
   previewTaskQueue: vi.fn(),
   queueTask: vi.fn(),
   restoreTask: vi.fn(),
-  revokeTaskArtifactShareLink: vi.fn(),
+  revokeArtifactShareLink: vi.fn(),
   runTaskTemplateNow: vi.fn(),
   updateTask: vi.fn(),
   updateTaskContext: vi.fn(),
@@ -62,7 +62,7 @@ import {
   createRunFollowup,
   createTaskFromTemplate,
   createTaskTemplate,
-  createTaskArtifactShareLink,
+  createArtifactShareLink,
   deleteTask,
   disableTask,
   duplicateTask,
@@ -74,7 +74,7 @@ import {
   listActiveTaskRuns,
   listArchivedTasks,
   listRunFollowups,
-  listTaskRunArtifacts,
+  listConversationArtifacts,
   listTaskFeedback,
   listTaskRuns,
   listTaskSchedulerState,
@@ -87,7 +87,7 @@ import {
   previewTaskQueue,
   queueTask,
   restoreTask,
-  revokeTaskArtifactShareLink,
+  revokeArtifactShareLink,
   runTaskTemplateNow,
   updateTask,
   updateTaskContext,
@@ -105,7 +105,7 @@ import {
   useTaskQuery,
   useTaskRunQuery,
   useTaskRunFollowupsQuery,
-  useTaskRunArtifactsQuery,
+  useConversationArtifactsQuery,
   useTaskRunSessionQuery,
   useTaskRunsQuery,
   useTaskSchedulerStateQuery,
@@ -362,15 +362,15 @@ describe("useTaskMutations", () => {
     expect(vi.mocked(deleteTask).mock.calls[0]?.[0]).toBe("task-1");
   });
 
-  it("creates and revokes artifact share links, invalidating the artifacts query", async () => {
+  it("creates and revokes artifact share links, invalidating the artifact containers", async () => {
     const queryClient = createQueryClient();
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
-    vi.mocked(createTaskArtifactShareLink).mockResolvedValue({
+    vi.mocked(createArtifactShareLink).mockResolvedValue({
       shareId: "share-1",
       url: "https://example.com/share/abc",
       expiresAt: null,
     });
-    vi.mocked(revokeTaskArtifactShareLink).mockResolvedValue(undefined);
+    vi.mocked(revokeArtifactShareLink).mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useTaskMutations(), {
       wrapper: createWrapper(queryClient),
@@ -378,65 +378,64 @@ describe("useTaskMutations", () => {
 
     await act(async () => {
       await result.current.createArtifactShareLink.mutateAsync({
-        taskId: "task-1",
-        runId: "run-1",
         artifactId: "art-1",
+        conversationId: "conv-1",
+        taskId: "task-1",
         input: { expiresInMinutes: 60 },
       });
       await result.current.revokeArtifactShareLink.mutateAsync({
-        taskId: "task-1",
-        runId: "run-1",
         artifactId: "art-1",
+        conversationId: "conv-1",
+        taskId: "task-1",
         shareId: "share-1",
       });
     });
 
-    expect(createTaskArtifactShareLink).toHaveBeenCalledWith("task-1", "run-1", "art-1", {
+    expect(createArtifactShareLink).toHaveBeenCalledWith("art-1", {
       expiresInMinutes: 60,
     });
-    expect(revokeTaskArtifactShareLink).toHaveBeenCalledWith("task-1", "run-1", "art-1", "share-1");
+    expect(revokeArtifactShareLink).toHaveBeenCalledWith("art-1", "share-1");
     expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.taskRunArtifacts("task-1", "run-1"),
+      queryKey: queryKeys.conversationArtifacts("conv-1"),
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.taskRuns("task-1"),
     });
   });
 
-  it("loads task run artifacts through useTaskRunArtifactsQuery", async () => {
+  it("loads conversation artifacts through useConversationArtifactsQuery", async () => {
     const queryClient = createQueryClient();
-    vi.mocked(listTaskRunArtifacts).mockResolvedValue({
+    vi.mocked(listConversationArtifacts).mockResolvedValue({
       artifacts: [
         {
           id: "art-1",
-          taskId: "task-1",
-          runId: "run-1",
+          conversationId: "conv-1",
           title: "Report",
-          originalFilename: "report.pdf",
-          mimeType: "application/pdf",
-          sizeBytes: 10,
-          checksum: "abc",
-          storageKey: "key",
+          type: "file",
+          link: "report.pdf",
           createdAt: "2026-01-01T00:00:00.000Z",
           shareLinks: [],
         },
       ],
     });
 
-    const { result } = renderHook(() => useTaskRunArtifactsQuery("task-1", "run-1"), {
+    const { result } = renderHook(() => useConversationArtifactsQuery("conv-1"), {
       wrapper: createWrapper(queryClient),
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(listTaskRunArtifacts).toHaveBeenCalledWith("task-1", "run-1");
+    expect(listConversationArtifacts).toHaveBeenCalledWith("conv-1");
     expect(result.current.data?.artifacts).toHaveLength(1);
   });
 
-  it("disables the artifacts query when ids are missing", () => {
+  it("disables the artifacts query when the conversation id is missing", () => {
     const queryClient = createQueryClient();
-    const { result } = renderHook(() => useTaskRunArtifactsQuery(), {
+    const { result } = renderHook(() => useConversationArtifactsQuery(), {
       wrapper: createWrapper(queryClient),
     });
 
     expect(result.current.fetchStatus).toBe("idle");
-    expect(listTaskRunArtifacts).not.toHaveBeenCalled();
+    expect(listConversationArtifacts).not.toHaveBeenCalled();
   });
 
   it("updates followup cache and invalidates run views when a reply is sent", async () => {

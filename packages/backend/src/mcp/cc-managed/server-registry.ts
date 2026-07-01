@@ -67,6 +67,10 @@ import {
   registerProjectDocumentToolMetadata,
 } from "./groups/cc-default/tools/document-tools.js";
 import {
+  createArtifactToolDefinitions,
+  addArtifactToolMetadata,
+} from "./groups/cc-default/tools/artifact-tools.js";
+import {
   createSelfConversationToolDefinitions,
   getSelfConversationToolMetadata,
   listSelfConversationsToolMetadata,
@@ -331,6 +335,12 @@ export function createCcManagedMcpServerRegistry(options: {
           config: options.config,
         })
       : []),
+    ...(options.db && options.config
+      ? createArtifactToolDefinitions({
+          db: options.db,
+          config: options.config,
+        })
+      : []),
     ...(options.db && options.conversationService
       ? createSelfConversationToolDefinitions({
           db: options.db,
@@ -382,6 +392,7 @@ export function createCcManagedMcpServerRegistry(options: {
         getSelfConversationToolMetadata,
         listProjectDocumentsToolMetadata,
         registerProjectDocumentToolMetadata,
+        addArtifactToolMetadata,
       ],
       tools: defaultTools,
     },

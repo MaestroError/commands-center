@@ -3,9 +3,11 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
   activeTaskRunListSchema,
+  artifactListResponseSchema,
+  artifactSharingPreferencesSchema,
   cancelTaskRunInputSchema,
-  createTaskArtifactShareLinkInputSchema,
-  createTaskArtifactShareLinkResponseSchema,
+  createArtifactShareLinkInputSchema,
+  createArtifactShareLinkResponseSchema,
   createTaskRunFollowupInputSchema,
   createTaskTemplateInputSchema,
   createTaskInputSchema,
@@ -13,11 +15,9 @@ import {
   listTaskRunsQuerySchema,
   listTasksQuerySchema,
   queueTaskInputSchema,
-  revokeTaskArtifactShareLinkResponseSchema,
+  revokeArtifactShareLinkResponseSchema,
   taskQueuePreviewInputSchema,
   taskQueuePreviewSchema,
-  taskArtifactListResponseSchema,
-  taskArtifactSharingPreferencesSchema,
   taskFeedbackThreadListSchema,
   taskFeedbackThreadSchema,
   taskListSchema,
@@ -34,7 +34,7 @@ import {
   taskTemplateListSchema,
   taskTemplateRunNowInputSchema,
   taskTemplateSchema,
-  updateTaskArtifactSharingPreferencesInputSchema,
+  updateArtifactSharingPreferencesInputSchema,
   updateTaskContextInputSchema,
   updateTaskFeedbackInputSchema,
   updateTaskInputSchema,
@@ -51,8 +51,8 @@ import { createConversationService } from "../services/conversation-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
-import { createTaskArtifactService } from "../services/task-artifact-service.js";
-import { createTaskArtifactShareLinkService } from "../services/task-artifact-share-link-service.js";
+import { createArtifactService } from "../services/artifact-service.js";
+import { createArtifactShareLinkService } from "../services/artifact-share-link-service.js";
 import { createTaskService } from "../services/task-service.js";
 import { triggerTemplateRun } from "../services/trigger-template-run.js";
 
@@ -64,11 +64,11 @@ const taskRunParamsSchema = taskIdParamsSchema.extend({
   runId: z.string().min(1),
 });
 
-const taskRunArtifactParamsSchema = taskRunParamsSchema.extend({
+const artifactParamsSchema = z.object({
   artifactId: z.string().min(1),
 });
 
-const taskRunArtifactShareLinkParamsSchema = taskRunArtifactParamsSchema.extend({
+const artifactShareLinkParamsSchema = artifactParamsSchema.extend({
   shareId: z.string().min(1),
 });
 
@@ -123,14 +123,14 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       logger: context.logger,
     });
   fallbackTaskSchedulerServiceRef.current = taskSchedulerService;
-  const taskArtifactService = createTaskArtifactService({
-    config: context.config,
-    taskService: service,
-  });
-  const taskArtifactShareLinkService = createTaskArtifactShareLinkService({
+  const artifactService = createArtifactService({
     db: context.database.db,
     config: context.config,
-    artifactService: taskArtifactService,
+  });
+  const artifactShareLinkService = createArtifactShareLinkService({
+    db: context.database.db,
+    config: context.config,
+    artifactService,
   });
 
   app.get(
@@ -174,24 +174,24 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     {
       schema: {
         response: {
-          200: taskArtifactSharingPreferencesSchema,
+          200: artifactSharingPreferencesSchema,
         },
       },
     },
-    async () => taskArtifactShareLinkService.getPreferences(),
+    async () => artifactShareLinkService.getPreferences(),
   );
 
   app.put(
     "/api/tasks/artifact-sharing/preferences",
     {
       schema: {
-        body: updateTaskArtifactSharingPreferencesInputSchema,
+        body: updateArtifactSharingPreferencesInputSchema,
         response: {
-          200: taskArtifactSharingPreferencesSchema,
+          200: artifactSharingPreferencesSchema,
         },
       },
     },
-    async (request) => taskArtifactShareLinkService.setPreferences(request.body),
+    async (request) => artifactShareLinkService.setPreferences(request.body),
   );
 
   app.get(
@@ -899,67 +899,49 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       schema: {
         params: taskRunParamsSchema,
         response: {
-          200: taskArtifactListResponseSchema,
+          200: artifactListResponseSchema,
         },
       },
     },
     async (request) => {
-      const [artifacts, shareLinks] = await Promise.all([
-        taskArtifactService.listRunArtifacts(request.params.id, request.params.runId),
-        taskArtifactShareLinkService.listForRun(request.params.id, request.params.runId),
-      ]);
-
-      return {
-        artifacts: artifacts.map((artifact) => ({
-          ...artifact,
-          shareLinks: shareLinks.filter(
-            (link) => link.artifactId === artifact.id && link.revokedAt === null,
-          ),
-        })),
-      };
+      const byRun = await artifactService.listByTaskRunIds([request.params.runId]);
+      return { artifacts: byRun.get(request.params.runId) ?? [] };
     },
   );
 
+  // Sharing is artifact-centric and origin-agnostic: a share link is keyed only
+  // by the artifact id, so the same endpoints serve chat and task-run artifacts.
   app.post(
-    "/api/tasks/:id/runs/:runId/artifacts/:artifactId/share-links",
+    "/api/artifacts/:artifactId/share-links",
     {
       schema: {
-        params: taskRunArtifactParamsSchema,
-        body: createTaskArtifactShareLinkInputSchema,
+        params: artifactParamsSchema,
+        body: createArtifactShareLinkInputSchema,
         response: {
-          200: createTaskArtifactShareLinkResponseSchema,
+          200: createArtifactShareLinkResponseSchema,
         },
       },
     },
-    async (request) => {
-      const artifact = await taskArtifactService.publishRunArtifact(
-        request.params.id,
-        request.params.runId,
-        request.params.artifactId,
-      );
-
-      return taskArtifactShareLinkService.createLink({
-        artifact,
+    async (request) =>
+      artifactShareLinkService.createLink({
+        artifactId: request.params.artifactId,
         body: request.body,
         baseUrl: getRequestBaseUrl(context, request),
-      });
-    },
+      }),
   );
 
   app.delete(
-    "/api/tasks/:id/runs/:runId/artifacts/:artifactId/share-links/:shareId",
+    "/api/artifacts/:artifactId/share-links/:shareId",
     {
       schema: {
-        params: taskRunArtifactShareLinkParamsSchema,
+        params: artifactShareLinkParamsSchema,
         response: {
-          200: revokeTaskArtifactShareLinkResponseSchema,
+          200: revokeArtifactShareLinkResponseSchema,
         },
       },
     },
     async (request) => {
-      await taskArtifactShareLinkService.revokeLink({
-        taskId: request.params.id,
-        runId: request.params.runId,
+      await artifactShareLinkService.revokeLink({
         artifactId: request.params.artifactId,
         shareId: request.params.shareId,
       });

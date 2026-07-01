@@ -114,7 +114,16 @@ const completedRun: TaskRun = {
   finalMessage: "Release notes drafted.",
   resultText: "Saved release notes to `notes.md`.",
   artifacts: [
-    { title: "Notes", type: "file", link: "notes.md", description: "Generated release notes." },
+    {
+      id: "artifact-notes",
+      conversationId: "conv-release",
+      title: "Notes",
+      type: "file",
+      link: "notes.md",
+      description: "Generated release notes.",
+      createdAt: NOW,
+      shareLinks: [],
+    },
   ],
   needsHumanReview: true,
   humanReviewReason: "Confirm the generated notes are complete.",
