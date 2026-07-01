@@ -37,6 +37,9 @@ confirms before anything is created:
   cron job — create a recurring task template with
   cc_default_interactive_draft_self_task_template. Its recurrence schedule is the
   cron job; prefer this over promising to do it yourself later.
+- If you need to revise one of your existing recurring templates, update it with
+  cc_default_interactive_draft_self_task_template_update instead of disabling it
+  and creating a replacement.
 - To run one of your existing tasks now and use its result, use
   cc_default_interactive_run_self_task.
 A future or recurring run starts with no memory of this conversation, so put

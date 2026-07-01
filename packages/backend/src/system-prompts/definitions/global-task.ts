@@ -26,6 +26,7 @@ If the task cannot continue right now for a time-specific reason — e.g. you cr
 - Then finish this run by reporting what you did and that the rest is scheduled (see the tool guidelines below).
 
 For work that should repeat on a fixed interval (daily, weekly, and so on), or when the task is inherently a recurring/cron-style job, create a recurring task template with cc_default_create_self_task_template — its recurrence schedule acts as the cron job. Put the full standing context into the template, since each run also starts fresh.
+If you need to revise one of your existing recurring templates during a task run, update it with cc_default_update_self_task_template instead of disabling it and creating a replacement.
 
 ## Tool use guidelines
 When you produce the final task outcome, always call cc_default_set_task_result with the TaskRunId from <TaskRun> and a concise report resultText.

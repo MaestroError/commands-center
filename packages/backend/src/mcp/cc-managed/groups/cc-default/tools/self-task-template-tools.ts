@@ -6,6 +6,7 @@ import {
   taskRunSchema,
   taskSchema,
   taskTemplateSchema,
+  updateTaskTemplateInputSchema,
   type TaskTemplate,
 } from "@cc/shared/schemas";
 
@@ -38,6 +39,10 @@ export const createSelfTaskTemplateInputSchema = createTaskTemplateInputSchema
   .omit({ defaultAgentId: true })
   .strict();
 
+export const updateSelfTaskTemplateInputSchema = updateTaskTemplateInputSchema
+  .omit({ defaultAgentId: true })
+  .strict();
+
 // Strict so unexpected fields (including any defaultAgentId/specialist id) surface
 // as explicit validation errors rather than being silently ignored.
 const templateIdInputSchema = z
@@ -52,6 +57,13 @@ const runSelfTaskTemplateNowInputSchema = templateIdInputSchema
     context: taskContextInputSchema.optional(),
     // metadata is attached to the task run trigger for observability.
     metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+const updateSelfTaskTemplateToolInputSchema = z
+  .object({
+    templateId: z.string().trim().min(1),
+    input: updateSelfTaskTemplateInputSchema,
   })
   .strict();
 
@@ -88,7 +100,7 @@ export const getSelfTaskTemplateToolMetadata = {
 export const createSelfTaskTemplateToolMetadata = {
   name: "create_self_task_template",
   description:
-    "Create a reusable CommandsCenter task template assigned to you as the default specialist. A template captures a task title, description, acceptance criteria, and optionally a recurrence schedule — making it suitable as a cron job for work that repeats on a fixed interval (daily, weekly, and so on). Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. The template is always assigned to you; do not attempt to pass a defaultAgentId. Only available in task-run context; use draft_self_task_template in chat if operator review is needed.",
+    "Create a reusable CommandsCenter task template assigned to you as the default specialist. A template captures a task title, description, acceptance criteria, and optionally a recurrence schedule — making it suitable as a cron job for work that repeats on a fixed interval (daily, weekly, and so on). Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. The template is always assigned to you; do not attempt to pass a defaultAgentId. Only available in task-run context.",
   context: "task_run",
 } as const;
 
@@ -97,6 +109,13 @@ export const runSelfTaskTemplateNowToolMetadata = {
   description:
     "Generate a task from one of your own CommandsCenter task templates and queue it for immediate execution. Use this for a one-off or out-of-schedule run of a template that belongs to you. Will fail if the template is assigned to a different specialist.",
   context: "both",
+} as const;
+
+export const updateSelfTaskTemplateToolMetadata = {
+  name: "update_self_task_template",
+  description:
+    "Update one of your own CommandsCenter task templates without reassigning it to another specialist. Existing generated tasks keep their copied content. Only available in task-run context.",
+  context: "task_run",
 } as const;
 
 export const createSelfTaskFromTemplateToolMetadata = {
@@ -189,6 +208,33 @@ export function createSelfTaskTemplateToolDefinitions(options: SelfTaskTemplateT
             mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
           );
         }, "Failed to create task template."),
+    },
+    {
+      name: updateSelfTaskTemplateToolMetadata.name,
+      description: updateSelfTaskTemplateToolMetadata.description,
+      context: updateSelfTaskTemplateToolMetadata.context,
+      inputSchema: updateSelfTaskTemplateToolInputSchema,
+      outputSchema: mcpTaskTemplateSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const parsed = updateSelfTaskTemplateToolInputSchema.parse(args);
+          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+          await requireSelfTemplate(options.taskService, parsed.templateId, agentId);
+
+          const template = await options.taskService.updateTemplate(
+            parsed.templateId,
+            parsed.input,
+          );
+
+          if (!template) {
+            throw new Error("Task template not found.");
+          }
+
+          return success(
+            "Task template updated.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
+        }, "Failed to update task template."),
     },
     {
       name: runSelfTaskTemplateNowToolMetadata.name,

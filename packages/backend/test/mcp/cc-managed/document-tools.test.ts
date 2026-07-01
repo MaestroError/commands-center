@@ -56,7 +56,7 @@ describe("list_project_documents", () => {
     try {
       await setupDocsDir(testDb);
       await registerTool.execute(
-        { path: "design.md", title: "Design", description: "System design" },
+        { path: "design/design.md", title: "Design", description: "System design" },
         agentContext,
       );
 
@@ -67,7 +67,7 @@ describe("list_project_documents", () => {
         .documents;
       expect(docs).toHaveLength(1);
       expect(docs[0]).toMatchObject({
-        relativePath: "design.md",
+        relativePath: "design/design.md",
         title: "Design",
         description: "System design",
       });
@@ -111,19 +111,19 @@ describe("register_project_document", () => {
     try {
       await setupDocsDir(testDb);
       const result = await registerTool.execute(
-        { path: "notes.md", title: "Notes", description: "Meeting notes" },
+        { path: "notes/notes.md", title: "Notes", description: "Meeting notes" },
         agentContext,
       );
 
       expect(result.isError).toBeFalsy();
       const output = result.structuredContent as RegisterResult;
       expect(output.created).toBe(true);
-      expect(output.relativePath).toBe("notes.md");
+      expect(output.relativePath).toBe("notes/notes.md");
       expect(output.title).toBe("Notes");
       expect(output.author).toBe("code-reviewer");
 
       const content = await readFile(
-        `${testDb.config.paths.subdirectories.documents}/notes.md`,
+        `${testDb.config.paths.subdirectories.documents}/notes/notes.md`,
         "utf8",
       );
       expect(content).toBe("");
@@ -139,7 +139,7 @@ describe("register_project_document", () => {
     try {
       await setupDocsDir(testDb);
       const result = await registerTool.execute(
-        { path: "notes.md" },
+        { path: "notes/notes.md" },
         { agentSlug: "my-specialist" },
       );
 
@@ -158,7 +158,7 @@ describe("register_project_document", () => {
     try {
       await setupDocsDir(testDb);
       const result = await registerTool.execute(
-        { path: "notes.md", author: "custom-author" },
+        { path: "notes/notes.md", author: "custom-author" },
         agentContext,
       );
 
@@ -177,10 +177,15 @@ describe("register_project_document", () => {
     try {
       await setupDocsDir(testDb);
       const docsDir = testDb.config.paths.subdirectories.documents;
-      await writeFile(`${docsDir}/existing.md`, "# Original Content", "utf8");
+      await mkdir(`${docsDir}/existing`, { recursive: true });
+      await writeFile(`${docsDir}/existing/existing.md`, "# Original Content", "utf8");
 
       const result = await registerTool.execute(
-        { path: "existing.md", title: "Registered Title", description: "Registered desc" },
+        {
+          path: "existing/existing.md",
+          title: "Registered Title",
+          description: "Registered desc",
+        },
         agentContext,
       );
 
@@ -189,7 +194,7 @@ describe("register_project_document", () => {
       expect(output.created).toBe(false);
       expect(output.title).toBe("Registered Title");
 
-      const content = await readFile(`${docsDir}/existing.md`, "utf8");
+      const content = await readFile(`${docsDir}/existing/existing.md`, "utf8");
       expect(content).toBe("# Original Content");
     } finally {
       await testDb.cleanup();
@@ -221,6 +226,21 @@ describe("register_project_document", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0]?.text).toContain(".md");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns an error when asked to create a document in the Documents root", async () => {
+    const testDb = await createTestDatabase();
+    const { registerTool } = makeTools(testDb);
+
+    try {
+      await setupDocsDir(testDb);
+      const result = await registerTool.execute({ path: "notes.md" }, agentContext);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain("at least one folder under Documents/");
     } finally {
       await testDb.cleanup();
     }

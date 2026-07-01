@@ -62,6 +62,7 @@ export {
   type UpdateArtifactSharingPreferencesInput,
 } from "./artifacts.js";
 export {
+  NEW_DOCUMENT_SUBFOLDER_MESSAGE,
   createDocumentFolderInputSchema,
   createDocumentInputSchema,
   documentListItemSchema,

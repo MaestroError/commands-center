@@ -4,13 +4,14 @@ import { basename, extname, isAbsolute, join, posix, relative, resolve } from "n
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 
-import type {
-  CreateDocumentInput,
-  DocumentListItem,
-  DocumentReadResponse,
-  DocumentTreeNode,
-  SaveDocumentContentInput,
-  UpdateDocumentMetadataInput,
+import {
+  NEW_DOCUMENT_SUBFOLDER_MESSAGE,
+  type CreateDocumentInput,
+  type DocumentListItem,
+  type DocumentReadResponse,
+  type DocumentTreeNode,
+  type SaveDocumentContentInput,
+  type UpdateDocumentMetadataInput,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../db/client.js";
@@ -59,6 +60,12 @@ function validateDocumentPath(path: string): void {
   validateRelativePath(path);
   if (!MARKDOWN_EXTENSIONS.has(extname(path).toLowerCase())) {
     throw new BadRequestError("Path must end with .md or .markdown.");
+  }
+}
+
+function validateNewDocumentPath(path: string): void {
+  if (!path.includes("/")) {
+    throw new BadRequestError(NEW_DOCUMENT_SUBFOLDER_MESSAGE);
   }
 }
 
@@ -271,6 +278,7 @@ export function createDocumentService(options: {
 
     async create(input: CreateDocumentInput): Promise<DocumentListItem> {
       validateDocumentPath(input.path);
+      validateNewDocumentPath(input.path);
       const absPath = fullPath(input.path);
 
       const exists = await stat(absPath).catch(() => null);

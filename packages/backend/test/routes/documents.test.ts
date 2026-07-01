@@ -1,4 +1,5 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -86,8 +87,13 @@ describe("document routes", () => {
         await server.inject({
           method: "POST",
           url: "/api/documents",
-          payload: { path: "readme.md", title: "Readme" },
+          payload: { path: "design/readme.md", title: "Readme" },
         });
+        await writeFile(
+          join(testDb.config.paths.subdirectories.documents, "readme.md"),
+          "# Readme",
+          "utf8",
+        );
 
         const response = await server.inject({ method: "GET", url: "/api/documents/tree" });
 
@@ -115,7 +121,7 @@ describe("document routes", () => {
           method: "POST",
           url: "/api/documents",
           payload: {
-            path: "notes.md",
+            path: "notes/notes.md",
             title: "My Notes",
             description: "Some notes",
             author: "operator",
@@ -128,7 +134,49 @@ describe("document routes", () => {
         }>();
         expect(body.documents).toHaveLength(1);
         expect(body.documents[0]?.title).toBe("My Notes");
-        expect(body.documents[0]?.relativePath).toBe("notes.md");
+        expect(body.documents[0]?.relativePath).toBe("notes/notes.md");
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects creating documents directly in the Documents root with 400", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        const response = await server.inject({
+          method: "POST",
+          url: "/api/documents",
+          payload: { path: "notes.md" },
+        });
+
+        expect(response.statusCode).toBe(400);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects root-level document creation with 400 even if the root file already exists", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        await writeFile(
+          join(testDb.config.paths.subdirectories.documents, "notes.md"),
+          "# Notes",
+          "utf8",
+        );
+
+        const response = await server.inject({
+          method: "POST",
+          url: "/api/documents",
+          payload: { path: "notes.md" },
+        });
+
+        expect(response.statusCode).toBe(400);
       } finally {
         await server.close();
         await testDb.cleanup();
@@ -161,7 +209,7 @@ describe("document routes", () => {
         const response = await server.inject({
           method: "POST",
           url: "/api/documents",
-          payload: { path: "notes.txt" },
+          payload: { path: "notes/notes.txt" },
         });
 
         expect(response.statusCode).toBe(400);
@@ -198,13 +246,13 @@ describe("document routes", () => {
         await server.inject({
           method: "POST",
           url: "/api/documents",
-          payload: { path: "notes.md" },
+          payload: { path: "notes/notes.md" },
         });
 
         const response = await server.inject({
           method: "POST",
           url: "/api/documents",
-          payload: { path: "notes.md" },
+          payload: { path: "notes/notes.md" },
         });
 
         expect(response.statusCode).toBe(409);
@@ -246,7 +294,7 @@ describe("document routes", () => {
           method: "POST",
           url: "/api/documents",
           payload: {
-            path: "notes.md",
+            path: "notes/notes.md",
             title: "Notes",
             content: "# Hello\n\nWorld",
           },
@@ -254,7 +302,7 @@ describe("document routes", () => {
 
         const response = await server.inject({
           method: "GET",
-          url: "/api/documents/file?path=notes.md",
+          url: "/api/documents/file?path=notes%2Fnotes.md",
         });
 
         expect(response.statusCode).toBe(200);
@@ -264,7 +312,7 @@ describe("document routes", () => {
           content: string;
           revision: { mtimeMs: number; sizeBytes: number };
         }>();
-        expect(body.relativePath).toBe("notes.md");
+        expect(body.relativePath).toBe("notes/notes.md");
         expect(body.title).toBe("Notes");
         expect(body.content).toBe("# Hello\n\nWorld");
         expect(body.revision.sizeBytes).toBeGreaterThan(0);
@@ -385,12 +433,12 @@ describe("document routes", () => {
         await server.inject({
           method: "POST",
           url: "/api/documents",
-          payload: { path: "arch.md", title: "Architecture Overview" },
+          payload: { path: "architecture/arch.md", title: "Architecture Overview" },
         });
         await server.inject({
           method: "POST",
           url: "/api/documents",
-          payload: { path: "notes.md", title: "Meeting Notes" },
+          payload: { path: "notes/notes.md", title: "Meeting Notes" },
         });
 
         const response = await server.inject({
@@ -437,14 +485,14 @@ describe("document routes", () => {
         await server.inject({
           method: "POST",
           url: "/api/documents",
-          payload: { path: "notes.md", title: "Old Title" },
+          payload: { path: "notes/notes.md", title: "Old Title" },
         });
 
         const response = await server.inject({
           method: "PATCH",
           url: "/api/documents/metadata",
           payload: {
-            path: "notes.md",
+            path: "notes/notes.md",
             title: "New Title",
             description: "Updated description",
           },
@@ -488,12 +536,12 @@ describe("document routes", () => {
         await server.inject({
           method: "POST",
           url: "/api/documents",
-          payload: { path: "notes.md", content: "original" },
+          payload: { path: "notes/notes.md", content: "original" },
         });
 
         const readResponse = await server.inject({
           method: "GET",
-          url: "/api/documents/file?path=notes.md",
+          url: "/api/documents/file?path=notes%2Fnotes.md",
         });
         const { revision } = readResponse.json<{
           revision: { mtimeMs: number; sizeBytes: number };
@@ -503,7 +551,7 @@ describe("document routes", () => {
           method: "PUT",
           url: "/api/documents/content",
           payload: {
-            path: "notes.md",
+            path: "notes/notes.md",
             content: "updated content",
             expectedRevision: revision,
           },
@@ -528,14 +576,14 @@ describe("document routes", () => {
         await server.inject({
           method: "POST",
           url: "/api/documents",
-          payload: { path: "notes.md", content: "original" },
+          payload: { path: "notes/notes.md", content: "original" },
         });
 
         const response = await server.inject({
           method: "PUT",
           url: "/api/documents/content",
           payload: {
-            path: "notes.md",
+            path: "notes/notes.md",
             content: "changed",
             expectedRevision: { mtimeMs: 0, sizeBytes: 0 },
           },
@@ -558,7 +606,7 @@ describe("document routes", () => {
         await server.inject({
           method: "POST",
           url: "/api/documents",
-          payload: { path: "notes.md", content: "secret content" },
+          payload: { path: "notes/notes.md", content: "secret content" },
         });
 
         const response = await server.inject({ method: "GET", url: "/api/documents/tree" });
@@ -579,7 +627,7 @@ describe("document routes", () => {
           method: "POST",
           url: "/api/documents",
           payload: {
-            path: "notes.md",
+            path: "notes/notes.md",
             title: "Notes",
             description: "Short summary",
             content: "# Notes\n\nLong body that should not appear in search.",
