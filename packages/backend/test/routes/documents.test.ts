@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -89,9 +89,7 @@ describe("document routes", () => {
           url: "/api/documents",
           payload: { path: "design/readme.md", title: "Readme" },
         });
-        await (
-          await import("node:fs/promises")
-        ).writeFile(
+        await writeFile(
           join(testDb.config.paths.subdirectories.documents, "readme.md"),
           "# Readme",
           "utf8",
@@ -148,6 +146,30 @@ describe("document routes", () => {
       const server = await createRouteServer(testDb);
 
       try {
+        const response = await server.inject({
+          method: "POST",
+          url: "/api/documents",
+          payload: { path: "notes.md" },
+        });
+
+        expect(response.statusCode).toBe(400);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects root-level document creation with 400 even if the root file already exists", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        await writeFile(
+          join(testDb.config.paths.subdirectories.documents, "notes.md"),
+          "# Notes",
+          "utf8",
+        );
+
         const response = await server.inject({
           method: "POST",
           url: "/api/documents",
