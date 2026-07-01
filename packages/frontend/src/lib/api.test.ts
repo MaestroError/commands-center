@@ -9,7 +9,6 @@ import {
   claimWorkspace,
   checkSystemVersion,
   closeTerminalSession,
-  continueRun,
   completeMcpAuth,
   connectTerminalWebSocket,
   connectConversationEvents,
@@ -21,7 +20,6 @@ import {
   createTaskTemplate,
   getTaskArtifactSharingPreferences,
   deleteConversation,
-  deleteRunFollowup,
   deleteSpecialistCustomTool,
   deleteCustomTool,
   deleteSecret,
@@ -46,7 +44,6 @@ import {
   resizeTerminalSession,
   restartEngine,
   updateTaskArtifactSharingPreferences,
-  updateRunFollowup,
   updateTaskFeedback,
   runTaskTemplateNow,
   saveFileManagerFileContent,
@@ -249,52 +246,6 @@ describe("task actions", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ body: "Answer A", kind: "review_answer" }),
-    });
-  });
-
-  it("updates a run followup", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(makeJsonResponse(makeTaskRunFollowupPayload({ body: "Updated" })));
-
-    await expect(
-      updateRunFollowup("task-1", "run-1", "followup-1", { body: "Updated" }),
-    ).resolves.toMatchObject({
-      id: "followup-1",
-      body: "Updated",
-    });
-
-    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/followups/followup-1", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ body: "Updated" }),
-    });
-  });
-
-  it("deletes a run followup", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-
-    await expect(deleteRunFollowup("task-1", "run-1", "followup-1")).resolves.toBeUndefined();
-
-    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/followups/followup-1", {
-      method: "DELETE",
-    });
-  });
-
-  it("continues a run with pending followups", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(makeJsonResponse(makeTaskRunPayload({ status: "running" })));
-
-    await expect(continueRun("task-1", "run-1")).resolves.toMatchObject({
-      id: "run-1",
-      status: "running",
-    });
-
-    expect(fetchSpy).toHaveBeenCalledWith("/api/tasks/task-1/runs/run-1/continue", {
-      method: "POST",
     });
   });
 
@@ -1260,7 +1211,7 @@ function makeTaskRunFollowupPayload(
     taskId: "task-1",
     runId: "run-1",
     kind: "operator_reply",
-    status: "pending",
+    status: "sending",
     body: "Please continue.",
     createdAt: "2026-01-01T00:00:00.000Z",
     ...overrides,

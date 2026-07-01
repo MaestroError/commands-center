@@ -117,7 +117,6 @@ import {
   updateTaskContextInputSchema,
   updateTaskArtifactSharingPreferencesInputSchema,
   updateTaskFeedbackInputSchema,
-  updateTaskRunFollowupInputSchema,
   updateTaskTemplateInputSchema,
   terminalListResponseSchema,
   terminalResizeInputSchema,
@@ -234,7 +233,6 @@ import {
   type UpdateTaskArtifactSharingPreferencesInput,
   type UpdateTaskContextInput,
   type UpdateTaskFeedbackInput,
-  type UpdateTaskRunFollowupInput,
   type UpdateTaskTemplateInput,
   type UpdateSystemUpdatePreferencesInput,
   type UpdateWorkspaceSkillCategoryInput,
@@ -1137,46 +1135,6 @@ export async function createRunFollowup(
       method: "POST",
       body: createTaskRunFollowupInputSchema.parse(input),
     },
-  );
-}
-
-export async function updateRunFollowup(
-  taskId: string,
-  runId: string,
-  followupId: string,
-  input: UpdateTaskRunFollowupInput,
-): Promise<TaskRunFollowup> {
-  return requestJson<TaskRunFollowup>(
-    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/followups/${encodeURIComponent(followupId)}`,
-    taskRunFollowupSchema,
-    {
-      method: "PATCH",
-      body: updateTaskRunFollowupInputSchema.parse(input),
-    },
-  );
-}
-
-export async function deleteRunFollowup(
-  taskId: string,
-  runId: string,
-  followupId: string,
-): Promise<void> {
-  const response = await apiFetch(
-    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/followups/${encodeURIComponent(followupId)}`,
-    { method: "DELETE" },
-  );
-
-  if (!response.ok && response.status !== 204) {
-    const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status, response.statusText));
-  }
-}
-
-export async function continueRun(taskId: string, runId: string): Promise<TaskRun> {
-  return requestJson<TaskRun>(
-    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/continue`,
-    taskRunSchema,
-    { method: "POST" },
   );
 }
 

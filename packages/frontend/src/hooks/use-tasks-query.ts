@@ -16,7 +16,6 @@ import type {
   UpdateTaskContextInput,
   UpdateTaskFeedbackInput,
   UpdateTaskInput,
-  UpdateTaskRunFollowupInput,
   UpdateTaskTemplateInput,
   UploadTaskContextAttachmentInput,
 } from "@cc/shared/schemas";
@@ -25,7 +24,6 @@ import {
   acceptTask,
   archiveTask,
   cancelTaskRun,
-  continueRun,
   createTaskArtifactShareLink,
   createRunFollowup,
   createTask,
@@ -35,7 +33,6 @@ import {
   disableTaskTemplate,
   enableTaskTemplate,
   deleteTask,
-  deleteRunFollowup,
   disableTask,
   duplicateTask,
   enableTask,
@@ -61,7 +58,6 @@ import {
   restoreTask,
   revokeTaskArtifactShareLink,
   runTaskTemplateNow,
-  updateRunFollowup,
   updateTask,
   updateTaskContext,
   updateTaskFeedback,
@@ -168,6 +164,8 @@ export function useTaskRunFollowupsQuery(
     queryKey: queryKeys.taskRunFollowups(taskId ?? "missing", runId ?? "missing"),
     queryFn: () => listRunFollowups(taskId ?? "", runId ?? ""),
     enabled: Boolean(taskId && runId && (options.enabled ?? true)),
+    refetchInterval: (query) =>
+      query.state.data?.some((followup) => followup.status === "sending") ? 5_000 : false,
   });
 }
 
@@ -410,52 +408,6 @@ export function useTaskMutations() {
           (current = []) => [...current.filter((entry) => entry.id !== followup.id), followup],
         );
         await invalidateRunFollowups(variables.taskId, variables.runId);
-      },
-    }),
-    updateRunFollowup: useMutation({
-      mutationFn: ({
-        taskId,
-        runId,
-        followupId,
-        input,
-      }: {
-        taskId: string;
-        runId: string;
-        followupId: string;
-        input: UpdateTaskRunFollowupInput;
-      }) => updateRunFollowup(taskId, runId, followupId, input),
-      onSuccess: async (followup, variables) => {
-        queryClient.setQueryData<TaskRunFollowup[]>(
-          queryKeys.taskRunFollowups(variables.taskId, variables.runId),
-          (current = []) => current.map((entry) => (entry.id === followup.id ? followup : entry)),
-        );
-        await invalidateRunFollowups(variables.taskId, variables.runId);
-      },
-    }),
-    deleteRunFollowup: useMutation({
-      mutationFn: ({
-        taskId,
-        runId,
-        followupId,
-      }: {
-        taskId: string;
-        runId: string;
-        followupId: string;
-      }) => deleteRunFollowup(taskId, runId, followupId),
-      onSuccess: async (_result, variables) => {
-        queryClient.setQueryData<TaskRunFollowup[]>(
-          queryKeys.taskRunFollowups(variables.taskId, variables.runId),
-          (current = []) => current.filter((entry) => entry.id !== variables.followupId),
-        );
-        await invalidateRunFollowups(variables.taskId, variables.runId);
-      },
-    }),
-    continueRun: useMutation({
-      mutationFn: ({ taskId, runId }: { taskId: string; runId: string }) =>
-        continueRun(taskId, runId),
-      onSuccess: async (run) => {
-        queryClient.setQueryData(queryKeys.taskRun(run.taskId, run.id), run);
-        await invalidateRunFollowups(run.taskId, run.id);
       },
     }),
     previewQueue: useMutation({

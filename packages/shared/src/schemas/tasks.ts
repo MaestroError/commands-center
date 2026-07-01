@@ -86,7 +86,7 @@ export const taskRunTriggerSourceSchema = z.enum([
 
 export const taskRunFollowupKindSchema = z.enum(["operator_reply", "review_answer"]);
 
-export const taskRunFollowupStatusSchema = z.enum(["pending", "sent", "failed"]);
+export const taskRunFollowupStatusSchema = z.enum(["sending", "answered", "failed"]);
 
 export const taskTodoStatusSchema = z.enum(["pending", "in_progress", "completed"]);
 
@@ -223,17 +223,14 @@ export const taskRunFollowupSchema = z.object({
   status: taskRunFollowupStatusSchema,
   body: z.string().min(1),
   createdAt: z.string().datetime(),
-  sentAt: z.string().datetime().optional(),
+  answerBody: z.string().optional(),
+  answeredAt: z.string().datetime().optional(),
   errorMessage: z.string().optional(),
 });
 
 export const createTaskRunFollowupInputSchema = z.object({
   body: z.string().trim().min(1),
   kind: taskRunFollowupKindSchema.default("operator_reply"),
-});
-
-export const updateTaskRunFollowupInputSchema = z.object({
-  body: z.string().trim().min(1),
 });
 
 export const taskSubtaskSchema = taskSubtaskInputSchema.extend({
@@ -590,7 +587,7 @@ export const taskRunSchema = z.object({
   needsHumanReview: z.boolean(),
   humanReviewReason: z.string().optional(),
   reviewQuestion: reviewQuestionSchema.optional(),
-  pendingFollowupCount: z.number().int().nonnegative().default(0),
+  hasActiveReply: z.boolean().default(false),
   result: looseRecordSchema.optional(),
   errorMessage: z.string().optional(),
   errorDetails: looseRecordSchema.optional(),
@@ -745,7 +742,6 @@ export type UpdateTaskArtifactSharingPreferencesInput = z.input<
   typeof updateTaskArtifactSharingPreferencesInputSchema
 >;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
-export type UpdateTaskRunFollowupInput = z.input<typeof updateTaskRunFollowupInputSchema>;
 export type UpdateTaskRunInput = z.input<typeof updateTaskRunInputSchema>;
 export type UpdateTaskSubtaskInput = z.input<typeof updateTaskSubtaskInputSchema>;
 export type UploadTaskContextAttachmentInput = z.input<

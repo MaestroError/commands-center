@@ -64,7 +64,7 @@ describe("task board URLs", () => {
         renderedPrompt: "",
         artifacts: [],
         needsHumanReview: false,
-        pendingFollowupCount: 0,
+        hasActiveReply: false,
         createdAt: "2026-06-25T11:00:00.000Z",
         updatedAt: "2026-06-25T11:00:00.000Z",
       }),

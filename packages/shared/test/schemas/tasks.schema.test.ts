@@ -22,7 +22,6 @@ import {
   taskTemplateSchema,
   updateTaskTemplateInputSchema,
   updateTaskFeedbackInputSchema,
-  updateTaskRunFollowupInputSchema,
 } from "../../src/schemas/tasks.js";
 
 describe("task schemas", () => {
@@ -419,22 +418,24 @@ describe("task schemas", () => {
   });
 
   describe("task run followups", () => {
-    it("parses persisted followups", () => {
+    it("parses answered followups", () => {
       expect(
         taskRunFollowupSchema.parse({
           id: "followup-1",
           taskId: "task-1",
           runId: "run-1",
           kind: "review_answer",
-          status: "sent",
+          status: "answered",
           body: "Proceed with option A.",
           createdAt: "2026-06-01T12:00:00.000Z",
-          sentAt: "2026-06-01T12:05:00.000Z",
+          answerBody: "Done, proceeding with option A.",
+          answeredAt: "2026-06-01T12:05:00.000Z",
         }),
       ).toMatchObject({
         id: "followup-1",
         kind: "review_answer",
-        status: "sent",
+        status: "answered",
+        answerBody: "Done, proceeding with option A.",
       });
     });
 
@@ -465,8 +466,8 @@ describe("task schemas", () => {
       });
     });
 
-    it("rejects empty followup edits", () => {
-      expect(() => updateTaskRunFollowupInputSchema.parse({ body: "   " })).toThrow();
+    it("rejects empty followup bodies", () => {
+      expect(() => createTaskRunFollowupInputSchema.parse({ body: "   " })).toThrow();
     });
   });
 
@@ -489,7 +490,7 @@ describe("task schemas", () => {
   });
 
   describe("taskRunSchema", () => {
-    it("defaults pending followup count to zero", () => {
+    it("defaults hasActiveReply to false", () => {
       expect(
         taskRunSchema.parse({
           id: "run-1",
@@ -503,8 +504,8 @@ describe("task schemas", () => {
           needsHumanReview: false,
           createdAt: "2026-06-01T12:00:00.000Z",
           updatedAt: "2026-06-01T12:00:00.000Z",
-        }).pendingFollowupCount,
-      ).toBe(0);
+        }).hasActiveReply,
+      ).toBe(false);
     });
 
     it("accepts an attached review question", () => {
@@ -524,7 +525,7 @@ describe("task schemas", () => {
             question: "Which region should I deploy to?",
             suggestedReplies: ["us-east-1", "eu-west-1"],
           },
-          pendingFollowupCount: 2,
+          hasActiveReply: true,
           createdAt: "2026-06-01T12:00:00.000Z",
           updatedAt: "2026-06-01T12:00:00.000Z",
         }).reviewQuestion,

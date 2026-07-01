@@ -1,0 +1,1 @@
+ALTER TABLE `task_run_followups` DROP COLUMN `sent_at`;

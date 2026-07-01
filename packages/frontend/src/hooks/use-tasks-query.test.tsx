@@ -14,7 +14,6 @@ vi.mock("@/lib/api", () => ({
   acceptTask: vi.fn(),
   archiveTask: vi.fn(),
   cancelTaskRun: vi.fn(),
-  continueRun: vi.fn(),
   createTask: vi.fn(),
   createTaskFeedback: vi.fn(),
   createRunFollowup: vi.fn(),
@@ -22,7 +21,6 @@ vi.mock("@/lib/api", () => ({
   createTaskTemplate: vi.fn(),
   createTaskArtifactShareLink: vi.fn(),
   deleteTask: vi.fn(),
-  deleteRunFollowup: vi.fn(),
   disableTask: vi.fn(),
   duplicateTask: vi.fn(),
   enableTask: vi.fn(),
@@ -48,7 +46,6 @@ vi.mock("@/lib/api", () => ({
   restoreTask: vi.fn(),
   revokeTaskArtifactShareLink: vi.fn(),
   runTaskTemplateNow: vi.fn(),
-  updateRunFollowup: vi.fn(),
   updateTask: vi.fn(),
   updateTaskContext: vi.fn(),
   updateTaskFeedback: vi.fn(),
@@ -60,7 +57,6 @@ import {
   acceptTask,
   archiveTask,
   cancelTaskRun,
-  continueRun,
   createTask,
   createTaskFeedback,
   createRunFollowup,
@@ -68,7 +64,6 @@ import {
   createTaskTemplate,
   createTaskArtifactShareLink,
   deleteTask,
-  deleteRunFollowup,
   disableTask,
   duplicateTask,
   enableTask,
@@ -94,7 +89,6 @@ import {
   restoreTask,
   revokeTaskArtifactShareLink,
   runTaskTemplateNow,
-  updateRunFollowup,
   updateTask,
   updateTaskContext,
   updateTaskFeedback,
@@ -180,7 +174,7 @@ function makeRun(overrides: Partial<TaskRun> = {}): TaskRun {
     renderedPrompt: "Do the task.",
     artifacts: [],
     needsHumanReview: false,
-    pendingFollowupCount: 0,
+    hasActiveReply: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -193,7 +187,7 @@ function makeFollowup(overrides: Partial<TaskRunFollowup> = {}): TaskRunFollowup
     taskId: "task-1",
     runId: "run-1",
     kind: "operator_reply",
-    status: "pending",
+    status: "sending",
     body: "Please continue.",
     createdAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -445,18 +439,12 @@ describe("useTaskMutations", () => {
     expect(listTaskRunArtifacts).not.toHaveBeenCalled();
   });
 
-  it("updates followup cache and invalidates run views for followup mutations", async () => {
+  it("updates followup cache and invalidates run views when a reply is sent", async () => {
     const queryClient = createQueryClient();
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
     const created = makeFollowup({ id: "followup-created", body: "First reply." });
-    const updated = makeFollowup({ id: "followup-created", body: "Updated reply." });
-    const continued = makeRun({ id: "run-1", taskId: "task-1", status: "running" });
 
-    queryClient.setQueryData(queryKeys.taskRunFollowups("task-1", "run-1"), [created]);
     vi.mocked(createRunFollowup).mockResolvedValue(created);
-    vi.mocked(updateRunFollowup).mockResolvedValue(updated);
-    vi.mocked(deleteRunFollowup).mockResolvedValue(undefined);
-    vi.mocked(continueRun).mockResolvedValue(continued);
 
     const { result } = renderHook(() => useTaskMutations(), {
       wrapper: createWrapper(queryClient),
@@ -468,28 +456,12 @@ describe("useTaskMutations", () => {
         runId: "run-1",
         input: { body: "First reply." },
       });
-      await result.current.updateRunFollowup.mutateAsync({
-        taskId: "task-1",
-        runId: "run-1",
-        followupId: "followup-created",
-        input: { body: "Updated reply." },
-      });
-      await result.current.continueRun.mutateAsync({ taskId: "task-1", runId: "run-1" });
-      await result.current.deleteRunFollowup.mutateAsync({
-        taskId: "task-1",
-        runId: "run-1",
-        followupId: "followup-created",
-      });
     });
 
     expect(createRunFollowup).toHaveBeenCalledWith("task-1", "run-1", { body: "First reply." });
-    expect(updateRunFollowup).toHaveBeenCalledWith("task-1", "run-1", "followup-created", {
-      body: "Updated reply.",
-    });
-    expect(continueRun).toHaveBeenCalledWith("task-1", "run-1");
-    expect(deleteRunFollowup).toHaveBeenCalledWith("task-1", "run-1", "followup-created");
-    expect(queryClient.getQueryData(queryKeys.taskRun("task-1", "run-1"))).toEqual(continued);
-    expect(queryClient.getQueryData(queryKeys.taskRunFollowups("task-1", "run-1"))).toEqual([]);
+    expect(queryClient.getQueryData(queryKeys.taskRunFollowups("task-1", "run-1"))).toEqual([
+      created,
+    ]);
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.taskRunFollowups("task-1", "run-1"),
     });

@@ -46,7 +46,6 @@ import {
   updateTaskInputSchema,
   updateTaskFeedbackInputSchema,
   updateTaskTemplateInputSchema,
-  updateTaskRunFollowupInputSchema,
   updateTaskRunInputSchema,
   updateTaskSubtaskInputSchema,
   type AppendTaskContextInput,
@@ -969,31 +968,30 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
       return rows.map(mapTaskRunFollowup);
     },
 
-    async listPendingFollowups(runId: string): Promise<TaskRunFollowup[]> {
-      await requireTaskRun(runId);
-      const rows = await options.db.query.task_run_followups.findMany({
+    async findInFlightFollowup(runId: string): Promise<TaskRunFollowup | undefined> {
+      const row = await options.db.query.task_run_followups.findFirst({
         where: (table, operators) =>
-          operators.and(operators.eq(table.run_id, runId), operators.eq(table.status, "pending")),
-        orderBy: (table, operators) => [operators.asc(table.created_at)],
+          operators.and(operators.eq(table.run_id, runId), operators.eq(table.status, "sending")),
+        orderBy: (table, operators) => [operators.desc(table.created_at)],
       });
 
-      return rows.map(mapTaskRunFollowup);
+      return row ? mapTaskRunFollowup(row) : undefined;
     },
 
-    async createFollowup(runId: string, input: unknown): Promise<TaskRunFollowup> {
+    async insertFollowup(run: TaskRun, input: unknown): Promise<TaskRunFollowup> {
       const parsed = createTaskRunFollowupInputSchema.parse(input);
-      const run = await requireTaskRunWithSession(runId);
       const timestamp = now();
       const [row] = await options.db
         .insert(task_run_followups)
         .values({
           id: createId(),
-          task_id: run.task_id,
+          task_id: run.taskId,
           run_id: run.id,
           kind: parsed.kind,
-          status: "pending",
+          status: "sending",
           body: parsed.body,
-          sent_at: null,
+          answer_body: null,
+          answered_at: null,
           error_message: null,
           created_at: timestamp,
           updated_at: timestamp,
@@ -1001,102 +999,30 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         .returning();
 
       if (!row) {
-        throw new Error("Failed to create task run follow-up record.");
+        throw new Error("Failed to create task run reply record.");
       }
 
       return mapTaskRunFollowup(row);
     },
 
-    async updateFollowup(
-      runId: string,
+    async markFollowupAnswered(
       followupId: string,
-      input: unknown,
+      input: { answerBody?: string; answeredAt: string },
     ): Promise<TaskRunFollowup | undefined> {
-      const parsed = updateTaskRunFollowupInputSchema.parse(input);
-
-      return await Promise.resolve(
-        options.db.transaction((tx) => {
-          const existing = tx
-            .select()
-            .from(task_run_followups)
-            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
-            .get();
-
-          if (!existing) {
-            return undefined;
-          }
-
-          if (existing.status !== "pending") {
-            throw new ConflictError("Only pending follow-ups can be edited.");
-          }
-
-          const updated = tx
-            .update(task_run_followups)
-            .set({
-              body: parsed.body,
-              updated_at: now(),
-            })
-            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
-            .returning()
-            .get();
-
-          if (!updated) {
-            throw new Error("Failed to update task run follow-up record.");
-          }
-
-          return mapTaskRunFollowup(updated);
-        }),
-      );
-    },
-
-    async deleteFollowup(runId: string, followupId: string): Promise<boolean> {
-      return await Promise.resolve(
-        options.db.transaction((tx) => {
-          const existing = tx
-            .select()
-            .from(task_run_followups)
-            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
-            .get();
-
-          if (!existing) {
-            return false;
-          }
-
-          if (existing.status !== "pending") {
-            throw new ConflictError("Only pending follow-ups can be deleted.");
-          }
-
-          tx.delete(task_run_followups)
-            .where(and(eq(task_run_followups.run_id, runId), eq(task_run_followups.id, followupId)))
-            .run();
-          return true;
-        }),
-      );
-    },
-
-    async markFollowupsSent(followupIds: string[], sentAt: string): Promise<TaskRunFollowup[]> {
-      if (followupIds.length === 0) {
-        return [];
-      }
-
-      const sentAtDate = new Date(z.string().datetime().parse(sentAt));
-      const rows = await options.db
+      const answeredAtDate = new Date(z.string().datetime().parse(input.answeredAt));
+      const [row] = await options.db
         .update(task_run_followups)
         .set({
-          status: "sent",
-          sent_at: sentAtDate,
+          status: "answered",
+          answer_body: input.answerBody ?? null,
+          answered_at: answeredAtDate,
           error_message: null,
           updated_at: now(),
         })
-        .where(
-          and(
-            inArray(task_run_followups.id, followupIds),
-            eq(task_run_followups.status, "pending"),
-          ),
-        )
+        .where(and(eq(task_run_followups.id, followupId), eq(task_run_followups.status, "sending")))
         .returning();
 
-      return rows.map(mapTaskRunFollowup);
+      return row ? mapTaskRunFollowup(row) : undefined;
     },
 
     async markFollowupFailed(
@@ -1110,7 +1036,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           error_message: errorMessage,
           updated_at: now(),
         })
-        .where(and(eq(task_run_followups.id, followupId), eq(task_run_followups.status, "pending")))
+        .where(and(eq(task_run_followups.id, followupId), eq(task_run_followups.status, "sending")))
         .returning();
 
       return row ? mapTaskRunFollowup(row) : undefined;
@@ -1516,7 +1442,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         orderBy: (table, operators) => [operators.desc(table.created_at)],
       });
 
-      return taskRunListSchema.parse(await mapTaskRunsWithPendingFollowups(options.db, rows));
+      return taskRunListSchema.parse(await mapTaskRunsWithReplyState(options.db, rows));
     },
 
     async getRun(taskId: string, runId: string): Promise<TaskRun | undefined> {
@@ -1538,7 +1464,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           operators.and(operators.inArray(table.task_id, taskIds), operators.eq(table.id, runId)),
       });
 
-      return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
+      return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
     },
 
     async getRunById(runId: string): Promise<TaskRun | undefined> {
@@ -1546,7 +1472,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         where: (table, operators) => operators.eq(table.id, runId),
       });
 
-      return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
+      return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
     },
 
     async listActiveRuns(): Promise<TaskRun[]> {
@@ -1555,7 +1481,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         orderBy: (table, operators) => [operators.desc(table.created_at)],
       });
 
-      return taskRunListSchema.parse(await mapTaskRunsWithPendingFollowups(options.db, rows));
+      return taskRunListSchema.parse(await mapTaskRunsWithReplyState(options.db, rows));
     },
 
     async getActiveRunForTask(taskId: string, subtaskId?: string): Promise<TaskRun | undefined> {
@@ -1571,7 +1497,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         orderBy: (table, operators) => [operators.desc(table.created_at)],
       });
 
-      return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
+      return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
     },
 
     async getRunningRunForAgent(agentId: string): Promise<TaskRun | undefined> {
@@ -1584,7 +1510,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         orderBy: (table, operators) => [operators.asc(table.created_at)],
       });
 
-      return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
+      return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
     },
 
     async getNextQueuedRunForAgent(agentId: string): Promise<TaskRun | undefined> {
@@ -1597,7 +1523,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         orderBy: (table, operators) => [operators.asc(table.created_at)],
       });
 
-      return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
+      return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
     },
 
     async tryStartQueuedRun(
@@ -1629,7 +1555,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
           .where(and(eq(task_runs.id, id), eq(task_runs.status, "queued")))
           .returning();
 
-        return row ? mapTaskRunWithPendingFollowups(options.db, row) : undefined;
+        return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
       } catch (error) {
         if (isRunningAgentConstraintError(error)) {
           return undefined;
@@ -1757,7 +1683,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         throw new Error("Failed to create task run record.");
       }
 
-      return mapTaskRunWithPendingFollowups(options.db, row);
+      return mapTaskRunWithReplyState(options.db, row);
     },
 
     async updateRun(id: string, input: UpdateTaskRunInput): Promise<TaskRun | undefined> {
@@ -1827,7 +1753,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         throw new Error("Failed to update task run record.");
       }
 
-      return mapTaskRunWithPendingFollowups(options.db, row);
+      return mapTaskRunWithReplyState(options.db, row);
     },
 
     async setRunStatus(
@@ -1937,7 +1863,7 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         throw new NotFoundError("Task run not found.");
       }
 
-      return mapTaskRunWithPendingFollowups(options.db, updated);
+      return mapTaskRunWithReplyState(options.db, updated);
     },
   };
 
@@ -1968,18 +1894,6 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
 
     if (!run) {
       throw new NotFoundError("Task run not found.");
-    }
-
-    return run;
-  }
-
-  async function requireTaskRunWithSession(
-    taskRunId: string,
-  ): Promise<typeof task_runs.$inferSelect> {
-    const run = await requireTaskRun(taskRunId);
-
-    if (!run.opencode_session_id) {
-      throw new ConflictError("Task run does not have an OpenCode session.");
     }
 
     return run;
@@ -2614,20 +2528,21 @@ function mapTaskRunFollowup(row: typeof task_run_followups.$inferSelect): TaskRu
     status: row.status,
     body: row.body,
     createdAt: row.created_at.toISOString(),
-    sentAt: row.sent_at?.toISOString(),
+    answerBody: row.answer_body ?? undefined,
+    answeredAt: row.answered_at?.toISOString(),
     errorMessage: row.error_message ?? undefined,
   });
 }
 
-async function mapTaskRunWithPendingFollowups(
+async function mapTaskRunWithReplyState(
   db: AppDb,
   row: typeof task_runs.$inferSelect,
 ): Promise<TaskRun> {
-  const [run] = await mapTaskRunsWithPendingFollowups(db, [row]);
+  const [run] = await mapTaskRunsWithReplyState(db, [row]);
   return run ?? mapTaskRun(row);
 }
 
-async function mapTaskRunsWithPendingFollowups(
+async function mapTaskRunsWithReplyState(
   db: AppDb,
   rows: Array<typeof task_runs.$inferSelect>,
 ): Promise<TaskRun[]> {
@@ -2636,42 +2551,36 @@ async function mapTaskRunsWithPendingFollowups(
     return runs;
   }
 
-  const pendingCounts = await getPendingFollowupCountByRunId(
+  const activeReplyRunIds = await getActiveReplyRunIds(
     db,
     runs.map((run) => run.id),
   );
 
   return runs.map((run) => ({
     ...run,
-    pendingFollowupCount: pendingCounts.get(run.id) ?? 0,
+    hasActiveReply: activeReplyRunIds.has(run.id),
   }));
 }
 
-async function getPendingFollowupCountByRunId(
-  db: AppDb,
-  runIds: string[],
-): Promise<Map<string, number>> {
+async function getActiveReplyRunIds(db: AppDb, runIds: string[]): Promise<Set<string>> {
   const uniqueRunIds = Array.from(new Set(runIds.filter(Boolean)));
 
   if (uniqueRunIds.length === 0) {
-    return new Map();
+    return new Set();
   }
 
   const rows = await db
-    .select({
-      runId: task_run_followups.run_id,
-      value: count(),
-    })
+    .select({ runId: task_run_followups.run_id })
     .from(task_run_followups)
     .where(
       and(
         inArray(task_run_followups.run_id, uniqueRunIds),
-        eq(task_run_followups.status, "pending"),
+        eq(task_run_followups.status, "sending"),
       ),
     )
     .groupBy(task_run_followups.run_id);
 
-  return new Map(rows.map((row) => [row.runId, row.value]));
+  return new Set(rows.map((row) => row.runId));
 }
 
 /**

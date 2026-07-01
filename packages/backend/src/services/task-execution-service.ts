@@ -13,6 +13,7 @@ import {
   type Task,
   type TaskQueuePreview,
   type TaskRun,
+  type TaskRunFollowup,
   type TaskSubtask,
 } from "@cc/shared/schemas";
 import { and, eq, isNull } from "drizzle-orm";
@@ -191,8 +192,8 @@ export function createTaskExecutionService(options: {
       return runQueuedTask(runId);
     },
 
-    async continueRunWithFollowups(runId: string): Promise<TaskRun> {
-      return continueRunWithFollowups(runId);
+    async sendRunReply(runId: string, input: unknown): Promise<TaskRunFollowup> {
+      return sendRunReply(runId, input);
     },
 
     startTaskRunMonitor(runId: string): void {
@@ -555,29 +556,27 @@ export function createTaskExecutionService(options: {
     }
   }
 
-  async function continueRunWithFollowups(runId: string): Promise<TaskRun> {
+  async function sendRunReply(runId: string, input: unknown): Promise<TaskRunFollowup> {
     if (!options.db) {
-      throw new Error("Database client is required to continue task runs.");
+      throw new Error("Database client is required to send a run reply.");
     }
 
     if (!options.conversationService) {
-      throw new Error("Conversation service is required to continue task runs.");
+      throw new Error("Conversation service is required to send a run reply.");
     }
 
     const run = await findRun(runId);
 
-    if (run.status !== "completed" && run.status !== "failed" && run.status !== "error") {
-      throw new BadRequestError("Only completed, failed, or error task runs can be continued.");
+    if (run.status === "running") {
+      throw new ConflictError("Cannot send a reply while the run is in progress.");
     }
 
     if (!run.opencodeSessionId) {
       throw new ConflictError("Task run does not have an OpenCode session.");
     }
 
-    const pendingFollowups = await options.taskService.listPendingFollowups(run.id);
-
-    if (pendingFollowups.length === 0) {
-      return run;
+    if (run.status !== "completed" && run.status !== "failed" && run.status !== "error") {
+      throw new BadRequestError("Only completed, failed, or error task runs can receive a reply.");
     }
 
     const inspection = await options.conversationService.inspectTaskRunConversation(
@@ -590,12 +589,12 @@ export function createTaskExecutionService(options: {
       throw new NotFoundError("Task run session not found.");
     }
 
-    const resumed = await reactivateRunForFollowups(run);
-    const promptText = pendingFollowups.map((followup) => followup.body).join("\n\n");
+    const resumed = await reactivateRunForReply(run);
+    const followup = await options.taskService.insertFollowup(resumed, input);
 
     try {
       const promptStart = await startTaskRunPromptWithRetry(resumed, conversation, {
-        text: promptText,
+        text: followup.body,
         attachments: [],
         model: resumed.model,
       });
@@ -624,27 +623,21 @@ export function createTaskExecutionService(options: {
         }
       }
 
-      await options.taskService.markFollowupsSent(
-        pendingFollowups.map((followup) => followup.id),
-        new Date().toISOString(),
-      );
-
-      return (await options.taskService.getRunById(accepted.id)) ?? accepted;
+      // The followup row is left in "sending" — it's finalized (answered/failed)
+      // once the run reaches terminal status again, via
+      // finalizeInFlightRunFollowup (called from notifyRunTerminal).
+      return followup;
     } catch (error) {
-      await Promise.all(
-        pendingFollowups.map((followup) =>
-          options.taskService.markFollowupFailed(
-            followup.id,
-            error instanceof Error ? error.message : "Failed to deliver follow-up.",
-          ),
-        ),
+      const failed = await options.taskService.markFollowupFailed(
+        followup.id,
+        error instanceof Error ? error.message : "Failed to deliver reply.",
       );
 
       const latest = await findRun(resumed.id);
 
       if (latest.status !== "running") {
         await handleTerminalRun(latest, { triggerContext: readRunContext(latest) });
-        return latest;
+        return failed ?? followup;
       }
 
       const errored = await options.taskService.setRunStatus(resumed.id, "error", {
@@ -658,13 +651,13 @@ export function createTaskExecutionService(options: {
       }
 
       await handleTerminalRun(errored, { triggerContext: readRunContext(resumed) });
-      return errored;
+      return failed ?? followup;
     }
   }
 
-  async function reactivateRunForFollowups(run: TaskRun): Promise<TaskRun> {
+  async function reactivateRunForReply(run: TaskRun): Promise<TaskRun> {
     if (!options.db) {
-      throw new Error("Database client is required to continue task runs.");
+      throw new Error("Database client is required to send a run reply.");
     }
 
     const running = await options.taskService.getRunningRunForAgent(run.agentId);
@@ -1540,9 +1533,42 @@ export function createTaskExecutionService(options: {
   }
 
   function notifyRunTerminal(run: TaskRun): void {
+    void finalizeInFlightRunFollowup(run);
     void finalizeRunArchive(run);
     void emitTerminalActivity(run);
     void options.onRunTerminal?.(run);
+  }
+
+  // Every terminal transition (completion, error, cancellation, skip) funnels
+  // through here, so this is the one place that can reliably close out a reply
+  // that reactivated this run — regardless of which path put it back into
+  // "running". Best-effort: never throw into the terminal path.
+  async function finalizeInFlightRunFollowup(run: TaskRun): Promise<void> {
+    try {
+      const inFlight = await options.taskService.findInFlightFollowup(run.id);
+
+      if (!inFlight) {
+        return;
+      }
+
+      if (run.status === "completed") {
+        await options.taskService.markFollowupAnswered(inFlight.id, {
+          answerBody: run.finalMessage ?? run.resultText ?? "No response text.",
+          answeredAt: new Date().toISOString(),
+        });
+        return;
+      }
+
+      await options.taskService.markFollowupFailed(
+        inFlight.id,
+        run.errorMessage ?? `Run ended (${run.status}) before answering.`,
+      );
+    } catch (error) {
+      options.logger?.warn(
+        { err: error, taskId: run.taskId, taskRunId: run.id },
+        "failed to finalize in-flight run reply",
+      );
+    }
   }
 
   // Drop an activity for the just-finished run. Best-effort: never throw into the
