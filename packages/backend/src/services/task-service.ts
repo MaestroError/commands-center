@@ -1696,6 +1696,22 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
         return undefined;
       }
 
+      // Freeze the run's outcome comment the first time it goes terminal with
+      // content, so later reactivation (e.g. answering a reply) can keep
+      // rewriting final_message/result_text without retroactively changing
+      // what the Feedback timeline already showed as this run's comment.
+      const mergedStatus = parsed.status ?? existing.status;
+      const isTerminalStatus = mergedStatus !== "queued" && mergedStatus !== "running";
+      const mergedOutcomeText =
+        parsed.resultText ??
+        existing.result_text ??
+        parsed.finalMessage ??
+        existing.final_message ??
+        parsed.errorMessage ??
+        existing.error_message;
+      const shouldFreezeOutcome =
+        isTerminalStatus && Boolean(mergedOutcomeText) && !existing.initial_outcome_text;
+
       const [row] = await options.db
         .update(task_runs)
         .set({
@@ -1727,6 +1743,14 @@ export function createTaskService(options: { db: AppDb; config: RuntimeConfig })
               : stringifyOptional(parsed.effectivePermissions),
           final_message: parsed.finalMessage ?? existing.final_message,
           result_text: parsed.resultText ?? existing.result_text,
+          initial_outcome_text: shouldFreezeOutcome
+            ? mergedOutcomeText
+            : existing.initial_outcome_text,
+          initial_outcome_at: shouldFreezeOutcome
+            ? parsed.completedAt
+              ? new Date(parsed.completedAt)
+              : (existing.completed_at ?? now())
+            : existing.initial_outcome_at,
           artifacts_json:
             parsed.artifacts === undefined
               ? existing.artifacts_json
@@ -2503,6 +2527,8 @@ function mapTaskRun(row: typeof task_runs.$inferSelect): TaskRun {
     ),
     finalMessage: row.final_message ?? undefined,
     resultText: row.result_text ?? undefined,
+    initialOutcomeText: row.initial_outcome_text ?? undefined,
+    initialOutcomeAt: row.initial_outcome_at?.toISOString(),
     artifacts: parseTaskRunArtifacts(row.artifacts_json),
     needsHumanReview: row.needs_human_review ?? false,
     humanReviewReason: row.human_review_reason ?? undefined,

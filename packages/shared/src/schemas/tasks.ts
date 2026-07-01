@@ -583,6 +583,8 @@ export const taskRunSchema = z.object({
   effectivePermissions: taskPermissionProfileSchema.optional(),
   finalMessage: z.string().optional(),
   resultText: z.string().optional(),
+  initialOutcomeText: z.string().optional(),
+  initialOutcomeAt: z.string().datetime().optional(),
   artifacts: z.array(taskRunArtifactSchema),
   needsHumanReview: z.boolean(),
   humanReviewReason: z.string().optional(),

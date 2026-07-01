@@ -169,6 +169,8 @@ export const task_runs = sqliteTable(
     effective_permissions_json: text("effective_permissions_json"),
     final_message: text("final_message"),
     result_text: text("result_text"),
+    initial_outcome_text: text("initial_outcome_text"),
+    initial_outcome_at: integer("initial_outcome_at", { mode: "timestamp_ms" }),
     artifacts_json: text("artifacts_json").default("[]"),
     needs_human_review: integer("needs_human_review", { mode: "boolean" }).default(false),
     human_review_reason: text("human_review_reason"),

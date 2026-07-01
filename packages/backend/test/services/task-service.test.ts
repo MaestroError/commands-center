@@ -510,6 +510,80 @@ describe("createTaskService", () => {
     }
   });
 
+  it("freezes the run's outcome comment on first completion and keeps it stable across later reactivation", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Run me",
+      });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        renderedPrompt: "Do the task.",
+      });
+
+      const firstCompletion = await service.updateRun(run.id, {
+        status: "completed",
+        finalMessage: "First answer.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+
+      expect(firstCompletion?.initialOutcomeText).toBe("First answer.");
+      expect(firstCompletion?.initialOutcomeAt).toBe("2026-06-01T12:00:00.000Z");
+
+      // Simulate a reply reactivating the run, then completing again with a
+      // different message (the specialist's answer to the follow-up).
+      await service.updateRun(run.id, { status: "running", completedAt: undefined });
+      const secondCompletion = await service.updateRun(run.id, {
+        status: "completed",
+        finalMessage: "Second answer, after a reply.",
+        completedAt: "2026-06-01T13:00:00.000Z",
+      });
+
+      expect(secondCompletion?.finalMessage).toBe("Second answer, after a reply.");
+      expect(secondCompletion?.initialOutcomeText).toBe("First answer.");
+      expect(secondCompletion?.initialOutcomeAt).toBe("2026-06-01T12:00:00.000Z");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("prefers the explicit result text over the last message when freezing the outcome comment", async () => {
+    const testDb = await createTestDatabase();
+    const service = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await service.create({
+        agentId: agent.id,
+        title: "Run me",
+      });
+      const run = await service.createRun({
+        taskId: task.id,
+        agentId: agent.id,
+        triggerSource: "manual",
+        renderedPrompt: "Do the task.",
+      });
+
+      await service.updateRun(run.id, { status: "running" });
+      await service.setRunResultText(run.id, agent.id, "Explicit result.");
+      const completed = await service.updateRun(run.id, {
+        status: "completed",
+        finalMessage: "Last message text.",
+        completedAt: "2026-06-01T12:00:00.000Z",
+      });
+
+      expect(completed?.initialOutcomeText).toBe("Explicit result.");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("maps legacy null task run outcome fields to defaults", async () => {
     const testDb = await createTestDatabase();
     const service = createTaskService({ db: testDb.client.db, config: testDb.config });

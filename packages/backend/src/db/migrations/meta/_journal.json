@@ -218,6 +218,13 @@
       "when": 1782889579963,
       "tag": "0030_drop_task_run_followup_sent_at",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1782899275983,
+      "tag": "0031_add_task_run_initial_outcome",
+      "breakpoints": true
     }
   ]
 }

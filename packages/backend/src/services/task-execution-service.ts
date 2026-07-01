@@ -1553,7 +1553,7 @@ export function createTaskExecutionService(options: {
 
       if (run.status === "completed") {
         await options.taskService.markFollowupAnswered(inFlight.id, {
-          answerBody: run.finalMessage ?? run.resultText ?? "No response text.",
+          answerBody: run.resultText ?? run.finalMessage ?? "No response text.",
           answeredAt: new Date().toISOString(),
         });
         return;

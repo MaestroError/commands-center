@@ -320,7 +320,7 @@ function TaskFeedbackSection(props: {
                 meta={
                   <>
                     <StatusBadge status={run.status} />
-                    <span>{formatDate(run.completedAt ?? run.updatedAt)}</span>
+                    <span>{formatDate(readRunCommentAt(run))}</span>
                     <Link
                       className="font-medium text-accent underline-offset-4 hover:underline"
                       to={`/tasks/${props.task.id}/runs/${run.id}`}
@@ -381,15 +381,11 @@ function SendButtons(props: {
 
 export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Specialist }) {
   const [isComposerOpen, setIsComposerOpen] = useState(false);
-  const [hasRequestedFollowups, setHasRequestedFollowups] = useState(false);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string>();
   const isRunning = props.run.status === "running";
   const canReply = Boolean(props.run.opencodeSessionId) && !isRunning;
-  const shouldLoadFollowups = hasRequestedFollowups || props.run.hasActiveReply;
-  const followupsQuery = useTaskRunFollowupsQuery(props.taskId, props.run.id, {
-    enabled: shouldLoadFollowups,
-  });
+  const followupsQuery = useTaskRunFollowupsQuery(props.taskId, props.run.id);
   const mutations = useTaskMutations();
 
   async function submit(): Promise<void> {
@@ -423,6 +419,17 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
 
   return (
     <div className="mt-3 grid gap-3 rounded-lg border border-border bg-surface p-3">
+      {followupsQuery.isLoading ? (
+        <p className="text-xs text-text-secondary">Loading replies...</p>
+      ) : null}
+      {followups.length > 0 ? (
+        <div aria-label="Replies" className="grid gap-3">
+          {followups.map((followup) => (
+            <RunFollowupThreadItem agent={props.agent} followup={followup} key={followup.id} />
+          ))}
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-medium text-text-primary">Reply to this run</p>
@@ -433,13 +440,7 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
         <button
           className="cc-button cc-button-secondary"
           disabled={!canReply}
-          onClick={() => {
-            if (!isComposerOpen) {
-              setHasRequestedFollowups(true);
-            }
-
-            setIsComposerOpen((current) => !current);
-          }}
+          onClick={() => setIsComposerOpen((current) => !current)}
           title={disabledReason}
           type="button"
         >
@@ -479,17 +480,6 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
         <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
           {error}
         </p>
-      ) : null}
-
-      {followupsQuery.isLoading ? (
-        <p className="text-xs text-text-secondary">Loading replies...</p>
-      ) : null}
-      {followups.length > 0 ? (
-        <div aria-label="Replies" className="grid gap-3">
-          {followups.map((followup) => (
-            <RunFollowupThreadItem agent={props.agent} followup={followup} key={followup.id} />
-          ))}
-        </div>
       ) : null}
     </div>
   );
@@ -679,7 +669,7 @@ function FeedbackReplies(props: {
             meta={
               <>
                 <StatusBadge status={reply.status} />
-                <span>{formatDate(reply.run.completedAt ?? reply.run.updatedAt)}</span>
+                <span>{formatDate(readRunCommentAt(reply.run))}</span>
                 <Link
                   className="font-medium text-accent underline-offset-4 hover:underline"
                   to={`/tasks/${reply.run.taskId}/runs/${reply.run.id}`}
@@ -725,12 +715,22 @@ function buildFeedbackTimelineItems(
     ...runs.filter(hasRunOutcomeSummary).map((run) => ({
       type: "run" as const,
       id: run.id,
-      timestamp: run.completedAt ?? run.updatedAt,
+      timestamp: readRunCommentAt(run),
       run,
     })),
   ].sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
 }
 
 function readRunCommentBody(run: TaskRun): string {
-  return run.finalMessage ?? run.resultText ?? run.errorMessage ?? "No result yet.";
+  return (
+    run.initialOutcomeText ??
+    run.resultText ??
+    run.finalMessage ??
+    run.errorMessage ??
+    "No result yet."
+  );
+}
+
+function readRunCommentAt(run: TaskRun): string {
+  return run.initialOutcomeAt ?? run.completedAt ?? run.updatedAt;
 }

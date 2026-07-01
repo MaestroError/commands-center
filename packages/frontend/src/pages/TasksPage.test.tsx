@@ -944,7 +944,10 @@ describe("TasksPage", () => {
       subtasks: [],
       createdAt: "2026-01-01T00:20:00.000Z",
     };
-    mockFetch({ feedbackPayload: [feedbackThread, newerFeedbackThread], runsPayload: [run] });
+    mockFetch({
+      feedbackPayload: [feedbackThread, newerFeedbackThread],
+      runsPayload: [{ ...run, resultText: undefined }],
+    });
 
     renderWithRouter(<TasksPage />, "/tasks");
 
@@ -976,6 +979,37 @@ describe("TasksPage", () => {
         .getByText("Newest feedback comment.")
         .compareDocumentPosition(within(comments).getByText("Done.")),
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("shows the frozen outcome comment for a run, not its live final message", async () => {
+    // Regression coverage: once a reply reactivates a run, its finalMessage/
+    // resultText columns keep changing with each answer, but the top-level
+    // "commented" entry in the Feedback timeline must keep showing the run's
+    // original outcome (captured once, server-side, as initialOutcomeText) —
+    // not whatever the run's live fields currently hold.
+    mockFetch({
+      feedbackPayload: [],
+      runsPayload: [
+        {
+          ...run,
+          finalMessage: "Second answer, after a reply.",
+          resultText: "Second answer, after a reply.",
+          initialOutcomeText: "Saved all 24 available tools to tools-23.md.",
+          initialOutcomeAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const comments = await screen.findByRole("region", { name: "Feedback comments" });
+    expect(
+      within(comments).getByText("Saved all 24 available tools to tools-23.md."),
+    ).toBeInTheDocument();
+    expect(within(comments).queryByText("Second answer, after a reply.")).not.toBeInTheDocument();
   });
 
   it("opens subtask runs from the subtask tab", async () => {
@@ -2458,13 +2492,23 @@ describe("TaskDetailPage", () => {
     expect(within(comments).getAllByRole("link", { name: "Tool list" })).toHaveLength(2);
   });
 
-  it("does not eagerly load followups for closed feedback reply panels", async () => {
-    const fetchMock = mockFetch({ feedbackPayload: [feedbackThread], runsPayload: [run] });
+  it("eagerly loads and shows existing replies without requiring the Reply toggle", async () => {
+    // Regression coverage: replies used to only load once the operator clicked
+    // "Reply" to open the composer, so a page refresh showed only the toggle
+    // button until clicked. Existing replies and their answers should always
+    // be visible; the toggle only controls the compose box.
+    const fetchMock = mockFetch({
+      feedbackPayload: [feedbackThread],
+      runsPayload: [{ ...run, hasActiveReply: false }],
+      followupsPayload: [sentFollowup],
+    });
 
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
-    await screen.findByRole("region", { name: "Feedback comments" });
+    const comments = await screen.findByRole("region", { name: "Feedback comments" });
 
+    expect(await within(comments).findByText("Already delivered.")).toBeInTheDocument();
+    expect(within(comments).getByText("Verified, all good.")).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([input, init]) => {
         const url = input instanceof Request ? input.url : String(input);
@@ -2472,7 +2516,7 @@ describe("TaskDetailPage", () => {
 
         return url.includes("/followups") && method === "GET";
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("disables feedback run replies when the run has no recorded session", async () => {
