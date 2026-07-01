@@ -97,7 +97,7 @@ describe("updateDocumentsAgentsGuideRootRuleMigration", () => {
 
   it("includes the root-only-folder rule in the updated guide text", () => {
     expect(DOCUMENTS_AGENTS_GUIDE_WITH_ROOT_RULE).toContain(
-      "do not create files directly in the root of `Documents/`",
+      "The path must include at least one folder segment: do not\ncreate files directly in the root of `Documents/`.",
     );
     expect(DOCUMENTS_AGENTS_GUIDE_WITH_ROOT_RULE).toContain(
       "The `Documents/` root is for\n  folders only.",
