@@ -682,7 +682,13 @@ function FeedbackReplies(props: {
 }
 
 function hasRunOutcomeSummary(run: TaskRun): boolean {
-  return Boolean(!run.subtaskId && (run.finalMessage || run.resultText || run.errorMessage));
+  // Mirror the fields readRunCommentBody renders (frozen text included), so a
+  // run whose live final/result/error fields are cleared but that has a frozen
+  // outcome still shows its comment entry.
+  return Boolean(
+    !run.subtaskId &&
+    (run.initialOutcomeText || run.finalMessage || run.resultText || run.errorMessage),
+  );
 }
 
 function hasParentRunComments(runs: TaskRun[]): boolean {

@@ -1554,7 +1554,10 @@ export function createTaskExecutionService(options: {
       if (run.status === "completed") {
         await options.taskService.markFollowupAnswered(inFlight.id, {
           answerBody: run.resultText ?? run.finalMessage ?? "No response text.",
-          answeredAt: new Date().toISOString(),
+          // Prefer the run's own completion time so the answer's timestamp
+          // reflects when the run finished, not when this terminal hook happened
+          // to run.
+          answeredAt: run.completedAt ?? new Date().toISOString(),
         });
         return;
       }
