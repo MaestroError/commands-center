@@ -1027,7 +1027,7 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
       await expectRunStatus(taskService, run.id, "running");
-      expect(opencodeService.createSession).toHaveBeenCalledTimes(2);
+      await expect.poll(() => Number(opencodeService.createSession.mock.calls.length)).toBe(2);
       expect((await taskService.getRunById(run.id))?.opencodeSessionId).toBe("session-1");
     } finally {
       await testDb.cleanup();
