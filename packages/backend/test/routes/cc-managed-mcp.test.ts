@@ -3547,7 +3547,6 @@ describe("cc-managed MCP routes", () => {
           action: "submit" as const,
           values: {
             title: "Reviewed template title",
-            description: "Operator-approved template description.",
           },
         }),
       ),
@@ -3617,7 +3616,7 @@ describe("cc-managed MCP routes", () => {
           structuredContent: {
             id: template.id,
             title: "Reviewed template title",
-            description: "Operator-approved template description.",
+            description: "Original template description.",
             enabled: false,
           },
         },
@@ -3625,6 +3624,7 @@ describe("cc-managed MCP routes", () => {
 
       const updated = await taskService.getTemplate(template.id);
       expect(updated).toMatchObject({
+        description: "Original template description.",
         recurrence: { repeatRule: { frequency: "month" } },
         enabled: false,
       });

@@ -420,6 +420,7 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
               ),
             );
           }
+          const presentedFields = new Set(fields.map((field) => field.name));
 
           const reviewed = await openReviewForm(options, {
             agentId,
@@ -437,8 +438,10 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
           });
 
           const update: Record<string, unknown> = { ...(suggested ?? {}) };
-          if ("title" in reviewed) update["title"] = reviewed["title"];
-          if ("description" in reviewed) {
+          if (presentedFields.has("title") && "title" in reviewed) {
+            update["title"] = reviewed["title"];
+          }
+          if (presentedFields.has("description") && "description" in reviewed) {
             update["description"] = emptyToUndefined(reviewed["description"]) ?? "";
           }
 
