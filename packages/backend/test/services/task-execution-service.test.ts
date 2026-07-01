@@ -1027,8 +1027,10 @@ describe("createTaskExecutionService", () => {
       const run = await executionService.trigger(task.id, { triggerSource: "manual" });
 
       await expectRunStatus(taskService, run.id, "running");
+      await expect
+        .poll(async () => (await taskService.getRunById(run.id))?.opencodeSessionId)
+        .toBe("session-1");
       expect(opencodeService.createSession).toHaveBeenCalledTimes(2);
-      expect((await taskService.getRunById(run.id))?.opencodeSessionId).toBe("session-1");
     } finally {
       await testDb.cleanup();
     }
@@ -1103,9 +1105,11 @@ describe("createTaskExecutionService", () => {
 
       await expectRunStatus(taskService, run.id, "completed");
       expect(prompts).toHaveLength(1);
-      expect((await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"]).toEqual(
-        expect.objectContaining({ opencodeSessionId: "session-1" }),
-      );
+      await expect
+        .poll(
+          async () => (await taskService.getRunById(run.id))?.triggerMetadata?.["opencodeMonitor"],
+        )
+        .toEqual(expect.objectContaining({ opencodeSessionId: "session-1" }));
     } finally {
       await testDb.cleanup();
     }
@@ -1453,6 +1457,9 @@ describe("createTaskExecutionService", () => {
 
       expect(run.status).toBe("queued");
       await expectRunStatus(taskService, run.id, "running");
+      await expect
+        .poll(async () => (await taskService.getRunById(run.id))?.opencodeSessionId)
+        .toBe("session-1");
       const runningRun = await taskService.getRunById(run.id);
 
       expect(runningRun?.effectivePermissions?.toolPermissions).toEqual([
