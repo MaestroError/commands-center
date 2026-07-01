@@ -5,30 +5,21 @@ import type { CcManagedMcpAuthStateStore } from "./auth-state-store.js";
 type CcManagedTokenPayload = {
   agentSlug: string;
   serverName: string;
-  contextMode?: CcManagedMcpTokenContextMode;
   issuedAt: number;
 };
-
-export type CcManagedMcpTokenContextMode = "chat" | "task_run";
 
 export function createCcManagedMcpAuthTokenService(options: {
   authStateStore: CcManagedMcpAuthStateStore;
 }) {
   return {
-    async issueToken(
-      agentSlug: string,
-      serverName: string,
-      contextMode: CcManagedMcpTokenContextMode = "chat",
-    ): Promise<string> {
+    async issueToken(agentSlug: string, serverName: string): Promise<string> {
       const state = await options.authStateStore.load();
-      const payload = encode({ agentSlug, serverName, contextMode, issuedAt: Date.now() });
+      const payload = encode({ agentSlug, serverName, issuedAt: Date.now() });
       const signature = sign(state.signingSecret, payload);
       return `${payload}.${signature}`;
     },
 
-    async verifyToken(
-      token: string,
-    ): Promise<(CcManagedTokenPayload & { contextMode: CcManagedMcpTokenContextMode }) | null> {
+    async verifyToken(token: string): Promise<CcManagedTokenPayload | null> {
       const [payload, signature] = token.split(".");
 
       if (!payload || !signature) {
@@ -60,7 +51,6 @@ export function createCcManagedMcpAuthTokenService(options: {
         return {
           agentSlug: parsed.agentSlug,
           serverName: parsed.serverName,
-          contextMode: parsed.contextMode === "task_run" ? "task_run" : "chat",
           issuedAt: parsed.issuedAt,
         };
       } catch {

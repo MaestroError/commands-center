@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Logger } from "pino";
 
@@ -1532,14 +1529,6 @@ describe("createTaskExecutionService", () => {
           ]),
         }),
       );
-      const agentConfig = JSON.parse(
-        await readFile(
-          join(testDb.config.paths.subdirectories.specialists, agent.slug, "opencode.jsonc"),
-          "utf8",
-        ),
-      ) as { mcp: Record<string, { enabled: boolean }> };
-
-      expect(agentConfig.mcp["cc_default"]?.enabled).toBe(true);
     } finally {
       await testDb.cleanup();
     }

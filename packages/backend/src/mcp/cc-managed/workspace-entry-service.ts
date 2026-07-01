@@ -1,6 +1,5 @@
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { SpecialistCapabilitySelection } from "../../schemas/specialists.js";
-import type { CcManagedMcpTokenContextMode } from "./auth-token-service.js";
 import type { CcManagedMcpAuthTokenService } from "./auth-token-service.js";
 import { listCcManagedMcpServers, type CcManagedMcpServerDefinition } from "./server-registry.js";
 import type { CcManagedMcpToolAccessService } from "./tool-access-service.js";
@@ -19,6 +18,10 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
   registry: readonly CcManagedMcpServerDefinition[];
 }) {
   return {
+    // Build the specialist's app-MCP config entries. A single token per
+    // agent/server is minted here; it is context-agnostic (the same token is
+    // used for chat and task-run sessions), so this config never needs to be
+    // rewritten when a task run starts or ends.
     async buildEntries(agent: {
       slug: string;
       capabilities: SpecialistCapabilitySelection;
@@ -35,44 +38,16 @@ export function createCcManagedMcpWorkspaceEntryService(options: {
         }
       >
     > {
-      return this.buildEntriesWithOverrides({ slug: agent.slug, capabilities: agent.capabilities });
-    },
-
-    async buildEntriesWithOverrides(agent: {
-      slug: string;
-      capabilities: SpecialistCapabilitySelection;
-      enabledServerNames?: readonly string[];
-      contextMode?: CcManagedMcpTokenContextMode;
-    }): Promise<
-      Record<
-        string,
-        {
-          type: "remote";
-          url: string;
-          enabled: boolean;
-          oauth: false;
-          headers: Record<string, string>;
-          timeout?: number;
-        }
-      >
-    > {
-      const enabledServerNames = new Set(agent.enabledServerNames ?? []);
       const entries = await Promise.all(
         listCcManagedMcpServers(options.registry).map(async (server) => {
-          const token = await options.authTokenService.issueToken(
-            agent.slug,
-            server.name,
-            agent.contextMode ?? "chat",
-          );
+          const token = await options.authTokenService.issueToken(agent.slug, server.name);
 
           return [
             server.name,
             {
               type: "remote" as const,
               url: buildServerUrl(options.config, server.routeSegment, agent.slug),
-              enabled:
-                enabledServerNames.has(server.name) ||
-                options.toolAccessService.isServerEnabled(agent.capabilities, server),
+              enabled: options.toolAccessService.isServerEnabled(agent.capabilities, server),
               oauth: false as const,
               headers: {
                 Authorization: `Bearer ${token}`,

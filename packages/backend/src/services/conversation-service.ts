@@ -20,7 +20,6 @@ import {
   type SendConversationShellInput,
 } from "../schemas/conversations.js";
 import {
-  specialistCapabilitySelectionSchema,
   systemPromptOverridesSchema,
   type ConversationMessageError,
   type ResolvedSystemPrompt,
@@ -38,11 +37,7 @@ import {
   readModelError,
 } from "../lib/message-mapper.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
-import {
-  getBuiltInSkillRoot,
-  getWorkspaceSkillRoot,
-  resolveSpecialistWorkspacePath,
-} from "./specialist-workspace.js";
+import { resolveSpecialistWorkspacePath } from "./specialist-workspace.js";
 import type {
   OpenCodePendingPermission,
   OpenCodePendingQuestion,
@@ -52,13 +47,6 @@ import type {
 } from "./opencode-service.js";
 import type { SessionArchiveService } from "./session-archive-service.js";
 import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
-import { createCcManagedMcpAuthStateStore } from "../mcp/cc-managed/auth-state-store.js";
-import { createCcManagedMcpAuthTokenService } from "../mcp/cc-managed/auth-token-service.js";
-import { createCustomToolService } from "./custom-tool-service.js";
-import { createCcManagedMcpServerRegistry } from "../mcp/cc-managed/server-registry.js";
-import { createCcManagedMcpToolAccessService } from "../mcp/cc-managed/tool-access-service.js";
-import { createCcManagedMcpWorkspaceEntryService } from "../mcp/cc-managed/workspace-entry-service.js";
-import { writeOpenCodeWorkspace } from "../opencode/workspace-contract.js";
 import { APP_NAME } from "../system-prompts/constants.js";
 import {
   createSystemPromptService,
@@ -143,21 +131,6 @@ export function createConversationService(options: {
   // a lost pending snapshot degrades to the modal's "current configuration"
   // fallback, which is acceptable per the portable-workspace rules.
   const pendingSnapshots = new Map<string, ResolvedSystemPrompt[]>();
-
-  const appMcpWorkspaceEntryService = createCcManagedMcpWorkspaceEntryService({
-    config: options.config,
-    authTokenService: createCcManagedMcpAuthTokenService({
-      authStateStore: createCcManagedMcpAuthStateStore(options.config),
-    }),
-    toolAccessService: createCcManagedMcpToolAccessService(),
-    registry: createCcManagedMcpServerRegistry({
-      customToolService: createCustomToolService({
-        db: options.db,
-        config: options.config,
-        opencodeService: options.opencodeService,
-      }),
-    }),
-  });
 
   return {
     async resolveCurrent(agentId: string): Promise<ConversationSnapshot> {
@@ -255,7 +228,6 @@ export function createConversationService(options: {
       permission?: OpenCodeSessionPermissionRule[];
     }): Promise<ConversationDetail> {
       const agent = await getAgent(input.agentId);
-      await enableTaskRunAppMcpEntries(agent, input.permission ?? []);
       const conversation = await createConversation(agent, {
         source: "task_run",
         title: input.title,
@@ -1247,43 +1219,6 @@ export function createConversationService(options: {
       createdAt: conversation.created_at.toISOString(),
       updatedAt: conversation.updated_at.toISOString(),
       convertedAt: conversation.converted_at?.toISOString(),
-    });
-  }
-
-  async function enableTaskRunAppMcpEntries(
-    agent: AgentRuntimeRow,
-    permission: OpenCodeSessionPermissionRule[],
-  ): Promise<void> {
-    const enabledServerNames = permission.flatMap((rule) =>
-      rule.permission.endsWith("_*") ? [rule.permission.slice(0, -2)] : [],
-    );
-
-    if (enabledServerNames.length === 0) {
-      return;
-    }
-
-    const capabilities = specialistCapabilitySelectionSchema.parse(
-      JSON.parse(agent.capabilities_json),
-    );
-    const appMcpEntries = await appMcpWorkspaceEntryService.buildEntriesWithOverrides({
-      slug: agent.slug,
-      capabilities,
-      enabledServerNames,
-      contextMode: "task_run",
-    });
-
-    await writeOpenCodeWorkspace({
-      workspacePath: agent.workspace_path,
-      input: {
-        name: agent.name,
-        role: agent.role,
-        instructions: agent.instructions,
-        defaultModel: agent.default_model,
-        capabilities,
-        appMcpEntries,
-      },
-      skillRoot: getBuiltInSkillRoot(options.config),
-      workspaceSkillRoot: getWorkspaceSkillRoot(options.config),
     });
   }
 }
