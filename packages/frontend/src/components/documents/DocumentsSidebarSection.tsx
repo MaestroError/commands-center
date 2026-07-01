@@ -164,9 +164,26 @@ type DocumentSidebarNodeProps = {
   onOpenDocument: (path: string) => void;
 };
 
+function isSelectedDocumentAncestor(directoryPath: string, selectedPath: string | null): boolean {
+  return selectedPath !== null && selectedPath.startsWith(`${directoryPath}/`);
+}
+
 function DocumentSidebarNode(props: DocumentSidebarNodeProps) {
   const { node, depth } = props;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(
+    () =>
+      node.type === "directory" &&
+      isSelectedDocumentAncestor(node.relativePath, props.selectedPath),
+  );
+
+  useEffect(() => {
+    if (
+      node.type === "directory" &&
+      isSelectedDocumentAncestor(node.relativePath, props.selectedPath)
+    ) {
+      setOpen(true);
+    }
+  }, [node.relativePath, node.type, props.selectedPath]);
 
   if (node.type === "directory") {
     const canAddFolder = depth < MAX_FOLDER_DEPTH;

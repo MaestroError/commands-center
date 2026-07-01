@@ -240,6 +240,41 @@ describe("DocumentsSidebarSection", () => {
     expect(screen.queryByText("Overview")).not.toBeInTheDocument();
   });
 
+  it("auto-expands the ancestor folder chain for the selected document", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(
+      tree({
+        name: "ProjectInfo",
+        relativePath: "ProjectInfo",
+        type: "directory",
+        title: null,
+        children: [
+          {
+            name: "Specs",
+            relativePath: "ProjectInfo/Specs",
+            type: "directory",
+            title: null,
+            children: [
+              {
+                name: "overview.md",
+                relativePath: "ProjectInfo/Specs/overview.md",
+                type: "file",
+                title: "Overview",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    renderSidebar(["/documents?path=ProjectInfo%2FSpecs%2Foverview.md"]);
+
+    expect(await screen.findByText("ProjectInfo")).toBeInTheDocument();
+    expect(await screen.findByText("Specs")).toBeInTheDocument();
+    expect(await screen.findByText("Overview")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Collapse ProjectInfo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Collapse Specs" })).toBeInTheDocument();
+  });
+
   it("prefills the document path with the clicked folder when adding a document", async () => {
     vi.mocked(getDocumentTree).mockResolvedValue(
       tree({
