@@ -239,6 +239,28 @@ describe("task artifact sharing", () => {
     }
   });
 
+  it("returns 404 when the run does not belong to the given task id", async () => {
+    const { testDb, taskService, server } = await setup();
+
+    try {
+      const { runId } = await createRunWithArtifact(testDb.client.db, taskService, {
+        workspaceDir: testDb.config.paths.workspaceDir,
+        artifactPath: "reports/mismatch.md",
+        content: "mismatch",
+      });
+
+      const listed = await server.inject({
+        method: "GET",
+        url: `/api/tasks/not-the-owning-task/runs/${runId}/artifacts`,
+      });
+
+      expect(listed.statusCode).toBe(404);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("rejects sharing an artifact whose path escapes the workspace", async () => {
     const { testDb, taskService, server } = await setup();
 

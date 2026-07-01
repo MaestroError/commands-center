@@ -181,6 +181,55 @@ describe("createTaskRunContextService", () => {
     }
   });
 
+  it("renders document artifacts in run history context", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const contextService = createTaskRunContextService({ db: testDb.client.db });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Doc task" });
+
+      await taskService.createRun({
+        id: "doc-run",
+        taskId: task.id,
+        agentId: agent.id,
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Wrote a doc.",
+        finalMessage: "Doc written.",
+      });
+      await seedRunArtifact(testDb.client.db, {
+        runId: "doc-run",
+        agentId: agent.id,
+        title: "Design overview",
+        type: "document",
+        link: "design/overview.md",
+      });
+
+      // A document artifact must not break context rendering (the lean context
+      // schema previously only accepted url/file).
+      const built = await contextService.build({
+        task,
+        runId: "retry-run",
+        runAgentId: agent.id,
+        trigger: { triggerSource: "manual" },
+      });
+
+      expect(built.renderedContext["artifacts"]).toEqual([
+        {
+          title: "Design overview",
+          type: "document",
+          link: "design/overview.md",
+          sourceRunId: "doc-run",
+        },
+      ]);
+      expect(built.renderedPrompt).toContain("document: design/overview.md");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("includes all previous run history in chronological order", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

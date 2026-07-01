@@ -35,6 +35,13 @@ const renderedArtifactSchema = z.discriminatedUnion("type", [
     link: z.string().min(1),
     sourceRunId: z.string(),
   }),
+  z.object({
+    title: z.string(),
+    description: z.string().optional(),
+    type: z.literal("document"),
+    link: z.string().min(1),
+    sourceRunId: z.string(),
+  }),
 ]);
 
 type TaskRunContextTrigger = {

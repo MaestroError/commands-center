@@ -904,8 +904,15 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       },
     },
     async (request) => {
-      const byRun = await artifactService.listByTaskRunIds([request.params.runId]);
-      return { artifacts: byRun.get(request.params.runId) ?? [] };
+      // Validate the run belongs to this task (404 on mismatch, like the other
+      // task-run endpoints); getRun already returns the run's enriched artifacts.
+      const run = await service.getRun(request.params.id, request.params.runId);
+
+      if (!run) {
+        throw new NotFoundError("Task run not found.");
+      }
+
+      return { artifacts: run.artifacts };
     },
   );
 
