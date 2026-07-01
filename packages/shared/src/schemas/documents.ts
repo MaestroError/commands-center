@@ -8,6 +8,8 @@ const MARKDOWN_EXTENSIONS = [".md", ".markdown"] as const;
 // which is absolute on Windows even without a leading separator.
 const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
 const BACKSLASH_MESSAGE = "Path must use '/' separators, not backslashes";
+export const NEW_DOCUMENT_SUBFOLDER_MESSAGE =
+  "New documents must live in at least one folder under Documents/";
 
 // A document path must be relative to Documents/: no leading separator and no
 // Windows drive-letter prefix, otherwise `path.resolve` would ignore the root.
@@ -32,6 +34,10 @@ const documentRelativePathSchema = z
   .refine((p) => MARKDOWN_EXTENSIONS.some((ext) => p.toLowerCase().endsWith(ext)), {
     message: "Path must end with .md or .markdown",
   });
+
+const createDocumentPathSchema = documentRelativePathSchema.refine((p) => p.includes("/"), {
+  message: NEW_DOCUMENT_SUBFOLDER_MESSAGE,
+});
 
 const documentFolderPathSchema = z
   .string()
@@ -94,7 +100,7 @@ export const documentReadResponseSchema = z.object({
 });
 
 export const createDocumentInputSchema = z.object({
-  path: documentRelativePathSchema,
+  path: createDocumentPathSchema,
   title: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
   author: z.string().trim().min(1).optional(),

@@ -37,6 +37,7 @@ export {
   type ApiValidationErrorResponse,
 } from "./api.js";
 export {
+  NEW_DOCUMENT_SUBFOLDER_MESSAGE,
   createDocumentFolderInputSchema,
   createDocumentInputSchema,
   documentListItemSchema,
