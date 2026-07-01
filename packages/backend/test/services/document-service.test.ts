@@ -33,22 +33,22 @@ describe("document service", () => {
       try {
         await setupDocsDir(testDb);
         const result = await service.create({
-          path: "notes.md",
+          path: "notes/notes.md",
           title: "My Notes",
           description: "Some notes",
           author: "operator",
         });
 
-        expect(result.relativePath).toBe("notes.md");
+        expect(result.relativePath).toBe("notes/notes.md");
         expect(result.title).toBe("My Notes");
         expect(result.author).toBe("operator");
 
-        const content = await readFile(service.fullPath("notes.md"), "utf8");
+        const content = await readFile(service.fullPath("notes/notes.md"), "utf8");
         expect(content).toBe("");
 
         const rows = await testDb.client.db.select().from(documents);
         expect(rows).toHaveLength(1);
-        expect(rows[0]?.relative_path).toBe("notes.md");
+        expect(rows[0]?.relative_path).toBe("notes/notes.md");
         expect(rows[0]?.title).toBe("My Notes");
       } finally {
         await testDb.cleanup();
@@ -62,11 +62,11 @@ describe("document service", () => {
       try {
         await setupDocsDir(testDb);
         await service.create({
-          path: "design.md",
+          path: "design/design.md",
           content: "# Design\n\nArchitecture overview.",
         });
 
-        const content = await readFile(service.fullPath("design.md"), "utf8");
+        const content = await readFile(service.fullPath("design/design.md"), "utf8");
         expect(content).toBe("# Design\n\nArchitecture overview.");
       } finally {
         await testDb.cleanup();
@@ -94,8 +94,8 @@ describe("document service", () => {
 
       try {
         await setupDocsDir(testDb);
-        await service.create({ path: "notes.md" });
-        await expect(service.create({ path: "notes.md" })).rejects.toThrow("already exists");
+        await service.create({ path: "notes/notes.md" });
+        await expect(service.create({ path: "notes/notes.md" })).rejects.toThrow("already exists");
       } finally {
         await testDb.cleanup();
       }
@@ -107,8 +107,22 @@ describe("document service", () => {
 
       try {
         await setupDocsDir(testDb);
-        const result = await service.create({ path: "my-design-doc.md" });
+        const result = await service.create({ path: "design/my-design-doc.md" });
         expect(result.title).toBe("My Design Doc");
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects creating documents directly in the Documents root", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        await expect(service.create({ path: "notes.md" })).rejects.toThrow(
+          "at least one folder under Documents/",
+        );
       } finally {
         await testDb.cleanup();
       }
@@ -182,7 +196,7 @@ describe("document service", () => {
 
       try {
         await setupDocsDir(testDb);
-        await expect(service.create({ path: "notes.txt" })).rejects.toThrow(".md");
+        await expect(service.create({ path: "notes/notes.txt" })).rejects.toThrow(".md");
       } finally {
         await testDb.cleanup();
       }
@@ -195,10 +209,12 @@ describe("document service", () => {
       try {
         await setupDocsDir(testDb);
         const oversized = "a".repeat(5 * 1024 * 1024 + 1);
-        await expect(service.create({ path: "big.md", content: oversized })).rejects.toThrow(
+        await expect(service.create({ path: "large/big.md", content: oversized })).rejects.toThrow(
           "exceeds the maximum allowed size",
         );
-        await expect(stat(service.fullPath("big.md"))).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(stat(service.fullPath("large/big.md"))).rejects.toMatchObject({
+          code: "ENOENT",
+        });
       } finally {
         await testDb.cleanup();
       }
@@ -242,14 +258,14 @@ describe("document service", () => {
       try {
         await setupDocsDir(testDb);
         await service.create({
-          path: "notes.md",
+          path: "notes/notes.md",
           title: "My Notes",
           description: "Test notes",
           content: "# Hello\n\nWorld",
         });
 
-        const result = await service.read("notes.md");
-        expect(result.relativePath).toBe("notes.md");
+        const result = await service.read("notes/notes.md");
+        expect(result.relativePath).toBe("notes/notes.md");
         expect(result.title).toBe("My Notes");
         expect(result.description).toBe("Test notes");
         expect(result.content).toBe("# Hello\n\nWorld");
@@ -299,17 +315,17 @@ describe("document service", () => {
 
       try {
         await setupDocsDir(testDb);
-        await service.create({ path: "notes.md", content: "old" });
-        const doc = await service.read("notes.md");
+        await service.create({ path: "notes/notes.md", content: "old" });
+        const doc = await service.read("notes/notes.md");
 
         const result = await service.saveContent({
-          path: "notes.md",
+          path: "notes/notes.md",
           content: "new content",
           expectedRevision: doc.revision,
         });
 
         expect(result.revision.sizeBytes).toBe(11);
-        const content = await readFile(service.fullPath("notes.md"), "utf8");
+        const content = await readFile(service.fullPath("notes/notes.md"), "utf8");
         expect(content).toBe("new content");
       } finally {
         await testDb.cleanup();
@@ -322,15 +338,15 @@ describe("document service", () => {
 
       try {
         await setupDocsDir(testDb);
-        await service.create({ path: "notes.md", content: "original" });
-        const doc = await service.read("notes.md");
+        await service.create({ path: "notes/notes.md", content: "original" });
+        const doc = await service.read("notes/notes.md");
 
         // Simulate external modification.
-        await writeFile(service.fullPath("notes.md"), "modified externally", "utf8");
+        await writeFile(service.fullPath("notes/notes.md"), "modified externally", "utf8");
 
         await expect(
           service.saveContent({
-            path: "notes.md",
+            path: "notes/notes.md",
             content: "my change",
             expectedRevision: doc.revision,
           }),
@@ -364,19 +380,19 @@ describe("document service", () => {
 
       try {
         await setupDocsDir(testDb);
-        await service.create({ path: "notes.md", content: "original" });
-        const doc = await service.read("notes.md");
+        await service.create({ path: "notes/notes.md", content: "original" });
+        const doc = await service.read("notes/notes.md");
 
         const oversized = "a".repeat(5 * 1024 * 1024 + 1);
         await expect(
           service.saveContent({
-            path: "notes.md",
+            path: "notes/notes.md",
             content: oversized,
             expectedRevision: doc.revision,
           }),
         ).rejects.toThrow("exceeds the maximum allowed size");
 
-        const content = await readFile(service.fullPath("notes.md"), "utf8");
+        const content = await readFile(service.fullPath("notes/notes.md"), "utf8");
         expect(content).toBe("original");
       } finally {
         await testDb.cleanup();
@@ -391,10 +407,10 @@ describe("document service", () => {
 
       try {
         await setupDocsDir(testDb);
-        await service.create({ path: "notes.md", title: "Old Title" });
+        await service.create({ path: "notes/notes.md", title: "Old Title" });
 
         const result = await service.updateMetadata({
-          path: "notes.md",
+          path: "notes/notes.md",
           title: "New Title",
           description: "New description",
         });
@@ -454,7 +470,7 @@ describe("document service", () => {
         await setupDocsDir(testDb);
         await service.createFolder("design");
         await service.create({ path: "design/overview.md", title: "Overview" });
-        await service.create({ path: "readme.md", title: "Readme" });
+        await writeFile(join(service.documentsRoot(), "readme.md"), "# Readme", "utf8");
 
         const tree = await service.getTree();
         expect(tree).toHaveLength(2);
@@ -509,13 +525,13 @@ describe("document service", () => {
 
       try {
         await setupDocsDir(testDb);
-        await service.create({ path: "notes.md", title: "Notes" });
+        await service.create({ path: "notes/notes.md", title: "Notes" });
         await service.create({ path: "design/overview.md" });
 
         const items = await service.list();
         expect(items).toHaveLength(2);
         const paths = items.map((i) => i.relativePath);
-        expect(paths).toContain("notes.md");
+        expect(paths).toContain("notes/notes.md");
         expect(paths).toContain("design/overview.md");
       } finally {
         await testDb.cleanup();
@@ -566,8 +582,8 @@ describe("document service", () => {
 
       try {
         await setupDocsDir(testDb);
-        await service.create({ path: "arch.md", title: "Architecture Overview" });
-        await service.create({ path: "notes.md", title: "Meeting Notes" });
+        await service.create({ path: "architecture/arch.md", title: "Architecture Overview" });
+        await service.create({ path: "notes/notes.md", title: "Meeting Notes" });
 
         const results = await service.search("architecture");
         expect(results).toHaveLength(1);
@@ -584,7 +600,7 @@ describe("document service", () => {
       try {
         await setupDocsDir(testDb);
         await service.create({ path: "design/api.md", title: "API Design" });
-        await service.create({ path: "notes.md", title: "Notes" });
+        await service.create({ path: "notes/notes.md", title: "Notes" });
 
         const results = await service.search("design");
         expect(results).toHaveLength(1);
@@ -600,7 +616,7 @@ describe("document service", () => {
 
       try {
         await setupDocsDir(testDb);
-        await service.create({ path: "notes.md", title: "Notes" });
+        await service.create({ path: "notes/notes.md", title: "Notes" });
 
         const results = await service.search("nonexistent");
         expect(results).toHaveLength(0);
@@ -617,7 +633,7 @@ describe("document service", () => {
 
       try {
         await setupDocsDir(testDb);
-        const result = await service.create({ path: "my_design-doc.md" });
+        const result = await service.create({ path: "design/my_design-doc.md" });
         expect(result.title).toBe("My Design Doc");
       } finally {
         await testDb.cleanup();
@@ -696,11 +712,11 @@ describe("documentReconciler", () => {
 
     try {
       await setupDocsDir(testDb);
-      await service.create({ path: "notes.md" });
-      await service.create({ path: "design.md" });
+      await service.create({ path: "notes/notes.md" });
+      await service.create({ path: "design/design.md" });
 
       // Remove one file from disk.
-      await rm(service.fullPath("notes.md"));
+      await rm(service.fullPath("notes/notes.md"));
 
       await documentReconciler.reconcile({
         config: testDb.config,
@@ -710,7 +726,7 @@ describe("documentReconciler", () => {
 
       const rows = await testDb.client.db.select().from(documents);
       expect(rows).toHaveLength(1);
-      expect(rows[0]?.relative_path).toBe("design.md");
+      expect(rows[0]?.relative_path).toBe("design/design.md");
     } finally {
       await testDb.cleanup();
     }
@@ -749,7 +765,7 @@ describe("documentReconciler", () => {
     try {
       await setupDocsDir(testDb);
       await service.create({
-        path: "notes.md",
+        path: "notes/notes.md",
         title: "Custom Title",
         description: "Custom Description",
         author: "operator",

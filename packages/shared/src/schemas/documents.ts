@@ -33,6 +33,10 @@ const documentRelativePathSchema = z
     message: "Path must end with .md or .markdown",
   });
 
+const createDocumentPathSchema = documentRelativePathSchema.refine((p) => p.includes("/"), {
+  message: "New documents must live in at least one folder under Documents/",
+});
+
 const documentFolderPathSchema = z
   .string()
   .trim()
@@ -94,7 +98,7 @@ export const documentReadResponseSchema = z.object({
 });
 
 export const createDocumentInputSchema = z.object({
-  path: documentRelativePathSchema,
+  path: createDocumentPathSchema,
   title: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
   author: z.string().trim().min(1).optional(),

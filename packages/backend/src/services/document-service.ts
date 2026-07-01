@@ -62,6 +62,12 @@ function validateDocumentPath(path: string): void {
   }
 }
 
+function validateNewDocumentPath(path: string): void {
+  if (!path.includes("/")) {
+    throw new BadRequestError("New documents must live in at least one folder under Documents/.");
+  }
+}
+
 function assertContentSize(content: string): void {
   if (Buffer.byteLength(content, "utf8") > MAX_CONTENT_BYTES) {
     throw new BadRequestError("Document content exceeds the maximum allowed size.");
@@ -277,6 +283,7 @@ export function createDocumentService(options: {
       if (exists) {
         throw new ConflictError(`Document already exists: ${input.path}`);
       }
+      validateNewDocumentPath(input.path);
 
       const content = input.content ?? "";
       assertContentSize(content);
