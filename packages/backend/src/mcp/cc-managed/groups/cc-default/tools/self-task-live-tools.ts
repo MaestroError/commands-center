@@ -18,6 +18,10 @@ import type { TaskExecutionService } from "../../../../../services/task-executio
 import type { TaskService } from "../../../../../services/task-service.js";
 import type { Task, TaskRun } from "@cc/shared/schemas";
 import {
+  requireSelfTemplate,
+  updateSelfTaskTemplateInputSchema,
+} from "./self-task-template-tools.js";
+import {
   withTaskBoardUrl,
   withTaskRunBoardUrl,
   withTaskTemplateBoardUrl,
@@ -56,6 +60,13 @@ const draftSelfTaskInputSchema = createTaskInputSchema
 const draftSelfTaskTemplateInputSchema = createTaskTemplateInputSchema
   .omit({ defaultAgentId: true })
   .partial()
+  .strict();
+
+const draftSelfTaskTemplateUpdateInputSchema = z
+  .object({
+    templateId: z.string().trim().min(1),
+    input: updateSelfTaskTemplateInputSchema.optional(),
+  })
   .strict();
 
 const runSelfTaskInputSchema = z.object({
@@ -106,6 +117,13 @@ export const draftSelfTaskTemplateToolMetadata = {
   name: "draft_self_task_template",
   description:
     "Open an operator review form to create a reusable CommandsCenter task template assigned to you. A template captures a task title, description, and acceptance criteria, and can optionally carry a recurrence schedule to act as a cron job that runs on a fixed interval. Use `todos` to propose acceptance criteria (the operator's definition of done): each is shown to the running agent as a criterion to satisfy, but only the operator can check them off during review. Execution pauses until the operator approves. Use this only in chat, only when you want to set up a persistent, reusable task definition for yourself and need operator review before creation. Do not attempt to pass a defaultAgentId — the template is always assigned to you.",
+  context: "chat",
+} as const;
+
+export const draftSelfTaskTemplateUpdateToolMetadata = {
+  name: "draft_self_task_template_update",
+  description:
+    "Open an operator review form to edit one of your own CommandsCenter task templates. Execution pauses until the operator reviews and confirms the proposed changes. Use this only in chat, only when you want to modify a template assigned to you and need operator approval before the update is saved. Will fail if the specified template belongs to a different specialist. Do not call this to update another specialist's template.",
   context: "chat",
 } as const;
 
@@ -366,6 +384,78 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
             mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
           );
         }, "Failed to draft task template."),
+    },
+    {
+      name: draftSelfTaskTemplateUpdateToolMetadata.name,
+      description: draftSelfTaskTemplateUpdateToolMetadata.description,
+      context: draftSelfTaskTemplateUpdateToolMetadata.context,
+      inputSchema: draftSelfTaskTemplateUpdateInputSchema,
+      outputSchema: mcpTaskTemplateSchema,
+      execute: async (args: unknown, context: { agentSlug: string }) =>
+        executeTool(async () => {
+          const parsed = draftSelfTaskTemplateUpdateInputSchema.parse(args);
+          const agentId = await requireCallingAgentId(options.db, context.agentSlug);
+          const current = await requireSelfTemplate(
+            options.taskService,
+            parsed.templateId,
+            agentId,
+          );
+
+          const suggested = parsed.input;
+          const changed = suggested ? Object.keys(suggested) : [];
+          const hasReviewedField = changed.some((key) => key === "title" || key === "description");
+          const showAll = changed.length === 0 || !hasReviewedField;
+          const includes = (key: "title" | "description") => showAll || changed.includes(key);
+
+          const fields: ReturnType<typeof textField | typeof textareaField>[] = [];
+          if (includes("title")) {
+            fields.push(textField("title", "Title", suggested?.title ?? current.title, true));
+          }
+          if (includes("description")) {
+            fields.push(
+              textareaField(
+                "description",
+                "Description",
+                suggested?.description ?? current.description,
+              ),
+            );
+          }
+
+          const reviewed = await openReviewForm(options, {
+            agentId,
+            kind: "self_task_template_update_review",
+            title: "Review task template update",
+            description:
+              "Review and edit the template update. Changes apply only to your template once you confirm. Other settings from the proposed update are preserved.",
+            fields,
+            metadata: {
+              templateId: parsed.templateId,
+              templateTitle: current.title,
+              operation: "update_self_task_template",
+              callerAgentId: agentId,
+            },
+          });
+
+          const update: Record<string, unknown> = { ...(suggested ?? {}) };
+          if ("title" in reviewed) update["title"] = reviewed["title"];
+          if ("description" in reviewed) {
+            update["description"] = emptyToUndefined(reviewed["description"]) ?? "";
+          }
+
+          const template = await options.taskService.updateTemplate(
+            parsed.templateId,
+            updateSelfTaskTemplateInputSchema.parse(update),
+          );
+
+          if (!template) {
+            throw new Error("Task template not found.");
+          }
+
+          return success(
+            "Task template updated.",
+            mcpTaskTemplateSchema.parse(withTaskTemplateBoardUrl(options.config, template)),
+          );
+        }, "Failed to draft task template update."),
     },
   ] as const;
 }

@@ -47,6 +47,7 @@ import {
 import {
   createSelfTaskLiveToolDefinitions,
   draftSelfTaskTemplateToolMetadata,
+  draftSelfTaskTemplateUpdateToolMetadata,
   draftSelfTaskToolMetadata,
   draftSelfTaskUpdateToolMetadata,
   runSelfTaskToolMetadata,
@@ -60,6 +61,7 @@ import {
   getSelfTaskTemplateToolMetadata,
   listSelfTaskTemplatesToolMetadata,
   runSelfTaskTemplateNowToolMetadata,
+  updateSelfTaskTemplateToolMetadata,
 } from "./groups/cc-default/tools/self-task-template-tools.js";
 import {
   createDocumentToolDefinitions,
@@ -372,6 +374,7 @@ export function createCcManagedMcpServerRegistry(options: {
         listSelfTaskTemplatesToolMetadata,
         getSelfTaskTemplateToolMetadata,
         createSelfTaskTemplateToolMetadata,
+        updateSelfTaskTemplateToolMetadata,
         runSelfTaskTemplateNowToolMetadata,
         createSelfTaskFromTemplateToolMetadata,
         enableSelfTaskTemplateToolMetadata,
@@ -400,6 +403,7 @@ export function createCcManagedMcpServerRegistry(options: {
         draftSelfTaskToolMetadata,
         draftSelfTaskUpdateToolMetadata,
         draftSelfTaskTemplateToolMetadata,
+        draftSelfTaskTemplateUpdateToolMetadata,
       ],
       tools: defaultInteractiveTools,
     },

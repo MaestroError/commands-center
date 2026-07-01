@@ -2453,6 +2453,7 @@ describe("cc-managed MCP routes", () => {
       expect(chatListResponse.statusCode).toBe(200);
       expect(chatListResponse.body).toContain('"name":"draft_self_task"');
       expect(chatListResponse.body).toContain('"name":"draft_self_task_update"');
+      expect(chatListResponse.body).toContain('"name":"draft_self_task_template_update"');
 
       const taskRunAuth = await issueAuthHeader(
         testDb.config,
@@ -2473,6 +2474,7 @@ describe("cc-managed MCP routes", () => {
       expect(taskRunListResponse.statusCode).toBe(200);
       expect(taskRunListResponse.body).not.toContain('"name":"draft_self_task"');
       expect(taskRunListResponse.body).not.toContain('"name":"draft_self_task_update"');
+      expect(taskRunListResponse.body).not.toContain('"name":"draft_self_task_template_update"');
       // run_self_task is chat-only and must not appear in task_run.
       expect(chatListResponse.body).toContain('"name":"run_self_task"');
       expect(taskRunListResponse.body).not.toContain('"name":"run_self_task"');
@@ -2959,7 +2961,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("lists, gets, creates, runs, and instantiates self task templates", async () => {
+  it("lists, gets, creates, updates, runs, and instantiates self task templates", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const taskExecutionService = createTaskExecutionService({ taskService });
@@ -3020,6 +3022,38 @@ describe("cc-managed MCP routes", () => {
 
       if (!templateId) throw new Error("Expected template id.");
 
+      // update_self_task_template
+      const updateTemplateResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        {
+          name: "update_self_task_template",
+          arguments: {
+            templateId,
+            input: {
+              title: "Daily report template v2",
+              description: "Summarise the day with highlights.",
+              enabled: false,
+            },
+          },
+        },
+        70,
+      );
+
+      expect(parseSseJson(updateTemplateResponse.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            id: templateId,
+            title: "Daily report template v2",
+            description: "Summarise the day with highlights.",
+            enabled: false,
+          },
+        },
+      });
+
       // list_self_task_templates
       const listResponse = await callMcpToolRouteForServer(
         server,
@@ -3035,7 +3069,7 @@ describe("cc-managed MCP routes", () => {
         result: {
           structuredContent: {
             templates: [
-              expect.objectContaining({ id: templateId, title: "Daily report template" }),
+              expect.objectContaining({ id: templateId, title: "Daily report template v2" }),
             ],
           },
         },
@@ -3053,7 +3087,38 @@ describe("cc-managed MCP routes", () => {
       );
 
       expect(parseSseJson(getResponse.body)).toMatchObject({
-        result: { structuredContent: { id: templateId, defaultAgentId: agent.id } },
+        result: {
+          structuredContent: {
+            id: templateId,
+            defaultAgentId: agent.id,
+            enabled: false,
+            title: "Daily report template v2",
+          },
+        },
+      });
+
+      const disabledRun = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "run_self_task_template_now", arguments: { templateId } },
+        72,
+      );
+      expect(parseSseJson(disabledRun.body)).toMatchObject({ result: { isError: true } });
+
+      const reEnableResponse = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default",
+        authHeader,
+        "tools/call",
+        { name: "enable_self_task_template", arguments: { templateId } },
+        73,
+      );
+      expect(parseSseJson(reEnableResponse.body)).toMatchObject({
+        result: { structuredContent: { id: templateId, enabled: true } },
       });
 
       // create_self_task_from_template (no run)
@@ -3064,7 +3129,7 @@ describe("cc-managed MCP routes", () => {
         authHeader,
         "tools/call",
         { name: "create_self_task_from_template", arguments: { templateId } },
-        73,
+        74,
       );
 
       const instantiateJson = parseSseJson(instantiateResponse.body) as {
@@ -3080,7 +3145,7 @@ describe("cc-managed MCP routes", () => {
 
       expect(instantiateJson.result?.structuredContent).toMatchObject({
         generatedByAgentId: agent.id,
-        title: "Daily report template #G1",
+        title: "Daily report template v2 #G1",
         status: "backlog",
       });
 
@@ -3092,7 +3157,7 @@ describe("cc-managed MCP routes", () => {
         authHeader,
         "tools/call",
         { name: "run_self_task_template_now", arguments: { templateId } },
-        74,
+        75,
       );
 
       expect(parseSseJson(runNowResponse.body)).toMatchObject({
@@ -3106,7 +3171,7 @@ describe("cc-managed MCP routes", () => {
       const runNowTask = await taskService.get(runNowJson.result?.structuredContent?.taskId ?? "");
       expect(runNowTask).toMatchObject({
         generatedByAgentId: agent.id,
-        title: "Daily report template #G2",
+        title: "Daily report template v2 #G2",
       });
 
       // disable_self_task_template flips the status; an agent run-now is then refused.
@@ -3117,7 +3182,7 @@ describe("cc-managed MCP routes", () => {
         authHeader,
         "tools/call",
         { name: "disable_self_task_template", arguments: { templateId } },
-        75,
+        76,
       );
       expect(parseSseJson(disableResponse.body)).toMatchObject({
         result: { structuredContent: { id: templateId, enabled: false } },
@@ -3130,7 +3195,7 @@ describe("cc-managed MCP routes", () => {
         authHeader,
         "tools/call",
         { name: "run_self_task_template_now", arguments: { templateId } },
-        76,
+        77,
       );
       expect(parseSseJson(refusedRun.body)).toMatchObject({ result: { isError: true } });
 
@@ -3142,7 +3207,7 @@ describe("cc-managed MCP routes", () => {
         authHeader,
         "tools/call",
         { name: "enable_self_task_template", arguments: { templateId } },
-        77,
+        78,
       );
       expect(parseSseJson(enableResponse.body)).toMatchObject({
         result: { structuredContent: { id: templateId, enabled: true } },
@@ -3222,6 +3287,10 @@ describe("cc-managed MCP routes", () => {
           name: "create_self_task_from_template",
           arguments: { templateId: ownerTemplate.id },
         },
+        {
+          name: "update_self_task_template",
+          arguments: { templateId: ownerTemplate.id, input: { title: "Stolen title" } },
+        },
         { name: "enable_self_task_template", arguments: { templateId: ownerTemplate.id } },
         { name: "disable_self_task_template", arguments: { templateId: ownerTemplate.id } },
       ]) {
@@ -3297,7 +3366,7 @@ describe("cc-managed MCP routes", () => {
     }
   });
 
-  it("create_self_task_template is hidden in chat context", async () => {
+  it("create_self_task_template and update_self_task_template are hidden in chat context", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
     const taskExecutionService = createTaskExecutionService({ taskService });
@@ -3348,9 +3417,11 @@ describe("cc-managed MCP routes", () => {
         79,
       );
 
-      // create_self_task_template is task_run only.
+      // create_self_task_template and update_self_task_template are task_run only.
       expect(chatListResponse.body).not.toContain('"name":"create_self_task_template"');
+      expect(chatListResponse.body).not.toContain('"name":"update_self_task_template"');
       expect(taskRunListResponse.body).toContain('"name":"create_self_task_template"');
+      expect(taskRunListResponse.body).toContain('"name":"update_self_task_template"');
       // list/get/run/instantiate/enable/disable are both-context.
       for (const toolName of [
         "list_self_task_templates",
@@ -3461,6 +3532,117 @@ describe("cc-managed MCP routes", () => {
       const callArgs = ((liveRequestService.create.mock.calls as unknown as unknown[][])[0]?.[0] ??
         {}) as { fields?: Array<{ name: string }> };
       const fieldNames = (callArgs?.fields ?? []).map((f: { name: string }) => f.name);
+      expect(fieldNames).not.toContain("defaultAgentId");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("drafts self task template updates via operator review form", async () => {
+    const testDb = await createTestDatabase();
+    const liveRequestService = {
+      create: vi.fn(() =>
+        Promise.resolve({
+          action: "submit" as const,
+          values: {
+            title: "Reviewed template title",
+            description: "Operator-approved template description.",
+          },
+        }),
+      ),
+    };
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({ taskService });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      liveRequestService: liveRequestService as never,
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+      taskService,
+      taskExecutionService,
+    });
+
+    try {
+      const agent = await insertActiveAgent(testDb.client.db, {
+        id: "agent-draft-tmpl-upd",
+        slug: "draft-tmpl-upd",
+        name: "Draft Template Update",
+      });
+      const template = await taskService.createTemplate({
+        defaultAgentId: agent.id,
+        title: "Original template title",
+        description: "Original template description.",
+      });
+      const authHeader = await issueAuthHeader(
+        testDb.config,
+        agent.slug,
+        "cc_default_interactive",
+        "chat",
+      );
+
+      const response = await callMcpToolRouteForServer(
+        server,
+        agent.slug,
+        "cc-default-interactive",
+        authHeader,
+        "tools/call",
+        {
+          name: "draft_self_task_template_update",
+          arguments: {
+            templateId: template.id,
+            input: {
+              title: "Proposed template title",
+              recurrence: {
+                mode: "recurring",
+                anchorAt: "2026-06-01T09:00:00.000Z",
+                timezone: "UTC",
+                repeatRule: { frequency: "month", interval: 1 },
+              },
+              enabled: false,
+            },
+          },
+        },
+        81,
+      );
+
+      expect(parseSseJson(response.body)).toMatchObject({
+        result: {
+          structuredContent: {
+            id: template.id,
+            title: "Reviewed template title",
+            description: "Operator-approved template description.",
+            enabled: false,
+          },
+        },
+      });
+
+      const updated = await taskService.getTemplate(template.id);
+      expect(updated).toMatchObject({
+        recurrence: { repeatRule: { frequency: "month" } },
+        enabled: false,
+      });
+
+      expect(liveRequestService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "self_task_template_update_review",
+          metadata: expect.objectContaining({
+            operation: "update_self_task_template",
+            templateId: template.id,
+            callerAgentId: agent.id,
+          }),
+        }),
+      );
+      const callArgs = ((liveRequestService.create.mock.calls as unknown as unknown[][])[0]?.[0] ??
+        {}) as { fields?: Array<{ name: string }> };
+      const fieldNames = (callArgs?.fields ?? []).map((f: { name: string }) => f.name);
+      expect(fieldNames).toEqual(["title"]);
       expect(fieldNames).not.toContain("defaultAgentId");
     } finally {
       await server.close();
