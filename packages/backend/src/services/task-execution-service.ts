@@ -592,12 +592,20 @@ export function createTaskExecutionService(options: {
     const resumed = await reactivateRunForReply(run);
     const followup = await options.taskService.insertFollowup(resumed, input);
 
+    // Once the prompt has reached OpenCode the reply is in flight; a failure in
+    // the post-delivery bookkeeping below must NOT pre-mark the reply as failed,
+    // or finalizeInFlightRunFollowup (the single terminal authority) could no
+    // longer attach the eventual answer. Only a genuine delivery failure marks
+    // the reply failed here.
+    let delivered = false;
+
     try {
       const promptStart = await startTaskRunPromptWithRetry(resumed, conversation, {
         text: followup.body,
         attachments: [],
         model: resumed.model,
       });
+      delivered = true;
 
       let accepted: TaskRun;
       if (promptStart.type === "accepted") {
@@ -628,10 +636,15 @@ export function createTaskExecutionService(options: {
       // finalizeInFlightRunFollowup (called from notifyRunTerminal).
       return followup;
     } catch (error) {
-      const failed = await options.taskService.markFollowupFailed(
-        followup.id,
-        error instanceof Error ? error.message : "Failed to deliver reply.",
-      );
+      // Pre-delivery (transport) failure: the reply never reached OpenCode, so
+      // mark it failed directly. Post-delivery failures leave it "sending" and
+      // let the run's terminal transition finalize it.
+      const failed = delivered
+        ? undefined
+        : await options.taskService.markFollowupFailed(
+            followup.id,
+            error instanceof Error ? error.message : "Failed to deliver reply.",
+          );
 
       const latest = await findRun(resumed.id);
 
