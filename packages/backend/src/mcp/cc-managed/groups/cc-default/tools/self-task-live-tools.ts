@@ -149,25 +149,37 @@ export function createSelfTaskLiveToolDefinitions(options: SelfTaskLiveToolOptio
 
           if (terminal.status === "failed") {
             const msg = terminal.errorMessage ?? "Task run failed.";
+            const structuredContent = {
+              error: { message: msg },
+              run: mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, terminal)),
+            };
             return {
               isError: true,
-              structuredContent: {
-                error: { message: msg },
-                run: mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, terminal)),
-              },
-              content: [{ type: "text" as const, text: msg }],
+              structuredContent,
+              content: [
+                {
+                  type: "text" as const,
+                  text: `${msg}\n\n${JSON.stringify(structuredContent, null, 2)}`,
+                },
+              ],
             };
           }
 
           if (terminal.status === "cancelled") {
             const msg = "Task run was cancelled before it could complete.";
+            const structuredContent = {
+              error: { message: msg },
+              run: mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, terminal)),
+            };
             return {
               isError: true,
-              structuredContent: {
-                error: { message: msg },
-                run: mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, terminal)),
-              },
-              content: [{ type: "text" as const, text: msg }],
+              structuredContent,
+              content: [
+                {
+                  type: "text" as const,
+                  text: `${msg}\n\n${JSON.stringify(structuredContent, null, 2)}`,
+                },
+              ],
             };
           }
 
@@ -387,10 +399,15 @@ async function executeTool(
   }
 }
 
+// Appends the full structured result to the tool's text output so the UI's
+// tool-call log (and any consumer reading content[].text) shows the exact
+// data the specialist received, not just a short confirmation string.
 function success(message: string, structuredContent: Record<string, unknown>): ToolResult {
   return {
     structuredContent,
-    content: [{ type: "text", text: message }],
+    content: [
+      { type: "text", text: `${message}\n\n${JSON.stringify(structuredContent, null, 2)}` },
+    ],
   };
 }
 

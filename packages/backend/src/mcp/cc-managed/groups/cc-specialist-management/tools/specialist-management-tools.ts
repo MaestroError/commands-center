@@ -204,7 +204,7 @@ export function createListSpecialistsToolDefinition(options: { agentService: Spe
         );
         const text = lines.length > 0 ? `${header}\n${lines.join("\n")}` : header;
 
-        return success(text, {
+        return summaryOnly(text, {
           specialists: z.array(specialistSummarySchema).parse(summaries),
         });
       }, "Failed to list specialists."),
@@ -260,7 +260,7 @@ export function createListModelsToolDefinition(options: { agentService: Speciali
         const lines = models.map((model) => `- ${model.id}`);
         const text = lines.length > 0 ? `${header}\n${lines.join("\n")}` : header;
 
-        return success(text, {
+        return summaryOnly(text, {
           models: listModelsOutputSchema.shape.models.parse(models),
         });
       }, "Failed to list models."),
@@ -490,7 +490,22 @@ async function executeTool(
   }
 }
 
+// Appends the full structured result to the tool's text output so the UI's
+// tool-call log (and any consumer reading content[].text) shows the exact
+// data the specialist received, not just a short confirmation string.
 function success(message: string, structuredContent: Record<string, unknown>): ToolResult {
+  return {
+    structuredContent,
+    content: [
+      { type: "text", text: `${message}\n\n${JSON.stringify(structuredContent, null, 2)}` },
+    ],
+  };
+}
+
+// list_specialists/list_models already build their text as a full, readable
+// listing (every id/slug/name/role or model id) — appending the raw JSON on
+// top would just duplicate the same data, so these two skip the wrapper.
+function summaryOnly(message: string, structuredContent: Record<string, unknown>): ToolResult {
   return {
     structuredContent,
     content: [{ type: "text", text: message }],

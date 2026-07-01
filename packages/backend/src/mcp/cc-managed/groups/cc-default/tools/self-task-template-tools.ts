@@ -319,10 +319,15 @@ async function executeTool(
   }
 }
 
+// Appends the full structured result to the tool's text output so the UI's
+// tool-call log (and any consumer reading content[].text) shows the exact
+// data the specialist received, not just a short confirmation string.
 function success(message: string, structuredContent: Record<string, unknown>): ToolResult {
   return {
     structuredContent,
-    content: [{ type: "text", text: message }],
+    content: [
+      { type: "text", text: `${message}\n\n${JSON.stringify(structuredContent, null, 2)}` },
+    ],
   };
 }
 

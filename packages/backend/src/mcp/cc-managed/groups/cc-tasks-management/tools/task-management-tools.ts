@@ -329,11 +329,14 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
       execute: async (args: unknown) =>
         executeTool(async () => {
           const tasks = await options.taskService.list(listTasksQuerySchema.partial().parse(args));
-          return success(`Found ${String(tasks.length)} task${tasks.length === 1 ? "" : "s"}.`, {
-            tasks: z
-              .array(mcpTaskSchema)
-              .parse(tasks.map((task) => withTaskBoardUrl(options.config, task))),
-          });
+          return summaryOnly(
+            `Found ${String(tasks.length)} task${tasks.length === 1 ? "" : "s"}.`,
+            {
+              tasks: z
+                .array(mcpTaskSchema)
+                .parse(tasks.map((task) => withTaskBoardUrl(options.config, task))),
+            },
+          );
         }, "Failed to list tasks."),
     },
     {
@@ -416,11 +419,14 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
             .extend({ query: listTaskRunsQuerySchema.partial().optional() })
             .parse(args);
           const runs = await options.taskService.listRuns(parsed.taskId, parsed.query ?? {});
-          return success(`Found ${String(runs.length)} task run${runs.length === 1 ? "" : "s"}.`, {
-            runs: z
-              .array(mcpTaskRunSchema)
-              .parse(runs.map((run) => withTaskRunBoardUrl(options.config, run))),
-          });
+          return summaryOnly(
+            `Found ${String(runs.length)} task run${runs.length === 1 ? "" : "s"}.`,
+            {
+              runs: z
+                .array(mcpTaskRunSchema)
+                .parse(runs.map((run) => withTaskRunBoardUrl(options.config, run))),
+            },
+          );
         }, "Failed to list task runs."),
     },
     {
@@ -477,7 +483,7 @@ export function createTasksManagementToolDefinitions(options: TaskManagementTool
           const parsed = listTaskTemplatesInputSchema.parse(args);
           const templates = await options.taskService.listTemplates(parsed);
 
-          return success(
+          return summaryOnly(
             `Found ${String(templates.length)} template${templates.length === 1 ? "" : "s"}.`,
             {
               templates: z
@@ -852,7 +858,23 @@ async function executeTool(
   }
 }
 
+// Appends the full structured result to the tool's text output so the UI's
+// tool-call log (and any consumer reading content[].text) shows the exact
+// data the specialist received, not just a short confirmation string.
 function success(message: string, structuredContent: Record<string, unknown>): ToolResult {
+  return {
+    structuredContent,
+    content: [
+      { type: "text", text: `${message}\n\n${JSON.stringify(structuredContent, null, 2)}` },
+    ],
+  };
+}
+
+// list_tasks/list_task_runs/list_task_templates are workspace-wide (not scoped
+// to one specialist) and can return an unbounded number of full records, so
+// they keep the short summary instead of dumping the whole array into the
+// text every call.
+function summaryOnly(message: string, structuredContent: Record<string, unknown>): ToolResult {
   return {
     structuredContent,
     content: [{ type: "text", text: message }],
