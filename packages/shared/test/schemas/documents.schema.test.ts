@@ -71,9 +71,9 @@ describe("document schemas", () => {
     it("accepts a minimal valid document creation", () => {
       expect(
         createDocumentInputSchema.parse({
-          path: "notes.md",
+          path: "notes/notes.md",
         }),
-      ).toMatchObject({ path: "notes.md" });
+      ).toMatchObject({ path: "notes/notes.md" });
     });
 
     it("accepts creation with all optional fields", () => {
@@ -96,18 +96,24 @@ describe("document schemas", () => {
 
     it("trims whitespace from path and title", () => {
       const result = createDocumentInputSchema.parse({
-        path: "  notes.md  ",
+        path: "  notes/notes.md  ",
         title: "  My Title  ",
       });
 
-      expect(result.path).toBe("notes.md");
+      expect(result.path).toBe("notes/notes.md");
       expect(result.title).toBe("My Title");
     });
 
     it("accepts .markdown extension", () => {
-      expect(createDocumentInputSchema.parse({ path: "doc.markdown" })).toMatchObject({
-        path: "doc.markdown",
+      expect(createDocumentInputSchema.parse({ path: "docs/doc.markdown" })).toMatchObject({
+        path: "docs/doc.markdown",
       });
+    });
+
+    it("rejects creating documents directly in the Documents root", () => {
+      expect(() => createDocumentInputSchema.parse({ path: "notes.md" })).toThrow(
+        "New documents must live in at least one folder under Documents/",
+      );
     });
 
     it("rejects absolute paths", () => {
