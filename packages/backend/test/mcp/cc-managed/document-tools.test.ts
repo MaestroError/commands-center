@@ -177,10 +177,15 @@ describe("register_project_document", () => {
     try {
       await setupDocsDir(testDb);
       const docsDir = testDb.config.paths.subdirectories.documents;
-      await writeFile(`${docsDir}/existing.md`, "# Original Content", "utf8");
+      await mkdir(`${docsDir}/existing`, { recursive: true });
+      await writeFile(`${docsDir}/existing/existing.md`, "# Original Content", "utf8");
 
       const result = await registerTool.execute(
-        { path: "existing.md", title: "Registered Title", description: "Registered desc" },
+        {
+          path: "existing/existing.md",
+          title: "Registered Title",
+          description: "Registered desc",
+        },
         agentContext,
       );
 
@@ -189,7 +194,7 @@ describe("register_project_document", () => {
       expect(output.created).toBe(false);
       expect(output.title).toBe("Registered Title");
 
-      const content = await readFile(`${docsDir}/existing.md`, "utf8");
+      const content = await readFile(`${docsDir}/existing/existing.md`, "utf8");
       expect(content).toBe("# Original Content");
     } finally {
       await testDb.cleanup();
