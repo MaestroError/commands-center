@@ -60,7 +60,6 @@ import {
   documentTreeResponseSchema,
   saveDocumentContentInputSchema,
   saveDocumentContentResponseSchema,
-  searchDocumentsResponseSchema,
   updateDocumentMetadataInputSchema,
   globalSearchQuerySchema,
   globalSearchWorkspaceFilesResponseSchema,
@@ -122,7 +121,6 @@ import {
   terminalResizeInputSchema,
   terminalSessionSchema,
   workspaceWatchEventSchema,
-  workspaceSkillListSchema,
   workspaceSkillMutationResultSchema,
   workspaceSkillUploadInputSchema,
   uploadTaskContextAttachmentInputSchema,
@@ -181,7 +179,6 @@ import {
   type DocumentTreeResponse,
   type SaveDocumentContentInput,
   type SaveDocumentContentResponse,
-  type SearchDocumentsResponse,
   type UpdateDocumentMetadataInput,
   type GlobalSearchWorkspaceFilesResponse,
   type ImportAgentCustomToolInput as ImportSpecialistCustomToolInput,
@@ -237,7 +234,6 @@ import {
   type UpdateSystemUpdatePreferencesInput,
   type UpdateWorkspaceSkillCategoryInput,
   type WorkspaceWatchEvent,
-  type WorkspaceSkill,
   type WorkspaceSkillMutationResult,
   type WorkspaceSkillUploadInput,
   type UploadTaskContextAttachmentInput,
@@ -584,16 +580,6 @@ export async function getDocumentTree(): Promise<DocumentTreeResponse> {
   return requestJson<DocumentTreeResponse>("/api/documents/tree", documentTreeResponseSchema);
 }
 
-export async function searchDocuments(query: string): Promise<SearchDocumentsResponse> {
-  const params = new URLSearchParams();
-  params.set("query", query);
-
-  return requestJson<SearchDocumentsResponse>(
-    `/api/documents/search?${params.toString()}`,
-    searchDocumentsResponseSchema,
-  );
-}
-
 export async function getDocumentContent(path: string): Promise<DocumentReadResponse> {
   const params = new URLSearchParams();
   params.set("path", path);
@@ -661,10 +647,6 @@ export async function getSpecialistCatalog(): Promise<SpecialistCatalog> {
 
 export async function listCustomTools(): Promise<CustomTool[]> {
   return requestJson<CustomTool[]>("/api/custom-tools", customToolListSchema);
-}
-
-export async function listWorkspaceSkills(): Promise<WorkspaceSkill[]> {
-  return requestJson<WorkspaceSkill[]>("/api/workspace-skills", workspaceSkillListSchema);
 }
 
 export async function createCustomTool(
@@ -1135,16 +1117,6 @@ export async function createRunFollowup(
       method: "POST",
       body: createTaskRunFollowupInputSchema.parse(input),
     },
-  );
-}
-
-export async function listTaskRunArtifacts(
-  taskId: string,
-  runId: string,
-): Promise<ArtifactListResponse> {
-  return requestJson<ArtifactListResponse>(
-    `/api/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}/artifacts`,
-    artifactListResponseSchema,
   );
 }
 
@@ -2053,10 +2025,6 @@ export async function listTerminalSessions(): Promise<TerminalSession[]> {
     terminalListResponseSchema,
   );
   return response.sessions;
-}
-
-export async function getTerminalSession(id: string): Promise<TerminalSession> {
-  return requestJson<TerminalSession>(`/api/terminal/${id}`, terminalSessionSchema);
 }
 
 export async function resizeTerminalSession(id: string, input: TerminalResizeInput): Promise<void> {

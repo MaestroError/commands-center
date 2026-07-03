@@ -1,11 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", () => ({
   createWorkspaceSkill: vi.fn(),
   deleteWorkspaceSkill: vi.fn(),
-  listWorkspaceSkills: vi.fn(),
   updateWorkspaceSkillCategory: vi.fn(),
   uploadWorkspaceSkill: vi.fn(),
 }));
@@ -13,14 +12,13 @@ vi.mock("@/lib/api", () => ({
 import {
   createWorkspaceSkill,
   deleteWorkspaceSkill,
-  listWorkspaceSkills,
   updateWorkspaceSkillCategory,
   uploadWorkspaceSkill,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import type { WorkspaceSkill } from "@cc/shared/schemas";
 
-import { useWorkspaceSkillMutations, useWorkspaceSkillsQuery } from "./use-workspace-skills-query";
+import { useWorkspaceSkillMutations } from "./use-workspace-skills-query";
 
 function buildWorkspaceSkill(overrides: Partial<WorkspaceSkill> = {}): WorkspaceSkill {
   return {
@@ -41,22 +39,9 @@ function createWrapper(queryClient: QueryClient) {
   );
 }
 
-describe("useWorkspaceSkillsQuery", () => {
+describe("useWorkspaceSkillMutations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it("loads workspace skills through the workspace skills query", async () => {
-    vi.mocked(listWorkspaceSkills).mockResolvedValue([buildWorkspaceSkill()]);
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-    const { result } = renderHook(() => useWorkspaceSkillsQuery(), {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await waitFor(() => {
-      expect(result.current.data).toEqual([buildWorkspaceSkill()]);
-    });
   });
 
   it("runs workspace skill mutations and invalidates dependent queries", async () => {

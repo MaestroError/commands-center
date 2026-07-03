@@ -1,9 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import {
   createWorkspaceSkill,
   deleteWorkspaceSkill,
-  listWorkspaceSkills,
   updateWorkspaceSkillCategory,
   uploadWorkspaceSkill,
 } from "@/lib/api";
@@ -13,13 +12,6 @@ import type {
   UpdateWorkspaceSkillCategoryInput,
   WorkspaceSkillUploadInput,
 } from "@cc/shared/schemas";
-
-export function useWorkspaceSkillsQuery() {
-  return useQuery({
-    queryKey: queryKeys.workspaceSkills,
-    queryFn: () => listWorkspaceSkills(),
-  });
-}
 
 export function useWorkspaceSkillMutations() {
   const queryClient = useQueryClient();
