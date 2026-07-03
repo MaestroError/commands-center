@@ -26,7 +26,7 @@ import {
   type McpServerConfig,
   type McpTool,
   type UpdateMcpServerInput,
-} from "../schemas/mcp.js";
+} from "@cc/shared/schemas";
 import type { AppDb } from "../db/client.js";
 import type { OpenCodeService } from "./opencode-service.js";
 import type { SecretService } from "./secret-service.js";

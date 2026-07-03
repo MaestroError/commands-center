@@ -14,7 +14,7 @@ import { parseRulesMarkdown } from "../opencode/workspace-contract.js";
 import {
   specialistCapabilitySelectionSchema,
   type SpecialistCapabilitySelection,
-} from "../schemas/specialists.js";
+} from "@cc/shared/schemas";
 
 // Placeholder model for hand-dropped folders that carry no model hint. Non-empty
 // so the specialist row satisfies the schema; the owner is expected to set a real one.

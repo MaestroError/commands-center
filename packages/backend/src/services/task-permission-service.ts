@@ -1,11 +1,8 @@
 import {
   specialistCapabilitySelectionSchema,
+  taskPermissionProfileSchema,
   type Specialist,
   type SpecialistCapabilitySelection,
-} from "../schemas/specialists.js";
-
-import {
-  taskPermissionProfileSchema,
   type SpecialistPermissionRule,
   type Task,
   type TaskPermissionProfile,

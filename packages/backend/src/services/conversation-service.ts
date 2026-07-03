@@ -6,23 +6,21 @@ import {
   conversationMessageSchema,
   conversationSnapshotSchema,
   conversationSummarySchema,
-  type ConversationDetail,
   sessionMediaListSchema,
   sendConversationCommandInputSchema,
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
+  systemPromptOverridesSchema,
+  type ConversationDetail,
   type ConversationMessage,
+  type ConversationMessageError,
   type ConversationSnapshot,
   type ConversationSummary,
-  type SessionMediaItem,
+  type ResolvedSystemPrompt,
   type SendConversationCommandInput,
   type SendConversationPromptInput,
   type SendConversationShellInput,
-} from "../schemas/conversations.js";
-import {
-  systemPromptOverridesSchema,
-  type ConversationMessageError,
-  type ResolvedSystemPrompt,
+  type SessionMediaItem,
   type SystemPromptOverrides,
 } from "@cc/shared/schemas";
 

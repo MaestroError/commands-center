@@ -15,7 +15,7 @@ import {
   type SpecialistCatalog,
   type CreateSpecialistInput,
   type UpdateSpecialistInput,
-} from "../schemas/specialists.js";
+} from "@cc/shared/schemas";
 
 import { createId, now } from "../db/ids.js";
 import { agents, mcp_servers } from "../db/schema/index.js";

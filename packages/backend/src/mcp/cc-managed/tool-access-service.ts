@@ -1,4 +1,4 @@
-import type { SpecialistCapabilitySelection } from "../../schemas/specialists.js";
+import type { SpecialistCapabilitySelection } from "@cc/shared/schemas";
 import type { CcManagedMcpServerDefinition, CcManagedToolDefinition } from "./server-registry.js";
 
 export function createCcManagedMcpToolAccessService() {

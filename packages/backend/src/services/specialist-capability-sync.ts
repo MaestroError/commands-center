@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import {
   specialistCapabilitySelectionSchema,
   type SpecialistCapabilitySelection,
-} from "../schemas/specialists.js";
+} from "@cc/shared/schemas";
 
 import { now } from "../db/ids.js";
 import { agents } from "../db/schema/index.js";

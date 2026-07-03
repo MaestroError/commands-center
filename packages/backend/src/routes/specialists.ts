@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
+  createSpecialistInputSchema,
+  importAgentCustomToolInputSchema,
   opencodeFileContentQuerySchema,
   opencodeFileContentSchema,
   opencodeFileListQuerySchema,
@@ -12,12 +14,8 @@ import {
   opencodeFileStatusResultSchema,
   opencodeTextSearchQuerySchema,
   opencodeTextSearchResultSchema,
-} from "@cc/shared/schemas";
-
-import {
-  createSpecialistInputSchema,
   updateSpecialistInputSchema,
-} from "../schemas/specialists.js";
+} from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
@@ -28,7 +26,6 @@ import {
   createFileManagerService,
   resolveFileManagerRoot,
 } from "../services/file-manager-service.js";
-import { importAgentCustomToolInputSchema } from "@cc/shared/schemas";
 
 const agentIdParamsSchema = z.object({
   id: z.string().min(1),

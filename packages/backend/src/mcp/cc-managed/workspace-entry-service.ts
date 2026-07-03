@@ -1,5 +1,5 @@
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
-import type { SpecialistCapabilitySelection } from "../../schemas/specialists.js";
+import type { SpecialistCapabilitySelection } from "@cc/shared/schemas";
 import type { CcManagedMcpAuthTokenService } from "./auth-token-service.js";
 import { listCcManagedMcpServers, type CcManagedMcpServerDefinition } from "./server-registry.js";
 import type { CcManagedMcpToolAccessService } from "./tool-access-service.js";
