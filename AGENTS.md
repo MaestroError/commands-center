@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-**CommandsCenter (`cc`)** is a single-user, workspace-centric application for creating, managing, and interacting with isolated AI specialists through persistent direct chat. The operator installs it, runs it, and is the sole user — there is no auth, no multi-tenancy. All application state lives inside the active workspace directory so the entire system can be moved to another machine without losing context.
+**CommandsCenter (`cc`)** is a single-user, workspace-centric application for creating, managing, and interacting with isolated AI specialists through persistent direct chat. The operator installs it, runs it, and is the sole user — no multi-tenancy; access is protected by a single-owner claim flow (claim code → owner password), not user accounts. All application state lives inside the active workspace directory so the entire system can be moved to another machine without losing context.
 
 ---
 
@@ -43,7 +43,8 @@ These are the chosen technologies. Do not introduce alternatives without explici
 | File manager | SVAR React File Manager (`RestDataProvider`)                           |
 | Code editor  | Monaco Editor (`@monaco-editor/react`)                                 |
 | Terminal     | `xterm.js` + `xterm-addon-fit` + `xterm-addon-attach`                  |
-| State        | React context + hooks (no external state library in MVP)               |
+| Server state | TanStack Query (`@tanstack/react-query`) for all API-derived data      |
+| Client state | Zustand (`src/stores/`) for UI-only state; React context + hooks       |
 
 ### Backend
 
@@ -63,9 +64,9 @@ These are the chosen technologies. Do not introduce alternatives without explici
 
 ### Scheduling
 
-| Environment    | Technology                     |
-| -------------- | ------------------------------ |
-| Local (SQLite) | `bree` + SQLite state tracking |
+| Environment    | Technology                                                                        |
+| -------------- | --------------------------------------------------------------------------------- |
+| Local (SQLite) | Custom interval-tick scheduler (`task-scheduler-service`) + SQLite state tracking |
 
 ### CLI Distribution
 
@@ -94,7 +95,7 @@ The CLI bundles backend + frontend into `packages/cli/dist/`. The backend expose
 
 ### Hierarchy of Priorities
 
-1. **Correctness** — Does it work as specified in GOAL.md?
+1. **Correctness** — Does it work as specified in VISION.md?
 2. **Portability** — Does it satisfy the Portable Workspace Rule?
 3. **Simplicity** — Is this the simplest solution that works?
 4. **Readability** — Can another agent (or human) understand this in 30 seconds?
@@ -447,7 +448,7 @@ When making changes that affect the developer experience, update the relevant do
 | Modify CLI build             | `packages/cli/build.ts`                                        |
 | Add an E2E test              | `packages/frontend/e2e/`                                       |
 | Add a unit test              | `packages/backend/test/` (mirroring `src/`)                    |
-| Check product vision & scope | `GOAL.md`                                                      |
+| Check product vision & scope | `VISION.md`                                                    |
 | Check dev setup & commands   | `CONTRIBUTING.md`                                              |
 
 # Important rules for writing code

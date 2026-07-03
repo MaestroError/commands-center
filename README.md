@@ -435,13 +435,13 @@ cc/
 
 ## Documentation
 
-| File                                                             | Purpose                                   |
-| ---------------------------------------------------------------- | ----------------------------------------- |
-| [GOAL.md](GOAL.md)                                               | Product vision, features, phases          |
-| [AGENTS.md](AGENTS.md)                                           | Coding standards, tech stack, conventions |
-| [CONTRIBUTING.md](CONTRIBUTING.md)                               | Dev setup, commands, workflow             |
-| [docs/CLAIM.md](docs/CLAIM.md)                                   | Owner claiming and setup                  |
-| [docs/mcp-configuration-flow.md](docs/mcp-configuration-flow.md) | Per-workspace MCP configuration           |
+| File                                                             | Purpose                                        |
+| ---------------------------------------------------------------- | ---------------------------------------------- |
+| [VISION.md](VISION.md)                                           | Product vision, phases, architecture decisions |
+| [AGENTS.md](AGENTS.md)                                           | Coding standards, tech stack, conventions      |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                               | Dev setup, commands, workflow                  |
+| [docs/CLAIM.md](docs/CLAIM.md)                                   | Owner claiming and setup                       |
+| [docs/mcp-configuration-flow.md](docs/mcp-configuration-flow.md) | Per-workspace MCP configuration                |
 
 ## Releases
 

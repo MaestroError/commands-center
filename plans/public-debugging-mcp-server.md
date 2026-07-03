@@ -6,7 +6,7 @@
 
 ## Motivating case
 
-See [docs/investigations/cc-app-draft-live-request-not-found.md](../investigations/cc-app-draft-live-request-not-found.md). That investigation was solved by _inference_ because there was no way to query the running VPS — "is there a live_request record?" (it's in-memory), "did the process restart?", "what's in the task_run row?". A debug MCP turns that guessing into direct queries. The read-only `dump_runtime_state` tool below is designed to answer exactly those questions.
+See [plans/investigations/cc-app-draft-live-request-not-found.md](../investigations/cc-app-draft-live-request-not-found.md). That investigation was solved by _inference_ because there was no way to query the running VPS — "is there a live_request record?" (it's in-memory), "did the process restart?", "what's in the task_run row?". A debug MCP turns that guessing into direct queries. The read-only `dump_runtime_state` tool below is designed to answer exactly those questions.
 
 ## Decisions locked in (from review)
 
