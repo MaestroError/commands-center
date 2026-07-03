@@ -232,6 +232,13 @@
       "when": 1782911864911,
       "tag": "0032_unify_artifacts_by_conversation",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1783073688798,
+      "tag": "0033_drop_legacy_task_statuses",
+      "breakpoints": true
     }
   ]
 }

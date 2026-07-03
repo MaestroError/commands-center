@@ -22,14 +22,16 @@ export const boardTaskStatusSchema = z.enum([
   "archived",
 ]);
 
-const legacyTaskStatusSchema = z.enum([
-  "draft",
-  "enabled",
-  "disabled",
-  "running",
-  "in_progress",
-  "completed",
-]);
+// Pre-board statuses that are still actively written, so they must stay in the
+// union:
+// - "draft": tasks created or kept as drafts (task-service normalizeTaskStatus);
+//   the scheduler and executor skip them.
+// - "enabled"/"disabled": the persisted status of task_templates rows, which are
+//   surfaced through taskSchema by mapTemplateAsTask; "disabled" is also written
+//   to tasks that are disabled, or unarchived while disabled.
+// The other pre-board statuses ("running", "in_progress", "completed") were
+// retired by backend migration 0033, which maps existing rows to "backlog".
+const legacyTaskStatusSchema = z.enum(["draft", "enabled", "disabled"]);
 
 export const taskStatusSchema = z.union([boardTaskStatusSchema, legacyTaskStatusSchema]);
 
