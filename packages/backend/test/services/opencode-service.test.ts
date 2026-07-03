@@ -5,6 +5,12 @@ import type { OpencodeClient } from "../../src/lib/opencode-client.js";
 import type { RuntimeConfig } from "../../src/lib/runtime-config.js";
 import { createOpenCodeService } from "../../src/services/opencode-service.js";
 
+const scopedClientMock = vi.hoisted(() => ({ create: vi.fn() }));
+
+vi.mock("../../src/lib/opencode-client.js", () => ({
+  createScopedOpenCodeClient: scopedClientMock.create,
+}));
+
 const BASE_URL = "http://opencode.test:1234";
 
 function createConfig(): RuntimeConfig {
@@ -552,6 +558,264 @@ describe("opencode-service", () => {
       });
 
       await expect(service.listFiles("/work/agent-a", "src")).rejects.toThrow();
+    });
+  });
+
+  function makeService() {
+    return createOpenCodeService({
+      client: FAKE_CLIENT,
+      config: createConfig(),
+      logger: createLogger(),
+    });
+  }
+
+  describe("session lifecycle over fetch", () => {
+    it("creates a session with title and permission rules", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, { id: "sess-1", title: "Task", time: { created: 1, updated: 2 } }),
+      );
+      const service = makeService();
+
+      const session = await service.createSession("/work/a", {
+        title: "Task",
+        permission: [{ permission: "edit", pattern: "*", action: "allow" }],
+      });
+
+      expect(session.id).toBe("sess-1");
+      const url = fetchMock.mock.calls[0]?.[0] as URL;
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      expect(url.pathname).toBe("/session");
+      expect(init.method).toBe("POST");
+      const body = JSON.parse(init.body as string) as Record<string, unknown>;
+      expect(body).toHaveProperty("title", "Task");
+      expect(body).toHaveProperty("permission");
+    });
+
+    it("gets a session and lists messages", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "sess-1", time: { created: 1 } }));
+      const service = makeService();
+      await expect(service.getSession("/work/a", "sess-1")).resolves.toMatchObject({
+        id: "sess-1",
+      });
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, [
+          {
+            info: { id: "m1", sessionID: "sess-1", role: "assistant", time: { created: 2 } },
+            parts: [{ id: "p1", type: "text", text: "hi" }],
+          },
+        ]),
+      );
+      const messages = await service.listSessionMessages("/work/a", "sess-1");
+      expect(messages).toHaveLength(1);
+    });
+
+    it("prompts a session synchronously and returns the assistant message", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, {
+          info: { id: "m2", sessionID: "sess-1", role: "assistant", time: { created: 3 } },
+          parts: [{ id: "p2", type: "text", text: "done" }],
+        }),
+      );
+      const service = makeService();
+      const message = await service.promptSession({
+        directory: "/work/a",
+        sessionID: "sess-1",
+        agent: "build",
+        model: { providerID: "openai", modelID: "gpt-4.1" },
+        text: "go",
+        system: "be brief",
+        attachments: [
+          { type: "file", mimeType: "text/plain", filename: "n.txt", dataUrl: "data:," },
+        ],
+      });
+      expect(message.info.id).toBe("m2");
+      const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string) as {
+        parts: unknown[];
+        system: string;
+      };
+      expect(body.system).toBe("be brief");
+      expect(body.parts).toHaveLength(2);
+    });
+
+    it("issues command, summarize, shell, and abort/delete requests", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = makeService();
+
+      await service.commandSession({
+        directory: "/work/a",
+        sessionID: "s",
+        agent: "build",
+        model: "openai/gpt-4.1",
+        command: "test",
+        arguments: "--all",
+      });
+      await service.summarizeSession({
+        directory: "/work/a",
+        sessionID: "s",
+        providerID: "openai",
+        modelID: "gpt-4.1",
+      });
+      await service.shellSession({
+        directory: "/work/a",
+        sessionID: "s",
+        agent: "build",
+        model: { providerID: "openai", modelID: "gpt-4.1" },
+        command: "ls",
+      });
+      await service.abortSession("/work/a", "s");
+      await service.deleteSession("/work/a", "s");
+
+      const paths = fetchMock.mock.calls.map((call) => (call[0] as URL).pathname);
+      expect(paths).toEqual([
+        "/session/s/command",
+        "/session/s/summarize",
+        "/session/s/shell",
+        "/session/s/abort",
+        "/session/s",
+      ]);
+    });
+
+    it("replies to permissions and questions and rejects a question", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(204));
+      const service = makeService();
+
+      await service.replyPermission("/work/a", "perm-1", "always");
+      await service.replyQuestion("/work/a", "q-1", [["yes"]]);
+      await service.rejectQuestion("/work/a", "q-1");
+
+      const paths = fetchMock.mock.calls.map((call) => (call[0] as URL).pathname);
+      expect(paths).toEqual([
+        "/permission/perm-1/reply",
+        "/question/q-1/reply",
+        "/question/q-1/reject",
+      ]);
+    });
+
+    it("treats a non-JSON 2xx response as success (true)", async () => {
+      fetchMock.mockResolvedValue(new Response("OK", { status: 200 }));
+      const service = makeService();
+      // deleteSession resolves without throwing when the body isn't JSON.
+      await expect(service.deleteSession("/work/a", "s")).resolves.toBeUndefined();
+    });
+  });
+
+  describe("mcp runtime endpoints over fetch", () => {
+    it("lists MCP status and tool ids", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { srv: { status: "connected" } }));
+      const service = makeService();
+      const status = await service.listMcpStatus("/work/a");
+      expect(status["srv"]).toBeDefined();
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, ["srv_tool_a", "srv_tool_b"]));
+      await expect(service.listMcpToolIds("/work/a")).resolves.toEqual([
+        "srv_tool_a",
+        "srv_tool_b",
+      ]);
+    });
+
+    it("starts, completes, authenticates, and removes MCP auth", async () => {
+      const service = makeService();
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { authorizationUrl: "https://x" }));
+      await service.startMcpAuth("/work/a", "srv");
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "connected" }));
+      await service.completeMcpAuth("/work/a", "srv", "code-123");
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "connected" }));
+      await service.authenticateMcp("/work/a", "srv");
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { success: true }));
+      await service.removeMcpAuth("/work/a", "srv");
+
+      const methods = fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method);
+      expect(methods).toEqual(["POST", "POST", "POST", "DELETE"]);
+    });
+
+    it("disconnects a provider and rejects on failure", async () => {
+      const service = makeService();
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, true));
+      await expect(service.disconnectProvider("/work/a", "openai")).resolves.toBe(true);
+      const url = fetchMock.mock.calls[0]?.[0] as URL;
+      expect(url.pathname).toBe("/auth/openai");
+      expect(url.searchParams.get("directory")).toBe("/work/a");
+
+      fetchMock.mockResolvedValueOnce(new Response("nope", { status: 500 }));
+      await expect(service.disconnectProvider("/work/a", "openai")).rejects.toThrow(
+        "Failed to disconnect provider openai",
+      );
+    });
+
+    it("returns true for a non-JSON disconnect response", async () => {
+      const service = makeService();
+      fetchMock.mockResolvedValueOnce(new Response("done", { status: 200 }));
+      await expect(service.disconnectProvider("/work/a", "openai")).resolves.toBe(true);
+    });
+  });
+
+  describe("scoped client methods", () => {
+    afterEach(() => scopedClientMock.create.mockReset());
+
+    it("disposes a directory-scoped instance, swallowing errors", async () => {
+      const dispose = vi.fn().mockRejectedValue(new Error("boom"));
+      scopedClientMock.create.mockReturnValue({ instance: { dispose } });
+      const service = makeService();
+      await expect(service.dispose("/work/a")).resolves.toBeUndefined();
+      expect(dispose).toHaveBeenCalledOnce();
+    });
+
+    it("lists providers from the scoped client", async () => {
+      scopedClientMock.create.mockReturnValue({
+        provider: {
+          list: vi.fn().mockResolvedValue({
+            all: [{ id: "openai", name: "OpenAI", source: "api", models: {} }],
+            default: {},
+            connected: ["openai"],
+          }),
+        },
+      });
+      const service = makeService();
+      const providers = await service.listProviders("/work/a");
+      expect(providers.connected).toEqual(["openai"]);
+    });
+
+    it("falls back to config.providers when provider.list throws", async () => {
+      scopedClientMock.create.mockReturnValue({
+        provider: { list: vi.fn().mockRejectedValue(new Error("unsupported")) },
+        config: {
+          providers: vi.fn().mockResolvedValue({
+            providers: [{ id: "anthropic", name: "Anthropic", source: "api", models: {} }],
+            default: {},
+          }),
+        },
+      });
+      const service = makeService();
+      const providers = await service.listProviders("/work/a");
+      expect(providers.all).toHaveLength(1);
+      expect(providers.connected).toEqual(["anthropic"]);
+    });
+
+    it("lists auth methods, sets api keys, and runs the oauth handshake", async () => {
+      scopedClientMock.create.mockReturnValue({
+        provider: {
+          auth: vi.fn().mockResolvedValue({ openai: [{ type: "api", label: "API Key" }] }),
+          oauth: {
+            authorize: vi
+              .fn()
+              .mockResolvedValue({ url: "https://auth", method: "code", instructions: "open it" }),
+            callback: vi.fn().mockResolvedValue(true),
+          },
+        },
+        auth: { set: vi.fn().mockResolvedValue(true) },
+      });
+      const service = makeService();
+
+      await expect(service.listAuthMethods("/work/a")).resolves.toBeDefined();
+      await expect(service.setApiKey("/work/a", "openai", "sk-1")).resolves.toBe(true);
+      await expect(service.startOauth("/work/a", "openai", 0)).resolves.toMatchObject({
+        url: "https://auth",
+      });
+      await expect(service.completeOauth("/work/a", "openai", 0, "code")).resolves.toBe(true);
     });
   });
 });
