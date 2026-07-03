@@ -45,6 +45,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Dead-code check (knip)
+        run: pnpm knip
+
   package-verification:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest

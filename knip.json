@@ -1,0 +1,23 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreExportsUsedInFile": true,
+  "rules": {
+    "types": "off",
+    "duplicates": "off"
+  },
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.{ts,mjs}"]
+    },
+    "packages/cli": {
+      "entry": ["src/bin.ts"],
+      "ignoreDependencies": ["better-sqlite3", "opencode-ai"]
+    },
+    "packages/backend": {
+      "ignoreDependencies": ["pino-pretty"]
+    },
+    "packages/frontend": {
+      "entry": ["e2e/**/fixtures.ts"]
+    }
+  }
+}
