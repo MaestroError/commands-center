@@ -4,7 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Logger } from "pino";
 
-import { specialistCapabilitySelectionSchema } from "../../schemas/specialists.js";
+import { specialistCapabilitySelectionSchema } from "@cc/shared/schemas";
 import type { AppDb } from "../../db/client.js";
 import {
   getCcManagedMcpServerByRouteSegment,

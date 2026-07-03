@@ -2,13 +2,14 @@ import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
+  artifactListResponseSchema,
   replyPermissionInputSchema,
   replyQuestionInputSchema,
+  resolvedSystemPromptSchema,
   sendConversationCommandInputSchema,
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
-} from "../schemas/conversations.js";
-import { artifactListResponseSchema, resolvedSystemPromptSchema } from "@cc/shared/schemas";
+} from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";

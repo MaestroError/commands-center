@@ -1,12 +1,15 @@
 import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
-import { setMcpServerEnabledInputSchema } from "@cc/shared/schemas";
+import {
+  createMcpServerInputSchema,
+  setMcpServerEnabledInputSchema,
+  updateMcpServerInputSchema,
+} from "@cc/shared/schemas";
 
 import type { AppServer } from "../lib/fastify-zod.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { createMcpServerService } from "../services/mcp-server-service.js";
-import { createMcpServerInputSchema, updateMcpServerInputSchema } from "../schemas/mcp.js";
 
 const mcpServerParamsSchema = z.object({
   mcpServerId: z.string().trim().min(1),

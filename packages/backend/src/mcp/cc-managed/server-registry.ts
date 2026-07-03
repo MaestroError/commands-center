@@ -483,13 +483,6 @@ export function listCcManagedMcpServers(
   return registry;
 }
 
-export function getCcManagedMcpServer(
-  registry: readonly CcManagedMcpServerDefinition[],
-  name: string,
-): CcManagedMcpServerDefinition | undefined {
-  return registry.find((server) => server.name === name);
-}
-
 export function getCcManagedMcpServerByRouteSegment(
   registry: readonly CcManagedMcpServerDefinition[],
   routeSegment: string,

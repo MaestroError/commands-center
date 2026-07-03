@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import type { Logger } from "pino";
 
-import { specialistCapabilitySelectionSchema } from "../../schemas/specialists.js";
+import { specialistCapabilitySelectionSchema } from "@cc/shared/schemas";
 import type { AppDb } from "../../db/client.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { OpenCodeService } from "../../services/opencode-service.js";

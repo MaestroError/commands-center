@@ -4,7 +4,7 @@ import {
   specialistSchema,
   createSpecialistInputSchema,
   updateSpecialistInputSchema,
-} from "../../../../../schemas/specialists.js";
+} from "@cc/shared/schemas";
 import type { SpecialistService } from "../../../../../services/specialist-service.js";
 import type { ConversationService } from "../../../../../services/conversation-service.js";
 import type { LiveRequestService } from "../../../../../services/live-request-service.js";

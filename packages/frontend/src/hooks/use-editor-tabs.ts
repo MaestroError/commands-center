@@ -74,17 +74,6 @@ export function makeTabKey(root: FileManagerRootKind, path: string): EditorTabKe
   return `${root}:${path}`;
 }
 
-export function parseTabKey(
-  key: EditorTabKey,
-): { root: FileManagerRootKind; path: string } | undefined {
-  const sep = key.indexOf(":");
-  if (sep <= 0) return undefined;
-  const root = key.slice(0, sep) as FileManagerRootKind;
-  const path = key.slice(sep + 1);
-  if (!VALID_ROOTS.includes(root) || !path) return undefined;
-  return { root, path };
-}
-
 function basenameOf(path: string): string {
   const trimmed = path.replace(/\/+$/, "");
   const segments = trimmed.split("/");

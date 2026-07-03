@@ -1,7 +1,7 @@
 import { mkdir, rename, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import type { SpecialistCapabilitySelection, BuiltInSkill } from "../schemas/specialists.js";
+import type { SpecialistCapabilitySelection, BuiltInSkill } from "@cc/shared/schemas";
 
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { resolveBuiltInSkillsRoot } from "../lib/builtin-skills.js";

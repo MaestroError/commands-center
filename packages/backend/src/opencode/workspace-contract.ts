@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 
 import { z } from "zod";
 
-import type { SpecialistCapabilitySelection, BuiltInSkill } from "../schemas/specialists.js";
+import type { SpecialistCapabilitySelection, BuiltInSkill } from "@cc/shared/schemas";
 import { normalizeBuiltInSkillSlug } from "../lib/builtin-skill-aliases.js";
 
 const OPENCODE_CONFIG_SCHEMA_URL = "https://opencode.ai/config.json";
