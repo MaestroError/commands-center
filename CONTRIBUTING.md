@@ -171,12 +171,7 @@ The config lives in [`knip.json`](knip.json). A few things worth knowing:
   `packages/backend/src/lib/logger.ts`).
 - **`ignoreExportsUsedInFile`** stops knip from flagging exports that are only
   referenced within their own file.
-- The `types` and `duplicates` rules are turned **off** because the codebase
-  leans on two intentional conventions: `export type FooService =
-ReturnType<typeof createFooService>` companions next to each service factory,
-  and semantic schema aliases (e.g. `activeTaskRunListSchema =
-taskRunListSchema`). Unused files, dependencies, unlisted binaries, and unused
-  value exports still fail the build.
+- The `types` and `duplicates` rules are turned **off** because the codebase leans on two intentional conventions: `export type FooService = ReturnType<typeof createFooService>` companions next to each service factory, and semantic schema aliases (e.g. `activeTaskRunListSchema = taskRunListSchema`). Unused files, dependencies, unlisted binaries, and unused value exports still fail the build.
 
 `pnpm knip:production` runs a stricter, production-only pass (test and dev entry
 points excluded). It reports more by design and is a developer aid, not a CI
