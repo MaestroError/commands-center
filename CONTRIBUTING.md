@@ -61,20 +61,22 @@ The shared backend and CLI bootstrap path validates these environment variables 
 
 ### Root-level (runs across all packages)
 
-| Command              | Description                       |
-| -------------------- | --------------------------------- |
-| `pnpm dev`           | Start all dev servers in parallel |
-| `pnpm build`         | Build all packages                |
-| `pnpm test`          | Run unit/integration tests        |
-| `pnpm test:coverage` | Run tests with V8 coverage        |
-| `pnpm test:e2e`      | Run Playwright E2E tests          |
-| `pnpm lint`          | Run ESLint across all packages    |
-| `pnpm format`        | Check Prettier formatting         |
-| `pnpm format:fix`    | Auto-fix Prettier formatting      |
-| `pnpm typecheck`     | Run TypeScript type checking      |
-| `pnpm clean`         | Remove build artifacts            |
-| `pnpm build:cli`     | Build production CLI binary       |
-| `pnpm release:check` | Run the full publish gate locally |
+| Command                | Description                         |
+| ---------------------- | ----------------------------------- |
+| `pnpm dev`             | Start all dev servers in parallel   |
+| `pnpm build`           | Build all packages                  |
+| `pnpm test`            | Run unit/integration tests          |
+| `pnpm test:coverage`   | Run tests with V8 coverage          |
+| `pnpm test:e2e`        | Run Playwright E2E tests            |
+| `pnpm lint`            | Run ESLint across all packages      |
+| `pnpm format`          | Check Prettier formatting           |
+| `pnpm format:fix`      | Auto-fix Prettier formatting        |
+| `pnpm typecheck`       | Run TypeScript type checking        |
+| `pnpm knip`            | Dead-code analysis (CI gate)        |
+| `pnpm knip:production` | Stricter, production-only knip scan |
+| `pnpm clean`           | Remove build artifacts              |
+| `pnpm build:cli`       | Build production CLI binary         |
+| `pnpm release:check`   | Run the full publish gate locally   |
 
 ### Package-specific
 
@@ -147,6 +149,33 @@ See [AGENTS.md](AGENTS.md) for the full coding style guide, including:
 - Error handling patterns
 - Database and migration rules
 - Testing requirements (90% coverage target)
+
+## Dead-Code Analysis (knip)
+
+[knip](https://knip.dev) keeps unused files, exports, and dependencies from
+piling up. `pnpm knip` runs in CI (the **Static Checks** job) and as part of
+`pnpm release:check`; a newly unused file, export, or dependency fails the
+build. Run it locally before pushing to catch findings early.
+
+The config lives in [`knip.json`](knip.json). A few things worth knowing:
+
+- **Entry points knip can't infer** are declared explicitly: the CLI binary
+  (`packages/cli/src/bin.ts`, which resolves to `dist/bin.mjs`), the root
+  `scripts/*`, and the Playwright e2e fixtures. Entry points knip _can_ infer
+  from package scripts — `packages/cli/build.ts` (`build`) and
+  `packages/backend/src/dev.ts` (`dev`) — are left implicit on purpose.
+- **`ignoreDependencies`** covers packages that are used but not through a
+  static import knip can trace: `better-sqlite3` and `opencode-ai` (esbuild
+  externals in `packages/cli/build.ts`, required at runtime by the bundle) and
+  `pino-pretty` (a string transport target in
+  `packages/backend/src/lib/logger.ts`).
+- **`ignoreExportsUsedInFile`** stops knip from flagging exports that are only
+  referenced within their own file.
+- The `types` and `duplicates` rules are turned **off** because the codebase leans on two intentional conventions: `export type FooService = ReturnType<typeof createFooService>` companions next to each service factory, and semantic schema aliases (e.g. `activeTaskRunListSchema = taskRunListSchema`). Unused files, dependencies, unlisted binaries, and unused value exports still fail the build.
+
+`pnpm knip:production` runs a stricter, production-only pass (test and dev entry
+points excluded). It reports more by design and is a developer aid, not a CI
+gate.
 
 ## MCP Secrets
 
