@@ -1,0 +1,325 @@
+// Split out of TasksPage.tsx (issue #99).
+
+import { ModelSelector } from "@/components/chat/ModelSelector";
+import { PageHeader } from "@/components/common/PageHeader";
+import { ErrorState, LoadingState } from "@/components/common/PageStates";
+import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
+import { formatRepeatSummary, formatToken } from "@/components/tasks/task-format";
+import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-specialists-query";
+import { useTaskMutations, useTaskTemplateQuery } from "@/hooks/use-tasks-query";
+import type { CreateTaskTemplateInput, Specialist, TaskTemplate } from "@cc/shared/schemas";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useTaskComposerSkills } from "./task-helpers";
+import { FallbackModelsField, WeekdayPicker } from "./TaskFormPage";
+import {
+  type FormState,
+  REPEAT_FREQUENCIES,
+  REPEAT_PRESETS,
+  type RepeatFrequency,
+  type RepeatPreset,
+  buildRepeatRule,
+  formToTemplateInput,
+  formatRepeatPreset,
+  listTimezones,
+  readError,
+  templateToForm,
+} from "./task-helpers";
+
+export function TaskTemplateForm(props: {
+  agents: Specialist[];
+  cancelLabel: string;
+  initialTemplate?: TaskTemplate;
+  isBusy: boolean;
+  submitLabel: string;
+  title: string;
+  onCancel: () => void;
+  onSubmit: (input: CreateTaskTemplateInput) => void;
+}) {
+  const [form, setForm] = useState<FormState>(() => templateToForm(props.initialTemplate));
+  const catalogQuery = useSpecialistCatalogQuery();
+  const selectedAgent = props.agents.find((agent) => agent.id === form.agentId);
+  const templateSkills = useTaskComposerSkills(selectedAgent, catalogQuery.data);
+  const timezones = useMemo(() => listTimezones(), []);
+
+  useEffect(() => {
+    if (props.initialTemplate) {
+      setForm(templateToForm(props.initialTemplate));
+    }
+  }, [props.initialTemplate]);
+
+  return (
+    <form
+      className="cc-panel grid gap-4 p-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        props.onSubmit(formToTemplateInput(form));
+      }}
+    >
+      <div>
+        <h2 className="text-xl font-semibold text-text-primary">{props.title}</h2>
+        <p className="mt-1 text-sm text-text-secondary">
+          Templates store reusable task setup. Create a task from a template manually, run it
+          immediately, or enable repeating.
+        </p>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Title
+          <input
+            className="cc-input"
+            data-testid="task-template-title-input"
+            required
+            value={form.title}
+            onChange={(event) => updateForm({ title: event.target.value })}
+          />
+        </label>
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Default specialist
+          <select
+            className="cc-input"
+            required
+            value={form.agentId}
+            onChange={(event) => updateForm({ agentId: event.target.value })}
+          >
+            <option value="">Select a specialist</option>
+            {props.agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Model
+          <ModelSelector
+            allowSpecialistDefault
+            defaultModel={props.agents.find((agent) => agent.id === form.agentId)?.defaultModel}
+            onChange={(model) => updateForm({ model })}
+            placement="down"
+            value={form.model || null}
+          />
+        </label>
+        <FallbackModelsField
+          fallbackModels={form.fallbackModels}
+          primaryModel={form.model}
+          onChange={(fallbackModels) => updateForm({ fallbackModels })}
+        />
+      </div>
+      <section className="grid gap-1 text-sm text-text-secondary">
+        <div>
+          <h2 className="font-medium text-text-primary">Task prompt</h2>
+          <p className="text-xs text-text-secondary">
+            Use # to mention workspace files and / to pick a skill available to the selected agent.
+          </p>
+        </div>
+        <TaskPromptComposer
+          agentId={form.agentId || undefined}
+          disabled={!form.agentId}
+          onChange={(prompt) => updateForm({ prompt })}
+          skills={templateSkills}
+          value={form.prompt}
+        />
+      </section>
+      <section className="grid min-w-0 gap-2 rounded-xl border border-border bg-surface p-4">
+        <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
+          <input
+            checked={form.enabled}
+            data-testid="task-template-active-input"
+            onChange={(event) => updateForm({ enabled: event.target.checked })}
+            type="checkbox"
+          />
+          Active
+        </label>
+        <p className="text-sm text-text-secondary">
+          {form.enabled
+            ? "Active templates run on their schedule and can be triggered by automation."
+            : "Disabled templates keep all settings but never run automatically until re-enabled. You can still Run now manually."}
+        </p>
+      </section>
+      <section className="grid min-w-0 gap-3 rounded-xl border border-border bg-surface p-4">
+        <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
+          <input
+            checked={form.repeatEnabled}
+            onChange={(event) => updateForm({ repeatEnabled: event.target.checked })}
+            type="checkbox"
+          />
+          Repeat on a schedule
+        </label>
+        {form.repeatEnabled ? (
+          <>
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+              <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                Repeat
+                <select
+                  className="cc-input min-w-0"
+                  value={form.repeatPreset}
+                  onChange={(event) =>
+                    updateForm({ repeatPreset: event.target.value as RepeatPreset })
+                  }
+                >
+                  {REPEAT_PRESETS.map((preset) => (
+                    <option key={preset} value={preset}>
+                      {formatRepeatPreset(preset)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                First occurrence
+                <input
+                  className="cc-input min-w-0"
+                  type="datetime-local"
+                  value={form.anchorAtLocal}
+                  onChange={(event) => updateForm({ anchorAtLocal: event.target.value })}
+                />
+              </label>
+              <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                Timezone
+                <select
+                  className="cc-input min-w-0"
+                  data-testid="task-template-timezone-input"
+                  value={form.timezone}
+                  onChange={(event) => updateForm({ timezone: event.target.value })}
+                >
+                  {timezones.map((zone) => (
+                    <option key={zone} value={zone}>
+                      {zone}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {form.repeatPreset === "custom" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                  Every
+                  <input
+                    className="cc-input min-w-0"
+                    min={1}
+                    type="number"
+                    value={form.repeatInterval}
+                    onChange={(event) => updateForm({ repeatInterval: event.target.value })}
+                  />
+                </label>
+                <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                  Unit
+                  <select
+                    className="cc-input min-w-0"
+                    value={form.repeatFrequency}
+                    onChange={(event) =>
+                      updateForm({ repeatFrequency: event.target.value as RepeatFrequency })
+                    }
+                  >
+                    {REPEAT_FREQUENCIES.map((frequency) => (
+                      <option key={frequency} value={frequency}>
+                        {formatToken(frequency)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {form.repeatFrequency === "week" ? (
+                  <WeekdayPicker form={form} updateForm={updateForm} />
+                ) : null}
+              </div>
+            ) : null}
+            {form.repeatPreset === "weekly" ? (
+              <WeekdayPicker form={form} updateForm={updateForm} />
+            ) : null}
+            <p className="text-sm text-text-secondary">
+              {formatRepeatSummary(buildRepeatRule(form))}
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-text-secondary">
+            Repetition is off. This template will only create tasks when you choose Create task or
+            Run now.
+          </p>
+        )}
+      </section>
+      <div className="grid gap-1">
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Acceptance criteria, one per line
+          <textarea
+            className="cc-input min-h-24 resize-y"
+            value={form.todosText}
+            onChange={(event) => updateForm({ todosText: event.target.value })}
+          />
+        </label>
+        <p className="text-xs text-text-muted">
+          What &ldquo;done&rdquo; looks like. The assigned specialist sees these in its run context
+          but can&apos;t check them off — you verify each during review.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="cc-button"
+          data-testid="task-template-save"
+          disabled={props.isBusy}
+          type="submit"
+        >
+          {props.submitLabel}
+        </button>
+        <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+          {props.cancelLabel}
+        </button>
+      </div>
+    </form>
+  );
+
+  function updateForm(patch: Partial<FormState>) {
+    setForm((current) => ({ ...current, ...patch }));
+  }
+}
+
+export function TaskTemplateFormPage() {
+  const navigate = useNavigate();
+  const params = useParams();
+  const templateQuery = useTaskTemplateQuery(params["id"]);
+  const agentsQuery = useSpecialistsQuery();
+  const mutations = useTaskMutations();
+  const template = templateQuery.data;
+  const agents = agentsQuery.data ?? [];
+  const isLoading = templateQuery.isLoading || agentsQuery.isLoading;
+  const error = readError(
+    templateQuery.error ?? agentsQuery.error ?? mutations.updateTemplate.error,
+  );
+
+  return (
+    <div className="grid gap-4">
+      <PageHeader
+        actions={
+          <Link className="cc-button cc-button-secondary" to="/tasks?view=templates">
+            Cancel
+          </Link>
+        }
+        description="Update the template setup used for future generated tasks. Existing generated tasks keep their copied content."
+        eyebrow="Task Templates"
+        title="Edit task template"
+      />
+
+      {isLoading ? <LoadingState testId="task-template-form-loading" /> : null}
+      {error ? <ErrorState description={error} title="Template could not be saved." /> : null}
+      {!isLoading && template ? (
+        <TaskTemplateForm
+          agents={agents}
+          cancelLabel="Cancel"
+          initialTemplate={template}
+          isBusy={mutations.updateTemplate.isPending}
+          submitLabel="Save template"
+          title="Edit task template"
+          onCancel={() => void navigate(`/tasks?view=templates&template=${template.id}`)}
+          onSubmit={(input) => {
+            mutations.updateTemplate.mutate(
+              { id: template.id, input },
+              {
+                onSuccess: (updated) =>
+                  void navigate(`/tasks?view=templates&template=${updated.id}`),
+              },
+            );
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}

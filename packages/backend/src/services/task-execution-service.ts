@@ -16,36 +16,19 @@ import {
   type TaskRunFollowup,
   type TaskSubtask,
 } from "@cc/shared/schemas";
-import { and, eq, isNull } from "drizzle-orm";
-import type { Logger } from "pino";
 import { z } from "zod";
 
 import { createId } from "../db/ids.js";
-import type { AppDb } from "../db/client.js";
-import { task_runs, tasks } from "../db/schema/index.js";
-import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
-import type { OpenCodeOrchestrator } from "../orchestrator/opencode-orchestrator.js";
-import {
-  TaskRunPromptError,
-  type ConversationService,
-  type TaskRunPromptStart,
-} from "./conversation-service.js";
-import type { TaskContextAttachmentService } from "./task-context-attachment-service.js";
-import type { SessionArchiveService } from "./session-archive-service.js";
-import type { SessionArchiveSettingsService } from "./session-archive-settings-service.js";
-import type { ActivityService } from "./activity-service.js";
+import { BadRequestError, NotFoundError } from "../lib/api-error.js";
+import type { ConversationService, TaskRunPromptStart } from "./conversation-service.js";
 import { buildTerminalActivity } from "./task-activity.js";
 import { createTaskRunContextService } from "./task-run-context-service.js";
 import {
   createTaskRunMonitorService,
   DEFAULT_TASK_RUN_MONITOR_CONFIG,
   type TaskRunMonitorConfig,
-  type TaskRunMonitorOptions,
   type TaskRunMonitorRuntimeConfig,
-  type TaskRunBlockedInteractionDetails,
-  type TaskRunStallDetails,
 } from "./task-run-monitor-service.js";
-import type { TaskRunMonitorSettingsService } from "./task-run-monitor-settings-service.js";
 import {
   buildTaskRunErrorDetails,
   createTaskRunTransport,
@@ -53,16 +36,24 @@ import {
   mergeOpencodeMonitorMetadata,
   readOptionalOpencodeMonitorMetadata,
   type TaskRunTransportRetryConfig,
-  type TaskRunTransportRetryOptions,
 } from "./task-run-support.js";
+import { buildOpenCodeSessionPermissions } from "./task-permission-service.js";
+import type {
+  AcceptedPromptEvidence,
+  TaskExecutionServiceOptions,
+} from "./task-execution-service/context.js";
+import { createTaskRetryPolicy } from "./task-execution-service/retry-policy.js";
+import { createTaskReplyFlow } from "./task-execution-service/reply-flow.js";
+import { createAgentDrainQueue } from "./task-execution-service/agent-drain.js";
 import {
-  buildOpenCodeSessionPermissions,
-  type TaskPermissionService,
-} from "./task-permission-service.js";
-import type { TaskService } from "./task-service.js";
+  hasTerminalSubtaskRun,
+  latestSubtaskRunErrored,
+  latestSubtaskRunNeedsReview,
+  readScheduledAtFromTrigger,
+} from "./task-execution-service/helpers.js";
 
 export type TaskExecutionService = ReturnType<typeof createTaskExecutionService>;
-type QueueTaskExecutionInput = Partial<Omit<QueueTaskInput, "taskId">> & {
+export type QueueTaskExecutionInput = Partial<Omit<QueueTaskInput, "taskId">> & {
   model?: string;
   fallbackModels?: string[];
   retryOfRunId?: string;
@@ -96,21 +87,15 @@ type RunnableSubtasks = {
   hasActive: boolean;
 };
 
-type AcceptedPromptEvidence = {
-  conversation: ConversationDetail;
-  reason: "monitor_metadata" | "messages" | "status";
-  statusType?: string;
-};
-
-type TaskRunDeferOptions = {
+export type TaskRunDeferOptions = {
   initialDelayMs?: number;
   maxDelayMs?: number;
   jitterRatio?: number;
 };
 
-type TaskRunDeferConfig = Required<TaskRunDeferOptions>;
+export type TaskRunDeferConfig = Required<TaskRunDeferOptions>;
 
-type AgentDrainDeferral = {
+export type AgentDrainDeferral = {
   delayMs: number;
   timer?: ReturnType<typeof setTimeout>;
 };
@@ -123,23 +108,7 @@ const DEFAULT_TASK_RUN_DEFER_CONFIG: TaskRunDeferConfig = {
 
 const MONITOR_RUNTIME_CACHE_MS = 10_000;
 
-export function createTaskExecutionService(options: {
-  db?: AppDb;
-  taskService: TaskService;
-  conversationService?: ConversationService;
-  orchestrator?: Pick<OpenCodeOrchestrator, "getStatus">;
-  taskContextAttachmentService?: TaskContextAttachmentService;
-  taskPermissionService?: TaskPermissionService;
-  archiveService?: SessionArchiveService;
-  archiveSettingsService?: SessionArchiveSettingsService;
-  monitorSettingsService?: TaskRunMonitorSettingsService;
-  activityService?: ActivityService;
-  onRunTerminal?: (run: TaskRun) => void | Promise<void>;
-  logger?: Logger;
-  monitor?: TaskRunMonitorOptions;
-  transportRetry?: TaskRunTransportRetryOptions;
-  defer?: TaskRunDeferOptions;
-}) {
+export function createTaskExecutionService(options: TaskExecutionServiceOptions) {
   const taskRunContextService = createTaskRunContextService({ db: options.db });
   const monitorConfig: TaskRunMonitorConfig = {
     ...DEFAULT_TASK_RUN_MONITOR_CONFIG,
@@ -160,6 +129,26 @@ export function createTaskExecutionService(options: {
     logger: options.logger,
     config: transportRetryConfig,
   });
+  const { scheduleAgentDrain, deferQueuedRunIfOpenCodeIsUnhealthy } = createAgentDrainQueue({
+    options,
+    agentDrainDeferrals,
+    deferConfig,
+    runQueuedTask,
+  });
+  const {
+    queueFallbackRun,
+    finalizeStalledRun,
+    finalizeBlockedInteraction,
+    resolveAutoRetryLimit,
+    readRequeueCount,
+  } = createTaskRetryPolicy({
+    options,
+    queueTask,
+    notifyRunTerminal,
+    scheduleAgentDrain,
+    abortOpenCodeTaskRun,
+  });
+
   const monitorService = createTaskRunMonitorService({
     taskService: options.taskService,
     conversationService: options.conversationService,
@@ -173,6 +162,17 @@ export function createTaskExecutionService(options: {
       finalizeBlockedInteraction,
       finalizeStalledRun,
     },
+  });
+
+  const { sendRunReply } = createTaskReplyFlow({
+    options,
+    findRun,
+    startTaskRunPromptWithRetry,
+    resumeAcceptedPromptRun,
+    handleTerminalRun,
+    readRunContext,
+    monitorConfig,
+    monitorService,
   });
 
   return {
@@ -556,186 +556,6 @@ export function createTaskExecutionService(options: {
     }
   }
 
-  async function sendRunReply(runId: string, input: unknown): Promise<TaskRunFollowup> {
-    if (!options.db) {
-      throw new Error("Database client is required to send a run reply.");
-    }
-
-    if (!options.conversationService) {
-      throw new Error("Conversation service is required to send a run reply.");
-    }
-
-    const run = await findRun(runId);
-
-    if (run.status === "running") {
-      throw new ConflictError("Cannot send a reply while the run is in progress.");
-    }
-
-    if (!run.opencodeSessionId) {
-      throw new ConflictError("Task run does not have an OpenCode session.");
-    }
-
-    if (run.status !== "completed" && run.status !== "failed" && run.status !== "error") {
-      throw new BadRequestError("Only completed, failed, or error task runs can receive a reply.");
-    }
-
-    const inspection = await options.conversationService.inspectTaskRunConversation(
-      run.taskId,
-      run.id,
-    );
-    const conversation = inspection.conversation;
-
-    if (!conversation) {
-      throw new NotFoundError("Task run session not found.");
-    }
-
-    const resumed = await reactivateRunForReply(run);
-    const followup = await options.taskService.insertFollowup(resumed, input);
-
-    // Once the prompt has reached OpenCode the reply is in flight; a failure in
-    // the post-delivery bookkeeping below must NOT pre-mark the reply as failed,
-    // or finalizeInFlightRunFollowup (the single terminal authority) could no
-    // longer attach the eventual answer. Only a genuine delivery failure marks
-    // the reply failed here.
-    let delivered = false;
-
-    try {
-      const promptStart = await startTaskRunPromptWithRetry(resumed, conversation, {
-        text: followup.body,
-        attachments: [],
-        model: resumed.model,
-      });
-      delivered = true;
-
-      let accepted: TaskRun;
-      if (promptStart.type === "accepted") {
-        accepted = await resumeAcceptedPromptRun(resumed, promptStart.evidence);
-      } else {
-        const updated = await options.taskService.updateRun(resumed.id, {
-          triggerMetadata: mergeOpencodeMonitorMetadata(resumed.triggerMetadata, {
-            conversationId: promptStart.promptStart.conversationId,
-            opencodeSessionId: promptStart.promptStart.opencodeSessionId,
-            attemptedModel: promptStart.promptStart.attemptedModel,
-            baselineMessageCount: promptStart.promptStart.baselineMessageCount,
-            promptAcceptedAt: promptStart.promptStart.promptAcceptedAt,
-          }),
-        });
-
-        if (!updated) {
-          throw new NotFoundError("Task run not found.");
-        }
-
-        accepted = updated;
-        if (monitorConfig.autoStart) {
-          monitorService.start(accepted.id);
-        }
-      }
-
-      // The followup row is left in "sending" — it's finalized (answered/failed)
-      // once the run reaches terminal status again, via
-      // finalizeInFlightRunFollowup (called from notifyRunTerminal).
-      return followup;
-    } catch (error) {
-      // Pre-delivery (transport) failure: the reply never reached OpenCode, so
-      // mark it failed directly. Post-delivery failures leave it "sending" and
-      // let the run's terminal transition finalize it.
-      const failed = delivered
-        ? undefined
-        : await options.taskService.markFollowupFailed(
-            followup.id,
-            error instanceof Error ? error.message : "Failed to deliver reply.",
-          );
-
-      const latest = await findRun(resumed.id);
-
-      if (latest.status !== "running") {
-        await handleTerminalRun(latest, { triggerContext: readRunContext(latest) });
-        return failed ?? followup;
-      }
-
-      const errored = await options.taskService.setRunStatus(resumed.id, "error", {
-        completedAt: new Date().toISOString(),
-        errorMessage: error instanceof Error ? error.message : "Task execution failed.",
-        errorDetails: buildTaskRunErrorDetails(error, resumed),
-      });
-
-      if (!errored) {
-        throw new NotFoundError("Task run not found.");
-      }
-
-      await handleTerminalRun(errored, { triggerContext: readRunContext(resumed) });
-      return failed ?? followup;
-    }
-  }
-
-  async function reactivateRunForReply(run: TaskRun): Promise<TaskRun> {
-    if (!options.db) {
-      throw new Error("Database client is required to send a run reply.");
-    }
-
-    const running = await options.taskService.getRunningRunForAgent(run.agentId);
-
-    if (running && running.id !== run.id) {
-      throw new ConflictError("Agent already has a running task run.", { runId: running.id });
-    }
-
-    const timestamp = new Date();
-    try {
-      options.db
-        .update(task_runs)
-        .set({
-          status: "running",
-          outcome: null,
-          needs_human_review: false,
-          human_review_reason: null,
-          review_question_json: null,
-          error_message: null,
-          error_details_json: null,
-          completed_at: null,
-          cancelled_at: null,
-          cancellation_reason: null,
-          updated_at: timestamp,
-        })
-        .where(eq(task_runs.id, run.id))
-        .run();
-    } catch (error) {
-      if (isRunningAgentConstraintError(error)) {
-        const running = await options.taskService.getRunningRunForAgent(run.agentId);
-        throw new ConflictError(
-          "Agent already has a running task run.",
-          running ? { runId: running.id } : undefined,
-        );
-      }
-
-      throw error;
-    }
-
-    options.db
-      .update(tasks)
-      .set({
-        status: "queued",
-        updated_at: timestamp,
-      })
-      .where(and(eq(tasks.id, run.taskId), isNull(tasks.deleted_at)))
-      .run();
-
-    const resumed = await options.taskService.getRunById(run.id);
-
-    if (!resumed) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    return resumed;
-  }
-
-  function isRunningAgentConstraintError(error: unknown): boolean {
-    return (
-      error instanceof Error &&
-      (error.message.includes("task_runs_agent_running_unique_idx") ||
-        error.message.includes("UNIQUE constraint failed: task_runs.agent_id"))
-    );
-  }
-
   async function getOrCreateTaskRunConversation(
     task: Task,
     run: TaskRun,
@@ -939,329 +759,6 @@ export function createTaskExecutionService(options: {
   // Finalize a run the monitor detected as stalled: abort the wedged session,
   // cancel the run with a clear reason, and — when enabled in settings — queue a
   // fresh run of the same task/subtask.
-  async function finalizeStalledRun(run: TaskRun, details: TaskRunStallDetails): Promise<void> {
-    const latest = await options.taskService.getRunById(run.id);
-
-    if (!latest || latest.status !== "running") {
-      return;
-    }
-
-    await abortOpenCodeTaskRun(latest);
-
-    const requeue = await resolveRequeueSettings();
-    const nextRequeueCount = readRequeueCount(latest) + 1;
-    const willRequeue = requeue.enabled && nextRequeueCount <= requeue.limit;
-    const limitReached = requeue.enabled && !willRequeue;
-
-    const cancellationReason =
-      `Automatically cancelled: OpenCode produced no new output for ` +
-      `${formatStallDuration(details.noProgressMs)} (stall timeout)` +
-      `${latest.opencodeSessionId ? `; session ${latest.opencodeSessionId}` : ""}.` +
-      `${limitReached ? ` Requeue limit (${String(requeue.limit)}) reached; not requeued.` : ""}`;
-
-    const cancelled = await options.taskService.setRunStatus(latest.id, "cancelled", {
-      cancelledAt: new Date().toISOString(),
-      cancellationReason,
-    });
-
-    if (!cancelled) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    notifyRunTerminal(cancelled);
-
-    if (willRequeue) {
-      try {
-        const requeued = await requeueStalledRun(cancelled, nextRequeueCount);
-        options.logger?.warn(
-          {
-            taskId: cancelled.taskId,
-            cancelledRunId: cancelled.id,
-            requeuedRunId: requeued.id,
-            requeueAttempt: nextRequeueCount,
-            requeueLimit: requeue.limit,
-            opencodeSessionId: cancelled.opencodeSessionId,
-            noProgressMs: details.noProgressMs,
-            lastStatus: details.lastStatus,
-          },
-          "stalled task run cancelled and requeued",
-        );
-        return;
-      } catch (error) {
-        options.logger?.error(
-          { err: error, taskId: cancelled.taskId, cancelledRunId: cancelled.id },
-          "failed to requeue stalled task run; leaving it cancelled",
-        );
-      }
-    } else {
-      options.logger?.warn(
-        {
-          taskId: cancelled.taskId,
-          taskRunId: cancelled.id,
-          opencodeSessionId: cancelled.opencodeSessionId,
-          noProgressMs: details.noProgressMs,
-          lastStatus: details.lastStatus,
-          requeueLimitReached: limitReached,
-          requeueLimit: limitReached ? requeue.limit : undefined,
-        },
-        limitReached
-          ? "stalled task run cancelled; requeue limit reached"
-          : "stalled task run cancelled",
-      );
-    }
-
-    scheduleAgentDrain(cancelled.agentId);
-  }
-
-  async function finalizeBlockedInteraction(
-    run: TaskRun,
-    details: TaskRunBlockedInteractionDetails,
-  ): Promise<void> {
-    const latest = await options.taskService.getRunById(run.id);
-
-    if (!latest || latest.status !== "running") {
-      return;
-    }
-
-    await abortOpenCodeTaskRun(latest);
-
-    // A blocked interaction means the agent is parked on a permission/question
-    // that an automatic task run cannot answer — a human genuinely has to step in.
-    // So it ends as an `error` run (it did not complete) but is flagged for human
-    // review, which routes it to `review` and keeps it out of the auto-retry path
-    // (retrying would just re-hit the same wall).
-    const errorMessage = formatBlockedInteractionMessage(details);
-    const errored = await options.taskService.setRunStatus(latest.id, "error", {
-      completedAt: new Date().toISOString(),
-      errorMessage,
-      errorDetails: buildBlockedInteractionErrorDetails(latest, details),
-      needsHumanReview: true,
-      humanReviewReason: errorMessage,
-    });
-
-    if (!errored) {
-      throw new NotFoundError("Task run not found.");
-    }
-
-    notifyRunTerminal(errored);
-    options.logger?.warn(
-      {
-        taskId: errored.taskId,
-        taskRunId: errored.id,
-        opencodeSessionId: errored.opencodeSessionId,
-        interactionType: details.interaction.type,
-        requestId: details.interaction.id,
-      },
-      "task run blocked by pending OpenCode interaction",
-    );
-    scheduleAgentDrain(errored.agentId);
-  }
-
-  async function resolveRequeueSettings(): Promise<{ enabled: boolean; limit: number }> {
-    const fallback = { enabled: false, limit: 10 };
-
-    if (!options.monitorSettingsService) {
-      return fallback;
-    }
-
-    try {
-      const settings = await options.monitorSettingsService.get();
-      return {
-        enabled: settings.taskRunMonitorRequeueAfterStall,
-        limit: settings.taskRunMonitorRequeueLimit,
-      };
-    } catch (error) {
-      options.logger?.warn(
-        { err: error },
-        "task run monitor requeue setting read failed; defaulting to no requeue",
-      );
-      return fallback;
-    }
-  }
-
-  function readRequeueCount(run: TaskRun): number {
-    const value = run.triggerMetadata?.["requeueCount"];
-    return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
-  }
-
-  // Max automatic re-queues per task/subtask chain after a system error/failure.
-  // Bounds the auto-retry path so a repeatedly failing run cannot loop forever.
-  async function resolveAutoRetryLimit(): Promise<number> {
-    const fallback = 10;
-
-    if (!options.monitorSettingsService) {
-      return fallback;
-    }
-
-    try {
-      const settings = await options.monitorSettingsService.get();
-      return settings.taskRunMaxAutoRetries;
-    } catch (error) {
-      options.logger?.warn(
-        { err: error },
-        "task run auto-retry limit read failed; defaulting to 10",
-      );
-      return fallback;
-    }
-  }
-
-  // Queue a fresh run of the same task/subtask after a stall cancellation. A new
-  // run (not the cancelled row) is created so it gets a clean OpenCode session
-  // instead of re-attaching to the wedged one via duplicate-prevention. The
-  // requeue count carries forward so the chain stops at the configured limit.
-  async function requeueStalledRun(cancelled: TaskRun, requeueCount: number): Promise<TaskRun> {
-    return queueTask(cancelled.taskId, {
-      agentId: cancelled.agentId,
-      subtaskId: cancelled.subtaskId,
-      triggerSource: "system",
-      model: cancelled.model,
-      fallbackModels: cancelled.fallbackModels,
-      retryOfRunId: cancelled.id,
-      context: {
-        text: [
-          "The previous run of this task was cancelled automatically because the OpenCode session stalled (it stopped producing output).",
-          `Previous run id: ${cancelled.id}`,
-          "It may have already changed workspace files. Inspect the current state before continuing, avoid redoing completed work, and finish the original task goal.",
-        ].join("\n"),
-        attachments: [],
-      },
-      metadata: {
-        requeuedFromRunId: cancelled.id,
-        requeueReason: "stall_timeout",
-        requeueCount,
-      },
-    });
-  }
-
-  /**
-   * Queue a fallback-model run for a provider/model error when one is eligible.
-   * Used by both the synchronous start path and the async monitor. Returns the
-   * queued fallback run, or undefined when no fallback applies.
-   */
-  async function queueFallbackRun(
-    errored: TaskRun,
-    error: unknown,
-    log: { logMessage?: string } = {},
-  ): Promise<TaskRun | undefined> {
-    const fallback = buildFallbackRunInput(errored, error);
-
-    if (!fallback) {
-      return undefined;
-    }
-
-    notifyRunTerminal(errored);
-    const fallbackRun = await queueTask(errored.taskId, fallback);
-    options.logger?.warn(
-      {
-        taskId: errored.taskId,
-        previousRunId: errored.id,
-        fallbackRunId: fallbackRun.id,
-        model: fallback.model,
-      },
-      log.logMessage ?? "task run monitor observed provider error, queued fallback model run",
-    );
-    return fallbackRun;
-  }
-
-  function buildFallbackRunInput(
-    errored: TaskRun,
-    error: unknown,
-  ): QueueTaskExecutionInput | undefined {
-    if (!(error instanceof TaskRunPromptError) || !isFallbackEligible(error)) {
-      return undefined;
-    }
-
-    const selected = selectNextFallbackModel(error, errored.fallbackModels);
-    if (!selected) {
-      return undefined;
-    }
-
-    return {
-      agentId: errored.agentId,
-      subtaskId: errored.subtaskId,
-      triggerSource: "system",
-      model: selected.model,
-      fallbackModels: selected.remaining,
-      retryOfRunId: errored.id,
-      context: {
-        text: [
-          "Previous task run ended with a model/provider error.",
-          `Previous run id: ${errored.id}`,
-          `Attempted model: ${error.attemptedModel}`,
-          `Error: ${error.modelError.name}: ${error.modelError.message}`,
-          "The previous attempt may have already changed workspace files. Inspect the current workspace state before continuing, avoid duplicating completed work, and finish the original task goal.",
-        ].join("\n"),
-        attachments: [],
-      },
-      metadata: {
-        fallbackOfRunId: errored.id,
-        attemptedModel: error.attemptedModel,
-        errorName: error.modelError.name,
-      },
-    };
-  }
-
-  function selectNextFallbackModel(
-    error: TaskRunPromptError,
-    fallbackModels: string[],
-  ): { model: string; remaining: string[] } | undefined {
-    for (let index = 0; index < fallbackModels.length; index += 1) {
-      const model = fallbackModels[index]!;
-      if (model === error.attemptedModel) {
-        continue;
-      }
-
-      if (
-        error.modelError.name === "ProviderAuthError" &&
-        readProvider(model) === readProvider(error.attemptedModel)
-      ) {
-        continue;
-      }
-
-      return {
-        model,
-        remaining: fallbackModels.slice(index + 1),
-      };
-    }
-
-    return undefined;
-  }
-
-  function isFallbackEligible(error: TaskRunPromptError): boolean {
-    if (error.modelError.name === "UnknownError") {
-      return false;
-    }
-
-    if (error.modelError.name === "ProviderAuthError") {
-      return true;
-    }
-
-    if (error.modelError.name !== "APIError") {
-      return false;
-    }
-
-    const data = error.modelError.data ?? {};
-    const statusCode = typeof data["statusCode"] === "number" ? data["statusCode"] : undefined;
-    const isRetryable = data["isRetryable"] === true;
-    const message = error.modelError.message.toLowerCase();
-
-    return (
-      isRetryable ||
-      statusCode === 404 ||
-      statusCode === 429 ||
-      (statusCode !== undefined && statusCode >= 500) ||
-      message.includes("overload") ||
-      message.includes("rate limit") ||
-      message.includes("too many requests") ||
-      message.includes("model not found")
-    );
-  }
-
-  function readProvider(model: string): string {
-    const slash = model.indexOf("/");
-    return slash > 0 ? model.slice(0, slash) : model;
-  }
-
   async function queueNextSubtaskRun(
     task: Task,
     parsed: QueueSingleRunInput,
@@ -1652,213 +1149,8 @@ export function createTaskExecutionService(options: {
       );
     }
   }
-
-  function scheduleAgentDrain(agentId: string): void {
-    void drainAgentQueue(agentId).catch((error: unknown) => {
-      options.logger?.error({ err: error, agentId }, "task queue drain failed");
-    });
-  }
-
-  async function drainAgentQueue(agentId: string): Promise<void> {
-    const running = await options.taskService.getRunningRunForAgent(agentId);
-
-    if (running) {
-      return;
-    }
-
-    const nextRun = await options.taskService.getNextQueuedRunForAgent(agentId);
-
-    if (!nextRun) {
-      resetAgentDrainDeferral(agentId);
-      return;
-    }
-
-    if (deferQueuedRunIfOpenCodeIsUnhealthy(nextRun)) {
-      return;
-    }
-
-    resetAgentDrainDeferral(agentId);
-    const started = await runQueuedTask(nextRun.id);
-
-    if (started.status === "queued") {
-      return;
-    }
-  }
-
-  function deferQueuedRunIfOpenCodeIsUnhealthy(run: TaskRun): boolean {
-    if (!options.conversationService || !options.orchestrator) {
-      return false;
-    }
-
-    const status = options.orchestrator.getStatus();
-
-    if (status.healthy) {
-      resetAgentDrainDeferral(run.agentId);
-      return false;
-    }
-
-    scheduleDeferredAgentDrain(run, status);
-    return true;
-  }
-
-  function scheduleDeferredAgentDrain(
-    run: TaskRun,
-    status: ReturnType<OpenCodeOrchestrator["getStatus"]>,
-  ): void {
-    const existing = agentDrainDeferrals.get(run.agentId);
-
-    if (existing?.timer) {
-      return;
-    }
-
-    const delayMs = computeDeferDelay(existing?.delayMs ?? deferConfig.initialDelayMs);
-    const nextDelayMs = Math.min(deferConfig.maxDelayMs, delayMs * 2);
-    const deferral: AgentDrainDeferral = { delayMs: nextDelayMs };
-
-    options.logger?.warn(
-      {
-        taskId: run.taskId,
-        taskRunId: run.id,
-        agentId: run.agentId,
-        engineState: status.state,
-        lastError: status.lastError,
-        nextDelayMs: delayMs,
-      },
-      "deferred queued task run because OpenCode is unhealthy",
-    );
-
-    deferral.timer = setTimeout(() => {
-      deferral.timer = undefined;
-      void drainAgentQueue(run.agentId).catch((error: unknown) => {
-        options.logger?.error({ err: error, agentId: run.agentId }, "task queue drain failed");
-      });
-    }, delayMs);
-    deferral.timer.unref?.();
-    agentDrainDeferrals.set(run.agentId, deferral);
-  }
-
-  function resetAgentDrainDeferral(agentId: string): void {
-    const deferral = agentDrainDeferrals.get(agentId);
-
-    if (!deferral) {
-      return;
-    }
-
-    if (deferral.timer) {
-      clearTimeout(deferral.timer);
-    }
-
-    agentDrainDeferrals.delete(agentId);
-  }
-
-  function computeDeferDelay(baseDelayMs: number): number {
-    const cappedDelayMs = Math.min(deferConfig.maxDelayMs, Math.max(0, baseDelayMs));
-    const jitterMs =
-      deferConfig.jitterRatio > 0 ? cappedDelayMs * deferConfig.jitterRatio * Math.random() : 0;
-
-    return Math.max(0, Math.round(cappedDelayMs + jitterMs));
-  }
 }
 
 // Render a stall window for the operator-facing cancellation reason. Production
 // values are whole minutes, but the monitor config is in milliseconds and may be
 // sub-minute (or non-integer minutes), so report what was actually configured.
-function formatStallDuration(ms: number): string {
-  if (ms < 60_000) {
-    const seconds = Math.max(1, Math.round(ms / 1_000));
-    return `${String(seconds)} second(s)`;
-  }
-
-  const minutes = ms / 60_000;
-  const rounded = Number.isInteger(minutes) ? minutes : Math.round(minutes * 10) / 10;
-  return `${String(rounded)} minute(s)`;
-}
-
-function formatBlockedInteractionMessage(details: TaskRunBlockedInteractionDetails): string {
-  if (details.interaction.type === "permission") {
-    return `Blocked by pending OpenCode permission: ${details.interaction.permission}.`;
-  }
-
-  return "Blocked by pending OpenCode question.";
-}
-
-function buildBlockedInteractionErrorDetails(
-  run: TaskRun,
-  details: TaskRunBlockedInteractionDetails,
-): Record<string, unknown> {
-  const base = {
-    errorName: "TaskRunBlockedByOpenCodeInteraction",
-    stage: "opencode_pending_interaction",
-    taskRunId: run.id,
-    taskId: run.taskId,
-    opencodeSessionId: run.opencodeSessionId,
-    monitorElapsedMs: details.monitorElapsedMs,
-    lastStatus: details.lastStatus,
-    lastAssistantMessageId: details.lastAssistantMessageId,
-    interactionType: details.interaction.type,
-    requestId: details.interaction.id,
-    sessionID: details.interaction.sessionID,
-    tool: details.interaction.tool,
-  };
-
-  if (details.interaction.type === "permission") {
-    return {
-      ...base,
-      permission: details.interaction.permission,
-      patterns: details.interaction.patterns,
-      always: details.interaction.always,
-      metadata: details.interaction.metadata,
-    };
-  }
-
-  return {
-    ...base,
-    questions: details.interaction.questions,
-    questionCount: details.interaction.questions.length,
-  };
-}
-
-function readScheduledAtFromTrigger(trigger: QueueTaskInput): string | undefined {
-  const scheduledAt = trigger.metadata?.["scheduledAt"];
-  return typeof scheduledAt === "string" ? scheduledAt : undefined;
-}
-
-function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
-  return runs.some(
-    (run) => run.subtaskId === subtaskId && run.status !== "queued" && run.status !== "running",
-  );
-}
-
-// `runs` is ordered created_at desc, so the first match is the subtask's latest
-// run. Retry eligibility is decided by the latest run only, so a successful retry
-// clears an earlier transient failure.
-function latestSubtaskRun(subtaskId: string, runs: TaskRun[]): TaskRun | undefined {
-  return runs.find((run) => run.subtaskId === subtaskId);
-}
-
-// Latest run is an intentional human-review hand-off. Terminal: never auto-retried.
-function latestSubtaskRunNeedsReview(subtaskId: string, runs: TaskRun[]): boolean {
-  const latest = latestSubtaskRun(subtaskId, runs);
-  if (!latest) {
-    return false;
-  }
-
-  return latest.outcome === "needs_human_review" || latest.needsHumanReview;
-}
-
-// Latest run is a system-defined failure (errored/failed/cancelled, or a `failed`
-// outcome). Eligible for bounded automatic retry. A human-review hand-off wins, so
-// a run flagged for review (e.g. blocked on input) is never treated as retryable.
-function latestSubtaskRunErrored(subtaskId: string, runs: TaskRun[]): boolean {
-  const latest = latestSubtaskRun(subtaskId, runs);
-  if (!latest || latestSubtaskRunNeedsReview(subtaskId, runs)) {
-    return false;
-  }
-
-  return (
-    latest.status === "failed" ||
-    latest.status === "error" ||
-    latest.status === "cancelled" ||
-    latest.outcome === "failed"
-  );
-}
