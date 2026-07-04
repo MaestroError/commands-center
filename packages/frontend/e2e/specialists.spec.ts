@@ -126,7 +126,7 @@ async function mockSpecialistApi(
     await route.fulfill(jsonResponse([]));
   });
 
-  await page.route("**/api/specialists**", async (route: Route) => {
+  await page.route(apiPathPattern("/api/specialists"), async (route: Route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
 
@@ -217,6 +217,14 @@ async function mockSpecialistApi(
 
     await route.fulfill(jsonResponse(agent));
   });
+}
+
+function apiPathPattern(path: string): RegExp {
+  return new RegExp(`^https?://[^/]+${escapeRegExp(path)}(?:$|[/?])`);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function createSpecialistState() {

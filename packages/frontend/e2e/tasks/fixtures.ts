@@ -293,7 +293,7 @@ export async function mockTaskApi(page: Page, state: TaskState): Promise<void> {
   );
   await page.route("**/api/documents/tree", (route: Route) => route.fulfill(json({ tree: [] })));
 
-  await page.route("**/api/specialists**", (route: Route) => {
+  await page.route(apiPathPattern("/api/specialists"), (route: Route) => {
     const path = new URL(route.request().url()).pathname;
 
     if (path === "/api/specialists/catalog") {
@@ -315,7 +315,15 @@ export async function mockTaskApi(page: Page, state: TaskState): Promise<void> {
     return route.fulfill(agent ? json(agent) : notFound());
   });
 
-  await page.route("**/api/tasks**", (route: Route) => handleTaskRoute(route, state));
+  await page.route(apiPathPattern("/api/tasks"), (route: Route) => handleTaskRoute(route, state));
+}
+
+function apiPathPattern(path: string): RegExp {
+  return new RegExp(`^https?://[^/]+${escapeRegExp(path)}(?:$|[/?])`);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function handleTaskRoute(route: Route, state: TaskState) {
