@@ -51,7 +51,7 @@ test.describe("sidebar route smoke coverage", { tag: "@smoke" }, () => {
     await expect(page.getByText("No API tokens yet")).toBeVisible();
   });
 
-  test("renders settings and persists a task monitor toggle", async ({ page }) => {
+  test("renders settings task monitor defaults", async ({ page }) => {
     await mockSidebarSmokeApis(page);
 
     await page.goto("/settings?tab=tasks");

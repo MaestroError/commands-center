@@ -286,6 +286,8 @@ function conversationDetail(
   title: string,
   messages: ConversationDetail["messages"],
 ): ConversationDetail {
+  const conversationMessages = messages.map((entry) => ({ ...entry, conversationId: id }));
+
   return {
     id,
     agentId: e2eSpecialist.id,
@@ -294,10 +296,10 @@ function conversationDetail(
     status: "active",
     source: "chat",
     isCurrent: id === "conv-current",
-    messageCount: messages.length,
+    messageCount: conversationMessages.length,
     createdAt: NOW,
     updatedAt: NOW,
-    messages,
+    messages: conversationMessages,
   };
 }
 

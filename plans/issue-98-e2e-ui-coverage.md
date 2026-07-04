@@ -29,3 +29,14 @@
    - Verify: `pnpm --filter @cc/frontend test:e2e:other`.
 3. [x] Re-run required quality checks and update the PR branch.
    - Verify: `pnpm exec eslint . --fix`, `pnpm typecheck`, `pnpm test`, and targeted E2E coverage.
+
+## Reviewer Follow-up
+
+1. [x] Normalize mocked chat message `conversationId` values to the containing conversation.
+   - Verify: chat E2E still passes.
+2. [x] Rename the Settings smoke test so its title matches the default-state assertion.
+   - Verify: sidebar smoke E2E still passes.
+3. [x] Use stable task-card test IDs for archive restore/delete interactions.
+   - Verify: task board E2E still passes.
+4. [x] Resolve the addressed review threads.
+   - Verify: unresolved PR review thread count is zero.

@@ -179,8 +179,7 @@ test.describe("tasks board", { tag: "@tasks" }, () => {
         response.request().method() === "POST",
     );
     await page
-      .locator("article")
-      .filter({ hasText: "Archived release" })
+      .getByTestId("task-card-task-archived")
       .getByRole("button", { name: "Restore" })
       .click();
     await restore;
@@ -197,13 +196,12 @@ test.describe("tasks board", { tag: "@tasks" }, () => {
         response.request().method() === "DELETE",
     );
     await page
-      .locator("article")
-      .filter({ hasText: "Delete archived" })
+      .getByTestId("task-card-task-archived-delete")
       .getByRole("button", { name: "Delete" })
       .click();
     await remove;
 
-    await expect(page.getByText("Delete archived")).toHaveCount(0);
+    await expect(page.getByTestId("task-card-task-archived-delete")).toHaveCount(0);
   });
 
   test("accepts a review card and moves it to done", async ({ page }) => {
