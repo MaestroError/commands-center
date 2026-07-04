@@ -637,20 +637,23 @@ describe("WorkspaceChatPage", () => {
     await user.click(screen.getByTestId("convert-message-msg-1"));
     const dialog = screen.getByRole("alertdialog", { name: "Attachments cannot be copied" });
 
-    // Exercise the focus trap in both directions, then close with Escape.
-    const [firstButton] = dialog.querySelectorAll("button");
-    firstButton?.focus();
+    const buttons = Array.from(dialog.querySelectorAll("button"));
+    expect(buttons.length).toBeGreaterThanOrEqual(2);
+    const firstButton = buttons[0]!;
+    const lastButton = buttons[buttons.length - 1]!;
+
+    // Shift+Tab from the first control wraps focus to the last.
+    firstButton.focus();
+    expect(document.activeElement).toBe(firstButton);
     fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(lastButton);
+
+    // Tab from the last control wraps focus back to the first.
     fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(document.activeElement).toBe(firstButton);
 
-    const buttons = dialog.querySelectorAll("button");
-    buttons[buttons.length - 1]?.focus();
-    fireEvent.keyDown(dialog, { key: "Tab" });
-
-    expect(dialog).toBeInTheDocument();
-
+    // Escape closes the modal.
     fireEvent.keyDown(dialog, { key: "Escape" });
-
     expect(
       screen.queryByRole("alertdialog", { name: "Attachments cannot be copied" }),
     ).not.toBeInTheDocument();

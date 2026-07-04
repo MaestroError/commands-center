@@ -1244,7 +1244,8 @@ describe("TasksPage", () => {
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
     await user.click(await screen.findByRole("button", { name: /^Context/i }));
 
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    // Target the specific labeled control rendered by the Context section.
+    const fileInput = await screen.findByLabelText<HTMLInputElement>("Add attachment");
     const file = new File(["hello attachment"], "notes.txt", { type: "text/plain" });
     await user.upload(fileInput, file);
 
