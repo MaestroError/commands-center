@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -601,6 +601,62 @@ describe("WorkspaceChatPage", () => {
         },
       },
     });
+  });
+
+  it("traps focus and closes the attachment warning modal via the keyboard", async () => {
+    const user = userEvent.setup();
+
+    mockParams = { agentId: "planner", conversationId: "conv-1" };
+    useConversationMock.mockReturnValue(
+      makeConversation({
+        conversation: {
+          id: "conv-1",
+          messages: [
+            {
+              id: "msg-1",
+              conversationId: "conv-1",
+              role: "user",
+              content: "Create follow-up task",
+              parts: [],
+              attachments: [
+                { id: "att-1", type: "file", filename: "notes.txt", mimeType: "text/plain" },
+              ],
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    );
+    useSpecialistCatalogQueryMock.mockReturnValue({
+      data: { builtInSkills: [], workspaceSkills: [] },
+    });
+
+    render(<WorkspaceChatPage />);
+
+    await user.click(screen.getByTestId("convert-message-msg-1"));
+    const dialog = screen.getByRole("alertdialog", { name: "Attachments cannot be copied" });
+
+    const buttons = Array.from(dialog.querySelectorAll("button"));
+    expect(buttons.length).toBeGreaterThanOrEqual(2);
+    const firstButton = buttons[0]!;
+    const lastButton = buttons[buttons.length - 1]!;
+
+    // Shift+Tab from the first control wraps focus to the last.
+    firstButton.focus();
+    expect(document.activeElement).toBe(firstButton);
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(lastButton);
+
+    // Tab from the last control wraps focus back to the first.
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(document.activeElement).toBe(firstButton);
+
+    // Escape closes the modal.
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(
+      screen.queryByRole("alertdialog", { name: "Attachments cannot be copied" }),
+    ).not.toBeInTheDocument();
   });
 
   it("lazy-mounts and unmounts the workspace terminal bottom pane from the chat header toggle", async () => {

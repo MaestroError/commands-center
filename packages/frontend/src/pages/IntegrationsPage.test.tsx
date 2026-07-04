@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IntegrationsPage } from "./IntegrationsPage";
@@ -972,5 +973,132 @@ describe("IntegrationsPage", () => {
 
     expect(screen.getByText("An MCP server named 'GitHub' already exists.")).toBeInTheDocument();
     expect(updateMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("renders custom MCP servers across states and drives their card actions", async () => {
+    const base = {
+      enabled: true,
+      config: {
+        url: "https://example.com/mcp",
+        transport: "streamable-http" as const,
+        authMethod: "oauth" as const,
+        headers: [],
+      },
+      missingSecrets: [] as string[],
+      tools: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        { ...base, id: "c1", name: "connected-srv", runtimeStatus: { status: "connected" } },
+        { ...base, id: "c2", name: "needsauth-srv", runtimeStatus: { status: "needs_auth" } },
+        {
+          ...base,
+          id: "c3",
+          name: "failed-srv",
+          missingSecrets: ["OPENAI_KEY"],
+          runtimeStatus: { status: "failed", error: "boom failure" },
+        },
+        {
+          ...base,
+          id: "c4",
+          name: "stdio-srv",
+          enabled: false,
+          config: { transport: "stdio", command: ["node", "server.js"], environment: {} },
+          runtimeStatus: { status: "disabled" },
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    expect(screen.getByRole("heading", { name: "connected-srv" })).toBeInTheDocument();
+    expect(screen.getByText("boom failure")).toBeInTheDocument();
+    expect(screen.getByText("Missing secret values")).toBeInTheDocument();
+
+    const connectedCard = screen
+      .getByRole("heading", { name: "connected-srv" })
+      .closest("article") as HTMLElement;
+
+    await user.click(within(connectedCard).getByRole("button", { name: "Remove auth" }));
+    await waitFor(() => expect(removeAuthMutateAsync).toHaveBeenCalledWith({ id: "c1" }));
+
+    await user.click(within(connectedCard).getByRole("button", { name: "Disable" }));
+    await waitFor(() =>
+      expect(setEnabledMutateAsync).toHaveBeenCalledWith({ id: "c1", enabled: false }),
+    );
+
+    await user.click(within(connectedCard).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(removeMutateAsync).toHaveBeenCalledWith({ id: "c1" }));
+
+    // A needs_auth server offers Authenticate (not Re-authenticate).
+    const needsAuthCard = screen
+      .getByRole("heading", { name: "needsauth-srv" })
+      .closest("article") as HTMLElement;
+    expect(within(needsAuthCard).getByRole("button", { name: "Authenticate" })).toBeInTheDocument();
+
+    // A stdio server exposes no auth buttons, only Enable.
+    const stdioCard = screen
+      .getByRole("heading", { name: "stdio-srv" })
+      .closest("article") as HTMLElement;
+    expect(
+      within(stdioCard).queryByRole("button", { name: "Authenticate" }),
+    ).not.toBeInTheDocument();
+    expect(within(stdioCard).getByRole("button", { name: "Enable" })).toBeInTheDocument();
+  });
+
+  it("manages an existing Composio server through its card actions", async () => {
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        {
+          id: "composio-1",
+          name: "composio",
+          enabled: true,
+          config: {
+            url: "https://connect.composio.dev/mcp",
+            transport: "streamable-http",
+            authMethod: "oauth",
+            headers: [],
+          },
+          runtimeStatus: { status: "connected" },
+          missingSecrets: [],
+          tools: [],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+    authenticateMutateAsync.mockResolvedValue({ name: "composio" });
+    removeMutateAsync.mockResolvedValue(undefined);
+
+    const user = userEvent.setup();
+    render(<IntegrationsPage />);
+
+    const composioSection = screen
+      .getByRole("heading", { name: "Composio" })
+      .closest("section") as HTMLElement;
+
+    await user.click(within(composioSection).getByRole("button", { name: "Re-authenticate" }));
+    await waitFor(() => expect(authenticateMutateAsync).toHaveBeenCalledWith({ id: "composio-1" }));
+
+    await user.click(within(composioSection).getByRole("button", { name: "Remove auth" }));
+    await waitFor(() => expect(removeAuthMutateAsync).toHaveBeenCalledWith({ id: "composio-1" }));
+
+    await user.click(within(composioSection).getByRole("button", { name: "Disable" }));
+    await waitFor(() =>
+      expect(setEnabledMutateAsync).toHaveBeenCalledWith({ id: "composio-1", enabled: false }),
+    );
+
+    await user.click(within(composioSection).getByRole("button", { name: "Deactivate" }));
+    await waitFor(() => expect(removeMutateAsync).toHaveBeenCalledWith({ id: "composio-1" }));
   });
 });

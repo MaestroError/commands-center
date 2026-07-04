@@ -444,6 +444,79 @@ describe("SpecialistEditorPage", () => {
       });
     });
   });
+
+  it("renders MCP servers across every runtime status", async () => {
+    const baseServer = {
+      enabled: true,
+      config: {
+        url: "https://example.com/mcp",
+        transport: "streamable-http" as const,
+        authMethod: "oauth" as const,
+        headers: [],
+      },
+      tools: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: [
+        { ...baseServer, id: "s1", name: "connected-srv", runtimeStatus: { status: "connected" } },
+        { ...baseServer, id: "s2", name: "needsauth-srv", runtimeStatus: { status: "needs_auth" } },
+        {
+          ...baseServer,
+          id: "s3",
+          name: "failed-srv",
+          runtimeStatus: { status: "failed", error: "handshake failed" },
+        },
+        {
+          ...baseServer,
+          id: "s4",
+          name: "reg-srv",
+          runtimeStatus: { status: "needs_client_registration", error: "register first" },
+        },
+        {
+          ...baseServer,
+          id: "s5",
+          name: "disabled-srv",
+          enabled: false,
+          runtimeStatus: { status: "disabled" },
+        },
+        {
+          ...baseServer,
+          id: "s6",
+          name: "disconnected-srv",
+          runtimeStatus: { status: "disconnected" },
+        },
+      ],
+      isLoading: false,
+      error: null,
+    } as never);
+
+    renderEditor();
+
+    expect(await screen.findByText("Connected")).toBeInTheDocument();
+    expect(screen.getByText("Needs auth")).toBeInTheDocument();
+    expect(screen.getAllByText("Failed").length).toBeGreaterThan(0);
+    expect(screen.getByText("Needs client registration")).toBeInTheDocument();
+    expect(screen.getAllByText("Disabled").length).toBeGreaterThan(0);
+    expect(screen.getByText("Disconnected")).toBeInTheDocument();
+    // failed / needs_client_registration surface their runtime error text.
+    expect(screen.getByText("handshake failed")).toBeInTheDocument();
+    expect(screen.getByText("register first")).toBeInTheDocument();
+  });
+
+  it("shows the MCP loading and error states", async () => {
+    vi.mocked(useMcpServersQuery).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("mcp down"),
+    } as never);
+
+    renderEditor();
+
+    expect(await screen.findByText("mcp down")).toBeInTheDocument();
+  });
 });
 
 function renderEditor() {

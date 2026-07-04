@@ -56,4 +56,66 @@ describe("SearchableSelect", () => {
 
     expect(screen.getByText("No matches")).toBeInTheDocument();
   });
+
+  it("opens with ArrowDown and commits the highlighted option with Enter", () => {
+    const onChange = vi.fn();
+    render(
+      <SearchableSelect value="" onChange={onChange} options={options} placeholder="Search" />,
+    );
+
+    const input = screen.getByPlaceholderText("Search");
+    // First ArrowDown opens the list without moving the highlight.
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: "Claude Opus 4.8" })).toBeInTheDocument();
+
+    // Move down to the second option, then back up, then commit the first.
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onChange).toHaveBeenCalledWith("anthropic/claude-opus-4-8");
+  });
+
+  it("closes the list when Escape is pressed", () => {
+    render(<SearchableSelect value="" onChange={vi.fn()} options={options} placeholder="Search" />);
+
+    const input = screen.getByPlaceholderText("Search");
+    fireEvent.focus(input);
+    expect(screen.getByRole("option", { name: "GPT-4.1" })).toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("option", { name: "GPT-4.1" })).not.toBeInTheDocument();
+  });
+
+  it("ignores keyboard input when disabled", () => {
+    const onChange = vi.fn();
+    render(
+      <SearchableSelect
+        value=""
+        onChange={onChange}
+        options={options}
+        placeholder="Search"
+        disabled
+      />,
+    );
+
+    const input = screen.getByPlaceholderText("Search");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+  });
+
+  it("closes and clears the query when focus leaves the component", () => {
+    render(<SearchableSelect value="" onChange={vi.fn()} options={options} placeholder="Search" />);
+
+    const input = screen.getByPlaceholderText("Search");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "opus" } });
+    fireEvent.blur(input, { relatedTarget: document.body });
+
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    expect(input).toHaveValue("");
+  });
 });

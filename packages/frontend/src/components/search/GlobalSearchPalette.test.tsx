@@ -220,6 +220,62 @@ describe("GlobalSearchPalette", () => {
       );
     });
   });
+
+  function renderPalette() {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <Routes>
+        <Route
+          element={
+            <>
+              <GlobalSearchPalette onClose={() => undefined} open />
+              <LocationProbe />
+            </>
+          }
+          path="*"
+        />
+      </Routes>,
+      ["/"],
+    );
+    return user;
+  }
+
+  it("routes to a task template result and its edit action", async () => {
+    const user = renderPalette();
+
+    await user.type(screen.getByRole("textbox", { name: "Search resources" }), "Release task");
+    await user.click(await screen.findByRole("button", { name: /Release task template/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location-probe")).toHaveTextContent(
+        "/tasks?view=templates&template=template-1",
+      );
+    });
+  });
+
+  it("routes to a custom tool result via the tools page action", async () => {
+    const user = renderPalette();
+
+    await user.type(screen.getByRole("textbox", { name: "Search resources" }), "Release helper");
+    expect(await screen.findByText(/Release helper/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open tools page" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location-probe")).toHaveTextContent("/tools");
+    });
+  });
+
+  it("routes to a task result when selected", async () => {
+    const user = renderPalette();
+
+    await user.type(screen.getByRole("textbox", { name: "Search resources" }), "Release checklist");
+    await user.click(await screen.findByRole("button", { name: /Release checklist/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location-probe")).toHaveTextContent("/tasks/task-1");
+    });
+  });
 });
 
 function renderWithProviders(element: React.ReactNode, initialEntries: string[]) {

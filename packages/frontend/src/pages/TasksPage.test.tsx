@@ -1233,6 +1233,30 @@ describe("TasksPage", () => {
     });
   });
 
+  it("uploads a context attachment from the board panel", async () => {
+    const fetchMock = mockFetch({
+      taskPayload: { ...task, context: { text: "Old context", attachments: [] } },
+    });
+
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    await user.click(await screen.findByRole("button", { name: /^Context/i }));
+
+    // Target the specific labeled control rendered by the Context section.
+    const fileInput = await screen.findByLabelText<HTMLInputElement>("Add attachment");
+    const file = new File(["hello attachment"], "notes.txt", { type: "text/plain" });
+    await user.upload(fileInput, file);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/context/attachments",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
   it("persists the board panel context expanded state per task", async () => {
     mockFetch({
       taskPayload: { ...task, context: { text: "Use release notes.", attachments: [] } },
@@ -1842,6 +1866,26 @@ describe("TasksPage", () => {
     );
   });
 
+  it("shows integration instructions on the template Docs tab and copies them", async () => {
+    const user = userEvent.setup();
+    mockFetch({ templatesPayload: [taskTemplate], templateTasksPayload: [generatedTask] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates&template=template-1");
+
+    await screen.findByRole("complementary", { name: "Task template detail panel" });
+
+    await user.click(await screen.findByRole("tab", { name: "Docs" }));
+
+    expect(await screen.findByText("Integration instructions")).toBeInTheDocument();
+    expect(screen.getByText("Trigger now (curl)")).toBeInTheDocument();
+    expect(screen.getByText("Schedule (curl)")).toBeInTheDocument();
+    expect(screen.getByText("Poll run status (curl)")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Copy integration instructions" }));
+
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
+
   it("deletes a template from the template detail panel", async () => {
     const fetchMock = mockFetch({ templatesPayload: [taskTemplate] });
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -2263,6 +2307,49 @@ describe("TasksPage", () => {
       );
     });
     expect(await screen.findByRole("heading", { name: "Backlog" })).toBeInTheDocument();
+  });
+
+  it("offers Restore for an archived task in the board panel", async () => {
+    mockFetch({ taskPayload: { ...task, archived: true, status: "archived" } });
+    renderWithRouter(<TasksPage />, "/tasks?view=archived");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    expect(await screen.findByRole("button", { name: "Restore" })).toBeInTheDocument();
+  });
+
+  it("links to the active run for a queued task in the board panel", async () => {
+    mockFetch({
+      taskPayload: { ...task, status: "queued" },
+      activeRunsPayload: [{ ...run, taskId: "task-1", status: "running" }],
+    });
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    expect(await screen.findByRole("link", { name: "View active run" })).toBeInTheDocument();
+  });
+
+  it("adds and removes a fallback model row in the create form", async () => {
+    mockFetch();
+
+    renderWithRouter(<TasksPage mode="create" />, "/tasks/new");
+
+    const user = userEvent.setup();
+    await screen.findByRole("combobox", { name: /Assigned specialist/i });
+
+    expect(screen.getByText("No fallback models configured.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Add fallback model" }));
+    expect(
+      await screen.findByRole("button", { name: "Remove fallback model" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No fallback models configured.")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Remove fallback model" }));
+    expect(screen.getByText("No fallback models configured.")).toBeInTheDocument();
   });
 
   it("creates a task prompt with selected file and skill mentions", async () => {
