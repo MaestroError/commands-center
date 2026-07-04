@@ -3258,7 +3258,11 @@ function TaskArchiveView(props: {
   return (
     <section className="grid gap-4 xl:grid-cols-2">
       {props.tasks.map((task) => (
-        <article className="cc-panel grid gap-4 p-5" key={task.id}>
+        <article
+          className="cc-panel grid gap-4 p-5"
+          data-testid={`task-card-${task.id}`}
+          key={task.id}
+        >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <Link

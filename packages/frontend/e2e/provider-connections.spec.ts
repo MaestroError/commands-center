@@ -56,7 +56,6 @@ test("submits API keys from the provider screen", async ({ page }) => {
   await page.getByLabel("API key").press("Enter");
 
   await expect(page.getByText("Provider connected successfully")).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await expect(page.getByText("1 connected model")).toBeVisible();
 });
