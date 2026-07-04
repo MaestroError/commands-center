@@ -20,3 +20,12 @@
    - Verify: `pnpm --filter @cc/frontend lint -- --fix`, `pnpm test`, and relevant Playwright suites.
 6. [x] Commit, push, and open a draft PR linked to issue 98.
    - Verify: pushed branch and PR URL.
+
+## CI Follow-up
+
+1. [x] Fix the mobile Settings smoke test so it selects the Tasks tab without a fragile horizontal tab click.
+   - Verify: `pnpm --filter @cc/frontend test:e2e:other`.
+2. [x] Fix the mobile provider API-key test so it does not rely on clicking a success overlay close button.
+   - Verify: `pnpm --filter @cc/frontend test:e2e:other`.
+3. [x] Re-run required quality checks and update the PR branch.
+   - Verify: `pnpm exec eslint . --fix`, `pnpm typecheck`, `pnpm test`, and targeted E2E coverage.

@@ -54,8 +54,7 @@ test.describe("sidebar route smoke coverage", { tag: "@smoke" }, () => {
   test("renders settings and persists a task monitor toggle", async ({ page }) => {
     await mockSidebarSmokeApis(page);
 
-    await page.goto("/settings");
-    await page.getByRole("tab", { name: "Tasks" }).click();
+    await page.goto("/settings?tab=tasks");
 
     await expect(page.getByRole("heading", { name: "Task execution" })).toBeVisible();
     await expect(page.getByLabel("Requeue task after stall timeout")).not.toBeChecked();
