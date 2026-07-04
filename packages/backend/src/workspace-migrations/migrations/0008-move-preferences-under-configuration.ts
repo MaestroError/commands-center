@@ -8,16 +8,18 @@ export const movePreferencesUnderConfigurationMigration = {
   description:
     "Move workspace preferences under configuration/preferences and remove the unused empty mcp directory.",
   async up({ config }) {
+    const mcpPath = resolve(config.paths.workspaceDir, "mcp");
+    const mcpConflict =
+      "Cannot remove workspace mcp directory because it is not empty. Move its contents elsewhere before running migrations.";
+
+    await assertDirectoryEmptyOrMissing(mcpPath, mcpConflict);
     await moveDirectory({
       from: resolve(config.paths.workspaceDir, "preferences"),
       to: resolve(config.paths.workspaceDir, "configuration", "preferences"),
       conflict:
         "Cannot move workspace preferences: both preferences/ and configuration/preferences/ exist. Merge or remove one before running migrations.",
     });
-    await removeDirectoryIfEmpty(
-      resolve(config.paths.workspaceDir, "mcp"),
-      "Cannot remove workspace mcp directory because it is not empty. Move its contents elsewhere before running migrations.",
-    );
+    await removeDirectoryIfEmpty(mcpPath, mcpConflict);
   },
   async down({ config }) {
     await moveDirectory({
@@ -55,18 +57,28 @@ async function moveDirectory(options: {
 }
 
 async function removeDirectoryIfEmpty(path: string, conflict: string): Promise<void> {
+  await assertDirectoryEmptyOrMissing(path, conflict);
+
+  if ((await directoryState(path)) === "directory") {
+    await rmdir(path);
+  }
+}
+
+async function assertDirectoryEmptyOrMissing(path: string, conflict: string): Promise<void> {
   const state = await directoryState(path);
 
   if (state === "missing") {
     return;
   }
 
+  if (state === "file") {
+    throw new Error(conflict);
+  }
+
   const entries = await readdir(path);
   if (entries.length > 0) {
     throw new Error(conflict);
   }
-
-  await rmdir(path);
 }
 
 async function ensureDirectory(path: string): Promise<void> {

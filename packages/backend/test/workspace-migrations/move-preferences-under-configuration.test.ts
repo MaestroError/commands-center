@@ -133,15 +133,37 @@ describe("movePreferencesUnderConfigurationMigration", () => {
     });
   });
 
-  it("fails when mcp contains unexpected content", async () => {
+  it("fails before moving preferences when mcp contains unexpected content", async () => {
     await withConfig(async (config) => {
+      await writeWorkspaceFile(config, "preferences/file-manager.json", "{}");
       await writeWorkspaceFile(config, "mcp/notes.md", "keep");
 
       await expect(run(config)).rejects.toThrow("mcp directory because it is not empty");
       expect((await readWorkspaceMigrationState(config)).applied).toEqual([]);
       await expect(
+        readFile(resolve(config.paths.workspaceDir, "preferences/file-manager.json"), "utf8"),
+      ).resolves.toBe("{}");
+      await expect(exists(config.paths.subdirectories.preferences)).resolves.toBe(false);
+      await expect(
         readFile(resolve(config.paths.workspaceDir, "mcp/notes.md"), "utf8"),
       ).resolves.toBe("keep");
+    });
+  });
+
+  it("fails before moving preferences when mcp is a file", async () => {
+    await withConfig(async (config) => {
+      await writeWorkspaceFile(config, "preferences/file-manager.json", "{}");
+      await writeWorkspaceFile(config, "mcp", "keep");
+
+      await expect(run(config)).rejects.toThrow("mcp directory because it is not empty");
+      expect((await readWorkspaceMigrationState(config)).applied).toEqual([]);
+      await expect(
+        readFile(resolve(config.paths.workspaceDir, "preferences/file-manager.json"), "utf8"),
+      ).resolves.toBe("{}");
+      await expect(exists(config.paths.subdirectories.preferences)).resolves.toBe(false);
+      await expect(readFile(resolve(config.paths.workspaceDir, "mcp"), "utf8")).resolves.toBe(
+        "keep",
+      );
     });
   });
 

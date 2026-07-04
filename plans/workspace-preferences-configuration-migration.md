@@ -15,3 +15,5 @@
 3. [x] Add filesystem migration `0008-move-preferences-under-configuration`.
    - Verify old, current, rerun, conflict, and rollback behavior.
 4. [x] Run lint with `eslint --fix` and focused tests, then broader tests if feasible.
+5. [x] Address PR review: preflight-check `mcp/` before moving legacy preferences.
+   - Verify a non-empty or file `mcp` path leaves `preferences/` unmoved.
