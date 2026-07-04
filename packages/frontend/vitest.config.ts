@@ -30,10 +30,11 @@ export default defineConfig({
         "src/pages/LazyGlobalTerminalPage.tsx",
       ],
       // Coverage gate, ratcheted up after a page-level flow-test push (was 80/70/75/75).
-      // Statements/functions/lines are held at the 85 target; branches is set to 77 —
-      // the current floor (77.9%) — as a stepping stone toward the 80% goal. Raise the
-      // branch gate to 80 once the remaining TasksPage/IntegrationsPage edge branches
-      // are covered.
+      // Statements/functions/lines are held at the 85 target. Actual coverage currently
+      // sits at ~87.7% stmts / ~78% branches / ~87.8% funcs / ~88.8% lines; the branches
+      // gate is deliberately set to 77 — just under the current ~78% — as a stepping
+      // stone toward the 80% goal. Raise the branch gate to 80 once the remaining
+      // TasksPage/IntegrationsPage edge branches are covered.
       thresholds: {
         statements: 85,
         branches: 77,

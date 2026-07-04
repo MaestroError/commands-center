@@ -85,25 +85,33 @@ describe("WorkspaceLayout", () => {
   it("reloads the page from the mobile toolbar", async () => {
     mockMatchMedia(false);
     const reload = vi.fn();
+    const originalLocation = window.location;
     Object.defineProperty(window, "location", {
       configurable: true,
       value: { ...window.location, reload },
     });
 
-    render(
-      <WorkspaceLayout
-        contextPane={{
-          title: "Context pane",
-          tabs: [{ id: "files", label: "Files", content: <div>Files content</div> }],
-        }}
-        primary={<div>Primary content</div>}
-      />,
-    );
+    try {
+      render(
+        <WorkspaceLayout
+          contextPane={{
+            title: "Context pane",
+            tabs: [{ id: "files", label: "Files", content: <div>Files content</div> }],
+          }}
+          primary={<div>Primary content</div>}
+        />,
+      );
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Reload page" }));
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Reload page" }));
 
-    expect(reload).toHaveBeenCalled();
+      expect(reload).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
   });
 
   it("resizes the context and bottom panes by dragging their handles", () => {

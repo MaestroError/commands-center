@@ -28,6 +28,7 @@ const mockUseTaskRunSessionQuery = vi.fn<() => unknown>();
 const duplicateMutateAsync = vi.fn();
 const updateMutate = vi.fn();
 const triggerMutate = vi.fn();
+const openInChatMutateAsync = vi.fn();
 
 vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskQuery: () => mockUseTaskQuery(),
@@ -42,8 +43,6 @@ vi.mock("@/hooks/use-tasks-query", () => ({
     openInChat: { mutateAsync: openInChatMutateAsync },
   }),
 }));
-
-const openInChatMutateAsync = vi.fn();
 
 const mockUseSpecialistsQuery = vi.fn<() => unknown>();
 vi.mock("@/hooks/use-specialists-query", () => ({
