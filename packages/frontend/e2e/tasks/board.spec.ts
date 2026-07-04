@@ -131,4 +131,185 @@ test.describe("tasks board", { tag: "@tasks" }, () => {
       page.getByTestId("task-column-queued").getByTestId("task-card-task-backlog"),
     ).toBeVisible();
   });
+
+  test("moves a backlog card to scheduled via drag-and-drop date dialog", async ({ page }) => {
+    const state = createTaskState();
+    await mockTaskApi(page, state);
+
+    await page.goto("/tasks");
+    await expect(page.getByTestId("task-card-task-backlog")).toBeVisible();
+    await expect(page.getByTestId("task-column-scheduled")).toBeVisible();
+    await dragCard(page, "task-card-task-backlog", "task-column-scheduled");
+
+    const dialog = page.getByRole("form", { name: "Schedule task" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel("Schedule for").fill("2026-01-02T09:30");
+
+    const patch = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/tasks/task-backlog") &&
+        response.request().method() === "PATCH",
+    );
+    await dialog.getByRole("button", { name: "Schedule task" }).click();
+    await patch;
+
+    await expect(
+      page.getByTestId("task-column-scheduled").getByTestId("task-card-task-backlog"),
+    ).toBeVisible();
+  });
+
+  test("restores and deletes archived tasks from archive view", async ({ page }) => {
+    const state = createTaskState();
+    const archived = state.archivedTasks[0];
+    if (archived) {
+      state.archivedTasks.push({
+        ...archived,
+        id: "task-archived-delete",
+        title: "Delete archived",
+      });
+    }
+    await mockTaskApi(page, state);
+
+    await page.goto("/tasks");
+    await page.getByTestId("task-view-tab-archive").click();
+
+    const restore = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/tasks/task-archived/restore") &&
+        response.request().method() === "POST",
+    );
+    await page
+      .locator("article")
+      .filter({ hasText: "Archived release" })
+      .getByRole("button", { name: "Restore" })
+      .click();
+    await restore;
+
+    await page.getByTestId("task-view-tab-board").click();
+    await expect(
+      page.getByTestId("task-column-backlog").getByTestId("task-card-task-archived"),
+    ).toBeVisible();
+
+    await page.getByTestId("task-view-tab-archive").click();
+    const remove = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/tasks/task-archived-delete") &&
+        response.request().method() === "DELETE",
+    );
+    await page
+      .locator("article")
+      .filter({ hasText: "Delete archived" })
+      .getByRole("button", { name: "Delete" })
+      .click();
+    await remove;
+
+    await expect(page.getByText("Delete archived")).toHaveCount(0);
+  });
+
+  test("accepts a review card and moves it to done", async ({ page }) => {
+    const state = createTaskState();
+    state.tasks.push({
+      ...state.tasks[0]!,
+      id: "task-review",
+      title: "Answer review question",
+      status: "review",
+      latestRunId: "run-review",
+    });
+    await mockTaskApi(page, state);
+
+    await page.goto("/tasks");
+
+    const accept = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/tasks/task-review/accept") &&
+        response.request().method() === "POST",
+    );
+    await page.getByTestId("task-card-task-review").getByTestId("task-card-action-accept").click();
+    await accept;
+
+    await expect(
+      page.getByTestId("task-column-done").getByTestId("task-card-task-review"),
+    ).toBeVisible();
+  });
+
+  test("renders subtask progress on board cards", async ({ page }) => {
+    const state = createTaskState();
+    state.subtaskProgress = [
+      {
+        taskId: "task-backlog",
+        total: 2,
+        completed: 1,
+        active: 0,
+        review: 1,
+        failed: 0,
+        subtasks: [
+          { id: "subtask-1", description: "Review release notes", status: "review" },
+          { id: "subtask-2", description: "Update changelog", status: "done" },
+        ],
+      },
+    ];
+    await mockTaskApi(page, state);
+
+    await page.goto("/tasks");
+
+    await expect(page.getByLabel("Subtasks")).toBeVisible();
+    await expect(page.getByLabel("Subtask: Review release notes")).toBeVisible();
+  });
+
+  test("cancels a running card from the queued column", async ({ page }) => {
+    const state = createTaskState();
+    const runningTask = {
+      ...state.tasks[0]!,
+      id: "task-running",
+      title: "Running task",
+      status: "queued" as const,
+      latestRunId: "run-running",
+    };
+    const runningRun = {
+      ...state.runsByTaskId["task-ready"]![0]!,
+      id: "run-running",
+      taskId: "task-running",
+      status: "running" as const,
+    };
+    state.tasks.push(runningTask);
+    state.runsByTaskId["task-running"] = [runningRun];
+    state.activeRuns = [runningRun];
+    await mockTaskApi(page, state);
+
+    await page.goto("/tasks");
+
+    const cancel = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/tasks/task-running/runs/run-running/cancel") &&
+        response.request().method() === "POST",
+    );
+    await page
+      .getByTestId("task-card-task-running")
+      .getByTestId("task-card-action-cancel-run")
+      .click();
+    await cancel;
+
+    await expect(
+      page.getByTestId("task-column-failed").getByTestId("task-card-task-running"),
+    ).toBeVisible();
+  });
+
+  test("keeps empty columns visible when one column overflows", async ({ page }) => {
+    const state = createTaskState();
+    const backlogTask = state.tasks[0]!;
+    state.tasks = Array.from({ length: 12 }, (_, index) => ({
+      ...backlogTask,
+      id: `task-overflow-${String(index + 1)}`,
+      title: `Overflow task ${String(index + 1)}`,
+      status: "backlog" as const,
+    }));
+    await mockTaskApi(page, state);
+
+    await page.goto("/tasks");
+
+    await expect(page.getByTestId("task-column-count-backlog")).toHaveText("12");
+    await expect(page.getByTestId("task-column-scheduled")).toContainText(
+      "Scheduled tasks will queue automatically when their time arrives.",
+    );
+  });
 });

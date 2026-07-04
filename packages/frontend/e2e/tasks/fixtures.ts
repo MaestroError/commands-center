@@ -273,6 +273,25 @@ export async function mockTaskApi(page: Page, state: TaskState): Promise<void> {
   await page.route("**/api/mcp-servers", (route: Route) => route.fulfill(json([])));
   await page.route("**/api/custom-tools", (route: Route) => route.fulfill(json([])));
   await page.route("**/api/workspace-skills", (route: Route) => route.fulfill(json([])));
+  await page.route("**/api/providers", (route: Route) =>
+    route.fulfill(
+      json([
+        {
+          provider: {
+            id: "openai",
+            name: "OpenAI",
+            source: "env",
+            env: ["OPENAI_API_KEY"],
+            models: {},
+          },
+          connected: false,
+          authMethods: [{ type: "api", label: "API key", prompts: [] }],
+          models: [{ id: "openai/gpt-4.1", name: "gpt-4.1", providerId: "openai" }],
+        },
+      ]),
+    ),
+  );
+  await page.route("**/api/documents/tree", (route: Route) => route.fulfill(json({ tree: [] })));
 
   await page.route("**/api/specialists**", (route: Route) => {
     const path = new URL(route.request().url()).pathname;
@@ -396,10 +415,23 @@ function handleTaskRoute(route: Route, state: TaskState) {
   if (sub === "runs") {
     return route.fulfill(json(state.runsByTaskId[id] ?? []));
   }
-  const runMatch = sub?.match(/^runs\/([^/]+)(?:\/(session))?$/);
+  const runMatch = sub?.match(/^runs\/([^/]+)(?:\/(session|cancel|followups))?$/);
   if (runMatch) {
     const [, runId, runSub] = runMatch;
     const run = (state.runsByTaskId[id] ?? []).find((entry) => entry.id === runId);
+    if (runSub === "cancel" && method === "POST") {
+      if (!run) return route.fulfill(notFound());
+      run.status = "cancelled";
+      state.activeRuns = state.activeRuns.filter((entry) => entry.id !== run.id);
+      const taskToCancel = state.tasks.find((entry) => entry.id === id);
+      if (taskToCancel) {
+        taskToCancel.status = "failed";
+      }
+      return route.fulfill(json(run));
+    }
+    if (runSub === "followups") {
+      return route.fulfill(json([]));
+    }
     if (runSub === "session") {
       return route.fulfill(json({ ...state.session, run: run ?? state.session.run }));
     }
@@ -431,8 +463,23 @@ function handleTaskRoute(route: Route, state: TaskState) {
   // accept the id whether it names a task or a template and drop it from both.
   if (!sub && method === "DELETE") {
     state.tasks = state.tasks.filter((entry) => entry.id !== id);
+    state.archivedTasks = state.archivedTasks.filter((entry) => entry.id !== id);
     state.templates = state.templates.filter((entry) => entry.id !== id);
     return route.fulfill(json({ ok: true }));
+  }
+
+  const archivedTask = state.archivedTasks.find((entry) => entry.id === id);
+  if (!task && !(archivedTask && sub === "restore" && method === "POST")) {
+    return route.fulfill(notFound());
+  }
+
+  if (archivedTask && sub === "restore" && method === "POST") {
+    archivedTask.archived = false;
+    delete archivedTask.archivedAt;
+    archivedTask.status = "backlog";
+    state.archivedTasks = state.archivedTasks.filter((entry) => entry.id !== id);
+    state.tasks.push(archivedTask);
+    return route.fulfill(json(archivedTask));
   }
 
   if (!task) return route.fulfill(notFound());
@@ -450,6 +497,9 @@ function handleTaskRoute(route: Route, state: TaskState) {
   if (sub === "archive" && method === "POST") {
     task.archived = true;
     task.status = "archived";
+    task.archivedAt = bumpTime(task.updatedAt);
+    state.tasks = state.tasks.filter((entry) => entry.id !== id);
+    state.archivedTasks.push(task);
     return route.fulfill(json(task));
   }
   if (sub === "restore" && method === "POST") {
