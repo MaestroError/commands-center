@@ -79,11 +79,6 @@ const CRITICAL_WORKSPACE_PATH_RULES: CriticalWorkspacePathRule[] = [
     reason: "This path contains authentication state used by provider or integration connections.",
   },
   {
-    resolvePath: (config) => config.paths.subdirectories.mcp,
-    recursive: true,
-    reason: "This path contains MCP configuration and integration state managed by CommandsCenter.",
-  },
-  {
     resolvePath: (config) => config.paths.subdirectories.sessions,
     recursive: true,
     reason: "This path contains CommandsCenter session state managed by the app.",
