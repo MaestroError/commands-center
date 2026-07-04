@@ -250,4 +250,110 @@ describe("LiveRequestReviewForm — task review", () => {
     ).toBeInTheDocument();
     expect(onResolve).not.toHaveBeenCalled();
   });
+
+  function taskReviewWithSchedule(): LiveRequest {
+    return {
+      id: "req-sched",
+      conversationId: "conv-1",
+      kind: "task_create_review",
+      presentation: { title: "Review task", cancelLabel: "Cancel" },
+      fields: [
+        field("title", "Title", "Ship it"),
+        field("scheduledAt", "Scheduled at", "2026-06-06T10:30:00.000Z"),
+      ],
+      actions: reviewActions,
+      metadata: {},
+      closable: false,
+      createdAt: "2026-06-06T10:00:00.000Z",
+    };
+  }
+
+  it("renders a datetime-local field and converts edits back to ISO on submit", async () => {
+    const { onResolve } = renderForm(taskReviewWithSchedule());
+
+    // A populated ISO value is shown as a local datetime input.
+    const scheduled = await screen.findByLabelText<HTMLInputElement>("Scheduled at");
+    expect(scheduled.type).toBe("datetime-local");
+    expect(scheduled.value).not.toBe("");
+
+    fireEvent.change(scheduled, { target: { value: "2026-07-01T09:15" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => {
+      expect(onResolve).toHaveBeenCalledWith(
+        "req-sched",
+        "submit",
+        expect.objectContaining({ scheduledAt: expect.stringContaining("2026-07-01") }),
+      );
+    });
+  });
+
+  it("blocks submit and reports which required field is missing", async () => {
+    const onResolve = vi.fn().mockResolvedValue(undefined);
+    const request: LiveRequest = {
+      id: "req-required",
+      conversationId: "conv-1",
+      kind: "task_create_review",
+      presentation: { title: "Review task", cancelLabel: "Cancel" },
+      fields: [field("title", "Title", "")],
+      actions: reviewActions,
+      metadata: {},
+      closable: false,
+      createdAt: "2026-06-06T10:00:00.000Z",
+    };
+
+    renderForm(request, onResolve);
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByText("Title is required.")).toBeInTheDocument();
+    expect(onResolve).not.toHaveBeenCalled();
+  });
+
+  it("shows an error when resolving the request fails", async () => {
+    const onResolve = vi.fn().mockRejectedValue(new Error("resolve boom"));
+    const request: LiveRequest = {
+      id: "req-fail",
+      conversationId: "conv-1",
+      kind: "task_create_review",
+      presentation: { title: "Review task", cancelLabel: "Cancel" },
+      fields: [field("title", "Title", "Ship it")],
+      actions: reviewActions,
+      metadata: {},
+      closable: false,
+      createdAt: "2026-06-06T10:00:00.000Z",
+    };
+
+    renderForm(request, onResolve);
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByText("resolve boom")).toBeInTheDocument();
+  });
+
+  it("cancels the request through the cancel action", async () => {
+    const onResolve = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn().mockResolvedValue(undefined);
+    const request: LiveRequest = {
+      id: "req-cancel",
+      conversationId: "conv-1",
+      kind: "task_create_review",
+      presentation: { title: "Review task", cancelLabel: "Cancel" },
+      fields: [field("title", "Title", "Ship it")],
+      actions: reviewActions,
+      metadata: {},
+      closable: false,
+      createdAt: "2026-06-06T10:00:00.000Z",
+    };
+
+    render(
+      <MemoryRouter>
+        <LiveRequestReviewForm request={request} onResolve={onResolve} onCancel={onCancel} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(onCancel).toHaveBeenCalledWith("req-cancel", "Cancelled by operator.");
+    });
+  });
 });

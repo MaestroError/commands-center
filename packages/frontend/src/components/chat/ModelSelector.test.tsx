@@ -182,4 +182,50 @@ describe("ModelSelector", () => {
     expect(screen.getByRole("option", { name: "Anthropic / Claude 3" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "OpenAI / GPT-5" })).not.toBeInTheDocument();
   });
+
+  it("navigates the list with the keyboard and selects with Enter", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
+
+    render(<ModelSelector defaultModel="openai/gpt-5" onChange={onChange} value="openai/gpt-5" />);
+
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+    const input = screen.getByRole("textbox", { name: "Filter models" });
+
+    await user.type(input, "{ArrowDown}{ArrowDown}{ArrowUp}{Enter}");
+
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it("closes the popover when Escape is pressed", async () => {
+    const user = userEvent.setup();
+    useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
+
+    render(<ModelSelector defaultModel="openai/gpt-5" onChange={vi.fn()} value="openai/gpt-5" />);
+
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+    expect(screen.getByRole("textbox", { name: "Filter models" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "Filter models" })).not.toBeInTheDocument();
+  });
+
+  it("closes the popover on an outside click", async () => {
+    const user = userEvent.setup();
+    useProvidersQuery.mockReturnValue({ isLoading: false, data: twoConnectedProviders });
+
+    render(
+      <div>
+        <button type="button">outside</button>
+        <ModelSelector defaultModel="openai/gpt-5" onChange={vi.fn()} value="openai/gpt-5" />
+      </div>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Select model" }));
+    expect(screen.getByRole("textbox", { name: "Filter models" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "outside" }));
+    expect(screen.queryByRole("textbox", { name: "Filter models" })).not.toBeInTheDocument();
+  });
 });

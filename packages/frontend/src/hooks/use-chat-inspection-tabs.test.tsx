@@ -215,4 +215,99 @@ describe("useChatInspectionTabs", () => {
       expect(result.current.activeTab.baseline).toBe("next");
     }
   });
+
+  const fileKey = "file:workspace:specialists/planner/README.md";
+
+  async function openDirtyFile(result: { current: ReturnType<typeof useChatInspectionTabs> }) {
+    await act(async () => {
+      result.current.openFile({ root: "workspace", path: "specialists/planner/README.md" });
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => expect(result.current.activeTab?.tabType).toBe("file"));
+    act(() => {
+      result.current.updateDraft(fileKey, "edited");
+    });
+  }
+
+  it("keeps a dirty file tab open when the discard confirmation is declined", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { result } = renderHook(() => useChatInspectionTabs("conv-1"));
+
+    await openDirtyFile(result);
+
+    act(() => {
+      result.current.close(fileKey);
+    });
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(result.current.tabs).toHaveLength(1);
+
+    // Accepting the confirmation closes it.
+    confirmSpy.mockReturnValue(true);
+    act(() => {
+      result.current.close(fileKey);
+    });
+    expect(result.current.tabs).toHaveLength(0);
+  });
+
+  it("returns a conflict result when the save hits a revision conflict", async () => {
+    const { FileSaveConflictError } = await import("@/lib/api");
+    const conflictRevision = { mtimeMs: 9, sizeBytes: 9 };
+    vi.mocked(saveFileManagerFileContent).mockRejectedValue(
+      new (FileSaveConflictError as unknown as new (m: string, r: unknown) => Error)(
+        "conflict",
+        conflictRevision,
+      ),
+    );
+
+    const { result } = renderHook(() => useChatInspectionTabs("conv-1"));
+    await openDirtyFile(result);
+
+    let outcome: Awaited<ReturnType<typeof result.current.save>> | undefined;
+    await act(async () => {
+      outcome = await result.current.save(fileKey);
+    });
+
+    expect(outcome).toEqual({ ok: false, conflict: conflictRevision });
+  });
+
+  it("returns an error result when the save fails generically", async () => {
+    vi.mocked(saveFileManagerFileContent).mockRejectedValue(new Error("disk full"));
+
+    const { result } = renderHook(() => useChatInspectionTabs("conv-1"));
+    await openDirtyFile(result);
+
+    let outcome: Awaited<ReturnType<typeof result.current.save>> | undefined;
+    await act(async () => {
+      outcome = await result.current.save(fileKey);
+    });
+
+    expect(outcome).toEqual({ ok: false, error: "disk full" });
+  });
+
+  it("reports when a tab cannot be saved", async () => {
+    const { result } = renderHook(() => useChatInspectionTabs("conv-1"));
+
+    let outcome: Awaited<ReturnType<typeof result.current.save>> | undefined;
+    await act(async () => {
+      outcome = await result.current.save("file:workspace:missing.md");
+    });
+
+    expect(outcome).toEqual({ ok: false, error: "File is not ready to save." });
+  });
+
+  it("reloads a file tab from disk", async () => {
+    const { result } = renderHook(() => useChatInspectionTabs("conv-1"));
+    await openDirtyFile(result);
+
+    await act(async () => {
+      await result.current.reload(fileKey);
+    });
+
+    // After reload the tab is no longer dirty (draft reset to disk contents).
+    if (result.current.activeTab?.tabType === "file") {
+      expect(result.current.activeTab.dirty).toBe(false);
+    }
+    expect(getFileManagerFileContent).toHaveBeenCalledTimes(2);
+  });
 });
