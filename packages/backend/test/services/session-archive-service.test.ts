@@ -183,4 +183,120 @@ describe("createSessionArchiveService", () => {
       expect(await exists(archivePath)).toBe(false);
     });
   });
+
+  it("ensures a task-run archive and makes status/outcome sticky", async () => {
+    await withService(async (service) => {
+      const meta = await service.ensureTaskRunArchive({
+        specialist: SPECIALIST,
+        conversationId: "conv-run",
+        taskId: "task-1",
+        taskRunId: "run-1",
+        opencodeSessionId: "oc-run",
+        status: "active",
+      });
+      expect(meta.kind).toBe("task_run");
+
+      const archivePath = service.resolveTaskRunArchivePath({
+        agentId: "agent-1",
+        taskId: "task-1",
+        taskRunId: "run-1",
+      });
+      await service.setStatus({ archivePath, status: "completed", outcome: "done" });
+
+      // Re-ensuring must not revert the terminal status/outcome.
+      const reEnsured = await service.ensureTaskRunArchive({
+        specialist: SPECIALIST,
+        conversationId: "conv-run",
+        taskId: "task-1",
+        taskRunId: "run-1",
+      });
+      expect(reEnsured.status).toBe("completed");
+      expect(reEnsured.outcome).toBe("done");
+    });
+  });
+
+  it("flushes queued messages when the per-session cap is hit and on dispose", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "cc-session-archive-flush-"));
+    try {
+      const config = loadRuntimeConfig({ cwd, env: { NODE_ENV: "test" } });
+      const service = createSessionArchiveService({
+        config,
+        flushIntervalMs: 10_000,
+        maxQueuedPerSession: 1,
+      });
+      await service.ensureChatArchive({
+        specialist: SPECIALIST,
+        conversationId: "conv-flush",
+        opencodeSessionId: "oc-flush",
+      });
+      const archivePath = service.resolveChatArchivePath({
+        agentId: "agent-1",
+        conversationId: "conv-flush",
+      });
+
+      // Each enqueue reaches the per-session cap and triggers a fire-and-forget
+      // flush; dispose() flushes anything still queued.
+      const readMessages = async (): Promise<string> => {
+        try {
+          return await readFile(join(archivePath, "messages.jsonl"), "utf8");
+        } catch {
+          return "";
+        }
+      };
+      service.enqueueMessages({ archivePath, messages: [message({ id: "m1" })] });
+      service.enqueueMessages({ archivePath, messages: [message({ id: "m2" })] });
+      await service.dispose();
+
+      // Poll the file rather than sleeping for a fixed duration, since the
+      // cap-triggered flushes are not awaited by the service.
+      await expect.poll(readMessages).toContain('"m1"');
+      await expect.poll(readMessages).toContain('"m2"');
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("re-materializes the transcript when forced even without new messages", async () => {
+    await withService(async (service) => {
+      await service.ensureChatArchive({
+        specialist: SPECIALIST,
+        conversationId: "conv-force",
+        opencodeSessionId: "oc-force",
+      });
+      const archivePath = service.resolveChatArchivePath({
+        agentId: "agent-1",
+        conversationId: "conv-force",
+      });
+      await service.appendMessages({ archivePath, messages: [message({ id: "m1" })] });
+
+      const first = await service.materialize({ archivePath });
+      expect(first?.lastMaterializedMessageCount).toBe(1);
+
+      // Without new messages, a non-forced materialize is a no-op...
+      const skipped = await service.materialize({ archivePath });
+      expect(skipped?.lastMaterializedMessageCount).toBe(1);
+
+      // ...but force re-renders the transcript regardless.
+      const forced = await service.materialize({ archivePath, force: true });
+      expect(forced?.lastMaterializedAt).toBeTruthy();
+
+      // Materializing an archive with no metadata returns undefined.
+      const ghost = service.resolveChatArchivePath({ agentId: "x", conversationId: "y" });
+      expect(await service.materialize({ archivePath: ghost })).toBeUndefined();
+    });
+  });
+
+  it("skips appending to an archive that has no metadata yet", async () => {
+    await withService(async (service) => {
+      // No ensureChatArchive first, so metadata is missing and append is a no-op.
+      const archivePath = service.resolveChatArchivePath({
+        agentId: "agent-x",
+        conversationId: "conv-missing",
+      });
+      await expect(
+        service.appendMessages({ archivePath, messages: [message({ id: "m1" })] }),
+      ).resolves.toBeUndefined();
+      expect(await exists(join(archivePath, "messages.jsonl"))).toBe(false);
+    });
+  });
 });

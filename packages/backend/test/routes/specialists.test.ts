@@ -345,6 +345,88 @@ describe("agent routes", () => {
   });
 });
 
+describe("agent routes — not-found and custom tool flows", () => {
+  async function makeServer(testDb: Awaited<ReturnType<typeof createTestDatabase>>) {
+    return createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService: createMockOpenCodeService(),
+      openCodeEventService: { subscribe: () => {} },
+      workspaceWatchService: createWorkspaceWatchServiceMock(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+  }
+
+  it("returns 404 for unknown specialists across id, slug, patch, delete, and workspace routes", async () => {
+    const testDb = await createTestDatabase();
+    const server = await makeServer(testDb);
+
+    try {
+      const routes: Array<{ method: "GET" | "PATCH" | "DELETE"; url: string; payload?: unknown }> =
+        [
+          { method: "GET", url: "/api/specialists/missing" },
+          { method: "GET", url: "/api/specialists/by-slug/missing" },
+          { method: "PATCH", url: "/api/specialists/missing", payload: { name: "x" } },
+          { method: "DELETE", url: "/api/specialists/missing" },
+          { method: "GET", url: "/api/specialists/missing/custom-tools" },
+          { method: "GET", url: "/api/specialists/missing/workspace/files" },
+        ];
+
+      for (const route of routes) {
+        const response = await server.inject({
+          method: route.method,
+          url: route.url,
+          payload: route.payload as never,
+        });
+        expect(response.statusCode).toBe(404);
+      }
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("lists agent custom tools and 404s when deleting an unknown tool", async () => {
+    const testDb = await createTestDatabase();
+    const server = await makeServer(testDb);
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/specialists",
+        payload: {
+          name: "Tooling",
+          role: "own tools",
+          instructions: "Manage tools.",
+          defaultModel: "openai/gpt-4.1",
+          capabilities: {},
+        },
+      });
+      const agent = created.json();
+
+      const tools = await server.inject({
+        method: "GET",
+        url: `/api/specialists/${agent.id}/custom-tools`,
+      });
+      expect(tools.statusCode).toBe(200);
+      expect(Array.isArray(tools.json())).toBe(true);
+
+      const deleteMissing = await server.inject({
+        method: "DELETE",
+        url: `/api/specialists/${agent.id}/custom-tools/does-not-exist`,
+      });
+      expect(deleteMissing.statusCode).toBe(404);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+});
+
 function createOrchestrator(): OpenCodeOrchestrator {
   return {
     start: () => Promise.resolve(),

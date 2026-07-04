@@ -1007,6 +1007,42 @@ describe("mcpServerReconciler", () => {
       await testDb.cleanup();
     }
   });
+
+  it("raises NotFound for operations on an unknown server and Conflict on duplicate names", async () => {
+    const testDb = await createTestDatabase();
+    const service = createMcpServerService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService: createMockOpenCodeService(),
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    });
+
+    try {
+      const remoteConfig = {
+        url: "https://example.com/mcp",
+        transport: "streamable-http" as const,
+        authMethod: "none" as const,
+        headers: [],
+      };
+
+      await expect(
+        service.update("missing", { name: "x", config: remoteConfig }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      await expect(service.setEnabled("missing", false)).rejects.toBeInstanceOf(NotFoundError);
+      await expect(service.startAuth("missing")).rejects.toBeInstanceOf(NotFoundError);
+      await expect(service.authenticate("missing")).rejects.toBeInstanceOf(NotFoundError);
+      await expect(service.completeAuth("missing", "code")).rejects.toBeInstanceOf(NotFoundError);
+      await expect(service.removeAuth("missing")).rejects.toBeInstanceOf(NotFoundError);
+      await expect(service.remove("missing")).rejects.toBeInstanceOf(NotFoundError);
+
+      await service.create({ name: "dup", enabled: true, config: remoteConfig });
+      await expect(
+        service.create({ name: "dup", enabled: true, config: remoteConfig }),
+      ).rejects.toBeInstanceOf(ConflictError);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
 });
 
 function createMockOpenCodeService(): OpenCodeService {

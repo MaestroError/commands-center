@@ -92,6 +92,11 @@ export type StartServerRuntimeOptions = {
   installSignalHandlers?: boolean;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  /**
+   * Overrides the OpenCode orchestrator. Tests inject a fake here to boot the
+   * full runtime without spawning a real `opencode serve` child process.
+   */
+  createOrchestrator?: typeof createOpenCodeOrchestrator;
 };
 
 export type RuntimeContext = {
@@ -169,7 +174,8 @@ export async function startServerRuntime(
   });
   logPublicBindingGuidance(config, logger);
 
-  const orchestrator = createOpenCodeOrchestrator({
+  const orchestratorFactory = options?.createOrchestrator ?? createOpenCodeOrchestrator;
+  const orchestrator = orchestratorFactory({
     config,
     logger,
     resolveEnv: async () => ({ ...process.env, ...(await secretService.buildEnvMap()) }),
@@ -501,7 +507,7 @@ function isExternalBinding(host: string): boolean {
   return !["127.0.0.1", "localhost", "::1"].includes(host);
 }
 
-function installSignalHandlers(
+export function installSignalHandlers(
   drain: (signal: NodeJS.Signals) => Promise<void>,
   logger: Logger,
 ): void {

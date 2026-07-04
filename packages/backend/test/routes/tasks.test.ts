@@ -696,6 +696,41 @@ describe("task routes", () => {
       await harness.close();
     }
   });
+
+  it("returns 404 for task and template operations on unknown ids", async () => {
+    const harness = await createTaskRouteHarness();
+
+    try {
+      const requests: Array<{
+        method: "GET" | "PATCH" | "POST";
+        url: string;
+        payload?: unknown;
+      }> = [
+        { method: "GET", url: "/api/tasks/missing" },
+        { method: "PATCH", url: "/api/tasks/missing", payload: { title: "x" } },
+        { method: "PATCH", url: "/api/tasks/missing/context", payload: { context: { text: "y" } } },
+        { method: "POST", url: "/api/tasks/missing/duplicate" },
+        { method: "POST", url: "/api/tasks/missing/archive" },
+        { method: "POST", url: "/api/tasks/missing/accept" },
+        { method: "POST", url: "/api/tasks/missing/restore" },
+        { method: "GET", url: "/api/tasks/templates/missing" },
+        { method: "PATCH", url: "/api/tasks/templates/missing", payload: { title: "x" } },
+        { method: "POST", url: "/api/tasks/templates/missing/enable" },
+        { method: "POST", url: "/api/tasks/templates/missing/disable" },
+      ];
+
+      for (const req of requests) {
+        const response = await harness.server.inject({
+          method: req.method,
+          url: req.url,
+          payload: req.payload as never,
+        });
+        expect(response.statusCode, `${req.method} ${req.url}`).toBe(404);
+      }
+    } finally {
+      await harness.close();
+    }
+  });
 });
 
 async function createTaskRouteHarness() {
