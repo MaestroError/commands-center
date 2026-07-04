@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ConflictError, NotFoundError } from "../../src/lib/api-error";
+import { BadRequestError, ConflictError, NotFoundError } from "../../src/lib/api-error";
 import { createWorkspaceSkillService } from "../../src/services/workspace-skill-service";
 import { createTestDatabase } from "../helpers/db";
 
@@ -70,13 +70,13 @@ describe("workspace-skill-service errors", () => {
   it("rejects uploads without exactly one top-level skill folder", async () => {
     const { service } = await setup();
 
-    // A bare top-level file (no skill folder) is rejected.
+    // A bare top-level file (no skill folder) fails directory validation.
     await expect(
       service.upload({
         entries: [entry("SKILL.md", "# root")],
         overwrite: false,
       }),
-    ).rejects.toThrow();
+    ).rejects.toBeInstanceOf(BadRequestError);
 
     // More than one top-level folder is a conflict.
     await expect(

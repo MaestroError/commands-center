@@ -234,18 +234,23 @@ describe("createSessionArchiveService", () => {
         conversationId: "conv-flush",
       });
 
-      // Reaching the cap triggers an immediate flush to disk.
+      // Each enqueue reaches the per-session cap and triggers a fire-and-forget
+      // flush; dispose() flushes anything still queued.
+      const readMessages = async (): Promise<string> => {
+        try {
+          return await readFile(join(archivePath, "messages.jsonl"), "utf8");
+        } catch {
+          return "";
+        }
+      };
       service.enqueueMessages({ archivePath, messages: [message({ id: "m1" })] });
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      // A second message also reaches the cap; wait for the async flush.
       service.enqueueMessages({ archivePath, messages: [message({ id: "m2" })] });
-      await new Promise((resolve) => setTimeout(resolve, 50));
       await service.dispose();
 
-      const messages = await readFile(join(archivePath, "messages.jsonl"), "utf8");
-      expect(messages).toContain('"m1"');
-      expect(messages).toContain('"m2"');
+      // Poll the file rather than sleeping for a fixed duration, since the
+      // cap-triggered flushes are not awaited by the service.
+      await expect.poll(readMessages).toContain('"m1"');
+      await expect.poll(readMessages).toContain('"m2"');
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
