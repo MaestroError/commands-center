@@ -44,6 +44,9 @@ describe("bootstrapRuntimePaths", () => {
       await bootstrapRuntimePaths(config);
 
       await expect(stat(config.paths.workspaceDir)).resolves.toBeDefined();
+      await expect(stat(join(config.paths.workspaceDir, "mcp"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
 
       for (const directoryPath of Object.values(config.paths.subdirectories)) {
         await expect(stat(directoryPath)).resolves.toBeDefined();

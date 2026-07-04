@@ -161,7 +161,6 @@ export type RuntimeConfig = {
       auth: string;
       configuration: string;
       documents: string;
-      mcp: string;
       preferences: string;
       sessions: string;
       sessionSpecialists: string;
@@ -265,8 +264,7 @@ export function loadRuntimeConfig(options?: {
         auth: resolve(workspaceDir, "auth"),
         configuration: resolve(workspaceDir, "configuration"),
         documents: resolve(workspaceDir, "Documents"),
-        mcp: resolve(workspaceDir, "mcp"),
-        preferences: resolve(workspaceDir, "preferences"),
+        preferences: resolve(workspaceDir, "configuration", "preferences"),
         sessions: resolve(workspaceDir, "sessions"),
         sessionSpecialists: resolve(workspaceDir, "sessions", "specialists"),
         skills: resolve(workspaceDir, "skills"),

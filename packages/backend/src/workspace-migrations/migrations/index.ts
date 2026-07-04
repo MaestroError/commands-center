@@ -7,6 +7,7 @@ import { createSystemPromptsDirectoryMigration } from "./0004-create-system-prom
 import { createDocumentsAgentsGuideMigration } from "./0005-create-documents-agents-guide.js";
 import { createDocumentsExamplesGuideMigration } from "./0006-create-documents-examples-guide.js";
 import { updateDocumentsAgentsGuideRootRuleMigration } from "./0007-update-documents-agents-guide-root-rule.js";
+import { movePreferencesUnderConfigurationMigration } from "./0008-move-preferences-under-configuration.js";
 
 export const workspaceMigrations = [
   createMigrationSmokeTestDirectoryMigration,
@@ -16,4 +17,5 @@ export const workspaceMigrations = [
   createDocumentsAgentsGuideMigration,
   createDocumentsExamplesGuideMigration,
   updateDocumentsAgentsGuideRootRuleMigration,
+  movePreferencesUnderConfigurationMigration,
 ] satisfies WorkspaceMigration[];

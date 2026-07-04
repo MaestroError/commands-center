@@ -187,6 +187,9 @@ describe("loadRuntimeConfig", () => {
     expect(config.paths.subdirectories.configuration).toBe(
       "/tmp/project/.cc/workspace/configuration",
     );
+    expect(config.paths.subdirectories.preferences).toBe(
+      "/tmp/project/.cc/workspace/configuration/preferences",
+    );
   });
 
   it("resolves Documents subdirectory inside the workspace", () => {
@@ -214,6 +217,9 @@ describe("loadRuntimeConfig", () => {
     );
     expect(config.paths.subdirectories.configuration).toBe(
       "/srv/commandscenter-workspace/configuration",
+    );
+    expect(config.paths.subdirectories.preferences).toBe(
+      "/srv/commandscenter-workspace/configuration/preferences",
     );
     expect(config.database.sqlitePath).toBe("/tmp/workspace-root/.cc/data/cc.db");
   });
