@@ -73,6 +73,10 @@ export function getTaskStatusAfterTerminalRun(run: TaskRun): TaskStatus | undefi
   return "ready_to_check";
 }
 
+// NOTE: `hasTerminalSubtaskRun` / `latestSubtaskRun` are duplicated verbatim in
+// `task-execution-service/helpers.ts`. Both god-files already carried their own
+// copies; this split preserves that (a pure move). Consolidation into
+// `@cc/shared` is deliberately deferred — see issue #95.
 export function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
   return runs.some(
     (run) => run.subtaskId === subtaskId && run.status !== "queued" && run.status !== "running",

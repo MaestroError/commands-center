@@ -318,6 +318,12 @@ export async function mockTaskApi(page: Page, state: TaskState): Promise<void> {
   await page.route(apiPathPattern("/api/tasks"), (route: Route) => handleTaskRoute(route, state));
 }
 
+// Match the absolute request URL at an exact path boundary (`/api/tasks`,
+// `/api/tasks/...`, or `/api/tasks?...`) instead of the looser `**/api/tasks**`
+// substring glob. This is test-infra hardening only — the #99 page split did not
+// change which endpoints the app requests (the `lib/api/*` request surface is
+// identical to the old `api.ts`); anchoring just keeps the mock from being
+// order-sensitive or bleeding into a sibling `/api/*` matcher.
 function apiPathPattern(path: string): RegExp {
   return new RegExp(`^https?://[^/]+${escapeRegExp(path)}(?:$|[/?])`);
 }

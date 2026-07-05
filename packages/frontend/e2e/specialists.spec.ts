@@ -219,6 +219,11 @@ async function mockSpecialistApi(
   });
 }
 
+// Match the absolute request URL at an exact path boundary (`/api/specialists`,
+// `/api/specialists/...`, or `/api/specialists?...`) instead of the looser
+// `**/api/specialists**` substring glob. Test-infra hardening only — the app's
+// request surface is unchanged; anchoring keeps the mock from being order-
+// sensitive or bleeding into a sibling `/api/*` matcher.
 function apiPathPattern(path: string): RegExp {
   return new RegExp(`^https?://[^/]+${escapeRegExp(path)}(?:$|[/?])`);
 }

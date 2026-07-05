@@ -7,6 +7,10 @@ export function readScheduledAtFromTrigger(trigger: QueueTaskInput): string | un
   return typeof scheduledAt === "string" ? scheduledAt : undefined;
 }
 
+// NOTE: `hasTerminalSubtaskRun` / `latestSubtaskRun` are duplicated verbatim in
+// `task-service/status.ts`. Both god-files already carried their own copies; this
+// split preserves that (a pure move). Consolidation into `@cc/shared` is
+// deliberately deferred — see issue #95.
 export function hasTerminalSubtaskRun(subtaskId: string, runs: TaskRun[]): boolean {
   return runs.some(
     (run) => run.subtaskId === subtaskId && run.status !== "queued" && run.status !== "running",
