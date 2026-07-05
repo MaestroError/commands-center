@@ -126,7 +126,7 @@ async function mockSpecialistApi(
     await route.fulfill(jsonResponse([]));
   });
 
-  await page.route("**/api/specialists**", async (route: Route) => {
+  await page.route(apiPathPattern("/api/specialists"), async (route: Route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
 
@@ -217,6 +217,19 @@ async function mockSpecialistApi(
 
     await route.fulfill(jsonResponse(agent));
   });
+}
+
+// Match the absolute request URL at an exact path boundary (`/api/specialists`,
+// `/api/specialists/...`, or `/api/specialists?...`) instead of the looser
+// `**/api/specialists**` substring glob. Test-infra hardening only — the app's
+// request surface is unchanged; anchoring keeps the mock from being order-
+// sensitive or bleeding into a sibling `/api/*` matcher.
+function apiPathPattern(path: string): RegExp {
+  return new RegExp(`^https?://[^/]+${escapeRegExp(path)}(?:$|[/?])`);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function createSpecialistState() {
