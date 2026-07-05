@@ -116,6 +116,7 @@ describe("createSystemVersionService", () => {
         firstRun: {
           envFileCreated: true,
           envFilePath: "/tmp/user/.cc/.env",
+          secretKey: config.secretKey,
         },
       });
     } finally {
@@ -141,7 +142,12 @@ describe("createSystemVersionService", () => {
         applied: false,
         installMode: "docker",
         restartRequired: false,
-        instructions: ["docker compose pull", "docker compose up -d", expect.any(String)],
+        message: expect.stringContaining("In-container updates are disabled"),
+        instructions: [
+          expect.stringContaining("recreate the container"),
+          expect.stringContaining("redeploy"),
+          expect.stringContaining("workspace volume"),
+        ],
       });
       expect(runCommand).not.toHaveBeenCalled();
     } finally {

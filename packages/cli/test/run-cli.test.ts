@@ -190,6 +190,25 @@ describe("runCli", () => {
     );
   });
 
+  it("creates the env file when CC_SECRET_KEY is provided via the environment (regression #107)", async () => {
+    // Providing CC_SECRET_KEY previously short-circuited env-file creation, so the subsequent
+    // load crashed with ENOENT. The file must still be created, using the operator's key.
+    existsSyncMock.mockImplementation((path: string) => path.endsWith(".env.prod.example"));
+    process.env["CC_SECRET_KEY"] = "operator-provided-secret-000";
+
+    await runCli(["start"]);
+
+    expect(writeFileSyncMock).toHaveBeenCalledWith(
+      "/home/test/.cc/.env",
+      expect.stringContaining("CC_SECRET_KEY=operator-provided-secret-000"),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    expect(process.env["CC_FIRST_RUN_ENV_FILE_CREATED"]).toBe("true");
+    // The operator-provided key wins and is left untouched.
+    expect(process.env["CC_SECRET_KEY"]).toBe("operator-provided-secret-000");
+    expect(loadEnvFileMock).toHaveBeenCalledWith("/home/test/.cc/.env");
+  });
+
   it("persists other CC_* environment values into the generated env file", async () => {
     existsSyncMock.mockImplementation((path: string) => path.endsWith(".env.prod.example"));
     readFileSyncMock.mockReturnValue(

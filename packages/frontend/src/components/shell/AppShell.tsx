@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronLeft, Clock3, ListChecks, Menu, Search } from "lucide-react";
+import { Check, ChevronLeft, Clipboard, Clock3, ListChecks, Menu, Search } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { ActivityBell } from "@/components/activities/ActivityBell";
@@ -199,6 +199,7 @@ export function AppShell() {
       {showFirstRunNotice ? (
         <FirstRunEnvNotice
           envFilePath={firstRun.envFilePath ?? "~/.cc/.env"}
+          secretKey={firstRun.secretKey}
           onClose={() => {
             window.localStorage.setItem(FIRST_RUN_ENV_NOTICE_STORAGE_KEY, "true");
             setFirstRunNoticeDismissed(true);
@@ -209,7 +210,28 @@ export function AppShell() {
   );
 }
 
-function FirstRunEnvNotice(props: { envFilePath: string; onClose: () => void }) {
+function FirstRunEnvNotice(props: {
+  envFilePath: string;
+  secretKey?: string;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const clipboardAvailable = typeof navigator !== "undefined" && Boolean(navigator.clipboard);
+
+  async function copyKey(): Promise<void> {
+    if (!clipboardAvailable || !props.secretKey) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(props.secretKey);
+      setCopied(true);
+    } catch {
+      // Clipboard writes can reject (permission denied, insecure context, transient failure).
+      // Leave the key visible so the owner can select and copy it manually.
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-app-bg/75 px-4 backdrop-blur-sm">
       <section
@@ -220,17 +242,30 @@ function FirstRunEnvNotice(props: { envFilePath: string; onClose: () => void }) 
         <div className="grid gap-4">
           <div className="grid gap-2">
             <h2 className="text-lg font-semibold text-text-primary" id="first-run-env-title">
-              Configuration key generated
+              Save your CC_SECRET_KEY
             </h2>
             <p className="text-sm leading-6 text-text-secondary">
-              CommandsCenter created a secure CC_SECRET_KEY in {props.envFilePath}. Copy that key
-              and store it somewhere private. This notice will not be shown again.
+              {props.secretKey
+                ? "CommandsCenter generated a secure CC_SECRET_KEY that encrypts your stored secrets. Copy it now and store it somewhere private — it will not be shown again."
+                : `CommandsCenter created a secure CC_SECRET_KEY in ${props.envFilePath}. Copy that key and store it somewhere private. This notice will not be shown again.`}
             </p>
           </div>
-          <div className="rounded-md border border-border bg-app-bg px-3 py-2 font-mono text-xs text-text-secondary">
-            {props.envFilePath}
+          <div className="break-all rounded-md border border-border bg-app-bg px-3 py-2 font-mono text-xs text-text-secondary">
+            {props.secretKey ?? props.envFilePath}
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {props.secretKey ? (
+              <button
+                className="cc-button cc-button-secondary inline-flex items-center gap-2"
+                disabled={!clipboardAvailable}
+                onClick={() => void copyKey()}
+                title={clipboardAvailable ? "Copy key" : "Clipboard is unavailable"}
+                type="button"
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            ) : null}
             <button className="cc-button cc-button-primary" onClick={props.onClose} type="button">
               I saved it
             </button>

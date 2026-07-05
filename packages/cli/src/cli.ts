@@ -294,13 +294,17 @@ function loadCliEnv(parsedArgs: CliArgs): void {
   if (parsedArgs.envFile) {
     if (ENV_FILE_CREATING_COMMANDS.has(parsedArgs.command) && !existsSync(parsedArgs.envFile)) {
       warnBeforeCreatingEnvFile(parsedArgs.envFile);
-      process.env["CC_SECRET_KEY"] ??= createDefaultEnvFile(parsedArgs.envFile, {
+      // Always create the file; only fall back to the generated secret when CC_SECRET_KEY is
+      // not already provided via the environment. Gating creation on the secret being unset
+      // caused a crash loop when an operator supplied CC_SECRET_KEY (env file never written).
+      const generatedSecret = createDefaultEnvFile(parsedArgs.envFile, {
         host: parsedArgs.host ?? process.env["CC_HOST"],
         port: parsedArgs.port?.toString() ?? process.env["CC_PORT"],
         dataDir: process.env["CC_DATA_DIR"] ?? resolve(dirname(parsedArgs.envFile), "data"),
         workspaceDir:
           process.env["CC_WORKSPACE_DIR"] ?? resolve(dirname(parsedArgs.envFile), "workspace"),
       });
+      process.env["CC_SECRET_KEY"] ??= generatedSecret;
       process.env["CC_FIRST_RUN_ENV_FILE_CREATED"] = "true";
       process.env["CC_FIRST_RUN_ENV_FILE_PATH"] = parsedArgs.envFile;
     }
@@ -318,12 +322,13 @@ function loadCliEnv(parsedArgs: CliArgs): void {
   const defaultEnvFile = resolve(homedir(), ".cc", ".env");
 
   if (ENV_FILE_CREATING_COMMANDS.has(parsedArgs.command) && !existsSync(defaultEnvFile)) {
-    process.env["CC_SECRET_KEY"] ??= createDefaultEnvFile(defaultEnvFile, {
+    const generatedSecret = createDefaultEnvFile(defaultEnvFile, {
       host: parsedArgs.host ?? process.env["CC_HOST"],
       port: parsedArgs.port?.toString() ?? process.env["CC_PORT"],
       dataDir: process.env["CC_DATA_DIR"] ?? resolve(homedir(), ".cc", "data"),
       workspaceDir: process.env["CC_WORKSPACE_DIR"] ?? resolve(homedir(), ".cc", "workspace"),
     });
+    process.env["CC_SECRET_KEY"] ??= generatedSecret;
     process.env["CC_FIRST_RUN_ENV_FILE_CREATED"] = "true";
     process.env["CC_FIRST_RUN_ENV_FILE_PATH"] = defaultEnvFile;
     loadEnvFile(defaultEnvFile);
@@ -369,7 +374,12 @@ function createDefaultEnvFile(
   options: { dataDir: string; host?: string; port?: string; workspaceDir: string },
 ): string {
   mkdirSync(dirname(path), { recursive: true });
-  const secretKey = randomBytes(32).toString("hex");
+  // Honor an operator-provided CC_SECRET_KEY: write it into the generated file so the file and
+  // the environment agree and cannot drift on a later start that no longer sets the variable.
+  // Fall back to a freshly generated key when none was supplied.
+  const providedSecret = process.env["CC_SECRET_KEY"]?.trim();
+  const secretKey =
+    providedSecret && providedSecret.length > 0 ? providedSecret : randomBytes(32).toString("hex");
   let content = readDefaultProdEnvExample();
   content = replaceEnvLine(content, "CC_WORKSPACE_DIR", options.workspaceDir);
   content = replaceEnvLine(content, "CC_DATA_DIR", options.dataDir);

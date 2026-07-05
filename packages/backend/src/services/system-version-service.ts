@@ -129,7 +129,7 @@ export function createSystemVersionService(options: {
     options.packageInfo.version,
     installMode,
     options.config.updates.autoUpdate,
-    options.config.firstRun,
+    firstRunPayload(options.config),
   );
   let interval: NodeJS.Timeout | undefined;
   let checking: Promise<SystemVersion> | undefined;
@@ -305,7 +305,7 @@ export function createSystemVersionService(options: {
           latest,
           updateAvailable: compareVersions(latest, options.packageInfo.version) > 0,
           installMode,
-          firstRun: options.config.firstRun.envFileCreated ? options.config.firstRun : undefined,
+          firstRun: firstRunPayload(options.config),
           ...(await readUpdatePreferences()),
           checkedAt: new Date().toISOString(),
         };
@@ -640,12 +640,13 @@ function dockerGuidance(): SystemUpdateResult {
   return {
     applied: false,
     installMode: "docker",
-    message: "Docker installations cannot update themselves from inside the container.",
+    message:
+      "In-container updates are disabled for Docker installations. Redeploy the container from a newer image to upgrade.",
     restartRequired: false,
     instructions: [
-      "docker compose pull",
-      "docker compose up -d",
-      "For automated updates, run Watchtower or your platform's image update mechanism.",
+      "Pull or rebuild a newer image on the host, then recreate the container.",
+      "On managed platforms (Coolify, Portainer, Dokploy, etc.), trigger a redeploy; force a no-cache rebuild when the image is built from the Dockerfile.",
+      "The mounted workspace volume is preserved across the redeploy.",
     ],
   };
 }
@@ -702,10 +703,22 @@ function createInitialVersion(
     current,
     updateAvailable: false,
     installMode,
-    firstRun: firstRun?.envFileCreated ? firstRun : undefined,
+    firstRun,
     autoUpdateEnabled,
     autoUpdateSource: "environment",
   };
+}
+
+// Builds the first-run payload for the owner-authenticated version response. When the CLI
+// created the env file this run, the effective CC_SECRET_KEY — whether generated or supplied by
+// the operator — is included so the owner can back it up. This value is never written to the
+// logged runtime-config summary.
+function firstRunPayload(config: RuntimeConfig): SystemVersion["firstRun"] {
+  if (!config.firstRun.envFileCreated) {
+    return undefined;
+  }
+
+  return { ...config.firstRun, secretKey: config.secretKey };
 }
 
 function applyUpdatePreferences(
