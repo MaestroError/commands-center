@@ -63,31 +63,15 @@ Values baked into the image already default correctly (`NODE_ENV=production`, `C
 
 ### A note on `CC_SECRET_KEY`
 
-`CC_SECRET_KEY` encrypts stored secrets. On first start CommandsCenter generates it and writes
-it into `/workspace/.cc/.env` on the mounted volume, so it survives redeploys as long as the
-volume persists.
+`CC_SECRET_KEY` encrypts stored secrets. If you leave it unset, CommandsCenter generates one on
+first start and writes it into `/workspace/.cc/.env` on the mounted volume, so it survives
+redeploys as long as the volume persists.
 
-Setting `CC_SECRET_KEY` explicitly (so the key is independent of the volume) is normally the
-safer choice, and current releases support it directly.
-
-> **Compatibility note:** released versions **before** the fix in
-> [commands-center#107](https://github.com/MaestroError/commands-center/issues/107) crash on a
-> **fresh** install when `CC_SECRET_KEY` is provided via the environment — the env file is never
-> created and the container crash-loops with `ENOENT ... /workspace/.cc/.env`. If you are running
-> such a version, use one of the workarounds below until you upgrade to a release that includes
-> the fix.
-
-Workarounds for versions predating the fix:
-
-- **Simplest:** leave `CC_SECRET_KEY` unset on first deploy. The key is generated and persisted
-  on the `/workspace` volume.
-- **Keep an explicit key:** deploy once without it (creates the env file), then read the
-  generated value and set it as `CC_SECRET_KEY` — because the file now exists, the crash no longer
-  triggers:
-  ```bash
-  docker exec "$(docker ps -a --filter name=<resource> --format '{{.Names}}' | head -1)" \
-    sh -c 'grep CC_SECRET_KEY /workspace/.cc/.env'
-  ```
+Setting `CC_SECRET_KEY` explicitly (add it as an environment variable) makes the key independent
+of the volume: if the volume is ever lost or recreated, the same key still decrypts your stored
+secrets. Generate one with `openssl rand -hex 32`, keep it in your password manager, and set it
+as `CC_SECRET_KEY`. When provided this way it is also written into the generated env file, so the
+environment and the file never drift.
 
 ## 4. Persistent storage (required)
 
@@ -154,15 +138,47 @@ Your `/workspace` volume survives, so it is a clean in-place upgrade.
 > cannot know it is running under Coolify, so follow the steps above rather than any literal
 > `docker compose` commands.
 
+## Preinstalled tools, and adding your own
+
+The provided [`Dockerfile`](../Dockerfile) bakes a base toolchain into the image:
+
+- **Node.js 24** and **npm** (from the `node:24-bookworm-slim` base)
+- **git** and **gh** (GitHub CLI)
+- **curl**, **ca-certificates**, **openssh-client**
+- **Python 3** (`python3`, with `python` aliased to it)
+- Build tooling: **g++**, **make**
+- `commandscenter` (the `ccenter` CLI) and the bundled OpenCode engine
+
+> **The container is immutable — tools you install at runtime do not survive.** Anything you add
+> inside a running container with `apt-get`, `pip`, `npm install -g`, `uvx`, etc. lives only in
+> that container's writable layer. It is discarded on the **next redeploy or rebuild**, which
+> happens on every upgrade and on many config changes. Only the mounted `/workspace` volume
+> persists.
+
+If your agents need extra tooling (a package manager, a language runtime, a CLI), **add the
+install commands to the Dockerfile** so they are baked into the image — reproducibly, and
+surviving every future upgrade. Add them before the `USER node` line, where the build still runs
+as root:
+
+```dockerfile
+# Add before `USER node` in the Dockerfile.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3-pip jq ripgrep \
+  && rm -rf /var/lib/apt/lists/* \
+  && pip install --no-cache-dir --break-system-packages uv \
+  && npm install -g your-cli
+```
+
+Then redeploy so Coolify rebuilds the image with your tools included.
+
 ## Troubleshooting
 
-| Symptom                                      | Cause                                                                                                       | Fix                                                                         |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Crash loop, `ENOENT ... /workspace/.cc/.env` | `CC_SECRET_KEY` set on a fresh install ([#107](https://github.com/MaestroError/commands-center/issues/107)) | Unset it (or pre-create the env file) — see [§3](#a-note-on-cc_secret_key). |
-| `Request origin is not allowed.` on claim    | `CC_PUBLIC_ORIGIN` unset or mismatched                                                                      | Set it to the exact `https://` origin you browse from, no trailing slash.   |
-| Health "degraded" for ~1 min after boot      | OpenCode engine cold start                                                                                  | Normal; it becomes healthy within ~90s.                                     |
-| Data lost after redeploy                     | No persistent `/workspace` volume                                                                           | Add the Volume Mount in [§4](#4-persistent-storage-required).               |
-| SSL not issued                               | DNS not resolving to the server                                                                             | Point the `A` record first, then redeploy.                                  |
+| Symptom                                   | Cause                                  | Fix                                                                       |
+| ----------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------- |
+| `Request origin is not allowed.` on claim | `CC_PUBLIC_ORIGIN` unset or mismatched | Set it to the exact `https://` origin you browse from, no trailing slash. |
+| Health "degraded" for ~1 min after boot   | OpenCode engine cold start             | Normal; it becomes healthy within ~90s.                                   |
+| Data lost after redeploy                  | No persistent `/workspace` volume      | Add the Volume Mount in [§4](#4-persistent-storage-required).             |
+| SSL not issued                            | DNS not resolving to the server        | Point the `A` record first, then redeploy.                                |
 
 To read logs from an exited container (Coolify's Logs tab only attaches to running containers):
 

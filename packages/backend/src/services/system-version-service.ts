@@ -710,8 +710,9 @@ function createInitialVersion(
 }
 
 // Builds the first-run payload for the owner-authenticated version response. When the CLI
-// created the env file this run, the freshly generated CC_SECRET_KEY is included so the owner
-// can back it up. This value is never written to the logged runtime-config summary.
+// created the env file this run, the effective CC_SECRET_KEY — whether generated or supplied by
+// the operator — is included so the owner can back it up. This value is never written to the
+// logged runtime-config summary.
 function firstRunPayload(config: RuntimeConfig): SystemVersion["firstRun"] {
   if (!config.firstRun.envFileCreated) {
     return undefined;
