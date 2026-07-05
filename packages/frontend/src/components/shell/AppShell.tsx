@@ -223,8 +223,13 @@ function FirstRunEnvNotice(props: {
       return;
     }
 
-    await navigator.clipboard.writeText(props.secretKey);
-    setCopied(true);
+    try {
+      await navigator.clipboard.writeText(props.secretKey);
+      setCopied(true);
+    } catch {
+      // Clipboard writes can reject (permission denied, insecure context, transient failure).
+      // Leave the key visible so the owner can select and copy it manually.
+    }
   }
 
   return (

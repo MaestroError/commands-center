@@ -68,17 +68,21 @@ it into `/workspace/.cc/.env` on the mounted volume, so it survives redeploys as
 volume persists.
 
 Setting `CC_SECRET_KEY` explicitly (so the key is independent of the volume) is normally the
-safer choice — but there is currently a bug where providing it via the environment on a **fresh**
-install prevents the env file from being created, causing a crash loop with
-`ENOENT ... /workspace/.cc/.env`. See
-[commands-center#107](https://github.com/MaestroError/commands-center/issues/107).
+safer choice, and current releases support it directly.
 
-**Until that is fixed, do one of the following:**
+> **Compatibility note:** released versions **before** the fix in
+> [commands-center#107](https://github.com/MaestroError/commands-center/issues/107) crash on a
+> **fresh** install when `CC_SECRET_KEY` is provided via the environment — the env file is never
+> created and the container crash-loops with `ENOENT ... /workspace/.cc/.env`. If you are running
+> such a version, use one of the workarounds below until you upgrade to a release that includes
+> the fix.
+
+Workarounds for versions predating the fix:
 
 - **Simplest:** leave `CC_SECRET_KEY` unset on first deploy. The key is generated and persisted
   on the `/workspace` volume.
 - **Keep an explicit key:** deploy once without it (creates the env file), then read the
-  generated value and set it as `CC_SECRET_KEY` — because the file now exists, the bug no longer
+  generated value and set it as `CC_SECRET_KEY` — because the file now exists, the crash no longer
   triggers:
   ```bash
   docker exec "$(docker ps -a --filter name=<resource> --format '{{.Names}}' | head -1)" \
