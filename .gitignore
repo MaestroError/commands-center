@@ -51,3 +51,5 @@ examples/openwork/
 examples/opencode/
 
 .playwright-mcp
+
+docker-test/*

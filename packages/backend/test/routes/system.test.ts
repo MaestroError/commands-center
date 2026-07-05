@@ -63,9 +63,10 @@ describe("system routes", () => {
       Promise.resolve({
         applied: false,
         installMode: "docker" as const,
-        message: "Docker installations cannot update themselves from inside the container.",
+        message:
+          "In-container updates are disabled for Docker installations. Redeploy the container from a newer image to upgrade.",
         restartRequired: false,
-        instructions: ["docker compose pull"],
+        instructions: ["Pull or rebuild a newer image on the host, then recreate the container."],
       }),
     );
     const server = await createServer({

@@ -336,8 +336,29 @@ services:
       CC_PORT: "3000"
       CC_WORKSPACE_DIR: /workspace/.cc/workspace
       CC_DATA_DIR: /workspace/.cc/data
+      # Exact browser origin you open the UI from. Required with NODE_ENV=production.
+      CC_PUBLIC_ORIGIN: http://127.0.0.1:3000
+      # Optional extra origins that serve the same instance (e.g. the localhost alias).
+      CC_ALLOWED_ORIGINS: http://localhost:3000
     restart: unless-stopped
 ```
+
+> **Set `CC_PUBLIC_ORIGIN` or claims and other write requests are rejected with `Request origin is not allowed.`** With `NODE_ENV=production` the container does not auto-trust localhost; only the origins listed in `CC_PUBLIC_ORIGIN` plus `CC_ALLOWED_ORIGINS` are accepted. Origins must match exactly — `http://127.0.0.1:3000` and `http://localhost:3000` are distinct, and the scheme (`http` vs `https`) and port matter too. Set `CC_PUBLIC_ORIGIN` to the primary origin you browse from and use the comma-separated `CC_ALLOWED_ORIGINS` for aliases (for example, to accept both `127.0.0.1` and `localhost`, or a reverse-proxy alias). When exposed publicly, set `CC_PUBLIC_ORIGIN` to the exact `https://` origin.
+
+Prefer plain Docker without a compose file? The image built above runs the same way with `docker run`:
+
+```bash
+docker run -d --name commandscenter \
+  -p 3000:3000 \
+  -v "$PWD/workspace:/workspace" \
+  -e CC_DOCKER=true \
+  -e CC_PUBLIC_ORIGIN=http://127.0.0.1:3000 \
+  -e CC_ALLOWED_ORIGINS=http://localhost:3000 \
+  --restart unless-stopped \
+  commandscenter:local
+```
+
+The image already sets `NODE_ENV`, `CC_HOST`, `CC_PORT`, and the workspace/data paths as defaults ([`Dockerfile`](Dockerfile)), so only the volume mount and `CC_PUBLIC_ORIGIN` must be supplied at run time.
 
 On first container start, `ccenter` creates `/workspace/.cc/.env` on the mounted volume and generates `CC_SECRET_KEY` there.
 
@@ -442,6 +463,7 @@ cc/
 | [CONTRIBUTING.md](CONTRIBUTING.md)                               | Dev setup, commands, workflow                  |
 | [docs/CLAIM.md](docs/CLAIM.md)                                   | Owner claiming and setup                       |
 | [docs/mcp-configuration-flow.md](docs/mcp-configuration-flow.md) | Per-workspace MCP configuration                |
+| [docs/deploy-coolify.md](docs/deploy-coolify.md)                 | Deploying on Coolify / Docker PaaS             |
 
 ## Releases
 

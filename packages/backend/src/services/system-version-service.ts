@@ -640,12 +640,13 @@ function dockerGuidance(): SystemUpdateResult {
   return {
     applied: false,
     installMode: "docker",
-    message: "Docker installations cannot update themselves from inside the container.",
+    message:
+      "In-container updates are disabled for Docker installations. Redeploy the container from a newer image to upgrade.",
     restartRequired: false,
     instructions: [
-      "docker compose pull",
-      "docker compose up -d",
-      "For automated updates, run Watchtower or your platform's image update mechanism.",
+      "Pull or rebuild a newer image on the host, then recreate the container.",
+      "On managed platforms (Coolify, Portainer, Dokploy, etc.), trigger a redeploy; force a no-cache rebuild when the image is built from the Dockerfile.",
+      "The mounted workspace volume is preserved across the redeploy.",
     ],
   };
 }
