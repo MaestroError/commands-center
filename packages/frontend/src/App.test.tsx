@@ -392,6 +392,7 @@ describe("App", () => {
             firstRun: {
               envFileCreated: true,
               envFilePath: "/home/test/.cc/.env",
+              secretKey: "test-secret-key-abc123",
             },
           }),
         );
@@ -404,14 +405,14 @@ describe("App", () => {
 
     const user = userEvent.setup();
     expect(
-      await screen.findByRole("dialog", { name: "Configuration key generated" }),
+      await screen.findByRole("dialog", { name: "Save your CC_SECRET_KEY" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("/home/test/.cc/.env")).toBeInTheDocument();
+    expect(screen.getByText("test-secret-key-abc123")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "I saved it" }));
 
     expect(
-      screen.queryByRole("dialog", { name: "Configuration key generated" }),
+      screen.queryByRole("dialog", { name: "Save your CC_SECRET_KEY" }),
     ).not.toBeInTheDocument();
     expect(window.localStorage.getItem("cc-first-run-env-notice-dismissed")).toBe("true");
   });
@@ -449,7 +450,7 @@ describe("App", () => {
       0,
     );
     expect(
-      screen.queryByRole("dialog", { name: "Configuration key generated" }),
+      screen.queryByRole("dialog", { name: "Save your CC_SECRET_KEY" }),
     ).not.toBeInTheDocument();
   });
 

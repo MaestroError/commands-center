@@ -15,6 +15,9 @@ export const systemVersionSchema = z.object({
     .object({
       envFileCreated: z.boolean(),
       envFilePath: z.string().min(1).optional(),
+      // The generated CC_SECRET_KEY, surfaced once to the authenticated owner so they can
+      // back it up. Only present on the run that created the env file.
+      secretKey: z.string().min(1).optional(),
     })
     .optional(),
 });

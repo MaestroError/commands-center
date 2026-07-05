@@ -116,6 +116,7 @@ describe("createSystemVersionService", () => {
         firstRun: {
           envFileCreated: true,
           envFilePath: "/tmp/user/.cc/.env",
+          secretKey: config.secretKey,
         },
       });
     } finally {

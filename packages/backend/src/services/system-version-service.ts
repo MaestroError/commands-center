@@ -129,7 +129,7 @@ export function createSystemVersionService(options: {
     options.packageInfo.version,
     installMode,
     options.config.updates.autoUpdate,
-    options.config.firstRun,
+    firstRunPayload(options.config),
   );
   let interval: NodeJS.Timeout | undefined;
   let checking: Promise<SystemVersion> | undefined;
@@ -305,7 +305,7 @@ export function createSystemVersionService(options: {
           latest,
           updateAvailable: compareVersions(latest, options.packageInfo.version) > 0,
           installMode,
-          firstRun: options.config.firstRun.envFileCreated ? options.config.firstRun : undefined,
+          firstRun: firstRunPayload(options.config),
           ...(await readUpdatePreferences()),
           checkedAt: new Date().toISOString(),
         };
@@ -703,10 +703,21 @@ function createInitialVersion(
     current,
     updateAvailable: false,
     installMode,
-    firstRun: firstRun?.envFileCreated ? firstRun : undefined,
+    firstRun,
     autoUpdateEnabled,
     autoUpdateSource: "environment",
   };
+}
+
+// Builds the first-run payload for the owner-authenticated version response. When the CLI
+// created the env file this run, the freshly generated CC_SECRET_KEY is included so the owner
+// can back it up. This value is never written to the logged runtime-config summary.
+function firstRunPayload(config: RuntimeConfig): SystemVersion["firstRun"] {
+  if (!config.firstRun.envFileCreated) {
+    return undefined;
+  }
+
+  return { ...config.firstRun, secretKey: config.secretKey };
 }
 
 function applyUpdatePreferences(
