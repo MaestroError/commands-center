@@ -768,6 +768,41 @@ select.cc-input {
   width: 8px;
   height: 8px;
 }
+/* A tool blocked on a pending interaction: the dot becomes a cancel button.
+   Default state looks identical to the plain dot; on hover/focus the dot is
+   replaced by a compact red X the same footprint as the dot (~10px). */
+.tool-status--cancellable {
+  border: 0;
+  padding: 2px;
+  margin: -2px;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.tool-status--cancellable .tool-status-cancel-icon {
+  display: none;
+  color: var(--danger);
+}
+.tool-status--cancellable .tool-status-cancel-icon svg {
+  width: 10px;
+  height: 10px;
+}
+.tool-status--cancellable:hover .sdot,
+.tool-status--cancellable:focus-visible .sdot {
+  display: none;
+}
+.tool-status--cancellable:hover .tool-status-cancel-icon,
+.tool-status--cancellable:focus-visible .tool-status-cancel-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tool-status--cancellable:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+  border-radius: 9999px;
+}
 @keyframes ccpulse {
   0%,
   100% {

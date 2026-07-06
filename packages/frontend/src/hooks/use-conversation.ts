@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   getActiveConversation,
   getConversation,
+  getPendingInteractions,
   startFreshConversation,
   sendPrompt,
   sendShell as apiSendShell,
@@ -17,6 +18,7 @@ import {
   rejectQuestion as apiRejectQuestion,
   connectConversationEvents,
 } from "@/lib/api";
+import { ApiRequestError } from "@/lib/api/client";
 import { useSpecialistQuery } from "@/hooks/use-specialists-query";
 import { queryKeys } from "@/lib/query-keys";
 import type {
@@ -27,6 +29,7 @@ import type {
   ConversationPart,
   ConversationSummary,
   LiveRequest,
+  PendingInteractions,
   SendConversationAttachmentInput,
   SessionStatus,
   TodoItem,
@@ -34,16 +37,19 @@ import type {
 
 // --- State ---
 
-type PermissionRequest = {
+export type ToolLink = { messageID: string; callID: string };
+
+export type PermissionRequest = {
   id: string;
   sessionID: string;
   permission: string;
   patterns: string[];
   metadata: Record<string, unknown>;
   always: string[];
+  tool?: ToolLink;
 };
 
-type QuestionRequest = {
+export type QuestionRequest = {
   id: string;
   sessionID: string;
   questions: Array<{
@@ -52,6 +58,7 @@ type QuestionRequest = {
     options: Array<{ label: string; description?: string }>;
     multiSelect?: boolean;
   }>;
+  tool?: ToolLink;
 };
 
 /**
@@ -78,7 +85,10 @@ export type Action =
   | { type: "OPTIMISTIC_USER_MESSAGE"; message: ConversationMessage }
   | { type: "SEND_FAILED"; message: string }
   | { type: "CLEAR_SEND_ERROR" }
-  | { type: "SSE_EVENT"; event: ChatEvent };
+  | { type: "SSE_EVENT"; event: ChatEvent }
+  | { type: "HYDRATE_PENDING"; pending: PendingInteractions }
+  | { type: "DISCARD_STALE_PERMISSION"; requestId: string }
+  | { type: "DISCARD_STALE_QUESTION"; requestId: string };
 
 export const initialState: ConversationState = {
   sessionStatus: { type: "idle" },
@@ -172,6 +182,31 @@ export function conversationReducer(state: ConversationState, action: Action): C
 
     case "SSE_EVENT":
       return applySseEvent(state, action.event);
+
+    case "HYDRATE_PENDING":
+      // Server is the source of truth here — replace rather than merge. Any
+      // live SSE event that arrives around the same time is handled by the
+      // existing upsert-by-id logic in applySseEvent, so overlap is harmless.
+      return {
+        ...state,
+        pendingPermissions: action.pending.permissions,
+        pendingQuestion: action.pending.question,
+        liveRequests: action.pending.liveRequests,
+      };
+
+    case "DISCARD_STALE_PERMISSION":
+      return {
+        ...state,
+        pendingPermissions: state.pendingPermissions.filter(
+          (request) => request.id !== action.requestId,
+        ),
+      };
+
+    case "DISCARD_STALE_QUESTION":
+      if (state.pendingQuestion?.id !== action.requestId) {
+        return state;
+      }
+      return { ...state, pendingQuestion: null };
 
     default:
       return state;
@@ -348,6 +383,8 @@ export type UseConversationReturn = {
   previousConversations: ConversationSummary[];
   pendingPermission: PermissionRequest | null;
   pendingPermissionCount: number;
+  /** All pending permissions, not just the head of the queue — used to link tool rows to their pending request. */
+  pendingPermissions: PermissionRequest[];
   pendingQuestion: QuestionRequest | null;
   liveRequests: LiveRequest[];
   todos: TodoItem[];
@@ -457,6 +494,33 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
 
     void (async () => {
       try {
+        // Rehydrate anything already blocking this conversation on the user
+        // (permission/question/live request) — the SSE stream only delivers
+        // events fired while a browser tab is subscribed, so navigating away
+        // and back (or a page reload) would otherwise strand the prompt.
+        // Fired right as the stream subscribes below rather than awaited
+        // first, so we don't open a gap where an event fires before we're
+        // listening; any overlap with a live SSE event is harmless since
+        // HYDRATE_PENDING replaces the list wholesale from the server.
+        void getPendingInteractions(activeConversationId)
+          .then((pending) => {
+            if (controller.signal.aborted) return;
+
+            let permissions = pending.permissions;
+            if (autoApproveRef.current && permissions.length > 0) {
+              for (const permission of permissions) {
+                void apiReplyPermission(activeConversationId, permission.id, "once");
+              }
+              permissions = [];
+            }
+
+            dispatch({ type: "HYDRATE_PENDING", pending: { ...pending, permissions } });
+          })
+          .catch(() => {
+            // Best-effort rehydration — the SSE stream will still deliver
+            // any interactions raised from here on live.
+          });
+
         for await (const event of connectConversationEvents(
           activeConversationId,
           controller.signal,
@@ -579,7 +643,13 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   const replyPerm = useCallback(
     (requestId: string, reply: "once" | "always" | "reject") => {
       if (!state.conversation) return;
-      void apiReplyPermission(state.conversation.id, requestId, reply);
+      void apiReplyPermission(state.conversation.id, requestId, reply).catch((error: unknown) => {
+        // The permission was already resolved or timed out server-side —
+        // drop it locally so the dock can't wedge on a dead prompt.
+        if (isStaleRequestError(error)) {
+          dispatch({ type: "DISCARD_STALE_PERMISSION", requestId });
+        }
+      });
     },
     [state.conversation],
   );
@@ -587,7 +657,11 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   const replyQ = useCallback(
     (requestId: string, answers: string[][]) => {
       if (!state.conversation) return;
-      void apiReplyQuestion(state.conversation.id, requestId, answers);
+      void apiReplyQuestion(state.conversation.id, requestId, answers).catch((error: unknown) => {
+        if (isStaleRequestError(error)) {
+          dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
+        }
+      });
     },
     [state.conversation],
   );
@@ -595,7 +669,11 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
   const rejectQ = useCallback(
     (requestId: string) => {
       if (!state.conversation) return;
-      void apiRejectQuestion(state.conversation.id, requestId);
+      void apiRejectQuestion(state.conversation.id, requestId).catch((error: unknown) => {
+        if (isStaleRequestError(error)) {
+          dispatch({ type: "DISCARD_STALE_QUESTION", requestId });
+        }
+      });
     },
     [state.conversation],
   );
@@ -643,6 +721,7 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
     previousConversations: state.previousConversations,
     pendingPermission: state.pendingPermissions[0] ?? null,
     pendingPermissionCount: state.pendingPermissions.length,
+    pendingPermissions: state.pendingPermissions,
     pendingQuestion: state.pendingQuestion,
     liveRequests: state.liveRequests,
     todos: state.todos,
@@ -688,4 +767,11 @@ function upsertPermissionRequest(
   }
 
   return [...requests, nextRequest].sort((left, right) => left.id.localeCompare(right.id));
+}
+
+// A permission/question reply targeting an id the backend no longer knows
+// about (already resolved, or timed out) comes back as a 404. Treat that as
+// "this prompt is gone" rather than a transient failure the user should retry.
+function isStaleRequestError(error: unknown): boolean {
+  return error instanceof ApiRequestError && (error.status === 404 || error.status === 410);
 }

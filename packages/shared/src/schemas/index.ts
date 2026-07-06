@@ -508,6 +508,9 @@ export {
 } from "./public-api.js";
 export {
   chatEventSchema,
+  pendingInteractionsSchema,
+  pendingPermissionSchema,
+  pendingQuestionSchema,
   replyPermissionInputSchema,
   replyQuestionInputSchema,
   type ChatEvent,
@@ -517,6 +520,9 @@ export {
   type LiveRequestCancelledEvent,
   type LiveRequestOpenedEvent,
   type LiveRequestResolvedEvent,
+  type PendingInteractions,
+  type PendingPermission,
+  type PendingQuestion,
   type PermissionAskedEvent,
   type QuestionAskedEvent,
   type QuestionItem,

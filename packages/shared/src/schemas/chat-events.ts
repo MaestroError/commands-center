@@ -7,6 +7,15 @@ import { liveRequestSchema } from "./live-requests.js";
 
 const looseRecordSchema = z.record(z.string(), z.unknown());
 
+// Links a pending permission/question back to the tool call that raised it, so
+// the UI can show a cancel affordance directly on the blocked tool row.
+const toolLinkSchema = z
+  .object({
+    messageID: z.string().min(1),
+    callID: z.string().min(1),
+  })
+  .catchall(z.unknown());
+
 const sessionStatusSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("idle"),
@@ -153,6 +162,7 @@ const permissionAskedEventSchema = z.object({
     patterns: z.array(z.string()).default([]),
     metadata: looseRecordSchema.default({}),
     always: z.array(z.string()).default([]),
+    tool: toolLinkSchema.optional(),
   }),
 });
 
@@ -171,6 +181,7 @@ const questionAskedEventSchema = z.object({
     id: z.string().min(1),
     sessionID: z.string().min(1),
     questions: z.array(questionItemSchema),
+    tool: toolLinkSchema.optional(),
   }),
 });
 
@@ -251,6 +262,39 @@ export type TodoUpdatedEvent = z.infer<typeof todoUpdatedEventSchema>;
 export type LiveRequestOpenedEvent = z.infer<typeof liveRequestOpenedEventSchema>;
 export type LiveRequestResolvedEvent = z.infer<typeof liveRequestResolvedEventSchema>;
 export type LiveRequestCancelledEvent = z.infer<typeof liveRequestCancelledEventSchema>;
+
+// --- Pending Interactions (rehydration) ---
+//
+// Snapshot of everything currently blocking a conversation on the user, fetched
+// on demand (e.g. when a chat is opened or reopened) rather than relying solely
+// on the SSE stream, which drops events fired while nothing is subscribed.
+
+export const pendingPermissionSchema = z.object({
+  id: z.string().min(1),
+  sessionID: z.string().min(1),
+  permission: z.string(),
+  patterns: z.array(z.string()).default([]),
+  metadata: looseRecordSchema.default({}),
+  always: z.array(z.string()).default([]),
+  tool: toolLinkSchema.optional(),
+});
+
+export const pendingQuestionSchema = z.object({
+  id: z.string().min(1),
+  sessionID: z.string().min(1),
+  questions: z.array(questionItemSchema),
+  tool: toolLinkSchema.optional(),
+});
+
+export const pendingInteractionsSchema = z.object({
+  permissions: z.array(pendingPermissionSchema),
+  question: pendingQuestionSchema.nullable(),
+  liveRequests: z.array(liveRequestSchema),
+});
+
+export type PendingPermission = z.infer<typeof pendingPermissionSchema>;
+export type PendingQuestion = z.infer<typeof pendingQuestionSchema>;
+export type PendingInteractions = z.infer<typeof pendingInteractionsSchema>;
 
 // --- Interactive Reply Input Schemas ---
 

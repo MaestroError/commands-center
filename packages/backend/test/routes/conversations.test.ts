@@ -4,6 +4,7 @@ import { createSpecialistService } from "../../src/services/specialist-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { createApiTokenService } from "../../src/services/api-token-service";
+import { createLiveRequestService } from "../../src/services/live-request-service";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
@@ -178,6 +179,159 @@ describe("conversation routes", () => {
     const snapshot = response.json<{ current: { id: string }; previous: Array<{ id: string }> }>();
     expect(snapshot.current.id).not.toBe(previousId);
     expect(snapshot.previous.some((c) => c.id === previousId)).toBe(true);
+  });
+});
+
+describe("conversation pending-interactions route", () => {
+  it("rehydrates pending permissions, question, and live requests scoped to the conversation", async () => {
+    const testDb = await createTestDatabase();
+    const liveRequestService = createLiveRequestService();
+    const opencodeService = createMockOpenCodeService();
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService,
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      liveRequestService,
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "Pending Specialist",
+        role: "wait on the user",
+        instructions: "Be useful.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
+      });
+
+      const opened = await server.inject({
+        method: "GET",
+        url: `/api/specialists/${agent.id}/conversations/active`,
+      });
+      const { id: conversationId, opencodeSessionId: sessionID } = opened.json<{
+        current: { id: string; opencodeSessionId: string };
+      }>().current;
+
+      opencodeService.listPendingPermissions = () =>
+        Promise.resolve([
+          {
+            id: "perm-1",
+            sessionID,
+            permission: "bash",
+            patterns: ["rm *"],
+            always: [],
+            metadata: {},
+            tool: { messageID: "msg-1", callID: "call-1" },
+          },
+          {
+            id: "perm-other",
+            sessionID: "other-session",
+            permission: "bash",
+            patterns: [],
+            always: [],
+            metadata: {},
+          },
+        ]);
+      opencodeService.listPendingQuestions = () =>
+        Promise.resolve([
+          {
+            id: "q-1",
+            sessionID,
+            questions: [{ question: "Proceed?", options: [{ label: "Yes" }] }],
+          },
+        ]);
+
+      const pendingLiveRequest = liveRequestService.create({
+        conversationId,
+        kind: "add_secret",
+        closable: false,
+        presentation: { title: "Add secret", cancelLabel: "Cancel" },
+        fields: [],
+      });
+      void pendingLiveRequest.catch(() => {});
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/conversations/${conversationId}/pending-interactions`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{
+        permissions: Array<{ id: string }>;
+        question: { id: string } | null;
+        liveRequests: Array<{ presentation: { title: string } }>;
+      }>();
+      expect(body.permissions).toEqual([
+        expect.objectContaining({ id: "perm-1", sessionID, permission: "bash" }),
+      ]);
+      expect(body.question).toMatchObject({ id: "q-1" });
+      expect(body.liveRequests).toHaveLength(1);
+      expect(body.liveRequests[0]?.presentation.title).toBe("Add secret");
+    } finally {
+      liveRequestService.dispose();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns an empty live-request list when no live request service is configured", async () => {
+    const testDb = await createTestDatabase();
+    const opencodeService = createMockOpenCodeService();
+    const agentService = createSpecialistService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+      skillRoot: `${testDb.cwd}/builtin-skills`,
+    });
+    const server = await createServer({
+      config: testDb.config,
+      logger: createLogger(testDb.config),
+      database: testDb.client,
+      apiTokenService: createApiTokenService({ db: testDb.client.db }),
+      orchestrator: createOrchestrator(),
+      opencodeService,
+      openCodeEventService: { subscribe: () => {} },
+      secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+      scheduler: createSchedulerService(),
+    });
+
+    try {
+      const agent = await agentService.create({
+        name: "No Live Requests Specialist",
+        role: "wait on the user",
+        instructions: "Be useful.",
+        defaultModel: "openai/gpt-4.1",
+        capabilities: { builtInSkills: [], customTools: [], mcpServers: [], toolPermissions: [] },
+      });
+
+      const opened = await server.inject({
+        method: "GET",
+        url: `/api/specialists/${agent.id}/conversations/active`,
+      });
+      const conversationId = opened.json<{ current: { id: string } }>().current.id;
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/conversations/${conversationId}/pending-interactions`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ permissions: [], question: null, liveRequests: [] });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
   });
 });
 

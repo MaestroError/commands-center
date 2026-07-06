@@ -3,6 +3,7 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
   artifactListResponseSchema,
+  pendingInteractionsSchema,
   replyPermissionInputSchema,
   replyQuestionInputSchema,
   resolvedSystemPromptSchema,
@@ -223,6 +224,28 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
     async (request, reply) => {
       await service.abortConversation(request.params.conversationId);
       reply.code(204);
+    },
+  );
+
+  app.get(
+    "/api/conversations/:conversationId/pending-interactions",
+    {
+      schema: {
+        params: conversationParamsSchema,
+        response: { 200: pendingInteractionsSchema },
+      },
+    },
+    async (request) => {
+      const { permissions, question } = await service.listPendingInteractions(
+        request.params.conversationId,
+      );
+
+      return {
+        permissions,
+        question,
+        liveRequests:
+          context.liveRequestService?.listByConversation(request.params.conversationId) ?? [],
+      };
     },
   );
 

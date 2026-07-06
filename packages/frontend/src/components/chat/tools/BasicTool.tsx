@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
-import { ChevronRight, Wrench } from "lucide-react";
+import { ChevronRight, Wrench, X } from "lucide-react";
 
 import { CopyIdButton } from "../CopyIdButton";
+import { useCancellableTool } from "./use-cancellable-tool";
 
 type BasicToolProps = {
   title: string;
@@ -11,6 +12,8 @@ type BasicToolProps = {
   defaultExpanded?: boolean;
   hideDetails?: boolean;
   copyValue?: string;
+  /** The tool call's id (`part.callID`). Lets the status dot become a cancel button when this call is blocked on the user. */
+  callId?: string;
   children?: ReactNode;
 };
 
@@ -36,11 +39,15 @@ export function BasicTool({
   defaultExpanded = false,
   hideDetails = false,
   copyValue,
+  callId,
   children,
 }: BasicToolProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const pill = statusPill(status);
   const canExpand = !hideDetails && Boolean(children);
+  const isWaiting = status === "pending" || status === "running";
+  const cancel = useCancellableTool(callId);
+  const cancellable = isWaiting && Boolean(cancel);
 
   return (
     <div className={`tool ${expanded ? "open" : ""}`}>
@@ -57,18 +64,37 @@ export function BasicTool({
           <span className="tool-name">{title}</span>
           {subtitle ? <span className="tool-arg">{subtitle}</span> : null}
           <span className="tool-spacer" />
-          {pill ? (
-            <span className={`tool-status ${pill.cls} tool-status--dot`} title={pill.label}>
-              <span className="sdot" />
-              <span className="sr-only">{pill.label}</span>
-            </span>
-          ) : null}
           {canExpand ? (
             <span className="tool-chev">
               <ChevronRight aria-hidden="true" className="h-4 w-4" />
             </span>
           ) : null}
         </button>
+        {pill ? (
+          cancellable ? (
+            <button
+              type="button"
+              className={`tool-status ${pill.cls} tool-status--dot tool-status--cancellable`}
+              title="Cancel"
+              aria-label="Cancel tool call"
+              onClick={(event) => {
+                event.stopPropagation();
+                cancel?.();
+              }}
+            >
+              <span className="sdot" />
+              <span className="tool-status-cancel-icon">
+                <X aria-hidden="true" className="h-2.5 w-2.5" />
+              </span>
+              <span className="sr-only">Cancel tool call</span>
+            </button>
+          ) : (
+            <span className={`tool-status ${pill.cls} tool-status--dot`} title={pill.label}>
+              <span className="sdot" />
+              <span className="sr-only">{pill.label}</span>
+            </span>
+          )
+        ) : null}
         {copyValue ? <CopyIdButton label={`tool id ${title}`} value={copyValue} /> : null}
       </div>
 

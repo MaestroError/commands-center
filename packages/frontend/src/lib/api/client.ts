@@ -6,6 +6,18 @@ type RequestOptions = {
   body?: unknown;
 };
 
+// Carries the HTTP status alongside the message so callers can distinguish
+// e.g. a stale/already-resolved request (404) from a transient failure.
+export class ApiRequestError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
 const CSRF_COOKIE_NAME = "cc_csrf_token";
 
 const CSRF_HEADER_NAME = "x-csrf-token";

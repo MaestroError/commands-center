@@ -13,6 +13,9 @@ import { SystemPromptsTab } from "@/components/chat/SystemPromptsTab";
 import { TodoDock } from "@/components/chat/TodoDock";
 import { ToolsTab } from "@/components/chat/ToolsTab";
 import { ChatResultsPanel } from "@/components/chat/ChatResultsPanel";
+import { PendingInteractionProvider } from "@/components/chat/tools/PendingInteractionProvider";
+import type { PendingToolInteraction } from "@/components/chat/tools/pending-interaction-context";
+import { buildPendingInteractionMap } from "@/components/chat/tools/pending-interaction-map";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { QuickFileModal } from "@/components/workspace/QuickFileModal";
@@ -50,6 +53,9 @@ export function WorkspaceChatPage() {
   const isDesktop = useMediaQuery("(min-width: 1200px)");
   const inspection = useChatInspectionTabs(conv.conversation?.id);
   const resolveLiveRequest = conv.resolveLiveRequest;
+  const replyPermission = conv.replyPermission;
+  const rejectQuestion = conv.rejectQuestion;
+  const cancelLiveRequest = conv.cancelLiveRequest;
   const [activeContextTabId, setActiveContextTabId] = useState("files");
   const [mediaSearchQuery, setMediaSearchQuery] = useState("");
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -86,6 +92,43 @@ export function WorkspaceChatPage() {
       .map((s) => ({ slug: s.slug, description: s.description }));
   }, [conv.agent, catalog]);
 
+  // Links a tool call to the pending permission / question / live request
+  // blocking it, so the status dot on that tool row can offer a cancel
+  // affordance.
+  const conversationMessages = conv.conversation?.messages;
+  const pendingInteractionsByCallId = useMemo(
+    () =>
+      buildPendingInteractionMap({
+        permissions: conv.pendingPermissions,
+        question: conv.pendingQuestion,
+        liveRequests: conv.liveRequests,
+        messages: conversationMessages ?? [],
+        parts: conv.parts,
+      }),
+    [
+      conv.pendingPermissions,
+      conv.pendingQuestion,
+      conv.liveRequests,
+      conversationMessages,
+      conv.parts,
+    ],
+  );
+
+  const cancelPendingInteraction = useCallback(
+    (interaction: PendingToolInteraction) => {
+      if (interaction.kind === "permission") {
+        replyPermission(interaction.requestId, "reject");
+      } else if (interaction.kind === "question") {
+        rejectQuestion(interaction.requestId);
+      } else {
+        // Swallow rejections: the request may already be resolved/gone by the
+        // time the dot is clicked, which is a no-op, not an error to surface.
+        void cancelLiveRequest(interaction.requestId).catch(() => {});
+      }
+    },
+    [replyPermission, rejectQuestion, cancelLiveRequest],
+  );
+
   useEffect(() => {
     setMediaSearchQuery("");
     setActiveContextTabId("files");
@@ -110,6 +153,12 @@ export function WorkspaceChatPage() {
     });
   }, [conv.agent]);
 
+  // Destructure the stable pieces the sync effect needs. Depending on the
+  // whole `inspection` object would re-run the effect every render (it's a
+  // fresh object literal each time); these callbacks are useCallback-stable and
+  // `inspectionTabs` only changes when tabs actually change.
+  const { openFile, openLiveRequest, removeLiveRequest, tabs: inspectionTabs } = inspection;
+
   useEffect(() => {
     const activeIds = new Set(conv.liveRequests.map((request) => request.id));
 
@@ -119,7 +168,7 @@ export function WorkspaceChatPage() {
 
         if (path && agentSlug && !autoResolvedLiveRequestIdsRef.current.has(request.id)) {
           autoResolvedLiveRequestIdsRef.current.add(request.id);
-          inspection.openFile({
+          openFile({
             root: "workspace",
             path: resolveSpecialistWorkspacePath(agentSlug, path),
             displayPath: path,
@@ -132,15 +181,23 @@ export function WorkspaceChatPage() {
         continue;
       }
 
-      inspection.openLiveRequest(request);
+      openLiveRequest(request);
     }
 
-    for (const tab of inspection.tabs) {
+    for (const tab of inspectionTabs) {
       if (tab.tabType === "live-request" && !activeIds.has(tab.request.id)) {
-        inspection.removeLiveRequest(tab.request.id);
+        removeLiveRequest(tab.request.id);
       }
     }
-  }, [agentSlug, conv.liveRequests, inspection, resolveLiveRequest]);
+  }, [
+    agentSlug,
+    conv.liveRequests,
+    inspectionTabs,
+    openFile,
+    openLiveRequest,
+    removeLiveRequest,
+    resolveLiveRequest,
+  ]);
 
   const handleAttachmentMediaSearch = (filename: string) => {
     setMediaSearchQuery(filename);
@@ -326,15 +383,20 @@ export function WorkspaceChatPage() {
             <ChatSplitPaneLayout
               main={
                 <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                  <MessageTimeline
-                    messages={conv.conversation.messages}
-                    parts={conv.parts}
-                    sessionStatus={conv.sessionStatus}
-                    sendError={conv.sendError}
-                    conversationId={conv.conversation.id}
-                    onAttachmentClick={handleAttachmentMediaSearch}
-                    onConvertUserMessageToTask={handleConvertUserMessageToTask}
-                  />
+                  <PendingInteractionProvider
+                    byCallId={pendingInteractionsByCallId}
+                    cancel={cancelPendingInteraction}
+                  >
+                    <MessageTimeline
+                      messages={conv.conversation.messages}
+                      parts={conv.parts}
+                      sessionStatus={conv.sessionStatus}
+                      sendError={conv.sendError}
+                      conversationId={conv.conversation.id}
+                      onAttachmentClick={handleAttachmentMediaSearch}
+                      onConvertUserMessageToTask={handleConvertUserMessageToTask}
+                    />
+                  </PendingInteractionProvider>
 
                   {conv.pendingPermission ? (
                     <PermissionDock

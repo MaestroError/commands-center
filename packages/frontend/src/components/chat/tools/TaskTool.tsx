@@ -1,7 +1,7 @@
 import { Sparkles } from "lucide-react";
 
 import type { ToolRendererProps } from "./tool-registry";
-import { getToolInput, getToolState } from "./tool-registry";
+import { getToolCallId, getToolInput, getToolState } from "./tool-registry";
 import { BasicTool } from "./BasicTool";
 
 export function TaskTool({ part }: ToolRendererProps) {
@@ -19,6 +19,7 @@ export function TaskTool({ part }: ToolRendererProps) {
       title={title}
       subtitle={description}
       status={status}
+      callId={getToolCallId(part)}
       hideDetails
     />
   );

@@ -336,6 +336,8 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
     }
 
     case "permission.asked": {
+      const tool = sanitizeToolLink(props["tool"]);
+
       return {
         type: raw.type,
         properties: {
@@ -345,17 +347,21 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
           patterns: Array.isArray(props["patterns"]) ? props["patterns"] : [],
           metadata: isRecord(props["metadata"]) ? props["metadata"] : {},
           always: Array.isArray(props["always"]) ? props["always"] : [],
+          ...(tool ? { tool } : {}),
         },
       };
     }
 
     case "question.asked": {
+      const tool = sanitizeToolLink(props["tool"]);
+
       return {
         type: raw.type,
         properties: {
           id: typeof props["id"] === "string" ? props["id"] : "",
           sessionID,
           questions: Array.isArray(props["questions"]) ? props["questions"] : [],
+          ...(tool ? { tool } : {}),
         },
       };
     }
@@ -377,6 +383,18 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function sanitizeToolLink(value: unknown): Record<string, unknown> | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value["messageID"] !== "string" ||
+    typeof value["callID"] !== "string"
+  ) {
+    return undefined;
+  }
+
+  return value;
 }
 
 function sanitizeSessionStatus(status: unknown) {

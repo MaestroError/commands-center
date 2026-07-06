@@ -698,6 +698,34 @@ describe("opencode-service", () => {
       // deleteSession resolves without throwing when the body isn't JSON.
       await expect(service.deleteSession("/work/a", "s")).resolves.toBeUndefined();
     });
+
+    it("remaps a 404 from OpenCode's reply/reject endpoints to NotFoundError", async () => {
+      fetchMock.mockResolvedValue(new Response("not found", { status: 404 }));
+      const service = makeService();
+
+      await expect(service.replyPermission("/work/a", "perm-1", "once")).rejects.toMatchObject({
+        code: "not_found",
+        statusCode: 404,
+      });
+      await expect(service.replyQuestion("/work/a", "q-1", [["yes"]])).rejects.toMatchObject({
+        code: "not_found",
+        statusCode: 404,
+      });
+      await expect(service.rejectQuestion("/work/a", "q-1")).rejects.toMatchObject({
+        code: "not_found",
+        statusCode: 404,
+      });
+    });
+
+    it("leaves non-404 failures from reply/reject endpoints unchanged", async () => {
+      fetchMock.mockResolvedValue(new Response("boom", { status: 500 }));
+      const service = makeService();
+
+      await expect(service.replyPermission("/work/a", "perm-1", "once")).rejects.toMatchObject({
+        name: "OpenCodeRequestError",
+        status: 500,
+      });
+    });
   });
 
   describe("mcp runtime endpoints over fetch", () => {

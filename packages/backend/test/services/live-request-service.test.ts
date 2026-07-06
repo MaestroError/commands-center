@@ -54,4 +54,52 @@ describe("live request service", () => {
     controller.abort();
     service.dispose();
   });
+
+  it("lists open requests scoped to a conversation and drops resolved/cancelled ones", async () => {
+    const service = createLiveRequestService();
+
+    const pendingA = service.create({
+      conversationId: "conv-1",
+      kind: "add_secret",
+      closable: false,
+      presentation: { title: "A", cancelLabel: "Cancel" },
+      fields: [],
+    });
+    const pendingB = service.create({
+      conversationId: "conv-1",
+      kind: "add_secret",
+      closable: false,
+      presentation: { title: "B", cancelLabel: "Cancel" },
+      fields: [],
+    });
+    const pendingOther = service.create({
+      conversationId: "conv-2",
+      kind: "add_secret",
+      closable: false,
+      presentation: { title: "Other conversation", cancelLabel: "Cancel" },
+      fields: [],
+    });
+    void pendingOther.catch(() => {});
+
+    const listed = service.listByConversation("conv-1");
+    expect(listed.map((request) => request.presentation.title).sort()).toEqual(["A", "B"]);
+    expect(service.listByConversation("conv-2")).toHaveLength(1);
+    expect(service.listByConversation("conv-3")).toEqual([]);
+
+    const requestA = listed.find((request) => request.presentation.title === "A")!;
+    const requestB = listed.find((request) => request.presentation.title === "B")!;
+
+    service.resolve("conv-1", requestA.id, { action: "submit", values: {} });
+    await pendingA;
+
+    const afterResolve = service.listByConversation("conv-1");
+    expect(afterResolve).toHaveLength(1);
+    expect(afterResolve[0]?.id).toBe(requestB.id);
+
+    service.cancel("conv-1", requestB.id, "no longer needed");
+    await expect(pendingB).rejects.toThrow("no longer needed");
+    expect(service.listByConversation("conv-1")).toEqual([]);
+
+    service.dispose();
+  });
 });

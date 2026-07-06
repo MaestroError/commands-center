@@ -141,4 +141,46 @@ describe("opencode event service mapping", () => {
     ]);
     expect(received.some((event) => event.type === "session.error")).toBe(false);
   });
+
+  it("forwards the tool link on permission/question asked events when present and well-formed", async () => {
+    const { received } = await collectEvents([
+      {
+        type: "permission.asked",
+        properties: {
+          sessionID: "sess-1",
+          id: "perm",
+          permission: "edit",
+          patterns: ["*"],
+          tool: { messageID: "msg-1", callID: "call-1" },
+        },
+      },
+      {
+        type: "question.asked",
+        properties: {
+          sessionID: "sess-1",
+          id: "q",
+          questions: [{ question: "?", options: [] }],
+          tool: { messageID: "msg-2", callID: "call-2" },
+        },
+      },
+      // Malformed tool link (missing callID) — dropped rather than forwarded.
+      {
+        type: "permission.asked",
+        properties: {
+          sessionID: "sess-1",
+          id: "perm-2",
+          permission: "bash",
+          tool: { messageID: "msg-3" },
+        },
+      },
+    ]);
+
+    const permission = received.find((event) => event.properties["id"] === "perm");
+    const question = received.find((event) => event.properties["id"] === "q");
+    const malformed = received.find((event) => event.properties["id"] === "perm-2");
+
+    expect(permission?.properties["tool"]).toEqual({ messageID: "msg-1", callID: "call-1" });
+    expect(question?.properties["tool"]).toEqual({ messageID: "msg-2", callID: "call-2" });
+    expect(malformed?.properties).not.toHaveProperty("tool");
+  });
 });

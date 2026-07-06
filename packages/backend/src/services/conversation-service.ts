@@ -16,6 +16,7 @@ import {
   type ConversationMessageError,
   type ConversationSnapshot,
   type ConversationSummary,
+  type QuestionItem,
   type ResolvedSystemPrompt,
   type SendConversationCommandInput,
   type SendConversationPromptInput,
@@ -77,24 +78,31 @@ export type TaskRunPromptStart = {
   promptAcceptedAt: string;
 };
 
+export type PendingChatPermission = {
+  id: string;
+  sessionID: string;
+  permission: string;
+  patterns: string[];
+  always: string[];
+  metadata: Record<string, unknown>;
+  tool?: OpenCodePendingPermission["tool"];
+};
+
+export type PendingChatQuestion = {
+  id: string;
+  sessionID: string;
+  questions: QuestionItem[];
+  tool?: OpenCodePendingQuestion["tool"];
+};
+
+export type PendingChatInteractions = {
+  permissions: PendingChatPermission[];
+  question: PendingChatQuestion | null;
+};
+
 export type TaskRunPendingInteraction =
-  | {
-      type: "permission";
-      id: string;
-      sessionID: string;
-      permission: string;
-      patterns: string[];
-      always: string[];
-      metadata: Record<string, unknown>;
-      tool?: OpenCodePendingPermission["tool"];
-    }
-  | {
-      type: "question";
-      id: string;
-      sessionID: string;
-      questions: OpenCodePendingQuestion["questions"];
-      tool?: OpenCodePendingQuestion["tool"];
-    };
+  | ({ type: "permission" } & PendingChatPermission)
+  | ({ type: "question" } & PendingChatQuestion);
 
 export type ConversationService = ReturnType<typeof createConversationService>;
 
@@ -652,13 +660,7 @@ export function createConversationService(options: {
           .map(
             (permission): TaskRunPendingInteraction => ({
               type: "permission",
-              id: permission.id,
-              sessionID: permission.sessionID,
-              permission: permission.permission,
-              patterns: permission.patterns,
-              always: permission.always,
-              metadata: permission.metadata,
-              ...(permission.tool ? { tool: permission.tool } : {}),
+              ...mapPendingPermission(permission),
             }),
           ),
         ...questions
@@ -666,13 +668,32 @@ export function createConversationService(options: {
           .map(
             (question): TaskRunPendingInteraction => ({
               type: "question",
-              id: question.id,
-              sessionID: question.sessionID,
-              questions: question.questions,
-              ...(question.tool ? { tool: question.tool } : {}),
+              ...mapPendingQuestion(question),
             }),
           ),
       ];
+    },
+
+    // Rehydrates pending permissions/question for a chat conversation. Unlike
+    // the SSE stream (which only reaches a subscribed browser tab), this reads
+    // straight from OpenCode's own pending-request state, so it reflects
+    // reality even after the user navigated away and came back.
+    async listPendingInteractions(conversationId: string): Promise<PendingChatInteractions> {
+      const loaded = await getConversationAgent(conversationId);
+      const [permissions, questions] = await Promise.all([
+        options.opencodeService.listPendingPermissions(loaded.agent.workspace_path),
+        options.opencodeService.listPendingQuestions(loaded.agent.workspace_path),
+      ]);
+      const sessionID = loaded.conversation.opencode_session_id;
+
+      const question = questions.find((candidate) => candidate.sessionID === sessionID);
+
+      return {
+        permissions: permissions
+          .filter((permission) => permission.sessionID === sessionID)
+          .map(mapPendingPermission),
+        question: question ? mapPendingQuestion(question) : null,
+      };
     },
 
     async updateTitle(conversationId: string, title: string): Promise<void> {
@@ -1219,6 +1240,31 @@ export function createConversationService(options: {
       convertedAt: conversation.converted_at?.toISOString(),
     });
   }
+}
+
+function mapPendingPermission(permission: OpenCodePendingPermission): PendingChatPermission {
+  return {
+    id: permission.id,
+    sessionID: permission.sessionID,
+    permission: permission.permission,
+    patterns: permission.patterns,
+    always: permission.always,
+    metadata: permission.metadata,
+    ...(permission.tool ? { tool: permission.tool } : {}),
+  };
+}
+
+function mapPendingQuestion(question: OpenCodePendingQuestion): PendingChatQuestion {
+  return {
+    id: question.id,
+    sessionID: question.sessionID,
+    // OpenCode's pending-question payload is only loosely typed (arbitrary
+    // records); it's expected to already match the question/options shape
+    // the frontend renders, same assumption the `question.asked` SSE mapper
+    // makes (packages/backend/src/services/opencode-event-service.ts).
+    questions: question.questions as unknown as QuestionItem[],
+    ...(question.tool ? { tool: question.tool } : {}),
+  };
 }
 
 function parseModel(value: string): { providerID: string; modelID: string } {

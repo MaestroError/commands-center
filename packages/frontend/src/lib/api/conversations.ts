@@ -1,10 +1,11 @@
-import { apiFetch, parseSse, readApiError, requestJson } from "./client";
+import { ApiRequestError, apiFetch, parseSse, readApiError, requestJson } from "./client";
 
 import {
   chatEventSchema,
   conversationDetailSchema,
   conversationListSchema,
   conversationSnapshotSchema,
+  pendingInteractionsSchema,
   resolvedSystemPromptSchema,
   sessionMediaListSchema,
   sendConversationPromptInputSchema,
@@ -13,6 +14,7 @@ import {
   type ConversationDetail,
   type ConversationSnapshot,
   type ConversationSummary,
+  type PendingInteractions,
   type ResolvedSystemPrompt,
   type SessionMediaItem,
   type SendConversationPromptInput,
@@ -91,6 +93,18 @@ export async function fetchConversationMedia(conversationId: string): Promise<Se
   );
 }
 
+// Rehydrates whatever is currently blocking the conversation on the user
+// (pending permissions, an unanswered question, open live requests) straight
+// from the backend, rather than relying solely on the SSE stream — which
+// drops events fired while nothing was subscribed (e.g. the user navigated
+// away from the chat, or reloaded the page).
+export async function getPendingInteractions(conversationId: string): Promise<PendingInteractions> {
+  return requestJson<PendingInteractions>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/pending-interactions`,
+    pendingInteractionsSchema,
+  );
+}
+
 export async function sendPrompt(
   conversationId: string,
   input: SendConversationPromptInput,
@@ -141,7 +155,10 @@ export async function replyPermission(
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status, response.statusText));
+    throw new ApiRequestError(
+      readApiError(payload, response.status, response.statusText),
+      response.status,
+    );
   }
 }
 
@@ -161,7 +178,10 @@ export async function replyQuestion(
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status, response.statusText));
+    throw new ApiRequestError(
+      readApiError(payload, response.status, response.statusText),
+      response.status,
+    );
   }
 }
 
@@ -173,7 +193,10 @@ export async function rejectQuestion(conversationId: string, requestId: string):
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as unknown;
-    throw new Error(readApiError(payload, response.status, response.statusText));
+    throw new ApiRequestError(
+      readApiError(payload, response.status, response.statusText),
+      response.status,
+    );
   }
 }
 

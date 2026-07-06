@@ -744,6 +744,158 @@ describe("SSE_EVENT: question.asked / question.replied / question.rejected", () 
 });
 
 // ---------------------------------------------------------------------------
+// HYDRATE_PENDING / DISCARD_STALE_PERMISSION / DISCARD_STALE_QUESTION
+// ---------------------------------------------------------------------------
+
+describe("HYDRATE_PENDING", () => {
+  it("replaces pendingPermissions, pendingQuestion, and liveRequests wholesale", () => {
+    const dirtyState: ConversationState = {
+      ...initialState,
+      pendingPermissions: [
+        {
+          id: "stale-perm",
+          sessionID: "s",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+      pendingQuestion: { id: "stale-q", sessionID: "s", questions: [] },
+      liveRequests: [],
+    };
+
+    const next = conversationReducer(dirtyState, {
+      type: "HYDRATE_PENDING",
+      pending: {
+        permissions: [
+          {
+            id: "perm-fresh",
+            sessionID: "s",
+            permission: "bash",
+            patterns: ["*.sh"],
+            metadata: {},
+            always: [],
+            tool: { messageID: "m1", callID: "c1" },
+          },
+        ],
+        question: {
+          id: "q-fresh",
+          sessionID: "s",
+          questions: [{ question: "Proceed?", options: [{ label: "Yes" }] }],
+        },
+        liveRequests: [],
+      },
+    });
+
+    expect(next.pendingPermissions).toEqual([
+      {
+        id: "perm-fresh",
+        sessionID: "s",
+        permission: "bash",
+        patterns: ["*.sh"],
+        metadata: {},
+        always: [],
+        tool: { messageID: "m1", callID: "c1" },
+      },
+    ]);
+    expect(next.pendingQuestion?.id).toBe("q-fresh");
+  });
+
+  it("clears pendingPermissions and pendingQuestion when nothing is pending server-side", () => {
+    const dirtyState: ConversationState = {
+      ...initialState,
+      pendingPermissions: [
+        {
+          id: "stale-perm",
+          sessionID: "s",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+      pendingQuestion: { id: "stale-q", sessionID: "s", questions: [] },
+    };
+
+    const next = conversationReducer(dirtyState, {
+      type: "HYDRATE_PENDING",
+      pending: { permissions: [], question: null, liveRequests: [] },
+    });
+
+    expect(next.pendingPermissions).toEqual([]);
+    expect(next.pendingQuestion).toBeNull();
+  });
+});
+
+describe("DISCARD_STALE_PERMISSION", () => {
+  it("removes only the named permission and keeps the rest", () => {
+    const state: ConversationState = {
+      ...initialState,
+      pendingPermissions: [
+        {
+          id: "perm-1",
+          sessionID: "s",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+        {
+          id: "perm-2",
+          sessionID: "s",
+          permission: "write",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+    };
+
+    const next = conversationReducer(state, {
+      type: "DISCARD_STALE_PERMISSION",
+      requestId: "perm-1",
+    });
+
+    expect(next.pendingPermissions.map((p) => p.id)).toEqual(["perm-2"]);
+  });
+
+  it("is a no-op when the id is not pending", () => {
+    const next = conversationReducer(initialState, {
+      type: "DISCARD_STALE_PERMISSION",
+      requestId: "ghost",
+    });
+    expect(next.pendingPermissions).toEqual([]);
+  });
+});
+
+describe("DISCARD_STALE_QUESTION", () => {
+  it("clears pendingQuestion when the id matches", () => {
+    const state: ConversationState = {
+      ...initialState,
+      pendingQuestion: { id: "q-1", sessionID: "s", questions: [] },
+    };
+    const next = conversationReducer(state, {
+      type: "DISCARD_STALE_QUESTION",
+      requestId: "q-1",
+    });
+    expect(next.pendingQuestion).toBeNull();
+  });
+
+  it("leaves an unrelated pendingQuestion untouched", () => {
+    const state: ConversationState = {
+      ...initialState,
+      pendingQuestion: { id: "q-1", sessionID: "s", questions: [] },
+    };
+    const next = conversationReducer(state, {
+      type: "DISCARD_STALE_QUESTION",
+      requestId: "some-other-id",
+    });
+    expect(next.pendingQuestion?.id).toBe("q-1");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // SSE_EVENT — todo.updated
 // ---------------------------------------------------------------------------
 
