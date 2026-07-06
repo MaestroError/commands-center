@@ -139,6 +139,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     queueFallbackRun,
     finalizeStalledRun,
     finalizeBlockedInteraction,
+    finalizeUsageLimitRun,
     resolveAutoRetryLimit,
     readRequeueCount,
   } = createTaskRetryPolicy({
@@ -161,6 +162,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
       queueFallbackRun,
       finalizeBlockedInteraction,
       finalizeStalledRun,
+      finalizeUsageLimitRun,
     },
   });
 
@@ -292,6 +294,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     const fallback: TaskRunMonitorRuntimeConfig = {
       maxLifetimeMs: monitorConfig.maxLifetimeMs,
       noProgressMs: monitorConfig.noProgressMs,
+      retryFailFastMs: monitorConfig.retryFailFastMs,
     };
 
     try {
@@ -299,6 +302,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
       const value: TaskRunMonitorRuntimeConfig = {
         maxLifetimeMs: settings.taskRunMonitorMaxLifetimeMinutes * 60_000,
         noProgressMs: settings.taskRunMonitorNoProgressTimeoutMinutes * 60_000,
+        retryFailFastMs: settings.taskRunMonitorUsageLimitFailFastMinutes * 60_000,
       };
       monitorRuntimeCache = { atMs: now, value };
       return value;

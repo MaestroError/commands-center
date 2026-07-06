@@ -200,7 +200,7 @@ describe("buildTerminalActivity", () => {
     ).toBeNull();
   });
 
-  it("emits nothing for cancelled or skipped runs", () => {
+  it("emits nothing for a manually cancelled (no errorDetails) or skipped run", () => {
     expect(
       buildTerminalActivity({
         run: run({ status: "cancelled" }),
@@ -215,5 +215,67 @@ describe("buildTerminalActivity", () => {
         isFeedbackSubtask: false,
       }),
     ).toBeNull();
+  });
+
+  it("maps a system-cancelled run (e.g. stall timeout) to task_run_failed", () => {
+    // errorMessage mirrors cancellationReason for a stall cancellation (set by
+    // finalizeStalledRun), so the notification body isn't left empty.
+    const activity = buildTerminalActivity({
+      run: run({
+        status: "cancelled",
+        cancellationReason: "Automatically cancelled: OpenCode produced no new output...",
+        errorDetails: { errorName: "TaskRunStallTimeout", stage: "monitor_stall" },
+        errorMessage: "Automatically cancelled: OpenCode produced no new output...",
+      }),
+      taskTitle: "Ship it",
+      isFeedbackSubtask: false,
+    });
+    expect(activity).toMatchObject({
+      kind: "task_run_failed",
+      level: "action_required",
+      title: "Task run failed: Ship it",
+      body: "Automatically cancelled: OpenCode produced no new output...",
+      dedupeKey: "task_run_failed:run-1",
+    });
+  });
+
+  it("labels a hard usage-limit failure (no fallback) as action_required", () => {
+    const activity = buildTerminalActivity({
+      run: run({
+        status: "error",
+        errorMessage: "The usage limit has been reached.",
+        errorDetails: { errorName: "UsageLimitReached", fallbackQueued: false },
+      }),
+      taskTitle: "Ship it",
+      isFeedbackSubtask: false,
+    });
+    expect(activity).toMatchObject({
+      kind: "task_run_failed",
+      level: "action_required",
+      title: "Usage limit reached: Ship it",
+      body: "The usage limit has been reached.",
+    });
+  });
+
+  it("labels a usage-limit failure with a queued fallback as info", () => {
+    const activity = buildTerminalActivity({
+      run: run({
+        status: "error",
+        errorMessage:
+          "The usage limit has been reached. Retrying with fallback model anthropic/claude-haiku.",
+        errorDetails: {
+          errorName: "UsageLimitReached",
+          fallbackQueued: true,
+          fallbackModel: "anthropic/claude-haiku",
+        },
+      }),
+      taskTitle: "Ship it",
+      isFeedbackSubtask: false,
+    });
+    expect(activity).toMatchObject({
+      kind: "task_run_failed",
+      level: "info",
+      title: "Usage limit reached, retrying with anthropic/claude-haiku: Ship it",
+    });
   });
 });

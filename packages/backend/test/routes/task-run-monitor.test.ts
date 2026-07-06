@@ -38,6 +38,7 @@ describe("task run monitor settings routes", () => {
       expect(initial.json()).toEqual({
         taskRunMonitorMaxLifetimeMinutes: 360,
         taskRunMonitorNoProgressTimeoutMinutes: 30,
+        taskRunMonitorUsageLimitFailFastMinutes: 2,
         taskRunMonitorRequeueAfterStall: false,
         taskRunMonitorRequeueLimit: 10,
         taskRunMaxAutoRetries: 10,
@@ -62,6 +63,7 @@ describe("task run monitor settings routes", () => {
       expect(reloaded.json()).toEqual({
         taskRunMonitorMaxLifetimeMinutes: 120,
         taskRunMonitorNoProgressTimeoutMinutes: 0,
+        taskRunMonitorUsageLimitFailFastMinutes: 2,
         taskRunMonitorRequeueAfterStall: true,
         taskRunMonitorRequeueLimit: 3,
         taskRunMaxAutoRetries: 10,
@@ -100,6 +102,7 @@ describe("task run monitor settings routes", () => {
       expect(reloaded.json()).toEqual({
         taskRunMonitorMaxLifetimeMinutes: 90,
         taskRunMonitorNoProgressTimeoutMinutes: 45,
+        taskRunMonitorUsageLimitFailFastMinutes: 2,
         taskRunMonitorRequeueAfterStall: true,
         taskRunMonitorRequeueLimit: 10,
         taskRunMaxAutoRetries: 10,

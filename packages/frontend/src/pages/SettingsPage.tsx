@@ -615,6 +615,7 @@ function SharingTab() {
 function TasksTab() {
   const [maxLifetimeMinutes, setMaxLifetimeMinutes] = useState(360);
   const [noProgressMinutes, setNoProgressMinutes] = useState(30);
+  const [usageLimitFailFastMinutes, setUsageLimitFailFastMinutes] = useState(2);
   const [requeueAfterStall, setRequeueAfterStall] = useState(false);
   const [requeueLimit, setRequeueLimit] = useState(10);
   const [maxAutoRetries, setMaxAutoRetries] = useState(10);
@@ -633,6 +634,7 @@ function TasksTab() {
         if (cancelled) return;
         setMaxLifetimeMinutes(settings.taskRunMonitorMaxLifetimeMinutes);
         setNoProgressMinutes(settings.taskRunMonitorNoProgressTimeoutMinutes);
+        setUsageLimitFailFastMinutes(settings.taskRunMonitorUsageLimitFailFastMinutes);
         setRequeueAfterStall(settings.taskRunMonitorRequeueAfterStall);
         setRequeueLimit(settings.taskRunMonitorRequeueLimit);
         setMaxAutoRetries(settings.taskRunMaxAutoRetries);
@@ -658,12 +660,14 @@ function TasksTab() {
       const settings = await updateTaskRunMonitorSettings({
         taskRunMonitorMaxLifetimeMinutes: maxLifetimeMinutes,
         taskRunMonitorNoProgressTimeoutMinutes: noProgressMinutes,
+        taskRunMonitorUsageLimitFailFastMinutes: usageLimitFailFastMinutes,
         taskRunMonitorRequeueAfterStall: requeueAfterStall,
         taskRunMonitorRequeueLimit: requeueLimit,
         taskRunMaxAutoRetries: maxAutoRetries,
       });
       setMaxLifetimeMinutes(settings.taskRunMonitorMaxLifetimeMinutes);
       setNoProgressMinutes(settings.taskRunMonitorNoProgressTimeoutMinutes);
+      setUsageLimitFailFastMinutes(settings.taskRunMonitorUsageLimitFailFastMinutes);
       setRequeueAfterStall(settings.taskRunMonitorRequeueAfterStall);
       setRequeueLimit(settings.taskRunMonitorRequeueLimit);
       setMaxAutoRetries(settings.taskRunMaxAutoRetries);
@@ -705,6 +709,22 @@ function TasksTab() {
         <span className="text-text-secondary">
           Cancel a run after OpenCode stops producing new messages for this long. Use 0 to disable
           stall detection.
+        </span>
+      </label>
+      <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
+        <span className="font-medium">Usage-limit fail-fast timeout (minutes)</span>
+        <input
+          className="cc-input"
+          disabled={saving}
+          min={0}
+          onChange={(event) => setUsageLimitFailFastMinutes(Number(event.target.value))}
+          type="number"
+          value={usageLimitFailFastMinutes}
+        />
+        <span className="text-text-secondary">
+          Fail a run as a usage limit once the provider reports a sustained retry status (e.g. a
+          rate or usage cap) for this long, instead of waiting for the stall timeout. Use 0 to
+          disable and fall back to the stall timeout.
         </span>
       </label>
       <label className="flex items-start gap-3 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">

@@ -9,6 +9,7 @@ import { TaskRunPromptError } from "../conversation-service.js";
 import type {
   TaskRunBlockedInteractionDetails,
   TaskRunStallDetails,
+  TaskRunUsageLimitDetails,
 } from "../task-run-monitor-service.js";
 
 export function formatStallDuration(ms: number): string {
@@ -66,6 +67,63 @@ export function buildBlockedInteractionErrorDetails(
   };
 }
 
+export function buildStallErrorDetails(
+  run: TaskRun,
+  details: TaskRunStallDetails,
+): Record<string, unknown> {
+  return {
+    errorName: "TaskRunStallTimeout",
+    stage: "monitor_stall",
+    taskRunId: run.id,
+    taskId: run.taskId,
+    opencodeSessionId: run.opencodeSessionId,
+    noProgressMs: details.noProgressMs,
+    monitorElapsedMs: details.monitorElapsedMs,
+    lastStatus: details.lastStatus,
+    lastAssistantMessageId: details.lastAssistantMessageId,
+  };
+}
+
+export function formatUsageLimitMessage(
+  details: TaskRunUsageLimitDetails,
+  fallbackModel?: string,
+): string {
+  const base =
+    `Provider retry status persisted for ${formatStallDuration(details.retryElapsedMs)} ` +
+    `(model: ${details.attemptedModel}): ${details.message}`;
+
+  return fallbackModel
+    ? `${base} Retrying automatically with fallback model ${fallbackModel}.`
+    : base;
+}
+
+export function buildUsageLimitErrorDetails(
+  run: TaskRun,
+  details: TaskRunUsageLimitDetails,
+  fallbackModel?: string,
+): Record<string, unknown> {
+  const slash = details.attemptedModel.indexOf("/");
+  const provider = slash > 0 ? details.attemptedModel.slice(0, slash) : details.attemptedModel;
+
+  return {
+    errorName: "UsageLimitReached",
+    stage: "opencode_session_retry",
+    taskRunId: run.id,
+    taskId: run.taskId,
+    opencodeSessionId: run.opencodeSessionId,
+    attemptedModel: details.attemptedModel,
+    provider,
+    retryAttempt: details.attempt,
+    retryMessage: details.message,
+    retryNextAtMs: details.next,
+    retryElapsedMs: details.retryElapsedMs,
+    monitorElapsedMs: details.monitorElapsedMs,
+    lastAssistantMessageId: details.lastAssistantMessageId,
+    fallbackQueued: fallbackModel !== undefined,
+    ...(fallbackModel ? { fallbackModel } : {}),
+  };
+}
+
 export interface TaskRetryPolicyContext {
   options: TaskExecutionServiceOptions;
   queueTask: (taskId: string, input?: QueueTaskExecutionInput) => Promise<TaskRun>;
@@ -97,9 +155,17 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
       `${latest.opencodeSessionId ? `; session ${latest.opencodeSessionId}` : ""}.` +
       `${limitReached ? ` Requeue limit (${String(requeue.limit)}) reached; not requeued.` : ""}`;
 
+    // errorDetails distinguishes this system-initiated cancellation (surfaced as
+    // a task_run_failed activity, same as any other failure) from a manual
+    // cancel via the `cancel` API, which carries no errorDetails and stays
+    // silent since the user already knows they cancelled it. errorMessage is
+    // also set (mirroring cancellationReason) so that activity's notification
+    // body isn't left empty.
     const cancelled = await options.taskService.setRunStatus(latest.id, "cancelled", {
       cancelledAt: new Date().toISOString(),
       cancellationReason,
+      errorMessage: cancellationReason,
+      errorDetails: buildStallErrorDetails(latest, details),
     });
 
     if (!cancelled) {
@@ -193,6 +259,111 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
       "task run blocked by pending OpenCode interaction",
     );
     scheduleAgentDrain(errored.agentId);
+  }
+
+  async function finalizeUsageLimitRun(
+    run: TaskRun,
+    details: TaskRunUsageLimitDetails,
+  ): Promise<void> {
+    const latest = await options.taskService.getRunById(run.id);
+
+    if (!latest || latest.status !== "running") {
+      return;
+    }
+
+    await abortOpenCodeTaskRun(latest);
+
+    // A usage/rate limit is provider-wide, not model-specific, so a fallback on
+    // the *same* provider would just hit the same wall. Only a different
+    // provider's fallback model is worth an automatic retry here.
+    const fallback = selectDifferentProviderFallbackModel(
+      details.attemptedModel,
+      latest.fallbackModels,
+    );
+
+    // The run must be marked terminal *before* queueing a fallback: `queueTask`
+    // rejects a new run for a task that still has an active (running) run.
+    // Label it generically first; if a fallback is actually queued below, the
+    // label is corrected before the single notifyRunTerminal call fires.
+    const errored = await options.taskService.setRunStatus(latest.id, "error", {
+      completedAt: new Date().toISOString(),
+      errorMessage: formatUsageLimitMessage(details),
+      errorDetails: buildUsageLimitErrorDetails(latest, details),
+    });
+
+    if (!errored) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    let fallbackRun: TaskRun | undefined;
+
+    if (fallback) {
+      try {
+        fallbackRun = await queueTask(errored.taskId, {
+          agentId: errored.agentId,
+          subtaskId: errored.subtaskId,
+          triggerSource: "system",
+          model: fallback.model,
+          fallbackModels: fallback.remaining,
+          retryOfRunId: errored.id,
+          context: {
+            text: [
+              "Previous task run ended because the provider reported a sustained usage/rate limit.",
+              `Previous run id: ${errored.id}`,
+              `Attempted model: ${details.attemptedModel}`,
+              `Provider message: ${details.message}`,
+              "The previous attempt may have already changed workspace files. Inspect the current workspace state before continuing, avoid duplicating completed work, and finish the original task goal.",
+            ].join("\n"),
+            attachments: [],
+          },
+          metadata: {
+            fallbackOfRunId: errored.id,
+            attemptedModel: details.attemptedModel,
+            errorName: "UsageLimitReached",
+          },
+        });
+      } catch (error) {
+        options.logger?.error(
+          { err: error, taskId: errored.taskId, taskRunId: errored.id },
+          "failed to queue usage-limit fallback run; finalizing without fallback",
+        );
+      }
+    }
+
+    const finalized = fallbackRun
+      ? ((await options.taskService.updateRun(errored.id, {
+          errorMessage: formatUsageLimitMessage(details, fallback?.model),
+          errorDetails: buildUsageLimitErrorDetails(latest, details, fallback?.model),
+        })) ?? errored)
+      : errored;
+
+    notifyRunTerminal(finalized);
+
+    if (fallbackRun) {
+      options.logger?.warn(
+        {
+          taskId: finalized.taskId,
+          previousRunId: finalized.id,
+          fallbackRunId: fallbackRun.id,
+          model: fallback?.model,
+        },
+        "task run hit usage limit; queued fallback model run on a different provider",
+      );
+    } else {
+      options.logger?.warn(
+        {
+          taskId: finalized.taskId,
+          taskRunId: finalized.id,
+          opencodeSessionId: finalized.opencodeSessionId,
+          attemptedModel: details.attemptedModel,
+          retryAttempt: details.attempt,
+          retryElapsedMs: details.retryElapsedMs,
+        },
+        "task run finalized: sustained provider retry status treated as usage limit; no fallback available",
+      );
+    }
+
+    scheduleAgentDrain(finalized.agentId);
   }
 
   async function resolveRequeueSettings(): Promise<{ enabled: boolean; limit: number }> {
@@ -365,6 +536,31 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
     return undefined;
   }
 
+  // A usage/rate limit applies to the whole provider account, so (unlike
+  // selectNextFallbackModel) same-provider models are always skipped, not just
+  // for ProviderAuthError.
+  function selectDifferentProviderFallbackModel(
+    attemptedModel: string,
+    fallbackModels: string[],
+  ): { model: string; remaining: string[] } | undefined {
+    const attemptedProvider = readProvider(attemptedModel);
+
+    for (let index = 0; index < fallbackModels.length; index += 1) {
+      const model = fallbackModels[index]!;
+
+      if (readProvider(model) === attemptedProvider) {
+        continue;
+      }
+
+      return {
+        model,
+        remaining: fallbackModels.slice(index + 1),
+      };
+    }
+
+    return undefined;
+  }
+
   function isFallbackEligible(error: TaskRunPromptError): boolean {
     if (error.modelError.name === "UnknownError") {
       return false;
@@ -404,6 +600,7 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
     queueFallbackRun,
     finalizeStalledRun,
     finalizeBlockedInteraction,
+    finalizeUsageLimitRun,
     resolveAutoRetryLimit,
     readRequeueCount,
   };
