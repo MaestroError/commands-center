@@ -27,6 +27,12 @@ export type TaskRunMonitorOptions = {
   maxLifetimeMs?: number;
   /** No-progress (stall) timeout. `<= 0` disables stall detection. */
   noProgressMs?: number;
+  /**
+   * How long a sustained provider `retry` status may persist before finalizing
+   * as a usage-limit error instead of waiting for the stall timeout. `<= 0`
+   * disables fail-fast detection.
+   */
+  retryFailFastMs?: number;
 };
 
 export type TaskRunMonitorConfig = Required<TaskRunMonitorOptions>;
@@ -38,12 +44,14 @@ export const DEFAULT_TASK_RUN_MONITOR_CONFIG: TaskRunMonitorConfig = {
   idlePolls: 2,
   maxLifetimeMs: 6 * 60 * 60 * 1_000,
   noProgressMs: 30 * 60 * 1_000,
+  retryFailFastMs: 2 * 60 * 1_000,
 };
 
 /** Runtime-resolvable timeouts; can change between polls (e.g. from settings). */
 export type TaskRunMonitorRuntimeConfig = {
   maxLifetimeMs: number;
   noProgressMs: number;
+  retryFailFastMs: number;
 };
 
 type TaskRunMonitorHandle = {
@@ -55,6 +63,8 @@ type TaskRunMonitorHandle = {
   lastAssistantMessageId?: string;
   lastProgressAtMs: number;
   lastSignature?: string;
+  /** Set when a `retry` status is first observed; cleared once status changes. */
+  retryStatusSinceMs?: number;
   stopped: boolean;
   timer?: ReturnType<typeof setTimeout>;
 };
@@ -78,6 +88,17 @@ export type TaskRunBlockedInteractionDetails = {
   lastAssistantMessageId?: string;
 };
 
+export type TaskRunUsageLimitDetails = {
+  attempt: number;
+  message: string;
+  /** OpenCode's next-retry timestamp (epoch ms), if provided. */
+  next: number;
+  attemptedModel: string;
+  retryElapsedMs: number;
+  monitorElapsedMs: number;
+  lastAssistantMessageId?: string;
+};
+
 export type TaskRunMonitorHooks = {
   /** Run terminal handling (archive finalization, feedback subtasks, queue drain). */
   handleTerminalRun(run: TaskRun): Promise<void>;
@@ -98,6 +119,13 @@ export type TaskRunMonitorHooks = {
     run: TaskRun,
     details: TaskRunBlockedInteractionDetails,
   ): Promise<void>;
+  /**
+   * Finalize a run stuck on a sustained provider `retry` status (e.g. a rate or
+   * usage limit) once it has persisted past the fail-fast threshold, rather than
+   * waiting for the much larger stall timeout. Owns the terminal/error policy;
+   * the monitor only detects the sustained retry.
+   */
+  finalizeUsageLimitRun(run: TaskRun, details: TaskRunUsageLimitDetails): Promise<void>;
 };
 
 export type TaskRunMonitorService = ReturnType<typeof createTaskRunMonitorService>;
@@ -213,12 +241,16 @@ export function createTaskRunMonitorService(deps: {
 
     let statusType: string | undefined;
     let statusKnown = false;
+    let retryStatus: { attempt: number; message: string; next: number } | undefined;
 
     try {
       const status = await transport.getSessionStatus(run);
       statusType = status.type;
       statusKnown = true;
       handle.lastStatus = status.type;
+      if (status.type === "retry") {
+        retryStatus = { attempt: status.attempt, message: status.message, next: status.next };
+      }
     } catch (error) {
       logger?.warn(
         { err: error, runId: run.id, opencodeSessionId: run.opencodeSessionId },
@@ -256,6 +288,28 @@ export function createTaskRunMonitorService(deps: {
 
     if (pendingInteraction) {
       return finalizeBlockedInteraction(handle, run, pendingInteraction);
+    }
+
+    // A sustained provider `retry` status that reads as a usage/rate limit
+    // produces no new messages, so left alone it would only be caught by the
+    // much larger stall timeout. Finalize it fast and labeled once it persists
+    // past the threshold. Any other `retry` reason (e.g. a transient blip) is
+    // deliberately left to the ordinary stall timeout below instead.
+    if (retryStatus && isUsageLimitRetryMessage(retryStatus.message)) {
+      handle.retryStatusSinceMs ??= Date.now();
+      const retryElapsedMs = Date.now() - handle.retryStatusSinceMs;
+
+      if (runtime.retryFailFastMs > 0 && retryElapsedMs >= runtime.retryFailFastMs) {
+        return finalizeUsageLimit(
+          handle,
+          run,
+          retryStatus,
+          monitorMetadata.attemptedModel,
+          retryElapsedMs,
+        );
+      }
+    } else {
+      handle.retryStatusSinceMs = undefined;
     }
 
     // OpenCode stopped making progress (e.g. the agent loop wedged on a provider
@@ -451,6 +505,7 @@ export function createTaskRunMonitorService(deps: {
     const fallback: TaskRunMonitorRuntimeConfig = {
       maxLifetimeMs: config.maxLifetimeMs,
       noProgressMs: config.noProgressMs,
+      retryFailFastMs: config.retryFailFastMs,
     };
 
     if (!deps.resolveRuntimeConfig) {
@@ -498,6 +553,23 @@ export function createTaskRunMonitorService(deps: {
     return true;
   }
 
+  async function finalizeUsageLimit(
+    handle: TaskRunMonitorHandle,
+    run: TaskRun,
+    retryStatus: { attempt: number; message: string; next: number },
+    attemptedModel: string,
+    retryElapsedMs: number,
+  ): Promise<boolean> {
+    await hooks.finalizeUsageLimitRun(run, {
+      ...retryStatus,
+      attemptedModel,
+      retryElapsedMs,
+      monitorElapsedMs: Date.now() - handle.startedAtMs,
+      lastAssistantMessageId: handle.lastAssistantMessageId,
+    });
+    return true;
+  }
+
   function isMonitorTimedOut(
     handle: TaskRunMonitorHandle,
     run: TaskRun,
@@ -512,4 +584,23 @@ export function createTaskRunMonitorService(deps: {
   function nextMonitorDelay(currentDelayMs: number): number {
     return Math.min(config.maxPollMs, Math.max(config.initialPollMs, currentDelayMs * 2));
   }
+}
+
+const USAGE_LIMIT_RETRY_MARKERS = [
+  "usage limit",
+  "rate limit",
+  "quota",
+  "too many requests",
+  "credit balance",
+  "billing",
+];
+
+/**
+ * Whether a `retry` status message reads as a usage/rate limit rather than some
+ * other transient reason OpenCode retries for. Only these get the short
+ * fail-fast timeout; anything else falls back to the ordinary stall timeout.
+ */
+export function isUsageLimitRetryMessage(message: string): boolean {
+  const text = message.toLowerCase();
+  return USAGE_LIMIT_RETRY_MARKERS.some((marker) => text.includes(marker));
 }

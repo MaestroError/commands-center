@@ -20,6 +20,7 @@ type TerminalRun = Pick<
   | "resultText"
   | "finalMessage"
   | "errorMessage"
+  | "errorDetails"
   | "needsHumanReview"
   | "humanReviewReason"
   | "reviewQuestion"
@@ -31,13 +32,16 @@ type TerminalRun = Pick<
  * it produces none. Pure so the branching is unit-testable without a DB.
  *
  * Branching:
- * - any failed/error run            → `task_run_failed`
+ * - any failed/error run, or a system-cancelled run (e.g. the stall timeout,
+ *   which carries `errorDetails`)   → `task_run_failed` (action_required)
+ * - ...a usage limit with no fallback available → `task_run_failed` (action_required)
+ * - ...a usage limit that queued a different-provider fallback → `task_run_failed` (info)
  * - success, no subtask             → `task_completed`
  * - success, feedback subtask       → `feedback_resolved`
  * - needs review, no subtask        → `task_needs_review`
  * - needs review, feedback subtask  → `subtask_needs_review`
  * - fresh (non-feedback) subtask success/review → none (rolls up into the parent)
- * - cancelled / skipped             → none
+ * - a manually cancelled run (no `errorDetails`) / skipped → none
  */
 export function buildTerminalActivity(args: {
   run: TerminalRun;
@@ -46,11 +50,24 @@ export function buildTerminalActivity(args: {
 }): TerminalActivityInput | null {
   const { run, taskTitle, isFeedbackSubtask } = args;
 
-  if (run.status === "cancelled" || run.status === "skipped") {
+  if (run.status === "skipped") {
     return null;
   }
 
-  const failed = run.status === "failed" || run.status === "error" || run.outcome === "failed";
+  // A manual cancel (via the `cancel` API) carries no errorDetails and is the
+  // user's own action, so it stays silent. A system-initiated cancel (e.g. the
+  // stall timeout) carries errorDetails and is surfaced like any other failure.
+  const systemCancelled = run.status === "cancelled" && run.errorDetails !== undefined;
+
+  if (run.status === "cancelled" && !systemCancelled) {
+    return null;
+  }
+
+  const failed =
+    systemCancelled ||
+    run.status === "failed" ||
+    run.status === "error" ||
+    run.outcome === "failed";
   const needsReview =
     !failed && (run.outcome === "needs_human_review" || run.needsHumanReview === true);
   const success =
@@ -73,6 +90,30 @@ export function buildTerminalActivity(args: {
     : {};
 
   if (failed) {
+    const usageLimit = readUsageLimitFailure(run.errorDetails);
+
+    if (usageLimit?.fallbackModel) {
+      return {
+        kind: "task_run_failed",
+        level: "info",
+        title: `Usage limit reached, retrying with ${usageLimit.fallbackModel}: ${taskTitle}`,
+        body: run.errorMessage ?? run.finalMessage ?? null,
+        payload: basePayload,
+        dedupeKey: `task_run_failed:${run.id}`,
+      };
+    }
+
+    if (usageLimit) {
+      return {
+        kind: "task_run_failed",
+        level: "action_required",
+        title: `Usage limit reached: ${taskTitle}`,
+        body: run.errorMessage ?? run.finalMessage ?? null,
+        payload: basePayload,
+        dedupeKey: `task_run_failed:${run.id}`,
+      };
+    }
+
     return {
       kind: "task_run_failed",
       level: "action_required",
@@ -132,4 +173,15 @@ export function buildTerminalActivity(args: {
   }
 
   return null;
+}
+
+function readUsageLimitFailure(
+  errorDetails: Record<string, unknown> | undefined,
+): { fallbackModel?: string } | undefined {
+  if (!errorDetails || errorDetails["errorName"] !== "UsageLimitReached") {
+    return undefined;
+  }
+
+  const fallbackModel = errorDetails["fallbackModel"];
+  return { fallbackModel: typeof fallbackModel === "string" ? fallbackModel : undefined };
 }

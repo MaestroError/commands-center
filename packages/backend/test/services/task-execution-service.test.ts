@@ -2069,6 +2069,184 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("fails fast with a labeled error when a usage limit persists and no fallback is configured", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // No completeAsyncPrompt: the session accepts the prompt but never produces an
+    // assistant message, mirroring a session wedged on repeated provider retries.
+    const opencodeService = createMockOpenCodeService({
+      statusSequenceBySession: {
+        "session-1": Array.from({ length: 30 }, () => ({
+          type: "retry" as const,
+          attempt: 1,
+          message: "The usage limit has been reached. Please try again later.",
+          next: Date.now() + 60_000,
+        })),
+      },
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        idlePolls: 1,
+        retryFailFastMs: 15,
+        noProgressMs: 5 * 60 * 1_000,
+        maxLifetimeMs: 5 * 60 * 1_000,
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Usage limit, no fallback",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      const errored = await taskService.getRunById(run.id);
+      expect(errored?.errorMessage).toContain("usage limit");
+      expect(errored?.errorDetails).toMatchObject({
+        errorName: "UsageLimitReached",
+        stage: "opencode_session_retry",
+        opencodeSessionId: "session-1",
+        fallbackQueued: false,
+      });
+      expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+      // No fallback model was configured, so no additional run is created.
+      expect(await taskService.listRuns(task.id)).toHaveLength(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("queues a different-provider fallback run when a usage limit persists", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPromptAfter: 1,
+      providers: {
+        all: [
+          { id: "openai", models: { "gpt-4.1": {} } },
+          { id: "anthropic", models: { "claude-haiku": {} } },
+        ],
+        default: {},
+        connected: ["openai", "anthropic"],
+      },
+      statusSequenceBySession: {
+        "session-1": Array.from({ length: 30 }, () => ({
+          type: "retry" as const,
+          attempt: 1,
+          message: "The usage limit has been reached. Please try again later.",
+          next: Date.now() + 60_000,
+        })),
+      },
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        idlePolls: 1,
+        retryFailFastMs: 15,
+        noProgressMs: 5 * 60 * 1_000,
+        maxLifetimeMs: 5 * 60 * 1_000,
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId: agent.id,
+        fallbackModels: ["anthropic/claude-haiku"],
+        title: "Usage limit, different-provider fallback",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      const errored = await taskService.getRunById(run.id);
+      expect(errored?.errorMessage).toContain("fallback model anthropic/claude-haiku");
+      expect(errored?.errorDetails).toMatchObject({
+        errorName: "UsageLimitReached",
+        fallbackQueued: true,
+        fallbackModel: "anthropic/claude-haiku",
+      });
+
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+      const runs = await taskService.listRuns(task.id);
+      const fallbackRun = runs.find((entry) => entry.retryOfRunId === run.id);
+
+      expect(fallbackRun).toBeDefined();
+      if (!fallbackRun) throw new Error("Expected fallback run.");
+
+      await expectRunStatus(taskService, fallbackRun.id, "completed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not fail fast on a non-usage-limit retry status; falls back to the stall timeout", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      statusSequenceBySession: {
+        "session-1": Array.from({ length: 30 }, () => ({
+          type: "retry" as const,
+          attempt: 1,
+          message: "Connection reset, retrying.",
+          next: Date.now() + 1_000,
+        })),
+      },
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        idlePolls: 1,
+        retryFailFastMs: 15,
+        noProgressMs: 30,
+        maxLifetimeMs: 5 * 60 * 1_000,
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Non-usage-limit retry" });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      // A generic retry reason never trips the fast usage-limit path; it's left
+      // to the ordinary (larger) stall timeout instead.
+      await expectRunStatus(taskService, run.id, "cancelled");
+      const cancelled = await taskService.getRunById(run.id);
+      expect(cancelled?.cancellationReason).toContain("stall timeout");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("times out monitors for stuck async task sessions", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -3071,6 +3249,10 @@ function createMockOpenCodeService(
     // Lets a test stall the first run but let a requeued run finish.
     completeAsyncPromptAfter?: number;
     statusSequence?: OpenCodeSessionStatus[];
+    // Per-session status queues, consumed independently of `statusSequence` and
+    // of each other. Lets a test sustain one session's `retry` status without it
+    // bleeding into a second (e.g. fallback) session's polling.
+    statusSequenceBySession?: Record<string, OpenCodeSessionStatus[]>;
     pendingPermissions?: OpenCodePendingPermission[];
     pendingQuestions?: OpenCodePendingQuestion[];
     onStatus?: () => void;
@@ -3080,6 +3262,12 @@ function createMockOpenCodeService(
   const sessions = new Map<string, OpenCodeSession>();
   const messages = new Map<string, OpenCodeSessionMessage[]>();
   const statusSequence = [...(options.statusSequence ?? [])];
+  const statusSequenceBySession = new Map<string, OpenCodeSessionStatus[]>(
+    Object.entries(options.statusSequenceBySession ?? {}).map(([sessionID, sequence]) => [
+      sessionID,
+      [...sequence],
+    ]),
+  );
   const promptTransportErrors = [...(options.promptTransportErrors ?? [])];
   const promptPostAcceptErrors = [...(options.promptPostAcceptErrors ?? [])];
   const createSessionErrors = [...(options.createSessionErrors ?? [])];
@@ -3137,7 +3325,7 @@ function createMockOpenCodeService(
       return Promise.resolve(messages.get(sessionID) ?? []);
     },
     listSessionStatuses: () => Promise.resolve({}),
-    getSessionStatus: () => {
+    getSessionStatus: (_directory: string, sessionID: string) => {
       const error = sessionStatusErrors.shift();
 
       if (error) {
@@ -3145,7 +3333,8 @@ function createMockOpenCodeService(
       }
 
       options.onStatus?.();
-      return Promise.resolve(statusSequence.shift() ?? { type: "idle" });
+      const perSession = statusSequenceBySession.get(sessionID);
+      return Promise.resolve(perSession?.shift() ?? statusSequence.shift() ?? { type: "idle" });
     },
     listPendingPermissions: vi.fn(() => Promise.resolve(options.pendingPermissions ?? [])),
     listPendingQuestions: vi.fn(() => Promise.resolve(options.pendingQuestions ?? [])),
