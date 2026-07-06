@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Terminal } from "lucide-react";
 import type { ToolRendererProps } from "./tool-registry";
-import { getToolInput, getToolState } from "./tool-registry";
+import { getToolCallId, getToolInput, getToolState } from "./tool-registry";
 import { BasicTool } from "./BasicTool";
 
 export function BashTool({ part }: ToolRendererProps) {
@@ -28,6 +28,7 @@ export function BashTool({ part }: ToolRendererProps) {
       title="Shell"
       subtitle={command}
       status={status}
+      callId={getToolCallId(part)}
       defaultExpanded
     >
       <div className="relative">

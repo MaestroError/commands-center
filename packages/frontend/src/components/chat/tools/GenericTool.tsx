@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import type { ConversationPart } from "@cc/shared/schemas";
 import { CopyIdButton } from "../CopyIdButton";
-import { getToolState } from "./tool-registry";
+import { getToolCallId, getToolState } from "./tool-registry";
 import { BasicTool } from "./BasicTool";
 import { getToolIcon } from "./tool-icons";
 
@@ -56,7 +56,13 @@ export function GenericTool({ part }: GenericToolProps) {
     details.push(<ToolDetail key="error" label="Error" tone="danger" value={error} />);
 
   return (
-    <BasicTool copyValue={toolName} icon={getToolIcon(toolName)} title={toolName} status={status}>
+    <BasicTool
+      copyValue={toolName}
+      icon={getToolIcon(toolName)}
+      title={toolName}
+      status={status}
+      callId={getToolCallId(part)}
+    >
       {details.length > 0 ? (
         details
       ) : (

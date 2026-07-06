@@ -25,6 +25,11 @@ export function getToolName(part: ConversationPart): string {
   return (part["tool"] as string | undefined) ?? (part["name"] as string | undefined) ?? "tool";
 }
 
+/** The tool call's id — links this part back to a pending permission/question, if any. */
+export function getToolCallId(part: ConversationPart): string | undefined {
+  return part["callID"] as string | undefined;
+}
+
 export function getToolState(part: ConversationPart): Record<string, unknown> | undefined {
   return part["state"] as Record<string, unknown> | undefined;
 }

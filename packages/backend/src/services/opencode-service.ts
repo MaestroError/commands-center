@@ -2,6 +2,7 @@ import type { Logger } from "pino";
 
 import type { OpencodeClient } from "../lib/opencode-client.js";
 import { createScopedOpenCodeClient } from "../lib/opencode-client.js";
+import { NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { z } from "zod";
 
@@ -543,13 +544,15 @@ export function createOpenCodeService(options: {
       requestId: string,
       reply: "once" | "always" | "reject",
     ): Promise<void> {
-      await requestSessionJson({
-        config: options.config,
-        directory,
-        method: "POST",
-        path: `/permission/${encodeURIComponent(requestId)}/reply`,
-        body: { reply },
-      });
+      await withNotFoundRemap(requestId, () =>
+        requestSessionJson({
+          config: options.config,
+          directory,
+          method: "POST",
+          path: `/permission/${encodeURIComponent(requestId)}/reply`,
+          body: { reply },
+        }),
+      );
     },
 
     async listPendingPermissions(directory: string): Promise<OpenCodePendingPermission[]> {
@@ -563,13 +566,15 @@ export function createOpenCodeService(options: {
     },
 
     async replyQuestion(directory: string, requestId: string, answers: string[][]): Promise<void> {
-      await requestSessionJson({
-        config: options.config,
-        directory,
-        method: "POST",
-        path: `/question/${encodeURIComponent(requestId)}/reply`,
-        body: { answers },
-      });
+      await withNotFoundRemap(requestId, () =>
+        requestSessionJson({
+          config: options.config,
+          directory,
+          method: "POST",
+          path: `/question/${encodeURIComponent(requestId)}/reply`,
+          body: { answers },
+        }),
+      );
     },
 
     async listPendingQuestions(directory: string): Promise<OpenCodePendingQuestion[]> {
@@ -583,13 +588,15 @@ export function createOpenCodeService(options: {
     },
 
     async rejectQuestion(directory: string, requestId: string): Promise<void> {
-      await requestSessionJson({
-        config: options.config,
-        directory,
-        method: "POST",
-        path: `/question/${encodeURIComponent(requestId)}/reject`,
-        body: {},
-      });
+      await withNotFoundRemap(requestId, () =>
+        requestSessionJson({
+          config: options.config,
+          directory,
+          method: "POST",
+          path: `/question/${encodeURIComponent(requestId)}/reject`,
+          body: {},
+        }),
+      );
     },
 
     async abortSession(directory: string, sessionID: string): Promise<void> {
@@ -694,6 +701,36 @@ function buildAttachmentParts(
   }));
 }
 
+// Thrown by requestOpenCodeJson when OpenCode responds with a non-2xx status.
+// Carries the original HTTP status so callers that care (e.g. remapping a
+// stale permission/question reply to a 404) don't have to parse the message.
+export class OpenCodeRequestError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "OpenCodeRequestError";
+    this.status = status;
+  }
+}
+
+// Reply/reject calls target a specific pending permission or question by id.
+// If OpenCode no longer has it (already replied to, or timed out server-side),
+// it responds 404 — surface that as a proper NotFoundError instead of the
+// generic 500 an unrecognized thrown Error would otherwise produce, so the
+// frontend can tell "stale prompt" apart from "something actually broke".
+async function withNotFoundRemap<T>(requestId: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof OpenCodeRequestError && error.status === 404) {
+      throw new NotFoundError(`Pending request "${requestId}" no longer exists.`);
+    }
+
+    throw error;
+  }
+}
+
 async function requestSessionJson(options: {
   config: RuntimeConfig;
   directory: string;
@@ -733,8 +770,9 @@ async function requestOpenCodeJson(options: {
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(
+    throw new OpenCodeRequestError(
       `OpenCode request failed: ${options.method} ${options.path} → ${String(response.status)}${body ? `: ${body}` : ""}`,
+      response.status,
     );
   }
 

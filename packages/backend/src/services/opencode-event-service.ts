@@ -336,6 +336,8 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
     }
 
     case "permission.asked": {
+      const tool = sanitizeToolLink(props["tool"]);
+
       return {
         type: raw.type,
         properties: {
@@ -345,17 +347,21 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
           patterns: Array.isArray(props["patterns"]) ? props["patterns"] : [],
           metadata: isRecord(props["metadata"]) ? props["metadata"] : {},
           always: Array.isArray(props["always"]) ? props["always"] : [],
+          ...(tool ? { tool } : {}),
         },
       };
     }
 
     case "question.asked": {
+      const tool = sanitizeToolLink(props["tool"]);
+
       return {
         type: raw.type,
         properties: {
           id: typeof props["id"] === "string" ? props["id"] : "",
           sessionID,
           questions: Array.isArray(props["questions"]) ? props["questions"] : [],
+          ...(tool ? { tool } : {}),
         },
       };
     }
@@ -377,6 +383,24 @@ function mapEvent(sessionID: string, raw: SseEvent): ChatEvent | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function sanitizeToolLink(value: unknown): Record<string, unknown> | undefined {
+  // Require non-empty ids: the client parses these events with schemas whose
+  // tool link is `z.string().min(1)`, so forwarding an empty id would fail that
+  // parse and drop the whole event. Omitting the link instead keeps the event
+  // valid — the tool just isn't linkable for the cancel-dot.
+  if (
+    !isRecord(value) ||
+    typeof value["messageID"] !== "string" ||
+    value["messageID"].length === 0 ||
+    typeof value["callID"] !== "string" ||
+    value["callID"].length === 0
+  ) {
+    return undefined;
+  }
+
+  return value;
 }
 
 function sanitizeSessionStatus(status: unknown) {

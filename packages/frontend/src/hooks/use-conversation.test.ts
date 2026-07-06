@@ -744,6 +744,178 @@ describe("SSE_EVENT: question.asked / question.replied / question.rejected", () 
 });
 
 // ---------------------------------------------------------------------------
+// HYDRATE_PENDING / DISCARD_STALE_PERMISSION / DISCARD_STALE_QUESTION
+// ---------------------------------------------------------------------------
+
+describe("HYDRATE_PENDING", () => {
+  it("adopts the fetched snapshot on a fresh (empty) conversation", () => {
+    const next = conversationReducer(initialState, {
+      type: "HYDRATE_PENDING",
+      pending: {
+        permissions: [
+          {
+            id: "perm-fresh",
+            sessionID: "s",
+            permission: "bash",
+            patterns: ["*.sh"],
+            metadata: {},
+            always: [],
+            tool: { messageID: "m1", callID: "c1" },
+          },
+        ],
+        question: {
+          id: "q-fresh",
+          sessionID: "s",
+          questions: [{ question: "Proceed?", options: [{ label: "Yes" }] }],
+        },
+        liveRequests: [],
+      },
+    });
+
+    expect(next.pendingPermissions.map((permission) => permission.id)).toEqual(["perm-fresh"]);
+    expect(next.pendingQuestion?.id).toBe("q-fresh");
+  });
+
+  it("merges the fetched snapshot with newer live events instead of dropping them", () => {
+    // The fetch is async; a live SSE event can add a NEWER interaction before it
+    // resolves. Merging (not replacing) must preserve that live interaction —
+    // otherwise the older fetched snapshot would strand the prompt.
+    const stateWithLiveEvents: ConversationState = {
+      ...initialState,
+      pendingPermissions: [
+        {
+          id: "sse-perm",
+          sessionID: "s",
+          permission: "write",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+      pendingQuestion: { id: "sse-q", sessionID: "s", questions: [] },
+    };
+
+    const next = conversationReducer(stateWithLiveEvents, {
+      type: "HYDRATE_PENDING",
+      pending: {
+        permissions: [
+          {
+            id: "fetched-perm",
+            sessionID: "s",
+            permission: "read",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        // Older snapshot predates the live question, so it carries none.
+        question: null,
+        liveRequests: [],
+      },
+    });
+
+    expect(next.pendingPermissions.map((permission) => permission.id).sort()).toEqual([
+      "fetched-perm",
+      "sse-perm",
+    ]);
+    // The live question is preserved, not overwritten by the fetched null.
+    expect(next.pendingQuestion?.id).toBe("sse-q");
+  });
+
+  it("leaves existing pending state untouched when the fetched snapshot is empty", () => {
+    const stateWithLiveEvents: ConversationState = {
+      ...initialState,
+      pendingPermissions: [
+        {
+          id: "sse-perm",
+          sessionID: "s",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+      pendingQuestion: { id: "sse-q", sessionID: "s", questions: [] },
+    };
+
+    const next = conversationReducer(stateWithLiveEvents, {
+      type: "HYDRATE_PENDING",
+      pending: { permissions: [], question: null, liveRequests: [] },
+    });
+
+    expect(next.pendingPermissions.map((permission) => permission.id)).toEqual(["sse-perm"]);
+    expect(next.pendingQuestion?.id).toBe("sse-q");
+  });
+});
+
+describe("DISCARD_STALE_PERMISSION", () => {
+  it("removes only the named permission and keeps the rest", () => {
+    const state: ConversationState = {
+      ...initialState,
+      pendingPermissions: [
+        {
+          id: "perm-1",
+          sessionID: "s",
+          permission: "read",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+        {
+          id: "perm-2",
+          sessionID: "s",
+          permission: "write",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+    };
+
+    const next = conversationReducer(state, {
+      type: "DISCARD_STALE_PERMISSION",
+      requestId: "perm-1",
+    });
+
+    expect(next.pendingPermissions.map((p) => p.id)).toEqual(["perm-2"]);
+  });
+
+  it("is a no-op when the id is not pending", () => {
+    const next = conversationReducer(initialState, {
+      type: "DISCARD_STALE_PERMISSION",
+      requestId: "ghost",
+    });
+    expect(next.pendingPermissions).toEqual([]);
+  });
+});
+
+describe("DISCARD_STALE_QUESTION", () => {
+  it("clears pendingQuestion when the id matches", () => {
+    const state: ConversationState = {
+      ...initialState,
+      pendingQuestion: { id: "q-1", sessionID: "s", questions: [] },
+    };
+    const next = conversationReducer(state, {
+      type: "DISCARD_STALE_QUESTION",
+      requestId: "q-1",
+    });
+    expect(next.pendingQuestion).toBeNull();
+  });
+
+  it("leaves an unrelated pendingQuestion untouched", () => {
+    const state: ConversationState = {
+      ...initialState,
+      pendingQuestion: { id: "q-1", sessionID: "s", questions: [] },
+    };
+    const next = conversationReducer(state, {
+      type: "DISCARD_STALE_QUESTION",
+      requestId: "some-other-id",
+    });
+    expect(next.pendingQuestion?.id).toBe("q-1");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // SSE_EVENT — todo.updated
 // ---------------------------------------------------------------------------
 

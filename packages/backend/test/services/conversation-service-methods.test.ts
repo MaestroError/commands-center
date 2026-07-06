@@ -173,4 +173,77 @@ describe("conversation-service delegating methods", () => {
     const fresh = await service.startFresh(agent.id);
     expect(fresh.current.id).not.toBe(conversationId);
   });
+
+  it("rehydrates pending permissions and question scoped to the conversation's session", async () => {
+    const { service, opencodeService, agent } = await setup();
+    const snapshot = await service.resolveCurrent(agent.id);
+    const conversationId = snapshot.current.id;
+    const sessionID = snapshot.current.opencodeSessionId;
+
+    opencodeService.listPendingPermissions = vi.fn(() =>
+      Promise.resolve([
+        {
+          id: "perm-1",
+          sessionID,
+          permission: "bash",
+          patterns: ["rm *"],
+          always: [],
+          metadata: {},
+          tool: { messageID: "msg-1", callID: "call-1" },
+        },
+        {
+          id: "perm-2",
+          sessionID: "other-session",
+          permission: "bash",
+          patterns: [],
+          always: [],
+          metadata: {},
+        },
+      ]),
+    );
+    opencodeService.listPendingQuestions = vi.fn(() =>
+      Promise.resolve([
+        {
+          id: "q-1",
+          sessionID: "other-session",
+          questions: [{ question: "Ignored", options: [] }],
+        },
+        {
+          id: "q-2",
+          sessionID,
+          questions: [{ question: "Proceed?", options: [{ label: "Yes" }, { label: "No" }] }],
+          tool: { messageID: "msg-2", callID: "call-2" },
+        },
+      ]),
+    );
+
+    const result = await service.listPendingInteractions(conversationId);
+
+    expect(result.permissions).toEqual([
+      {
+        id: "perm-1",
+        sessionID,
+        permission: "bash",
+        patterns: ["rm *"],
+        always: [],
+        metadata: {},
+        tool: { messageID: "msg-1", callID: "call-1" },
+      },
+    ]);
+    expect(result.question).toEqual({
+      id: "q-2",
+      sessionID,
+      questions: [{ question: "Proceed?", options: [{ label: "Yes" }, { label: "No" }] }],
+      tool: { messageID: "msg-2", callID: "call-2" },
+    });
+  });
+
+  it("returns no pending question when none match the conversation's session", async () => {
+    const { service, agent } = await setup();
+    const snapshot = await service.resolveCurrent(agent.id);
+
+    const result = await service.listPendingInteractions(snapshot.current.id);
+
+    expect(result).toEqual({ permissions: [], question: null });
+  });
 });

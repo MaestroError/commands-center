@@ -208,6 +208,7 @@ function makeConversation(overrides: Record<string, unknown> = {}) {
     previousConversations: [],
     pendingPermissionCount: 0,
     pendingPermission: null,
+    pendingPermissions: [],
     pendingQuestion: null,
     liveRequests: [],
     todos: [],
@@ -791,6 +792,44 @@ describe("WorkspaceChatPage", () => {
     });
     expect(resolveLiveRequest).toHaveBeenCalledWith("req-1", "opened", {});
   });
+
+  it(
+    "opens an interactive live request tab without spinning a render loop",
+    { timeout: 5000 },
+    async () => {
+      // Regression guard: the live-request sync effect used to re-dispatch
+      // open-live-request every render, which combined with the reducer creating
+      // fresh tab state produced an infinite re-render (froze navigation). If that
+      // returns, React throws "Maximum update depth exceeded" (or this render
+      // never settles and the timeout trips) instead of resolving on the tab.
+      mockParams = { agentId: "planner", conversationId: "conv-1" };
+      useConversationMock.mockReturnValue(
+        makeConversation({
+          conversation: { id: "conv-1", messages: [] },
+          liveRequests: [
+            {
+              id: "req-1",
+              conversationId: "conv-1",
+              kind: "add_secret",
+              closable: false,
+              metadata: {},
+              actions: [],
+              fields: [],
+              createdAt: "2026-05-03T10:00:00.000Z",
+              presentation: { title: "Add secret", cancelLabel: "Cancel" },
+            },
+          ],
+        }),
+      );
+      useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+
+      render(<WorkspaceChatPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("quick-file-panel")).toHaveTextContent("live-request:req-1");
+      });
+    },
+  );
 
   it("toggles the desktop inspection pane from the chat header", async () => {
     const user = userEvent.setup();

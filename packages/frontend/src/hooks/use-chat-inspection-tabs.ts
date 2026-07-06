@@ -320,18 +320,17 @@ function reducer(state: State, action: Action): State {
       const existing = state.tabs.find((tab) => tab.key === key);
 
       if (existing) {
-        return {
-          ...state,
-          tabs: state.tabs.map((tab) =>
-            tab.key === key ? createLiveRequestTab(action.request) : tab,
-          ),
-          activeKey: key,
-          open: true,
-        };
+        // A live request's content is immutable for a given id, so re-opening
+        // one that's already present is a no-op. Returning the SAME state
+        // reference is essential, not just an optimization: WorkspaceChatPage's
+        // live-request sync effect calls this on every render, and emitting a
+        // fresh state object here would spin an infinite render loop
+        // (new state → re-render → effect → dispatch → new state → ...).
+        return state;
       }
 
       if (state.tabs.length >= MAX_OPEN_TABS) {
-        return { ...state, open: true };
+        return state.open ? state : { ...state, open: true };
       }
 
       return {
@@ -454,9 +453,11 @@ function createInitialState(conversationId?: string): State {
         tabs.push(createMediaTab(tab.item));
       }
 
-      if (tab && typeof tab === "object" && tab.tabType === "live-request") {
-        tabs.push(createLiveRequestTab(tab.request));
-      }
+      // Live-request tabs are intentionally NOT restored from storage: they're
+      // ephemeral backend state, re-derived on load from the pending-interactions
+      // rehydration (conv.liveRequests → the WorkspaceChatPage sync effect).
+      // Restoring them here would race that effect and could resurrect a
+      // stale/already-resolved request.
     }
     const activeKey =
       typeof parsed.activeKey === "string" && tabs.some((tab) => tab.key === parsed.activeKey)
@@ -531,32 +532,44 @@ function mapFileTab(state: State, key: string, update: (tab: FileTab) => FileTab
 }
 
 function toStoredState(state: State): StoredState {
+  const storedTabs: StoredState["tabs"] = [];
+
+  for (const tab of state.tabs) {
+    if (tab.tabType === "file") {
+      storedTabs.push({
+        tabType: "file",
+        root: tab.root,
+        path: tab.path,
+        displayPath: tab.displayPath,
+      });
+    } else if (tab.tabType === "media") {
+      storedTabs.push({ tabType: "media", item: tab.item });
+    }
+    // Live-request tabs are not persisted — see createInitialState. They're
+    // re-derived from the backend on load, so persisting them would only risk
+    // resurrecting a stale request.
+  }
+
+  const activeKey =
+    state.activeKey && storedTabs.some((tab) => tabStorageKey(tab) === state.activeKey)
+      ? state.activeKey
+      : undefined;
+
   return {
-    tabs: state.tabs.map((tab) => {
-      if (tab.tabType === "file") {
-        return {
-          tabType: "file" as const,
-          root: tab.root,
-          path: tab.path,
-          displayPath: tab.displayPath,
-        };
-      }
-
-      if (tab.tabType === "media") {
-        return {
-          tabType: "media" as const,
-          item: tab.item,
-        };
-      }
-
-      return {
-        tabType: "live-request" as const,
-        request: tab.request,
-      };
-    }),
-    activeKey: state.activeKey,
-    open: state.open,
+    tabs: storedTabs,
+    activeKey,
+    open: state.open && storedTabs.length > 0,
   };
+}
+
+function tabStorageKey(tab: StoredState["tabs"][number]): string {
+  if (tab.tabType === "file") {
+    return makeFileTabKey(tab.root, tab.path);
+  }
+  if (tab.tabType === "media") {
+    return makeMediaTabKey(tab.item.id);
+  }
+  return makeLiveRequestTabKey(tab.request.id);
 }
 
 function storageKey(conversationId: string): string {

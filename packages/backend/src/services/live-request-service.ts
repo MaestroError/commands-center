@@ -92,6 +92,12 @@ export function createLiveRequestService() {
       return record.request;
     },
 
+    listByConversation(conversationId: string): LiveRequest[] {
+      return [...requests.values()]
+        .map((record) => record.request)
+        .filter((request) => request.conversationId === conversationId);
+    },
+
     subscribe(options: SubscribeOptions): void {
       const entries =
         subscribers.get(options.conversationId) ?? new Set<(event: ChatEvent) => void>();

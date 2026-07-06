@@ -4,6 +4,7 @@ import {
   chatEventSchema,
   conversationAttachmentSchema,
   conversationMessageSchema,
+  pendingInteractionsSchema,
   replyPermissionInputSchema,
   replyQuestionInputSchema,
   sendConversationCommandInputSchema,
@@ -182,5 +183,82 @@ describe("conversation and event schemas", () => {
     });
 
     expect(() => replyPermissionInputSchema.parse({ reply: "later" })).toThrow();
+  });
+
+  it("carries the originating tool call on permission/question asked events", () => {
+    const permissionAsked = chatEventSchema.parse({
+      type: "permission.asked",
+      properties: {
+        id: "req_1",
+        sessionID: "sess_1",
+        permission: "bash",
+        tool: { messageID: "msg_1", callID: "call_1" },
+      },
+    });
+
+    expect(permissionAsked).toMatchObject({
+      type: "permission.asked",
+      properties: { tool: { messageID: "msg_1", callID: "call_1" } },
+    });
+
+    const questionAsked = chatEventSchema.parse({
+      type: "question.asked",
+      properties: {
+        id: "req_2",
+        sessionID: "sess_1",
+        questions: [{ question: "Proceed?", options: [{ label: "Yes" }] }],
+        tool: { messageID: "msg_2", callID: "call_2" },
+      },
+    });
+
+    expect(questionAsked).toMatchObject({
+      type: "question.asked",
+      properties: { tool: { messageID: "msg_2", callID: "call_2" } },
+    });
+
+    // tool is optional — events without it (or from older clients) still parse.
+    const withoutTool = chatEventSchema.parse({
+      type: "permission.asked",
+      properties: { id: "req_3", sessionID: "sess_1", permission: "bash" },
+    });
+    expect(withoutTool.properties).not.toHaveProperty("tool");
+  });
+
+  it("parses pending interactions snapshots used to rehydrate a reopened chat", () => {
+    const parsed = pendingInteractionsSchema.parse({
+      permissions: [
+        {
+          id: "req_1",
+          sessionID: "sess_1",
+          permission: "bash",
+          patterns: ["rm *"],
+          tool: { messageID: "msg_1", callID: "call_1" },
+        },
+      ],
+      question: {
+        id: "req_2",
+        sessionID: "sess_1",
+        questions: [{ question: "Proceed?", options: [{ label: "Yes" }, { label: "No" }] }],
+      },
+      liveRequests: [
+        {
+          id: "live_1",
+          conversationId: "conv_1",
+          kind: "add_secret",
+          presentation: { title: "Add secret" },
+          fields: [],
+          createdAt: "2026-05-03T12:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(parsed.permissions[0]).toMatchObject({ id: "req_1", patterns: ["rm *"] });
+    expect(parsed.question).toMatchObject({ id: "req_2" });
+    expect(parsed.liveRequests[0]).toMatchObject({ id: "live_1" });
+
+    // No pending question is represented as null, not omitted.
+    expect(
+      pendingInteractionsSchema.parse({ permissions: [], question: null, liveRequests: [] }),
+    ).toEqual({ permissions: [], question: null, liveRequests: [] });
   });
 });

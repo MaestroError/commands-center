@@ -111,6 +111,42 @@ describe("useChatInspectionTabs", () => {
     expect(result.current.tabs).toHaveLength(0);
   });
 
+  it("re-opening an already-open live request is a no-op with a stable state reference", () => {
+    // Guards the infinite-render-loop fix: WorkspaceChatPage's sync effect calls
+    // openLiveRequest on every render, so opening an unchanged request that's
+    // already present must not produce new tab state (which would re-trigger the
+    // effect forever).
+    const { result } = renderHook(() => useChatInspectionTabs("conv-1"));
+
+    const request = {
+      id: "req-1",
+      conversationId: "conv-1",
+      kind: "add_secret" as const,
+      closable: false,
+      metadata: {},
+      actions: [],
+      createdAt: "2026-05-02T10:00:00.000Z",
+      presentation: { title: "Add token", cancelLabel: "Cancel" },
+      fields: [],
+    };
+
+    act(() => {
+      result.current.openLiveRequest(request);
+    });
+
+    const tabsAfterFirstOpen = result.current.tabs;
+    expect(tabsAfterFirstOpen).toHaveLength(1);
+
+    act(() => {
+      result.current.openLiveRequest(request);
+      result.current.openLiveRequest(request);
+    });
+
+    // Same tabs array reference — no state churn on repeat opens.
+    expect(result.current.tabs).toBe(tabsAfterFirstOpen);
+    expect(result.current.tabs).toHaveLength(1);
+  });
+
   it("restores open tabs and active tab from session storage for the same conversation", async () => {
     const { result, unmount } = renderHook(() => useChatInspectionTabs("conv-1"));
 

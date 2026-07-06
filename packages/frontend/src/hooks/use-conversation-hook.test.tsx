@@ -7,7 +7,10 @@ import type {
   ChatEvent,
   ConversationDetail,
   ConversationSnapshot,
+  LiveRequest,
+  PendingInteractions,
 } from "@cc/shared/schemas";
+import { ApiRequestError } from "@/lib/api/client";
 
 vi.mock("@/hooks/use-specialists-query", () => ({
   useSpecialistQuery: vi.fn(),
@@ -19,6 +22,7 @@ vi.mock("@/lib/api", () => ({
   connectConversationEvents: vi.fn(),
   getActiveConversation: vi.fn(),
   getConversation: vi.fn(),
+  getPendingInteractions: vi.fn(),
   rejectQuestion: vi.fn(),
   replyPermission: vi.fn(),
   replyQuestion: vi.fn(),
@@ -37,6 +41,7 @@ import {
   connectConversationEvents,
   getActiveConversation,
   getConversation,
+  getPendingInteractions,
   rejectQuestion,
   replyPermission,
   replyQuestion,
@@ -112,6 +117,25 @@ function makeSnapshot(overrides: Partial<ConversationSnapshot> = {}): Conversati
   };
 }
 
+function makeLiveRequest(overrides: Partial<LiveRequest> = {}): LiveRequest {
+  return {
+    id: "live-1",
+    conversationId: "conv-1",
+    kind: "add_secret",
+    presentation: { title: "Add secret", cancelLabel: "Cancel" },
+    fields: [],
+    actions: [],
+    metadata: {},
+    closable: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function noPendingInteractions(): PendingInteractions {
+  return { permissions: [], question: null, liveRequests: [] };
+}
+
 async function* emptyEvents(): AsyncGenerator<ChatEvent> {}
 
 async function* oneEvent(event: ChatEvent): AsyncGenerator<ChatEvent> {
@@ -130,6 +154,7 @@ describe("useConversation", () => {
     vi.mocked(connectConversationEvents).mockImplementation(() => emptyEvents());
     vi.mocked(getActiveConversation).mockResolvedValue(makeSnapshot());
     vi.mocked(getConversation).mockResolvedValue(makeConversation({ id: "conv-specific" }));
+    vi.mocked(getPendingInteractions).mockResolvedValue(noPendingInteractions());
     vi.mocked(startFreshConversation).mockResolvedValue(
       makeSnapshot({ current: makeConversation({ id: "conv-fresh" }) }),
     );
@@ -374,5 +399,221 @@ describe("useConversation", () => {
 
     expect(window.localStorage.getItem("cc-specialist-auto-approve-writer")).toBe("true");
     expect(result.current.autoApprove).toBe(true);
+  });
+
+  describe("pending interaction rehydration", () => {
+    it("rehydrates a pending permission, question, and live request on open", async () => {
+      vi.mocked(getPendingInteractions).mockResolvedValue({
+        permissions: [
+          {
+            id: "perm-1",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: ["rm *"],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: {
+          id: "q-1",
+          sessionID: "sess-1",
+          questions: [{ question: "Proceed?", options: [{ label: "Yes" }] }],
+        },
+        liveRequests: [makeLiveRequest()],
+      });
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      await waitFor(() => {
+        expect(getPendingInteractions).toHaveBeenCalledWith("conv-1");
+      });
+      await waitFor(() => {
+        expect(result.current.pendingPermission?.id).toBe("perm-1");
+      });
+
+      expect(result.current.pendingQuestion?.id).toBe("q-1");
+      expect(result.current.liveRequests).toHaveLength(1);
+      expect(result.current.liveRequests[0]?.id).toBe("live-1");
+    });
+
+    it("auto-replies to rehydrated permissions when auto approve is enabled, without surfacing them", async () => {
+      window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+      vi.mocked(getPendingInteractions).mockResolvedValue({
+        permissions: [
+          {
+            id: "perm-rehydrated",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: null,
+        liveRequests: [],
+      });
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      await waitFor(() => {
+        expect(replyPermission).toHaveBeenCalledWith("conv-1", "perm-rehydrated", "once");
+      });
+
+      expect(result.current.pendingPermission).toBeNull();
+    });
+
+    it("surfaces a rehydrated permission when its auto-approve reply fails", async () => {
+      window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+      vi.mocked(replyPermission).mockRejectedValue(new Error("network down"));
+      vi.mocked(getPendingInteractions).mockResolvedValue({
+        permissions: [
+          {
+            id: "perm-flaky-approve",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: null,
+        liveRequests: [],
+      });
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      // The auto-reply was attempted but failed, so the permission must not
+      // silently vanish — it's surfaced for the operator to act on.
+      await waitFor(() => {
+        expect(result.current.pendingPermission?.id).toBe("perm-flaky-approve");
+      });
+    });
+
+    it("drops a stale permission reply from local state on a 404", async () => {
+      vi.mocked(getPendingInteractions).mockResolvedValue({
+        permissions: [
+          {
+            id: "perm-stale",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: null,
+        liveRequests: [],
+      });
+      vi.mocked(replyPermission).mockRejectedValue(
+        new ApiRequestError('Pending request "perm-stale" no longer exists.', 404),
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      await waitFor(() => {
+        expect(result.current.pendingPermission?.id).toBe("perm-stale");
+      });
+
+      act(() => {
+        result.current.replyPermission("perm-stale", "once");
+      });
+
+      await waitFor(() => {
+        expect(result.current.pendingPermission).toBeNull();
+      });
+    });
+
+    it("keeps a permission pending when the reply fails for a non-stale reason", async () => {
+      vi.mocked(getPendingInteractions).mockResolvedValue({
+        permissions: [
+          {
+            id: "perm-flaky",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: null,
+        liveRequests: [],
+      });
+      vi.mocked(replyPermission).mockRejectedValue(new ApiRequestError("Internal error.", 500));
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      await waitFor(() => {
+        expect(result.current.pendingPermission?.id).toBe("perm-flaky");
+      });
+
+      act(() => {
+        result.current.replyPermission("perm-flaky", "once");
+      });
+
+      await waitFor(() => {
+        expect(replyPermission).toHaveBeenCalledWith("conv-1", "perm-flaky", "once");
+      });
+
+      expect(result.current.pendingPermission?.id).toBe("perm-flaky");
+    });
+
+    it("drops a stale question on reply and reject 404s", async () => {
+      vi.mocked(getPendingInteractions).mockResolvedValue({
+        permissions: [],
+        question: {
+          id: "q-stale",
+          sessionID: "sess-1",
+          questions: [{ question: "Proceed?", options: [{ label: "Yes" }] }],
+        },
+        liveRequests: [],
+      });
+      vi.mocked(replyQuestion).mockRejectedValue(
+        new ApiRequestError('Pending request "q-stale" no longer exists.', 404),
+      );
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      await waitFor(() => {
+        expect(result.current.pendingQuestion?.id).toBe("q-stale");
+      });
+
+      act(() => {
+        result.current.replyQuestion("q-stale", [["Yes"]]);
+      });
+
+      await waitFor(() => {
+        expect(result.current.pendingQuestion).toBeNull();
+      });
+    });
+
+    it("does not rehydrate when getPendingInteractions fails", async () => {
+      vi.mocked(getPendingInteractions).mockRejectedValue(new Error("network down"));
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      await waitFor(() => {
+        expect(result.current.status).toBe("ready");
+      });
+      await waitFor(() => {
+        expect(getPendingInteractions).toHaveBeenCalled();
+      });
+
+      expect(result.current.pendingPermission).toBeNull();
+      expect(result.current.pendingQuestion).toBeNull();
+    });
   });
 });
