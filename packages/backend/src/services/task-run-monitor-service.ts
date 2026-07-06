@@ -91,7 +91,7 @@ export type TaskRunBlockedInteractionDetails = {
 export type TaskRunUsageLimitDetails = {
   attempt: number;
   message: string;
-  /** OpenCode's next-retry timestamp (epoch ms), if provided. */
+  /** OpenCode's next-retry timestamp (epoch ms). */
   next: number;
   attemptedModel: string;
   retryElapsedMs: number;
