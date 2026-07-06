@@ -158,10 +158,13 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
     // errorDetails distinguishes this system-initiated cancellation (surfaced as
     // a task_run_failed activity, same as any other failure) from a manual
     // cancel via the `cancel` API, which carries no errorDetails and stays
-    // silent since the user already knows they cancelled it.
+    // silent since the user already knows they cancelled it. errorMessage is
+    // also set (mirroring cancellationReason) so that activity's notification
+    // body isn't left empty.
     const cancelled = await options.taskService.setRunStatus(latest.id, "cancelled", {
       cancelledAt: new Date().toISOString(),
       cancellationReason,
+      errorMessage: cancellationReason,
       errorDetails: buildStallErrorDetails(latest, details),
     });
 

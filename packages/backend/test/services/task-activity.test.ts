@@ -218,13 +218,14 @@ describe("buildTerminalActivity", () => {
   });
 
   it("maps a system-cancelled run (e.g. stall timeout) to task_run_failed", () => {
+    // errorMessage mirrors cancellationReason for a stall cancellation (set by
+    // finalizeStalledRun), so the notification body isn't left empty.
     const activity = buildTerminalActivity({
       run: run({
         status: "cancelled",
         cancellationReason: "Automatically cancelled: OpenCode produced no new output...",
         errorDetails: { errorName: "TaskRunStallTimeout", stage: "monitor_stall" },
-        errorMessage: undefined,
-        finalMessage: "Session stalled.",
+        errorMessage: "Automatically cancelled: OpenCode produced no new output...",
       }),
       taskTitle: "Ship it",
       isFeedbackSubtask: false,
@@ -233,7 +234,7 @@ describe("buildTerminalActivity", () => {
       kind: "task_run_failed",
       level: "action_required",
       title: "Task run failed: Ship it",
-      body: "Session stalled.",
+      body: "Automatically cancelled: OpenCode produced no new output...",
       dedupeKey: "task_run_failed:run-1",
     });
   });

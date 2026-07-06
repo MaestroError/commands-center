@@ -2315,6 +2315,10 @@ describe("createTaskExecutionService", () => {
       const cancelled = await taskService.getRunById(run.id);
       expect(cancelled?.cancellationReason).toContain("stall timeout");
       expect(cancelled?.cancellationReason).toContain("session-1");
+      // errorMessage mirrors cancellationReason so the task_run_failed
+      // notification this now produces has a non-empty body.
+      expect(cancelled?.errorMessage).toBe(cancelled?.cancellationReason);
+      expect(cancelled?.errorDetails).toMatchObject({ errorName: "TaskRunStallTimeout" });
       expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
       // Requeue is off by default, so no additional run is created.
       expect(await taskService.listRuns(task.id)).toHaveLength(1);
