@@ -90,7 +90,17 @@ const getTaskRunInputSchema = taskIdInputSchema.extend({
 });
 
 const createManagedTaskInputSchema = createTaskInputSchema.omit({ agentId: true }).extend({
-  agentId: z.string().trim().min(1).optional(),
+  // agentId is required on createTaskInputSchema; relax it to optional here (the
+  // operator can fill it in the review form) while keeping the model-facing
+  // description so it isn't misread as "the specialist to run it by default".
+  agentId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Specialist ID of the specialist that OWNS and RUNS this task. To assign the task to a specific specialist, set this to their specialist ID (call list_specialists to look up IDs). If omitted, the task is assigned to you, the calling specialist.",
+    ),
 });
 
 const updateTaskToolInputSchema = taskIdInputSchema.extend({
@@ -707,8 +717,12 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
             fields: [
               textField("title", "Title", draft.title, true),
               textareaField("description", "Description", draft.description),
-              textField("agentId", "Specialist ID", draft.agentId ?? callingAgentId, true),
-              textField("defaultAgentId", "Default specialist ID", draft.defaultAgentId),
+              textField("agentId", "Assigned specialist", draft.agentId ?? callingAgentId, true),
+              textField(
+                "defaultAgentId",
+                "Fallback specialist (external triggers)",
+                draft.defaultAgentId,
+              ),
               textField("scheduledAt", "Scheduled at", draft.scheduledAt ?? undefined),
               textField("dueAt", "Due at", draft.dueAt ?? undefined),
               textareaField("contextText", "Context", draft.context?.text),
@@ -775,7 +789,12 @@ export function createTaskLiveToolDefinitions(options: TaskManagementToolOptions
           }
           if (includes("agentId")) {
             fields.push(
-              textField("agentId", "Specialist ID", suggested?.agentId ?? current.agentId, true),
+              textField(
+                "agentId",
+                "Assigned specialist",
+                suggested?.agentId ?? current.agentId,
+                true,
+              ),
             );
           }
           if (includes("scheduledAt")) {

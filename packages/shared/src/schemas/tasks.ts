@@ -245,8 +245,21 @@ export const taskSubtaskSchema = taskSubtaskInputSchema.extend({
 });
 
 export const createTaskInputSchema = z.object({
-  agentId: z.string().trim().min(1),
-  defaultAgentId: z.string().trim().min(1).optional(),
+  agentId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Specialist ID of the specialist that OWNS and RUNS this task. To assign the task to a specific specialist, set this to their specialist ID (call list_specialists to look up IDs). If omitted, the task is assigned to you, the calling specialist.",
+    ),
+  defaultAgentId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional fallback specialist ID, used only when a run is triggered without naming an executor (e.g. external/API triggers). Leave empty to mirror agentId. This does NOT assign the task — use agentId to choose who runs it.",
+    ),
   model: z.string().trim().min(1).nullish(),
   fallbackModels: fallbackModelsSchema,
   title: z.string().trim().min(1),
@@ -262,8 +275,22 @@ export const createTaskInputSchema = z.object({
 });
 
 export const updateTaskInputSchema = z.object({
-  agentId: z.string().trim().min(1).optional(),
-  defaultAgentId: z.string().trim().min(1).optional(),
+  agentId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Specialist ID of the specialist that OWNS and RUNS this task. Set this to reassign the task to a specific specialist (call list_specialists to look up IDs).",
+    ),
+  defaultAgentId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional fallback specialist ID, used only when a run is triggered without naming an executor (e.g. external/API triggers). This does NOT reassign the task — use agentId for that.",
+    ),
   model: z.string().trim().min(1).nullish(),
   fallbackModels: fallbackModelsBaseSchema.optional(),
   title: z.string().trim().min(1).optional(),
