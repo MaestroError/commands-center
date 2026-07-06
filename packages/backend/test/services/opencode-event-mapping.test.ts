@@ -173,14 +173,26 @@ describe("opencode event service mapping", () => {
           tool: { messageID: "msg-3" },
         },
       },
+      // Empty tool ids — dropped, since the client requires non-empty (min(1)).
+      {
+        type: "permission.asked",
+        properties: {
+          sessionID: "sess-1",
+          id: "perm-3",
+          permission: "bash",
+          tool: { messageID: "", callID: "" },
+        },
+      },
     ]);
 
     const permission = received.find((event) => event.properties["id"] === "perm");
     const question = received.find((event) => event.properties["id"] === "q");
     const malformed = received.find((event) => event.properties["id"] === "perm-2");
+    const emptyIds = received.find((event) => event.properties["id"] === "perm-3");
 
     expect(permission?.properties["tool"]).toEqual({ messageID: "msg-1", callID: "call-1" });
     expect(question?.properties["tool"]).toEqual({ messageID: "msg-2", callID: "call-2" });
     expect(malformed?.properties).not.toHaveProperty("tool");
+    expect(emptyIds?.properties).not.toHaveProperty("tool");
   });
 });

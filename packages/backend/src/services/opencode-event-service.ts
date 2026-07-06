@@ -386,10 +386,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function sanitizeToolLink(value: unknown): Record<string, unknown> | undefined {
+  // Require non-empty ids: the client parses these events with schemas whose
+  // tool link is `z.string().min(1)`, so forwarding an empty id would fail that
+  // parse and drop the whole event. Omitting the link instead keeps the event
+  // valid — the tool just isn't linkable for the cancel-dot.
   if (
     !isRecord(value) ||
     typeof value["messageID"] !== "string" ||
-    typeof value["callID"] !== "string"
+    value["messageID"].length === 0 ||
+    typeof value["callID"] !== "string" ||
+    value["callID"].length === 0
   ) {
     return undefined;
   }
