@@ -466,6 +466,35 @@ describe("useConversation", () => {
       expect(result.current.pendingPermission).toBeNull();
     });
 
+    it("surfaces a rehydrated permission when its auto-approve reply fails", async () => {
+      window.localStorage.setItem("cc-specialist-auto-approve-writer", "true");
+      vi.mocked(replyPermission).mockRejectedValue(new Error("network down"));
+      vi.mocked(getPendingInteractions).mockResolvedValue({
+        permissions: [
+          {
+            id: "perm-flaky-approve",
+            sessionID: "sess-1",
+            permission: "bash",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        question: null,
+        liveRequests: [],
+      });
+      const queryClient = createQueryClient();
+      const { result } = renderHook(() => useConversation("writer"), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      // The auto-reply was attempted but failed, so the permission must not
+      // silently vanish — it's surfaced for the operator to act on.
+      await waitFor(() => {
+        expect(result.current.pendingPermission?.id).toBe("perm-flaky-approve");
+      });
+    });
+
     it("drops a stale permission reply from local state on a 404", async () => {
       vi.mocked(getPendingInteractions).mockResolvedValue({
         permissions: [

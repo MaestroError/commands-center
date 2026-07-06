@@ -183,16 +183,31 @@ export function conversationReducer(state: ConversationState, action: Action): C
     case "SSE_EVENT":
       return applySseEvent(state, action.event);
 
-    case "HYDRATE_PENDING":
-      // Server is the source of truth here — replace rather than merge. Any
-      // live SSE event that arrives around the same time is handled by the
-      // existing upsert-by-id logic in applySseEvent, so overlap is harmless.
+    case "HYDRATE_PENDING": {
+      // Merge (union by id) rather than replace. The pending-interactions fetch
+      // is async and runs alongside the SSE stream, so a live event can add a
+      // NEWER interaction before the fetch resolves; a wholesale replace with
+      // the (older) fetched snapshot would drop it and strand the prompt. On a
+      // fresh conversation open local pending state is empty, so this reduces to
+      // "adopt the fetched snapshot"; mid-session it only ever adds what was
+      // missed. Removals still arrive via the *.replied / *.cancelled events.
+      let pendingPermissions = state.pendingPermissions;
+      for (const permission of action.pending.permissions) {
+        pendingPermissions = upsertPermissionRequest(pendingPermissions, permission);
+      }
+
+      let liveRequests = state.liveRequests;
+      for (const request of action.pending.liveRequests) {
+        liveRequests = upsertLiveRequest(liveRequests, request);
+      }
+
       return {
         ...state,
-        pendingPermissions: action.pending.permissions,
-        pendingQuestion: action.pending.question,
-        liveRequests: action.pending.liveRequests,
+        pendingPermissions,
+        pendingQuestion: state.pendingQuestion ?? action.pending.question,
+        liveRequests,
       };
+    }
 
     case "DISCARD_STALE_PERMISSION":
       return {
@@ -500,21 +515,34 @@ export function useConversation(agentSlug: string, conversationId?: string): Use
         // and back (or a page reload) would otherwise strand the prompt.
         // Fired right as the stream subscribes below rather than awaited
         // first, so we don't open a gap where an event fires before we're
-        // listening; any overlap with a live SSE event is harmless since
-        // HYDRATE_PENDING replaces the list wholesale from the server.
+        // listening; HYDRATE_PENDING merges (never drops) live SSE events.
         void getPendingInteractions(activeConversationId)
           .then((pending) => {
             if (controller.signal.aborted) return;
 
-            let permissions = pending.permissions;
-            if (autoApproveRef.current && permissions.length > 0) {
-              for (const permission of permissions) {
-                void apiReplyPermission(activeConversationId, permission.id, "once");
+            // Auto-approve rehydrated permissions the same way the live path
+            // does — but keep them out of state only once the reply is known to
+            // have been accepted. If a reply fails, surface the permission so
+            // the operator can act on it instead of it silently vanishing.
+            const permissionsToSurface: typeof pending.permissions = [];
+            if (autoApproveRef.current) {
+              for (const permission of pending.permissions) {
+                void apiReplyPermission(activeConversationId, permission.id, "once").catch(() => {
+                  if (controller.signal.aborted) return;
+                  dispatch({
+                    type: "SSE_EVENT",
+                    event: { type: "permission.asked", properties: permission },
+                  });
+                });
               }
-              permissions = [];
+            } else {
+              permissionsToSurface.push(...pending.permissions);
             }
 
-            dispatch({ type: "HYDRATE_PENDING", pending: { ...pending, permissions } });
+            dispatch({
+              type: "HYDRATE_PENDING",
+              pending: { ...pending, permissions: permissionsToSurface },
+            });
           })
           .catch(() => {
             // Best-effort rehydration — the SSE stream will still deliver

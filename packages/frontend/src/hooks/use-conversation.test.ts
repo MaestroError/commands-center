@@ -748,24 +748,8 @@ describe("SSE_EVENT: question.asked / question.replied / question.rejected", () 
 // ---------------------------------------------------------------------------
 
 describe("HYDRATE_PENDING", () => {
-  it("replaces pendingPermissions, pendingQuestion, and liveRequests wholesale", () => {
-    const dirtyState: ConversationState = {
-      ...initialState,
-      pendingPermissions: [
-        {
-          id: "stale-perm",
-          sessionID: "s",
-          permission: "read",
-          patterns: [],
-          metadata: {},
-          always: [],
-        },
-      ],
-      pendingQuestion: { id: "stale-q", sessionID: "s", questions: [] },
-      liveRequests: [],
-    };
-
-    const next = conversationReducer(dirtyState, {
+  it("adopts the fetched snapshot on a fresh (empty) conversation", () => {
+    const next = conversationReducer(initialState, {
       type: "HYDRATE_PENDING",
       pending: {
         permissions: [
@@ -788,26 +772,62 @@ describe("HYDRATE_PENDING", () => {
       },
     });
 
-    expect(next.pendingPermissions).toEqual([
-      {
-        id: "perm-fresh",
-        sessionID: "s",
-        permission: "bash",
-        patterns: ["*.sh"],
-        metadata: {},
-        always: [],
-        tool: { messageID: "m1", callID: "c1" },
-      },
-    ]);
+    expect(next.pendingPermissions.map((permission) => permission.id)).toEqual(["perm-fresh"]);
     expect(next.pendingQuestion?.id).toBe("q-fresh");
   });
 
-  it("clears pendingPermissions and pendingQuestion when nothing is pending server-side", () => {
-    const dirtyState: ConversationState = {
+  it("merges the fetched snapshot with newer live events instead of dropping them", () => {
+    // The fetch is async; a live SSE event can add a NEWER interaction before it
+    // resolves. Merging (not replacing) must preserve that live interaction —
+    // otherwise the older fetched snapshot would strand the prompt.
+    const stateWithLiveEvents: ConversationState = {
       ...initialState,
       pendingPermissions: [
         {
-          id: "stale-perm",
+          id: "sse-perm",
+          sessionID: "s",
+          permission: "write",
+          patterns: [],
+          metadata: {},
+          always: [],
+        },
+      ],
+      pendingQuestion: { id: "sse-q", sessionID: "s", questions: [] },
+    };
+
+    const next = conversationReducer(stateWithLiveEvents, {
+      type: "HYDRATE_PENDING",
+      pending: {
+        permissions: [
+          {
+            id: "fetched-perm",
+            sessionID: "s",
+            permission: "read",
+            patterns: [],
+            metadata: {},
+            always: [],
+          },
+        ],
+        // Older snapshot predates the live question, so it carries none.
+        question: null,
+        liveRequests: [],
+      },
+    });
+
+    expect(next.pendingPermissions.map((permission) => permission.id).sort()).toEqual([
+      "fetched-perm",
+      "sse-perm",
+    ]);
+    // The live question is preserved, not overwritten by the fetched null.
+    expect(next.pendingQuestion?.id).toBe("sse-q");
+  });
+
+  it("leaves existing pending state untouched when the fetched snapshot is empty", () => {
+    const stateWithLiveEvents: ConversationState = {
+      ...initialState,
+      pendingPermissions: [
+        {
+          id: "sse-perm",
           sessionID: "s",
           permission: "read",
           patterns: [],
@@ -815,16 +835,16 @@ describe("HYDRATE_PENDING", () => {
           always: [],
         },
       ],
-      pendingQuestion: { id: "stale-q", sessionID: "s", questions: [] },
+      pendingQuestion: { id: "sse-q", sessionID: "s", questions: [] },
     };
 
-    const next = conversationReducer(dirtyState, {
+    const next = conversationReducer(stateWithLiveEvents, {
       type: "HYDRATE_PENDING",
       pending: { permissions: [], question: null, liveRequests: [] },
     });
 
-    expect(next.pendingPermissions).toEqual([]);
-    expect(next.pendingQuestion).toBeNull();
+    expect(next.pendingPermissions.map((permission) => permission.id)).toEqual(["sse-perm"]);
+    expect(next.pendingQuestion?.id).toBe("sse-q");
   });
 });
 
