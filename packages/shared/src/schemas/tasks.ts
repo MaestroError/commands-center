@@ -250,7 +250,7 @@ export const createTaskInputSchema = z.object({
     .trim()
     .min(1)
     .describe(
-      "Specialist ID of the specialist that OWNS and RUNS this task. To assign the task to a specific specialist, set this to their specialist ID (call list_specialists to look up IDs). If omitted, the task is assigned to you, the calling specialist.",
+      "Required. Specialist ID of the specialist that OWNS and RUNS this task. To assign the task to a specific specialist, set this to their specialist ID (call list_specialists to look up IDs).",
     ),
   defaultAgentId: z
     .string()
