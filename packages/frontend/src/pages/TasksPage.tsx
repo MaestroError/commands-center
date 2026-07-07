@@ -9,6 +9,7 @@ import type { TasksPageProps } from "./tasks/task-helpers";
 export function TasksPage(props: TasksPageProps) {
   if (props.mode === "create") return <TaskFormPage mode="create" />;
   if (props.mode === "edit") return <TaskFormPage mode="edit" />;
-  if (props.mode === "template-edit") return <TaskTemplateFormPage />;
+  if (props.mode === "template-create") return <TaskTemplateFormPage mode="create" />;
+  if (props.mode === "template-edit") return <TaskTemplateFormPage mode="edit" />;
   return <TaskListPage />;
 }

@@ -151,7 +151,15 @@ describe("system prompt service", () => {
       const resolved = await service.listResolved("chat", ctx, { "global-chat": false });
 
       const ids = resolved.map((entry) => entry.id);
-      expect(ids).toEqual(["identity", "global-chat", "additional"]);
+      expect(ids).toEqual([
+        "identity",
+        "global-chat",
+        "additional",
+        "mcp-instructions-notifications",
+        "mcp-instructions-app",
+        "mcp-instructions-specialist-management",
+        "mcp-instructions-tasks-management",
+      ]);
 
       const globalChat = resolved.find((entry) => entry.id === "global-chat");
       expect(globalChat?.enabled).toBe(false);

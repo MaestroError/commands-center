@@ -264,11 +264,11 @@ export function createCcManagedMcpService(options: {
 // tool. "both" tools get no suffix.
 function withContextRecommendation(description: string, context: CcManagedToolContextMode): string {
   if (context === "chat") {
-    return `${description} Recommended to use in Chat.`;
+    return `${description} Recommended to use only in Chat.`;
   }
 
   if (context === "task_run") {
-    return `${description} Recommended to use in Task Run.`;
+    return `${description} Recommended to use only in Task Run.`;
   }
 
   return description;

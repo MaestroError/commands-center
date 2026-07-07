@@ -8,6 +8,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 import { connectTerminalWebSocket } from "@/lib/api";
+import { consumeSessionPrefillCommand, setSessionPrefillCommand } from "@/lib/terminal-prefill";
 
 import { TerminalInstance } from "./TerminalInstance";
 
@@ -40,6 +41,7 @@ describe("TerminalInstance", () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 200 }));
     getTestHarness().__ccTestXterm.mockTerminalInstances.length = 0;
     getTestHarness().__ccTestXterm.mockWebLinksAddonInstances.length = 0;
@@ -178,6 +180,54 @@ describe("TerminalInstance", () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith("copied-text");
 
     expect(terminal.paste).not.toHaveBeenCalled();
+  });
+
+  it("sends a session-scoped prefill command on first connect and consumes it", async () => {
+    setSessionPrefillCommand("term-1", "npm test");
+    const socket = createSocket();
+    vi.mocked(connectTerminalWebSocket).mockReturnValue(socket as never);
+
+    render(<TerminalInstance session={session} onResize={vi.fn()} onExit={vi.fn()} />);
+    await waitForTerminalReady();
+
+    socket.onopen?.(new Event("open"));
+
+    expect(socket.send).toHaveBeenCalledWith("npm test");
+    // Consumed: the stored command is cleared after the first connect.
+    expect(consumeSessionPrefillCommand("term-1")).toBeUndefined();
+  });
+
+  it("does not resend the prefill command on reconnect", async () => {
+    setSessionPrefillCommand("term-1", "npm test");
+    const firstSocket = createSocket();
+    const secondSocket = createSocket();
+    vi.mocked(connectTerminalWebSocket)
+      .mockReturnValueOnce(firstSocket as never)
+      .mockReturnValueOnce(secondSocket as never);
+
+    render(<TerminalInstance session={session} onResize={vi.fn()} onExit={vi.fn()} />);
+    await waitForTerminalReady();
+
+    firstSocket.onopen?.(new Event("open"));
+    expect(firstSocket.send).toHaveBeenCalledWith("npm test");
+
+    firstSocket.onclose?.(new CloseEvent("close", { code: 1006 }));
+    await vi.runAllTimersAsync();
+
+    secondSocket.onopen?.(new Event("open"));
+    expect(secondSocket.send).not.toHaveBeenCalledWith("npm test");
+  });
+
+  it("does not send anything when there is no prefill command", async () => {
+    const socket = createSocket();
+    vi.mocked(connectTerminalWebSocket).mockReturnValue(socket as never);
+
+    render(<TerminalInstance session={session} onResize={vi.fn()} onExit={vi.fn()} />);
+    await waitForTerminalReady();
+
+    socket.onopen?.(new Event("open"));
+
+    expect(socket.send).not.toHaveBeenCalled();
   });
 
   it("focuses the terminal on mount", async () => {

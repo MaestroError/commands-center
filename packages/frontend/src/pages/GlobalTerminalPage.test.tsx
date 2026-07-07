@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TerminalSession } from "@cc/shared/schemas";
@@ -60,7 +61,11 @@ describe("GlobalTerminalPage", () => {
   });
 
   it("renders TerminalTabsSurface", async () => {
-    render(<GlobalTerminalPage />);
+    render(
+      <MemoryRouter>
+        <GlobalTerminalPage />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => {
       expect(screen.getByTestId("terminal-tabs-surface")).toBeInTheDocument();
@@ -70,7 +75,11 @@ describe("GlobalTerminalPage", () => {
   });
 
   it("loads existing sessions on mount", async () => {
-    render(<GlobalTerminalPage />);
+    render(
+      <MemoryRouter>
+        <GlobalTerminalPage />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => {
       expect(listTerminalSessions).toHaveBeenCalled();
@@ -78,7 +87,11 @@ describe("GlobalTerminalPage", () => {
   });
 
   it("passes controller to TerminalTabsSurface", async () => {
-    render(<GlobalTerminalPage />);
+    render(
+      <MemoryRouter>
+        <GlobalTerminalPage />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => {
       const surface = screen.getByTestId("terminal-tabs-surface");
@@ -87,7 +100,11 @@ describe("GlobalTerminalPage", () => {
   });
 
   it("passes loaded sessions into the terminal controller", async () => {
-    render(<GlobalTerminalPage />);
+    render(
+      <MemoryRouter>
+        <GlobalTerminalPage />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => {
       expect(useTerminalSessionsMock).toHaveBeenCalledWith([

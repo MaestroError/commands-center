@@ -1,10 +1,23 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { reviewActivityPayloadSchema, type Activity } from "@cc/shared/schemas";
+import {
+  reviewActivityPayloadSchema,
+  runCommandProposalPayloadSchema,
+  runTemplateProposalPayloadSchema,
+  taskProposalPayloadSchema,
+  taskTemplateProposalPayloadSchema,
+  type Activity,
+} from "@cc/shared/schemas";
 
+import { createTaskPromptValue } from "@/components/tasks/task-prompt";
 import { useFillSecretMutation } from "@/hooks/use-activities-query";
+import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useTaskMutations } from "@/hooks/use-tasks-query";
+import type {
+  TaskCreationPrefill,
+  TaskTemplateCreationPrefill,
+} from "@/services/task-prefill-service";
 
 type ActivityActionsProps = {
   activity: Activity;
@@ -25,8 +38,16 @@ export function ActivityActions(props: ActivityActionsProps) {
     case "task_needs_review":
     case "subtask_needs_review":
       return <ReviewReplyActions {...props} />;
+    case "task_proposal":
+      return <TaskProposalActions {...props} />;
+    case "task_template_proposal":
+      return <TaskTemplateProposalActions {...props} />;
+    case "run_template_proposal":
+      return <RunTemplateProposalActions {...props} />;
+    case "run_command_proposal":
+      return <RunCommandProposalActions {...props} />;
     default:
-      // feedback_resolved, task_run_failed (and future kinds)
+      // specialist_info, specialist_warning, feedback_resolved, task_run_failed
       return <InfoActions {...props} />;
   }
 }
@@ -222,6 +243,200 @@ function InfoActions({ activity, onArchive, archiving }: ActivityActionsProps) {
       ) : null}
     </ActionRow>
   );
+}
+
+// A specialist proposed creating a task. Confirming opens the real task
+// creation page prefilled with the proposal (title, prompt, proposed assignee);
+// the operator reviews and creates it there.
+function TaskProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+  const navigate = useNavigate();
+  const parsed = taskProposalPayloadSchema.safeParse(activity.payload);
+  const specialists = useSpecialistsQuery().data ?? [];
+
+  const openCreate = () => {
+    if (!parsed.success) {
+      return;
+    }
+    // Prefer the explicit assignee; otherwise default to the proposing specialist.
+    const assignee = findSpecialist(
+      specialists,
+      parsed.data.assigneeSlug,
+      parsed.data.proposedBySlug,
+    );
+    const taskPrefill: TaskCreationPrefill = {
+      agentId: assignee?.id ?? "",
+      title: parsed.data.title,
+      // `reason` is the "why" for the operator (shown on the card), not task
+      // content — only an explicit prompt seeds the task body.
+      prompt: createTaskPromptValue(parsed.data.taskDescription ?? ""),
+    };
+    onArchive(activity.id);
+    void navigate("/tasks/new", { state: { taskPrefill } });
+  };
+
+  return (
+    <ActionRow>
+      <ActionButton variant="primary" disabled={archiving} onClick={openCreate}>
+        Review & create
+      </ActionButton>
+      <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+        Dismiss
+      </ActionButton>
+    </ActionRow>
+  );
+}
+
+// A specialist proposed a recurring task template. Confirming opens the real
+// template creation page prefilled with the proposal (title, prompt, assignee,
+// recurrence); the operator reviews and creates it there.
+function TaskTemplateProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+  const navigate = useNavigate();
+  const parsed = taskTemplateProposalPayloadSchema.safeParse(activity.payload);
+  const specialists = useSpecialistsQuery().data ?? [];
+
+  const openCreate = () => {
+    if (!parsed.success) {
+      return;
+    }
+    // Prefer the explicit assignee; otherwise default to the proposing specialist.
+    const assignee = findSpecialist(
+      specialists,
+      parsed.data.assigneeSlug,
+      parsed.data.proposedBySlug,
+    );
+    const templatePrefill: TaskTemplateCreationPrefill = {
+      defaultAgentId: assignee?.id,
+      title: parsed.data.title,
+      // `reason` is the "why" for the operator, not task content — only an
+      // explicit prompt seeds the template body.
+      description: parsed.data.taskDescription ?? "",
+      recurrence: parsed.data.recurrence,
+    };
+    onArchive(activity.id);
+    void navigate("/tasks/templates/new", { state: { templatePrefill } });
+  };
+
+  return (
+    <ActionRow>
+      <ActionButton variant="primary" disabled={archiving} onClick={openCreate}>
+        Review & create
+      </ActionButton>
+      <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+        Dismiss
+      </ActionButton>
+    </ActionRow>
+  );
+}
+
+// A specialist proposed running an existing template now. One-click confirm —
+// generates a task from the template AND queues it to run immediately.
+function RunTemplateProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+  const parsed = runTemplateProposalPayloadSchema.safeParse(activity.payload);
+  const { runTemplateNow } = useTaskMutations();
+  const [error, setError] = useState<string | null>(null);
+  const templateId = parsed.success ? parsed.data.templateId : undefined;
+
+  const run = () => {
+    if (!templateId || runTemplateNow.isPending) {
+      return;
+    }
+    setError(null);
+    runTemplateNow.mutate(
+      { id: templateId },
+      {
+        onSuccess: () => onArchive(activity.id),
+        onError: () => setError("Could not run the template."),
+      },
+    );
+  };
+
+  return (
+    <ActionRow>
+      <ActionButton
+        variant="primary"
+        disabled={!templateId || runTemplateNow.isPending || archiving}
+        onClick={run}
+      >
+        {runTemplateNow.isPending ? "Running…" : "Run template"}
+      </ActionButton>
+      <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+        Dismiss
+      </ActionButton>
+      {error ? <ActionError>{error}</ActionError> : null}
+    </ActionRow>
+  );
+}
+
+// A specialist proposed a terminal command. Confirming opens the global
+// terminal prefilled with the command (operator reviews and presses Enter).
+function RunCommandProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+  const navigate = useNavigate();
+  const parsed = runCommandProposalPayloadSchema.safeParse(activity.payload);
+  const command = parsed.success ? parsed.data.command : undefined;
+  const [confirming, setConfirming] = useState(false);
+
+  const openInTerminal = () => {
+    if (!command) {
+      return;
+    }
+    onArchive(activity.id);
+    // The terminal page opens a fresh session and prefills it from this state.
+    void navigate("/terminal", { state: { runCommand: command } });
+  };
+
+  if (!command) {
+    return <InfoActions activity={activity} onArchive={onArchive} archiving={archiving} />;
+  }
+
+  return (
+    <div className="mt-1 grid gap-2">
+      <pre className="overflow-x-auto rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-text-primary">
+        <code>{command}</code>
+      </pre>
+      {confirming ? (
+        <>
+          <p className="text-[11px] text-text-secondary">
+            This opens your terminal with the command prefilled. Review it, then press Enter to run.
+          </p>
+          <ActionRow>
+            <ActionButton variant="primary" disabled={archiving} onClick={openInTerminal}>
+              Open terminal
+            </ActionButton>
+            <ActionButton variant="muted" type="button" onClick={() => setConfirming(false)}>
+              Cancel
+            </ActionButton>
+          </ActionRow>
+        </>
+      ) : (
+        <ActionRow>
+          <ActionButton variant="primary" disabled={archiving} onClick={() => setConfirming(true)}>
+            Run command
+          </ActionButton>
+          <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+            Dismiss
+          </ActionButton>
+        </ActionRow>
+      )}
+    </div>
+  );
+}
+
+// Resolve a specialist by trying each candidate slug in order (e.g. explicit
+// assignee first, then the proposing specialist as the default).
+function findSpecialist(
+  specialists: { id: string; slug: string }[],
+  ...slugs: (string | undefined)[]
+): { id: string; slug: string } | undefined {
+  for (const slug of slugs) {
+    if (!slug) {
+      continue;
+    }
+    const match = specialists.find((entry) => entry.slug === slug);
+    if (match) {
+      return match;
+    }
+  }
+  return undefined;
 }
 
 // Open the task on the board (side panel), not the standalone task page.

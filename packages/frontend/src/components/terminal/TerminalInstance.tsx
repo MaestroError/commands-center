@@ -7,6 +7,7 @@ import type { WebLinksAddon } from "@xterm/addon-web-links";
 import type { Terminal } from "@xterm/xterm";
 
 import { connectTerminalWebSocket } from "@/lib/api";
+import { consumeSessionPrefillCommand } from "@/lib/terminal-prefill";
 
 type Props = {
   session: TerminalSession;
@@ -180,14 +181,23 @@ export function TerminalInstance(props: Props) {
 
         clearReconnectTimeout();
         reconnectAttemptsRef.current = 0;
+        const isFirstConnect = !connectedOnceRef.current;
         queueOutput(
           terminal,
-          connectedOnceRef.current
-            ? "\r\n[terminal reconnected]\r\n"
-            : "\r\n[terminal connected]\r\n",
+          isFirstConnect ? "\r\n[terminal connected]\r\n" : "\r\n[terminal reconnected]\r\n",
         );
         connectedOnceRef.current = true;
         scheduleResize(terminal);
+
+        // Prefill a command handed off from the activity feed's "Run command"
+        // action. Sent without a trailing newline so the operator reviews and
+        // runs it. Only on the very first connect, never on reconnects.
+        if (isFirstConnect) {
+          const pendingCommand = consumeSessionPrefillCommand(session.id);
+          if (pendingCommand) {
+            ws.send(pendingCommand);
+          }
+        }
       };
 
       ws.onmessage = (event) => {

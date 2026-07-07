@@ -952,7 +952,7 @@ describe("cc-managed MCP routes", () => {
       // `context` is advisory now: task-run-oriented tools are always listed,
       // even in a chat session (with a "Recommended to use in Task Run" hint).
       expect(listToolsResponse.body).toContain('"name":"set_task_result"');
-      expect(listToolsResponse.body).toContain("Recommended to use in Task Run.");
+      expect(listToolsResponse.body).toContain("Recommended to use only in Task Run.");
       const listed = parseSseJson(listSpecialistsResponse.body) as {
         result: { structuredContent: { specialists: Array<Record<string, unknown>> } };
       };
@@ -2287,7 +2287,7 @@ describe("cc-managed MCP routes", () => {
       ]) {
         expect(listToolsResponse.body).toContain(`"name":"${toolName}"`);
       }
-      expect(listToolsResponse.body).toContain("Recommended to use in Task Run.");
+      expect(listToolsResponse.body).toContain("Recommended to use only in Task Run.");
       // run_self_task/queue_self_task live in cc_default_interactive, not
       // cc_default — that is server membership, unaffected by the context change.
       expect(listToolsResponse.body).not.toContain('"name":"run_self_task"');
@@ -2491,7 +2491,7 @@ describe("cc-managed MCP routes", () => {
       expect(taskRunListResponse.body).toContain('"name":"draft_self_task_template_update"');
       expect(chatListResponse.body).toContain('"name":"run_self_task"');
       expect(taskRunListResponse.body).toContain('"name":"run_self_task"');
-      expect(taskRunListResponse.body).toContain("Recommended to use in Chat.");
+      expect(taskRunListResponse.body).toContain("Recommended to use only in Chat.");
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -3435,7 +3435,7 @@ describe("cc-managed MCP routes", () => {
       // since `context` is advisory, they are listed in chat too (with the hint).
       expect(chatListResponse.body).toContain('"name":"create_self_task_template"');
       expect(chatListResponse.body).toContain('"name":"update_self_task_template"');
-      expect(chatListResponse.body).toContain("Recommended to use in Task Run.");
+      expect(chatListResponse.body).toContain("Recommended to use only in Task Run.");
       expect(taskRunListResponse.body).toContain('"name":"create_self_task_template"');
       expect(taskRunListResponse.body).toContain('"name":"update_self_task_template"');
       // list/get/run/instantiate/enable/disable are both-context.

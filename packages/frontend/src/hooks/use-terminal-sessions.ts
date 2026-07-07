@@ -20,7 +20,7 @@ export type UseTerminalSessions = {
   sessions: TerminalSession[];
   activeId?: string;
   activeSession?: TerminalSession;
-  create: (options?: { cwd?: string }) => Promise<void>;
+  create: (options?: { cwd?: string }) => Promise<TerminalSession | undefined>;
   close: (id: string) => Promise<void>;
   remove: (id: string) => void;
   setActive: (id: string) => void;
@@ -131,12 +131,14 @@ export function useTerminalSessions(
         cwd: options?.cwd,
       });
       dispatch({ type: "add-session", session });
+      return session;
     } catch (err) {
       dispatch({
         type: "set-error",
         error: err instanceof Error ? err.message : "Failed to create session",
       });
       dispatch({ type: "set-loading", isLoading: false });
+      return undefined;
     }
   }, []);
 

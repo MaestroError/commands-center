@@ -410,6 +410,50 @@ describe("createSpecialistService", () => {
             },
           ],
         },
+        {
+          name: "cc_notifications",
+          enabledByDefault: false,
+          description:
+            "CommandsCenter specialist notifications: post info/warning cards and task/template/command proposals to the operator's activity feed. Non-blocking.",
+          tools: [
+            {
+              name: "notify_info",
+              description:
+                "Post an info notification (markdown) to the user's activity feed. Use only for something important beyond the task's final result.",
+              context: "task_run",
+            },
+            {
+              name: "notify_warning",
+              description:
+                "Post a warning notification (markdown) to the user's activity feed. Use when action is needed, or to flag that you changed the planned execution path (e.g. a required CLI failed and you fell back to an MCP).",
+              context: "task_run",
+            },
+            {
+              name: "propose_task",
+              description:
+                "Propose a new task async — leaves a proposal card in the user's activity feed. `reason` is your justification for the operator (shown on the card); put the actual task instructions in `taskDescription`, not in `reason`.",
+              context: "task_run",
+            },
+            {
+              name: "propose_task_template",
+              description:
+                "Propose a new recurring task template async — leaves a proposal card in the user's activity feed. `reason` is your justification for the operator; put the actual task instructions in `taskDescription`, and an optional schedule in `recurrence`.",
+              context: "task_run",
+            },
+            {
+              name: "propose_run_task_template",
+              description:
+                "Propose running an existing task template — leaves a Run proposal card in the user's activity feed.",
+              context: "task_run",
+            },
+            {
+              name: "propose_run_command",
+              description:
+                "Propose a terminal command — leaves a proposal card in the user's activity feed; running it opens the terminal prefilled with the command.",
+              context: "task_run",
+            },
+          ],
+        },
       ]);
       expect(catalog.appMcpServers.map((server) => server.name)).not.toContain("cc_default");
       expect(catalog.ccManagedMcpServers?.map((server) => server.name)).toEqual(

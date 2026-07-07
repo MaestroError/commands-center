@@ -9,8 +9,8 @@ import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-spec
 import { useTaskMutations, useTaskTemplateQuery } from "@/hooks/use-tasks-query";
 import type { CreateTaskTemplateInput, Specialist, TaskTemplate } from "@cc/shared/schemas";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { useTaskComposerSkills } from "./task-helpers";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { getTaskTemplateCreationPrefill, useTaskComposerSkills } from "./task-helpers";
 import { FallbackModelsField, WeekdayPicker } from "./TaskFormPage";
 import {
   type FormState,
@@ -18,6 +18,7 @@ import {
   REPEAT_PRESETS,
   type RepeatFrequency,
   type RepeatPreset,
+  type TaskTemplateCreationPrefill,
   buildRepeatRule,
   formToTemplateInput,
   formatRepeatPreset,
@@ -30,13 +31,16 @@ export function TaskTemplateForm(props: {
   agents: Specialist[];
   cancelLabel: string;
   initialTemplate?: TaskTemplate;
+  prefill?: TaskTemplateCreationPrefill;
   isBusy: boolean;
   submitLabel: string;
   title: string;
   onCancel: () => void;
   onSubmit: (input: CreateTaskTemplateInput) => void;
 }) {
-  const [form, setForm] = useState<FormState>(() => templateToForm(props.initialTemplate));
+  const [form, setForm] = useState<FormState>(() =>
+    templateToForm(props.initialTemplate, props.prefill),
+  );
   const catalogQuery = useSpecialistCatalogQuery();
   const selectedAgent = props.agents.find((agent) => agent.id === form.agentId);
   const templateSkills = useTaskComposerSkills(selectedAgent, catalogQuery.data);
@@ -272,18 +276,61 @@ export function TaskTemplateForm(props: {
   }
 }
 
-export function TaskTemplateFormPage() {
+export function TaskTemplateFormPage(props: { mode?: "create" | "edit" } = {}) {
+  const mode = props.mode ?? "edit";
   const navigate = useNavigate();
+  const location = useLocation();
   const params = useParams();
   const templateQuery = useTaskTemplateQuery(params["id"]);
   const agentsQuery = useSpecialistsQuery();
   const mutations = useTaskMutations();
   const template = templateQuery.data;
   const agents = agentsQuery.data ?? [];
-  const isLoading = templateQuery.isLoading || agentsQuery.isLoading;
+  const isLoading =
+    mode === "create" ? agentsQuery.isLoading : templateQuery.isLoading || agentsQuery.isLoading;
   const error = readError(
-    templateQuery.error ?? agentsQuery.error ?? mutations.updateTemplate.error,
+    (mode === "create" ? undefined : templateQuery.error) ??
+      agentsQuery.error ??
+      (mode === "create" ? mutations.createTemplate.error : mutations.updateTemplate.error),
   );
+
+  if (mode === "create") {
+    const prefill = getTaskTemplateCreationPrefill(location.state);
+    return (
+      <div className="grid gap-4">
+        <PageHeader
+          actions={
+            <Link className="cc-button cc-button-secondary" to="/tasks?view=templates">
+              Cancel
+            </Link>
+          }
+          description="Create a reusable task template. Add repetition only when it should run on a schedule."
+          eyebrow="Task Templates"
+          title="New task template"
+        />
+
+        {agentsQuery.isLoading ? <LoadingState testId="task-template-form-loading" /> : null}
+        {error ? <ErrorState description={error} title="Template could not be created." /> : null}
+        {!agentsQuery.isLoading ? (
+          <TaskTemplateForm
+            agents={agents}
+            cancelLabel="Cancel"
+            prefill={prefill}
+            isBusy={mutations.createTemplate.isPending}
+            submitLabel="Create template"
+            title="New task template"
+            onCancel={() => void navigate("/tasks?view=templates")}
+            onSubmit={(input) => {
+              mutations.createTemplate.mutate(input, {
+                onSuccess: (created) =>
+                  void navigate(`/tasks?view=templates&template=${created.id}`),
+              });
+            }}
+          />
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-4">
