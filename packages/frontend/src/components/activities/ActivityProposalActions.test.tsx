@@ -7,10 +7,9 @@ import type { Activity } from "@cc/shared/schemas";
 
 import { ActivityActions } from "./ActivityActions";
 
-const { createFromTemplateMutate, navigateSpy, setPendingSpy } = vi.hoisted(() => ({
+const { createFromTemplateMutate, navigateSpy } = vi.hoisted(() => ({
   createFromTemplateMutate: vi.fn(),
   navigateSpy: vi.fn(),
-  setPendingSpy: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-tasks-query", () => ({
@@ -28,10 +27,6 @@ vi.mock("@/hooks/use-specialists-query", () => ({
       { id: "agent-2", slug: "researcher", name: "Researcher" },
     ],
   }),
-}));
-
-vi.mock("@/lib/terminal-prefill", () => ({
-  setPendingTerminalCommand: setPendingSpy,
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -148,7 +143,7 @@ describe("proposal activity actions", () => {
     expect(createFromTemplateMutate).toHaveBeenCalledWith("tmpl-1", expect.anything());
   });
 
-  it("prefills the terminal and navigates for a run-command proposal", () => {
+  it("opens the terminal carrying the command for a run-command proposal", () => {
     renderActions(
       activity({
         id: "act-3",
@@ -161,7 +156,8 @@ describe("proposal activity actions", () => {
     fireEvent.click(screen.getByText("Run command"));
     fireEvent.click(screen.getByText("Open terminal"));
 
-    expect(setPendingSpy).toHaveBeenCalledWith("npm run build");
-    expect(navigateSpy).toHaveBeenCalledWith("/terminal");
+    expect(navigateSpy).toHaveBeenCalledWith("/terminal", {
+      state: { runCommand: "npm run build" },
+    });
   });
 });

@@ -14,7 +14,6 @@ import { createTaskPromptValue } from "@/components/tasks/task-prompt";
 import { useFillSecretMutation } from "@/hooks/use-activities-query";
 import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useTaskMutations } from "@/hooks/use-tasks-query";
-import { setPendingTerminalCommand } from "@/lib/terminal-prefill";
 import type {
   TaskCreationPrefill,
   TaskTemplateCreationPrefill,
@@ -376,9 +375,9 @@ function RunCommandProposalActions({ activity, onArchive, archiving }: ActivityA
     if (!command) {
       return;
     }
-    setPendingTerminalCommand(command);
     onArchive(activity.id);
-    void navigate("/terminal");
+    // The terminal page opens a fresh session and prefills it from this state.
+    void navigate("/terminal", { state: { runCommand: command } });
   };
 
   if (!command) {

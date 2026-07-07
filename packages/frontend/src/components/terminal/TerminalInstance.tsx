@@ -7,7 +7,7 @@ import type { WebLinksAddon } from "@xterm/addon-web-links";
 import type { Terminal } from "@xterm/xterm";
 
 import { connectTerminalWebSocket } from "@/lib/api";
-import { consumePendingTerminalCommand } from "@/lib/terminal-prefill";
+import { consumeSessionPrefillCommand } from "@/lib/terminal-prefill";
 
 type Props = {
   session: TerminalSession;
@@ -193,7 +193,7 @@ export function TerminalInstance(props: Props) {
         // action. Sent without a trailing newline so the operator reviews and
         // runs it. Only on the very first connect, never on reconnects.
         if (isFirstConnect) {
-          const pendingCommand = consumePendingTerminalCommand();
+          const pendingCommand = consumeSessionPrefillCommand(session.id);
           if (pendingCommand) {
             ws.send(pendingCommand);
           }

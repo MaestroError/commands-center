@@ -1,23 +1,29 @@
-// A one-shot handoff for prefilling the global terminal with a command. The
-// activity feed's "Run command" action stores a command here and navigates to
-// /terminal; the terminal instance consumes it once connected and writes it to
-// the PTY (without a trailing newline) so the operator reviews and presses Enter.
-const STORAGE_KEY = "cc.terminal.pending-command";
+// Session-scoped handoff for prefilling a terminal with a command. The activity
+// feed's "Run command" action navigates to /terminal, which opens a fresh
+// session and stores the command under that session's id here. The matching
+// terminal instance consumes it once connected and writes it to the PTY
+// (without a trailing newline) so the operator reviews and presses Enter.
+//
+// Scoping by session id ensures the command lands in the newly opened terminal
+// and cannot be swallowed by a pre-existing session connecting at the same time.
+function storageKey(sessionId: string): string {
+  return `cc.terminal.prefill.${sessionId}`;
+}
 
-export function setPendingTerminalCommand(command: string): void {
+export function setSessionPrefillCommand(sessionId: string, command: string): void {
   try {
-    window.sessionStorage.setItem(STORAGE_KEY, command);
+    window.sessionStorage.setItem(storageKey(sessionId), command);
   } catch {
     // Ignore storage failures (private mode, quota); prefill just won't happen.
   }
 }
 
-/** Read and clear the pending command, if any. */
-export function consumePendingTerminalCommand(): string | undefined {
+/** Read and clear the pending command for a session, if any. */
+export function consumeSessionPrefillCommand(sessionId: string): string | undefined {
   try {
-    const command = window.sessionStorage.getItem(STORAGE_KEY);
+    const command = window.sessionStorage.getItem(storageKey(sessionId));
     if (command) {
-      window.sessionStorage.removeItem(STORAGE_KEY);
+      window.sessionStorage.removeItem(storageKey(sessionId));
       return command;
     }
   } catch {
