@@ -7,8 +7,8 @@ import type { Activity } from "@cc/shared/schemas";
 
 import { ActivityActions } from "./ActivityActions";
 
-const { createFromTemplateMutate, navigateSpy } = vi.hoisted(() => ({
-  createFromTemplateMutate: vi.fn(),
+const { runTemplateNowMutate, navigateSpy } = vi.hoisted(() => ({
+  runTemplateNowMutate: vi.fn(),
   navigateSpy: vi.fn(),
 }));
 
@@ -16,7 +16,7 @@ vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskMutations: () => ({
     create: { mutate: vi.fn(), isPending: false },
     createTemplate: { mutate: vi.fn(), isPending: false },
-    createFromTemplate: { mutate: createFromTemplateMutate, isPending: false },
+    runTemplateNow: { mutate: runTemplateNowMutate, isPending: false },
   }),
 }));
 
@@ -140,7 +140,7 @@ describe("proposal activity actions", () => {
     );
 
     fireEvent.click(screen.getByText("Run template"));
-    expect(createFromTemplateMutate).toHaveBeenCalledWith("tmpl-1", expect.anything());
+    expect(runTemplateNowMutate).toHaveBeenCalledWith({ id: "tmpl-1" }, expect.anything());
   });
 
   it("opens the terminal carrying the command for a run-command proposal", () => {

@@ -328,32 +328,36 @@ function TaskTemplateProposalActions({ activity, onArchive, archiving }: Activit
   );
 }
 
-// A specialist proposed running an existing template now. One-click confirm.
+// A specialist proposed running an existing template now. One-click confirm —
+// generates a task from the template AND queues it to run immediately.
 function RunTemplateProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
   const parsed = runTemplateProposalPayloadSchema.safeParse(activity.payload);
-  const { createFromTemplate } = useTaskMutations();
+  const { runTemplateNow } = useTaskMutations();
   const [error, setError] = useState<string | null>(null);
   const templateId = parsed.success ? parsed.data.templateId : undefined;
 
   const run = () => {
-    if (!templateId || createFromTemplate.isPending) {
+    if (!templateId || runTemplateNow.isPending) {
       return;
     }
     setError(null);
-    createFromTemplate.mutate(templateId, {
-      onSuccess: () => onArchive(activity.id),
-      onError: () => setError("Could not run the template."),
-    });
+    runTemplateNow.mutate(
+      { id: templateId },
+      {
+        onSuccess: () => onArchive(activity.id),
+        onError: () => setError("Could not run the template."),
+      },
+    );
   };
 
   return (
     <ActionRow>
       <ActionButton
         variant="primary"
-        disabled={!templateId || createFromTemplate.isPending || archiving}
+        disabled={!templateId || runTemplateNow.isPending || archiving}
         onClick={run}
       >
-        {createFromTemplate.isPending ? "Running…" : "Run template"}
+        {runTemplateNow.isPending ? "Running…" : "Run template"}
       </ActionButton>
       <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
         Dismiss
