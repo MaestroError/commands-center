@@ -1,4 +1,4 @@
-import type { ConversationMessage, ConversationPart } from "@cc/shared/schemas";
+import type { ConversationMessage, ConversationPart, TaskTemplate } from "@cc/shared/schemas";
 
 import { getMessageAttachments } from "@/components/chat/attachment-utils";
 import { isMentionableWorkspacePath } from "@/components/chat/file-mention";
@@ -7,7 +7,16 @@ import type { TaskPromptValue } from "@/components/tasks/task-prompt";
 
 export type TaskCreationPrefill = {
   agentId: string;
+  title?: string;
   prompt: TaskPromptValue;
+};
+
+/** Prefill for creating a task template (e.g. from a specialist's proposal). */
+export type TaskTemplateCreationPrefill = {
+  defaultAgentId?: string;
+  title?: string;
+  description?: string;
+  recurrence?: TaskTemplate["recurrence"];
 };
 
 export type TaskPrefillResult = {
@@ -58,6 +67,7 @@ export function isTaskCreationPrefill(value: unknown): value is TaskCreationPref
 
   return (
     typeof candidate.agentId === "string" &&
+    (candidate.title === undefined || typeof candidate.title === "string") &&
     Boolean(candidate.prompt) &&
     typeof candidate.prompt?.text === "string" &&
     Array.isArray(candidate.prompt.mentionedFiles) &&

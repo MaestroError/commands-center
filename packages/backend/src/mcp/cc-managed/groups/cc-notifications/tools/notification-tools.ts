@@ -1,3 +1,4 @@
+import { recurringTaskScheduleSchema } from "@cc/shared/schemas";
 import { z } from "zod";
 
 import type { AppDb } from "../../../../../db/client.js";
@@ -15,74 +16,122 @@ const reasonField = z.string().trim().min(1).max(4_000);
 const slugField = z.string().trim().min(1).max(200);
 
 const notifyInfoInputSchema = z.object({
-  title: titleField,
-  markdown: markdownField,
-  taskRunId: z.string().trim().min(1).optional(),
+  title: titleField.describe("Short title shown at the top of the notification card."),
+  markdown: markdownField.describe(
+    "The notification body in markdown — the message shown to the operator.",
+  ),
+  taskRunId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Optional id of the current task run to link this notification to (from <TaskRun>)."),
 });
 
 const notifyWarningInputSchema = notifyInfoInputSchema;
 
 const proposeTaskInputSchema = z.object({
-  title: titleField,
-  reason: reasonField,
-  assigneeSlug: slugField.optional(),
-  prompt: z.string().trim().min(1).max(20_000).optional(),
+  title: titleField.describe("Short title for the proposed task."),
+  reason: reasonField.describe(
+    "Why you are proposing this to the operator — a short justification shown on the proposal card. This is NOT the task's instructions; do not put the task content here.",
+  ),
+  assigneeSlug: slugField
+    .optional()
+    .describe(
+      "Slug of the specialist that should own and run the task. Defaults to you (the proposing specialist) if omitted.",
+    ),
+  taskDescription: z
+    .string()
+    .trim()
+    .min(1)
+    .max(20_000)
+    .optional()
+    .describe(
+      "The actual task instructions/body that will prefill the new task if the operator creates it. Leave empty if you have no specific instructions to hand off.",
+    ),
 });
 
-const proposeTaskTemplateInputSchema = proposeTaskInputSchema;
+const proposeTaskTemplateInputSchema = proposeTaskInputSchema.extend({
+  recurrence: recurringTaskScheduleSchema
+    .nullish()
+    .describe("Optional recurring schedule (mode/anchorAt/timezone/repeatRule) for the template."),
+});
 
 const proposeRunTaskTemplateInputSchema = z.object({
-  templateId: z.string().trim().min(1),
-  reason: reasonField,
+  templateId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("Id of the existing task template to run. Use a template-listing tool to find ids."),
+  reason: reasonField.describe(
+    "Why the operator should run this template now — shown on the proposal card.",
+  ),
 });
 
 const proposeRunCommandInputSchema = z.object({
-  command: z.string().trim().min(1).max(4_000),
-  reason: reasonField.optional(),
-  cwd: z.string().trim().min(1).optional(),
+  command: z
+    .string()
+    .trim()
+    .min(1)
+    .max(4_000)
+    .describe(
+      "The exact terminal command to propose. The operator's terminal opens prefilled with it; it is never run automatically.",
+    ),
+  reason: reasonField
+    .optional()
+    .describe("Optional explanation of why this command should be run — shown on the card."),
+  cwd: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Optional working directory hint for the command."),
 });
 
-const emittedOutputSchema = z.object({ posted: z.literal(true), activityId: z.string().min(1) });
+const emittedOutputSchema = z.object({
+  posted: z.literal(true).describe("Always true when the notification was posted to the feed."),
+  activityId: z.string().min(1).describe("Id of the created activity-feed card."),
+});
 
 const notifyInfoToolMetadata = {
   name: "notify_info",
   description:
-    "Post an informational notification (markdown) to the operator's activity feed. A completion notification is already sent when a task run finishes — use this only for something important the operator should know beyond the normal result. Non-blocking: you do not wait for or learn the operator's response.",
+    "Post an info notification (markdown) to the user's activity feed. Use only for something important beyond the task's final result.",
   context: "task_run",
 } as const satisfies CcManagedToolMetadata;
 
 const notifyWarningToolMetadata = {
   name: "notify_warning",
   description:
-    "Post a warning notification (markdown) to the operator's activity feed. Use when action is needed, or to flag that you had to change the planned execution path (e.g. a required CLI failed and you fell back to an MCP). Non-blocking: you do not wait for or learn the operator's response.",
+    "Post a warning notification (markdown) to the user's activity feed. Use when action is needed, or to flag that you changed the planned execution path (e.g. a required CLI failed and you fell back to an MCP).",
   context: "task_run",
 } as const satisfies CcManagedToolMetadata;
 
 const proposeTaskToolMetadata = {
   name: "propose_task",
   description:
-    "Propose a new task for the operator to create. Posts an action card (title, reason, optional assignee specialist) with a Create button; the operator decides. Non-blocking: nothing is created until the operator confirms, and you never learn the outcome.",
+    "Propose a new task async — leaves a proposal card in the user's activity feed. `reason` is your justification for the operator (shown on the card); put the actual task instructions in `taskDescription`, not in `reason`.",
   context: "task_run",
 } as const satisfies CcManagedToolMetadata;
 
 const proposeTaskTemplateToolMetadata = {
   name: "propose_task_template",
   description:
-    "Propose a new recurring task template for the operator to create. Posts an action card (title, reason, optional assignee specialist) with a Create button; the operator decides. Non-blocking: nothing is created until the operator confirms.",
+    "Propose a new recurring task template async — leaves a proposal card in the user's activity feed. `reason` is your justification for the operator; put the actual task instructions in `taskDescription`, and an optional schedule in `recurrence`.",
   context: "task_run",
 } as const satisfies CcManagedToolMetadata;
 
 const proposeRunTaskTemplateToolMetadata = {
   name: "propose_run_task_template",
   description:
-    "Propose running an existing task template now. Posts an action card showing the template with a Run button; the operator decides. Non-blocking: nothing runs until the operator confirms.",
+    "Propose running an existing task template — leaves a Run proposal card in the user's activity feed.",
   context: "task_run",
 } as const satisfies CcManagedToolMetadata;
 
 const proposeRunCommandToolMetadata = {
   name: "propose_run_command",
   description:
-    "Propose a terminal command for the operator to run. Posts an action card with the command and a Run button that opens the operator's terminal prefilled with it (they review and press Enter). Non-blocking: nothing runs until the operator chooses to.",
+    "Propose a terminal command — leaves a proposal card in the user's activity feed; running it opens the terminal prefilled with the command.",
   context: "task_run",
 } as const satisfies CcManagedToolMetadata;
 
@@ -190,7 +239,7 @@ export function createNotificationToolDefinitions(options: {
               title: parsed.title,
               reason: parsed.reason,
               assigneeSlug,
-              prompt: parsed.prompt,
+              taskDescription: parsed.taskDescription,
               proposedBySlug: context.agentSlug,
             },
           });
@@ -217,7 +266,8 @@ export function createNotificationToolDefinitions(options: {
               title: parsed.title,
               reason: parsed.reason,
               assigneeSlug,
-              prompt: parsed.prompt,
+              taskDescription: parsed.taskDescription,
+              recurrence: parsed.recurrence ?? undefined,
               proposedBySlug: context.agentSlug,
             },
           });

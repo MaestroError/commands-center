@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { taskRunArtifactSchema } from "./tasks.js";
+import { recurringTaskScheduleSchema, taskRunArtifactSchema } from "./tasks.js";
 
 /**
  * Activity kinds. `task_run_approval` is included now (produced by the task-run
@@ -70,7 +70,7 @@ export const taskProposalPayloadSchema = z.object({
   title: z.string().trim().min(1).max(500),
   reason: z.string().trim().min(1),
   assigneeSlug: specialistSlugField.optional(),
-  prompt: z.string().trim().min(1).optional(),
+  taskDescription: z.string().trim().min(1).optional(),
   proposedBySlug: specialistSlugField.optional(),
 });
 
@@ -78,7 +78,8 @@ export const taskTemplateProposalPayloadSchema = z.object({
   title: z.string().trim().min(1).max(500),
   reason: z.string().trim().min(1),
   assigneeSlug: specialistSlugField.optional(),
-  prompt: z.string().trim().min(1).optional(),
+  taskDescription: z.string().trim().min(1).optional(),
+  recurrence: recurringTaskScheduleSchema.optional(),
   proposedBySlug: specialistSlugField.optional(),
 });
 

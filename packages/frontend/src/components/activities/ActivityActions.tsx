@@ -10,10 +10,15 @@ import {
   type Activity,
 } from "@cc/shared/schemas";
 
+import { createTaskPromptValue } from "@/components/tasks/task-prompt";
 import { useFillSecretMutation } from "@/hooks/use-activities-query";
 import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useTaskMutations } from "@/hooks/use-tasks-query";
 import { setPendingTerminalCommand } from "@/lib/terminal-prefill";
+import type {
+  TaskCreationPrefill,
+  TaskTemplateCreationPrefill,
+} from "@/services/task-prefill-service";
 
 type ActivityActionsProps = {
   activity: Activity;
@@ -241,172 +246,86 @@ function InfoActions({ activity, onArchive, archiving }: ActivityActionsProps) {
   );
 }
 
-// A specialist proposed creating a task. The operator reviews title/reason,
-// picks the owning specialist, and confirms — nothing is created until then.
+// A specialist proposed creating a task. Confirming opens the real task
+// creation page prefilled with the proposal (title, prompt, proposed assignee);
+// the operator reviews and creates it there.
 function TaskProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+  const navigate = useNavigate();
   const parsed = taskProposalPayloadSchema.safeParse(activity.payload);
-  const { create } = useTaskMutations();
-  const specialistsQuery = useSpecialistsQuery();
-  const specialists = specialistsQuery.data ?? [];
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState(parsed.success ? parsed.data.title : activity.title);
-  const proposedAssignee = parsed.success
-    ? specialists.find((entry) => entry.slug === parsed.data.assigneeSlug)
-    : undefined;
-  const [agentId, setAgentId] = useState<string>(proposedAssignee?.id ?? "");
-  const [error, setError] = useState<string | null>(null);
+  const specialists = useSpecialistsQuery().data ?? [];
 
-  const description = parsed.success ? (parsed.data.prompt ?? parsed.data.reason) : "";
-  const effectiveAgentId = agentId || proposedAssignee?.id || specialists[0]?.id || "";
-  const canSubmit = Boolean(title.trim() && effectiveAgentId) && !create.isPending && !archiving;
-
-  if (!open) {
-    return (
-      <ActionRow>
-        <ActionButton variant="primary" disabled={archiving} onClick={() => setOpen(true)}>
-          Review & create
-        </ActionButton>
-        <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
-          Dismiss
-        </ActionButton>
-      </ActionRow>
-    );
-  }
-
-  const submit = () => {
-    if (!canSubmit) {
+  const openCreate = () => {
+    if (!parsed.success) {
       return;
     }
-    setError(null);
-    create.mutate(
-      { agentId: effectiveAgentId, title: title.trim(), description },
-      {
-        onSuccess: () => onArchive(activity.id),
-        onError: () => setError("Could not create the task."),
-      },
+    // Prefer the explicit assignee; otherwise default to the proposing specialist.
+    const assignee = findSpecialist(
+      specialists,
+      parsed.data.assigneeSlug,
+      parsed.data.proposedBySlug,
     );
+    const taskPrefill: TaskCreationPrefill = {
+      agentId: assignee?.id ?? "",
+      title: parsed.data.title,
+      // `reason` is the "why" for the operator (shown on the card), not task
+      // content — only an explicit prompt seeds the task body.
+      prompt: createTaskPromptValue(parsed.data.taskDescription ?? ""),
+    };
+    onArchive(activity.id);
+    void navigate("/tasks/new", { state: { taskPrefill } });
   };
 
   return (
-    <div className="mt-1 grid gap-2">
-      <ProposalField label="Title">
-        <input
-          aria-label="Task title"
-          className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm text-text-primary outline-none focus:border-accent/60"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-      </ProposalField>
-      <ProposalField label="Assign to">
-        <select
-          aria-label="Assign task to specialist"
-          className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm text-text-primary outline-none focus:border-accent/60"
-          value={effectiveAgentId}
-          onChange={(event) => setAgentId(event.target.value)}
-        >
-          {specialists.map((entry) => (
-            <option key={entry.id} value={entry.id}>
-              {entry.name}
-            </option>
-          ))}
-        </select>
-      </ProposalField>
-      {description ? <ProposalReason>{description}</ProposalReason> : null}
-      <ActionRow>
-        <ActionButton variant="primary" disabled={!canSubmit} onClick={submit}>
-          {create.isPending ? "Creating…" : "Create task"}
-        </ActionButton>
-        <ActionButton variant="muted" type="button" onClick={() => setOpen(false)}>
-          Cancel
-        </ActionButton>
-      </ActionRow>
-      {error ? <ActionError>{error}</ActionError> : null}
-    </div>
+    <ActionRow>
+      <ActionButton variant="primary" disabled={archiving} onClick={openCreate}>
+        Review & create
+      </ActionButton>
+      <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+        Dismiss
+      </ActionButton>
+    </ActionRow>
   );
 }
 
-// A specialist proposed a recurring task template. Same review flow as a task
-// proposal, but creates a template owned by the chosen specialist.
+// A specialist proposed a recurring task template. Confirming opens the real
+// template creation page prefilled with the proposal (title, prompt, assignee,
+// recurrence); the operator reviews and creates it there.
 function TaskTemplateProposalActions({ activity, onArchive, archiving }: ActivityActionsProps) {
+  const navigate = useNavigate();
   const parsed = taskTemplateProposalPayloadSchema.safeParse(activity.payload);
-  const { createTemplate } = useTaskMutations();
-  const specialistsQuery = useSpecialistsQuery();
-  const specialists = specialistsQuery.data ?? [];
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState(parsed.success ? parsed.data.title : activity.title);
-  const proposedAssignee = parsed.success
-    ? specialists.find((entry) => entry.slug === parsed.data.assigneeSlug)
-    : undefined;
-  const [agentId, setAgentId] = useState<string>(proposedAssignee?.id ?? "");
-  const [error, setError] = useState<string | null>(null);
+  const specialists = useSpecialistsQuery().data ?? [];
 
-  const description = parsed.success ? (parsed.data.prompt ?? parsed.data.reason) : "";
-  const effectiveAgentId = agentId || proposedAssignee?.id || specialists[0]?.id || "";
-  const canSubmit =
-    Boolean(title.trim() && effectiveAgentId) && !createTemplate.isPending && !archiving;
-
-  if (!open) {
-    return (
-      <ActionRow>
-        <ActionButton variant="primary" disabled={archiving} onClick={() => setOpen(true)}>
-          Review & create
-        </ActionButton>
-        <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
-          Dismiss
-        </ActionButton>
-      </ActionRow>
-    );
-  }
-
-  const submit = () => {
-    if (!canSubmit) {
+  const openCreate = () => {
+    if (!parsed.success) {
       return;
     }
-    setError(null);
-    createTemplate.mutate(
-      { defaultAgentId: effectiveAgentId, title: title.trim(), description },
-      {
-        onSuccess: () => onArchive(activity.id),
-        onError: () => setError("Could not create the template."),
-      },
+    // Prefer the explicit assignee; otherwise default to the proposing specialist.
+    const assignee = findSpecialist(
+      specialists,
+      parsed.data.assigneeSlug,
+      parsed.data.proposedBySlug,
     );
+    const templatePrefill: TaskTemplateCreationPrefill = {
+      defaultAgentId: assignee?.id,
+      title: parsed.data.title,
+      // `reason` is the "why" for the operator, not task content — only an
+      // explicit prompt seeds the template body.
+      description: parsed.data.taskDescription ?? "",
+      recurrence: parsed.data.recurrence,
+    };
+    onArchive(activity.id);
+    void navigate("/tasks/templates/new", { state: { templatePrefill } });
   };
 
   return (
-    <div className="mt-1 grid gap-2">
-      <ProposalField label="Title">
-        <input
-          aria-label="Template title"
-          className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm text-text-primary outline-none focus:border-accent/60"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-      </ProposalField>
-      <ProposalField label="Assign to">
-        <select
-          aria-label="Assign template to specialist"
-          className="w-full rounded-md border border-border bg-surface px-2 py-1 text-sm text-text-primary outline-none focus:border-accent/60"
-          value={effectiveAgentId}
-          onChange={(event) => setAgentId(event.target.value)}
-        >
-          {specialists.map((entry) => (
-            <option key={entry.id} value={entry.id}>
-              {entry.name}
-            </option>
-          ))}
-        </select>
-      </ProposalField>
-      {description ? <ProposalReason>{description}</ProposalReason> : null}
-      <ActionRow>
-        <ActionButton variant="primary" disabled={!canSubmit} onClick={submit}>
-          {createTemplate.isPending ? "Creating…" : "Create template"}
-        </ActionButton>
-        <ActionButton variant="muted" type="button" onClick={() => setOpen(false)}>
-          Cancel
-        </ActionButton>
-      </ActionRow>
-      {error ? <ActionError>{error}</ActionError> : null}
-    </div>
+    <ActionRow>
+      <ActionButton variant="primary" disabled={archiving} onClick={openCreate}>
+        Review & create
+      </ActionButton>
+      <ActionButton variant="muted" disabled={archiving} onClick={() => onArchive(activity.id)}>
+        Dismiss
+      </ActionButton>
+    </ActionRow>
   );
 }
 
@@ -499,17 +418,22 @@ function RunCommandProposalActions({ activity, onArchive, archiving }: ActivityA
   );
 }
 
-function ProposalField({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="grid gap-1 text-[11px] text-text-secondary">
-      <span>{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function ProposalReason({ children }: { children: ReactNode }) {
-  return <p className="whitespace-pre-wrap text-xs text-text-secondary">{children}</p>;
+// Resolve a specialist by trying each candidate slug in order (e.g. explicit
+// assignee first, then the proposing specialist as the default).
+function findSpecialist(
+  specialists: { id: string; slug: string }[],
+  ...slugs: (string | undefined)[]
+): { id: string; slug: string } | undefined {
+  for (const slug of slugs) {
+    if (!slug) {
+      continue;
+    }
+    const match = specialists.find((entry) => entry.slug === slug);
+    if (match) {
+      return match;
+    }
+  }
+  return undefined;
 }
 
 // Open the task on the board (side panel), not the standalone task page.

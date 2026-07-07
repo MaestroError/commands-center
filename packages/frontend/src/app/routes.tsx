@@ -88,6 +88,7 @@ export const appRoutes = [
       "/tasks/:id",
       "/tasks/:id/edit",
       "/tasks/:id/runs/:runId",
+      "/tasks/templates/new",
       "/tasks/templates/:id/edit",
     ],
     element: <TasksPage />,
@@ -111,6 +112,11 @@ export const appRoutes = [
     path: "/tasks/:id/runs/:runId",
     title: "Task Run",
     element: <TaskDetailPage mode="run" />,
+  },
+  {
+    path: "/tasks/templates/new",
+    title: "Create Task Template",
+    element: <TasksPage mode="template-create" />,
   },
   {
     path: "/tasks/templates/:id/edit",

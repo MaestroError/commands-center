@@ -6,6 +6,7 @@ import {
   runCommandProposalPayloadSchema,
   runTemplateProposalPayloadSchema,
   taskProposalPayloadSchema,
+  taskTemplateProposalPayloadSchema,
 } from "../../src/schemas/activities.js";
 
 describe("activity schemas", () => {
@@ -99,6 +100,25 @@ describe("activity schemas", () => {
           proposedBySlug: "researcher",
         }),
       ).toMatchObject({ title: "Draft the report", assigneeSlug: "writer" });
+    });
+
+    it("parses a task template proposal payload with an optional recurrence", () => {
+      const parsed = taskTemplateProposalPayloadSchema.parse({
+        title: "Weekly digest",
+        reason: "Recurring summary is useful",
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-07-07T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1 },
+        },
+      });
+      expect(parsed.recurrence?.repeatRule.frequency).toBe("week");
+
+      // Recurrence is optional — a template proposal without it still parses.
+      expect(
+        taskTemplateProposalPayloadSchema.parse({ title: "One-off", reason: "why" }).recurrence,
+      ).toBeUndefined();
     });
 
     it("requires a template id on a run-template proposal", () => {

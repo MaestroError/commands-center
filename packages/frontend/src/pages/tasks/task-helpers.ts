@@ -12,7 +12,13 @@ import {
   type TaskPromptValue,
 } from "@/components/tasks/task-prompt";
 import { buildFileManagerHref } from "@/lib/file-manager-href";
-import { isTaskCreationPrefill, type TaskCreationPrefill } from "@/services/task-prefill-service";
+import {
+  isTaskCreationPrefill,
+  type TaskCreationPrefill,
+  type TaskTemplateCreationPrefill,
+} from "@/services/task-prefill-service";
+
+export type { TaskTemplateCreationPrefill };
 import {
   MAX_FALLBACK_MODELS,
   type BoardTaskStatus,
@@ -32,7 +38,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 export type TasksPageProps = {
-  mode?: "list" | "create" | "edit" | "template-edit";
+  mode?: "list" | "create" | "edit" | "template-create" | "template-edit";
 };
 
 export type DetailSectionId = "overview" | "subtasks" | "runs";
@@ -269,7 +275,7 @@ export function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormStat
     agentId: task?.agentId ?? prefill?.agentId ?? "",
     model: task?.model ?? "",
     fallbackModels: task?.fallbackModels ?? [],
-    title: task?.title ?? "",
+    title: task?.title ?? prefill?.title ?? "",
     prompt: task
       ? createTaskPromptValue(task.description)
       : (prefill?.prompt ?? createTaskPromptValue()),
@@ -287,27 +293,31 @@ export function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormStat
   };
 }
 
-export function templateToForm(template?: TaskTemplate): FormState {
-  const repeatRule = template?.recurrence?.repeatRule;
+export function templateToForm(
+  template?: TaskTemplate,
+  prefill?: TaskTemplateCreationPrefill,
+): FormState {
+  const recurrence = template?.recurrence ?? prefill?.recurrence ?? undefined;
+  const repeatRule = recurrence?.repeatRule;
   const repeatFrequency = repeatRule?.frequency ?? "week";
 
   return {
-    agentId: template?.defaultAgentId ?? "",
+    agentId: template?.defaultAgentId ?? prefill?.defaultAgentId ?? "",
     model: template?.model ?? "",
     fallbackModels: template?.fallbackModels ?? [],
-    title: template?.title ?? "",
-    prompt: createTaskPromptValue(template?.description ?? ""),
+    title: template?.title ?? prefill?.title ?? "",
+    prompt: createTaskPromptValue(template?.description ?? prefill?.description ?? ""),
     scheduledAtLocal: "",
     dueAtLocal: "",
-    anchorAtLocal: template?.recurrence?.anchorAt
-      ? toLocalDateTime(template.recurrence.anchorAt)
+    anchorAtLocal: recurrence?.anchorAt
+      ? toLocalDateTime(recurrence.anchorAt)
       : toLocalDateTime(new Date().toISOString()),
-    timezone: template?.recurrence?.timezone ?? readLocalTimezone(),
+    timezone: recurrence?.timezone ?? readLocalTimezone(),
     repeatPreset: readRepeatPreset(repeatRule),
     repeatFrequency,
     repeatInterval: String(repeatRule?.interval ?? 1),
     repeatWeekdays: repeatRule?.weekdays ?? (repeatFrequency === "week" ? [1] : []),
-    repeatEnabled: Boolean(template?.recurrence),
+    repeatEnabled: Boolean(recurrence),
     enabled: template?.enabled ?? true,
     todosText: template?.todos.map((todo) => todo.content).join("\n") ?? "",
   };
@@ -336,6 +346,31 @@ export function getTaskCreationPrefill(state: unknown): TaskCreationPrefill | un
 
   const taskPrefill = (state as { taskPrefill: unknown }).taskPrefill;
   return isTaskCreationPrefill(taskPrefill) ? taskPrefill : undefined;
+}
+
+export function getTaskTemplateCreationPrefill(
+  state: unknown,
+): TaskTemplateCreationPrefill | undefined {
+  if (!state || typeof state !== "object" || !("templatePrefill" in state)) {
+    return undefined;
+  }
+
+  const value = (state as { templatePrefill: unknown }).templatePrefill;
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const isStringOrUndefined = (input: unknown) => input === undefined || typeof input === "string";
+  if (
+    !isStringOrUndefined(candidate["defaultAgentId"]) ||
+    !isStringOrUndefined(candidate["title"]) ||
+    !isStringOrUndefined(candidate["description"])
+  ) {
+    return undefined;
+  }
+
+  return value as TaskTemplateCreationPrefill;
 }
 
 export function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {

@@ -419,37 +419,37 @@ describe("createSpecialistService", () => {
             {
               name: "notify_info",
               description:
-                "Post an informational notification (markdown) to the operator's activity feed. A completion notification is already sent when a task run finishes — use this only for something important the operator should know beyond the normal result. Non-blocking: you do not wait for or learn the operator's response.",
+                "Post an info notification (markdown) to the user's activity feed. Use only for something important beyond the task's final result.",
               context: "task_run",
             },
             {
               name: "notify_warning",
               description:
-                "Post a warning notification (markdown) to the operator's activity feed. Use when action is needed, or to flag that you had to change the planned execution path (e.g. a required CLI failed and you fell back to an MCP). Non-blocking: you do not wait for or learn the operator's response.",
+                "Post a warning notification (markdown) to the user's activity feed. Use when action is needed, or to flag that you changed the planned execution path (e.g. a required CLI failed and you fell back to an MCP).",
               context: "task_run",
             },
             {
               name: "propose_task",
               description:
-                "Propose a new task for the operator to create. Posts an action card (title, reason, optional assignee specialist) with a Create button; the operator decides. Non-blocking: nothing is created until the operator confirms, and you never learn the outcome.",
+                "Propose a new task async — leaves a proposal card in the user's activity feed. `reason` is your justification for the operator (shown on the card); put the actual task instructions in `taskDescription`, not in `reason`.",
               context: "task_run",
             },
             {
               name: "propose_task_template",
               description:
-                "Propose a new recurring task template for the operator to create. Posts an action card (title, reason, optional assignee specialist) with a Create button; the operator decides. Non-blocking: nothing is created until the operator confirms.",
+                "Propose a new recurring task template async — leaves a proposal card in the user's activity feed. `reason` is your justification for the operator; put the actual task instructions in `taskDescription`, and an optional schedule in `recurrence`.",
               context: "task_run",
             },
             {
               name: "propose_run_task_template",
               description:
-                "Propose running an existing task template now. Posts an action card showing the template with a Run button; the operator decides. Non-blocking: nothing runs until the operator confirms.",
+                "Propose running an existing task template — leaves a Run proposal card in the user's activity feed.",
               context: "task_run",
             },
             {
               name: "propose_run_command",
               description:
-                "Propose a terminal command for the operator to run. Posts an action card with the command and a Run button that opens the operator's terminal prefilled with it (they review and press Enter). Non-blocking: nothing runs until the operator chooses to.",
+                "Propose a terminal command — leaves a proposal card in the user's activity feed; running it opens the terminal prefilled with the command.",
               context: "task_run",
             },
           ],

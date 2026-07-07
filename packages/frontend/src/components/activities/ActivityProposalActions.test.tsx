@@ -7,19 +7,16 @@ import type { Activity } from "@cc/shared/schemas";
 
 import { ActivityActions } from "./ActivityActions";
 
-const { createMutate, createTemplateMutate, createFromTemplateMutate, navigateSpy, setPendingSpy } =
-  vi.hoisted(() => ({
-    createMutate: vi.fn(),
-    createTemplateMutate: vi.fn(),
-    createFromTemplateMutate: vi.fn(),
-    navigateSpy: vi.fn(),
-    setPendingSpy: vi.fn(),
-  }));
+const { createFromTemplateMutate, navigateSpy, setPendingSpy } = vi.hoisted(() => ({
+  createFromTemplateMutate: vi.fn(),
+  navigateSpy: vi.fn(),
+  setPendingSpy: vi.fn(),
+}));
 
 vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskMutations: () => ({
-    create: { mutate: createMutate, isPending: false },
-    createTemplate: { mutate: createTemplateMutate, isPending: false },
+    create: { mutate: vi.fn(), isPending: false },
+    createTemplate: { mutate: vi.fn(), isPending: false },
     createFromTemplate: { mutate: createFromTemplateMutate, isPending: false },
   }),
 }));
@@ -70,7 +67,7 @@ beforeEach(() => {
 });
 
 describe("proposal activity actions", () => {
-  it("creates a task from a proposal with the proposed assignee preselected", () => {
+  it("opens the task creation page prefilled with the proposal", () => {
     renderActions(
       activity({
         id: "act-1",
@@ -81,15 +78,59 @@ describe("proposal activity actions", () => {
     );
 
     fireEvent.click(screen.getByText("Review & create"));
-    fireEvent.click(screen.getByText("Create task"));
 
-    expect(createMutate).toHaveBeenCalledWith(
+    expect(navigateSpy).toHaveBeenCalledWith(
+      "/tasks/new",
       expect.objectContaining({
-        agentId: "agent-2",
-        title: "Draft report",
-        description: "follow-up",
+        state: {
+          taskPrefill: expect.objectContaining({ agentId: "agent-2", title: "Draft report" }),
+        },
       }),
-      expect.anything(),
+    );
+  });
+
+  it("defaults the assignee to the proposing specialist when none is given", () => {
+    renderActions(
+      activity({
+        id: "act-5",
+        kind: "task_proposal",
+        title: "Audit pools",
+        payload: { title: "Audit pools", reason: "why", proposedBySlug: "writer" },
+      }),
+    );
+
+    fireEvent.click(screen.getByText("Review & create"));
+
+    expect(navigateSpy).toHaveBeenCalledWith(
+      "/tasks/new",
+      expect.objectContaining({
+        state: { taskPrefill: expect.objectContaining({ agentId: "agent-1" }) },
+      }),
+    );
+  });
+
+  it("opens the template creation page prefilled with the proposal", () => {
+    renderActions(
+      activity({
+        id: "act-4",
+        kind: "task_template_proposal",
+        title: "Weekly digest",
+        payload: { title: "Weekly digest", reason: "recurring summary", assigneeSlug: "writer" },
+      }),
+    );
+
+    fireEvent.click(screen.getByText("Review & create"));
+
+    expect(navigateSpy).toHaveBeenCalledWith(
+      "/tasks/templates/new",
+      expect.objectContaining({
+        state: {
+          templatePrefill: expect.objectContaining({
+            defaultAgentId: "agent-1",
+            title: "Weekly digest",
+          }),
+        },
+      }),
     );
   });
 
