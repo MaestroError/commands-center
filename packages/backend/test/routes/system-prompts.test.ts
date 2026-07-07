@@ -45,6 +45,10 @@ describe("system prompt routes", () => {
         "global-chat",
         "global-task",
         "additional",
+        "mcp-instructions-notifications",
+        "mcp-instructions-app",
+        "mcp-instructions-specialist-management",
+        "mcp-instructions-tasks-management",
       ]);
       // metadata only — no defaultBody leaks through the list endpoint
       expect(body.prompts[0]).not.toHaveProperty("defaultBody");
