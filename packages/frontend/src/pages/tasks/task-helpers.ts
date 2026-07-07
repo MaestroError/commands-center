@@ -21,6 +21,7 @@ import {
 export type { TaskTemplateCreationPrefill };
 import {
   MAX_FALLBACK_MODELS,
+  recurringTaskScheduleSchema,
   type BoardTaskStatus,
   type CreateTaskInput,
   type CreateTaskTemplateInput,
@@ -361,16 +362,27 @@ export function getTaskTemplateCreationPrefill(
   }
 
   const candidate = value as Record<string, unknown>;
-  const isStringOrUndefined = (input: unknown) => input === undefined || typeof input === "string";
+  const asStringOrUndefined = (input: unknown) => (typeof input === "string" ? input : undefined);
   if (
-    !isStringOrUndefined(candidate["defaultAgentId"]) ||
-    !isStringOrUndefined(candidate["title"]) ||
-    !isStringOrUndefined(candidate["description"])
+    (candidate["defaultAgentId"] !== undefined &&
+      typeof candidate["defaultAgentId"] !== "string") ||
+    (candidate["title"] !== undefined && typeof candidate["title"] !== "string") ||
+    (candidate["description"] !== undefined && typeof candidate["description"] !== "string")
   ) {
     return undefined;
   }
 
-  return value as TaskTemplateCreationPrefill;
+  // Validate recurrence with its schema and drop it if malformed — templateToForm
+  // dereferences recurrence.anchorAt/repeatRule, so an unchecked location.state
+  // could otherwise crash the template-create page at render time.
+  const recurrence = recurringTaskScheduleSchema.safeParse(candidate["recurrence"]);
+
+  return {
+    defaultAgentId: asStringOrUndefined(candidate["defaultAgentId"]),
+    title: asStringOrUndefined(candidate["title"]),
+    description: asStringOrUndefined(candidate["description"]),
+    recurrence: recurrence.success ? recurrence.data : undefined,
+  };
 }
 
 export function formToTaskInput(form: FormState): CreateTaskInput | UpdateTaskInput {
