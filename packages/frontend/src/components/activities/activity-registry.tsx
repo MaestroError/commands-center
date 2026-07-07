@@ -1,11 +1,16 @@
 import {
   AlertTriangle,
   Bell,
+  CalendarPlus,
   CheckCircle2,
   Eye,
+  Info,
   KeyRound,
+  ListPlus,
   MessageSquare,
+  Play,
   ShieldQuestion,
+  TerminalSquare,
   type LucideIcon,
 } from "lucide-react";
 
@@ -24,6 +29,12 @@ const REGISTRY: Record<ActivityKind, ActivityKindMeta> = {
   subtask_needs_review: { icon: Eye, label: "Feedback needs review" },
   task_run_failed: { icon: AlertTriangle, label: "Run failed" },
   task_run_approval: { icon: ShieldQuestion, label: "Approval required" },
+  specialist_info: { icon: Info, label: "Info" },
+  specialist_warning: { icon: AlertTriangle, label: "Warning" },
+  task_proposal: { icon: ListPlus, label: "Task proposed" },
+  task_template_proposal: { icon: CalendarPlus, label: "Template proposed" },
+  run_template_proposal: { icon: Play, label: "Run template proposed" },
+  run_command_proposal: { icon: TerminalSquare, label: "Command proposed" },
 };
 
 export function getActivityKindMeta(kind: ActivityKind): ActivityKindMeta {

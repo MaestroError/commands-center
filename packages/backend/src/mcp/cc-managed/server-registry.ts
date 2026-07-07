@@ -1,5 +1,10 @@
 import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat";
 
+import { CC_MANAGED_GROUP_METAS } from "./group-metadata.js";
+import {
+  createNotificationToolDefinitions,
+  notificationToolMetadata,
+} from "./groups/cc-notifications/tools/notification-tools.js";
 import type { AppDb } from "../../db/client.js";
 import type { RuntimeConfig } from "../../lib/runtime-config.js";
 import type { ConversationService } from "../../services/conversation-service.js";
@@ -163,6 +168,12 @@ export type CcManagedMcpServerDefinition = {
   routeSegment: string;
   description: string;
   enabledByDefault: boolean;
+  // System-prompt definition that documents this group. Injected into a
+  // specialist's system prompt only while the group is enabled for them. Use
+  // `null` when the group is covered by the always-on global prompts. Required
+  // so adding a new group forces a decision about its usage instructions; must
+  // stay in sync with `CC_MANAGED_GROUP_METAS` (asserted at construction).
+  companionPromptId: string | null;
   systemManaged?: boolean;
   // True when the group contains human-in-the-loop tools that block while waiting
   // for the operator (secrets, file preview, draft reviews, confirmations). These
@@ -353,12 +364,21 @@ export function createCcManagedMcpServerRegistry(options: {
       : []),
   ];
 
-  return [
+  const notificationTools: CcManagedToolDefinition[] =
+    options.db && options.activityService
+      ? createNotificationToolDefinitions({
+          db: options.db,
+          activityService: options.activityService,
+        })
+      : [];
+
+  const registry = [
     {
       name: "cc_default",
       routeSegment: "cc-default",
       description: "CommandsCenter default tools available to every specialist.",
       enabledByDefault: true,
+      companionPromptId: null,
       systemManaged: true,
       // Quick request/response tools only. Without an explicit timeout these would
       // fall back to the MCP SDK's 60s default; 15s makes these DB-backed tools fail
@@ -405,6 +425,7 @@ export function createCcManagedMcpServerRegistry(options: {
       description:
         "CommandsCenter interactive self tools for operator-confirmed task creation and updates. Enabled by default; tools pause execution while the operator reviews a form.",
       enabledByDefault: true,
+      companionPromptId: null,
       systemManaged: true,
       interactive: true,
       toolCallTimeoutMs: 10 * 60 * 1000,
@@ -424,6 +445,7 @@ export function createCcManagedMcpServerRegistry(options: {
       description:
         "CommandsCenter app-managed, operator-interactive capabilities for this specialist.",
       enabledByDefault: false,
+      companionPromptId: "mcp-instructions-app",
       interactive: true,
       catalogTools: [
         createCustomToolMetadata,
@@ -441,6 +463,7 @@ export function createCcManagedMcpServerRegistry(options: {
       routeSegment: "cc-specialist-management",
       description: "CommandsCenter specialist creation and update.",
       enabledByDefault: false,
+      companionPromptId: "mcp-instructions-specialist-management",
       catalogTools: [
         readSpecialistProfileToolMetadata,
         listModelsToolMetadata,
@@ -454,6 +477,7 @@ export function createCcManagedMcpServerRegistry(options: {
       routeSegment: "cc-tasks-management",
       description: "CommandsCenter task creation, scheduling, triggering, and run inspection.",
       enabledByDefault: false,
+      companionPromptId: "mcp-instructions-tasks-management",
       catalogTools: [
         createTaskToolMetadata,
         updateTaskToolMetadata,
@@ -474,7 +498,44 @@ export function createCcManagedMcpServerRegistry(options: {
       ],
       tools: taskManagementTools,
     },
+    {
+      name: "cc_notifications",
+      routeSegment: "cc-notifications",
+      description:
+        "CommandsCenter specialist notifications: post info/warning cards and task/template/command proposals to the operator's activity feed. Non-blocking.",
+      enabledByDefault: false,
+      companionPromptId: "mcp-instructions-notifications",
+      // Quick fire-and-forget activity writes; no operator wait.
+      toolCallTimeoutMs: 15 * 1000,
+      catalogTools: [...notificationToolMetadata],
+      tools: notificationTools,
+    },
   ] as const satisfies readonly CcManagedMcpServerDefinition[];
+
+  assertCompanionPromptMetadataInSync(registry);
+
+  return registry;
+}
+
+// Guard the group ↔ companion-prompt coupling: every registered group must have
+// a matching entry in CC_MANAGED_GROUP_METAS (the compose-time source of truth),
+// so a new group cannot silently ship without deciding its companion prompt.
+function assertCompanionPromptMetadataInSync(
+  registry: readonly CcManagedMcpServerDefinition[],
+): void {
+  for (const server of registry) {
+    const meta = CC_MANAGED_GROUP_METAS.find((entry) => entry.name === server.name);
+    if (!meta) {
+      throw new Error(`cc-managed group '${server.name}' is missing from CC_MANAGED_GROUP_METAS.`);
+    }
+    if (meta.companionPromptId !== server.companionPromptId) {
+      throw new Error(
+        `cc-managed group '${server.name}' companionPromptId mismatch: registry='${String(
+          server.companionPromptId,
+        )}' metas='${String(meta.companionPromptId)}'.`,
+      );
+    }
+  }
 }
 
 export function listCcManagedMcpServers(

@@ -410,6 +410,50 @@ describe("createSpecialistService", () => {
             },
           ],
         },
+        {
+          name: "cc_notifications",
+          enabledByDefault: false,
+          description:
+            "CommandsCenter specialist notifications: post info/warning cards and task/template/command proposals to the operator's activity feed. Non-blocking.",
+          tools: [
+            {
+              name: "notify_info",
+              description:
+                "Post an informational notification (markdown) to the operator's activity feed. A completion notification is already sent when a task run finishes — use this only for something important the operator should know beyond the normal result. Non-blocking: you do not wait for or learn the operator's response.",
+              context: "task_run",
+            },
+            {
+              name: "notify_warning",
+              description:
+                "Post a warning notification (markdown) to the operator's activity feed. Use when action is needed, or to flag that you had to change the planned execution path (e.g. a required CLI failed and you fell back to an MCP). Non-blocking: you do not wait for or learn the operator's response.",
+              context: "task_run",
+            },
+            {
+              name: "propose_task",
+              description:
+                "Propose a new task for the operator to create. Posts an action card (title, reason, optional assignee specialist) with a Create button; the operator decides. Non-blocking: nothing is created until the operator confirms, and you never learn the outcome.",
+              context: "task_run",
+            },
+            {
+              name: "propose_task_template",
+              description:
+                "Propose a new recurring task template for the operator to create. Posts an action card (title, reason, optional assignee specialist) with a Create button; the operator decides. Non-blocking: nothing is created until the operator confirms.",
+              context: "task_run",
+            },
+            {
+              name: "propose_run_task_template",
+              description:
+                "Propose running an existing task template now. Posts an action card showing the template with a Run button; the operator decides. Non-blocking: nothing runs until the operator confirms.",
+              context: "task_run",
+            },
+            {
+              name: "propose_run_command",
+              description:
+                "Propose a terminal command for the operator to run. Posts an action card with the command and a Run button that opens the operator's terminal prefilled with it (they review and press Enter). Non-blocking: nothing runs until the operator chooses to.",
+              context: "task_run",
+            },
+          ],
+        },
       ]);
       expect(catalog.appMcpServers.map((server) => server.name)).not.toContain("cc_default");
       expect(catalog.ccManagedMcpServers?.map((server) => server.name)).toEqual(

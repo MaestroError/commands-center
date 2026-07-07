@@ -10,6 +10,8 @@ import {
   sendConversationCommandInputSchema,
   sendConversationPromptInputSchema,
   sendConversationShellInputSchema,
+  specialistCapabilitySelectionSchema,
+  taskPermissionProfileSchema,
   systemPromptOverridesSchema,
   type ConversationDetail,
   type ConversationMessage,
@@ -22,12 +24,14 @@ import {
   type SendConversationPromptInput,
   type SendConversationShellInput,
   type SessionMediaItem,
+  type SpecialistCapabilitySelection,
   type SystemPromptOverrides,
 } from "@cc/shared/schemas";
 
 import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
 import { type agents, conversations, messages } from "../db/schema/index.js";
+import { resolveCompanionPromptOverrides } from "../mcp/cc-managed/group-metadata.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
 import {
   cleanTitle,
@@ -263,10 +267,7 @@ export function createConversationService(options: {
         loaded.agent.default_model,
       );
       // Task runs compose with defaults — no per-conversation toggles.
-      const { system, snapshot } = await composeSystem(
-        "task",
-        buildSystemContext(loaded.agent, loaded.conversation),
-      );
+      const { system, snapshot } = await composeSystem("task", loaded.agent, loaded.conversation);
       const message = await options.opencodeService.promptSession({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -308,10 +309,7 @@ export function createConversationService(options: {
       ]);
       const baselineMessageCount = baselineMessages.length;
 
-      const { system, snapshot } = await composeSystem(
-        "task",
-        buildSystemContext(loaded.agent, loaded.conversation),
-      );
+      const { system, snapshot } = await composeSystem("task", loaded.agent, loaded.conversation);
       await options.opencodeService.promptSessionAsync({
         directory: loaded.agent.workspace_path,
         sessionID: loaded.conversation.opencode_session_id,
@@ -434,7 +432,8 @@ export function createConversationService(options: {
       await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
       const { system, snapshot } = await composeSystem(
         "chat",
-        buildSystemContext(loaded.agent, loaded.conversation),
+        loaded.agent,
+        loaded.conversation,
         parseOverrides(loaded.conversation),
       );
       await options.opencodeService.promptSession({
@@ -520,7 +519,8 @@ export function createConversationService(options: {
       await setCurrentConversation(loaded.agent.id, loaded.conversation.id);
       const { system, snapshot } = await composeSystem(
         "chat",
-        buildSystemContext(loaded.agent, loaded.conversation),
+        loaded.agent,
+        loaded.conversation,
         parseOverrides(loaded.conversation),
       );
       await options.opencodeService.promptSessionAsync({
@@ -552,7 +552,11 @@ export function createConversationService(options: {
       return systemPromptService.listResolved(
         scopeFor(loaded.conversation),
         buildSystemContext(loaded.agent, loaded.conversation),
-        parseOverrides(loaded.conversation),
+        await withCompanionOverrides(
+          loaded.agent,
+          loaded.conversation,
+          parseOverrides(loaded.conversation),
+        ),
       );
     },
 
@@ -565,15 +569,18 @@ export function createConversationService(options: {
     ): Promise<ResolvedSystemPrompt[]> {
       const loaded = await getConversationAgent(conversationId, { includeTaskRun: true });
       const scope = scopeFor(loaded.conversation);
-      const applies = systemPromptService
+      const definition = systemPromptService
         .listDefinitions()
-        .some(
-          (definition) =>
-            definition.id === promptId &&
-            (definition.scope === scope || definition.scope === "both"),
+        .find(
+          (entry) => entry.id === promptId && (entry.scope === scope || entry.scope === "both"),
         );
-      if (!applies) {
+      if (!definition) {
         throw new NotFoundError(`System prompt "${promptId}" does not apply to this conversation.`);
+      }
+      if (definition.capabilityControlled) {
+        throw new BadRequestError(
+          `System prompt "${promptId}" is controlled by its MCP group and cannot be toggled manually.`,
+        );
       }
 
       const nextOverrides: SystemPromptOverrides = {
@@ -588,7 +595,7 @@ export function createConversationService(options: {
       return systemPromptService.listResolved(
         scope,
         buildSystemContext(loaded.agent, loaded.conversation),
-        nextOverrides,
+        await withCompanionOverrides(loaded.agent, loaded.conversation, nextOverrides),
       );
     },
 
@@ -1002,15 +1009,59 @@ export function createConversationService(options: {
   // sent) to persist on the user message.
   async function composeSystem(
     scope: SystemPromptScope,
-    ctx: SystemPromptRenderContext,
-    overrides?: SystemPromptOverrides,
+    agent: AgentRuntimeRow,
+    conversation: ConversationRow,
+    baseOverrides?: SystemPromptOverrides,
   ): Promise<{ system: string | undefined; snapshot: ResolvedSystemPrompt[] }> {
+    const ctx = buildSystemContext(agent, conversation);
+    const overrides = await withCompanionOverrides(agent, conversation, baseOverrides);
     const resolved = await systemPromptService.listResolved(scope, ctx, overrides);
     const sent = resolved.filter(
       (prompt) => prompt.enabled && prompt.renderedBody.trim().length > 0,
     );
     const system = sent.map((prompt) => prompt.renderedBody).join("\n\n");
     return { system: system.length > 0 ? system : undefined, snapshot: sent };
+  }
+
+  // Companion instruction prompts are capability-driven: enabled exactly when
+  // their MCP group is enabled for this specialist. These overrides win over any
+  // per-conversation toggle, since operators cannot manually flip them.
+  async function withCompanionOverrides(
+    agent: AgentRuntimeRow,
+    conversation: ConversationRow,
+    baseOverrides?: SystemPromptOverrides,
+  ): Promise<SystemPromptOverrides> {
+    const selection = await resolveEffectiveAppMcpSelection(agent, conversation);
+    return { ...(baseOverrides ?? {}), ...resolveCompanionPromptOverrides(selection) };
+  }
+
+  // The MCP-group selection that actually applies. For task runs this is the
+  // run's frozen effective permissions (a task profile can restrict groups);
+  // for chat (and as a fallback) it is the specialist's base capabilities.
+  async function resolveEffectiveAppMcpSelection(
+    agent: AgentRuntimeRow,
+    conversation: ConversationRow,
+  ): Promise<{ appMcpServers?: SpecialistCapabilitySelection["appMcpServers"] }> {
+    if (conversation.source === "task_run" && conversation.task_run_id) {
+      const run = await options.db.query.task_runs.findFirst({
+        where: (table, operators) => operators.eq(table.id, conversation.task_run_id ?? ""),
+        columns: { effective_permissions_json: true },
+      });
+      if (run?.effective_permissions_json) {
+        const parsed = taskPermissionProfileSchema.safeParse(
+          JSON.parse(run.effective_permissions_json),
+        );
+        if (parsed.success) {
+          return { appMcpServers: parsed.data.appMcpServers };
+        }
+      }
+    }
+
+    try {
+      return specialistCapabilitySelectionSchema.parse(JSON.parse(agent.capabilities_json));
+    } catch {
+      return {};
+    }
   }
 
   async function createConversation(

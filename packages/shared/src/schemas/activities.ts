@@ -15,6 +15,15 @@ export const activityKindSchema = z.enum([
   "subtask_needs_review",
   "task_run_failed",
   "task_run_approval",
+  // Specialist-authored notifications (cc_notifications MCP group). Info/warning
+  // carry markdown in `body`; the `*_proposal` kinds carry a typed payload the
+  // operator confirms from the activity feed.
+  "specialist_info",
+  "specialist_warning",
+  "task_proposal",
+  "task_template_proposal",
+  "run_template_proposal",
+  "run_command_proposal",
 ]);
 
 export const activityLevelSchema = z.enum(["action_required", "info"]);
@@ -48,6 +57,44 @@ export const reviewActivityPayloadSchema = z
       path: ["question"],
     },
   );
+
+/**
+ * Payload helpers for specialist-authored notification activities. Like
+ * `reviewActivityPayloadSchema`, the activity's `payload` stays opaque at the
+ * API boundary; producers (the cc_notifications tools) and consumers (the
+ * activity feed action cards) use these when they need typed access.
+ */
+const specialistSlugField = z.string().trim().min(1).max(200);
+
+export const taskProposalPayloadSchema = z.object({
+  title: z.string().trim().min(1).max(500),
+  reason: z.string().trim().min(1),
+  assigneeSlug: specialistSlugField.optional(),
+  prompt: z.string().trim().min(1).optional(),
+  proposedBySlug: specialistSlugField.optional(),
+});
+
+export const taskTemplateProposalPayloadSchema = z.object({
+  title: z.string().trim().min(1).max(500),
+  reason: z.string().trim().min(1),
+  assigneeSlug: specialistSlugField.optional(),
+  prompt: z.string().trim().min(1).optional(),
+  proposedBySlug: specialistSlugField.optional(),
+});
+
+export const runTemplateProposalPayloadSchema = z.object({
+  templateId: z.string().min(1),
+  templateTitle: z.string().trim().min(1).max(500).optional(),
+  reason: z.string().trim().min(1),
+  proposedBySlug: specialistSlugField.optional(),
+});
+
+export const runCommandProposalPayloadSchema = z.object({
+  command: z.string().trim().min(1).max(4000),
+  reason: z.string().trim().min(1).optional(),
+  cwd: z.string().trim().min(1).optional(),
+  proposedBySlug: specialistSlugField.optional(),
+});
 
 export const activitySchema = z.object({
   id: z.string().min(1),

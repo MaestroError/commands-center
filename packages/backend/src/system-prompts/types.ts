@@ -24,6 +24,12 @@ export type SystemPromptDefinition = {
   danger: boolean;
   /** Default for the per-conversation enabled toggle. */
   enabledByDefault: boolean;
+  /**
+   * When true, the enabled state is driven entirely by a capability (an MCP
+   * group being enabled for the specialist) — operators may edit the body but
+   * cannot manually toggle it on/off. The compose layer supplies the override.
+   */
+  capabilityControlled?: boolean;
   /** Save location relative to the workspace, e.g. "configuration/system-prompts/identity.md". */
   workspaceRelativePath: string;
   /** Subset of variable-catalog ids this prompt renders. */

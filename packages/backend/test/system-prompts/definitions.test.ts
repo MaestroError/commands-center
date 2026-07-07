@@ -4,12 +4,16 @@ import { getDefinition, systemPromptDefinitions } from "../../src/system-prompts
 import { hasVariable } from "../../src/system-prompts/variables";
 
 describe("system prompt definitions registry", () => {
-  it("ships the four expected prompts", () => {
+  it("ships the expected prompts in composition order", () => {
     expect(systemPromptDefinitions.map((definition) => definition.id)).toEqual([
       "identity",
       "global-chat",
       "global-task",
       "additional",
+      "mcp-instructions-notifications",
+      "mcp-instructions-app",
+      "mcp-instructions-specialist-management",
+      "mcp-instructions-tasks-management",
     ]);
   });
 
@@ -48,12 +52,25 @@ describe("system prompt definitions registry", () => {
     }
   });
 
-  it("marks only the optional prompt with an empty default body", () => {
+  it("requires a non-empty default body unless the prompt is optional", () => {
+    // Optional prompts may ship empty (companion prompts operators fill in) or
+    // with a default body (e.g. notifications); non-optional prompts must not
+    // be empty, since an empty required prompt cannot be composed or cleared.
     for (const definition of systemPromptDefinitions) {
-      if (definition.optional) {
-        expect(definition.defaultBody).toBe("");
+      if (definition.defaultBody.trim().length === 0) {
+        expect(definition.optional, `${definition.id} has an empty body but is not optional`).toBe(
+          true,
+        );
       } else {
         expect(definition.defaultBody.trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("keeps capability-controlled prompts optional (operators can clear the body)", () => {
+    for (const definition of systemPromptDefinitions) {
+      if (definition.capabilityControlled) {
+        expect(definition.optional, `${definition.id} is capability-controlled`).toBe(true);
       }
     }
   });
