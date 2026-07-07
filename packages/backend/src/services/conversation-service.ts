@@ -1048,11 +1048,17 @@ export function createConversationService(options: {
         columns: { effective_permissions_json: true },
       });
       if (run?.effective_permissions_json) {
-        const parsed = taskPermissionProfileSchema.safeParse(
-          JSON.parse(run.effective_permissions_json),
-        );
-        if (parsed.success) {
-          return { appMcpServers: parsed.data.appMcpServers };
+        // Guard JSON.parse so a malformed stored value falls back to agent
+        // capabilities instead of breaking system-prompt composition.
+        try {
+          const parsed = taskPermissionProfileSchema.safeParse(
+            JSON.parse(run.effective_permissions_json),
+          );
+          if (parsed.success) {
+            return { appMcpServers: parsed.data.appMcpServers };
+          }
+        } catch {
+          // Fall through to agent capabilities below.
         }
       }
     }
