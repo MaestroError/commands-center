@@ -15,6 +15,7 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const STATIC_ASSET_PATTERN = /\.[a-zA-Z0-9]+$/;
 const CC_MANAGED_MCP_ROUTE_PATTERN = /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/;
 const PUBLIC_API_PREFIX = "/api/public/";
+const PUBLIC_MCP_PATH = "/api/public/mcp";
 const SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN =
   /^\/api\/public\/v1\/task-artifacts\/download\/[^/]+$/;
 
@@ -92,6 +93,12 @@ function validatePublicApiBearer(
   // Attach the token identity BEFORE the capability check so a 403 still carries
   // it (lets the audit log record "token attempted X without permission").
   request.apiToken = tokenRecord;
+
+  // The public MCP endpoint is not a single-capability route — per-tool gating
+  // happens inside the MCP session. A valid token is enough to reach it.
+  if (pathname === PUBLIC_MCP_PATH) {
+    return;
+  }
 
   const requiredCapability = capabilityForPublicRoute(method, pathname);
 

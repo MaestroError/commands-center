@@ -61,6 +61,28 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       </div>
 
       <SectionHeading
+        title="MCP server"
+        subtitle="Connect an MCP client (Claude Code, Cursor, VS Code, …) to drive templates and tasks as tools over one Streamable-HTTP endpoint."
+      />
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <p className="text-sm leading-6 text-text-secondary">
+          Point your MCP client at{" "}
+          <code className="rounded bg-app-bg px-1 py-0.5 font-mono text-xs">
+            {baseUrl}/api/public/mcp
+          </code>{" "}
+          and send the same{" "}
+          <code className="rounded bg-app-bg px-1 py-0.5 font-mono text-xs">
+            Authorization: Bearer cc_…
+          </code>{" "}
+          header. Each tool is gated by the token&apos;s permissions — a client only sees the tools
+          its token allows.
+        </p>
+        <div className="mt-4">
+          <CopyableCode code={`${baseUrl}/api/public/mcp`} label="MCP endpoint" />
+        </div>
+      </section>
+
+      <SectionHeading
         title="Templates"
         subtitle="Trigger and poll reusable task templates. Each endpoint needs its matching token permission; the Task Templates preset enables them all."
       />

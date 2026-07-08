@@ -42,6 +42,12 @@ export {
   type ApiTokenCapabilityGroup,
 } from "./api-token-catalog.js";
 export {
+  mcpArtifactSummarySchema,
+  mcpTaskRunResultSchema,
+  type McpArtifactSummary,
+  type McpTaskRunResult,
+} from "./public-mcp.js";
+export {
   apiErrorCodeSchema,
   apiErrorResponseSchema,
   apiErrorSchema,
