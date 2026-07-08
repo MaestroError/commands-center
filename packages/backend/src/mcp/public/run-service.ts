@@ -42,7 +42,12 @@ function projectResult(run: TaskRun, timedOut: boolean): McpTaskRunResult {
 
 export type PublicMcpRunService = ReturnType<typeof createPublicMcpRunService>;
 
-export function createPublicMcpRunService(deps: { taskService: TaskService }) {
+export function createPublicMcpRunService(deps: {
+  taskService: TaskService;
+  // Resolves the configured sync-wait cap (ms). Falls back to the default when
+  // absent. Phase 4 wires this to the public MCP settings (cached).
+  resolveCapMs?: () => Promise<number>;
+}) {
   return {
     /** Current run result projection (no waiting). Undefined if the run is unknown. */
     async getResult(runId: string): Promise<McpTaskRunResult | undefined> {
@@ -63,7 +68,7 @@ export function createPublicMcpRunService(deps: { taskService: TaskService }) {
         sleep?: (ms: number) => Promise<void>;
       },
     ): Promise<McpTaskRunResult | undefined> {
-      const capMs = options?.capMs ?? DEFAULT_SYNC_WAIT_CAP_MS;
+      const capMs = options?.capMs ?? (await deps.resolveCapMs?.()) ?? DEFAULT_SYNC_WAIT_CAP_MS;
       const pollMs = options?.pollMs ?? DEFAULT_POLL_INTERVAL_MS;
       const sleep =
         options?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));

@@ -19,12 +19,14 @@ import {
   secretMetaListSchema,
   setSecretRequestSchema,
   artifactSharingPreferencesSchema,
+  publicMcpSettingsSchema,
   taskRunMonitorSettingsSchema,
   updateArtifactSharingPreferencesInputSchema,
   type ApiTokenListResponse,
   type ApiTokenPermissions,
   type ApiTokenRecord,
   type CreateApiTokenResponse,
+  type PublicMcpSettings,
   type SystemPromptDetail,
   type SystemPromptListResponse,
   type LiveRequestCancelInput,
@@ -61,6 +63,19 @@ export async function getTaskRunMonitorSettings(): Promise<TaskRunMonitorSetting
     "/api/task-run-monitor/settings",
     taskRunMonitorSettingsSchema,
   );
+}
+
+export async function getPublicMcpSettings(): Promise<PublicMcpSettings> {
+  return requestJson<PublicMcpSettings>("/api/public-mcp/settings", publicMcpSettingsSchema);
+}
+
+export async function updatePublicMcpSettings(
+  input: PublicMcpSettings,
+): Promise<PublicMcpSettings> {
+  return requestJson<PublicMcpSettings>("/api/public-mcp/settings", publicMcpSettingsSchema, {
+    method: "PUT",
+    body: publicMcpSettingsSchema.parse(input),
+  });
 }
 
 export async function updateTaskRunMonitorSettings(

@@ -33,3 +33,20 @@ export const mcpTaskRunResultSchema = z.object({
 
 export type McpArtifactSummary = z.infer<typeof mcpArtifactSummarySchema>;
 export type McpTaskRunResult = z.infer<typeof mcpTaskRunResultSchema>;
+
+// Operator-tunable public MCP settings.
+export const PUBLIC_MCP_SYNC_WAIT_CAP_MAX_SECONDS = 600;
+export const PUBLIC_MCP_SYNC_WAIT_CAP_DEFAULT_SECONDS = 120;
+
+export const publicMcpSettingsSchema = z.object({
+  // How long a sync run tool holds its response waiting for a terminal run
+  // before returning the id for async polling. 0 = return the id immediately.
+  syncToolWaitCapSeconds: z
+    .number()
+    .int()
+    .min(0)
+    .max(PUBLIC_MCP_SYNC_WAIT_CAP_MAX_SECONDS)
+    .default(PUBLIC_MCP_SYNC_WAIT_CAP_DEFAULT_SECONDS),
+});
+
+export type PublicMcpSettings = z.infer<typeof publicMcpSettingsSchema>;

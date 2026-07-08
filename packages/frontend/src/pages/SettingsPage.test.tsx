@@ -21,9 +21,11 @@ import {
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import {
   getFileManagerPreferences,
+  getPublicMcpSettings,
   getTaskArtifactSharingPreferences,
   getTaskRunMonitorSettings,
   updateFileManagerPreferences,
+  updatePublicMcpSettings,
   updateTaskArtifactSharingPreferences,
   updateTaskRunMonitorSettings,
 } from "@/lib/api";
@@ -62,6 +64,8 @@ vi.mock("@/lib/api", async () => {
     updateTaskArtifactSharingPreferences: vi.fn(),
     getTaskRunMonitorSettings: vi.fn(),
     updateTaskRunMonitorSettings: vi.fn(),
+    getPublicMcpSettings: vi.fn(),
+    updatePublicMcpSettings: vi.fn(),
   };
 });
 
@@ -188,6 +192,8 @@ beforeEach(() => {
     taskRunMaxAutoRetries: 10,
   });
   vi.mocked(updateTaskRunMonitorSettings).mockImplementation((input) => Promise.resolve(input));
+  vi.mocked(getPublicMcpSettings).mockResolvedValue({ syncToolWaitCapSeconds: 120 });
+  vi.mocked(updatePublicMcpSettings).mockImplementation((input) => Promise.resolve(input));
   vi.mocked(updateTaskArtifactSharingPreferences).mockImplementation((input) =>
     Promise.resolve(input),
   );
@@ -475,6 +481,22 @@ describe("SettingsPage", () => {
         },
       });
     });
+  });
+
+  it("loads and updates the public MCP sync-wait cap", async () => {
+    renderWithQueryClient(<SettingsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
+
+    const capInput = await screen.findByTestId("public-mcp-sync-cap-input");
+    expect(capInput).toHaveValue(120);
+
+    fireEvent.change(capInput, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save MCP settings" }));
+
+    await waitFor(() =>
+      expect(updatePublicMcpSettings).toHaveBeenCalledWith({ syncToolWaitCapSeconds: 0 }),
+    );
   });
 
   it("loads and updates task run monitor settings", async () => {

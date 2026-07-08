@@ -13,12 +13,12 @@ import { createTaskExecutionService } from "../../../src/services/task-execution
 import { createTaskService } from "../../../src/services/task-service";
 import { createTestDatabase } from "../../helpers/db";
 
-function tokenWithTemplates(templateIds: string[]): ApiTokenRecord {
+function tokenWithTemplates(templateIds: string[], capabilities: string[] = []): ApiTokenRecord {
   return {
     id: "tok-1",
     name: "MCP",
     tokenPrefix: "cc_x",
-    permissions: { capabilities: [], templates: templateIds },
+    permissions: { capabilities, templates: templateIds },
     createdAt: Date.now(),
     lastUsedAt: null,
     revokedAt: null,
@@ -78,6 +78,12 @@ describe("public MCP template tools", () => {
 
     for (const tool of registry) {
       expect(reserved.has(tool.name), `registry tool '${tool.name}' must be reserved`).toBe(true);
+      if (tool.asyncVariant) {
+        expect(
+          reserved.has(tool.asyncVariant.name),
+          `async tool '${tool.asyncVariant.name}' must be reserved`,
+        ).toBe(true);
+      }
     }
   });
 
@@ -98,6 +104,55 @@ describe("public MCP template tools", () => {
 
       // Token doesn't enable the template.
       expect(await builder.buildForToken(tokenWithTemplates([]))).toHaveLength(0);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("adds an async variant only when async is enabled and the token can poll results", async () => {
+    const testDb = await createTestDatabase();
+    const { taskService, builder } = buildBuilder(testDb);
+
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const template = await taskService.createTemplate({
+        defaultAgentId: agentId,
+        title: "Async Post",
+        description: "",
+        mcpConfig: { toolName: "async_post", asyncEnabled: true },
+      });
+
+      // Async enabled + token can poll results (get_task_run capability).
+      const withPoll = await builder.buildForToken(
+        tokenWithTemplates([template.id], ["get_task_run"]),
+      );
+      expect(withPoll.map((tool) => tool.name)).toEqual(["async_post", "async_post_async"]);
+
+      // Async enabled but token cannot poll results -> no async variant.
+      const withoutPoll = await builder.buildForToken(tokenWithTemplates([template.id]));
+      expect(withoutPoll.map((tool) => tool.name)).toEqual(["async_post"]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("adds no async variant when the template has async disabled", async () => {
+    const testDb = await createTestDatabase();
+    const { taskService, builder } = buildBuilder(testDb);
+
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const template = await taskService.createTemplate({
+        defaultAgentId: agentId,
+        title: "Sync Only",
+        description: "",
+        mcpConfig: { toolName: "sync_only", asyncEnabled: false },
+      });
+
+      const tools = await builder.buildForToken(
+        tokenWithTemplates([template.id], ["get_task_run"]),
+      );
+      expect(tools.map((tool) => tool.name)).toEqual(["sync_only"]);
     } finally {
       await testDb.cleanup();
     }

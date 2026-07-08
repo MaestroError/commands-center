@@ -123,6 +123,46 @@ describe("createPublicMcpRunService", () => {
     }
   });
 
+  it("uses the injected resolveCapMs when no explicit cap is given", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // cap 0 => return immediately without waiting.
+    const runService = createPublicMcpRunService({
+      taskService,
+      resolveCapMs: () => Promise.resolve(0),
+    });
+
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const task = await taskService.create({
+        agentId,
+        title: "Cap task",
+        description: "",
+      });
+      const run = await taskService.createRun({
+        taskId: task.id,
+        agentId,
+        status: "running",
+        triggerSource: "api",
+        renderedPrompt: "Do it.",
+      });
+
+      let slept = false;
+      const result = await runService.waitForResult(run.id, {
+        pollMs: 1,
+        sleep: () => {
+          slept = true;
+          return Promise.resolve();
+        },
+      });
+
+      expect(result).toMatchObject({ status: "running", timedOut: true });
+      expect(slept).toBe(false);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("returns timedOut when the run stays non-terminal past the cap", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

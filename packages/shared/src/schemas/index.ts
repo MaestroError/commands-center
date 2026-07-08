@@ -44,8 +44,12 @@ export {
 export {
   mcpArtifactSummarySchema,
   mcpTaskRunResultSchema,
+  publicMcpSettingsSchema,
+  PUBLIC_MCP_SYNC_WAIT_CAP_DEFAULT_SECONDS,
+  PUBLIC_MCP_SYNC_WAIT_CAP_MAX_SECONDS,
   type McpArtifactSummary,
   type McpTaskRunResult,
+  type PublicMcpSettings,
 } from "./public-mcp.js";
 export {
   MCP_TOOL_NAME_MAX_LENGTH,

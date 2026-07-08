@@ -7,7 +7,7 @@ import type { Logger } from "pino";
 import type { ApiTokenRecord } from "@cc/shared/schemas";
 
 import { tokenHasCapability } from "../../services/api-token-service.js";
-import type { PublicMcpToolDefinition } from "./registry.js";
+import { GET_TASK_RESULT_CAPABILITY, type PublicMcpToolDefinition } from "./registry.js";
 import type { PublicMcpTemplateToolBuilder } from "./template-tools.js";
 
 const SERVER_NAME = "commandscenter-public";
@@ -80,8 +80,13 @@ export function createPublicMcpService(options: {
     const staticTools = options.registry.filter((tool) =>
       tokenHasCapability(token, tool.capability),
     );
+    // Async siblings of the session-creating tools, exposed only when the token
+    // also grants the result-polling capability (so the returned id is pollable).
+    const asyncTools = tokenHasCapability(token, GET_TASK_RESULT_CAPABILITY)
+      ? staticTools.flatMap((tool) => (tool.asyncVariant ? [tool.asyncVariant] : []))
+      : [];
     const templateTools = (await options.templateToolBuilder?.buildForToken(token)) ?? [];
-    const tools = [...staticTools, ...templateTools];
+    const tools = [...staticTools, ...asyncTools, ...templateTools];
 
     const server = new McpServer(
       { name: SERVER_NAME, version: SERVER_VERSION },

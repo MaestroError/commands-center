@@ -31,7 +31,14 @@ export type RegisterableMcpTool = {
 export type PublicMcpToolDefinition = RegisterableMcpTool & {
   /** Phase 1 capability id that gates this tool on the calling token. */
   capability: string;
+  // Auto-exposed async sibling (Phase 4) — registered only when the token also
+  // enables the result-polling tool (GET_TASK_RESULT_CAPABILITY).
+  asyncVariant?: RegisterableMcpTool;
 };
+
+// The capability behind get_task_result. Async run variants are exposed only
+// when the token grants it (so the caller can poll the returned run id).
+export const GET_TASK_RESULT_CAPABILITY = "get_task_run";
 
 const emptyInputSchema = z.object({}).strict();
 const templateIdInputSchema = z.object({ templateId: z.string().trim().min(1) }).strict();
@@ -240,24 +247,21 @@ export function createPublicMcpRegistry(deps: {
       inputSchema: templateRunInputSchema,
       outputSchema: mcpTaskRunResultSchema,
       execute: (args) =>
-        runTool(async () => {
-          const { templateId, text } = templateRunInputSchema.parse(args);
-          const outcome = await service.triggerTemplate(templateId, {
-            context: text ? { text } : undefined,
-          });
-          if (outcome.kind === "not_found") {
-            throw new Error("Task template not found.");
-          }
-          const runId = outcome.response.runId;
-          if (!runId) {
-            throw new Error("Template did not start a run.");
-          }
-          const result = await runService.waitForResult(runId);
-          if (!result) {
-            throw new Error("Task run not found after trigger.");
-          }
-          return okResult(result);
-        }, "Failed to run task template."),
+        runTool(
+          async () =>
+            okResult((await runService.waitForResult(await triggerTemplate(args))) ?? missingRun()),
+          "Failed to run task template.",
+        ),
+      asyncVariant: {
+        name: "task_template_run_async",
+        description: `Trigger a task template without waiting.${ASYNC_NOTE}`,
+        inputSchema: templateRunInputSchema,
+        execute: (args) =>
+          runTool(
+            async () => queuedResult(await triggerTemplate(args)),
+            "Failed to run task template.",
+          ),
+      },
     },
     {
       name: "task_run",
@@ -266,20 +270,57 @@ export function createPublicMcpRegistry(deps: {
       inputSchema: taskIdInputSchema,
       outputSchema: mcpTaskRunResultSchema,
       execute: (args) =>
-        runTool(async () => {
-          const { taskId } = taskIdInputSchema.parse(args);
-          const response = await service.triggerTask(taskId, {});
-          if (!response) {
-            throw new Error("Task not found.");
-          }
-          const result = await runService.waitForResult(response.runId);
-          if (!result) {
-            throw new Error("Task run not found after trigger.");
-          }
-          return okResult(result);
-        }, "Failed to run task."),
+        runTool(
+          async () =>
+            okResult((await runService.waitForResult(await triggerTask(args))) ?? missingRun()),
+          "Failed to run task.",
+        ),
+      asyncVariant: {
+        name: "task_run_async",
+        description: `Run a task now without waiting.${ASYNC_NOTE}`,
+        inputSchema: taskIdInputSchema,
+        execute: (args) =>
+          runTool(async () => queuedResult(await triggerTask(args)), "Failed to run task."),
+      },
     },
   ];
+
+  // Trigger a template run and return its runId, or throw a tool error.
+  async function triggerTemplate(args: unknown): Promise<string> {
+    const { templateId, text } = templateRunInputSchema.parse(args);
+    const outcome = await service.triggerTemplate(templateId, {
+      context: text ? { text } : undefined,
+    });
+    if (outcome.kind === "not_found") {
+      throw new Error("Task template not found.");
+    }
+    if (!outcome.response.runId) {
+      throw new Error("Template did not start a run.");
+    }
+    return outcome.response.runId;
+  }
+
+  async function triggerTask(args: unknown): Promise<string> {
+    const { taskId } = taskIdInputSchema.parse(args);
+    const response = await service.triggerTask(taskId, {});
+    if (!response) {
+      throw new Error("Task not found.");
+    }
+    return response.runId;
+  }
+
+  // Immediate id-return for the async variants: read the queued run once so the
+  // shape matches the sync result (timedOut=true), without waiting for it.
+  async function queuedResult(runId: string): Promise<PublicMcpToolResult> {
+    const result = await runService.getResult(runId);
+    return okResult(result ?? missingRun());
+  }
+}
+
+const ASYNC_NOTE = " Returns { taskId, runId }; poll get_task_result for the outcome.";
+
+function missingRun(): never {
+  throw new Error("Task run not found after trigger.");
 }
 
 function parseExpand(expand: string | undefined): Set<string> {

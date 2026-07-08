@@ -72,6 +72,54 @@ describe("public MCP route", () => {
     }
   });
 
+  it("exposes async run variants only when the token can poll results", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      // tasks preset alone lacks the templates-group get_task_run capability.
+      const noPoll = apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token;
+      const withPoll = apiTokenService.createToken(
+        "Both",
+        permissionsForPresets("tasks", "templates"),
+      ).token;
+
+      const noPollTools = (await callMcp(server, noPoll, "tools/list", {}, 1)).body;
+      expect(noPollTools).toContain('"name":"task_run"');
+      expect(noPollTools).not.toContain('"name":"task_run_async"');
+
+      const withPollTools = (await callMcp(server, withPoll, "tools/list", {}, 2)).body;
+      expect(withPollTools).toContain('"name":"task_run_async"');
+      expect(withPollTools).toContain('"name":"task_template_run_async"');
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("reads and updates the sync-wait cap setting", async () => {
+    const testDb = await createTestDatabase();
+    const server = await buildServer(testDb);
+
+    try {
+      const initial = await server.inject({ method: "GET", url: "/api/public-mcp/settings" });
+      expect(initial.statusCode).toBe(200);
+      expect(initial.json()).toEqual({ syncToolWaitCapSeconds: 120 });
+
+      const updated = await server.inject({
+        method: "PUT",
+        url: "/api/public-mcp/settings",
+        payload: { syncToolWaitCapSeconds: 45 },
+      });
+      expect(updated.statusCode).toBe(200);
+      expect(updated.json()).toEqual({ syncToolWaitCapSeconds: 45 });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("serves a read tool and returns a leak-free projection", async () => {
     const testDb = await createTestDatabase();
     const apiTokenService = createApiTokenService({ db: testDb.client.db });

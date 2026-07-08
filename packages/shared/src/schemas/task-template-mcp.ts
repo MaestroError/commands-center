@@ -35,6 +35,10 @@ export const RESERVED_MCP_TOOL_NAMES: readonly string[] = [
   "get_task_run",
   "get_task_result",
   "list_task_feedback",
+  // Auto-exposed async variants (Phase 4). Also covered by the `_async` suffix
+  // rule below, but listed explicitly for a complete reserved surface.
+  "task_run_async",
+  "task_template_run_async",
 ];
 
 const RESERVED_SET = new Set(RESERVED_MCP_TOOL_NAMES);

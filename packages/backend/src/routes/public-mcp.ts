@@ -7,6 +7,7 @@ import { createPublicMcpRunService } from "../mcp/public/run-service.js";
 import { createPublicMcpService } from "../mcp/public/service.js";
 import { createPublicMcpTemplateToolBuilder } from "../mcp/public/template-tools.js";
 import { createConversationService } from "../services/conversation-service.js";
+import { createPublicMcpSettingsService } from "../services/public-mcp-settings-service.js";
 import { createPublicTaskApiService } from "../services/public-task-api-service.js";
 import { createSpecialistService } from "../services/specialist-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
@@ -60,7 +61,24 @@ export function registerPublicMcpRoutes(server: AppServer, context: RuntimeConte
     taskContextAttachmentService,
     agentService,
   });
-  const runService = createPublicMcpRunService({ taskService });
+  const settingsService = createPublicMcpSettingsService({
+    config: context.config,
+    logger: context.logger,
+  });
+  // Resolve the sync-wait cap from settings, cached briefly so concurrent tools
+  // polling every second don't each re-read the file.
+  let capCache: { atMs: number; value: number } | undefined;
+  const resolveCapMs = async (): Promise<number> => {
+    const nowMs = Date.now();
+    if (capCache && nowMs - capCache.atMs < 5_000) {
+      return capCache.value;
+    }
+    const settings = await settingsService.get();
+    const value = settings.syncToolWaitCapSeconds * 1000;
+    capCache = { atMs: nowMs, value };
+    return value;
+  };
+  const runService = createPublicMcpRunService({ taskService, resolveCapMs });
   const registry = createPublicMcpRegistry({ service: publicTaskApiService, runService });
   const templateToolBuilder = createPublicMcpTemplateToolBuilder({
     taskService,

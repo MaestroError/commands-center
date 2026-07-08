@@ -7,32 +7,43 @@ import {
   type UploadTaskContextAttachmentInput,
 } from "@cc/shared/schemas";
 
-import { tokenHasTemplate } from "../../services/api-token-service.js";
+import { tokenHasCapability, tokenHasTemplate } from "../../services/api-token-service.js";
 import type { TaskContextAttachmentService } from "../../services/task-context-attachment-service.js";
 import type { TaskExecutionService } from "../../services/task-execution-service.js";
 import type { TaskService } from "../../services/task-service.js";
 import { triggerTemplateRun } from "../../services/trigger-template-run.js";
-import { okResult, runTool, type RegisterableMcpTool } from "./registry.js";
+import {
+  GET_TASK_RESULT_CAPABILITY,
+  okResult,
+  runTool,
+  type RegisterableMcpTool,
+} from "./registry.js";
 import type { PublicMcpRunService } from "./run-service.js";
+
+const ASYNC_NOTE = " Returns { taskId, runId }; poll get_task_result for the outcome.";
 
 type TemplateToolArgs = {
   text?: string;
   files?: UploadTaskContextAttachmentInput[];
 };
 
-export type PublicMcpTemplateToolBuilder = ReturnType<typeof createPublicMcpTemplateToolBuilder>;
-
-export function createPublicMcpTemplateToolBuilder(deps: {
+type TemplateToolDeps = {
   taskService: TaskService;
   executionService: TaskExecutionService;
   taskContextAttachmentService: TaskContextAttachmentService;
   runService: PublicMcpRunService;
-}) {
+};
+
+export type PublicMcpTemplateToolBuilder = ReturnType<typeof createPublicMcpTemplateToolBuilder>;
+
+export function createPublicMcpTemplateToolBuilder(deps: TemplateToolDeps) {
   return {
     // Build the per-template tools visible to a token: each active, MCP-exposed
-    // template the token enables becomes one tool.
+    // template the token enables becomes one tool (plus an async sibling when the
+    // template opts in and the token can poll results).
     async buildForToken(token: ApiTokenRecord): Promise<RegisterableMcpTool[]> {
       const templates = await deps.taskService.listTemplates();
+      const canPollResults = tokenHasCapability(token, GET_TASK_RESULT_CAPABILITY);
       const tools: RegisterableMcpTool[] = [];
       const seen = new Set<string>();
 
@@ -52,7 +63,8 @@ export function createPublicMcpTemplateToolBuilder(deps: {
         }
         seen.add(template.mcpConfig.toolName);
 
-        tools.push(buildTemplateTool(template, deps));
+        const includeAsync = template.mcpConfig.asyncEnabled && canPollResults;
+        tools.push(...buildTemplateTools(template, deps, includeAsync));
       }
 
       return tools;
@@ -60,15 +72,11 @@ export function createPublicMcpTemplateToolBuilder(deps: {
   };
 }
 
-function buildTemplateTool(
+function buildTemplateTools(
   template: TaskTemplate,
-  deps: {
-    taskService: TaskService;
-    executionService: TaskExecutionService;
-    taskContextAttachmentService: TaskContextAttachmentService;
-    runService: PublicMcpRunService;
-  },
-): RegisterableMcpTool {
+  deps: TemplateToolDeps,
+  includeAsync: boolean,
+): RegisterableMcpTool[] {
   const config = template.mcpConfig;
   const textField = z
     .string()
@@ -88,40 +96,67 @@ function buildTemplateTool(
         .strict()
     : z.object({ text: textField }).strict();
 
-  return {
-    name: config.toolName,
-    description:
-      config.toolDescription || template.description || `Run the "${template.title}" template.`,
-    inputSchema,
-    execute: (args) =>
-      runTool(async () => {
-        const parsed = inputSchema.parse(args ?? {}) as TemplateToolArgs;
-        const outcome = await triggerTemplateRun(
-          {
-            taskService: deps.taskService,
-            executionService: deps.executionService,
-            taskContextAttachmentService: deps.taskContextAttachmentService,
-          },
-          {
-            templateId: template.id,
-            triggerSource: "api",
-            context: parsed.text ? { text: parsed.text, attachments: [] } : undefined,
-            contextAttachmentUploads: parsed.files,
-          },
-        );
+  const description =
+    config.toolDescription || template.description || `Run the "${template.title}" template.`;
+  const fallback = `Failed to run the "${template.title}" template.`;
 
-        if (outcome.kind === "not_found") {
-          throw new Error("Task template not found.");
-        }
-        if (outcome.kind !== "queued") {
-          throw new Error("Template did not start a run.");
-        }
+  // Trigger the template and return the new run id (or throw a tool error).
+  async function trigger(args: unknown): Promise<string> {
+    const parsed = inputSchema.parse(args ?? {}) as TemplateToolArgs;
+    const outcome = await triggerTemplateRun(
+      {
+        taskService: deps.taskService,
+        executionService: deps.executionService,
+        taskContextAttachmentService: deps.taskContextAttachmentService,
+      },
+      {
+        templateId: template.id,
+        triggerSource: "api",
+        context: parsed.text ? { text: parsed.text, attachments: [] } : undefined,
+        contextAttachmentUploads: parsed.files,
+      },
+    );
 
-        const result = await deps.runService.waitForResult(outcome.run.id);
-        if (!result) {
-          throw new Error("Task run not found after trigger.");
-        }
-        return okResult(result);
-      }, `Failed to run the "${template.title}" template.`),
-  };
+    if (outcome.kind === "not_found") {
+      throw new Error("Task template not found.");
+    }
+    if (outcome.kind !== "queued") {
+      throw new Error("Template did not start a run.");
+    }
+    return outcome.run.id;
+  }
+
+  const tools: RegisterableMcpTool[] = [
+    {
+      name: config.toolName,
+      description,
+      inputSchema,
+      execute: (args) =>
+        runTool(async () => {
+          const result = await deps.runService.waitForResult(await trigger(args));
+          if (!result) {
+            throw new Error("Task run not found after trigger.");
+          }
+          return okResult(result);
+        }, fallback),
+    },
+  ];
+
+  if (includeAsync) {
+    tools.push({
+      name: `${config.toolName}_async`,
+      description: `${description}${ASYNC_NOTE}`,
+      inputSchema,
+      execute: (args) =>
+        runTool(async () => {
+          const result = await deps.runService.getResult(await trigger(args));
+          if (!result) {
+            throw new Error("Task run not found after trigger.");
+          }
+          return okResult(result);
+        }, fallback),
+    });
+  }
+
+  return tools;
 }
