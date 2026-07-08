@@ -18,16 +18,29 @@ export {
 } from "./activities.js";
 export {
   apiTokenListResponseSchema,
+  apiTokenPermissionsSchema,
   apiTokenRecordSchema,
   apiTokenScopeSchema,
   createApiTokenInputSchema,
   createApiTokenResponseSchema,
+  updateApiTokenInputSchema,
   type ApiTokenListResponse,
+  type ApiTokenPermissions,
   type ApiTokenRecord,
   type ApiTokenScope,
   type CreateApiTokenInput,
   type CreateApiTokenResponse,
+  type UpdateApiTokenInput,
 } from "./api-tokens.js";
+export {
+  API_TOKEN_CAPABILITIES,
+  API_TOKEN_CAPABILITY_GROUPS,
+  API_TOKEN_PRESETS,
+  isApiTokenCapabilityId,
+  orderApiTokenCapabilityIds,
+  type ApiTokenCapability,
+  type ApiTokenCapabilityGroup,
+} from "./api-token-catalog.js";
 export {
   apiErrorCodeSchema,
   apiErrorResponseSchema,

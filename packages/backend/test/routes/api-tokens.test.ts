@@ -9,6 +9,7 @@ import { createApiTokenService } from "../../src/services/api-token-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { createTestDatabase } from "../helpers/db";
+import { permissionsForCapabilities, permissionsForPresets } from "../helpers/api-tokens";
 
 describe("api token routes", () => {
   it("creates and lists API tokens without returning raw tokens in the list", async () => {
@@ -20,20 +21,70 @@ describe("api token routes", () => {
       const created = await server.inject({
         method: "POST",
         url: "/api/api-tokens",
-        payload: { name: "Release automation", scopes: ["templates", "tasks"] },
+        payload: {
+          name: "Release automation",
+          permissions: permissionsForPresets("templates", "tasks"),
+        },
       });
       const listed = await server.inject({ method: "GET", url: "/api/api-tokens" });
 
       expect(created.statusCode).toBe(201);
       expect(created.json()).toMatchObject({
         token: expect.stringMatching(/^cc_/),
-        record: { name: "Release automation", scopes: ["templates", "tasks"] },
+        record: { name: "Release automation" },
       });
+      expect(created.json().record.permissions.capabilities).toContain("create_task");
       expect(listed.statusCode).toBe(200);
-      expect(listed.json()).toMatchObject({
-        tokens: [{ name: "Release automation", scopes: ["templates", "tasks"] }],
-      });
+      expect(listed.json().tokens[0]?.permissions.capabilities).toContain("trigger_task_template");
       expect(JSON.stringify(listed.json())).not.toContain(created.json().token);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("edits a token's permissions in place", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await createRouteServer({ testDb, apiTokenService });
+
+    try {
+      const created = apiTokenService.createToken("Editable", permissionsForPresets("templates"));
+      const response = await server.inject({
+        method: "PUT",
+        url: `/api/api-tokens/${created.record.id}`,
+        payload: {
+          name: "Renamed",
+          permissions: permissionsForCapabilities("create_task"),
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        name: "Renamed",
+        permissions: { capabilities: ["create_task"], templates: [] },
+      });
+      // No secret is returned on edit.
+      expect(response.json().token).toBeUndefined();
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns 404 when editing a missing API token", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await createRouteServer({ testDb, apiTokenService });
+
+    try {
+      const response = await server.inject({
+        method: "PUT",
+        url: "/api/api-tokens/missing",
+        payload: { permissions: permissionsForPresets("tasks") },
+      });
+
+      expect(response.statusCode).toBe(404);
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -46,7 +97,7 @@ describe("api token routes", () => {
     const server = await createRouteServer({ testDb, apiTokenService });
 
     try {
-      const created = apiTokenService.createToken("Tasks", ["tasks"]);
+      const created = apiTokenService.createToken("Tasks", permissionsForPresets("tasks"));
       const response = await server.inject({
         method: "DELETE",
         url: `/api/api-tokens/${created.record.id}`,

@@ -1,7 +1,15 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { Check, Clipboard, KeyRound, Plus, ShieldCheck, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Check, Clipboard, KeyRound, Pencil, Plus, ShieldCheck, X } from "lucide-react";
 
-import type { ApiTokenRecord, ApiTokenScope, CreateApiTokenResponse } from "@cc/shared/schemas";
+import {
+  API_TOKEN_CAPABILITIES,
+  API_TOKEN_CAPABILITY_GROUPS,
+  API_TOKEN_PRESETS,
+  type ApiTokenCapabilityGroup,
+  type ApiTokenPermissions,
+  type ApiTokenRecord,
+  type CreateApiTokenResponse,
+} from "@cc/shared/schemas";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -9,18 +17,10 @@ import { TabBar } from "@/components/common/TabBar";
 import { EndpointsTab } from "@/components/api/EndpointsTab";
 import { useApiTokenMutations, useApiTokensQuery } from "@/hooks/use-api-tokens-query";
 
-const SCOPE_OPTIONS = [
-  {
-    scope: "templates",
-    label: "Task Templates",
-    description: "Trigger templates and poll template-originated runs.",
-  },
-  {
-    scope: "tasks",
-    label: "Tasks",
-    description: "Create, trigger, schedule, and inspect workspace tasks.",
-  },
-] satisfies Array<{ scope: ApiTokenScope; label: string; description: string }>;
+const GROUP_LABELS: Record<ApiTokenCapabilityGroup, string> = {
+  templates: "Task Templates",
+  tasks: "Tasks",
+};
 
 export function ApiPage() {
   const [activeTabId, setActiveTabId] = useState("tokens");
@@ -50,20 +50,25 @@ export function ApiPage() {
   );
 }
 
+type FormState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; token: ApiTokenRecord };
+
 function TokensTab() {
   const tokensQuery = useApiTokensQuery();
   const mutations = useApiTokenMutations();
-  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState<FormState>({ mode: "closed" });
   const [revealedToken, setRevealedToken] = useState<CreateApiTokenResponse>();
   const [revokeTarget, setRevokeTarget] = useState<ApiTokenRecord>();
   const tokens = tokensQuery.data?.tokens ?? [];
+  const activeTokens = tokens.filter((token) => token.revokedAt === null);
   const error = tokensQuery.error instanceof Error ? tokensQuery.error.message : undefined;
   const mutationError =
     mutations.create.error instanceof Error
       ? mutations.create.error.message
-      : mutations.revoke.error instanceof Error
-        ? mutations.revoke.error.message
-        : undefined;
+      : mutations.update.error instanceof Error
+        ? mutations.update.error.message
+        : mutations.revoke.error instanceof Error
+          ? mutations.revoke.error.message
+          : undefined;
 
   return (
     <div className="mt-6 grid gap-5">
@@ -71,27 +76,49 @@ function TokensTab() {
         <div>
           <h2 className="text-xl font-semibold text-text-primary">API Tokens</h2>
           <p className="mt-1 text-sm text-text-secondary">
-            Issue scoped bearer tokens for external integrations and agent-to-agent workflows.
+            Issue scoped bearer tokens for external integrations and agent-to-agent workflows. Pick
+            exactly the permissions each token needs.
           </p>
         </div>
         <button
           className="cc-button cc-button-secondary inline-flex items-center gap-2"
-          onClick={() => setCreating((current) => !current)}
+          onClick={() =>
+            setForm((current) =>
+              current.mode === "create" ? { mode: "closed" } : { mode: "create" },
+            )
+          }
           type="button"
         >
-          {creating ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-          {creating ? "Cancel" : "Create token"}
+          {form.mode === "create" ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          {form.mode === "create" ? "Cancel" : "Create token"}
         </button>
       </div>
 
-      {creating ? (
-        <TokenCreateForm
+      {form.mode === "create" ? (
+        <TokenForm
           busy={mutations.create.isPending}
-          onCancel={() => setCreating(false)}
-          onCreate={async (input) => {
+          submitLabel="Create token"
+          title="New token"
+          onCancel={() => setForm({ mode: "closed" })}
+          onSubmit={async (input) => {
             const result = await mutations.create.mutateAsync(input);
             setRevealedToken(result);
-            setCreating(false);
+            setForm({ mode: "closed" });
+          }}
+        />
+      ) : null}
+
+      {form.mode === "edit" ? (
+        <TokenForm
+          busy={mutations.update.isPending}
+          initialName={form.token.name}
+          initialPermissions={form.token.permissions}
+          submitLabel="Save changes"
+          title={`Edit ${form.token.name}`}
+          onCancel={() => setForm({ mode: "closed" })}
+          onSubmit={async (input) => {
+            await mutations.update.mutateAsync({ id: form.token.id, ...input });
+            setForm({ mode: "closed" });
           }}
         />
       ) : null}
@@ -120,6 +147,7 @@ function TokensTab() {
               busy={mutations.revoke.isPending}
               key={token.id}
               token={token}
+              onEdit={() => setForm({ mode: "edit", token })}
               onRevoke={() => setRevokeTarget(token)}
             />
           ))}
@@ -137,21 +165,33 @@ function TokensTab() {
           }}
         />
       ) : null}
+
+      <p className="sr-only" data-testid="active-token-count">
+        {activeTokens.length}
+      </p>
     </div>
   );
 }
 
-function TokenCreateForm(props: {
+function TokenForm(props: {
   busy: boolean;
-  onCreate: (input: { name: string; scopes: ApiTokenScope[] }) => Promise<void>;
+  initialName?: string;
+  initialPermissions?: ApiTokenPermissions;
+  submitLabel: string;
+  title: string;
+  onSubmit: (input: { name: string; permissions: ApiTokenPermissions }) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [scopes, setScopes] = useState<ApiTokenScope[]>([]);
+  const [name, setName] = useState(props.initialName ?? "");
+  const [capabilities, setCapabilities] = useState<Set<string>>(
+    () => new Set(props.initialPermissions?.capabilities ?? []),
+  );
+  // Templates are scaffolded on the token model but not yet editable here (Phase 3).
+  const templates = props.initialPermissions?.templates ?? [];
   const [error, setError] = useState<string>();
   const trimmedName = name.trim();
-  const boardSelected = hasScope(scopes, "templates") && hasScope(scopes, "tasks");
-  const canSubmit = trimmedName.length > 0 && scopes.length > 0 && !props.busy;
+  const canSubmit =
+    trimmedName.length > 0 && capabilities.size + templates.length > 0 && !props.busy;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -163,9 +203,10 @@ function TokenCreateForm(props: {
     }
 
     try {
-      await props.onCreate({ name: trimmedName, scopes });
-      setName("");
-      setScopes([]);
+      await props.onSubmit({
+        name: trimmedName,
+        permissions: { capabilities: [...capabilities], templates },
+      });
     } catch (nextError) {
       setError(readError(nextError));
     }
@@ -176,60 +217,21 @@ function TokenCreateForm(props: {
       className="rounded-xl border border-border bg-surface p-5"
       onSubmit={(event) => void onSubmit(event)}
     >
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-        <label className="grid gap-2 text-sm font-medium text-text-primary">
+      <h3 className="text-lg font-semibold text-text-primary">{props.title}</h3>
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+        <label className="grid h-fit gap-2 text-sm font-medium text-text-primary">
           Token name
           <input
             autoComplete="off"
             className="cc-input"
+            data-testid="token-name-input"
             maxLength={100}
             onChange={(event) => setName(event.target.value)}
             placeholder="Release automation"
             value={name}
           />
         </label>
-        <div className="grid gap-3 text-sm text-text-primary">
-          <span className="font-medium">Permissions</span>
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-app-bg p-3">
-            <input
-              checked={boardSelected}
-              className="mt-1"
-              onChange={(event) => setScopes(event.target.checked ? ["templates", "tasks"] : [])}
-              type="checkbox"
-            />
-            <span>
-              <span className="block font-medium">Board</span>
-              <span className="mt-1 block text-xs leading-5 text-text-secondary">
-                Convenience option that enables both task template and task permissions.
-              </span>
-            </span>
-          </label>
-          {SCOPE_OPTIONS.map((option) => (
-            <label
-              className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-app-bg p-3"
-              key={option.scope}
-            >
-              <input
-                checked={hasScope(scopes, option.scope)}
-                className="mt-1"
-                onChange={(event) =>
-                  setScopes((current) =>
-                    event.target.checked
-                      ? addScope(current, option.scope)
-                      : current.filter((scope) => scope !== option.scope),
-                  )
-                }
-                type="checkbox"
-              />
-              <span>
-                <span className="block font-medium">{option.label}</span>
-                <span className="mt-1 block text-xs leading-5 text-text-secondary">
-                  {option.description}
-                </span>
-              </span>
-            </label>
-          ))}
-        </div>
+        <PermissionSelector value={capabilities} onChange={setCapabilities} />
       </div>
 
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
@@ -238,12 +240,133 @@ function TokenCreateForm(props: {
         <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
           Cancel
         </button>
-        <button className="cc-button" disabled={!canSubmit} type="submit">
-          {props.busy ? "Creating..." : "Create token"}
+        <button
+          className="cc-button"
+          data-testid="token-submit"
+          disabled={!canSubmit}
+          type="submit"
+        >
+          {props.busy ? "Saving..." : props.submitLabel}
         </button>
       </div>
     </form>
   );
+}
+
+function PermissionSelector(props: { value: Set<string>; onChange: (next: Set<string>) => void }) {
+  const allCapabilityIds = useMemo(
+    () => API_TOKEN_CAPABILITIES.map((capability) => capability.id),
+    [],
+  );
+  const allSelected = allCapabilityIds.every((id) => props.value.has(id));
+
+  function toggleCapability(id: string, on: boolean) {
+    const next = new Set(props.value);
+    if (on) {
+      next.add(id);
+    } else {
+      next.delete(id);
+    }
+    props.onChange(next);
+  }
+
+  function togglePreset(group: ApiTokenCapabilityGroup, on: boolean) {
+    const next = new Set(props.value);
+    for (const id of API_TOKEN_PRESETS[group]) {
+      if (on) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+    }
+    props.onChange(next);
+  }
+
+  function toggleAll(on: boolean) {
+    props.onChange(on ? new Set(allCapabilityIds) : new Set());
+  }
+
+  return (
+    <div className="grid gap-3 text-sm text-text-primary">
+      <div className="flex items-center justify-between">
+        <span className="font-medium">Permissions</span>
+        <button
+          className="text-xs text-accent underline-offset-2 hover:underline"
+          onClick={() => toggleAll(!allSelected)}
+          type="button"
+        >
+          {allSelected ? "Select none" : "Select all"}
+        </button>
+      </div>
+
+      {API_TOKEN_CAPABILITY_GROUPS.map((group) => {
+        const presetIds = API_TOKEN_PRESETS[group];
+        const enabledInPreset = presetIds.filter((id) => props.value.has(id)).length;
+        const allOn = enabledInPreset === presetIds.length;
+        const someOn = enabledInPreset > 0 && !allOn;
+        const groupCapabilities = API_TOKEN_CAPABILITIES.filter(
+          (capability) => capability.group === group,
+        );
+
+        return (
+          <fieldset
+            className="rounded-lg border border-border bg-app-bg p-3"
+            data-testid={`permission-group-${group}`}
+            key={group}
+          >
+            <label className="flex cursor-pointer items-center gap-3 font-medium">
+              <TriStateCheckbox
+                checked={allOn}
+                indeterminate={someOn}
+                onChange={(event) => togglePreset(group, event.target.checked)}
+              />
+              {GROUP_LABELS[group]}
+              <span className="text-xs font-normal text-text-secondary">
+                {enabledInPreset}/{presetIds.length}
+              </span>
+            </label>
+
+            <div className="mt-3 grid gap-2 pl-7">
+              {groupCapabilities.map((capability) => (
+                <label
+                  className="flex cursor-pointer items-start gap-3 text-text-secondary"
+                  key={capability.id}
+                >
+                  <input
+                    checked={props.value.has(capability.id)}
+                    className="mt-1"
+                    data-testid={`permission-${capability.id}`}
+                    onChange={(event) => toggleCapability(capability.id, event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    <span className="block font-medium text-text-primary">{capability.label}</span>
+                    <span className="mt-0.5 block text-xs leading-5">{capability.description}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        );
+      })}
+    </div>
+  );
+}
+
+function TriStateCheckbox(props: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.indeterminate = props.indeterminate && !props.checked;
+    }
+  }, [props.indeterminate, props.checked]);
+
+  return <input checked={props.checked} onChange={props.onChange} ref={ref} type="checkbox" />;
 }
 
 function TokenRevealPanel(props: { reveal: CreateApiTokenResponse; onDismiss: () => void }) {
@@ -268,7 +391,7 @@ function TokenRevealPanel(props: { reveal: CreateApiTokenResponse; onDismiss: ()
             This token will not be shown again. Copy it now and store it somewhere safe.
           </p>
         </div>
-        <ScopeBadges scopes={props.reveal.record.scopes} />
+        <PermissionBadges permissions={props.reveal.record.permissions} />
       </div>
       <code className="mt-4 block overflow-x-auto rounded-lg border border-border bg-app-bg p-3 text-sm text-text-primary">
         {props.reveal.token}
@@ -292,7 +415,12 @@ function TokenRevealPanel(props: { reveal: CreateApiTokenResponse; onDismiss: ()
   );
 }
 
-function TokenCard(props: { token: ApiTokenRecord; busy: boolean; onRevoke: () => void }) {
+function TokenCard(props: {
+  token: ApiTokenRecord;
+  busy: boolean;
+  onEdit: () => void;
+  onRevoke: () => void;
+}) {
   const revoked = props.token.revokedAt !== null;
 
   return (
@@ -321,18 +449,32 @@ function TokenCard(props: { token: ApiTokenRecord; busy: boolean; onRevoke: () =
               label="Last used"
               value={props.token.lastUsedAt ? formatDate(props.token.lastUsedAt) : "Never"}
             />
-            <TokenMetric label="Permissions" value={<ScopeBadges scopes={props.token.scopes} />} />
+            <TokenMetric
+              label="Permissions"
+              value={<PermissionBadges permissions={props.token.permissions} />}
+            />
           </dl>
         </div>
         {!revoked ? (
-          <button
-            className="cc-button cc-button-danger justify-self-start lg:justify-self-end"
-            disabled={props.busy}
-            onClick={props.onRevoke}
-            type="button"
-          >
-            Revoke
-          </button>
+          <div className="flex gap-2 justify-self-start lg:justify-self-end">
+            <button
+              className="cc-button cc-button-secondary inline-flex items-center gap-2"
+              disabled={props.busy}
+              onClick={props.onEdit}
+              type="button"
+            >
+              <Pencil className="h-4 w-4" />
+              Edit
+            </button>
+            <button
+              className="cc-button cc-button-danger"
+              disabled={props.busy}
+              onClick={props.onRevoke}
+              type="button"
+            >
+              Revoke
+            </button>
+          </div>
         ) : null}
       </div>
     </article>
@@ -348,11 +490,12 @@ function TokenMetric(props: { label: string; value: ReactNode }) {
   );
 }
 
-function ScopeBadges(props: { scopes: ApiTokenScope[] }) {
-  const labels =
-    hasScope(props.scopes, "templates") && hasScope(props.scopes, "tasks")
-      ? ["Board"]
-      : props.scopes.map((scope) => (scope === "templates" ? "Task Templates" : "Tasks"));
+function PermissionBadges(props: { permissions: ApiTokenPermissions }) {
+  const labels = summarizePermissions(props.permissions);
+
+  if (labels.length === 0) {
+    return <span className="text-xs text-text-secondary">None</span>;
+  }
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -435,12 +578,28 @@ function RevokeTokenDialog(props: {
   );
 }
 
-function addScope(current: ApiTokenScope[], scope: ApiTokenScope): ApiTokenScope[] {
-  return hasScope(current, scope) ? current : [...current, scope];
-}
+// A group badge when its full preset id-list is enabled; otherwise a plain
+// count. Falls back to the count when enabled capabilities aren't cleanly
+// covered by fully-on presets.
+function summarizePermissions(permissions: ApiTokenPermissions): string[] {
+  const enabled = new Set(permissions.capabilities);
 
-function hasScope(scopes: ApiTokenScope[], scope: ApiTokenScope): boolean {
-  return scopes.includes(scope);
+  if (enabled.size === 0) {
+    return [];
+  }
+
+  const fullyOnGroups = API_TOKEN_CAPABILITY_GROUPS.filter((group) =>
+    API_TOKEN_PRESETS[group].every((id) => enabled.has(id)),
+  );
+
+  const covered = new Set(fullyOnGroups.flatMap((group) => API_TOKEN_PRESETS[group]));
+  const everyEnabledCovered = [...enabled].every((id) => covered.has(id));
+
+  if (fullyOnGroups.length > 0 && everyEnabledCovered) {
+    return fullyOnGroups.map((group) => GROUP_LABELS[group]);
+  }
+
+  return [`${enabled.size} ${enabled.size === 1 ? "permission" : "permissions"}`];
 }
 
 function formatDate(timestamp: number): string {

@@ -62,13 +62,13 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
 
       <SectionHeading
         title="Templates"
-        subtitle="Trigger and poll reusable task templates. Requires the Task Templates scope (the list endpoint also accepts the Tasks scope)."
+        subtitle="Trigger and poll reusable task templates. Each endpoint needs its matching token permission; the Task Templates preset enables them all."
       />
 
       <EndpointBlock
         method="GET"
         path="/api/public/v1/task-templates"
-        scope="Task Templates or Tasks"
+        scope="List templates"
         description="List templates available to trigger (enabled templates only)."
         snippets={[{ label: "curl", code: listCurl }]}
         responseExample={{
@@ -81,7 +81,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="POST"
         path="/api/public/v1/task-templates/:id/trigger"
-        scope="Task Templates"
+        scope="Trigger template"
         description="Trigger a template immediately, or schedule it for a future time by including a schedule block."
         snippets={[
           { label: "curl (trigger now)", code: docs.triggerCurl },
@@ -94,7 +94,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="GET"
         path="/api/public/v1/task-runs/:runId"
-        scope="Task Templates"
+        scope="Get template run status"
         description="Poll the status of a triggered run until it reaches a terminal state."
         snippets={[{ label: "curl", code: docs.pollCurl }]}
         responseExample={{
@@ -110,13 +110,13 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
 
       <SectionHeading
         title="Tasks"
-        subtitle="Create, trigger, schedule, and inspect workspace tasks directly. All endpoints in this section require the Tasks scope."
+        subtitle="Create, trigger, schedule, and inspect workspace tasks directly. Each endpoint needs its matching token permission; the Tasks preset enables them all."
       />
 
       <EndpointBlock
         method="GET"
         path="/api/public/v1/specialists"
-        scope="Tasks"
+        scope="List specialists"
         description="Discover specialist IDs so you can create a task against a specific specialist."
         snippets={[{ label: "curl", code: taskDocs.specialistsCurl }]}
         responseExample={{
@@ -127,7 +127,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="POST"
         path="/api/public/v1/task-templates/:id/enable"
-        scope="Tasks"
+        scope="Enable template"
         description="Activate a template so it runs on its schedule and accepts automated triggers again. Leaves the schedule and all other settings unchanged."
         snippets={[{ label: "curl", code: taskDocs.enableTemplateCurl }]}
         responseExample={{ id: "01J…", title: "Weekly report", description: "", enabled: true }}
@@ -136,7 +136,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="POST"
         path="/api/public/v1/task-templates/:id/disable"
-        scope="Tasks"
+        scope="Disable template"
         description="Deactivate a template without changing its schedule. A disabled template stops generating scheduled runs and is refused by trigger endpoints, but is kept for reference and can be re-enabled."
         snippets={[{ label: "curl", code: taskDocs.disableTemplateCurl }]}
         responseExample={{ id: "01J…", title: "Weekly report", description: "", enabled: false }}
@@ -145,7 +145,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="POST"
         path="/api/public/v1/tasks"
-        scope="Tasks"
+        scope="Create task"
         description="Create a task against a specialist. Include scheduledAt to create it in the scheduled state; attachments are inline base64 data URLs (≤10 MB each)."
         snippets={[{ label: "curl", code: taskDocs.createCurl }]}
         responseExample={{
@@ -168,7 +168,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="GET"
         path="/api/public/v1/tasks?status=&templateId="
-        scope="Tasks"
+        scope="List tasks"
         description="List tasks by board status (backlog | queued | ready_to_check | review), and/or filter by the source template they were generated from."
         snippets={[
           { label: "curl (by status)", code: taskDocs.listByStatusCurl },
@@ -182,7 +182,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="GET"
         path="/api/public/v1/tasks/:id"
-        scope="Tasks"
+        scope="Get task"
         description="Get one task. Use ?expand=runs,feedback to embed its runs and feedback threads in a single fetch."
         snippets={[
           { label: "curl", code: taskDocs.getCurl },
@@ -194,7 +194,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="POST"
         path="/api/public/v1/tasks/:id/trigger"
-        scope="Tasks"
+        scope="Trigger task"
         description="Run a task now."
         snippets={[{ label: "curl", code: taskDocs.triggerCurl }]}
         responseExample={{ taskId: "01J…", runId: "01J…", status: "queued" }}
@@ -203,7 +203,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="POST"
         path="/api/public/v1/tasks/:id/schedule"
-        scope="Tasks"
+        scope="Schedule task"
         description="Schedule or reschedule a task for a future time. Send runAt: null to clear the schedule."
         snippets={[{ label: "curl", code: taskDocs.scheduleCurl }]}
         responseExample={{ id: "01J…", status: "scheduled", scheduledAt: "2026-06-10T09:00:00Z" }}
@@ -212,7 +212,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="GET"
         path="/api/public/v1/tasks/:id/runs"
-        scope="Tasks"
+        scope="List task runs"
         description="List the runs of a task."
         snippets={[{ label: "curl", code: taskDocs.runsCurl }]}
         responseExample={{ runs: [{ id: "01J…", taskId: "01J…", status: "completed" }] }}
@@ -221,7 +221,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="GET"
         path="/api/public/v1/tasks/:id/runs/:runId"
-        scope="Tasks"
+        scope="Get task run"
         description="Get a single run of a task."
         snippets={[{ label: "curl", code: taskDocs.runDetailCurl }]}
         responseExample={{ id: "01J…", taskId: "01J…", status: "completed", outcome: "success" }}
@@ -230,7 +230,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <EndpointBlock
         method="GET"
         path="/api/public/v1/tasks/:id/feedback"
-        scope="Tasks"
+        scope="List task feedback"
         description="Read the feedback threads on a task, including their subtasks and per-subtask run replies."
         snippets={[{ label: "curl", code: taskDocs.feedbackCurl }]}
         responseExample={{
@@ -266,7 +266,7 @@ function EndpointBlock(props: {
         </span>
         <code className="font-mono text-sm text-text-primary">{props.path}</code>
         <span className="ml-auto rounded-full border border-border bg-app-bg px-2 py-1 text-xs text-text-secondary">
-          Scope: {props.scope}
+          Permission: {props.scope}
         </span>
       </div>
       <p className="mt-3 text-sm leading-6 text-text-secondary">{props.description}</p>

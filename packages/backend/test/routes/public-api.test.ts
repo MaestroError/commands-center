@@ -19,6 +19,7 @@ import type {
   OpenCodeSessionMessage,
 } from "../../src/services/opencode-service";
 import { createTestDatabase } from "../helpers/db";
+import { permissionsForPresets } from "../helpers/api-tokens";
 
 async function setup() {
   const testDb = await createTestDatabase();
@@ -82,7 +83,10 @@ describe("public task API", () => {
     const { testDb, server, apiTokenService, taskSchedulerService } = await setup();
 
     try {
-      const tasksOnly = apiTokenService.createToken("Tasks only", ["tasks"]).token;
+      const tasksOnly = apiTokenService.createToken(
+        "Tasks only",
+        permissionsForPresets("tasks"),
+      ).token;
       const forbidden = await server.inject({
         method: "POST",
         url: "/api/public/v1/task-templates/anything/trigger",
@@ -103,7 +107,10 @@ describe("public task API", () => {
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      const token = apiTokenService.createToken("Templates", ["templates"]).token;
+      const token = apiTokenService.createToken(
+        "Templates",
+        permissionsForPresets("templates"),
+      ).token;
       const auth = { authorization: `Bearer ${token}` };
 
       const template = await server.inject({
@@ -220,7 +227,10 @@ describe("public task API", () => {
     const { testDb, server, apiTokenService, taskSchedulerService } = await setup();
 
     try {
-      const templatesOnly = apiTokenService.createToken("Templates only", ["templates"]).token;
+      const templatesOnly = apiTokenService.createToken(
+        "Templates only",
+        permissionsForPresets("templates"),
+      ).token;
       const auth = { authorization: `Bearer ${templatesOnly}` };
 
       const createForbidden = await server.inject({
@@ -267,7 +277,10 @@ describe("public task API", () => {
       });
 
       // The trigger-only templates scope cannot manage status.
-      const templatesOnly = apiTokenService.createToken("Templates only", ["templates"]).token;
+      const templatesOnly = apiTokenService.createToken(
+        "Templates only",
+        permissionsForPresets("templates"),
+      ).token;
       const forbidden = await server.inject({
         method: "POST",
         url: `/api/public/v1/task-templates/${template.id}/disable`,
@@ -277,7 +290,7 @@ describe("public task API", () => {
 
       // The broader tasks scope can disable and re-enable.
       const tasksAuth = {
-        authorization: `Bearer ${apiTokenService.createToken("Tasks", ["tasks"]).token}`,
+        authorization: `Bearer ${apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token}`,
       };
 
       const disabled = await server.inject({
@@ -323,7 +336,7 @@ describe("public task API", () => {
 
     try {
       const agent = await insertAgent(testDb.client.db);
-      const token = apiTokenService.createToken("Tasks", ["tasks"]).token;
+      const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token;
       const auth = { authorization: `Bearer ${token}` };
 
       // Discover agents.

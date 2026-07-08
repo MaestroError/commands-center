@@ -6,11 +6,13 @@ import {
   type Activity,
   type ActivityListResponse,
   apiTokenListResponseSchema,
+  apiTokenRecordSchema,
   systemPromptBodySchema,
   systemPromptDetailSchema,
   systemPromptListResponseSchema,
   createApiTokenInputSchema,
   createApiTokenResponseSchema,
+  updateApiTokenInputSchema,
   liveRequestCancelInputSchema,
   liveRequestResolveInputSchema,
   liveRequestResolveResultSchema,
@@ -20,7 +22,8 @@ import {
   taskRunMonitorSettingsSchema,
   updateArtifactSharingPreferencesInputSchema,
   type ApiTokenListResponse,
-  type ApiTokenScope,
+  type ApiTokenPermissions,
+  type ApiTokenRecord,
   type CreateApiTokenResponse,
   type SystemPromptDetail,
   type SystemPromptListResponse,
@@ -83,12 +86,26 @@ export async function listApiTokens(): Promise<ApiTokenListResponse> {
 
 export async function createApiToken(input: {
   name: string;
-  scopes: ApiTokenScope[];
+  permissions: ApiTokenPermissions;
 }): Promise<CreateApiTokenResponse> {
   return requestJson<CreateApiTokenResponse>("/api/api-tokens", createApiTokenResponseSchema, {
     method: "POST",
     body: createApiTokenInputSchema.parse(input),
   });
+}
+
+export async function updateApiToken(
+  id: string,
+  input: { name?: string; permissions: ApiTokenPermissions },
+): Promise<ApiTokenRecord> {
+  return requestJson<ApiTokenRecord>(
+    `/api/api-tokens/${encodeURIComponent(id)}`,
+    apiTokenRecordSchema,
+    {
+      method: "PUT",
+      body: updateApiTokenInputSchema.parse(input),
+    },
+  );
 }
 
 export async function revokeApiToken(id: string): Promise<void> {

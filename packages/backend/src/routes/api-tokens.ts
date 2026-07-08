@@ -3,8 +3,10 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
   apiTokenListResponseSchema,
+  apiTokenRecordSchema,
   createApiTokenInputSchema,
   createApiTokenResponseSchema,
+  updateApiTokenInputSchema,
 } from "@cc/shared/schemas";
 
 import { NotFoundError } from "../lib/api-error.js";
@@ -42,10 +44,35 @@ export function registerApiTokenRoutes(server: AppServer, context: RuntimeContex
       },
     },
     (request, reply) => {
-      const result = service.createToken(request.body.name, request.body.scopes);
+      const result = service.createToken(request.body.name, request.body.permissions);
 
       void reply.status(201);
       return result;
+    },
+  );
+
+  app.put(
+    "/api/api-tokens/:id",
+    {
+      schema: {
+        params: apiTokenParamsSchema,
+        body: updateApiTokenInputSchema,
+        response: {
+          200: apiTokenRecordSchema,
+        },
+      },
+    },
+    (request) => {
+      const record = service.updateToken(request.params.id, {
+        name: request.body.name,
+        permissions: request.body.permissions,
+      });
+
+      if (!record) {
+        throw new NotFoundError("API token not found.");
+      }
+
+      return record;
     },
   );
 

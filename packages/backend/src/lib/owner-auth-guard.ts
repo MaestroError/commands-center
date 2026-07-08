@@ -1,12 +1,14 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-import type { ApiTokenRecord, ApiTokenScope } from "@cc/shared/schemas";
+import type { ApiTokenRecord } from "@cc/shared/schemas";
 
 import { CsrfError, ForbiddenError, NotFoundError, UnauthorizedError } from "./api-error.js";
 import { CSRF_HEADER_NAME, isCsrfTokenValid } from "./csrf.js";
 import { isOriginAllowed } from "./origin-check.js";
 import { readOwnerSessionCookie } from "./owner-session-cookie.js";
+import { capabilityForPublicRoute } from "./public-api-capabilities.js";
 import { isPublicRoute } from "./public-routes.js";
+import { tokenHasCapability } from "../services/api-token-service.js";
 import type { RuntimeContext } from "./start-server-runtime.js";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -15,8 +17,6 @@ const CC_MANAGED_MCP_ROUTE_PATTERN = /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+
 const PUBLIC_API_PREFIX = "/api/public/";
 const SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN =
   /^\/api\/public\/v1\/task-artifacts\/download\/[^/]+$/;
-
-type PublicApiScopeRequirement = ApiTokenScope | "either";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -89,17 +89,19 @@ function validatePublicApiBearer(
     throw new UnauthorizedError("Invalid or revoked API token.");
   }
 
-  const requiredScope = scopeForPublicRoute(method, pathname);
+  // Attach the token identity BEFORE the capability check so a 403 still carries
+  // it (lets the audit log record "token attempted X without permission").
+  request.apiToken = tokenRecord;
 
-  if (!requiredScope) {
+  const requiredCapability = capabilityForPublicRoute(method, pathname);
+
+  if (!requiredCapability) {
     throw new NotFoundError("Public API route not found.");
   }
 
-  if (!hasRequiredScope(tokenRecord.scopes, requiredScope)) {
-    throw new ForbiddenError("Token is missing the required scope.");
+  if (!tokenHasCapability(tokenRecord, requiredCapability)) {
+    throw new ForbiddenError("Token is missing the required permission.");
   }
-
-  request.apiToken = tokenRecord;
 }
 
 function readBearerToken(value: string | string[] | undefined): string | undefined {
@@ -107,63 +109,6 @@ function readBearerToken(value: string | string[] | undefined): string | undefin
   const match = /^Bearer\s+(.+)$/i.exec(header ?? "");
 
   return match?.[1]?.trim();
-}
-
-function scopeForPublicRoute(
-  method: string,
-  pathname: string,
-): PublicApiScopeRequirement | undefined {
-  const normalizedMethod = method.toUpperCase();
-
-  if (normalizedMethod === "GET" && pathname === "/api/public/v1/task-templates") {
-    return "either";
-  }
-
-  if (
-    normalizedMethod === "POST" &&
-    /^\/api\/public\/v1\/task-templates\/[^/]+\/trigger$/.test(pathname)
-  ) {
-    return "templates";
-  }
-
-  // Template Active-status management lives under the broader tasks scope,
-  // not the trigger-only templates scope.
-  if (
-    normalizedMethod === "POST" &&
-    /^\/api\/public\/v1\/task-templates\/[^/]+\/(enable|disable)$/.test(pathname)
-  ) {
-    return "tasks";
-  }
-
-  if (normalizedMethod === "GET" && /^\/api\/public\/v1\/task-runs\/[^/]+$/.test(pathname)) {
-    return "templates";
-  }
-
-  if (
-    normalizedMethod === "GET" &&
-    (pathname === "/api/public/v1/specialists" || pathname === "/api/public/v1/tasks")
-  ) {
-    return "tasks";
-  }
-
-  if (
-    ["GET", "POST"].includes(normalizedMethod) &&
-    /^\/api\/public\/v1\/tasks(\/[^/]+(\/(trigger|schedule|runs|feedback))?(\/[^/]+)?)?$/.test(
-      pathname,
-    )
-  ) {
-    return "tasks";
-  }
-
-  return undefined;
-}
-
-function hasRequiredScope(scopes: ApiTokenScope[], requiredScope: PublicApiScopeRequirement) {
-  if (requiredScope === "either") {
-    return scopes.includes("templates") || scopes.includes("tasks");
-  }
-
-  return scopes.includes(requiredScope);
 }
 
 export function validateOriginForMutation(context: RuntimeContext, request: FastifyRequest): void {
