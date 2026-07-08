@@ -186,8 +186,8 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
         throw new NotFoundError("Artifact not found.");
       }
 
-      if (row.type !== "file") {
-        throw new BadRequestError("Only file artifacts can be shared.");
+      if (row.type !== "file" && row.type !== "document") {
+        throw new BadRequestError("Only file and document artifacts can be shared.");
       }
 
       const manifest = await readManifest(options.config);
@@ -199,7 +199,10 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
 
       const filename = validateFilename(row.link);
       const mimeType = resolveMimeType(filename);
-      const sourcePath = resolveWorkspaceSourcePath(options.config, row.link);
+      const sourcePath =
+        row.type === "document"
+          ? resolveDocumentSourcePath(options.config, row.link)
+          : resolveWorkspaceSourcePath(options.config, row.link);
       const sourceStat = await stat(sourcePath).catch((error: unknown) => {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           throw new NotFoundError("Artifact source file not found.");
@@ -242,7 +245,7 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
     async getRegisteredArtifact(artifactId: string): Promise<RegisteredArtifact | undefined> {
       const row = await getRow(artifactId);
 
-      if (!row || row.type !== "file") {
+      if (!row || (row.type !== "file" && row.type !== "document")) {
         return undefined;
       }
 
@@ -369,6 +372,25 @@ function resolveWorkspaceSourcePath(config: RuntimeConfig, path: string | undefi
 
   const sourcePath = resolve(config.paths.workspaceDir, trimmed);
   ensureDescendant(sourcePath, config.paths.workspaceDir, "Artifact path must stay in workspace.");
+  return sourcePath;
+}
+
+// Resolve a `document`-type artifact's Documents/-relative link to an absolute
+// path, hardened against traversal (reuses the same descendant check as files).
+function resolveDocumentSourcePath(config: RuntimeConfig, path: string | undefined): string {
+  if (!path) {
+    throw new BadRequestError("Artifact path is missing.");
+  }
+
+  const trimmed = path.trim();
+
+  if (trimmed.length === 0 || trimmed.startsWith("/") || trimmed === "." || trimmed === "..") {
+    throw new BadRequestError("Artifact path is invalid.");
+  }
+
+  const root = config.paths.subdirectories.documents;
+  const sourcePath = resolve(root, trimmed);
+  ensureDescendant(sourcePath, root, "Artifact document path must stay in Documents.");
   return sourcePath;
 }
 

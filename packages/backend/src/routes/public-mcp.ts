@@ -6,6 +6,9 @@ import { createPublicMcpRegistry } from "../mcp/public/registry.js";
 import { createPublicMcpRunService } from "../mcp/public/run-service.js";
 import { createPublicMcpService } from "../mcp/public/service.js";
 import { createPublicMcpTemplateToolBuilder } from "../mcp/public/template-tools.js";
+import { createArtifactService } from "../services/artifact-service.js";
+import { createArtifactDeliveryService } from "../services/artifact-delivery-service.js";
+import { createArtifactShareLinkService } from "../services/artifact-share-link-service.js";
 import { createConversationService } from "../services/conversation-service.js";
 import { createPublicMcpSettingsService } from "../services/public-mcp-settings-service.js";
 import { createPublicTaskApiService } from "../services/public-task-api-service.js";
@@ -13,6 +16,7 @@ import { createSpecialistService } from "../services/specialist-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
 import { createTaskService } from "../services/task-service.js";
+import { buildArtifactDeliveryContext } from "./public-artifacts.js";
 
 // Matches the internal upload route, leaving base64 headroom over the 10 MB
 // per-attachment file cap (used by Phase 3 file args).
@@ -78,7 +82,32 @@ export function registerPublicMcpRoutes(server: AppServer, context: RuntimeConte
     capCache = { atMs: nowMs, value };
     return value;
   };
-  const runService = createPublicMcpRunService({ taskService, resolveCapMs });
+  const artifactService = createArtifactService({
+    db: context.database.db,
+    config: context.config,
+  });
+  const artifactShareLinkService = createArtifactShareLinkService({
+    db: context.database.db,
+    config: context.config,
+    artifactService,
+  });
+  const deliveryService = createArtifactDeliveryService({
+    artifactService,
+    config: context.config,
+    logger: context.logger,
+  });
+  const runService = createPublicMcpRunService({
+    taskService,
+    resolveCapMs,
+    deliveryService,
+    resolveDeliveryContext: (run) =>
+      buildArtifactDeliveryContext({
+        run,
+        taskService,
+        artifactShareLinkService,
+        config: context.config,
+      }),
+  });
   const registry = createPublicMcpRegistry({ service: publicTaskApiService, runService });
   const templateToolBuilder = createPublicMcpTemplateToolBuilder({
     taskService,

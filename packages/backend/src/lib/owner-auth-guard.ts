@@ -18,6 +18,10 @@ const PUBLIC_API_PREFIX = "/api/public/";
 const PUBLIC_MCP_PATH = "/api/public/mcp";
 const SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN =
   /^\/api\/public\/v1\/task-artifacts\/download\/[^/]+$/;
+// Signed artifact delivery (Phase 6); auth is enforced inside the handler
+// (valid signature, or an owner session for the display fallback).
+const SIGNED_PUBLIC_ARTIFACT_DELIVERY_PATTERN =
+  /^\/api\/public\/v1\/artifacts\/[^/]+\/(display|download)$/;
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -32,7 +36,11 @@ export function registerOwnerAuthGuard(
     const pathname = getPathname(request.url);
     const method = request.method.toUpperCase();
 
-    if (method === "GET" && SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN.test(pathname)) {
+    if (
+      method === "GET" &&
+      (SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN.test(pathname) ||
+        SIGNED_PUBLIC_ARTIFACT_DELIVERY_PATTERN.test(pathname))
+    ) {
       return;
     }
 

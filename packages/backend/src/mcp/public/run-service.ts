@@ -1,5 +1,14 @@
-import type { McpTaskRunResult, TaskRun, TaskRunStatus } from "@cc/shared/schemas";
+import type {
+  McpArtifactSummary,
+  McpTaskRunResult,
+  TaskRun,
+  TaskRunStatus,
+} from "@cc/shared/schemas";
 
+import type {
+  ArtifactDeliveryOptions,
+  ArtifactDeliveryService,
+} from "../../services/artifact-delivery-service.js";
 import type { TaskService } from "../../services/task-service.js";
 
 const TERMINAL_STATUSES: ReadonlySet<TaskRunStatus> = new Set([
@@ -19,27 +28,6 @@ function isTerminal(status: TaskRunStatus): boolean {
   return TERMINAL_STATUSES.has(status);
 }
 
-function projectResult(run: TaskRun, timedOut: boolean): McpTaskRunResult {
-  return {
-    taskId: run.taskId,
-    runId: run.id,
-    status: run.status,
-    outcome: run.outcome ?? null,
-    finalMessage: run.finalMessage ?? null,
-    resultText: run.resultText ?? null,
-    needsHumanReview: run.needsHumanReview,
-    startedAt: run.startedAt ?? null,
-    completedAt: run.completedAt ?? null,
-    // Titles/types only — no link/storage key/path (real URLs land in Phase 6).
-    artifacts: run.artifacts.map((artifact) => ({
-      title: artifact.title,
-      description: artifact.description,
-      type: artifact.type,
-    })),
-    timedOut,
-  };
-}
-
 export type PublicMcpRunService = ReturnType<typeof createPublicMcpRunService>;
 
 export function createPublicMcpRunService(deps: {
@@ -47,7 +35,41 @@ export function createPublicMcpRunService(deps: {
   // Resolves the configured sync-wait cap (ms). Falls back to the default when
   // absent. Phase 4 wires this to the public MCP settings (cached).
   resolveCapMs?: () => Promise<number>;
+  // Phase 6: builds displayable/downloadable artifact URLs. When absent,
+  // artifacts fall back to title/type summaries only.
+  deliveryService?: ArtifactDeliveryService;
+  resolveDeliveryContext?: (run: TaskRun) => Promise<ArtifactDeliveryOptions>;
 }) {
+  async function buildArtifacts(run: TaskRun): Promise<McpArtifactSummary[]> {
+    if (!deps.deliveryService || !deps.resolveDeliveryContext || run.artifacts.length === 0) {
+      return run.artifacts.map((artifact) => ({
+        title: artifact.title,
+        description: artifact.description,
+        type: artifact.type,
+      }));
+    }
+    const options = await deps.resolveDeliveryContext(run);
+    return Promise.all(
+      run.artifacts.map((artifact) => deps.deliveryService!.buildDelivery(artifact, options)),
+    );
+  }
+
+  async function projectResult(run: TaskRun, timedOut: boolean): Promise<McpTaskRunResult> {
+    return {
+      taskId: run.taskId,
+      runId: run.id,
+      status: run.status,
+      outcome: run.outcome ?? null,
+      finalMessage: run.finalMessage ?? null,
+      resultText: run.resultText ?? null,
+      needsHumanReview: run.needsHumanReview,
+      startedAt: run.startedAt ?? null,
+      completedAt: run.completedAt ?? null,
+      artifacts: await buildArtifacts(run),
+      timedOut,
+    };
+  }
+
   return {
     /** Current run result projection (no waiting). Undefined if the run is unknown. */
     async getResult(runId: string): Promise<McpTaskRunResult | undefined> {
@@ -87,7 +109,7 @@ export function createPublicMcpRunService(deps: {
         }
       }
 
-      return projectResult(run, !isTerminal(run.status));
+      return await projectResult(run, !isTerminal(run.status));
     },
   };
 }

@@ -7,12 +7,18 @@ import { taskRunOutcomeSchema, taskRunStatusSchema } from "./tasks.js";
 // the public MCP server's run tools — no agent ids, rendered prompts, permission
 // profiles, storage keys, or file paths.
 
-// Artifact summary for a run result. Phase 2 exposes titles/types only; the
-// displayable/downloadable URLs are added in Phase 6.
+// Artifact summary for a run result. Phase 6 enriches file/document artifacts
+// with a displayable and downloadable URL plus mime/size; `url` artifacts expose
+// the external link as `displayUrl`.
 export const mcpArtifactSummarySchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   type: artifactTypeSchema,
+  mimeType: z.string().optional(),
+  sizeBytes: z.number().int().nonnegative().optional(),
+  // Absent when the template disabled that URL (or the artifact can't be served).
+  displayUrl: z.string().nullish(),
+  downloadUrl: z.string().nullish(),
 });
 
 export const mcpTaskRunResultSchema = z.object({
