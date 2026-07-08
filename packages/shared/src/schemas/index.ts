@@ -17,6 +17,11 @@ export {
   type ActivityStatus,
 } from "./activities.js";
 export {
+  apiTokenActivityEntrySchema,
+  apiTokenActivityListResponseSchema,
+  apiTokenActivityOutcomeSchema,
+  apiTokenActivitySurfaceSchema,
+  apiTokenAuditSettingsSchema,
   apiTokenListResponseSchema,
   apiTokenPermissionsSchema,
   apiTokenRecordSchema,
@@ -24,6 +29,11 @@ export {
   createApiTokenInputSchema,
   createApiTokenResponseSchema,
   updateApiTokenInputSchema,
+  type ApiTokenActivityEntry,
+  type ApiTokenActivityListResponse,
+  type ApiTokenActivityOutcome,
+  type ApiTokenActivitySurface,
+  type ApiTokenAuditSettings,
   type ApiTokenListResponse,
   type ApiTokenPermissions,
   type ApiTokenRecord,

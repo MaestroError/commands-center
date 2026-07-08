@@ -21,6 +21,10 @@ import {
 import { createSecretService, type SecretService } from "../services/secret-service.js";
 import { createApiTokenService, type ApiTokenService } from "../services/api-token-service.js";
 import {
+  createTokenAuditService,
+  type TokenAuditService,
+} from "../services/token-audit-service.js";
+import {
   createOwnerAccessService,
   type OwnerAccessService,
 } from "../services/owner-access-service.js";
@@ -109,6 +113,7 @@ export type RuntimeContext = {
   workspaceWatchService?: WorkspaceWatchService;
   secretService: SecretService;
   apiTokenService: ApiTokenService;
+  tokenAuditService?: TokenAuditService;
   ownerAccessService?: OwnerAccessService;
   liveRequestService?: LiveRequestService;
   scheduler: SchedulerService;
@@ -165,6 +170,7 @@ export async function startServerRuntime(
   );
   const secretService = createSecretService({ db: database.db, config });
   const apiTokenService = createApiTokenService({ db: database.db });
+  const tokenAuditService = createTokenAuditService({ db: database.db, config, logger });
   const ownerAccessService = createOwnerAccessService({ config, logger });
   await ownerAccessService.initialize();
   await logOwnerClaimStartupInstructions({
@@ -260,6 +266,7 @@ export async function startServerRuntime(
     workspaceWatchService,
     secretService,
     apiTokenService,
+    tokenAuditService,
     ownerAccessService,
     liveRequestService,
     scheduler,
@@ -316,6 +323,15 @@ export async function startServerRuntime(
   systemVersionService.start();
   taskSchedulerService.start();
   void sessionArchiveScheduler.start();
+
+  // Prune the per-token audit log on startup, then daily. The interval is
+  // unref'd so it never keeps the process alive.
+  void tokenAuditService.pruneExpired().catch(() => undefined);
+  const auditPruneTimer = setInterval(
+    () => void tokenAuditService.pruneExpired().catch(() => undefined),
+    24 * 60 * 60 * 1000,
+  );
+  auditPruneTimer.unref?.();
 
   if (options?.installSignalHandlers !== false) {
     installSignalHandlers(drainController.drain, logger);

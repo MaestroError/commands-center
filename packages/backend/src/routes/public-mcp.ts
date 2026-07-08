@@ -90,6 +90,7 @@ export function registerPublicMcpRoutes(server: AppServer, context: RuntimeConte
     logger: context.logger,
     registry,
     templateToolBuilder,
+    auditService: context.tokenAuditService,
   });
 
   async function dispatch(

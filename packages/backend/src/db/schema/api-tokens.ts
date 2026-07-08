@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const api_tokens = sqliteTable(
   "api_tokens",
@@ -22,4 +22,30 @@ export const api_tokens = sqliteTable(
   (table) => ({
     apiTokensTokenHashUnique: uniqueIndex("api_tokens_token_hash_unique").on(table.token_hash),
   }),
+);
+
+// Append-only per-token request audit log. Runtime/disposable state — not a
+// portable workspace file; resets on DB rebuild like conversations/task runs.
+export const api_token_activity = sqliteTable(
+  "api_token_activity",
+  {
+    id: text("id").primaryKey(),
+    token_id: text("token_id").notNull(),
+    // Snapshot at request time so revoked/renamed tokens still read correctly.
+    token_name: text("token_name").notNull(),
+    surface: text("surface").notNull(),
+    action: text("action").notNull(),
+    capability_id: text("capability_id"),
+    target_kind: text("target_kind"),
+    target_id: text("target_id"),
+    input_summary_json: text("input_summary_json"),
+    outcome: text("outcome").notNull(),
+    status_code: integer("status_code"),
+    error_message: text("error_message"),
+    created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("api_token_activity_token_created_idx").on(table.token_id, table.created_at),
+    index("api_token_activity_created_idx").on(table.created_at),
+  ],
 );

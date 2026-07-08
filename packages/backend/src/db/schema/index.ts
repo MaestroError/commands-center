@@ -1,5 +1,5 @@
 export { activities } from "./activities.js";
-export { api_tokens } from "./api-tokens.js";
+export { api_tokens, api_token_activity } from "./api-tokens.js";
 export { agents } from "./agents.js";
 export { artifacts, artifact_share_links } from "./artifacts.js";
 export { conversations, messages } from "./conversations.js";

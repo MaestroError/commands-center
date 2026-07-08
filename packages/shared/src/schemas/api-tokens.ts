@@ -52,7 +52,45 @@ export const createApiTokenResponseSchema = z.object({
   record: apiTokenRecordSchema,
 });
 
+// --- Per-token execution audit (Phase 5) -----------------------------------
+
+export const apiTokenActivitySurfaceSchema = z.enum(["rest", "mcp"]);
+export const apiTokenActivityOutcomeSchema = z.enum(["ok", "error"]);
+
+export const apiTokenActivityEntrySchema = z.object({
+  id: z.string(),
+  tokenId: z.string(),
+  // Snapshot of the token name at request time (survives rename/revoke).
+  tokenName: z.string(),
+  surface: apiTokenActivitySurfaceSchema,
+  // REST: "GET /api/public/v1/tasks/:id"; MCP: the tool name.
+  action: z.string(),
+  capabilityId: z.string().nullable(),
+  targetKind: z.string().nullable(),
+  targetId: z.string().nullable(),
+  // Redacted + size-capped summary of what was sent (never raw file bytes).
+  inputSummary: z.unknown().optional(),
+  outcome: apiTokenActivityOutcomeSchema,
+  statusCode: z.number().int().nullable(),
+  errorMessage: z.string().nullable(),
+  createdAt: z.number(),
+});
+
+export const apiTokenActivityListResponseSchema = z.object({
+  entries: z.array(apiTokenActivityEntrySchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const apiTokenAuditSettingsSchema = z.object({
+  retentionWeeks: z.number().int().min(1).max(20).default(4),
+});
+
 export type ApiTokenScope = z.infer<typeof apiTokenScopeSchema>;
+export type ApiTokenActivitySurface = z.infer<typeof apiTokenActivitySurfaceSchema>;
+export type ApiTokenActivityOutcome = z.infer<typeof apiTokenActivityOutcomeSchema>;
+export type ApiTokenActivityEntry = z.infer<typeof apiTokenActivityEntrySchema>;
+export type ApiTokenActivityListResponse = z.infer<typeof apiTokenActivityListResponseSchema>;
+export type ApiTokenAuditSettings = z.infer<typeof apiTokenAuditSettingsSchema>;
 export type ApiTokenPermissions = z.infer<typeof apiTokenPermissionsSchema>;
 export type ApiTokenRecord = z.infer<typeof apiTokenRecordSchema>;
 export type ApiTokenListResponse = z.infer<typeof apiTokenListResponseSchema>;

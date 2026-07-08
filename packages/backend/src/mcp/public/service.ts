@@ -7,7 +7,13 @@ import type { Logger } from "pino";
 import type { ApiTokenRecord } from "@cc/shared/schemas";
 
 import { tokenHasCapability } from "../../services/api-token-service.js";
-import { GET_TASK_RESULT_CAPABILITY, type PublicMcpToolDefinition } from "./registry.js";
+import type { TokenAuditService } from "../../services/token-audit-service.js";
+import {
+  GET_TASK_RESULT_CAPABILITY,
+  type PublicMcpToolResult,
+  type RegisterableMcpTool,
+  type PublicMcpToolDefinition,
+} from "./registry.js";
 import type { PublicMcpTemplateToolBuilder } from "./template-tools.js";
 
 const SERVER_NAME = "commandscenter-public";
@@ -31,6 +37,7 @@ export function createPublicMcpService(options: {
   logger: Logger;
   registry: readonly PublicMcpToolDefinition[];
   templateToolBuilder?: PublicMcpTemplateToolBuilder;
+  auditService?: TokenAuditService;
 }) {
   return {
     async handlePost(context: RouteContext): Promise<void> {
@@ -105,7 +112,7 @@ export function createPublicMcpService(options: {
           inputSchema: tool.inputSchema,
           outputSchema: tool.outputSchema,
         },
-        (args: unknown) => tool.execute(args),
+        (args: unknown) => auditedExecute(tool, args, token),
       );
     }
 
@@ -113,6 +120,53 @@ export function createPublicMcpService(options: {
     await server.connect(transport);
     return { transport, server };
   }
+
+  // Run a tool and record the call in the per-token audit log (best-effort).
+  async function auditedExecute(
+    tool: RegisterableMcpTool | PublicMcpToolDefinition,
+    args: unknown,
+    token: ApiTokenRecord,
+  ): Promise<PublicMcpToolResult> {
+    const result = await tool.execute(args);
+    const target = deriveMcpTarget(args);
+
+    void options.auditService?.record({
+      tokenId: token.id,
+      tokenName: token.name,
+      surface: "mcp",
+      action: tool.name,
+      capabilityId: "capability" in tool ? tool.capability : null,
+      targetKind: target.kind,
+      targetId: target.id,
+      input: args,
+      outcome: result.isError ? "error" : "ok",
+      errorMessage: result.isError ? extractErrorMessage(result) : null,
+    });
+
+    return result;
+  }
+}
+
+function deriveMcpTarget(args: unknown): { kind: string | null; id: string | null } {
+  const record = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+  if (typeof record["runId"] === "string") {
+    return { kind: "run", id: record["runId"] };
+  }
+  if (typeof record["taskId"] === "string") {
+    return { kind: "task", id: record["taskId"] };
+  }
+  if (typeof record["templateId"] === "string") {
+    return { kind: "template", id: record["templateId"] };
+  }
+  return { kind: null, id: null };
+}
+
+function extractErrorMessage(result: PublicMcpToolResult): string | null {
+  const structured = result.structuredContent as { error?: { message?: unknown } } | undefined;
+  if (typeof structured?.error?.message === "string") {
+    return structured.error.message;
+  }
+  return result.content[0]?.text ?? null;
 }
 
 function writeText(reply: ServerResponse, statusCode: number, message: string): void {

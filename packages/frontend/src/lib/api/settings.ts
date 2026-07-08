@@ -5,6 +5,8 @@ import {
   activitySchema,
   type Activity,
   type ActivityListResponse,
+  apiTokenActivityListResponseSchema,
+  apiTokenAuditSettingsSchema,
   apiTokenListResponseSchema,
   apiTokenRecordSchema,
   systemPromptBodySchema,
@@ -22,6 +24,8 @@ import {
   publicMcpSettingsSchema,
   taskRunMonitorSettingsSchema,
   updateArtifactSharingPreferencesInputSchema,
+  type ApiTokenActivityListResponse,
+  type ApiTokenAuditSettings,
   type ApiTokenListResponse,
   type ApiTokenPermissions,
   type ApiTokenRecord,
@@ -120,6 +124,41 @@ export async function updateApiToken(
       method: "PUT",
       body: updateApiTokenInputSchema.parse(input),
     },
+  );
+}
+
+export async function getTokenActivity(
+  id: string,
+  query: { limit?: number; cursor?: string } = {},
+): Promise<ApiTokenActivityListResponse> {
+  const params = new URLSearchParams();
+  if (query.limit !== undefined) {
+    params.set("limit", String(query.limit));
+  }
+  if (query.cursor) {
+    params.set("cursor", query.cursor);
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<ApiTokenActivityListResponse>(
+    `/api/api-tokens/${encodeURIComponent(id)}/activity${suffix}`,
+    apiTokenActivityListResponseSchema,
+  );
+}
+
+export async function getTokenAuditSettings(): Promise<ApiTokenAuditSettings> {
+  return requestJson<ApiTokenAuditSettings>(
+    "/api/api-tokens/audit-settings",
+    apiTokenAuditSettingsSchema,
+  );
+}
+
+export async function updateTokenAuditSettings(
+  input: ApiTokenAuditSettings,
+): Promise<ApiTokenAuditSettings> {
+  return requestJson<ApiTokenAuditSettings>(
+    "/api/api-tokens/audit-settings",
+    apiTokenAuditSettingsSchema,
+    { method: "PUT", body: apiTokenAuditSettingsSchema.parse(input) },
   );
 }
 

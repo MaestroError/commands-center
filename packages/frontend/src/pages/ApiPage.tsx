@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Check, Clipboard, KeyRound, Pencil, Plus, ShieldCheck, X } from "lucide-react";
+import { Check, Clipboard, KeyRound, Pencil, Plus, ScrollText, ShieldCheck, X } from "lucide-react";
 
 import {
   API_TOKEN_CAPABILITIES,
   API_TOKEN_CAPABILITY_GROUPS,
   API_TOKEN_PRESETS,
+  type ApiTokenActivityEntry,
   type ApiTokenCapabilityGroup,
   type ApiTokenPermissions,
   type ApiTokenRecord,
@@ -15,6 +16,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageSt
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
 import { EndpointsTab } from "@/components/api/EndpointsTab";
+import { getTokenActivity, getTokenAuditSettings, updateTokenAuditSettings } from "@/lib/api";
 import { useApiTokenMutations, useApiTokensQuery } from "@/hooks/use-api-tokens-query";
 import { useTaskTemplatesQuery } from "@/hooks/use-tasks-query";
 
@@ -65,6 +67,7 @@ function TokensTab() {
   const [form, setForm] = useState<FormState>({ mode: "closed" });
   const [revealedToken, setRevealedToken] = useState<CreateApiTokenResponse>();
   const [revokeTarget, setRevokeTarget] = useState<ApiTokenRecord>();
+  const [activityTarget, setActivityTarget] = useState<ApiTokenRecord>();
   const tokens = tokensQuery.data?.tokens ?? [];
   const activeTokens = tokens.filter((token) => token.revokedAt === null);
   const error = tokensQuery.error instanceof Error ? tokensQuery.error.message : undefined;
@@ -158,9 +161,16 @@ function TokensTab() {
               token={token}
               onEdit={() => setForm({ mode: "edit", token })}
               onRevoke={() => setRevokeTarget(token)}
+              onViewActivity={() => setActivityTarget(token)}
             />
           ))}
         </div>
+      ) : null}
+
+      <RetentionControl />
+
+      {activityTarget ? (
+        <TokenActivityDialog token={activityTarget} onClose={() => setActivityTarget(undefined)} />
       ) : null}
 
       {revokeTarget ? (
@@ -468,6 +478,7 @@ function TokenCard(props: {
   busy: boolean;
   onEdit: () => void;
   onRevoke: () => void;
+  onViewActivity: () => void;
 }) {
   const revoked = props.token.revokedAt !== null;
 
@@ -503,27 +514,37 @@ function TokenCard(props: {
             />
           </dl>
         </div>
-        {!revoked ? (
-          <div className="flex gap-2 justify-self-start lg:justify-self-end">
-            <button
-              className="cc-button cc-button-secondary inline-flex items-center gap-2"
-              disabled={props.busy}
-              onClick={props.onEdit}
-              type="button"
-            >
-              <Pencil className="h-4 w-4" />
-              Edit
-            </button>
-            <button
-              className="cc-button cc-button-danger"
-              disabled={props.busy}
-              onClick={props.onRevoke}
-              type="button"
-            >
-              Revoke
-            </button>
-          </div>
-        ) : null}
+        <div className="flex gap-2 justify-self-start lg:justify-self-end">
+          <button
+            className="cc-button cc-button-secondary inline-flex items-center gap-2"
+            onClick={props.onViewActivity}
+            type="button"
+          >
+            <ScrollText className="h-4 w-4" />
+            Activity
+          </button>
+          {!revoked ? (
+            <>
+              <button
+                className="cc-button cc-button-secondary inline-flex items-center gap-2"
+                disabled={props.busy}
+                onClick={props.onEdit}
+                type="button"
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </button>
+              <button
+                className="cc-button cc-button-danger"
+                disabled={props.busy}
+                onClick={props.onRevoke}
+                type="button"
+              >
+                Revoke
+              </button>
+            </>
+          ) : null}
+        </div>
       </div>
     </article>
   );
@@ -656,6 +677,184 @@ function summarizePermissions(permissions: ApiTokenPermissions): string[] {
     `${enabled.size} ${enabled.size === 1 ? "permission" : "permissions"}`,
     ...templateBadges,
   ];
+}
+
+function RetentionControl() {
+  const [weeks, setWeeks] = useState(4);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getTokenAuditSettings()
+      .then((settings) => {
+        if (!cancelled) {
+          setWeeks(settings.retentionWeeks);
+          setLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!loaded) {
+    return null;
+  }
+
+  const invalid = !Number.isInteger(weeks) || weeks < 1 || weeks > 20;
+
+  return (
+    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
+      <label className="grid gap-1 text-sm text-text-primary">
+        <span className="font-medium">Activity retention (weeks)</span>
+        <input
+          className="cc-input w-32"
+          data-testid="token-retention-input"
+          disabled={saving}
+          max={20}
+          min={1}
+          onChange={(event) => setWeeks(Number(event.target.value))}
+          type="number"
+          value={weeks}
+        />
+      </label>
+      <span className="mb-2 text-xs text-text-secondary">
+        Per-token request history is pruned after this window (1–20 weeks).
+      </span>
+      <button
+        className="cc-button cc-button-secondary mb-1 ml-auto"
+        disabled={saving || invalid}
+        onClick={() => {
+          setSaving(true);
+          void updateTokenAuditSettings({ retentionWeeks: weeks })
+            .then((settings) => setWeeks(settings.retentionWeeks))
+            .finally(() => setSaving(false));
+        }}
+        type="button"
+      >
+        {saving ? "Saving..." : "Save"}
+      </button>
+    </div>
+  );
+}
+
+function TokenActivityDialog(props: { token: ApiTokenRecord; onClose: () => void }) {
+  const [entries, setEntries] = useState<ApiTokenActivityEntry[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+
+  function load(nextCursor?: string): void {
+    setLoading(true);
+    setError(undefined);
+    void getTokenActivity(props.token.id, { limit: 25, cursor: nextCursor })
+      .then((page) => {
+        setEntries((current) => (nextCursor ? [...current, ...page.entries] : page.entries));
+        setCursor(page.nextCursor);
+      })
+      .catch((nextError: unknown) =>
+        setError(nextError instanceof Error ? nextError.message : "Failed to load activity."),
+      )
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.token.id]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6"
+      onClick={props.onClose}
+    >
+      <section
+        className="cc-panel flex max-h-[85vh] w-full max-w-3xl flex-col p-6"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-text-primary">Activity — {props.token.name}</h2>
+          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+            Close
+          </button>
+        </div>
+        <p className="mt-1 text-sm text-text-secondary">
+          Requests made with this token (most recent first).
+        </p>
+
+        {error ? <ErrorState description={error} title="Could not load activity." /> : null}
+
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+          {entries.length === 0 && !loading ? (
+            <EmptyState
+              description="This token has not made any requests yet."
+              title="No activity"
+            />
+          ) : (
+            <ul className="grid gap-2" data-testid="token-activity-list">
+              {entries.map((entry) => (
+                <li
+                  className="rounded-lg border border-border bg-app-bg p-3 text-sm"
+                  key={entry.id}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={[
+                        "rounded-full border px-2 py-0.5 text-xs font-medium",
+                        entry.outcome === "error"
+                          ? "border-danger/30 bg-danger/10 text-danger"
+                          : "border-success/30 bg-success/10 text-success",
+                      ].join(" ")}
+                    >
+                      {entry.outcome}
+                    </span>
+                    <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
+                      {entry.surface}
+                    </span>
+                    <code className="font-mono text-text-primary">{entry.action}</code>
+                    {entry.statusCode !== null ? (
+                      <span className="text-xs text-text-muted">{entry.statusCode}</span>
+                    ) : null}
+                    <span className="ml-auto text-xs text-text-muted">
+                      {formatDate(entry.createdAt)}
+                    </span>
+                  </div>
+                  {entry.targetId ? (
+                    <p className="mt-1 text-xs text-text-secondary">
+                      {entry.targetKind}: <code className="font-mono">{entry.targetId}</code>
+                    </p>
+                  ) : null}
+                  {entry.inputSummary !== undefined ? (
+                    <pre className="mt-2 max-h-40 overflow-auto rounded bg-surface p-2 text-xs leading-5 text-text-secondary">
+                      {JSON.stringify(entry.inputSummary, null, 2)}
+                    </pre>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          {loading ? <LoadingState testId="token-activity-loading" /> : null}
+        </div>
+
+        {cursor ? (
+          <div className="mt-4 flex justify-center">
+            <button
+              className="cc-button cc-button-secondary"
+              disabled={loading}
+              onClick={() => load(cursor)}
+              type="button"
+            >
+              Load more
+            </button>
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
 }
 
 function formatDate(timestamp: number): string {

@@ -14,6 +14,8 @@ import {
 import { ApiPage } from "./ApiPage";
 import {
   createApiToken,
+  getTokenActivity,
+  getTokenAuditSettings,
   listApiTokens,
   listTaskTemplates,
   revokeApiToken,
@@ -29,6 +31,9 @@ vi.mock("@/lib/api", async () => {
     createApiToken: vi.fn(),
     updateApiToken: vi.fn(),
     revokeApiToken: vi.fn(),
+    getTokenActivity: vi.fn(),
+    getTokenAuditSettings: vi.fn(),
+    updateTokenAuditSettings: vi.fn(),
   };
 });
 
@@ -93,6 +98,10 @@ beforeEach(() => {
   vi.mocked(listApiTokens).mockReset();
   vi.mocked(listTaskTemplates).mockReset();
   vi.mocked(listTaskTemplates).mockResolvedValue([]);
+  vi.mocked(getTokenAuditSettings).mockReset();
+  vi.mocked(getTokenAuditSettings).mockResolvedValue({ retentionWeeks: 4 });
+  vi.mocked(getTokenActivity).mockReset();
+  vi.mocked(getTokenActivity).mockResolvedValue({ entries: [], nextCursor: null });
   vi.mocked(createApiToken).mockReset();
   vi.mocked(updateApiToken).mockReset();
   vi.mocked(revokeApiToken).mockReset();
@@ -293,6 +302,39 @@ describe("ApiPage", () => {
     await waitFor(() =>
       expect(screen.queryByPlaceholderText("Release automation")).not.toBeInTheDocument(),
     );
+  });
+
+  it("opens a token's activity dialog and lists its entries", async () => {
+    vi.mocked(listApiTokens).mockResolvedValue({
+      tokens: [makeToken({ id: "tok-1", name: "Audited" })],
+    });
+    vi.mocked(getTokenActivity).mockResolvedValue({
+      entries: [
+        {
+          id: "act-1",
+          tokenId: "tok-1",
+          tokenName: "Audited",
+          surface: "rest",
+          action: "GET /api/public/v1/tasks",
+          capabilityId: "list_tasks",
+          targetKind: null,
+          targetId: null,
+          inputSummary: undefined,
+          outcome: "ok",
+          statusCode: 200,
+          errorMessage: null,
+          createdAt: Date.now(),
+        },
+      ],
+      nextCursor: null,
+    });
+    renderPage();
+
+    await screen.findByText("Audited");
+    fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+
+    expect(await screen.findByText("GET /api/public/v1/tasks")).toBeInTheDocument();
+    expect(getTokenActivity).toHaveBeenCalledWith("tok-1", expect.objectContaining({ limit: 25 }));
   });
 
   it("revokes a token through the confirmation dialog", async () => {
