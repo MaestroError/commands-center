@@ -5,6 +5,7 @@ import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { createPublicMcpRegistry } from "../mcp/public/registry.js";
 import { createPublicMcpRunService } from "../mcp/public/run-service.js";
 import { createPublicMcpService } from "../mcp/public/service.js";
+import { createPublicMcpTemplateToolBuilder } from "../mcp/public/template-tools.js";
 import { createConversationService } from "../services/conversation-service.js";
 import { createPublicTaskApiService } from "../services/public-task-api-service.js";
 import { createSpecialistService } from "../services/specialist-service.js";
@@ -61,7 +62,17 @@ export function registerPublicMcpRoutes(server: AppServer, context: RuntimeConte
   });
   const runService = createPublicMcpRunService({ taskService });
   const registry = createPublicMcpRegistry({ service: publicTaskApiService, runService });
-  const service = createPublicMcpService({ logger: context.logger, registry });
+  const templateToolBuilder = createPublicMcpTemplateToolBuilder({
+    taskService,
+    executionService,
+    taskContextAttachmentService,
+    runService,
+  });
+  const service = createPublicMcpService({
+    logger: context.logger,
+    registry,
+    templateToolBuilder,
+  });
 
   async function dispatch(
     kind: "post" | "get" | "delete",

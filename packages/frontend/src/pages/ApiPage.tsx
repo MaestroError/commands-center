@@ -16,6 +16,9 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
 import { EndpointsTab } from "@/components/api/EndpointsTab";
 import { useApiTokenMutations, useApiTokensQuery } from "@/hooks/use-api-tokens-query";
+import { useTaskTemplatesQuery } from "@/hooks/use-tasks-query";
+
+type TemplateOption = { id: string; title: string };
 
 const GROUP_LABELS: Record<ApiTokenCapabilityGroup, string> = {
   templates: "Task Templates",
@@ -54,7 +57,11 @@ type FormState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; token
 
 function TokensTab() {
   const tokensQuery = useApiTokensQuery();
+  const templatesQuery = useTaskTemplatesQuery();
   const mutations = useApiTokenMutations();
+  const templateOptions: TemplateOption[] = (templatesQuery.data ?? [])
+    .filter((template) => template.mcpConfig.exposeAsTool)
+    .map((template) => ({ id: template.id, title: template.title }));
   const [form, setForm] = useState<FormState>({ mode: "closed" });
   const [revealedToken, setRevealedToken] = useState<CreateApiTokenResponse>();
   const [revokeTarget, setRevokeTarget] = useState<ApiTokenRecord>();
@@ -98,6 +105,7 @@ function TokensTab() {
         <TokenForm
           busy={mutations.create.isPending}
           submitLabel="Create token"
+          templateOptions={templateOptions}
           title="New token"
           onCancel={() => setForm({ mode: "closed" })}
           onSubmit={async (input) => {
@@ -114,6 +122,7 @@ function TokensTab() {
           initialName={form.token.name}
           initialPermissions={form.token.permissions}
           submitLabel="Save changes"
+          templateOptions={templateOptions}
           title={`Edit ${form.token.name}`}
           onCancel={() => setForm({ mode: "closed" })}
           onSubmit={async (input) => {
@@ -178,6 +187,7 @@ function TokenForm(props: {
   initialName?: string;
   initialPermissions?: ApiTokenPermissions;
   submitLabel: string;
+  templateOptions: TemplateOption[];
   title: string;
   onSubmit: (input: { name: string; permissions: ApiTokenPermissions }) => Promise<void>;
   onCancel: () => void;
@@ -186,12 +196,12 @@ function TokenForm(props: {
   const [capabilities, setCapabilities] = useState<Set<string>>(
     () => new Set(props.initialPermissions?.capabilities ?? []),
   );
-  // Templates are scaffolded on the token model but not yet editable here (Phase 3).
-  const templates = props.initialPermissions?.templates ?? [];
+  const [templates, setTemplates] = useState<Set<string>>(
+    () => new Set(props.initialPermissions?.templates ?? []),
+  );
   const [error, setError] = useState<string>();
   const trimmedName = name.trim();
-  const canSubmit =
-    trimmedName.length > 0 && capabilities.size + templates.length > 0 && !props.busy;
+  const canSubmit = trimmedName.length > 0 && capabilities.size + templates.size > 0 && !props.busy;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -205,11 +215,23 @@ function TokenForm(props: {
     try {
       await props.onSubmit({
         name: trimmedName,
-        permissions: { capabilities: [...capabilities], templates },
+        permissions: { capabilities: [...capabilities], templates: [...templates] },
       });
     } catch (nextError) {
       setError(readError(nextError));
     }
+  }
+
+  function toggleTemplate(id: string, on: boolean) {
+    setTemplates((current) => {
+      const next = new Set(current);
+      if (on) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
   }
 
   return (
@@ -233,6 +255,32 @@ function TokenForm(props: {
         </label>
         <PermissionSelector value={capabilities} onChange={setCapabilities} />
       </div>
+
+      {props.templateOptions.length > 0 ? (
+        <fieldset
+          className="mt-4 grid gap-2 rounded-lg border border-border bg-app-bg p-3 text-sm"
+          data-testid="token-templates-section"
+        >
+          <legend className="px-1 font-medium text-text-primary">Template tools</legend>
+          <p className="text-xs text-text-secondary">
+            Choose which task templates this token may run as MCP tools.
+          </p>
+          {props.templateOptions.map((template) => (
+            <label
+              className="flex cursor-pointer items-center gap-3 text-text-secondary"
+              key={template.id}
+            >
+              <input
+                checked={templates.has(template.id)}
+                data-testid={`token-template-${template.id}`}
+                onChange={(event) => toggleTemplate(template.id, event.target.checked)}
+                type="checkbox"
+              />
+              <span className="text-text-primary">{template.title}</span>
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
 
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
 
@@ -583,9 +631,14 @@ function RevokeTokenDialog(props: {
 // covered by fully-on presets.
 function summarizePermissions(permissions: ApiTokenPermissions): string[] {
   const enabled = new Set(permissions.capabilities);
+  const templateCount = permissions.templates.length;
+  const templateBadges =
+    templateCount > 0
+      ? [`${templateCount} template ${templateCount === 1 ? "tool" : "tools"}`]
+      : [];
 
   if (enabled.size === 0) {
-    return [];
+    return templateBadges;
   }
 
   const fullyOnGroups = API_TOKEN_CAPABILITY_GROUPS.filter((group) =>
@@ -596,10 +649,13 @@ function summarizePermissions(permissions: ApiTokenPermissions): string[] {
   const everyEnabledCovered = [...enabled].every((id) => covered.has(id));
 
   if (fullyOnGroups.length > 0 && everyEnabledCovered) {
-    return fullyOnGroups.map((group) => GROUP_LABELS[group]);
+    return [...fullyOnGroups.map((group) => GROUP_LABELS[group]), ...templateBadges];
   }
 
-  return [`${enabled.size} ${enabled.size === 1 ? "permission" : "permissions"}`];
+  return [
+    `${enabled.size} ${enabled.size === 1 ? "permission" : "permissions"}`,
+    ...templateBadges,
+  ];
 }
 
 function formatDate(timestamp: number): string {

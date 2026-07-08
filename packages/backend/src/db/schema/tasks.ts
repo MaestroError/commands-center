@@ -26,6 +26,10 @@ export const task_templates = sqliteTable(
     status: text("status").notNull(),
     recurrence_json: text("recurrence_json"),
     permission_profile_json: text("permission_profile_json"),
+    // Per-template MCP tool config (JSON). Nullable: a null value means the
+    // template predates the MCP-config model and resolves to a title-derived
+    // default at read time.
+    mcp_config_json: text("mcp_config_json"),
     enabled: integer("enabled", { mode: "boolean" }).notNull(),
     archived: integer("archived", { mode: "boolean" }).notNull(),
     latest_final_message: text("latest_final_message"),

@@ -12,18 +12,49 @@ import {
 } from "@cc/shared/schemas";
 
 import { ApiPage } from "./ApiPage";
-import { createApiToken, listApiTokens, revokeApiToken, updateApiToken } from "@/lib/api";
+import {
+  createApiToken,
+  listApiTokens,
+  listTaskTemplates,
+  revokeApiToken,
+  updateApiToken,
+} from "@/lib/api";
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof ApiModule>("@/lib/api");
   return {
     ...actual,
     listApiTokens: vi.fn(),
+    listTaskTemplates: vi.fn(),
     createApiToken: vi.fn(),
     updateApiToken: vi.fn(),
     revokeApiToken: vi.fn(),
   };
 });
+
+function makeTemplate(id: string, title: string, exposeAsTool = true) {
+  return {
+    id,
+    defaultAgentId: "agent-1",
+    fallbackModels: [],
+    title,
+    description: "",
+    todos: [],
+    mcpConfig: {
+      exposeAsTool,
+      toolName: id.replace(/-/g, "_"),
+      toolDescription: "",
+      textFieldDescription: "",
+      allowFiles: true,
+      filesFieldDescription: "",
+      asyncEnabled: false,
+      artifacts: { displayableUrlEnabled: true, downloadableUrlEnabled: true },
+    },
+    enabled: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
 
 const ALL_CAPABILITY_IDS = API_TOKEN_CAPABILITIES.map((capability) => capability.id);
 
@@ -60,6 +91,8 @@ function renderPage(): void {
 
 beforeEach(() => {
   vi.mocked(listApiTokens).mockReset();
+  vi.mocked(listTaskTemplates).mockReset();
+  vi.mocked(listTaskTemplates).mockResolvedValue([]);
   vi.mocked(createApiToken).mockReset();
   vi.mocked(updateApiToken).mockReset();
   vi.mocked(revokeApiToken).mockReset();
@@ -166,6 +199,39 @@ describe("ApiPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await waitFor(() => expect(screen.queryByText("Copy this token now")).not.toBeInTheDocument());
+  });
+
+  it("lets a token enable template tools", async () => {
+    vi.mocked(listApiTokens).mockResolvedValue({ tokens: [] });
+    vi.mocked(listTaskTemplates).mockResolvedValue([
+      makeTemplate("tmpl-1", "Create LinkedIn Post"),
+    ]);
+    vi.mocked(createApiToken).mockResolvedValue({
+      token: "cc_secret_value",
+      record: makeToken({
+        id: "tok-new",
+        permissions: { capabilities: [], templates: ["tmpl-1"] },
+      }),
+    });
+    renderPage();
+
+    await screen.findByText("No API tokens yet");
+    fireEvent.click(screen.getByRole("button", { name: "Create token" }));
+
+    fireEvent.change(screen.getByPlaceholderText("Release automation"), {
+      target: { value: "Template token" },
+    });
+    fireEvent.click(await screen.findByTestId("token-template-tmpl-1"));
+    fireEvent.click(screen.getByTestId("token-submit"));
+
+    await waitFor(() =>
+      expect(createApiToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Template token",
+          permissions: expect.objectContaining({ templates: ["tmpl-1"] }),
+        }),
+      ),
+    );
   });
 
   it("edits a token's permissions in place", async () => {

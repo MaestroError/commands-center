@@ -45,6 +45,7 @@ import {
   deriveSubtaskStatus,
   deriveTaskRunRuntimeState,
 } from "./status.js";
+import { parseMcpConfigOrDefault } from "./template-mcp-config.js";
 
 export function generatedTasksForTemplateFilter(templateId: string) {
   return and(
@@ -156,6 +157,7 @@ export function mapTaskTemplate(row: typeof task_templates.$inferSelect): TaskTe
       ? recurringTaskScheduleSchema.parse(JSON.parse(row.recurrence_json))
       : undefined,
     permissionProfile: parseOptional(row.permission_profile_json, taskPermissionProfileSchema),
+    mcpConfig: parseMcpConfigOrDefault(row.mcp_config_json, row.title),
     enabled: row.enabled,
     latestFinalMessage: row.latest_final_message ?? undefined,
     latestTaskId: row.latest_task_id ?? undefined,

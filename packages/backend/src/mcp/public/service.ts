@@ -8,6 +8,7 @@ import type { ApiTokenRecord } from "@cc/shared/schemas";
 
 import { tokenHasCapability } from "../../services/api-token-service.js";
 import type { PublicMcpToolDefinition } from "./registry.js";
+import type { PublicMcpTemplateToolBuilder } from "./template-tools.js";
 
 const SERVER_NAME = "commandscenter-public";
 const SERVER_VERSION = "0.0.0";
@@ -29,6 +30,7 @@ export type PublicMcpService = ReturnType<typeof createPublicMcpService>;
 export function createPublicMcpService(options: {
   logger: Logger;
   registry: readonly PublicMcpToolDefinition[];
+  templateToolBuilder?: PublicMcpTemplateToolBuilder;
 }) {
   return {
     async handlePost(context: RouteContext): Promise<void> {
@@ -73,8 +75,13 @@ export function createPublicMcpService(options: {
   async function createSession(
     token: ApiTokenRecord,
   ): Promise<{ transport: StreamableHTTPServerTransport; server: McpServer }> {
-    // Per-token tool listing: only tools whose capability the token grants.
-    const tools = options.registry.filter((tool) => tokenHasCapability(token, tool.capability));
+    // Per-token tool listing: static tools whose capability the token grants,
+    // plus the per-template tools the token enables (pre-filtered by the builder).
+    const staticTools = options.registry.filter((tool) =>
+      tokenHasCapability(token, tool.capability),
+    );
+    const templateTools = (await options.templateToolBuilder?.buildForToken(token)) ?? [];
+    const tools = [...staticTools, ...templateTools];
 
     const server = new McpServer(
       { name: SERVER_NAME, version: SERVER_VERSION },

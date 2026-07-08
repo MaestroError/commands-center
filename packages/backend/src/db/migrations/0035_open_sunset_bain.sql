@@ -1,0 +1,1 @@
+ALTER TABLE `task_templates` ADD `mcp_config_json` text;

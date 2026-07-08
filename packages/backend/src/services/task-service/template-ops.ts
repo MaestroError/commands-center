@@ -29,6 +29,11 @@ import {
   taskGenerationSourceLetter,
 } from "./mappers.js";
 import { readTemplateNextOccurrenceAt, writeTemplateFile } from "./template-files.js";
+import {
+  assertMcpToolNameAvailable,
+  parseMcpConfigOrDefault,
+  resolveMcpConfig,
+} from "./template-mcp-config.js";
 
 export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServiceRef) {
   const {
@@ -54,6 +59,8 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
         parsed.model ?? undefined,
       );
       const recurrence = parsed.recurrence ?? null;
+      const mcpConfig = resolveMcpConfig({ title: parsed.title, input: parsed.mcpConfig });
+      assertMcpToolNameAvailable(mcpConfig.toolName, await loadTakenToolNames());
 
       // File-first: persist to configuration/task-templates/<id>.json.
       await writeTemplateFile(options.config, {
@@ -66,6 +73,7 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
         todos,
         recurrence,
         permissionProfile: parsed.permissionProfile ?? null,
+        mcpConfig,
         enabled,
         createdAt: timestamp.toISOString(),
         updatedAt: timestamp.toISOString(),
@@ -85,6 +93,7 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
           status: enabled ? "enabled" : "disabled",
           recurrence_json: recurrence ? JSON.stringify(recurrence) : null,
           permission_profile_json: stringifyOptional(parsed.permissionProfile),
+          mcp_config_json: JSON.stringify(mcpConfig),
           enabled,
           archived: false,
           latest_final_message: null,
@@ -151,6 +160,13 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
         parsed.fallbackModels ?? parseFallbackModels(existing.fallback_models),
         model ?? undefined,
       );
+      const nextTitle = parsed.title ?? existing.title;
+      const mcpConfig = resolveMcpConfig({
+        title: nextTitle,
+        input: parsed.mcpConfig,
+        existing: parseMcpConfigOrDefault(existing.mcp_config_json, existing.title),
+      });
+      assertMcpToolNameAvailable(mcpConfig.toolName, await loadTakenToolNames(id));
 
       // File-first: update configuration/task-templates/<id>.json.
       await writeTemplateFile(options.config, {
@@ -158,7 +174,7 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
         defaultAgentId,
         model,
         fallbackModels,
-        title: parsed.title ?? existing.title,
+        title: nextTitle,
         description: parsed.description ?? existing.description,
         todos,
         recurrence,
@@ -166,6 +182,7 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
           parsed.permissionProfile === undefined
             ? (parseOptional(existing.permission_profile_json, taskPermissionProfileSchema) ?? null)
             : (parsed.permissionProfile ?? null),
+        mcpConfig,
         enabled,
         createdAt: existing.created_at.toISOString(),
         updatedAt: timestamp.toISOString(),
@@ -187,6 +204,7 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
             parsed.permissionProfile === undefined
               ? existing.permission_profile_json
               : stringifyOptional(parsed.permissionProfile),
+          mcp_config_json: JSON.stringify(mcpConfig),
           enabled,
           next_occurrence_at: nextOccurrenceAt,
           updated_at: timestamp,
@@ -312,4 +330,22 @@ export function createTaskTemplateOps(ctx: TaskServiceContext, service: TaskServ
       return mapTask(row);
     },
   };
+
+  // Effective MCP tool names of all other non-deleted templates, for collision
+  // checks on create/edit.
+  async function loadTakenToolNames(excludeId?: string): Promise<Set<string>> {
+    const rows = await options.db.query.task_templates.findMany({
+      where: (table, operators) => operators.isNull(table.deleted_at),
+      columns: { id: true, title: true, mcp_config_json: true },
+    });
+
+    const names = new Set<string>();
+    for (const row of rows) {
+      if (excludeId && row.id === excludeId) {
+        continue;
+      }
+      names.add(parseMcpConfigOrDefault(row.mcp_config_json, row.title).toolName);
+    }
+    return names;
+  }
 }

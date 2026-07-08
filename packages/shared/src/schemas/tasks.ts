@@ -8,6 +8,10 @@ import {
 } from "./specialists.js";
 import { conversationDetailSchema } from "./conversations.js";
 import { artifactSchema } from "./artifacts.js";
+import {
+  taskTemplateMcpConfigSchema,
+  taskTemplateMcpConfigInputSchema,
+} from "./task-template-mcp.js";
 
 const looseRecordSchema = z.record(z.string(), z.unknown());
 
@@ -446,6 +450,7 @@ export const taskTemplateSchema = z.object({
   todos: z.array(taskTodoSchema),
   recurrence: recurringTaskScheduleSchema.optional(),
   permissionProfile: taskPermissionProfileSchema.optional(),
+  mcpConfig: taskTemplateMcpConfigSchema,
   enabled: z.boolean(),
   latestFinalMessage: z.string().optional(),
   latestTaskId: z.string().min(1).optional(),
@@ -472,6 +477,7 @@ export const createTaskTemplateInputSchema = z.object({
   todos: z.array(taskTodoInputSchema).default([]),
   recurrence: recurringTaskScheduleSchema.nullish(),
   permissionProfile: taskPermissionProfileSchema.optional(),
+  mcpConfig: taskTemplateMcpConfigInputSchema.optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -484,6 +490,7 @@ export const updateTaskTemplateInputSchema = z.object({
   model: z.string().trim().min(1).nullish(),
   fallbackModels: fallbackModelsBaseSchema.optional(),
   permissionProfile: taskPermissionProfileSchema.optional(),
+  mcpConfig: taskTemplateMcpConfigInputSchema.optional(),
   enabled: z.boolean().optional(),
 });
 

@@ -152,6 +152,11 @@ export function tokenHasCapability(record: ApiTokenRecord, capabilityId: string)
   return record.permissions.capabilities.includes(capabilityId);
 }
 
+/** Whether the token enables a specific template as an MCP tool (Phase 3). */
+export function tokenHasTemplate(record: ApiTokenRecord, templateId: string): boolean {
+  return record.permissions.templates.includes(templateId);
+}
+
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }

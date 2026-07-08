@@ -17,14 +17,20 @@ export type PublicMcpToolResult = {
   isError?: boolean;
 };
 
-export type PublicMcpToolDefinition = {
+// A tool ready to register on the MCP server. Static registry tools add a
+// `capability`; dynamic per-template tools (Phase 3) are pre-filtered by the
+// token's enabled templates and carry no capability.
+export type RegisterableMcpTool = {
   name: string;
-  /** Phase 1 capability id that gates this tool on the calling token. */
-  capability: string;
   description: string;
   inputSchema?: AnySchema;
   outputSchema?: AnySchema;
   execute: (args: unknown) => Promise<PublicMcpToolResult>;
+};
+
+export type PublicMcpToolDefinition = RegisterableMcpTool & {
+  /** Phase 1 capability id that gates this tool on the calling token. */
+  capability: string;
 };
 
 const emptyInputSchema = z.object({}).strict();
@@ -63,7 +69,7 @@ export function createPublicMcpRegistry(deps: {
       description: "List task templates available to trigger (enabled templates only).",
       inputSchema: emptyInputSchema,
       execute: () =>
-        run(async () => {
+        runTool(async () => {
           const templates = await service.listTriggerableTemplates();
           return ok(`Found ${String(templates.length)} template(s).`, { templates });
         }, "Failed to list task templates."),
@@ -74,7 +80,7 @@ export function createPublicMcpRegistry(deps: {
       description: "List specialists so a task can target one.",
       inputSchema: emptyInputSchema,
       execute: () =>
-        run(async () => {
+        runTool(async () => {
           const specialists = await service.listAgents();
           return ok(`Found ${String(specialists.length)} specialist(s).`, { specialists });
         }, "Failed to list specialists."),
@@ -85,7 +91,7 @@ export function createPublicMcpRegistry(deps: {
       description: "List workspace tasks, optionally filtered by status, specialist, or template.",
       inputSchema: listPublicTasksQuerySchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const query = listPublicTasksQuerySchema.parse(args ?? {});
           const tasks = await service.listTasks(query);
           return ok(`Found ${String(tasks.length)} task(s).`, { tasks });
@@ -97,7 +103,7 @@ export function createPublicMcpRegistry(deps: {
       description: "Get a single task. Set expand to 'runs,feedback' to embed them.",
       inputSchema: getTaskInputSchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const { taskId, expand } = getTaskInputSchema.parse(args);
           const task = await service.getTask(taskId, parseExpand(expand));
           if (!task) {
@@ -112,7 +118,7 @@ export function createPublicMcpRegistry(deps: {
       description: "List the runs of a task.",
       inputSchema: taskIdInputSchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const { taskId } = taskIdInputSchema.parse(args);
           const runs = await service.listRuns(taskId);
           if (!runs) {
@@ -127,7 +133,7 @@ export function createPublicMcpRegistry(deps: {
       description: "Get a single run of a task.",
       inputSchema: getTaskRunInputSchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const { taskId, runId } = getTaskRunInputSchema.parse(args);
           const taskRun = await service.getRun(taskId, runId);
           if (!taskRun) {
@@ -144,7 +150,7 @@ export function createPublicMcpRegistry(deps: {
       inputSchema: runIdInputSchema,
       outputSchema: mcpTaskRunResultSchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const { runId } = runIdInputSchema.parse(args);
           const result = await runService.getResult(runId);
           if (!result) {
@@ -159,7 +165,7 @@ export function createPublicMcpRegistry(deps: {
       description: "Read a task's feedback threads and subtask replies.",
       inputSchema: taskIdInputSchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const { taskId } = taskIdInputSchema.parse(args);
           const feedback = await service.listFeedback(taskId);
           if (!feedback) {
@@ -174,7 +180,7 @@ export function createPublicMcpRegistry(deps: {
       description: "Activate a task template so it runs on schedule and accepts triggers.",
       inputSchema: templateIdInputSchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const { templateId } = templateIdInputSchema.parse(args);
           const template = await service.setTemplateEnabled(templateId, true);
           if (!template) {
@@ -189,7 +195,7 @@ export function createPublicMcpRegistry(deps: {
       description: "Deactivate a task template without changing its schedule.",
       inputSchema: templateIdInputSchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const { templateId } = templateIdInputSchema.parse(args);
           const template = await service.setTemplateEnabled(templateId, false);
           if (!template) {
@@ -204,7 +210,7 @@ export function createPublicMcpRegistry(deps: {
       description: "Create a task against a specialist.",
       inputSchema: publicCreateTaskBodySchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const body = publicCreateTaskBodySchema.parse(args);
           const task = await service.createTask(body);
           return ok("Task created.", { task });
@@ -217,7 +223,7 @@ export function createPublicMcpRegistry(deps: {
         "Schedule or reschedule a task for a future time. Send runAt: null to unschedule.",
       inputSchema: scheduleTaskInputSchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const { taskId, runAt } = scheduleTaskInputSchema.parse(args);
           const task = await service.scheduleTask(taskId, { runAt });
           if (!task) {
@@ -234,7 +240,7 @@ export function createPublicMcpRegistry(deps: {
       inputSchema: templateRunInputSchema,
       outputSchema: mcpTaskRunResultSchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const { templateId, text } = templateRunInputSchema.parse(args);
           const outcome = await service.triggerTemplate(templateId, {
             context: text ? { text } : undefined,
@@ -260,7 +266,7 @@ export function createPublicMcpRegistry(deps: {
       inputSchema: taskIdInputSchema,
       outputSchema: mcpTaskRunResultSchema,
       execute: (args) =>
-        run(async () => {
+        runTool(async () => {
           const { taskId } = taskIdInputSchema.parse(args);
           const response = await service.triggerTask(taskId, {});
           if (!response) {
@@ -285,7 +291,7 @@ function parseExpand(expand: string | undefined): Set<string> {
   );
 }
 
-async function run(
+export async function runTool(
   action: () => Promise<PublicMcpToolResult>,
   fallbackMessage: string,
 ): Promise<PublicMcpToolResult> {
@@ -312,7 +318,7 @@ function ok(message: string, structuredContent: Record<string, unknown>): Public
 
 // Run-result tools carry an output schema, so their structuredContent must be the
 // bare result object (not wrapped) to satisfy MCP structured validation.
-function okResult(result: McpTaskRunResult): PublicMcpToolResult {
+export function okResult(result: McpTaskRunResult): PublicMcpToolResult {
   return {
     structuredContent: result,
     content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

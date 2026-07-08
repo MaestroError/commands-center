@@ -246,6 +246,13 @@
       "when": 1783512852458,
       "tag": "0034_typical_quicksilver",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1783523187606,
+      "tag": "0035_open_sunset_bain",
+      "breakpoints": true
     }
   ]
 }

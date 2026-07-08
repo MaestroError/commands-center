@@ -48,6 +48,17 @@ export {
   type McpTaskRunResult,
 } from "./public-mcp.js";
 export {
+  MCP_TOOL_NAME_MAX_LENGTH,
+  RESERVED_MCP_TOOL_NAMES,
+  deriveMcpToolName,
+  isReservedMcpToolName,
+  mcpToolNameSchema,
+  taskTemplateMcpConfigInputSchema,
+  taskTemplateMcpConfigSchema,
+  type TaskTemplateMcpConfig,
+  type TaskTemplateMcpConfigInput,
+} from "./task-template-mcp.js";
+export {
   apiErrorCodeSchema,
   apiErrorResponseSchema,
   apiErrorSchema,
