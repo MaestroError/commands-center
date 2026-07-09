@@ -10,6 +10,7 @@ import { useTaskMutations, useTaskTemplateQuery } from "@/hooks/use-tasks-query"
 import type { CreateTaskTemplateInput, Specialist, TaskTemplate } from "@cc/shared/schemas";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { deriveMcpToolName } from "@cc/shared/schemas";
 import { getTaskTemplateCreationPrefill, useTaskComposerSkills } from "./task-helpers";
 import { FallbackModelsField, WeekdayPicker } from "./TaskFormPage";
 import {
@@ -141,6 +142,7 @@ export function TaskTemplateForm(props: {
             : "Disabled templates keep all settings but never run automatically until re-enabled. You can still Run now manually."}
         </p>
       </section>
+      <McpConfigSection form={form} updateForm={updateForm} />
       <section className="grid min-w-0 gap-3 rounded-xl border border-border bg-surface p-4">
         <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
           <input
@@ -274,6 +276,132 @@ export function TaskTemplateForm(props: {
   function updateForm(patch: Partial<FormState>) {
     setForm((current) => ({ ...current, ...patch }));
   }
+}
+
+function McpConfigSection(props: {
+  form: FormState;
+  updateForm: (patch: Partial<FormState>) => void;
+}) {
+  const { form, updateForm } = props;
+  const derivedName = deriveMcpToolName(form.title || "");
+  const effectiveName = form.mcpToolName.trim() || derivedName;
+
+  return (
+    <section className="grid min-w-0 gap-3 rounded-xl border border-border bg-surface p-4">
+      <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
+        <input
+          checked={form.mcpExposeAsTool}
+          data-testid="template-mcp-expose-input"
+          onChange={(event) => updateForm({ mcpExposeAsTool: event.target.checked })}
+          type="checkbox"
+        />
+        Expose as MCP tool
+      </label>
+      <p className="text-sm text-text-secondary">
+        When on, this template can be offered as a tool on the public MCP server (each token still
+        chooses which templates it may use).
+      </p>
+
+      {form.mcpExposeAsTool ? (
+        <div className="grid gap-3">
+          <label className="grid gap-1 text-sm text-text-secondary">
+            Tool name
+            <input
+              className="cc-input"
+              data-testid="template-mcp-tool-name-input"
+              onChange={(event) => updateForm({ mcpToolName: event.target.value })}
+              placeholder={derivedName || "create_linkedin_post"}
+              value={form.mcpToolName}
+            />
+            <span className="text-xs text-text-muted">
+              MCP tool name: <code className="font-mono">{effectiveName || "—"}</code>. Leave blank
+              to derive it from the title.
+            </span>
+          </label>
+
+          <label className="grid gap-1 text-sm text-text-secondary">
+            Tool description
+            <textarea
+              className="cc-input min-h-16 resize-y"
+              onChange={(event) => updateForm({ mcpToolDescription: event.target.value })}
+              placeholder="Falls back to the task prompt when empty."
+              value={form.mcpToolDescription}
+            />
+          </label>
+
+          <label className="grid gap-1 text-sm text-text-secondary">
+            &ldquo;text&rdquo; argument description
+            <input
+              className="cc-input"
+              onChange={(event) => updateForm({ mcpTextFieldDescription: event.target.value })}
+              placeholder="What the caller should pass as text context."
+              value={form.mcpTextFieldDescription}
+            />
+          </label>
+
+          <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
+            <input
+              checked={form.mcpAllowFiles}
+              data-testid="template-mcp-allow-files-input"
+              onChange={(event) => updateForm({ mcpAllowFiles: event.target.checked })}
+              type="checkbox"
+            />
+            Allow files
+          </label>
+
+          {form.mcpAllowFiles ? (
+            <label className="grid gap-1 text-sm text-text-secondary">
+              &ldquo;files&rdquo; argument description
+              <input
+                className="cc-input"
+                onChange={(event) => updateForm({ mcpFilesFieldDescription: event.target.value })}
+                placeholder="What files the caller should attach."
+                value={form.mcpFilesFieldDescription}
+              />
+            </label>
+          ) : null}
+
+          <label className="flex items-center gap-2 text-sm text-text-primary">
+            <input
+              checked={form.mcpAsyncEnabled}
+              onChange={(event) => updateForm({ mcpAsyncEnabled: event.target.checked })}
+              type="checkbox"
+            />
+            Enable async variant
+          </label>
+          <p className="text-xs text-text-muted">
+            Adds a <code className="font-mono">{effectiveName || "…"}_async</code> tool that returns
+            an id to poll later. Requires the token to allow the result tool (used from a later
+            update).
+          </p>
+
+          <div className="grid gap-2 rounded-lg border border-border bg-app-bg p-3">
+            <span className="text-xs font-medium uppercase tracking-[0.15em] text-text-muted">
+              Artifact URLs
+            </span>
+            <label className="flex items-center gap-2 text-sm text-text-primary">
+              <input
+                checked={form.mcpDisplayableUrlEnabled}
+                onChange={(event) => updateForm({ mcpDisplayableUrlEnabled: event.target.checked })}
+                type="checkbox"
+              />
+              Return displayable URL
+            </label>
+            <label className="flex items-center gap-2 text-sm text-text-primary">
+              <input
+                checked={form.mcpDownloadableUrlEnabled}
+                onChange={(event) =>
+                  updateForm({ mcpDownloadableUrlEnabled: event.target.checked })
+                }
+                type="checkbox"
+              />
+              Return downloadable URL
+            </label>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 export function TaskTemplateFormPage(props: { mode?: "create" | "edit" } = {}) {

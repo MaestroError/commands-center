@@ -1,6 +1,7 @@
 import type {
   Specialist,
   ListPublicTasksQuery,
+  McpArtifactSummary,
   PublicSpecialistSummary,
   PublicCreateTaskBody,
   PublicFeedbackThread,
@@ -20,11 +21,22 @@ import type {
   TaskSubtaskDetail,
 } from "@cc/shared/schemas";
 
+import type {
+  ArtifactDeliveryOptions,
+  ArtifactDeliveryService,
+} from "./artifact-delivery-service.js";
 import type { SpecialistService } from "./specialist-service.js";
 import type { TaskContextAttachmentService } from "./task-context-attachment-service.js";
 import type { TaskExecutionService } from "./task-execution-service.js";
 import type { TaskService } from "./task-service.js";
 import { applyContextAttachments, triggerTemplateRun } from "./trigger-template-run.js";
+
+// Optional artifact-delivery wiring: when present, single-run reads carry signed
+// display/download URLs. Absent in contexts that don't serve deliverables.
+export type PublicTaskArtifactDelivery = {
+  deliveryService: ArtifactDeliveryService;
+  resolveDeliveryContext: (run: TaskRun) => Promise<ArtifactDeliveryOptions>;
+};
 
 export type PublicTaskApiService = ReturnType<typeof createPublicTaskApiService>;
 
@@ -35,7 +47,8 @@ export type TriggerTemplateOutcome =
 /**
  * Thin adapter over the existing task services. It exposes only public
  * operations and returns only public projections — never internal agent IDs,
- * permission profiles, rendered prompts, artifacts, or storage paths. It
+ * permission profiles, rendered prompts, or storage paths (artifacts are exposed
+ * only as safe delivery summaries with signed URLs). It
  * contains no new task-execution logic: every action routes through a service
  * the internal UI already uses (triggering goes through the shared
  * {@link triggerTemplateRun} helper).
@@ -45,8 +58,17 @@ export function createPublicTaskApiService(deps: {
   executionService: TaskExecutionService;
   taskContextAttachmentService: TaskContextAttachmentService;
   agentService: SpecialistService;
+  artifactDelivery?: PublicTaskArtifactDelivery;
 }) {
   const { taskService, executionService, taskContextAttachmentService, agentService } = deps;
+
+  async function enrichRunArtifacts(run: TaskRun): Promise<McpArtifactSummary[]> {
+    if (!deps.artifactDelivery || run.artifacts.length === 0) {
+      return [];
+    }
+    const options = await deps.artifactDelivery.resolveDeliveryContext(run);
+    return deps.artifactDelivery.deliveryService.buildForRun(run, options);
+  }
 
   return {
     async listTriggerableTemplates(): Promise<PublicTaskTemplateSummary[]> {
@@ -151,6 +173,7 @@ export function createPublicTaskApiService(deps: {
         finalMessage: run.finalMessage ?? null,
         startedAt: run.startedAt ?? null,
         completedAt: run.completedAt ?? null,
+        artifacts: await enrichRunArtifacts(run),
       };
     },
 
@@ -252,7 +275,10 @@ export function createPublicTaskApiService(deps: {
 
     async getRun(taskId: string, runId: string): Promise<PublicTaskRun | undefined> {
       const run = await taskService.getRun(taskId, runId);
-      return run ? toPublicRun(run) : undefined;
+      if (!run) {
+        return undefined;
+      }
+      return { ...toPublicRun(run), artifacts: await enrichRunArtifacts(run) };
     },
 
     async listFeedback(taskId: string): Promise<PublicFeedbackThread[] | undefined> {
@@ -312,6 +338,8 @@ function toPublicRun(run: TaskRun): PublicTaskRun {
     completedAt: run.completedAt ?? null,
     cancelledAt: run.cancelledAt ?? null,
     createdAt: run.createdAt,
+    // Enriched only on single-run reads (getRun); empty in list projections.
+    artifacts: [],
   };
 }
 

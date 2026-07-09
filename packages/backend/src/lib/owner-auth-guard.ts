@@ -1,22 +1,27 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-import type { ApiTokenRecord, ApiTokenScope } from "@cc/shared/schemas";
+import type { ApiTokenRecord } from "@cc/shared/schemas";
 
 import { CsrfError, ForbiddenError, NotFoundError, UnauthorizedError } from "./api-error.js";
 import { CSRF_HEADER_NAME, isCsrfTokenValid } from "./csrf.js";
 import { isOriginAllowed } from "./origin-check.js";
 import { readOwnerSessionCookie } from "./owner-session-cookie.js";
+import { capabilityForPublicRoute } from "./public-api-capabilities.js";
 import { isPublicRoute } from "./public-routes.js";
+import { tokenHasCapability } from "../services/api-token-service.js";
 import type { RuntimeContext } from "./start-server-runtime.js";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const STATIC_ASSET_PATTERN = /\.[a-zA-Z0-9]+$/;
 const CC_MANAGED_MCP_ROUTE_PATTERN = /^\/api\/mcp\/cc\/[^/]+\/specialists\/[^/]+$/;
 const PUBLIC_API_PREFIX = "/api/public/";
+const PUBLIC_MCP_PATH = "/api/public/mcp";
 const SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN =
   /^\/api\/public\/v1\/task-artifacts\/download\/[^/]+$/;
-
-type PublicApiScopeRequirement = ApiTokenScope | "either";
+// Signed artifact delivery (Phase 6); auth is enforced inside the handler
+// (valid signature, or an owner session for the display fallback).
+const SIGNED_PUBLIC_ARTIFACT_DELIVERY_PATTERN =
+  /^\/api\/public\/v1\/artifacts\/[^/]+\/(display|download)$/;
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -31,7 +36,11 @@ export function registerOwnerAuthGuard(
     const pathname = getPathname(request.url);
     const method = request.method.toUpperCase();
 
-    if (method === "GET" && SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN.test(pathname)) {
+    if (
+      method === "GET" &&
+      (SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN.test(pathname) ||
+        SIGNED_PUBLIC_ARTIFACT_DELIVERY_PATTERN.test(pathname))
+    ) {
       return;
     }
 
@@ -82,24 +91,34 @@ function validatePublicApiBearer(
   method: string,
   pathname: string,
 ): void {
-  const rawToken = readBearerToken(request.headers.authorization);
+  const rawToken =
+    readBearerToken(request.headers.authorization) ??
+    readPublicMcpUrlToken(request.url, request.headers.authorization, pathname);
   const tokenRecord = rawToken ? context.apiTokenService.validateToken(rawToken) : null;
 
   if (!tokenRecord) {
     throw new UnauthorizedError("Invalid or revoked API token.");
   }
 
-  const requiredScope = scopeForPublicRoute(method, pathname);
+  // Attach the token identity BEFORE the capability check so a 403 still carries
+  // it (lets the audit log record "token attempted X without permission").
+  request.apiToken = tokenRecord;
 
-  if (!requiredScope) {
+  // The public MCP endpoint is not a single-capability route — per-tool gating
+  // happens inside the MCP session. A valid token is enough to reach it.
+  if (pathname === PUBLIC_MCP_PATH) {
+    return;
+  }
+
+  const requiredCapability = capabilityForPublicRoute(method, pathname);
+
+  if (!requiredCapability) {
     throw new NotFoundError("Public API route not found.");
   }
 
-  if (!hasRequiredScope(tokenRecord.scopes, requiredScope)) {
-    throw new ForbiddenError("Token is missing the required scope.");
+  if (!tokenHasCapability(tokenRecord, requiredCapability)) {
+    throw new ForbiddenError("Token is missing the required permission.");
   }
-
-  request.apiToken = tokenRecord;
 }
 
 function readBearerToken(value: string | string[] | undefined): string | undefined {
@@ -109,61 +128,17 @@ function readBearerToken(value: string | string[] | undefined): string | undefin
   return match?.[1]?.trim();
 }
 
-function scopeForPublicRoute(
-  method: string,
+function readPublicMcpUrlToken(
+  url: string,
+  authorization: string | string[] | undefined,
   pathname: string,
-): PublicApiScopeRequirement | undefined {
-  const normalizedMethod = method.toUpperCase();
-
-  if (normalizedMethod === "GET" && pathname === "/api/public/v1/task-templates") {
-    return "either";
+): string | undefined {
+  if (pathname !== PUBLIC_MCP_PATH || readHeaderString(authorization) !== undefined) {
+    return undefined;
   }
 
-  if (
-    normalizedMethod === "POST" &&
-    /^\/api\/public\/v1\/task-templates\/[^/]+\/trigger$/.test(pathname)
-  ) {
-    return "templates";
-  }
-
-  // Template Active-status management lives under the broader tasks scope,
-  // not the trigger-only templates scope.
-  if (
-    normalizedMethod === "POST" &&
-    /^\/api\/public\/v1\/task-templates\/[^/]+\/(enable|disable)$/.test(pathname)
-  ) {
-    return "tasks";
-  }
-
-  if (normalizedMethod === "GET" && /^\/api\/public\/v1\/task-runs\/[^/]+$/.test(pathname)) {
-    return "templates";
-  }
-
-  if (
-    normalizedMethod === "GET" &&
-    (pathname === "/api/public/v1/specialists" || pathname === "/api/public/v1/tasks")
-  ) {
-    return "tasks";
-  }
-
-  if (
-    ["GET", "POST"].includes(normalizedMethod) &&
-    /^\/api\/public\/v1\/tasks(\/[^/]+(\/(trigger|schedule|runs|feedback))?(\/[^/]+)?)?$/.test(
-      pathname,
-    )
-  ) {
-    return "tasks";
-  }
-
-  return undefined;
-}
-
-function hasRequiredScope(scopes: ApiTokenScope[], requiredScope: PublicApiScopeRequirement) {
-  if (requiredScope === "either") {
-    return scopes.includes("templates") || scopes.includes("tasks");
-  }
-
-  return scopes.includes(requiredScope);
+  const value = new URL(url, "http://localhost").searchParams.get("key")?.trim();
+  return value && value.length > 0 ? value : undefined;
 }
 
 export function validateOriginForMutation(context: RuntimeContext, request: FastifyRequest): void {

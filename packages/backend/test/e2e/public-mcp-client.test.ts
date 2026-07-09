@@ -1,0 +1,267 @@
+import { randomUUID } from "node:crypto";
+
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { agents } from "../../src/db/schema/index.js";
+import type { AppDb } from "../../src/db/client.js";
+import { createLogger } from "../../src/lib/logger.js";
+import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator.js";
+import { createServer } from "../../src/server.js";
+import { createApiTokenService } from "../../src/services/api-token-service.js";
+import { createSchedulerService } from "../../src/services/scheduler-service.js";
+import { createSecretService } from "../../src/services/secret-service.js";
+import { createTaskExecutionService } from "../../src/services/task-execution-service.js";
+import { createTaskService } from "../../src/services/task-service.js";
+import { createTokenAuditService } from "../../src/services/token-audit-service.js";
+import { createMockOpenCodeService } from "../helpers/fake-opencode.js";
+import { createTestDatabase } from "../helpers/db.js";
+import { permissionsForPresets } from "../helpers/api-tokens.js";
+
+type TestDb = Awaited<ReturnType<typeof createTestDatabase>>;
+type TestServer = Awaited<ReturnType<typeof createServer>>;
+type ToolResult = Awaited<ReturnType<Client["callTool"]>>;
+
+const disposers: Array<() => void | Promise<void>> = [];
+
+afterEach(async () => {
+  while (disposers.length > 0) {
+    await disposers.pop()?.();
+  }
+});
+
+describe("public MCP client e2e", () => {
+  it("supports the public MCP client workflow", async () => {
+    const testDb = await makeTestDb();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const tokenAuditService = createTokenAuditService({
+      db: testDb.client.db,
+      config: testDb.config,
+    });
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const taskExecutionService = createTaskExecutionService({
+      db: testDb.client.db,
+      taskService,
+      defer: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 },
+    });
+    disposers.push(() => taskExecutionService.dispose());
+
+    const agentId = await insertAgent(testDb.client.db);
+    const existingTask = await taskService.create({
+      agentId,
+      title: "Existing MCP task",
+      description: "Run me through public MCP.",
+    });
+    const template = await taskService.createTemplate({
+      defaultAgentId: agentId,
+      title: "Public MCP template",
+      description: "Template exposed to public MCP.",
+      mcpConfig: { toolName: "public_mcp_template", asyncEnabled: true },
+    });
+    const token = apiTokenService.createToken("Public MCP E2E", {
+      ...permissionsForPresets("tasks", "templates"),
+      templates: [template.id],
+    });
+    const server = await startServer(testDb, {
+      apiTokenService,
+      tokenAuditService,
+      taskService,
+      taskExecutionService,
+    });
+    const client = await connectMcpClient(server.baseUrl, token.token);
+    disposers.push(() => client.close());
+
+    const tools = await client.listTools();
+    expect(tools.tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining([
+        "create_task",
+        "get_task",
+        "list_tasks",
+        "task_run",
+        "task_template_run",
+        "get_task_result",
+        "public_mcp_template",
+        "public_mcp_template_async",
+      ]),
+    );
+
+    const createdTask = structured<{ task: { id: string; title: string } }>(
+      await client.callTool({
+        name: "create_task",
+        arguments: {
+          specialistId: agentId,
+          title: "Created through MCP client",
+          description: "Read me back through MCP.",
+        },
+      }),
+    ).task;
+    expect(createdTask.title).toBe("Created through MCP client");
+
+    const readBack = structured<{ task: { id: string; title: string } }>(
+      await client.callTool({ name: "get_task", arguments: { taskId: createdTask.id } }),
+    ).task;
+    expect(readBack).toMatchObject({ id: createdTask.id, title: "Created through MCP client" });
+
+    const listedTasks = structured<{ tasks: Array<{ id: string; title: string }> }>(
+      await client.callTool({ name: "list_tasks", arguments: {} }),
+    ).tasks;
+    expect(listedTasks.map((task) => task.id)).toEqual(expect.arrayContaining([createdTask.id]));
+
+    const taskRun = structured<{
+      taskId: string;
+      runId: string;
+      status: string;
+      timedOut: boolean;
+    }>(await client.callTool({ name: "task_run", arguments: { taskId: existingTask.id } }));
+    expect(taskRun).toMatchObject({
+      taskId: existingTask.id,
+      status: "completed",
+      timedOut: false,
+    });
+    await expect
+      .poll(async () => (await taskService.getRunById(taskRun.runId))?.status)
+      .toBe("completed");
+
+    const templateRun = structured<{
+      taskId: string;
+      runId: string;
+      status: string;
+      timedOut: boolean;
+    }>(
+      await client.callTool({
+        name: "task_template_run",
+        arguments: { templateId: template.id, text: "Run from an MCP client." },
+      }),
+    );
+    expect(templateRun).toMatchObject({ status: "completed", timedOut: false });
+    const templateTask = await taskService.get(templateRun.taskId);
+    expect(templateTask).toMatchObject({ sourceTemplateId: template.id });
+
+    const dynamicRun = structured<{
+      taskId: string;
+      runId: string;
+      status: string;
+      timedOut: boolean;
+    }>(
+      await client.callTool({
+        name: "public_mcp_template",
+        arguments: { text: "Run through the dynamic template tool." },
+      }),
+    );
+    expect(dynamicRun).toMatchObject({ status: "completed", timedOut: false });
+
+    const polledResult = structured<{ runId: string; status: string; timedOut: boolean }>(
+      await client.callTool({ name: "get_task_result", arguments: { runId: dynamicRun.runId } }),
+    );
+    expect(polledResult).toMatchObject({ runId: dynamicRun.runId, status: "completed" });
+
+    await expect
+      .poll(async () => {
+        const activity = await tokenAuditService.listForToken({ tokenId: token.record.id });
+        return activity.entries.map((entry) => entry.action);
+      })
+      .toEqual(
+        expect.arrayContaining([
+          "create_task",
+          "get_task",
+          "list_tasks",
+          "task_run",
+          "task_template_run",
+          "public_mcp_template",
+          "get_task_result",
+        ]),
+      );
+  });
+});
+
+async function makeTestDb(): Promise<TestDb> {
+  const testDb = await createTestDatabase();
+  disposers.push(() => testDb.cleanup());
+  return testDb;
+}
+
+async function startServer(
+  testDb: TestDb,
+  deps: {
+    apiTokenService: ReturnType<typeof createApiTokenService>;
+    tokenAuditService: ReturnType<typeof createTokenAuditService>;
+    taskService: ReturnType<typeof createTaskService>;
+    taskExecutionService: ReturnType<typeof createTaskExecutionService>;
+  },
+): Promise<{ server: TestServer; baseUrl: string }> {
+  const server = createServer({
+    config: testDb.config,
+    logger: createLogger(testDb.config),
+    database: testDb.client,
+    apiTokenService: deps.apiTokenService,
+    tokenAuditService: deps.tokenAuditService,
+    orchestrator: createOrchestrator(),
+    opencodeService: createMockOpenCodeService(),
+    openCodeEventService: { subscribe: () => {} } as never,
+    secretService: createSecretService({ db: testDb.client.db, config: testDb.config }),
+    scheduler: createSchedulerService(),
+    taskService: deps.taskService,
+    taskExecutionService: deps.taskExecutionService,
+  });
+  await server.listen({ host: "127.0.0.1", port: 0 });
+  disposers.push(() => server.close());
+
+  const address = server.server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Expected Fastify to listen on a TCP address.");
+  }
+
+  return { server, baseUrl: `http://127.0.0.1:${String(address.port)}` };
+}
+
+async function connectMcpClient(baseUrl: string, token: string): Promise<Client> {
+  const client = new Client({ name: "public-mcp-e2e", version: "1.0.0" });
+  const transport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/api/public/mcp`), {
+    requestInit: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  await client.connect(transport);
+  return client;
+}
+
+function structured<T extends Record<string, unknown>>(result: ToolResult): T {
+  expect(result.isError).not.toBe(true);
+  expect(result.structuredContent).toBeDefined();
+  return result.structuredContent as T;
+}
+
+async function insertAgent(db: AppDb): Promise<string> {
+  const id = `agent-${randomUUID()}`;
+  await db.insert(agents).values({
+    id,
+    slug: id,
+    name: "Public MCP Specialist",
+    role: "run public MCP tasks",
+    instructions: "Execute public MCP E2E tasks.",
+    default_model: "openai/gpt-4.1",
+    icon_path: null,
+    status: "active",
+    capabilities_json: JSON.stringify({ appMcpServers: [], appToolPermissions: [] }),
+    created_at: new Date(),
+    updated_at: new Date(),
+    archived_at: null,
+  });
+  return id;
+}
+
+function createOrchestrator(): OpenCodeOrchestrator {
+  return {
+    start: () => Promise.resolve(),
+    stop: () => Promise.resolve(),
+    restart: () => Promise.resolve(),
+    refreshHealth: () => Promise.resolve(true),
+    getStatus: () => ({
+      state: "healthy" as const,
+      healthy: true,
+      url: "http://127.0.0.1:4100",
+      workspaceDir: "/tmp/workspace",
+      restartCount: 0,
+      maxRestarts: 3,
+    }),
+  };
+}

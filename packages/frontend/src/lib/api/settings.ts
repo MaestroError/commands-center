@@ -5,23 +5,32 @@ import {
   activitySchema,
   type Activity,
   type ActivityListResponse,
+  apiTokenActivityListResponseSchema,
+  apiTokenAuditSettingsSchema,
   apiTokenListResponseSchema,
+  apiTokenRecordSchema,
   systemPromptBodySchema,
   systemPromptDetailSchema,
   systemPromptListResponseSchema,
   createApiTokenInputSchema,
   createApiTokenResponseSchema,
+  updateApiTokenInputSchema,
   liveRequestCancelInputSchema,
   liveRequestResolveInputSchema,
   liveRequestResolveResultSchema,
   secretMetaListSchema,
   setSecretRequestSchema,
   artifactSharingPreferencesSchema,
+  publicMcpSettingsSchema,
   taskRunMonitorSettingsSchema,
   updateArtifactSharingPreferencesInputSchema,
+  type ApiTokenActivityListResponse,
+  type ApiTokenAuditSettings,
   type ApiTokenListResponse,
-  type ApiTokenScope,
+  type ApiTokenPermissions,
+  type ApiTokenRecord,
   type CreateApiTokenResponse,
+  type PublicMcpSettings,
   type SystemPromptDetail,
   type SystemPromptListResponse,
   type LiveRequestCancelInput,
@@ -60,6 +69,19 @@ export async function getTaskRunMonitorSettings(): Promise<TaskRunMonitorSetting
   );
 }
 
+export async function getPublicMcpSettings(): Promise<PublicMcpSettings> {
+  return requestJson<PublicMcpSettings>("/api/public-mcp/settings", publicMcpSettingsSchema);
+}
+
+export async function updatePublicMcpSettings(
+  input: PublicMcpSettings,
+): Promise<PublicMcpSettings> {
+  return requestJson<PublicMcpSettings>("/api/public-mcp/settings", publicMcpSettingsSchema, {
+    method: "PUT",
+    body: publicMcpSettingsSchema.parse(input),
+  });
+}
+
 export async function updateTaskRunMonitorSettings(
   input: TaskRunMonitorSettings,
 ): Promise<TaskRunMonitorSettings> {
@@ -83,12 +105,61 @@ export async function listApiTokens(): Promise<ApiTokenListResponse> {
 
 export async function createApiToken(input: {
   name: string;
-  scopes: ApiTokenScope[];
+  permissions: ApiTokenPermissions;
 }): Promise<CreateApiTokenResponse> {
   return requestJson<CreateApiTokenResponse>("/api/api-tokens", createApiTokenResponseSchema, {
     method: "POST",
     body: createApiTokenInputSchema.parse(input),
   });
+}
+
+export async function updateApiToken(
+  id: string,
+  input: { name?: string; permissions: ApiTokenPermissions },
+): Promise<ApiTokenRecord> {
+  return requestJson<ApiTokenRecord>(
+    `/api/api-tokens/${encodeURIComponent(id)}`,
+    apiTokenRecordSchema,
+    {
+      method: "PUT",
+      body: updateApiTokenInputSchema.parse(input),
+    },
+  );
+}
+
+export async function getTokenActivity(
+  id: string,
+  query: { limit?: number; cursor?: string } = {},
+): Promise<ApiTokenActivityListResponse> {
+  const params = new URLSearchParams();
+  if (query.limit !== undefined) {
+    params.set("limit", String(query.limit));
+  }
+  if (query.cursor) {
+    params.set("cursor", query.cursor);
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<ApiTokenActivityListResponse>(
+    `/api/api-tokens/${encodeURIComponent(id)}/activity${suffix}`,
+    apiTokenActivityListResponseSchema,
+  );
+}
+
+export async function getTokenAuditSettings(): Promise<ApiTokenAuditSettings> {
+  return requestJson<ApiTokenAuditSettings>(
+    "/api/api-tokens/audit-settings",
+    apiTokenAuditSettingsSchema,
+  );
+}
+
+export async function updateTokenAuditSettings(
+  input: ApiTokenAuditSettings,
+): Promise<ApiTokenAuditSettings> {
+  return requestJson<ApiTokenAuditSettings>(
+    "/api/api-tokens/audit-settings",
+    apiTokenAuditSettingsSchema,
+    { method: "PUT", body: apiTokenAuditSettingsSchema.parse(input) },
+  );
 }
 
 export async function revokeApiToken(id: string): Promise<void> {

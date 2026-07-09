@@ -182,6 +182,16 @@ const recurringTemplate: TaskTemplate = {
   title: "Weekly release notes",
   description: "Generate release note draft every week.",
   todos: [],
+  mcpConfig: {
+    exposeAsTool: true,
+    toolName: "weekly_release_notes",
+    toolDescription: "",
+    textFieldDescription: "",
+    allowFiles: true,
+    filesFieldDescription: "",
+    asyncEnabled: false,
+    artifacts: { displayableUrlEnabled: true, downloadableUrlEnabled: true },
+  },
   recurrence: {
     mode: "recurring",
     anchorAt: NOW,

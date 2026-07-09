@@ -24,6 +24,17 @@ describe("EndpointsTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create a token" }));
     expect(onGoToTokens).toHaveBeenCalledTimes(1);
   });
+
+  it("renders the URL-token MCP fallback with a placeholder token", () => {
+    render(<EndpointsTab />);
+
+    expect(
+      screen.getByText(/Temporary fallback for clients that cannot set headers/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((content) => content.endsWith("/api/public/mcp?key=<YOUR_API_TOKEN>")),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("CopyableCode", () => {

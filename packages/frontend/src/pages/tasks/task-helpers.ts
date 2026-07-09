@@ -263,7 +263,29 @@ export type FormState = {
   /** Template "Active" status. Tasks ignore this field. */
   enabled: boolean;
   todosText: string;
+  // MCP tool config (templates only; tasks ignore these).
+  mcpExposeAsTool: boolean;
+  mcpToolName: string;
+  mcpToolDescription: string;
+  mcpTextFieldDescription: string;
+  mcpAllowFiles: boolean;
+  mcpFilesFieldDescription: string;
+  mcpAsyncEnabled: boolean;
+  mcpDisplayableUrlEnabled: boolean;
+  mcpDownloadableUrlEnabled: boolean;
 };
+
+const DEFAULT_MCP_FORM_FIELDS = {
+  mcpExposeAsTool: true,
+  mcpToolName: "",
+  mcpToolDescription: "",
+  mcpTextFieldDescription: "",
+  mcpAllowFiles: true,
+  mcpFilesFieldDescription: "",
+  mcpAsyncEnabled: false,
+  mcpDisplayableUrlEnabled: true,
+  mcpDownloadableUrlEnabled: true,
+} as const;
 
 export type RepeatPreset = (typeof REPEAT_PRESETS)[number];
 
@@ -291,6 +313,7 @@ export function taskToForm(task?: Task, prefill?: TaskCreationPrefill): FormStat
     repeatEnabled: false,
     enabled: task?.enabled ?? true,
     todosText: task?.todos.map((todo) => todo.content).join("\n") ?? "",
+    ...DEFAULT_MCP_FORM_FIELDS,
   };
 }
 
@@ -321,6 +344,15 @@ export function templateToForm(
     repeatEnabled: Boolean(recurrence),
     enabled: template?.enabled ?? true,
     todosText: template?.todos.map((todo) => todo.content).join("\n") ?? "",
+    mcpExposeAsTool: template?.mcpConfig.exposeAsTool ?? true,
+    mcpToolName: template?.mcpConfig.toolName ?? "",
+    mcpToolDescription: template?.mcpConfig.toolDescription ?? "",
+    mcpTextFieldDescription: template?.mcpConfig.textFieldDescription ?? "",
+    mcpAllowFiles: template?.mcpConfig.allowFiles ?? true,
+    mcpFilesFieldDescription: template?.mcpConfig.filesFieldDescription ?? "",
+    mcpAsyncEnabled: template?.mcpConfig.asyncEnabled ?? false,
+    mcpDisplayableUrlEnabled: template?.mcpConfig.artifacts.displayableUrlEnabled ?? true,
+    mcpDownloadableUrlEnabled: template?.mcpConfig.artifacts.downloadableUrlEnabled ?? true,
   };
 }
 
@@ -443,6 +475,21 @@ export function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
         repeatRule: buildRepeatRule(form),
       }
     : null;
+
+  input.mcpConfig = {
+    exposeAsTool: form.mcpExposeAsTool,
+    // Empty means "derive from title" server-side.
+    toolName: form.mcpToolName.trim() ? form.mcpToolName.trim() : undefined,
+    toolDescription: form.mcpToolDescription,
+    textFieldDescription: form.mcpTextFieldDescription,
+    allowFiles: form.mcpAllowFiles,
+    filesFieldDescription: form.mcpFilesFieldDescription,
+    asyncEnabled: form.mcpAsyncEnabled,
+    artifacts: {
+      displayableUrlEnabled: form.mcpDisplayableUrlEnabled,
+      downloadableUrlEnabled: form.mcpDownloadableUrlEnabled,
+    },
+  };
 
   return input;
 }

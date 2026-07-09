@@ -16,6 +16,7 @@ import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { createTestDatabase } from "../helpers/db";
+import { permissionsForPresets } from "../helpers/api-tokens";
 
 const STRONG_PASSWORD = "CorrectHorseBatteryStaple42!";
 
@@ -87,7 +88,10 @@ describe("owner auth guard", () => {
     const server = await createAuthServer(testDb, ownerAccessService);
 
     try {
-      const token = apiTokenService.createToken("Template consumer", ["templates"]);
+      const token = apiTokenService.createToken(
+        "Template consumer",
+        permissionsForPresets("templates"),
+      );
       const response = await server.inject({
         method: "GET",
         url: "/api/public/v1/task-templates",
@@ -111,7 +115,10 @@ describe("owner auth guard", () => {
     const server = await createAuthServer(testDb, ownerAccessService);
 
     try {
-      const token = apiTokenService.createToken("Template consumer", ["templates"]);
+      const token = apiTokenService.createToken(
+        "Template consumer",
+        permissionsForPresets("templates"),
+      );
       // The real `/api/public/v1/tasks` route requires the `tasks` scope; a
       // templates-only token is rejected by the guard before reaching it.
       const response = await server.inject({
@@ -122,7 +129,7 @@ describe("owner auth guard", () => {
 
       expect(response.statusCode).toBe(403);
       expect(response.json()).toEqual({
-        error: { code: "forbidden", message: "Token is missing the required scope." },
+        error: { code: "forbidden", message: "Token is missing the required permission." },
       });
     } finally {
       await server.close();

@@ -4,6 +4,7 @@ import Fastify from "fastify";
 import { registerApiErrorHandler } from "./lib/api-error.js";
 import { configureFastifyZod } from "./lib/fastify-zod.js";
 import { registerOwnerAuthGuard } from "./lib/owner-auth-guard.js";
+import { createPublicApiAuditHook } from "./lib/public-api-audit-hook.js";
 import type { RuntimeContext } from "./lib/start-server-runtime.js";
 import { registerApiRoutes } from "./routes/index.js";
 
@@ -24,6 +25,8 @@ export function createServer(context: RuntimeContext) {
   });
 
   server.addHook("preHandler", registerOwnerAuthGuard(context));
+
+  server.addHook("onResponse", createPublicApiAuditHook(context));
 
   server.addHook("onClose", () => {
     context.taskExecutionService?.dispose();

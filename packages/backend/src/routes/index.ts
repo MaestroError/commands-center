@@ -15,6 +15,9 @@ import { registerMcpServerRoutes } from "./mcp-servers.js";
 import { registerOwnerAuthRoutes } from "./owner-auth.js";
 import { registerProviderRoutes } from "./providers.js";
 import { registerPublicApiRoutes } from "./public-api.js";
+import { registerPublicArtifactRoutes } from "./public-artifacts.js";
+import { registerPublicMcpRoutes } from "./public-mcp.js";
+import { registerPublicMcpSettingsRoutes } from "./public-mcp-settings.js";
 import { registerSearchRoutes } from "./search.js";
 import { registerSecretRoutes } from "./secrets.js";
 import { registerSessionArchiveRoutes } from "./session-archive.js";
@@ -49,5 +52,8 @@ export function registerApiRoutes(server: AppServer, context: RuntimeContext): v
   registerSystemPromptRoutes(server, context);
   registerTaskRoutes(server, context);
   registerPublicApiRoutes(server, context);
+  registerPublicArtifactRoutes(server, context);
+  registerPublicMcpRoutes(server, context);
+  registerPublicMcpSettingsRoutes(server, context);
   registerTerminalRoutes(server, context);
 }

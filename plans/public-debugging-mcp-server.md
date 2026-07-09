@@ -35,10 +35,9 @@ This is mostly **wiring existing services behind a new public endpoint + a new s
 - Standalone public endpoint, e.g. `POST /mcp` (or `/api/mcp/debug`), using **MCP Streamable HTTP** (the transport Claude Code / Codex / Cursor / VS Code all speak).
 - A **sibling** to the cc-managed MCP servers — different trust boundary (external, not `127.0.0.1` loopback) and different auth (public `apiTokenService` bearer, not the per-specialist HMAC tokens). Do **not** fold it into the cc-managed registry.
 
-### Auth — PAT now, OAuth later
+### Auth — PAT
 
 - **Phase 1: bearer token (PAT).** Extend the API token scope enum with `debug:read` and `debug:write`. Operator mints a scoped token in CC settings; client sends `Authorization: Bearer <token>`. This is the GitHub/Jira-PAT model and matches the existing `apiTokenService`.
-- **Later: OAuth 2.1 + Dynamic Client Registration** for the one-click "Connect" flow (authorization server, consent screen, DCR, refresh). Real work, not required for a functional v1 — defer.
 
 ### Debug Mode gate — two independent keys
 
@@ -93,7 +92,6 @@ A server hosted _inside_ the backend cannot report on a backend that is crash-lo
 
 - **MVP (Phase 1):** Streamable-HTTP endpoint + `debug:read` scope + read-only toolset (incl. `dump_runtime_state` and `list_secret_names`) + audit. Token required. Low risk, immediately useful.
 - **Phase 2:** Debug Mode toggle + `debug:write` raw primitives behind confirm-gate + restricted terminal user.
-- **Phase 3:** OAuth 2.1 / DCR one-click connection; Debug Mode auto-expiry; UI live activity feed.
 
 ## Open decisions (resolve before/while building)
 

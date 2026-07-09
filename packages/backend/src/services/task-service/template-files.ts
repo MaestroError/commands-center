@@ -7,6 +7,7 @@ import {
   fallbackModelsSchema,
   recurringTaskScheduleSchema,
   taskPermissionProfileSchema,
+  taskTemplateMcpConfigSchema,
   taskTodoSchema,
   type TaskTemplate,
 } from "@cc/shared/schemas";
@@ -30,6 +31,9 @@ export const taskTemplateFileSchema = z.object({
   todos: z.array(taskTodoSchema),
   recurrence: recurringTaskScheduleSchema.nullable(),
   permissionProfile: taskPermissionProfileSchema.nullable(),
+  // Nullable for back-compat: templates authored before the MCP-config model
+  // resolve to a title-derived default at read time.
+  mcpConfig: taskTemplateMcpConfigSchema.nullable().optional(),
   enabled: z.boolean(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -99,6 +103,7 @@ export const taskTemplateReconciler: WorkspaceReconciler = {
         permission_profile_json: data.permissionProfile
           ? JSON.stringify(data.permissionProfile)
           : null,
+        mcp_config_json: data.mcpConfig ? JSON.stringify(data.mcpConfig) : null,
         enabled,
         archived: false,
         next_occurrence_at: readTemplateNextOccurrenceAt(recurrence, enabled, timestamp),

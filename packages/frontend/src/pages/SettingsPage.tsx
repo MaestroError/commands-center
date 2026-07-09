@@ -22,9 +22,11 @@ import {
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
 import {
   getFileManagerPreferences,
+  getPublicMcpSettings,
   getTaskArtifactSharingPreferences,
   getTaskRunMonitorSettings,
   updateFileManagerPreferences,
+  updatePublicMcpSettings,
   updateTaskArtifactSharingPreferences,
   updateTaskRunMonitorSettings,
 } from "@/lib/api";
@@ -807,6 +809,97 @@ function TasksTab() {
           type="button"
         >
           {saving ? "Saving..." : "Save task settings"}
+        </button>
+      </div>
+      <PublicMcpSettingsCard />
+    </div>
+  );
+}
+
+function PublicMcpSettingsCard() {
+  const [capSeconds, setCapSeconds] = useState(120);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<{ title: string; description: string }>();
+
+  const capInvalid = !Number.isInteger(capSeconds) || capSeconds < 0 || capSeconds > 600;
+
+  useEffect(() => {
+    let cancelled = false;
+    void getPublicMcpSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        setCapSeconds(settings.syncToolWaitCapSeconds);
+        setLoading(false);
+      })
+      .catch((nextError: unknown) => {
+        if (cancelled) return;
+        setError({
+          title: "Could not load public MCP settings.",
+          description: nextError instanceof Error ? nextError.message : "Failed to load settings.",
+        });
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    setError(undefined);
+    try {
+      const settings = await updatePublicMcpSettings({ syncToolWaitCapSeconds: capSeconds });
+      setCapSeconds(settings.syncToolWaitCapSeconds);
+    } catch (nextError) {
+      setError({
+        title: "Could not save public MCP settings.",
+        description: nextError instanceof Error ? nextError.message : "Failed to save settings.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return <LoadingState testId="public-mcp-settings-loading" />;
+  }
+
+  return (
+    <div className="grid gap-4 border-t border-border pt-4">
+      <div>
+        <h3 className="text-lg font-semibold text-text-primary">Public MCP</h3>
+        <p className="mt-1 text-sm text-text-secondary">
+          How long a synchronous MCP run tool waits for a run to finish before returning its id for
+          async polling.
+        </p>
+      </div>
+      {error ? <ErrorState description={error.description} title={error.title} /> : null}
+      <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
+        <span className="font-medium">Sync tool wait cap (seconds)</span>
+        <input
+          className="cc-input"
+          data-testid="public-mcp-sync-cap-input"
+          disabled={saving}
+          max={600}
+          min={0}
+          onChange={(event) => setCapSeconds(Number(event.target.value))}
+          type="number"
+          value={capSeconds}
+        />
+        <span className="text-text-secondary">
+          Range 0–600. Use 0 to return the run id immediately (behave like the async variant). Keep
+          this under any reverse-proxy idle timeout.
+        </span>
+      </label>
+      <div className="flex justify-end">
+        <button
+          className="cc-button"
+          disabled={saving || capInvalid}
+          onClick={() => void save()}
+          type="button"
+        >
+          {saving ? "Saving..." : "Save MCP settings"}
         </button>
       </div>
     </div>

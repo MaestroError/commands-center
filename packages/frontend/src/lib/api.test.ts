@@ -753,7 +753,7 @@ describe("additional request wrapper coverage", () => {
             id: "token-1",
             name: "Release",
             tokenPrefix: "cc_abc123456",
-            scopes: ["templates"],
+            permissions: { capabilities: ["list_task_templates"], templates: [] },
             createdAt: 1780000000000,
             lastUsedAt: null,
             revokedAt: null,
@@ -763,11 +763,11 @@ describe("additional request wrapper coverage", () => {
     );
 
     await expect(listApiTokens()).resolves.toMatchObject({
-      tokens: [{ id: "token-1", scopes: ["templates"] }],
+      tokens: [{ id: "token-1", permissions: { capabilities: ["list_task_templates"] } }],
     });
   });
 
-  it("creates API tokens with scoped JSON body", async () => {
+  it("creates API tokens with a permissions JSON body", async () => {
     document.cookie = "cc_csrf_token=csrf-token; path=/";
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       makeJsonResponse({
@@ -776,7 +776,7 @@ describe("additional request wrapper coverage", () => {
           id: "token-1",
           name: "Release",
           tokenPrefix: "cc_raw",
-          scopes: ["templates", "tasks"],
+          permissions: { capabilities: ["create_task"], templates: [] },
           createdAt: 1780000000000,
           lastUsedAt: null,
           revokedAt: null,
@@ -784,12 +784,18 @@ describe("additional request wrapper coverage", () => {
       }),
     );
 
-    await createApiToken({ name: "Release", scopes: ["templates", "tasks"] });
+    await createApiToken({
+      name: "Release",
+      permissions: { capabilities: ["create_task"], templates: [] },
+    });
 
     expect(fetchSpy).toHaveBeenCalledWith("/api/api-tokens", {
       method: "POST",
       headers: { "content-type": "application/json", "x-csrf-token": "csrf-token" },
-      body: JSON.stringify({ name: "Release", scopes: ["templates", "tasks"] }),
+      body: JSON.stringify({
+        name: "Release",
+        permissions: { capabilities: ["create_task"], templates: [] },
+      }),
     });
   });
 
@@ -1232,6 +1238,16 @@ function makeTaskTemplatePayload(overrides: Record<string, unknown> = {}): Recor
     title: "Weekly release notes",
     description: "Draft notes.",
     todos: [],
+    mcpConfig: {
+      exposeAsTool: true,
+      toolName: "weekly_release_notes",
+      toolDescription: "",
+      textFieldDescription: "",
+      allowFiles: true,
+      filesFieldDescription: "",
+      asyncEnabled: false,
+      artifacts: { displayableUrlEnabled: true, downloadableUrlEnabled: true },
+    },
     recurrence: {
       mode: "recurring",
       anchorAt: "2026-01-01T00:00:00.000Z",
