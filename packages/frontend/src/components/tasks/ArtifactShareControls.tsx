@@ -15,6 +15,7 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
   const mutations = useTaskMutations();
   const [createdLinks, setCreatedLinks] = useState<CreateArtifactShareLinkResponse>();
   const [copiedLink, setCopiedLink] = useState<"display" | "download" | undefined>();
+  const [errorMessage, setErrorMessage] = useState<string>();
 
   // URL artifacts already point at their public destination.
   if (props.artifact.type === "url") {
@@ -26,24 +27,34 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
   const shareLinks = props.artifact.shareLinks.filter((link) => link.revokedAt === null);
 
   async function createLink() {
-    const response = await mutations.createArtifactShareLink.mutateAsync({
-      artifactId: props.artifact.id,
-      conversationId: props.artifact.conversationId,
-      taskId: props.taskId,
-    });
-    setCreatedLinks(response);
-    await copyLink("display", response.displayUrl);
+    setErrorMessage(undefined);
+    try {
+      const response = await mutations.createArtifactShareLink.mutateAsync({
+        artifactId: props.artifact.id,
+        conversationId: props.artifact.conversationId,
+        taskId: props.taskId,
+      });
+      setCreatedLinks(response);
+      await copyLink("display", response.displayUrl);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to create signed links.");
+    }
   }
 
   async function revokeLink(shareId: string) {
-    await mutations.revokeArtifactShareLink.mutateAsync({
-      artifactId: props.artifact.id,
-      conversationId: props.artifact.conversationId,
-      taskId: props.taskId,
-      shareId,
-    });
-    setCreatedLinks(undefined);
-    setCopiedLink(undefined);
+    setErrorMessage(undefined);
+    try {
+      await mutations.revokeArtifactShareLink.mutateAsync({
+        artifactId: props.artifact.id,
+        conversationId: props.artifact.conversationId,
+        taskId: props.taskId,
+        shareId,
+      });
+      setCreatedLinks(undefined);
+      setCopiedLink(undefined);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to revoke signed link.");
+    }
   }
 
   async function copyLink(kind: "display" | "download", url: string) {
@@ -87,6 +98,7 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
           />
         </div>
       ) : null}
+      {errorMessage ? <p className="text-xs text-danger">{errorMessage}</p> : null}
       {shareLinks.length > 0 ? (
         <ul className="grid gap-1" aria-label="Active artifact share links">
           {shareLinks.map((link) => (

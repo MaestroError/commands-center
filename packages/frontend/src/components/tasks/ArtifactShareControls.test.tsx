@@ -117,6 +117,15 @@ describe("ArtifactShareControls", () => {
     expect(screen.getAllByRole("button", { name: "Copy" })).toHaveLength(2);
   });
 
+  it("shows an error when signed link creation fails", async () => {
+    createMutateAsync.mockRejectedValue(new Error("Artifact source file not found."));
+    render(<ArtifactShareControls artifact={artifact()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
+
+    expect(await screen.findByText("Artifact source file not found.")).toBeInTheDocument();
+  });
+
   it("lists existing share links and revokes one", async () => {
     revokeMutateAsync.mockResolvedValue(undefined);
     render(

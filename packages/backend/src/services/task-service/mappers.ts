@@ -31,6 +31,7 @@ import { z } from "zod";
 import type { AppDb } from "../../db/client.js";
 import { createId } from "../../db/ids.js";
 import {
+  agents,
   artifact_share_links,
   artifacts as artifactsTable,
   conversations as conversationsTable,
@@ -299,9 +300,14 @@ export async function getArtifactsByRunIds(
   }
 
   const rows = await db
-    .select({ runId: conversationsTable.task_run_id, artifact: artifactsTable })
+    .select({
+      runId: conversationsTable.task_run_id,
+      artifact: artifactsTable,
+      agentSlug: agents.slug,
+    })
     .from(artifactsTable)
     .innerJoin(conversationsTable, eq(artifactsTable.conversation_id, conversationsTable.id))
+    .innerJoin(agents, eq(conversationsTable.agent_id, agents.id))
     .where(inArray(conversationsTable.task_run_id, uniqueRunIds))
     .orderBy(desc(artifactsTable.created_at));
 
@@ -310,11 +316,11 @@ export async function getArtifactsByRunIds(
     rows.map((row) => row.artifact.id),
   );
 
-  for (const { runId, artifact } of rows) {
+  for (const { runId, artifact, agentSlug } of rows) {
     if (!runId) {
       continue;
     }
-    const mapped = mapArtifactRow(artifact, shareLinks.get(artifact.id) ?? []);
+    const mapped = mapArtifactRow(artifact, shareLinks.get(artifact.id) ?? [], agentSlug);
     const existing = grouped.get(runId);
     if (existing) {
       existing.push(mapped);
@@ -372,6 +378,7 @@ export async function getShareLinksByArtifactIds(
 export function mapArtifactRow(
   row: typeof artifactsTable.$inferSelect,
   shareLinks: ArtifactShareLink[],
+  agentSlug?: string,
 ): Artifact {
   return artifactSchema.parse({
     id: row.id,
@@ -380,9 +387,32 @@ export function mapArtifactRow(
     description: row.description ?? undefined,
     type: row.type,
     link: row.link,
+    fileManagerPath: buildFileManagerPath(row, agentSlug),
     createdAt: row.created_at.toISOString(),
     shareLinks,
   });
+}
+
+function buildFileManagerPath(
+  row: typeof artifactsTable.$inferSelect,
+  agentSlug: string | undefined,
+): string | undefined {
+  if (row.type !== "file" || !agentSlug) {
+    return undefined;
+  }
+
+  const trimmed = row.link.trim();
+  const segments = trimmed.split(/[\\/]/).filter(Boolean);
+  if (
+    trimmed.length === 0 ||
+    trimmed.startsWith("/") ||
+    segments.length === 0 ||
+    segments.some((segment) => segment === "." || segment === "..")
+  ) {
+    return undefined;
+  }
+
+  return ["specialists", agentSlug, ...segments].join("/");
 }
 
 export async function getActiveReplyRunIds(db: AppDb, runIds: string[]): Promise<Set<string>> {

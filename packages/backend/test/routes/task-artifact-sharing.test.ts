@@ -57,9 +57,16 @@ describe("task artifact sharing", () => {
       });
       expect(listed.statusCode).toBe(200);
       const artifact = listed.json<{
-        artifacts: Array<{ id: string; type: string; shareLinks: unknown[] }>;
+        artifacts: Array<{
+          id: string;
+          type: string;
+          shareLinks: unknown[];
+          fileManagerPath?: string;
+        }>;
       }>().artifacts[0];
       expect(artifact?.type).toBe("file");
+      expect(artifact?.fileManagerPath).toMatch(/^specialists\/agent-/);
+      expect(artifact?.fileManagerPath).toContain("/reports/release.md");
 
       const created = await server.inject({
         method: "POST",
@@ -353,7 +360,7 @@ async function createRunWithArtifact(
     renderedPrompt: "Create report.",
   });
   await seedRunConversation(db, run.id, agent.id);
-  const absolutePath = join(options.workspaceDir, options.artifactPath);
+  const absolutePath = join(options.workspaceDir, "specialists", agent.slug, options.artifactPath);
   await mkdir(dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, options.content, "utf8");
   await taskService.addRunArtifact(run.id, agent.id, {
