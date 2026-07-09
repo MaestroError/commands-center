@@ -54,7 +54,7 @@ describe("ChatResultsPanel", () => {
         title: "Complete Tool List",
         type: "file",
         link: "references/tool-list.md",
-        fileManagerPath: "specialists/writer/references/tool-list.md",
+        fileManagerPath: "specialists/writer/Documents/references/tool-list.md",
       }),
     ]);
     render(<ChatResultsPanel conversationId="conv-1" />);
@@ -65,8 +65,8 @@ describe("ChatResultsPanel", () => {
     expect(external).toHaveAttribute("target", "_blank");
     const fileLink = screen.getByRole("link", { name: "Complete Tool List" });
     const params = new URLSearchParams(fileLink.getAttribute("href")?.replace("/files?", ""));
-    expect(params.get("path")).toBe("specialists/writer/references");
-    expect(params.get("select")).toBe("specialists/writer/references/tool-list.md");
+    expect(params.get("path")).toBe("specialists/writer/Documents/references");
+    expect(params.get("select")).toBe("specialists/writer/Documents/references/tool-list.md");
   });
 
   it("queries artifacts for the given conversation", () => {

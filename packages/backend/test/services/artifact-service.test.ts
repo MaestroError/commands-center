@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -120,6 +120,47 @@ describe("createArtifactService", () => {
       const grouped = await service.listByTaskRunIds([runId, "unknown-run"]);
       expect(grouped.get(runId)?.map((a) => a.id)).toEqual([created.id]);
       expect(grouped.has("unknown-run")).toBe(false);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("opens and publishes file artifacts from the specialist Documents folder", async () => {
+    const { testDb, service } = await setup();
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const conversationId = await insertConversation(testDb.client.db, agentId);
+      const absolute = join(
+        testDb.config.paths.subdirectories.specialists,
+        agentId,
+        "Documents",
+        "references",
+        "tool-list.md",
+      );
+      await mkdir(dirname(absolute), { recursive: true });
+      await writeFile(absolute, "tool list", "utf8");
+
+      const artifact = await service.create({
+        conversationId,
+        title: "Complete Tool List",
+        type: "file",
+        link: "references/tool-list.md",
+      });
+
+      expect(artifact.fileManagerPath).toBe(
+        `specialists/${agentId}/Documents/references/tool-list.md`,
+      );
+
+      const [listed] = await service.listByConversation(conversationId);
+      expect(listed?.fileManagerPath).toBe(
+        `specialists/${agentId}/Documents/references/tool-list.md`,
+      );
+
+      const published = await service.publishArtifact(artifact.id);
+      expect(published.originalFilename).toBe("tool-list.md");
+      await expect(
+        readFile(service.resolveArtifactPath(published.storageKey!), "utf8"),
+      ).resolves.toBe("tool list");
     } finally {
       await testDb.cleanup();
     }

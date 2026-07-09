@@ -128,7 +128,7 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
       }
 
       const agentSlug = await getArtifactAgentSlug(row.conversation_id);
-      return mapArtifact(row, [], agentSlug);
+      return mapArtifact(options.config, row, [], agentSlug);
     },
 
     async listByConversation(conversationId: string): Promise<Artifact[]> {
@@ -140,7 +140,11 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
       const shareLinks = await listShareLinksByArtifactIds(rows.map((row) => row.id));
       const agentSlug = await getArtifactAgentSlug(conversationId);
 
-      return rows.map((row) => mapArtifact(row, shareLinks.get(row.id) ?? [], agentSlug));
+      return Promise.all(
+        rows.map((row) =>
+          mapArtifact(options.config, row, shareLinks.get(row.id) ?? [], agentSlug),
+        ),
+      );
     },
 
     // Batched loader for task-run artifacts: returns each run's artifacts keyed
@@ -170,7 +174,12 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
         if (!runId) {
           continue;
         }
-        const mapped = mapArtifact(artifact, shareLinks.get(artifact.id) ?? [], agentSlug);
+        const mapped = await mapArtifact(
+          options.config,
+          artifact,
+          shareLinks.get(artifact.id) ?? [],
+          agentSlug,
+        );
         const existing = grouped.get(runId);
         if (existing) {
           existing.push(mapped);
@@ -189,7 +198,7 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
       }
       const shareLinks = await listShareLinksByArtifactIds([artifactId]);
       const agentSlug = await getArtifactAgentSlug(row.conversation_id);
-      return mapArtifact(row, shareLinks.get(artifactId) ?? [], agentSlug);
+      return mapArtifact(options.config, row, shareLinks.get(artifactId) ?? [], agentSlug);
     },
 
     // Copy the artifact's workspace file into stable storage so a shared link
@@ -282,11 +291,12 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
   };
 }
 
-function mapArtifact(
+async function mapArtifact(
+  config: RuntimeConfig,
   row: ArtifactRow,
   shareLinks: ArtifactShareLink[],
   agentSlug?: string,
-): Artifact {
+): Promise<Artifact> {
   return artifactSchema.parse({
     id: row.id,
     conversationId: row.conversation_id,
@@ -294,7 +304,7 @@ function mapArtifact(
     description: row.description ?? undefined,
     type: row.type,
     link: row.link,
-    fileManagerPath: buildFileManagerPath(row, agentSlug),
+    fileManagerPath: await resolveFileManagerPath(config, row, agentSlug),
     createdAt: row.created_at.toISOString(),
     shareLinks,
   });
@@ -387,10 +397,13 @@ async function resolveFileSourcePath(
   agentSlug: string | undefined,
 ): Promise<string> {
   const trimmed = validateRelativeArtifactPath(path);
-  const roots = [
-    ...(agentSlug ? [resolve(config.paths.subdirectories.specialists, agentSlug)] : []),
-    config.paths.workspaceDir,
-  ];
+  const roots = agentSlug
+    ? [
+        resolve(config.paths.subdirectories.specialists, agentSlug),
+        resolve(config.paths.subdirectories.specialists, agentSlug, "Documents"),
+        config.paths.workspaceDir,
+      ]
+    : [config.paths.workspaceDir];
 
   for (const root of roots) {
     const sourcePath = resolve(root, trimmed);
@@ -422,7 +435,11 @@ function validateRelativeArtifactPath(path: string | undefined): string {
   return trimmed;
 }
 
-function buildFileManagerPath(row: ArtifactRow, agentSlug: string | undefined): string | undefined {
+async function resolveFileManagerPath(
+  config: RuntimeConfig,
+  row: ArtifactRow,
+  agentSlug: string | undefined,
+): Promise<string | undefined> {
   if (row.type !== "file" || !agentSlug) {
     return undefined;
   }
@@ -438,7 +455,23 @@ function buildFileManagerPath(row: ArtifactRow, agentSlug: string | undefined): 
     return undefined;
   }
 
-  return ["specialists", agentSlug, ...segments].join("/");
+  const specialistPath = ["specialists", agentSlug, ...segments].join("/");
+  const specialistDocumentsPath = ["specialists", agentSlug, "Documents", ...segments].join("/");
+  const globalPath = segments.join("/");
+
+  if (await isWorkspaceFile(config, specialistPath)) {
+    return specialistPath;
+  }
+
+  if (await isWorkspaceFile(config, specialistDocumentsPath)) {
+    return specialistDocumentsPath;
+  }
+
+  if (await isWorkspaceFile(config, globalPath)) {
+    return undefined;
+  }
+
+  return specialistPath;
 }
 
 // Resolve a `document`-type artifact's Documents/-relative link to an absolute
@@ -461,6 +494,10 @@ async function isFile(path: string): Promise<boolean> {
       }
       throw error;
     });
+}
+
+async function isWorkspaceFile(config: RuntimeConfig, relativePath: string): Promise<boolean> {
+  return isFile(resolve(config.paths.workspaceDir, relativePath));
 }
 
 function resolveArtifactStoragePath(config: RuntimeConfig, storageKey: string): string {
