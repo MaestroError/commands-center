@@ -293,6 +293,7 @@ export async function startServerRuntime(
   });
 
   const openCodeStartupRef: { current?: OpenCodeStartupHandle } = {};
+  const auditPruneTimerRef: { current?: ReturnType<typeof setInterval> } = {};
   const drainController = createDrainController({
     logger,
     timeoutMs: config.timeouts.drainMs,
@@ -301,6 +302,9 @@ export async function startServerRuntime(
         await server.close();
       },
       terminateChildProcesses: async () => {
+        if (auditPruneTimerRef.current) {
+          clearInterval(auditPruneTimerRef.current);
+        }
         openCodeStartupRef.current?.dispose();
         taskExecutionService.dispose();
         systemVersionService.stop();
@@ -325,13 +329,13 @@ export async function startServerRuntime(
   void sessionArchiveScheduler.start();
 
   // Prune the per-token audit log on startup, then daily. The interval is
-  // unref'd so it never keeps the process alive.
+  // unref'd so it never keeps the process alive, and cleared on drain.
   void tokenAuditService.pruneExpired().catch(() => undefined);
-  const auditPruneTimer = setInterval(
+  auditPruneTimerRef.current = setInterval(
     () => void tokenAuditService.pruneExpired().catch(() => undefined),
     24 * 60 * 60 * 1000,
   );
-  auditPruneTimer.unref?.();
+  auditPruneTimerRef.current.unref?.();
 
   if (options?.installSignalHandlers !== false) {
     installSignalHandlers(drainController.drain, logger);

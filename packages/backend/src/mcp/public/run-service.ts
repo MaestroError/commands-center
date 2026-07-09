@@ -49,9 +49,7 @@ export function createPublicMcpRunService(deps: {
       }));
     }
     const options = await deps.resolveDeliveryContext(run);
-    return Promise.all(
-      run.artifacts.map((artifact) => deps.deliveryService!.buildDelivery(artifact, options)),
-    );
+    return deps.deliveryService.buildForRun(run, options);
   }
 
   async function projectResult(run: TaskRun, timedOut: boolean): Promise<McpTaskRunResult> {

@@ -170,7 +170,8 @@ describe("public task API", () => {
       expect(poll.statusCode).toBe(200);
       const pollBody = poll.json<Record<string, unknown>>();
       expect(pollBody).toMatchObject({ runId: triggerBody.runId, taskId: triggerBody.taskId });
-      expect(pollBody).not.toHaveProperty("artifacts");
+      // Phase 6: safe artifact delivery summaries (empty here — no artifacts produced).
+      expect(pollBody["artifacts"]).toEqual([]);
       expect(pollBody).not.toHaveProperty("renderedPrompt");
       expect(pollBody).not.toHaveProperty("effectivePermissions");
 
@@ -417,7 +418,8 @@ describe("public task API", () => {
       });
       const runBody = runDetail.json<Record<string, unknown>>();
       expect(runBody["triggerSource"]).toBe("api");
-      expect(runBody).not.toHaveProperty("artifacts");
+      // Phase 6: safe artifact delivery summaries (empty here — no artifacts produced).
+      expect(runBody["artifacts"]).toEqual([]);
       expect(runBody).not.toHaveProperty("renderedPrompt");
       expect(runBody).not.toHaveProperty("effectivePermissions");
 

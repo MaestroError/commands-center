@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { mcpArtifactSummarySchema } from "./public-mcp.js";
 import {
   taskRunOutcomeSchema,
   taskRunStatusSchema,
@@ -66,8 +67,8 @@ export const publicTriggerTemplateResponseSchema = z.object({
 });
 
 /**
- * Public-safe projection of a task run. Deliberately omits artifacts, local
- * paths, storage keys, and file download URLs (see Epic 10 for safe sharing).
+ * Public-safe projection of a task run. Exposes artifacts as safe delivery
+ * summaries (signed display/download URLs) but never local paths or storage keys.
  */
 export const publicTaskRunStatusSchema = z.object({
   runId: z.string().min(1),
@@ -77,6 +78,9 @@ export const publicTaskRunStatusSchema = z.object({
   finalMessage: z.string().nullable(),
   startedAt: z.string().datetime().nullable(),
   completedAt: z.string().datetime().nullable(),
+  // Deliverables: displayable/downloadable URLs per artifact (Phase 6). Empty
+  // unless the run has produced artifacts.
+  artifacts: z.array(mcpArtifactSummarySchema).default([]),
 });
 
 export type PublicTaskTemplateSummary = z.infer<typeof publicTaskTemplateSummarySchema>;
@@ -100,7 +104,8 @@ export const publicTaskTodoSchema = z.object({
  * Public-safe projection of a task run. Richer than {@link publicTaskRunStatusSchema}
  * (adds trigger source, result text, review/error fields) but still omits every
  * engine-internal field (rendered prompt, permissions, session id, trigger
- * metadata) and all artifacts / local paths / storage keys.
+ * metadata) and any local paths / storage keys. Artifacts are exposed as safe
+ * delivery summaries (signed URLs) on single-run reads only.
  */
 export const publicTaskRunSchema = z.object({
   id: z.string().min(1),
@@ -117,6 +122,9 @@ export const publicTaskRunSchema = z.object({
   completedAt: z.string().datetime().nullable(),
   cancelledAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
+  // Deliverables (Phase 6). Populated only for single-run reads; empty in list
+  // projections to avoid publishing every run's artifacts on a list request.
+  artifacts: z.array(mcpArtifactSummarySchema).default([]),
 });
 
 export const publicFeedbackSubtaskSchema = z.object({

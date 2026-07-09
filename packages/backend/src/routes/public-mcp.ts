@@ -59,11 +59,34 @@ export function registerPublicMcpRoutes(server: AppServer, context: RuntimeConte
     opencodeService: context.opencodeService,
   });
 
+  const artifactService = createArtifactService({
+    db: context.database.db,
+    config: context.config,
+  });
+  const artifactShareLinkService = createArtifactShareLinkService({
+    db: context.database.db,
+    config: context.config,
+    artifactService,
+  });
+  const deliveryService = createArtifactDeliveryService({
+    artifactService,
+    config: context.config,
+    logger: context.logger,
+  });
+  const resolveDeliveryContext = (run: Parameters<typeof buildArtifactDeliveryContext>[0]["run"]) =>
+    buildArtifactDeliveryContext({
+      run,
+      taskService,
+      artifactShareLinkService,
+      config: context.config,
+    });
+
   const publicTaskApiService = createPublicTaskApiService({
     taskService,
     executionService,
     taskContextAttachmentService,
     agentService,
+    artifactDelivery: { deliveryService, resolveDeliveryContext },
   });
   const settingsService = createPublicMcpSettingsService({
     config: context.config,
@@ -82,31 +105,11 @@ export function registerPublicMcpRoutes(server: AppServer, context: RuntimeConte
     capCache = { atMs: nowMs, value };
     return value;
   };
-  const artifactService = createArtifactService({
-    db: context.database.db,
-    config: context.config,
-  });
-  const artifactShareLinkService = createArtifactShareLinkService({
-    db: context.database.db,
-    config: context.config,
-    artifactService,
-  });
-  const deliveryService = createArtifactDeliveryService({
-    artifactService,
-    config: context.config,
-    logger: context.logger,
-  });
   const runService = createPublicMcpRunService({
     taskService,
     resolveCapMs,
     deliveryService,
-    resolveDeliveryContext: (run) =>
-      buildArtifactDeliveryContext({
-        run,
-        taskService,
-        artifactShareLinkService,
-        config: context.config,
-      }),
+    resolveDeliveryContext,
   });
   const registry = createPublicMcpRegistry({ service: publicTaskApiService, runService });
   const templateToolBuilder = createPublicMcpTemplateToolBuilder({

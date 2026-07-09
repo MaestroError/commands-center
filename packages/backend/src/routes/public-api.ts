@@ -31,11 +31,13 @@ import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { createSpecialistService } from "../services/specialist-service.js";
 import { createConversationService } from "../services/conversation-service.js";
 import { createArtifactService } from "../services/artifact-service.js";
+import { createArtifactDeliveryService } from "../services/artifact-delivery-service.js";
 import { createArtifactShareLinkService } from "../services/artifact-share-link-service.js";
 import { createPublicTaskApiService } from "../services/public-task-api-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
 import { createTaskService } from "../services/task-service.js";
+import { buildArtifactDeliveryContext } from "./public-artifacts.js";
 
 const templateIdParamsSchema = z.object({
   id: z.string().min(1),
@@ -132,12 +134,27 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
     config: context.config,
     artifactService,
   });
+  const deliveryService = createArtifactDeliveryService({
+    artifactService,
+    config: context.config,
+    logger: context.logger,
+  });
 
   const service = createPublicTaskApiService({
     taskService,
     executionService,
     taskContextAttachmentService,
     agentService,
+    artifactDelivery: {
+      deliveryService,
+      resolveDeliveryContext: (run) =>
+        buildArtifactDeliveryContext({
+          run,
+          taskService,
+          artifactShareLinkService,
+          config: context.config,
+        }),
+    },
   });
 
   app.get(

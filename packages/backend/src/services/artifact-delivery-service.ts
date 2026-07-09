@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 
-import type { Artifact, McpArtifactSummary } from "@cc/shared/schemas";
+import type { Artifact, McpArtifactSummary, TaskRun } from "@cc/shared/schemas";
 
 import { buildArtifactSignedUrl, type ArtifactDisposition } from "../lib/artifact-signed-url.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
@@ -78,6 +78,20 @@ export function createArtifactDeliveryService(deps: {
         displayUrl: options.displayEnabled ? sign(artifact.id, "display", options) : null,
         downloadUrl: options.downloadEnabled ? sign(artifact.id, "download", options) : null,
       };
+    },
+
+    // Build delivery summaries for all of a run's artifacts. Published
+    // sequentially because publishing is a read-modify-write on the shared
+    // manifest and would race in parallel.
+    async buildForRun(
+      run: TaskRun,
+      options: ArtifactDeliveryOptions,
+    ): Promise<McpArtifactSummary[]> {
+      const summaries: McpArtifactSummary[] = [];
+      for (const artifact of run.artifacts) {
+        summaries.push(await this.buildDelivery(artifact, options));
+      }
+      return summaries;
     },
   };
 }
