@@ -199,6 +199,38 @@ describe("DocumentsSidebarSection", () => {
     });
   });
 
+  it("does not treat a private document URL without an owner as the selected target", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue({
+      tree: [],
+      privateTrees: [
+        {
+          ownerSlug: "planner",
+          ownerSpecialistId: "agent-planner",
+          ownerName: "Planner",
+          tree: [
+            {
+              scope: "private",
+              ownerSlug: "planner",
+              ownerSpecialistId: "agent-planner",
+              name: "research.md",
+              relativePath: "notes/research.md",
+              type: "file",
+              title: "Research",
+            },
+          ],
+        },
+      ],
+    });
+
+    renderSidebar(["/documents?scope=private&path=notes%2Fresearch.md"]);
+
+    const documentButton = await screen.findByRole("button", { name: "Research" });
+    expect(documentButton).not.toHaveClass("text-accent");
+    expect(screen.getByTestId("location-probe")).toHaveTextContent(
+      "/documents?scope=private&path=notes%2Fresearch.md",
+    );
+  });
+
   it("renders folders and documents from the tree", async () => {
     vi.mocked(getDocumentTree).mockResolvedValue(
       tree({

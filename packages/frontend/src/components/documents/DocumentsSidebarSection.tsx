@@ -216,9 +216,14 @@ function parseDocumentTarget(search: string): DocumentTarget | null {
   }
 
   const scope = params.get("scope") === "private" ? "private" : "global";
+  const ownerSlug = scope === "private" ? params.get("owner") : null;
+  if (scope === "private" && !ownerSlug) {
+    return null;
+  }
+
   return {
     scope,
-    ownerSlug: scope === "private" ? params.get("owner") : null,
+    ownerSlug,
     path,
   };
 }

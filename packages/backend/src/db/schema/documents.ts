@@ -26,6 +26,6 @@ export const documents = sqliteTable(
       ),
     uniqueIndex("documents_private_owner_path_unique")
       .on(table.owner_specialist_id, table.relative_path)
-      .where(sql`${table.scope} = 'private'`),
+      .where(sql`${table.scope} = 'private' and ${table.owner_specialist_id} is not null`),
   ],
 );

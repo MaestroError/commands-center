@@ -135,6 +135,13 @@ describe("DocumentsPage", () => {
     });
   });
 
+  it("ignores private document URL parameters without an owner", async () => {
+    renderPage(["/documents?scope=private&path=notes%2Fresearch.md"]);
+
+    expect(await screen.findByText("No document selected")).toBeInTheDocument();
+    expect(getDocumentContent).not.toHaveBeenCalled();
+  });
+
   it("defaults the context pane to the Actions tab", async () => {
     vi.mocked(getDocumentContent).mockResolvedValue(
       doc({ content: "# Hello", revision: { mtimeMs: 1700000000000, sizeBytes: 7 } }),

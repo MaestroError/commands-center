@@ -47,6 +47,9 @@ describe("migrateDatabase", () => {
       expect(columnExists(sqlite, "documents", "last_seen_at")).toBe(true);
       expect(indexExists(sqlite, "documents_global_relative_path_unique")).toBe(true);
       expect(indexExists(sqlite, "documents_private_owner_path_unique")).toBe(true);
+      expect(indexWhere(sqlite, "documents_private_owner_path_unique")).toBe(
+        '"documents"."scope" = \'private\' and "documents"."owner_specialist_id" is not null',
+      );
       expect(tableExists(sqlite, "task_run_followups")).toBe(true);
       expect(columnExists(sqlite, "task_subtasks", "agent_id")).toBe(true);
       expect(columnExists(sqlite, "task_runs", "subtask_id")).toBe(true);
@@ -141,6 +144,13 @@ function indexExists(sqlite: SqliteClient, indexName: string): boolean {
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ? LIMIT 1")
       .get(indexName),
   );
+}
+
+function indexWhere(sqlite: SqliteClient, indexName: string): string | undefined {
+  const row = sqlite
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ? LIMIT 1")
+    .get(indexName) as { sql?: string } | undefined;
+  return row?.sql?.match(/\sWHERE\s(.+)$/i)?.[1];
 }
 
 function insertDocument(

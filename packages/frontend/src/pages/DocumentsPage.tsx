@@ -200,9 +200,14 @@ function parseSelectedDocument(searchParams: URLSearchParams): SelectedDocument 
   }
 
   const scope = searchParams.get("scope") === "private" ? "private" : "global";
+  const ownerSlug = scope === "private" ? searchParams.get("owner") : null;
+  if (scope === "private" && !ownerSlug) {
+    return null;
+  }
+
   return {
     scope,
-    ownerSlug: scope === "private" ? searchParams.get("owner") : null,
+    ownerSlug,
     path,
   };
 }

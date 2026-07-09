@@ -913,7 +913,7 @@
           "name": "documents_private_owner_path_unique",
           "columns": ["owner_specialist_id", "relative_path"],
           "isUnique": true,
-          "where": "\"documents\".\"scope\" = 'private'"
+          "where": "\"documents\".\"scope\" = 'private' and \"documents\".\"owner_specialist_id\" is not null"
         }
       },
       "foreignKeys": {},
