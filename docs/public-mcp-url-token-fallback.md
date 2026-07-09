@@ -18,7 +18,7 @@ This fallback applies only to the public MCP endpoint at `/api/public/mcp`. Publ
 
 ## Production Guidance
 
-URL-token authentication is not recommended for production unless the token has explicitly defined, minimal scopes and template permissions. URLs are more likely than headers to appear in client config, shell history, screenshots, browser history, proxy logs, and support bundles.
+URL-token authentication is not recommended for production unless the token has explicitly defined, minimal permissions: only the capabilities and template tools the MCP client needs. URLs are more likely than headers to appear in client config, shell history, screenshots, browser history, proxy logs, and support bundles.
 
 When this fallback is necessary:
 

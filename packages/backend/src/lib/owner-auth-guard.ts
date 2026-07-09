@@ -133,7 +133,7 @@ function readPublicMcpUrlToken(
   authorization: string | string[] | undefined,
   pathname: string,
 ): string | undefined {
-  if (pathname !== PUBLIC_MCP_PATH || readHeaderString(authorization)) {
+  if (pathname !== PUBLIC_MCP_PATH || readHeaderString(authorization) !== undefined) {
     return undefined;
   }
 

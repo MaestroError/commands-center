@@ -113,6 +113,31 @@ describe("public MCP route", () => {
     }
   });
 
+  it("does not let URL key auth bypass an empty authorization header", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token;
+      const response = await server.inject({
+        method: "POST",
+        url: `/api/public/mcp?key=${encodeURIComponent(token)}`,
+        headers: {
+          Authorization: "",
+          Accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+        },
+        payload: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+      });
+
+      expect(response.statusCode).toBe(401);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("keeps URL key auth scoped away from public REST routes", async () => {
     const testDb = await createTestDatabase();
     const apiTokenService = createApiTokenService({ db: testDb.client.db });
