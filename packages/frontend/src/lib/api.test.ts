@@ -859,6 +859,8 @@ describe("additional request wrapper coverage", () => {
       makeJsonResponse({
         shareId: "share-1",
         url: "https://example.com/share/abc",
+        displayUrl: "https://example.com/artifacts/art-1/display",
+        downloadUrl: "https://example.com/artifacts/art-1/download",
         expiresAt: null,
       }),
     );

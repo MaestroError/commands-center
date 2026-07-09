@@ -61,6 +61,8 @@ describe("ChatResultsPanel", () => {
   it("queries artifacts for the given conversation", () => {
     setArtifacts([]);
     render(<ChatResultsPanel conversationId="conv-xyz" />);
-    expect(useConversationArtifactsQuery).toHaveBeenCalledWith("conv-xyz");
+    expect(useConversationArtifactsQuery).toHaveBeenCalledWith("conv-xyz", {
+      refetchInterval: 3_000,
+    });
   });
 });

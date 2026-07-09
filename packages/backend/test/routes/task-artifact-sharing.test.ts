@@ -67,8 +67,18 @@ describe("task artifact sharing", () => {
         payload: {},
       });
       expect(created.statusCode).toBe(200);
-      const share = created.json<{ shareId: string; url: string; expiresAt: string }>();
+      const share = created.json<{
+        shareId: string;
+        url: string;
+        displayUrl: string;
+        downloadUrl: string;
+        expiresAt: string;
+      }>();
       expect(share.url).toContain("https://cc.example.test/api/public/v1/task-artifacts/download/");
+      expect(share.displayUrl).toContain("https://cc.example.test/api/public/v1/artifacts/");
+      expect(share.displayUrl).toContain("/display?");
+      expect(share.downloadUrl).toContain("https://cc.example.test/api/public/v1/artifacts/");
+      expect(share.downloadUrl).toContain("/download?");
       expect(share.expiresAt).toMatch(/Z$/);
 
       const row = await testDb.client.db.query.artifact_share_links.findFirst({
@@ -89,6 +99,24 @@ describe("task artifact sharing", () => {
       expect(downloaded.headers["x-content-type-options"]).toBe("nosniff");
       expect(downloaded.headers["cache-control"]).toBe("no-store, max-age=0");
       expect(downloaded.headers["content-disposition"]).toContain("release.md");
+
+      const displayUrl = new URL(share.displayUrl);
+      const displayed = await server.inject({
+        method: "GET",
+        url: `${displayUrl.pathname}${displayUrl.search}`,
+      });
+      expect(displayed.statusCode).toBe(200);
+      expect(displayed.body).toBe("release notes");
+      expect(displayed.headers["content-disposition"]).toContain("inline");
+
+      const publicDownloadUrl = new URL(share.downloadUrl);
+      const publicDownloaded = await server.inject({
+        method: "GET",
+        url: `${publicDownloadUrl.pathname}${publicDownloadUrl.search}`,
+      });
+      expect(publicDownloaded.statusCode).toBe(200);
+      expect(publicDownloaded.body).toBe("release notes");
+      expect(publicDownloaded.headers["content-disposition"]).toContain("attachment");
 
       const afterDownload = await testDb.client.db.query.artifact_share_links.findFirst({
         where: (table, operators) => operators.eq(table.id, share.shareId),
@@ -218,8 +246,16 @@ describe("task artifact sharing", () => {
         payload: {},
       });
       expect(created.statusCode).toBe(200);
-      const share = created.json<{ shareId: string; url: string; expiresAt: string | null }>();
+      const share = created.json<{
+        shareId: string;
+        url: string;
+        displayUrl: string;
+        downloadUrl: string;
+        expiresAt: string | null;
+      }>();
       expect(share.expiresAt).toBeNull();
+      expect(new URL(share.displayUrl).searchParams.get("exp")).toBe("0");
+      expect(new URL(share.downloadUrl).searchParams.get("exp")).toBe("0");
 
       const row = await testDb.client.db.query.artifact_share_links.findFirst({
         where: (table, operators) => operators.eq(table.id, share.shareId),

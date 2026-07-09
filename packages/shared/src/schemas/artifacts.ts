@@ -75,6 +75,8 @@ export const createArtifactShareLinkInputSchema = z.object({
 export const createArtifactShareLinkResponseSchema = z.object({
   shareId: z.string().min(1),
   url: z.string().url(),
+  displayUrl: z.string().url(),
+  downloadUrl: z.string().url(),
   expiresAt: z.string().datetime().nullable(),
 });
 
