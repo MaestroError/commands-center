@@ -95,6 +95,18 @@ describe("artifact signed URLs", () => {
     ).toBe(false);
   });
 
+  it("treats a non-numeric exp as expired", () => {
+    expect(
+      verifyArtifactSignature({
+        artifactId: "a",
+        disposition: "display",
+        expRaw: "not-a-number",
+        sig: "whatever",
+        secretKey: SECRET,
+      }).expired,
+    ).toBe(true);
+  });
+
   it("marks past expiry as expired, and exp=0 as never-expiring", () => {
     const past = parse(
       buildArtifactSignedPath({

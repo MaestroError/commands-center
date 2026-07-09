@@ -206,6 +206,79 @@ describe("public MCP route", () => {
       await testDb.cleanup();
     }
   });
+
+  it("exercises the read/write tool surface, including not-found paths", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const server = await buildServer(testDb, apiTokenService, taskService);
+
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId, title: "A task", description: "d" });
+      const template = await taskService.createTemplate({
+        defaultAgentId: agentId,
+        title: "A template",
+        description: "d",
+      });
+      const token = apiTokenService.createToken(
+        "All",
+        permissionsForPresets("tasks", "templates"),
+      ).token;
+
+      let id = 100;
+      const call = async (name: string, args: Record<string, unknown>) =>
+        parseSseJson(
+          (await callMcp(server, token, "tools/call", { name, arguments: args }, id++)).body,
+        ) as { result?: { isError?: boolean; structuredContent?: Record<string, unknown> } };
+      const isError = (r: Awaited<ReturnType<typeof call>>) => r.result?.isError === true;
+
+      // Read tools — success then not-found.
+      expect(isError(await call("list_task_templates", {}))).toBe(false);
+      expect(isError(await call("list_specialists", {}))).toBe(false);
+      expect(isError(await call("list_tasks", { status: "backlog" }))).toBe(false);
+      expect(isError(await call("get_task", { taskId: task.id, expand: "runs,feedback" }))).toBe(
+        false,
+      );
+      expect(isError(await call("get_task", { taskId: "missing" }))).toBe(true);
+      expect(isError(await call("list_task_runs", { taskId: task.id }))).toBe(false);
+      expect(isError(await call("list_task_runs", { taskId: "missing" }))).toBe(true);
+      expect(isError(await call("get_task_run", { taskId: task.id, runId: "missing" }))).toBe(true);
+      expect(isError(await call("get_task_result", { runId: "missing" }))).toBe(true);
+      expect(isError(await call("list_task_feedback", { taskId: task.id }))).toBe(false);
+      expect(isError(await call("list_task_feedback", { taskId: "missing" }))).toBe(true);
+
+      // Write tools — success then not-found.
+      expect(isError(await call("enable_task_template", { templateId: template.id }))).toBe(false);
+      expect(isError(await call("disable_task_template", { templateId: template.id }))).toBe(false);
+      expect(isError(await call("enable_task_template", { templateId: "missing" }))).toBe(true);
+      expect(
+        isError(await call("create_task", { specialistId: agentId, title: "Made via MCP" })),
+      ).toBe(false);
+      expect(
+        isError(
+          await call("schedule_task", { taskId: task.id, runAt: "2099-01-01T00:00:00.000Z" }),
+        ),
+      ).toBe(false);
+      expect(
+        isError(
+          await call("schedule_task", { taskId: "missing", runAt: "2099-01-01T00:00:00.000Z" }),
+        ),
+      ).toBe(true);
+
+      // Run tools — the fast not-found paths (no execution).
+      expect(isError(await call("task_run", { taskId: "missing" }))).toBe(true);
+      expect(isError(await call("task_template_run", { templateId: "missing" }))).toBe(true);
+
+      // Async variants return immediately with the queued run id.
+      const asyncRun = await call("task_run_async", { taskId: task.id });
+      expect(isError(asyncRun)).toBe(false);
+      expect(asyncRun.result?.structuredContent).toMatchObject({ taskId: task.id });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 async function buildServer(

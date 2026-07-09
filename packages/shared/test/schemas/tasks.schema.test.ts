@@ -185,6 +185,7 @@ describe("task schemas", () => {
           title: "Weekly status",
           description: "Summarize progress.",
           todos: [],
+          mcpConfig: { toolName: "weekly_status" },
           recurrence: {
             mode: "recurring",
             anchorAt: "2026-06-01T09:00:00.000Z",
