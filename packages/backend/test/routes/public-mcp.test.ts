@@ -17,7 +17,7 @@ import { permissionsForPresets } from "../helpers/api-tokens";
 type InjectServer = Awaited<ReturnType<typeof createServer>>;
 
 describe("public MCP route", () => {
-  it("rejects requests without a bearer token", async () => {
+  it("rejects requests without a token", async () => {
     const testDb = await createTestDatabase();
     const server = await buildServer(testDb);
 
@@ -30,6 +30,99 @@ describe("public MCP route", () => {
           "content-type": "application/json",
         },
         payload: initializePayload(1),
+      });
+
+      expect(response.statusCode).toBe(401);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("accepts a URL key token for MCP requests", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token;
+      const response = await callMcpWithUrlToken(server, token, "tools/list", {}, 1);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toContain('"name":"list_tasks"');
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects invalid URL key tokens for MCP requests", async () => {
+    const testDb = await createTestDatabase();
+    const server = await buildServer(testDb);
+
+    try {
+      const response = await callMcpWithUrlToken(server, "cc_invalid", "tools/list", {}, 1);
+
+      expect(response.statusCode).toBe(401);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects revoked URL key tokens for MCP requests", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks"));
+      expect(apiTokenService.revokeToken(token.record.id)).toBe(true);
+
+      const response = await callMcpWithUrlToken(server, token.token, "tools/list", {}, 1);
+
+      expect(response.statusCode).toBe(401);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not let URL key auth bypass an invalid bearer token", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token;
+      const response = await server.inject({
+        method: "POST",
+        url: `/api/public/mcp?key=${encodeURIComponent(token)}`,
+        headers: {
+          Authorization: "Bearer cc_invalid",
+          Accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+        },
+        payload: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+      });
+
+      expect(response.statusCode).toBe(401);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps URL key auth scoped away from public REST routes", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token;
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/public/v1/tasks?key=${encodeURIComponent(token)}`,
       });
 
       expect(response.statusCode).toBe(401);
@@ -317,6 +410,24 @@ async function callMcp(
     url: "/api/public/mcp",
     headers: {
       Authorization: `Bearer ${token}`,
+      Accept: "application/json, text/event-stream",
+      "content-type": "application/json",
+    },
+    payload: { jsonrpc: "2.0", id, method, params },
+  });
+}
+
+async function callMcpWithUrlToken(
+  server: InjectServer,
+  token: string,
+  method: string,
+  params: Record<string, unknown>,
+  id = 1,
+) {
+  return server.inject({
+    method: "POST",
+    url: `/api/public/mcp?key=${encodeURIComponent(token)}`,
+    headers: {
       Accept: "application/json, text/event-stream",
       "content-type": "application/json",
     },

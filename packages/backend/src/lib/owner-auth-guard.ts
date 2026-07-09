@@ -91,7 +91,9 @@ function validatePublicApiBearer(
   method: string,
   pathname: string,
 ): void {
-  const rawToken = readBearerToken(request.headers.authorization);
+  const rawToken =
+    readBearerToken(request.headers.authorization) ??
+    readPublicMcpUrlToken(request.url, request.headers.authorization, pathname);
   const tokenRecord = rawToken ? context.apiTokenService.validateToken(rawToken) : null;
 
   if (!tokenRecord) {
@@ -124,6 +126,19 @@ function readBearerToken(value: string | string[] | undefined): string | undefin
   const match = /^Bearer\s+(.+)$/i.exec(header ?? "");
 
   return match?.[1]?.trim();
+}
+
+function readPublicMcpUrlToken(
+  url: string,
+  authorization: string | string[] | undefined,
+  pathname: string,
+): string | undefined {
+  if (pathname !== PUBLIC_MCP_PATH || readHeaderString(authorization)) {
+    return undefined;
+  }
+
+  const value = new URL(url, "http://localhost").searchParams.get("key")?.trim();
+  return value && value.length > 0 ? value : undefined;
 }
 
 export function validateOriginForMutation(context: RuntimeContext, request: FastifyRequest): void {

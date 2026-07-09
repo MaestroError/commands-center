@@ -15,6 +15,8 @@ function resolveBaseUrl(): string {
 
 export function EndpointsTab(props: { onGoToTokens?: () => void }) {
   const baseUrl = resolveBaseUrl();
+  const mcpEndpoint = `${baseUrl}/api/public/mcp`;
+  const mcpUrlTokenEndpoint = `${mcpEndpoint}?key=${PUBLIC_API_TOKEN_PLACEHOLDER}`;
   const docs = useMemo(
     () =>
       buildTemplateEndpointDocs({
@@ -67,18 +69,27 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
       <section className="rounded-xl border border-border bg-surface p-5">
         <p className="text-sm leading-6 text-text-secondary">
           Point your MCP client at{" "}
-          <code className="rounded bg-app-bg px-1 py-0.5 font-mono text-xs">
-            {baseUrl}/api/public/mcp
-          </code>{" "}
-          and send the same{" "}
+          <code className="rounded bg-app-bg px-1 py-0.5 font-mono text-xs">{mcpEndpoint}</code> and
+          send the same{" "}
           <code className="rounded bg-app-bg px-1 py-0.5 font-mono text-xs">
             Authorization: Bearer cc_…
           </code>{" "}
           header. Each tool is gated by the token&apos;s permissions — a client only sees the tools
           its token allows.
         </p>
-        <div className="mt-4">
-          <CopyableCode code={`${baseUrl}/api/public/mcp`} label="MCP endpoint" />
+        <div className="mt-4 grid gap-4">
+          <CopyableCode code={mcpEndpoint} label="MCP endpoint" />
+          <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <p className="text-sm leading-6 text-text-secondary">
+              Temporary fallback for clients that cannot set headers: append the token as{" "}
+              <code className="rounded bg-app-bg px-1 py-0.5 font-mono text-xs">
+                ?key=&lt;YOUR_API_TOKEN&gt;
+              </code>
+              . This is not recommended for production unless the token has explicitly scoped
+              permissions, because URLs are easier to leak through logs, history, and shared config.
+            </p>
+          </div>
+          <CopyableCode code={mcpUrlTokenEndpoint} label="MCP endpoint with URL token" />
         </div>
       </section>
 
