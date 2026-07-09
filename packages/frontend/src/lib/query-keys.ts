@@ -1,6 +1,7 @@
 export const queryKeys = {
   documentTree: ["document-tree"] as const,
-  documentContent: (path: string) => ["document-content", path] as const,
+  documentContent: (scope: string, ownerSlug: string | null | undefined, path: string) =>
+    ["document-content", scope, ownerSlug ?? "", path] as const,
   engineStatus: ["engine-status"] as const,
   systemVersion: ["system-version"] as const,
   systemUpdatePreferences: ["system-update-preferences"] as const,

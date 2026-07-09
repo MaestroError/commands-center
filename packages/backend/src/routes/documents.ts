@@ -5,6 +5,7 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import {
   createDocumentFolderInputSchema,
   createDocumentInputSchema,
+  documentScopeSchema,
   documentListResponseSchema,
   documentReadResponseSchema,
   documentTreeResponseSchema,
@@ -33,7 +34,10 @@ export function registerDocumentRoutes(server: AppServer, context: RuntimeContex
         response: { 200: documentTreeResponseSchema },
       },
     },
-    async () => ({ tree: await service.getTree() }),
+    async () => ({
+      tree: await service.getTree({ scope: "global" }),
+      privateTrees: await service.getPrivateTreeGroups(),
+    }),
   );
 
   app.get(
@@ -55,7 +59,12 @@ export function registerDocumentRoutes(server: AppServer, context: RuntimeContex
         response: { 200: documentReadResponseSchema },
       },
     },
-    async (request) => service.read(request.query.path),
+    async (request) =>
+      service.read({
+        scope: request.query["scope"],
+        ownerSlug: request.query["owner"],
+        relativePath: request.query["path"],
+      }),
   );
 
   app.get(
@@ -84,7 +93,7 @@ export function registerDocumentRoutes(server: AppServer, context: RuntimeContex
     async (request, reply) => {
       const doc = await service.create(request.body);
       void reply.status(201);
-      return { documents: [doc] };
+      return { documents: [doc], totalMatches: 1, nextOffset: null };
     },
   );
 
@@ -96,7 +105,7 @@ export function registerDocumentRoutes(server: AppServer, context: RuntimeContex
       },
     },
     async (request, reply) => {
-      await service.createFolder(request.body.path);
+      await service.createFolder(request.body);
       void reply.status(201);
       return { path: request.body.path };
     },
@@ -127,6 +136,8 @@ export function registerDocumentRoutes(server: AppServer, context: RuntimeContex
 import { z } from "zod";
 
 const documentReadQuerySchema = z.object({
+  scope: documentScopeSchema.default("global"),
+  owner: z.string().trim().min(1).optional(),
   path: z.string().min(1),
 });
 

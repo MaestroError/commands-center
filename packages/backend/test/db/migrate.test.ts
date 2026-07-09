@@ -12,6 +12,7 @@ type SqliteClient = {
   prepare(sql: string): {
     get(...params: unknown[]): unknown;
     all(...params: unknown[]): unknown[];
+    run(...params: unknown[]): unknown;
   };
 };
 
@@ -38,10 +39,14 @@ describe("migrateDatabase", () => {
       expect(columnExists(sqlite, "documents", "author")).toBe(true);
       expect(columnExists(sqlite, "documents", "title")).toBe(true);
       expect(columnExists(sqlite, "documents", "description")).toBe(true);
+      expect(columnExists(sqlite, "documents", "scope")).toBe(true);
+      expect(columnExists(sqlite, "documents", "owner_slug")).toBe(true);
+      expect(columnExists(sqlite, "documents", "owner_specialist_id")).toBe(true);
       expect(columnExists(sqlite, "documents", "created_at")).toBe(true);
       expect(columnExists(sqlite, "documents", "updated_at")).toBe(true);
       expect(columnExists(sqlite, "documents", "last_seen_at")).toBe(true);
-      expect(indexExists(sqlite, "documents_relative_path_unique")).toBe(true);
+      expect(indexExists(sqlite, "documents_global_relative_path_unique")).toBe(true);
+      expect(indexExists(sqlite, "documents_private_owner_path_unique")).toBe(true);
       expect(tableExists(sqlite, "task_run_followups")).toBe(true);
       expect(columnExists(sqlite, "task_subtasks", "agent_id")).toBe(true);
       expect(columnExists(sqlite, "task_runs", "subtask_id")).toBe(true);
@@ -54,6 +59,62 @@ describe("migrateDatabase", () => {
       expect(indexExists(sqlite, "task_run_followups_run_status_idx")).toBe(true);
       expect(tableExists(sqlite, "automations")).toBe(false);
       expect(tableExists(sqlite, "automation_runs")).toBe(false);
+    } finally {
+      client.close();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("enforces scoped document uniqueness", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "cc-migrate-db-"));
+    const config = loadRuntimeConfig({ cwd, env: { NODE_ENV: "test" } });
+
+    const client = createDatabaseClient(config);
+    const sqlite = (client.db as typeof client.db & { $client: SqliteClient }).$client;
+
+    try {
+      migrateDatabase(client.db);
+
+      insertDocument(sqlite, {
+        id: "global-1",
+        scope: "global",
+        ownerSlug: null,
+        ownerSpecialistId: null,
+        relativePath: "notes/shared.md",
+      });
+      expect(() =>
+        insertDocument(sqlite, {
+          id: "global-duplicate",
+          scope: "global",
+          ownerSlug: null,
+          ownerSpecialistId: null,
+          relativePath: "notes/shared.md",
+        }),
+      ).toThrow();
+
+      insertDocument(sqlite, {
+        id: "private-1",
+        scope: "private",
+        ownerSlug: "planner",
+        ownerSpecialistId: "agent-planner",
+        relativePath: "notes/shared.md",
+      });
+      expect(() =>
+        insertDocument(sqlite, {
+          id: "private-duplicate",
+          scope: "private",
+          ownerSlug: "planner",
+          ownerSpecialistId: "agent-planner",
+          relativePath: "notes/shared.md",
+        }),
+      ).toThrow();
+      insertDocument(sqlite, {
+        id: "private-other-owner",
+        scope: "private",
+        ownerSlug: "researcher",
+        ownerSpecialistId: "agent-researcher",
+        relativePath: "notes/shared.md",
+      });
     } finally {
       client.close();
       await rm(cwd, { recursive: true, force: true });
@@ -80,4 +141,34 @@ function indexExists(sqlite: SqliteClient, indexName: string): boolean {
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ? LIMIT 1")
       .get(indexName),
   );
+}
+
+function insertDocument(
+  sqlite: SqliteClient,
+  input: {
+    id: string;
+    scope: string;
+    ownerSlug: string | null;
+    ownerSpecialistId: string | null;
+    relativePath: string;
+  },
+): void {
+  sqlite
+    .prepare(
+      [
+        "INSERT INTO documents",
+        "(id, scope, owner_slug, owner_specialist_id, relative_path, created_at, updated_at, last_seen_at)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      ].join(" "),
+    )
+    .run(
+      input.id,
+      input.scope,
+      input.ownerSlug,
+      input.ownerSpecialistId,
+      input.relativePath,
+      1,
+      1,
+      1,
+    );
 }

@@ -3,9 +3,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { createDocument } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+import type { DocumentScope } from "@cc/shared/schemas";
 
 type DocumentCreateDialogProps = {
   onClose: () => void;
+  scope?: DocumentScope;
+  ownerSlug?: string | null;
   /** Folder the document is created in, relative to Documents/ (no trailing slash). */
   defaultFolder?: string;
 };
@@ -47,6 +50,8 @@ export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
         : `${derivedPath}.md`;
 
     mutation.mutate({
+      ...(props.scope && props.scope !== "global" ? { scope: props.scope } : {}),
+      ...(props.ownerSlug ? { ownerSlug: props.ownerSlug } : {}),
       path: finalPath,
       title: title.trim() || undefined,
       description: description.trim() || undefined,

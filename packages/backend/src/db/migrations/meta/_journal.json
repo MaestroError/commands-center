@@ -260,6 +260,13 @@
       "when": 1783526671921,
       "tag": "0036_slimy_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1783623481075,
+      "tag": "0037_futuristic_quicksilver",
+      "breakpoints": true
     }
   ]
 }

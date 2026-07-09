@@ -3,6 +3,8 @@ import { z } from "zod";
 import { fileManagerFileRevisionSchema } from "./file-manager.js";
 
 const MARKDOWN_EXTENSIONS = [".md", ".markdown"] as const;
+const DEFAULT_DOCUMENT_LIST_LIMIT = 50;
+const MAX_DOCUMENT_LIST_LIMIT = 200;
 
 // Windows drive-letter prefix (e.g. `C:` in `C:\notes.md` or `C:/notes.md`),
 // which is absolute on Windows even without a leading separator.
@@ -50,8 +52,26 @@ const documentFolderPathSchema = z
     message: "Path must not contain empty or hidden segments",
   });
 
+export const documentScopeSchema = z.enum(["global", "private"]);
+
+const scopedDocumentFields = {
+  scope: documentScopeSchema.default("global"),
+  ownerSlug: z.string().min(1).nullable().default(null),
+  ownerSpecialistId: z.string().min(1).nullable().default(null),
+} as const;
+
+export const documentListFilterSchema = z.object({
+  query: z.string().trim().min(1).optional(),
+  pathContains: z.string().trim().min(1).optional(),
+  titleContains: z.string().trim().min(1).optional(),
+  descriptionContains: z.string().trim().min(1).optional(),
+  limit: z.number().int().min(1).max(MAX_DOCUMENT_LIST_LIMIT).default(DEFAULT_DOCUMENT_LIST_LIMIT),
+  offset: z.number().int().min(0).default(0),
+});
+
 export const documentMetadataSchema = z.object({
   id: z.string().min(1),
+  ...scopedDocumentFields,
   relativePath: z.string().min(1),
   title: z.string().nullable().default(null),
   description: z.string().nullable().default(null),
@@ -63,6 +83,7 @@ export const documentMetadataSchema = z.object({
 
 export const documentTreeNodeSchema: z.ZodType<DocumentTreeNode> = z.lazy(() =>
   z.object({
+    ...scopedDocumentFields,
     name: z.string().min(1),
     relativePath: z.string().min(1),
     type: z.enum(["file", "directory"]),
@@ -71,7 +92,15 @@ export const documentTreeNodeSchema: z.ZodType<DocumentTreeNode> = z.lazy(() =>
   }),
 );
 
+export const privateDocumentTreeGroupSchema = z.object({
+  ownerSlug: z.string().min(1),
+  ownerSpecialistId: z.string().min(1),
+  ownerName: z.string().min(1),
+  tree: z.array(documentTreeNodeSchema),
+});
+
 export const documentListItemSchema = z.object({
+  ...scopedDocumentFields,
   relativePath: z.string().min(1),
   fullPath: z.string().min(1),
   title: z.string().min(1),
@@ -81,13 +110,17 @@ export const documentListItemSchema = z.object({
 
 export const documentListResponseSchema = z.object({
   documents: z.array(documentListItemSchema),
+  totalMatches: z.number().int().nonnegative().optional(),
+  nextOffset: z.number().int().nonnegative().nullable().optional(),
 });
 
 export const documentTreeResponseSchema = z.object({
   tree: z.array(documentTreeNodeSchema),
+  privateTrees: z.array(privateDocumentTreeGroupSchema).default([]),
 });
 
 export const documentReadResponseSchema = z.object({
+  ...scopedDocumentFields,
   relativePath: z.string().min(1),
   fullPath: z.string().min(1),
   title: z.string().min(1),
@@ -100,6 +133,8 @@ export const documentReadResponseSchema = z.object({
 });
 
 export const createDocumentInputSchema = z.object({
+  scope: documentScopeSchema.default("global"),
+  ownerSlug: z.string().trim().min(1).optional(),
   path: createDocumentPathSchema,
   title: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
@@ -108,10 +143,14 @@ export const createDocumentInputSchema = z.object({
 });
 
 export const createDocumentFolderInputSchema = z.object({
+  scope: documentScopeSchema.default("global"),
+  ownerSlug: z.string().trim().min(1).optional(),
   path: documentFolderPathSchema,
 });
 
 export const updateDocumentMetadataInputSchema = z.object({
+  scope: documentScopeSchema.default("global"),
+  ownerSlug: z.string().trim().min(1).optional(),
   path: documentRelativePathSchema,
   title: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
@@ -119,6 +158,8 @@ export const updateDocumentMetadataInputSchema = z.object({
 });
 
 export const saveDocumentContentInputSchema = z.object({
+  scope: documentScopeSchema.default("global"),
+  ownerSlug: z.string().trim().min(1).optional(),
   path: documentRelativePathSchema,
   content: z.string(),
   expectedRevision: fileManagerFileRevisionSchema,
@@ -137,21 +178,27 @@ export const searchDocumentsResponseSchema = z.object({
 });
 
 export type DocumentMetadata = z.infer<typeof documentMetadataSchema>;
+export type DocumentScope = z.infer<typeof documentScopeSchema>;
+export type DocumentListFilter = z.infer<typeof documentListFilterSchema>;
 export type DocumentTreeNode = {
+  scope: DocumentScope;
+  ownerSlug: string | null;
+  ownerSpecialistId: string | null;
   name: string;
   relativePath: string;
   type: "file" | "directory";
   title: string | null;
   children?: DocumentTreeNode[];
 };
+export type PrivateDocumentTreeGroup = z.infer<typeof privateDocumentTreeGroupSchema>;
 export type DocumentListItem = z.infer<typeof documentListItemSchema>;
 export type DocumentListResponse = z.infer<typeof documentListResponseSchema>;
 export type DocumentTreeResponse = z.infer<typeof documentTreeResponseSchema>;
 export type DocumentReadResponse = z.infer<typeof documentReadResponseSchema>;
-export type CreateDocumentInput = z.infer<typeof createDocumentInputSchema>;
-export type CreateDocumentFolderInput = z.infer<typeof createDocumentFolderInputSchema>;
-export type UpdateDocumentMetadataInput = z.infer<typeof updateDocumentMetadataInputSchema>;
-export type SaveDocumentContentInput = z.infer<typeof saveDocumentContentInputSchema>;
+export type CreateDocumentInput = z.input<typeof createDocumentInputSchema>;
+export type CreateDocumentFolderInput = z.input<typeof createDocumentFolderInputSchema>;
+export type UpdateDocumentMetadataInput = z.input<typeof updateDocumentMetadataInputSchema>;
+export type SaveDocumentContentInput = z.input<typeof saveDocumentContentInputSchema>;
 export type SaveDocumentContentResponse = z.infer<typeof saveDocumentContentResponseSchema>;
 export type SearchDocumentsQuery = z.infer<typeof searchDocumentsQuerySchema>;
 export type SearchDocumentsResponse = z.infer<typeof searchDocumentsResponseSchema>;

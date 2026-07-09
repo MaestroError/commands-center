@@ -30,6 +30,9 @@ describe("document schemas", () => {
         }),
       ).toEqual({
         id: "doc-1",
+        scope: "global",
+        ownerSlug: null,
+        ownerSpecialistId: null,
         relativePath: "notes/design.md",
         title: "Design Notes",
         description: "Overview of system design",
@@ -86,6 +89,7 @@ describe("document schemas", () => {
           content: "# Architecture\n\nOverview here.",
         }),
       ).toEqual({
+        scope: "global",
         path: "design/architecture.md",
         title: "Architecture",
         description: "System architecture overview",
@@ -177,6 +181,7 @@ describe("document schemas", () => {
   describe("createDocumentFolderInputSchema", () => {
     it("accepts valid folder path", () => {
       expect(createDocumentFolderInputSchema.parse({ path: "design/specs" })).toEqual({
+        scope: "global",
         path: "design/specs",
       });
     });
@@ -281,6 +286,9 @@ describe("document schemas", () => {
           title: "My Notes",
         }),
       ).toEqual({
+        scope: "global",
+        ownerSlug: null,
+        ownerSpecialistId: null,
         name: "notes.md",
         relativePath: "notes.md",
         type: "file",
