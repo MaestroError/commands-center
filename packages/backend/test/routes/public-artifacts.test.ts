@@ -6,14 +6,18 @@ import { describe, expect, it } from "vitest";
 import { agents, conversations } from "../../src/db/schema/index";
 import { createLogger } from "../../src/lib/logger";
 import { buildArtifactSignedPath } from "../../src/lib/artifact-signed-url";
+import { createOwnerSessionCookie } from "../../src/lib/owner-session-cookie";
 import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orchestrator";
 import { createServer } from "../../src/server";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createApiTokenService } from "../../src/services/api-token-service";
+import { createOwnerAccessService } from "../../src/services/owner-access-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
+
+const STRONG_PASSWORD = "CorrectHorseBatteryStaple42!";
 
 type InjectServer = Awaited<ReturnType<typeof createServer>>;
 type TestDb = Awaited<ReturnType<typeof createTestDatabase>>;
@@ -181,15 +185,55 @@ describe("public artifact delivery routes", () => {
       await testDb.cleanup();
     }
   });
+
+  it("streams an expired non-renderable display straight to an authenticated owner", async () => {
+    const testDb = await createTestDatabase();
+    const ownerAccessService = createOwnerAccessService({ config: testDb.config });
+    const server = await buildServer(testDb, ownerAccessService);
+
+    try {
+      const artifactId = await seedArtifactId(testDb, { link: "bundle.zip", content: "PKzip" });
+      const claim = await ownerAccessService.rotateClaimCode();
+      await ownerAccessService.claim({
+        claimCode: claim.code,
+        password: STRONG_PASSWORD,
+        confirmPassword: STRONG_PASSWORD,
+      });
+      const session = await ownerAccessService.login({ password: STRONG_PASSWORD });
+      const cookie = createOwnerSessionCookie({
+        config: testDb.config,
+        sessionId: session.sessionId,
+      }).split(";")[0];
+
+      // Expired signature, but an authenticated owner: no broken download-page
+      // button — the bytes stream directly as an attachment.
+      const response = await server.inject({
+        method: "GET",
+        url: signedPath(testDb, artifactId, "display", Date.now() - 1000),
+        headers: { cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["content-disposition"]).toContain("attachment");
+      expect(response.headers["content-type"]).not.toContain("text/html");
+      expect(response.body).toBe("PKzip");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
-async function buildServer(testDb: TestDb): Promise<InjectServer> {
+async function buildServer(
+  testDb: TestDb,
+  ownerAccessService?: ReturnType<typeof createOwnerAccessService>,
+): Promise<InjectServer> {
   const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
   return createServer({
     config: testDb.config,
     logger: createLogger(testDb.config),
     database: testDb.client,
     apiTokenService: createApiTokenService({ db: testDb.client.db }),
+    ownerAccessService,
     orchestrator: createOrchestrator(),
     opencodeService: { dispose: () => {}, disposeGlobal: () => {} } as unknown as OpenCodeService,
     openCodeEventService: { subscribe: () => {} } as never,

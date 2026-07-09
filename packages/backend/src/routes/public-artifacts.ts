@@ -110,16 +110,18 @@ export function registerPublicArtifactRoutes(server: AppServer, context: Runtime
         if (!valid || expired) {
           throw new NotFoundError("Artifact link not found.");
         }
-        return serve(reply, await resolve(artifactId), "download", exp);
+        return serve(reply, await resolve(artifactId), "download", exp, true);
       }
 
-      // Display: signed access, or an authenticated owner after expiry.
+      // Display: signed access, or an authenticated owner after expiry. The flag
+      // tracks whether a signed download link (built from this exp) is still
+      // usable, so the download-page button never points at an expired URL.
       if (valid && !expired) {
-        return serve(reply, await resolve(artifactId), "display", exp);
+        return serve(reply, await resolve(artifactId), "display", exp, true);
       }
 
       if (await isOwner(request.headers.cookie)) {
-        return serve(reply, await resolve(artifactId), "display", exp);
+        return serve(reply, await resolve(artifactId), "display", exp, false);
       }
 
       // The signed window lapsed and there's no owner session: gate via login for
@@ -153,6 +155,10 @@ export function registerPublicArtifactRoutes(server: AppServer, context: Runtime
     artifact: RegisteredArtifact,
     disposition: ArtifactDisposition,
     exp: string,
+    // Whether a signed download URL built from `exp` is still valid+unexpired.
+    // False on the owner-session display fallback, where a download button would
+    // 404 — so we stream the file to the owner directly instead.
+    signedDownloadUsable: boolean,
   ) {
     const path = artifactService.resolveArtifactPath(artifact.storageKey!);
     const details = await stat(path).catch((error: unknown) => {
@@ -162,9 +168,12 @@ export function registerPublicArtifactRoutes(server: AppServer, context: Runtime
       throw error;
     });
     const filename = basename(artifact.originalFilename);
+    const nonRenderableDisplay =
+      disposition === "display" && !RENDERABLE_MIME_TYPES.has(artifact.mimeType);
 
-    // Non-renderable display → a download page rather than inline bytes.
-    if (disposition === "display" && !RENDERABLE_MIME_TYPES.has(artifact.mimeType)) {
+    // Public non-renderable display → a download page whose (still-valid) button
+    // links to the signed download URL.
+    if (nonRenderableDisplay && signedDownloadUsable) {
       const downloadHref = buildArtifactSignedPath({
         artifactId: artifact.id,
         disposition: "download",
@@ -184,7 +193,9 @@ export function registerPublicArtifactRoutes(server: AppServer, context: Runtime
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("Referrer-Policy", "no-referrer");
 
-    if (disposition === "download") {
+    // Attachment for downloads, and for the owner-fallback non-renderable display
+    // (no working signed button); inline for renderable display.
+    if (disposition === "download" || nonRenderableDisplay) {
       reply.header("Content-Disposition", `attachment; filename="${escapeHeader(filename)}"`);
       reply.header("Cache-Control", "no-store, max-age=0");
     } else {

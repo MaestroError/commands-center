@@ -51,7 +51,9 @@ export function summarizeAuditInput(input: unknown): unknown {
   }
   const summarized = summarizeValue(input, 0);
   const json = JSON.stringify(summarized);
-  if (json !== undefined && json.length > MAX_JSON_BYTES) {
+  // Measure actual UTF-8 bytes, not UTF-16 code units, so the "bytes" cap is
+  // accurate for non-ASCII input.
+  if (json !== undefined && Buffer.byteLength(json, "utf8") > MAX_JSON_BYTES) {
     return { truncated: true, note: `input omitted (>${String(MAX_JSON_BYTES)} bytes)` };
   }
   return summarized;

@@ -317,7 +317,8 @@ export function createPublicMcpRegistry(deps: {
   }
 }
 
-const ASYNC_NOTE = " Returns { taskId, runId }; poll get_task_result for the outcome.";
+const ASYNC_NOTE =
+  " Starts the run and returns immediately with its id and current status (not the final result); poll get_task_result with the returned runId for the outcome and artifacts.";
 
 function missingRun(): never {
   throw new Error("Task run not found after trigger.");
