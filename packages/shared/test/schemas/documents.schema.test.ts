@@ -114,6 +114,22 @@ describe("document schemas", () => {
       });
     });
 
+    it("rejects private documents without an ownerSlug", () => {
+      expect(() =>
+        createDocumentInputSchema.parse({ scope: "private", path: "notes/notes.md" }),
+      ).toThrow("Private documents require an ownerSlug");
+    });
+
+    it("rejects ownerSlug for global documents", () => {
+      expect(() =>
+        createDocumentInputSchema.parse({
+          scope: "global",
+          ownerSlug: "planner",
+          path: "notes/notes.md",
+        }),
+      ).toThrow("Global documents must not specify an ownerSlug");
+    });
+
     it("rejects creating documents directly in the Documents root", () => {
       expect(() => createDocumentInputSchema.parse({ path: "notes.md" })).toThrow(
         "New documents must live in at least one folder under Documents/",
@@ -218,6 +234,22 @@ describe("document schemas", () => {
         "Path must not contain empty or hidden segments",
       );
     });
+
+    it("rejects private folders without an ownerSlug", () => {
+      expect(() =>
+        createDocumentFolderInputSchema.parse({ scope: "private", path: "design/specs" }),
+      ).toThrow("Private documents require an ownerSlug");
+    });
+
+    it("rejects ownerSlug for global folders", () => {
+      expect(() =>
+        createDocumentFolderInputSchema.parse({
+          scope: "global",
+          ownerSlug: "planner",
+          path: "design/specs",
+        }),
+      ).toThrow("Global documents must not specify an ownerSlug");
+    });
   });
 
   describe("updateDocumentMetadataInputSchema", () => {
@@ -242,6 +274,22 @@ describe("document schemas", () => {
           title: "Title",
         }),
       ).toThrow("Path must end with .md or .markdown");
+    });
+
+    it("rejects private metadata updates without an ownerSlug", () => {
+      expect(() =>
+        updateDocumentMetadataInputSchema.parse({ scope: "private", path: "notes.md" }),
+      ).toThrow("Private documents require an ownerSlug");
+    });
+
+    it("rejects ownerSlug for global metadata updates", () => {
+      expect(() =>
+        updateDocumentMetadataInputSchema.parse({
+          scope: "global",
+          ownerSlug: "planner",
+          path: "notes.md",
+        }),
+      ).toThrow("Global documents must not specify an ownerSlug");
     });
   });
 

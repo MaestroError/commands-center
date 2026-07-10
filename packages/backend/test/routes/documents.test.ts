@@ -419,6 +419,56 @@ describe("document routes", () => {
       }
     });
 
+    it("rejects private document reads without an owner", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        const response = await server.inject({
+          method: "GET",
+          url: "/api/documents/file?scope=private&path=notes%2Fresearch.md",
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(
+          response.json<{ error: { details: { fieldErrors: Record<string, string[]> } } }>(),
+        ).toMatchObject({
+          error: {
+            details: { fieldErrors: { "/owner": ["Private documents require an owner"] } },
+          },
+        });
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects owners for global document reads", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        const response = await server.inject({
+          method: "GET",
+          url: "/api/documents/file?scope=global&owner=planner&path=notes%2Fresearch.md",
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(
+          response.json<{ error: { details: { fieldErrors: Record<string, string[]> } } }>(),
+        ).toMatchObject({
+          error: {
+            details: {
+              fieldErrors: { "/owner": ["Global documents must not specify an owner"] },
+            },
+          },
+        });
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
     it("reads a private document using scoped query parameters", async () => {
       const testDb = await createTestDatabase();
       const server = await createRouteServer(testDb);

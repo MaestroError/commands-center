@@ -2,8 +2,8 @@
 
 ## Goal
 
-Address the three unresolved PR review threads on private document scope
-validation, then resolve the threads on GitHub.
+Address PR review threads on private document scope validation, then resolve
+the threads on GitHub.
 
 ## Tasks
 
@@ -17,3 +17,14 @@ validation, then resolve the threads on GitHub.
 5. Add focused regression tests for the DB index predicate and malformed
    private URLs.
 6. Run lint, typecheck, tests, commit, push, and resolve the review threads.
+
+## Scope/Owner Contract Follow-up
+
+1. [completed] Require an owner for private document read requests, and
+   reject owners on global read requests.
+2. [completed] Require an owner for private create, folder-create, and metadata
+   update payloads, and reject owners on global payloads.
+3. [completed] Add schema and route regression tests for invalid scope/owner
+   combinations.
+4. [in progress] Run lint, typecheck, focused tests, commit, push, and resolve the
+   review threads.

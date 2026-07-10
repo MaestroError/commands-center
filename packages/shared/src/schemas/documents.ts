@@ -60,6 +60,32 @@ const scopedDocumentFields = {
   ownerSpecialistId: z.string().min(1).nullable().default(null),
 } as const;
 
+type DocumentScopeOwnerInput = {
+  scope: DocumentScope;
+  ownerSlug?: string;
+};
+
+function validateDocumentScopeOwner(
+  input: DocumentScopeOwnerInput,
+  context: z.RefinementCtx,
+): void {
+  if (input.scope === "private" && !input.ownerSlug) {
+    context.addIssue({
+      code: "custom",
+      path: ["ownerSlug"],
+      message: "Private documents require an ownerSlug",
+    });
+  }
+
+  if (input.scope === "global" && input.ownerSlug) {
+    context.addIssue({
+      code: "custom",
+      path: ["ownerSlug"],
+      message: "Global documents must not specify an ownerSlug",
+    });
+  }
+}
+
 export const documentListFilterSchema = z.object({
   query: z.string().trim().min(1).optional(),
   pathContains: z.string().trim().min(1).optional(),
@@ -132,30 +158,36 @@ export const documentReadResponseSchema = z.object({
   updatedAt: z.number().int().nonnegative().nullable().default(null),
 });
 
-export const createDocumentInputSchema = z.object({
-  scope: documentScopeSchema.default("global"),
-  ownerSlug: z.string().trim().min(1).optional(),
-  path: createDocumentPathSchema,
-  title: z.string().trim().min(1).optional(),
-  description: z.string().trim().optional(),
-  author: z.string().trim().min(1).optional(),
-  content: z.string().optional(),
-});
+export const createDocumentInputSchema = z
+  .object({
+    scope: documentScopeSchema.default("global"),
+    ownerSlug: z.string().trim().min(1).optional(),
+    path: createDocumentPathSchema,
+    title: z.string().trim().min(1).optional(),
+    description: z.string().trim().optional(),
+    author: z.string().trim().min(1).optional(),
+    content: z.string().optional(),
+  })
+  .superRefine(validateDocumentScopeOwner);
 
-export const createDocumentFolderInputSchema = z.object({
-  scope: documentScopeSchema.default("global"),
-  ownerSlug: z.string().trim().min(1).optional(),
-  path: documentFolderPathSchema,
-});
+export const createDocumentFolderInputSchema = z
+  .object({
+    scope: documentScopeSchema.default("global"),
+    ownerSlug: z.string().trim().min(1).optional(),
+    path: documentFolderPathSchema,
+  })
+  .superRefine(validateDocumentScopeOwner);
 
-export const updateDocumentMetadataInputSchema = z.object({
-  scope: documentScopeSchema.default("global"),
-  ownerSlug: z.string().trim().min(1).optional(),
-  path: documentRelativePathSchema,
-  title: z.string().trim().min(1).optional(),
-  description: z.string().trim().optional(),
-  author: z.string().trim().min(1).optional(),
-});
+export const updateDocumentMetadataInputSchema = z
+  .object({
+    scope: documentScopeSchema.default("global"),
+    ownerSlug: z.string().trim().min(1).optional(),
+    path: documentRelativePathSchema,
+    title: z.string().trim().min(1).optional(),
+    description: z.string().trim().optional(),
+    author: z.string().trim().min(1).optional(),
+  })
+  .superRefine(validateDocumentScopeOwner);
 
 export const saveDocumentContentInputSchema = z.object({
   scope: documentScopeSchema.default("global"),

@@ -135,11 +135,29 @@ export function registerDocumentRoutes(server: AppServer, context: RuntimeContex
 
 import { z } from "zod";
 
-const documentReadQuerySchema = z.object({
-  scope: documentScopeSchema.default("global"),
-  owner: z.string().trim().min(1).optional(),
-  path: z.string().min(1),
-});
+const documentReadQuerySchema = z
+  .object({
+    scope: documentScopeSchema.default("global"),
+    owner: z.string().trim().min(1).optional(),
+    path: z.string().min(1),
+  })
+  .superRefine((input, context) => {
+    if (input.scope === "private" && !input.owner) {
+      context.addIssue({
+        code: "custom",
+        path: ["owner"],
+        message: "Private documents require an owner",
+      });
+    }
+
+    if (input.scope === "global" && input.owner) {
+      context.addIssue({
+        code: "custom",
+        path: ["owner"],
+        message: "Global documents must not specify an owner",
+      });
+    }
+  });
 
 const documentAssetQuerySchema = z.object({
   path: z.string().min(1),
