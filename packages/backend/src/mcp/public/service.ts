@@ -159,8 +159,13 @@ function deriveMcpTarget(args: unknown): { kind: string | null; id: string | nul
     return { kind: "template", id: record["templateId"] };
   }
   if (typeof record["path"] === "string" && typeof record["scope"] === "string") {
-    const owner = typeof record["ownerSlug"] === "string" ? `:${record["ownerSlug"]}` : "";
-    return { kind: "document", id: `${record["scope"]}${owner}:${record["path"]}` };
+    if (record["scope"] === "global") {
+      return { kind: "document", id: `global:${record["path"]}` };
+    }
+    if (record["scope"] === "private" && typeof record["ownerSlug"] === "string") {
+      return { kind: "document", id: `private:${record["ownerSlug"]}:${record["path"]}` };
+    }
+    return { kind: "document", id: null };
   }
   return { kind: null, id: null };
 }

@@ -24,7 +24,6 @@ import { agents } from "../db/schema/index.js";
 import { ApiError, NotFoundError } from "../lib/api-error.js";
 import type { DocumentService } from "./document-service.js";
 
-const ROOT_PAGE_SIZE = 200;
 const MAX_SEARCH_ROOTS = 50;
 const MAX_SEARCH_CANDIDATES_PER_ROOT = 200;
 const MAX_SEARCH_CANDIDATES = 500;
@@ -79,21 +78,10 @@ export function createPublicDocumentApiService(deps: {
   }
 
   async function listRoot(root: AuthorizedRoot): Promise<DocumentListItem[]> {
-    const documents: DocumentListItem[] = [];
-    let offset = 0;
-
-    while (true) {
-      const page = await deps.documentService.list({
-        scope: root.scope,
-        ownerSpecialistId: root.ownerSpecialistId,
-        filter: { limit: ROOT_PAGE_SIZE, offset },
-      });
-      documents.push(...page.documents);
-      if (page.nextOffset === null || page.nextOffset === undefined) {
-        return documents;
-      }
-      offset = page.nextOffset;
-    }
+    return deps.documentService.listAllDocuments({
+      scope: root.scope,
+      ownerSpecialistId: root.ownerSpecialistId,
+    });
   }
 
   async function listAuthorizedDocuments(

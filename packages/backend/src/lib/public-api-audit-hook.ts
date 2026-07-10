@@ -56,9 +56,16 @@ function deriveTarget(
     if (!scope || !path) {
       return { kind: "document", id: null };
     }
+    if (scope === "private") {
+      const owner = query?.["owner"];
+      return { kind: "document", id: owner ? `private:${owner}:${path}` : null };
+    }
+    if (scope !== "global") {
+      return { kind: "document", id: null };
+    }
     return {
       kind: "document",
-      id: scope === "private" ? `private:${query?.["owner"] ?? ""}:${path}` : `global:${path}`,
+      id: `global:${path}`,
     };
   }
   const runId = params?.["runId"];

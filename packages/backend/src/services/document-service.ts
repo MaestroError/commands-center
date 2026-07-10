@@ -456,10 +456,14 @@ export function createDocumentService(options: {
   }
 
   async function listGlobalDocuments(): Promise<DocumentListItem[]> {
-    const target = await resolveScope({ scope: "global" });
+    return listAllDocuments({ scope: "global" });
+  }
+
+  async function listAllDocuments(input: ScopeInput): Promise<DocumentListItem[]> {
+    const target = await resolveScope(input);
     const items: DocumentListItem[] = [];
     await collectFiles(target, target.root, "", items);
-    return items;
+    return items.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   }
 
   async function listScopedDocuments(input: ListDocumentsInput): Promise<DocumentListResponse> {
@@ -824,6 +828,7 @@ export function createDocumentService(options: {
     getTree,
     getPrivateTreeGroups,
     list,
+    listAllDocuments,
     listSearchCandidates,
     read,
     create,

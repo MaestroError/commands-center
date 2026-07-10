@@ -47,6 +47,8 @@ describe("public document API service", () => {
   it("lists only token-authorized roots without owner-only fields", async () => {
     const testDb = await createTestDatabase();
     const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+    const listAllDocuments = vi.spyOn(documents, "listAllDocuments");
+    const list = vi.spyOn(documents, "list");
     const service = createPublicDocumentApiService({
       db: testDb.client.db,
       documentService: documents,
@@ -80,6 +82,8 @@ describe("public document API service", () => {
       ]);
       expect(result.documents[0]).not.toHaveProperty("fullPath");
       expect(result.documents[0]).not.toHaveProperty("ownerSpecialistId");
+      expect(listAllDocuments).toHaveBeenCalledTimes(2);
+      expect(list).not.toHaveBeenCalled();
     } finally {
       await testDb.cleanup();
     }
