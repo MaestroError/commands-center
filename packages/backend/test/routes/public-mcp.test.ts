@@ -203,6 +203,11 @@ describe("public MCP route", () => {
         path: "shared/brief.md",
         content: "Deployment brief",
       });
+      await documents.create({
+        scope: "global",
+        path: "shared/overview.md",
+        content: "Deployment overview",
+      });
       const token = apiTokenService.createToken("Documents", {
         capabilities: ["list_documents", "search_documents", "read_document"],
         templates: [],
@@ -215,6 +220,36 @@ describe("public MCP route", () => {
       expect(tools).toContain('"name":"read_document"');
       expect(tools).not.toContain('"name":"list_tasks"');
 
+      const listed = parseSseJson(
+        (
+          await callMcp(
+            server,
+            token,
+            "tools/call",
+            { name: "list_documents", arguments: { limit: 1 } },
+            2,
+          )
+        ).body,
+      ) as { result?: { content?: Array<{ text?: string }> } };
+      expect(listed.result?.content?.[0]?.text).toContain(
+        "Found 2 document match(es); returned 1 in this page.",
+      );
+
+      const searched = parseSseJson(
+        (
+          await callMcp(
+            server,
+            token,
+            "tools/call",
+            { name: "search_documents", arguments: { query: "deployment", limit: 1 } },
+            3,
+          )
+        ).body,
+      ) as { result?: { content?: Array<{ text?: string }> } };
+      expect(searched.result?.content?.[0]?.text).toContain(
+        "Found 2 document match(es); returned 1 in this page.",
+      );
+
       const read = parseSseJson(
         (
           await callMcp(
@@ -225,7 +260,7 @@ describe("public MCP route", () => {
               name: "read_document",
               arguments: { scope: "global", path: "shared/brief.md" },
             },
-            2,
+            4,
           )
         ).body,
       ) as { result?: { structuredContent?: Record<string, unknown> } };

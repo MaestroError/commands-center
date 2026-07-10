@@ -92,7 +92,10 @@ export function createPublicMcpRegistry(deps: {
             requireToken(token),
             publicDocumentListInputSchema.parse(args ?? {}),
           );
-          return ok(`Found ${String(result.documents.length)} document(s).`, result);
+          return ok(
+            `Found ${String(result.totalMatches)} document match(es); returned ${String(result.documents.length)} in this page.`,
+            result,
+          );
         }, "Failed to list documents."),
     },
     {
@@ -108,7 +111,10 @@ export function createPublicMcpRegistry(deps: {
             requireToken(token),
             publicDocumentSearchInputSchema.parse(args),
           );
-          return ok(`Found ${String(result.documents.length)} matching document(s).`, result);
+          return ok(
+            `Found ${String(result.totalMatches)} document match(es); returned ${String(result.documents.length)} in this page.`,
+            result,
+          );
         }, "Failed to search documents."),
     },
     {

@@ -81,8 +81,8 @@ const publicDocumentSearchQuerySchema = publicDocumentListQuerySchema.extend({
   query: z.string().trim().min(1),
   includeContent: z
     .enum(["true", "false"])
-    .transform((value) => value === "true")
-    .default(true),
+    .default("true")
+    .transform((value) => value === "true"),
   maxSnippetsPerDocument: z.coerce.number().int().min(1).max(10).default(3),
 });
 
