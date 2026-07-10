@@ -176,8 +176,6 @@ Rules:
 
 Update token-service helpers so callers do not duplicate authorization logic:
 
-- `tokenHasGlobalDocumentAccess(token)`
-- `tokenHasPrivateDocumentAccess(token, specialistId)`
 - `resolveTokenDocumentRoots(token)` or an equivalent service-local helper that
   resolves only active specialists and returns stable id plus current slug.
 

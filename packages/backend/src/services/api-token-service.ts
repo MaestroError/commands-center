@@ -158,17 +158,6 @@ export function tokenHasTemplate(record: ApiTokenRecord, templateId: string): bo
   return record.permissions.templates.includes(templateId);
 }
 
-export function tokenHasGlobalDocumentAccess(record: ApiTokenRecord): boolean {
-  return record.permissions.documents.global;
-}
-
-export function tokenHasPrivateDocumentAccess(
-  record: ApiTokenRecord,
-  specialistId: string,
-): boolean {
-  return record.permissions.documents.privateSpecialistIds.includes(specialistId);
-}
-
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
