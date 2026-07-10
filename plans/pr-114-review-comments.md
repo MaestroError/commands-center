@@ -28,5 +28,5 @@ the threads on GitHub.
    combinations.
 4. [completed] Apply the same scope/owner validation to document content
    saves, which share the same service boundary.
-5. [in progress] Run lint, typecheck, focused tests, commit, push, and resolve the
+5. [completed] Run lint, typecheck, focused tests, commit, push, and resolve the
    review threads.
