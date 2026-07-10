@@ -35,6 +35,9 @@ export const RESERVED_MCP_TOOL_NAMES: readonly string[] = [
   "get_task_run",
   "get_task_result",
   "list_task_feedback",
+  "list_documents",
+  "search_documents",
+  "read_document",
   // Auto-exposed async variants (Phase 4). Also covered by the `_async` suffix
   // rule below, but listed explicitly for a complete reserved surface.
   "task_run_async",
@@ -65,16 +68,15 @@ const artifactUrlTogglesSchema = z.object({
   downloadableUrlEnabled: z.boolean().default(true),
 });
 
-// Stored/output shape: fully resolved, toolName required.
-export const taskTemplateMcpConfigSchema = z.object({
-  exposeAsTool: z.boolean().default(true),
+const resolvedTaskTemplateMcpConfigSchema = z.object({
+  syncEnabled: z.boolean().default(true),
   toolName: mcpToolNameSchema,
   toolDescription: z.string().trim().default(""),
   textFieldDescription: z.string().trim().default(""),
   allowFiles: z.boolean().default(true),
   filesFieldDescription: z.string().trim().default(""),
-  // Scaffold; consumed in Phase 4 (auto-exposed `<name>_async` variant).
   asyncEnabled: z.boolean().default(false),
+  asyncAlwaysAcknowledge: z.boolean().default(false),
   // Scaffold; consumed in Phase 6 (displayable/downloadable artifact URLs).
   artifacts: artifactUrlTogglesSchema.default({
     displayableUrlEnabled: true,
@@ -82,9 +84,32 @@ export const taskTemplateMcpConfigSchema = z.object({
   }),
 });
 
+// Stored/output shape: fully resolved, toolName required. The preprocessor
+// preserves the effective behavior of portable workspace files written before
+// sync and async tool exposure became independent.
+export const taskTemplateMcpConfigSchema = z.preprocess((value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (record["syncEnabled"] !== undefined || typeof record["exposeAsTool"] !== "boolean") {
+    return value;
+  }
+
+  const legacyExposed = record["exposeAsTool"];
+  return {
+    ...record,
+    syncEnabled: legacyExposed,
+    asyncEnabled: legacyExposed && record["asyncEnabled"] === true,
+  };
+}, resolvedTaskTemplateMcpConfigSchema);
+
 // Input shape: every field optional, so create/edit can send a partial config
 // and the service merges it over derived defaults / the existing config.
 export const taskTemplateMcpConfigInputSchema = z.object({
+  syncEnabled: z.boolean().optional(),
+  // Accepted for existing API clients. New writes use syncEnabled.
   exposeAsTool: z.boolean().optional(),
   toolName: z.string().trim().optional(),
   toolDescription: z.string().trim().optional(),
@@ -92,6 +117,7 @@ export const taskTemplateMcpConfigInputSchema = z.object({
   allowFiles: z.boolean().optional(),
   filesFieldDescription: z.string().trim().optional(),
   asyncEnabled: z.boolean().optional(),
+  asyncAlwaysAcknowledge: z.boolean().optional(),
   artifacts: z
     .object({
       displayableUrlEnabled: z.boolean().optional(),

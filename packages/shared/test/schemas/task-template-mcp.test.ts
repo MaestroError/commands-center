@@ -56,12 +56,30 @@ describe("taskTemplateMcpConfigSchema", () => {
   it("applies defaults around a provided tool name", () => {
     const parsed = taskTemplateMcpConfigSchema.parse({ toolName: "make_report" });
     expect(parsed).toMatchObject({
-      exposeAsTool: true,
+      syncEnabled: true,
       toolName: "make_report",
       allowFiles: true,
       asyncEnabled: false,
+      asyncAlwaysAcknowledge: false,
       artifacts: { displayableUrlEnabled: true, downloadableUrlEnabled: true },
     });
+  });
+
+  it("normalizes legacy exposure without broadening async access", () => {
+    expect(
+      taskTemplateMcpConfigSchema.parse({
+        toolName: "hidden_report",
+        exposeAsTool: false,
+        asyncEnabled: true,
+      }),
+    ).toMatchObject({ syncEnabled: false, asyncEnabled: false });
+    expect(
+      taskTemplateMcpConfigSchema.parse({
+        toolName: "visible_report",
+        exposeAsTool: true,
+        asyncEnabled: true,
+      }),
+    ).toMatchObject({ syncEnabled: true, asyncEnabled: true });
   });
 
   it("requires a tool name", () => {

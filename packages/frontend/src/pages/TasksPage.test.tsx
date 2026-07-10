@@ -98,13 +98,14 @@ const taskTemplate: TaskTemplate = {
   description: "Generate release note draft every week.",
   todos: [],
   mcpConfig: {
-    exposeAsTool: true,
+    syncEnabled: true,
     toolName: "weekly_release_notes",
     toolDescription: "",
     textFieldDescription: "",
     allowFiles: true,
     filesFieldDescription: "",
     asyncEnabled: false,
+    asyncAlwaysAcknowledge: false,
     artifacts: { displayableUrlEnabled: true, downloadableUrlEnabled: true },
   },
   recurrence: {

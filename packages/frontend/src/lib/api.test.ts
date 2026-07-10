@@ -786,7 +786,11 @@ describe("additional request wrapper coverage", () => {
 
     await createApiToken({
       name: "Release",
-      permissions: { capabilities: ["create_task"], templates: [] },
+      permissions: {
+        capabilities: ["create_task"],
+        templates: [],
+        documents: { global: false, privateSpecialistIds: [] },
+      },
     });
 
     expect(fetchSpy).toHaveBeenCalledWith("/api/api-tokens", {
@@ -794,7 +798,11 @@ describe("additional request wrapper coverage", () => {
       headers: { "content-type": "application/json", "x-csrf-token": "csrf-token" },
       body: JSON.stringify({
         name: "Release",
-        permissions: { capabilities: ["create_task"], templates: [] },
+        permissions: {
+          capabilities: ["create_task"],
+          templates: [],
+          documents: { global: false, privateSpecialistIds: [] },
+        },
       }),
     });
   });
@@ -1241,13 +1249,14 @@ function makeTaskTemplatePayload(overrides: Record<string, unknown> = {}): Recor
     description: "Draft notes.",
     todos: [],
     mcpConfig: {
-      exposeAsTool: true,
+      syncEnabled: true,
       toolName: "weekly_release_notes",
       toolDescription: "",
       textFieldDescription: "",
       allowFiles: true,
       filesFieldDescription: "",
       asyncEnabled: false,
+      asyncAlwaysAcknowledge: false,
       artifacts: { displayableUrlEnabled: true, downloadableUrlEnabled: true },
     },
     recurrence: {

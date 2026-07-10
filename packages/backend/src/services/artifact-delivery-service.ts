@@ -17,7 +17,7 @@ export type ArtifactDeliveryOptions = {
 export type ArtifactDeliveryService = ReturnType<typeof createArtifactDeliveryService>;
 
 export function createArtifactDeliveryService(deps: {
-  artifactService: ArtifactService;
+  artifactService: Pick<ArtifactService, "publishArtifact">;
   config: RuntimeConfig;
   logger?: Logger;
 }) {
@@ -55,6 +55,10 @@ export function createArtifactDeliveryService(deps: {
           displayUrl: options.displayEnabled ? artifact.link : null,
           downloadUrl: null,
         };
+      }
+
+      if (!options.displayEnabled && !options.downloadEnabled) {
+        return base;
       }
 
       // file / document: publish an immutable snapshot so serving is stable even

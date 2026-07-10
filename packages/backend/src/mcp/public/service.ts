@@ -100,7 +100,7 @@ export function createPublicMcpService(options: {
       {
         capabilities: { tools: { listChanged: true } },
         instructions:
-          "CommandsCenter public MCP server. Trigger task templates and tasks, and read their runs, results, and artifacts.",
+          "CommandsCenter public MCP server. Trigger task templates and tasks, read their runs, results, and artifacts, and read documents authorized for this token.",
       },
     );
 
@@ -127,7 +127,7 @@ export function createPublicMcpService(options: {
     args: unknown,
     token: ApiTokenRecord,
   ): Promise<PublicMcpToolResult> {
-    const result = await tool.execute(args);
+    const result = await tool.execute(args, token);
     const target = deriveMcpTarget(args);
 
     void options.auditService?.record({
@@ -157,6 +157,10 @@ function deriveMcpTarget(args: unknown): { kind: string | null; id: string | nul
   }
   if (typeof record["templateId"] === "string") {
     return { kind: "template", id: record["templateId"] };
+  }
+  if (typeof record["path"] === "string" && typeof record["scope"] === "string") {
+    const owner = typeof record["ownerSlug"] === "string" ? `:${record["ownerSlug"]}` : "";
+    return { kind: "document", id: `${record["scope"]}${owner}:${record["path"]}` };
   }
   return { kind: null, id: null };
 }

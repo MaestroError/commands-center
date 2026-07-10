@@ -84,7 +84,8 @@ describe("task board URLs", () => {
         description: "",
         todos: [],
         mcpConfig: {
-          exposeAsTool: true,
+          syncEnabled: true,
+          asyncAlwaysAcknowledge: false,
           toolName: "template",
           toolDescription: "",
           textFieldDescription: "",

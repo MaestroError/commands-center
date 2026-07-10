@@ -14,10 +14,15 @@ export function permissionsForPresets(...groups: ApiTokenCapabilityGroup[]): Api
   return {
     capabilities: orderApiTokenCapabilityIds(groups.flatMap((group) => API_TOKEN_PRESETS[group])),
     templates: [],
+    documents: { global: false, privateSpecialistIds: [] },
   };
 }
 
 /** Build a token permission set from explicit capability ids. */
 export function permissionsForCapabilities(...capabilities: string[]): ApiTokenPermissions {
-  return { capabilities: orderApiTokenCapabilityIds(capabilities), templates: [] };
+  return {
+    capabilities: orderApiTokenCapabilityIds(capabilities),
+    templates: [],
+    documents: { global: false, privateSpecialistIds: [] },
+  };
 }

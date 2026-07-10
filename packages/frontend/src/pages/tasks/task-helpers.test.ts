@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { getTaskTemplateCreationPrefill } from "./task-helpers";
+import type { TaskTemplate } from "@cc/shared/schemas";
+
+import {
+  formToTemplateInput,
+  getTaskTemplateCreationPrefill,
+  templateToForm,
+} from "./task-helpers";
 
 const validRecurrence = {
   mode: "recurring",
@@ -50,3 +56,54 @@ describe("getTaskTemplateCreationPrefill", () => {
     expect(prefill?.recurrence).toBeUndefined();
   });
 });
+
+describe("task template MCP form mapping", () => {
+  it("loads independent sync, async, and acknowledgement controls", () => {
+    const form = templateToForm(templateWithMcpConfig());
+
+    expect(form.mcpSyncEnabled).toBe(false);
+    expect(form.mcpAsyncEnabled).toBe(true);
+    expect(form.mcpAsyncAlwaysAcknowledge).toBe(true);
+  });
+
+  it("persists independent sync, async, and acknowledgement controls", () => {
+    const form = templateToForm(templateWithMcpConfig());
+    const input = formToTemplateInput({
+      ...form,
+      mcpSyncEnabled: true,
+      mcpAsyncEnabled: false,
+      mcpAsyncAlwaysAcknowledge: false,
+    });
+
+    expect(input.mcpConfig).toMatchObject({
+      syncEnabled: true,
+      asyncEnabled: false,
+      asyncAlwaysAcknowledge: false,
+    });
+  });
+});
+
+function templateWithMcpConfig(): TaskTemplate {
+  return {
+    id: "template-1",
+    defaultAgentId: "agent-1",
+    fallbackModels: [],
+    title: "Async report",
+    description: "Create a report.",
+    todos: [],
+    mcpConfig: {
+      syncEnabled: false,
+      toolName: "async_report",
+      toolDescription: "",
+      textFieldDescription: "",
+      allowFiles: true,
+      filesFieldDescription: "",
+      asyncEnabled: true,
+      asyncAlwaysAcknowledge: true,
+      artifacts: { displayableUrlEnabled: false, downloadableUrlEnabled: false },
+    },
+    enabled: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}

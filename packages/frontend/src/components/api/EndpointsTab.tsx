@@ -3,6 +3,7 @@ import { Check, Clipboard } from "lucide-react";
 
 import {
   buildTaskApiDocs,
+  buildDocumentApiDocs,
   buildTemplateEndpointDocs,
   PUBLIC_API_TOKEN_PLACEHOLDER,
 } from "@cc/shared/lib";
@@ -26,6 +27,7 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
     [baseUrl],
   );
   const taskDocs = useMemo(() => buildTaskApiDocs(baseUrl), [baseUrl]);
+  const documentDocs = useMemo(() => buildDocumentApiDocs(baseUrl), [baseUrl]);
 
   const listCurl = [
     `curl '${docs.apiBaseUrl}/task-templates' \\`,
@@ -268,6 +270,75 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
         snippets={[{ label: "curl", code: taskDocs.feedbackCurl }]}
         responseExample={{
           feedback: [{ id: "01J…", taskId: "01J…", body: "Please verify docs.", subtasks: [] }],
+        }}
+      />
+
+      <SectionHeading
+        title="Documents"
+        subtitle="Read global project documents and selected specialists' private documents. Capabilities choose the operations; each token's Document access section chooses the visible roots. Scope and owner filters only narrow that access."
+      />
+
+      <EndpointBlock
+        method="GET"
+        path="/api/public/v1/documents"
+        scope="List documents"
+        description="List metadata from every document root selected on the token. Optional scope, owner, query, limit, and offset parameters narrow the result. MCP tool: list_documents."
+        snippets={[{ label: "curl", code: documentDocs.listCurl }]}
+        responseExample={{
+          documents: [
+            {
+              scope: "global",
+              ownerSlug: null,
+              relativePath: "design/overview.md",
+              title: "Overview",
+              description: null,
+              author: null,
+            },
+          ],
+          totalMatches: 1,
+          nextOffset: null,
+        }}
+      />
+
+      <EndpointBlock
+        method="GET"
+        path="/api/public/v1/documents/search"
+        scope="Search documents"
+        description="Search metadata and authorized markdown content. Results contain bounded line-numbered excerpts. MCP tool: search_documents."
+        snippets={[{ label: "curl", code: documentDocs.searchCurl }]}
+        responseExample={{
+          documents: [
+            {
+              scope: "global",
+              ownerSlug: null,
+              relativePath: "release/notes.md",
+              title: "Release notes",
+              description: null,
+              author: null,
+              matches: [
+                { kind: "content", field: "content", lineNumber: 4, excerpt: "Deploy Friday." },
+              ],
+            },
+          ],
+          totalMatches: 1,
+          nextOffset: null,
+        }}
+      />
+
+      <EndpointBlock
+        method="GET"
+        path="/api/public/v1/documents/read"
+        scope="Read document"
+        description="Read one document by scope and path. Private reads also require the current specialist slug in owner. MCP tool: read_document."
+        snippets={[{ label: "curl", code: documentDocs.readCurl }]}
+        responseExample={{
+          scope: "private",
+          ownerSlug: "writer",
+          relativePath: "notes/research.md",
+          title: "Research",
+          description: null,
+          author: "writer",
+          content: "# Research",
         }}
       />
     </div>

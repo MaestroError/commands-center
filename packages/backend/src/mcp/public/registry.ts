@@ -4,11 +4,19 @@ import { z } from "zod";
 import {
   listPublicTasksQuerySchema,
   mcpTaskRunResultSchema,
+  publicDocumentListInputSchema,
+  publicDocumentListResponseSchema,
+  publicDocumentReadInputSchema,
+  publicDocumentReadSchema,
+  publicDocumentSearchInputSchema,
+  publicDocumentSearchResponseSchema,
   publicCreateTaskBodySchema,
+  type ApiTokenRecord,
   type McpTaskRunResult,
 } from "@cc/shared/schemas";
 
 import type { PublicTaskApiService } from "../../services/public-task-api-service.js";
+import type { PublicDocumentApiService } from "../../services/public-document-api-service.js";
 import type { PublicMcpRunService } from "./run-service.js";
 
 export type PublicMcpToolResult = {
@@ -25,7 +33,7 @@ export type RegisterableMcpTool = {
   description: string;
   inputSchema?: AnySchema;
   outputSchema?: AnySchema;
-  execute: (args: unknown) => Promise<PublicMcpToolResult>;
+  execute: (args: unknown, token?: ApiTokenRecord) => Promise<PublicMcpToolResult>;
 };
 
 export type PublicMcpToolDefinition = RegisterableMcpTool & {
@@ -66,10 +74,58 @@ const templateRunInputSchema = z
 export function createPublicMcpRegistry(deps: {
   service: PublicTaskApiService;
   runService: PublicMcpRunService;
+  documentService: PublicDocumentApiService;
 }): readonly PublicMcpToolDefinition[] {
-  const { service, runService } = deps;
+  const { service, runService, documentService } = deps;
 
   return [
+    {
+      name: "list_documents",
+      capability: "list_documents",
+      description:
+        "List document metadata across the global/private roots available to this token.",
+      inputSchema: publicDocumentListInputSchema,
+      outputSchema: publicDocumentListResponseSchema,
+      execute: (args, token) =>
+        runTool(async () => {
+          const result = await documentService.listDocuments(
+            requireToken(token),
+            publicDocumentListInputSchema.parse(args ?? {}),
+          );
+          return ok(`Found ${String(result.documents.length)} document(s).`, result);
+        }, "Failed to list documents."),
+    },
+    {
+      name: "search_documents",
+      capability: "search_documents",
+      description:
+        "Search metadata and markdown content across document roots available to this token.",
+      inputSchema: publicDocumentSearchInputSchema,
+      outputSchema: publicDocumentSearchResponseSchema,
+      execute: (args, token) =>
+        runTool(async () => {
+          const result = await documentService.searchDocuments(
+            requireToken(token),
+            publicDocumentSearchInputSchema.parse(args),
+          );
+          return ok(`Found ${String(result.documents.length)} matching document(s).`, result);
+        }, "Failed to search documents."),
+    },
+    {
+      name: "read_document",
+      capability: "read_document",
+      description: "Read one authorized global or private markdown document by scoped identity.",
+      inputSchema: publicDocumentReadInputSchema,
+      outputSchema: publicDocumentReadSchema,
+      execute: (args, token) =>
+        runTool(async () => {
+          const result = await documentService.readDocument(
+            requireToken(token),
+            publicDocumentReadInputSchema.parse(args),
+          );
+          return ok("Document found.", result);
+        }, "Failed to read document."),
+    },
     {
       name: "list_task_templates",
       capability: "list_task_templates",
@@ -315,6 +371,13 @@ export function createPublicMcpRegistry(deps: {
     const result = await runService.getResult(runId);
     return okResult(result ?? missingRun());
   }
+}
+
+function requireToken(token: ApiTokenRecord | undefined): ApiTokenRecord {
+  if (!token) {
+    throw new Error("API token is required.");
+  }
+  return token;
 }
 
 const ASYNC_NOTE =

@@ -115,6 +115,29 @@ export interface TaskApiDocs {
   feedbackCurl: string;
 }
 
+export interface DocumentApiDocs {
+  listCurl: string;
+  searchCurl: string;
+  readCurl: string;
+}
+
+export function buildDocumentApiDocs(baseUrl: string): DocumentApiDocs {
+  const apiBaseUrl = `${trimTrailingSlash(baseUrl)}/api/public/v1`;
+  const auth = `-H 'Authorization: Bearer ${PUBLIC_API_TOKEN_PLACEHOLDER}'`;
+
+  return {
+    listCurl: [`curl '${apiBaseUrl}/documents' \\`, `  ${auth}`].join("\n"),
+    searchCurl: [
+      `curl '${apiBaseUrl}/documents/search?query=deployment&includeContent=true' \\`,
+      `  ${auth}`,
+    ].join("\n"),
+    readCurl: [
+      `curl '${apiBaseUrl}/documents/read?scope=private&owner=writer&path=notes%2Fresearch.md' \\`,
+      `  ${auth}`,
+    ].join("\n"),
+  };
+}
+
 /**
  * Curl snippets for the Epic 09 direct-task endpoints (the `tasks` scope).
  * Origin-relative only — not tied to a specific task — so the Endpoints tab can

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTaskApiDocs,
+  buildDocumentApiDocs,
   buildTemplateEndpointDocs,
   PUBLIC_API_TOKEN_PLACEHOLDER,
 } from "../../src/lib/public-api-docs";
@@ -89,5 +90,16 @@ describe("buildTaskApiDocs", () => {
 
   it("is deterministic for a given base URL", () => {
     expect(buildTaskApiDocs("https://example.test/")).toEqual(docs);
+  });
+});
+
+describe("buildDocumentApiDocs", () => {
+  it("builds authenticated list, search, and private-read examples", () => {
+    const docs = buildDocumentApiDocs("https://example.test/");
+
+    expect(docs.listCurl).toContain("/api/public/v1/documents");
+    expect(docs.searchCurl).toContain("includeContent=true");
+    expect(docs.readCurl).toContain("scope=private&owner=writer");
+    expect(docs.readCurl).toContain("Authorization: Bearer <YOUR_API_TOKEN>");
   });
 });

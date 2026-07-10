@@ -43,13 +43,14 @@ export function resolveMcpConfig(options: {
   }
 
   return taskTemplateMcpConfigSchema.parse({
-    exposeAsTool: input.exposeAsTool ?? base.exposeAsTool,
+    syncEnabled: input.syncEnabled ?? input.exposeAsTool ?? base.syncEnabled,
     toolName: parsedName.data,
     toolDescription: input.toolDescription ?? base.toolDescription,
     textFieldDescription: input.textFieldDescription ?? base.textFieldDescription,
     allowFiles: input.allowFiles ?? base.allowFiles,
     filesFieldDescription: input.filesFieldDescription ?? base.filesFieldDescription,
     asyncEnabled: input.asyncEnabled ?? base.asyncEnabled,
+    asyncAlwaysAcknowledge: input.asyncAlwaysAcknowledge ?? base.asyncAlwaysAcknowledge,
     artifacts: {
       displayableUrlEnabled:
         input.artifacts?.displayableUrlEnabled ?? base.artifacts.displayableUrlEnabled,

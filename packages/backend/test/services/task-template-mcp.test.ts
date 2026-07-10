@@ -45,10 +45,11 @@ describe("task template MCP config", () => {
       });
 
       expect(template.mcpConfig).toMatchObject({
-        exposeAsTool: true,
+        syncEnabled: true,
         toolName: "create_linkedin_post",
         allowFiles: true,
         asyncEnabled: false,
+        asyncAlwaysAcknowledge: false,
         artifacts: { displayableUrlEnabled: true, downloadableUrlEnabled: true },
       });
     } finally {
@@ -66,13 +67,13 @@ describe("task template MCP config", () => {
         defaultAgentId: agentId,
         title: "Weekly Report",
         description: "",
-        mcpConfig: { toolName: "make_report", allowFiles: false, exposeAsTool: false },
+        mcpConfig: { toolName: "make_report", allowFiles: false, syncEnabled: false },
       });
 
       expect(template.mcpConfig).toMatchObject({
         toolName: "make_report",
         allowFiles: false,
-        exposeAsTool: false,
+        syncEnabled: false,
       });
     } finally {
       await testDb.cleanup();
