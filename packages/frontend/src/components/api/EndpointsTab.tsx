@@ -340,6 +340,9 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
           description: null,
           author: "writer",
           content: "# Research",
+          revision: { mtimeMs: 1_725_000_000_000, sizeBytes: 10 },
+          createdAt: 1_725_000_000_000,
+          updatedAt: 1_725_000_100_000,
         }}
       />
     </div>
