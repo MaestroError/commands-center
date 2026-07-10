@@ -125,7 +125,7 @@ describe("createArtifactService", () => {
     }
   });
 
-  it("opens and publishes file artifacts from the specialist Documents folder", async () => {
+  it("opens and publishes Windows-style artifact paths from the specialist Documents folder", async () => {
     const { testDb, service } = await setup();
     try {
       const agentId = await insertAgent(testDb.client.db);
@@ -144,7 +144,7 @@ describe("createArtifactService", () => {
         conversationId,
         title: "Complete Tool List",
         type: "file",
-        link: "references/tool-list.md",
+        link: "references\\tool-list.md",
       });
 
       expect(artifact.fileManagerPath).toBe(
@@ -264,7 +264,15 @@ describe("createArtifactService", () => {
       const agentId = await insertAgent(testDb.client.db);
       const conversationId = await insertConversation(testDb.client.db, agentId);
 
-      for (const link of ["../escape.md", "/etc/passwd", "..", "."]) {
+      for (const link of [
+        "../escape.md",
+        "/etc/passwd",
+        "\\\\server\\share\\file.md",
+        "C:\\escape.md",
+        "C:/escape.md",
+        "..",
+        ".",
+      ]) {
         const artifact = await service.create({
           conversationId,
           title: "Traversal",

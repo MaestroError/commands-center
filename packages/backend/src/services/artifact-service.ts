@@ -22,6 +22,7 @@ import { writeConfigFileAtomic } from "../lib/config-file.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 
 const ARTIFACT_MANIFEST_FILE = "published-artifacts.json";
+const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
 
 const ARTIFACT_MIME_TYPES = {
   ".csv": "text/csv",
@@ -373,11 +374,7 @@ async function writeManifest(
 }
 
 function validateFilename(path: string | undefined): string {
-  if (!path) {
-    throw new BadRequestError("Artifact path is missing.");
-  }
-
-  const filename = basename(path.trim());
+  const filename = basename(validateRelativeArtifactPath(path));
 
   if (filename.length === 0 || filename === "." || filename === "..") {
     throw new BadRequestError("Artifact filename is invalid.");
@@ -423,7 +420,14 @@ function validateRelativeArtifactPath(path: string | undefined): string {
 
   const trimmed = path.trim();
 
-  if (trimmed.length === 0 || trimmed.startsWith("/") || trimmed === "." || trimmed === "..") {
+  if (
+    trimmed.length === 0 ||
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("\\") ||
+    WINDOWS_DRIVE_PREFIX.test(trimmed) ||
+    trimmed === "." ||
+    trimmed === ".."
+  ) {
     throw new BadRequestError("Artifact path is invalid.");
   }
 
@@ -432,7 +436,7 @@ function validateRelativeArtifactPath(path: string | undefined): string {
     throw new BadRequestError("Artifact path is invalid.");
   }
 
-  return trimmed;
+  return segments.join("/");
 }
 
 export async function resolveArtifactFileManagerPath(
@@ -449,6 +453,8 @@ export async function resolveArtifactFileManagerPath(
   if (
     trimmed.length === 0 ||
     trimmed.startsWith("/") ||
+    trimmed.startsWith("\\") ||
+    WINDOWS_DRIVE_PREFIX.test(trimmed) ||
     segments.length === 0 ||
     segments.some((segment) => segment === "." || segment === "..")
   ) {
