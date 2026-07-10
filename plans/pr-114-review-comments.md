@@ -26,5 +26,7 @@ the threads on GitHub.
    update payloads, and reject owners on global payloads.
 3. [completed] Add schema and route regression tests for invalid scope/owner
    combinations.
-4. [in progress] Run lint, typecheck, focused tests, commit, push, and resolve the
+4. [completed] Apply the same scope/owner validation to document content
+   saves, which share the same service boundary.
+5. [in progress] Run lint, typecheck, focused tests, commit, push, and resolve the
    review threads.

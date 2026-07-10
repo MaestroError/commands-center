@@ -189,13 +189,15 @@ export const updateDocumentMetadataInputSchema = z
   })
   .superRefine(validateDocumentScopeOwner);
 
-export const saveDocumentContentInputSchema = z.object({
-  scope: documentScopeSchema.default("global"),
-  ownerSlug: z.string().trim().min(1).optional(),
-  path: documentRelativePathSchema,
-  content: z.string(),
-  expectedRevision: fileManagerFileRevisionSchema,
-});
+export const saveDocumentContentInputSchema = z
+  .object({
+    scope: documentScopeSchema.default("global"),
+    ownerSlug: z.string().trim().min(1).optional(),
+    path: documentRelativePathSchema,
+    content: z.string(),
+    expectedRevision: fileManagerFileRevisionSchema,
+  })
+  .superRefine(validateDocumentScopeOwner);
 
 export const saveDocumentContentResponseSchema = z.object({
   revision: fileManagerFileRevisionSchema,

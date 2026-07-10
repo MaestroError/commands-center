@@ -322,6 +322,29 @@ describe("document schemas", () => {
 
       expect(result.expectedRevision.sha256).toBe("abc123");
     });
+
+    it("rejects private saves without an ownerSlug", () => {
+      expect(() =>
+        saveDocumentContentInputSchema.parse({
+          scope: "private",
+          path: "notes.md",
+          content: "# Updated Content",
+          expectedRevision: { mtimeMs: 1700000000000, sizeBytes: 100 },
+        }),
+      ).toThrow("Private documents require an ownerSlug");
+    });
+
+    it("rejects ownerSlug for global saves", () => {
+      expect(() =>
+        saveDocumentContentInputSchema.parse({
+          scope: "global",
+          ownerSlug: "planner",
+          path: "notes.md",
+          content: "# Updated Content",
+          expectedRevision: { mtimeMs: 1700000000000, sizeBytes: 100 },
+        }),
+      ).toThrow("Global documents must not specify an ownerSlug");
+    });
   });
 
   describe("documentTreeNodeSchema", () => {
