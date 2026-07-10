@@ -20,6 +20,7 @@ export const additionalPrompt: SystemPromptDefinition = {
     "APP_NAME",
     "CURRENT_DATE",
     "WORKSPACE_DIR",
+    "SPECIALIST_DIR",
     "CONVERSATION_ID",
     "SPECIALIST_NAME",
     "SPECIALIST_SLUG",

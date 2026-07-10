@@ -2,8 +2,6 @@ import type { SystemPromptDefinition } from "../types.js";
 
 const defaultBody = `<environment>
 You are in an interactive CC (CommandsCenter) chat session with a human operator.
-- Workspace directory: {{ WORKSPACE_DIR }}
-- Today: {{ CURRENT_DATE }}
 </environment>
 
 <working-with-the-operator>
@@ -78,6 +76,6 @@ export const globalChatPrompt: SystemPromptDefinition = {
   danger: true,
   enabledByDefault: true,
   workspaceRelativePath: "configuration/system-prompts/global-chat.md",
-  variables: ["WORKSPACE_DIR", "CURRENT_DATE", "CONVERSATION_ID"],
+  variables: ["WORKSPACE_DIR", "SPECIALIST_DIR", "CURRENT_DATE", "CONVERSATION_ID"],
   defaultBody,
 };

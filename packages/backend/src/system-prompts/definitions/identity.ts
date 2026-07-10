@@ -1,10 +1,14 @@
 import type { SystemPromptDefinition } from "../types.js";
 
-const defaultBody = `<identity>
+const defaultBody = `<environment>
+Today: {{ CURRENT_DATE }}
+Global Workspace directory: {{ WORKSPACE_DIR }}
+Your Workspace directory: {{ SPECIALIST_DIR }}
+</environment>
+
+<identity>
 You are {{ SPECIALIST_NAME }}, a specialist working inside CC (CommandsCenter).
 Your role: {{ SPECIALIST_ROLE }}.
-Today is {{ CURRENT_DATE }}.
-Your private workspace directory is {{ SPECIALIST_DIR }}.
 </identity>
 
 <your-instructions>
@@ -40,6 +44,7 @@ export const identityPrompt: SystemPromptDefinition = {
   variables: [
     "SPECIALIST_NAME",
     "SPECIALIST_SLUG",
+    "WORKSPACE_DIR",
     "SPECIALIST_DIR",
     "SPECIALIST_ROLE",
     "SPECIALIST_INSTRUCTIONS",
