@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { eq } from "drizzle-orm";
+
 import { createId, now } from "../../src/db/ids";
 import { agents, documents } from "../../src/db/schema/index";
 import { createDocumentService, documentReconciler } from "../../src/services/document-service";
@@ -145,6 +147,31 @@ describe("document service", () => {
           relativePath: "notes/shared.md",
           title: "Private Notes",
         });
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("resolves private documents by owner ID after the owner slug changes", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        const ownerSpecialistId = await insertSpecialist(testDb, { slug: "planner" });
+        await testDb.client.db
+          .update(agents)
+          .set({ slug: "renamed-planner" })
+          .where(eq(agents.id, ownerSpecialistId));
+
+        const document = await service.create({
+          scope: "private",
+          ownerSpecialistId,
+          ownerSlug: "planner",
+          path: "notes/renamed.md",
+        });
+
+        expect(document.ownerSlug).toBe("renamed-planner");
+        expect((await stat(document.fullPath)).isFile()).toBe(true);
       } finally {
         await testDb.cleanup();
       }

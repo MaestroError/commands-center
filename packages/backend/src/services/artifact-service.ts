@@ -304,7 +304,7 @@ async function mapArtifact(
     description: row.description ?? undefined,
     type: row.type,
     link: row.link,
-    fileManagerPath: await resolveFileManagerPath(config, row, agentSlug),
+    fileManagerPath: await resolveArtifactFileManagerPath(config, row, agentSlug),
     createdAt: row.created_at.toISOString(),
     shareLinks,
   });
@@ -435,7 +435,7 @@ function validateRelativeArtifactPath(path: string | undefined): string {
   return trimmed;
 }
 
-async function resolveFileManagerPath(
+export async function resolveArtifactFileManagerPath(
   config: RuntimeConfig,
   row: ArtifactRow,
   agentSlug: string | undefined,

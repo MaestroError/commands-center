@@ -144,6 +144,33 @@ describe("task artifact sharing", () => {
     }
   });
 
+  it("returns a File Manager path for a private Documents artifact", async () => {
+    const { testDb, taskService, server } = await setup();
+
+    try {
+      const { taskId, runId } = await createRunWithArtifact(testDb.client.db, taskService, {
+        workspaceDir: testDb.config.paths.workspaceDir,
+        artifactPath: "references/tool-list.md",
+        content: "tool list",
+        privateDocument: true,
+      });
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/tasks/${taskId}/runs/${runId}/artifacts`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(
+        response.json<{ artifacts: Array<{ fileManagerPath?: string }> }>().artifacts[0]
+          ?.fileManagerPath,
+      ).toMatch(/^specialists\/agent-[^/]+\/Documents\/references\/tool-list\.md$/);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("returns 404 for revoked, expired, and bad-token signed URLs", async () => {
     const { testDb, taskService, server } = await setup();
 
@@ -348,7 +375,12 @@ describe("task artifact sharing", () => {
 async function createRunWithArtifact(
   db: AppDb,
   taskService: ReturnType<typeof createTaskService>,
-  options: { workspaceDir: string; artifactPath: string; content: string },
+  options: {
+    workspaceDir: string;
+    artifactPath: string;
+    content: string;
+    privateDocument?: boolean;
+  },
 ): Promise<{ taskId: string; runId: string }> {
   const agent = await insertAgent(db);
   const task = await taskService.create({ agentId: agent.id, title: "Publish report" });
@@ -360,7 +392,13 @@ async function createRunWithArtifact(
     renderedPrompt: "Create report.",
   });
   await seedRunConversation(db, run.id, agent.id);
-  const absolutePath = join(options.workspaceDir, "specialists", agent.slug, options.artifactPath);
+  const absolutePath = join(
+    options.workspaceDir,
+    "specialists",
+    agent.slug,
+    ...(options.privateDocument ? ["Documents"] : []),
+    options.artifactPath,
+  );
   await mkdir(dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, options.content, "utf8");
   await taskService.addRunArtifact(run.id, agent.id, {

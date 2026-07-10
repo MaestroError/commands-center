@@ -41,6 +41,8 @@ import {
   type task_templates,
   tasks,
 } from "../../db/schema/index.js";
+import type { RuntimeConfig } from "../../lib/runtime-config.js";
+import { resolveArtifactFileManagerPath } from "../artifact-service.js";
 import {
   deriveRunSubtaskStatus,
   deriveSubtaskStatus,
@@ -257,14 +259,16 @@ export function mapTaskRunFollowup(row: typeof task_run_followups.$inferSelect):
 
 export async function mapTaskRunWithReplyState(
   db: AppDb,
+  config: RuntimeConfig,
   row: typeof task_runs.$inferSelect,
 ): Promise<TaskRun> {
-  const [run] = await mapTaskRunsWithReplyState(db, [row]);
+  const [run] = await mapTaskRunsWithReplyState(db, config, [row]);
   return run ?? mapTaskRun(row);
 }
 
 export async function mapTaskRunsWithReplyState(
   db: AppDb,
+  config: RuntimeConfig,
   rows: Array<typeof task_runs.$inferSelect>,
 ): Promise<TaskRun[]> {
   const runs = rows.map(mapTaskRun);
@@ -275,7 +279,7 @@ export async function mapTaskRunsWithReplyState(
   const runIds = runs.map((run) => run.id);
   const [activeReplyRunIds, artifactsByRunId] = await Promise.all([
     getActiveReplyRunIds(db, runIds),
-    getArtifactsByRunIds(db, runIds),
+    getArtifactsByRunIds(db, config, runIds),
   ]);
 
   return runs.map((run) => ({
@@ -290,6 +294,7 @@ export async function mapTaskRunsWithReplyState(
 
 export async function getArtifactsByRunIds(
   db: AppDb,
+  config: RuntimeConfig,
   runIds: string[],
 ): Promise<Map<string, Artifact[]>> {
   const grouped = new Map<string, Artifact[]>();
@@ -320,7 +325,12 @@ export async function getArtifactsByRunIds(
     if (!runId) {
       continue;
     }
-    const mapped = mapArtifactRow(artifact, shareLinks.get(artifact.id) ?? [], agentSlug);
+    const mapped = await mapArtifactRow(
+      config,
+      artifact,
+      shareLinks.get(artifact.id) ?? [],
+      agentSlug,
+    );
     const existing = grouped.get(runId);
     if (existing) {
       existing.push(mapped);
@@ -375,11 +385,12 @@ export async function getShareLinksByArtifactIds(
   return grouped;
 }
 
-export function mapArtifactRow(
+export async function mapArtifactRow(
+  config: RuntimeConfig,
   row: typeof artifactsTable.$inferSelect,
   shareLinks: ArtifactShareLink[],
   agentSlug?: string,
-): Artifact {
+): Promise<Artifact> {
   return artifactSchema.parse({
     id: row.id,
     conversationId: row.conversation_id,
@@ -387,32 +398,10 @@ export function mapArtifactRow(
     description: row.description ?? undefined,
     type: row.type,
     link: row.link,
-    fileManagerPath: buildFileManagerPath(row, agentSlug),
+    fileManagerPath: await resolveArtifactFileManagerPath(config, row, agentSlug),
     createdAt: row.created_at.toISOString(),
     shareLinks,
   });
-}
-
-function buildFileManagerPath(
-  row: typeof artifactsTable.$inferSelect,
-  agentSlug: string | undefined,
-): string | undefined {
-  if (row.type !== "file" || !agentSlug) {
-    return undefined;
-  }
-
-  const trimmed = row.link.trim();
-  const segments = trimmed.split(/[\\/]/).filter(Boolean);
-  if (
-    trimmed.length === 0 ||
-    trimmed.startsWith("/") ||
-    segments.length === 0 ||
-    segments.some((segment) => segment === "." || segment === "..")
-  ) {
-    return undefined;
-  }
-
-  return ["specialists", agentSlug, ...segments].join("/");
 }
 
 export async function getActiveReplyRunIds(db: AppDb, runIds: string[]): Promise<Set<string>> {

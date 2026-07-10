@@ -67,7 +67,7 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
           .where(and(eq(task_runs.id, id), eq(task_runs.status, "queued")))
           .returning();
 
-        return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
+        return row ? mapTaskRunWithReplyState(options.db, options.config, row) : undefined;
       } catch (error) {
         if (isRunningAgentConstraintError(error)) {
           return undefined;
@@ -194,7 +194,7 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
         throw new Error("Failed to create task run record.");
       }
 
-      return mapTaskRunWithReplyState(options.db, row);
+      return mapTaskRunWithReplyState(options.db, options.config, row);
     },
 
     async updateRun(id: string, input: UpdateTaskRunInput): Promise<TaskRun | undefined> {
@@ -284,7 +284,7 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
         throw new Error("Failed to update task run record.");
       }
 
-      return mapTaskRunWithReplyState(options.db, row);
+      return mapTaskRunWithReplyState(options.db, options.config, row);
     },
 
     async setRunStatus(
@@ -388,7 +388,7 @@ export function createTaskRunOps(ctx: TaskServiceContext, service: TaskServiceRe
         throw new NotFoundError("Task run not found.");
       }
 
-      return mapTaskRunWithReplyState(options.db, updated);
+      return mapTaskRunWithReplyState(options.db, options.config, updated);
     },
   };
 }

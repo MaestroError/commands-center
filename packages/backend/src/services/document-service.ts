@@ -257,7 +257,7 @@ export function createDocumentService(options: {
       throw new NotFoundError("Private document owner not found.");
     }
 
-    if (input.ownerSlug && input.ownerSlug !== row.slug) {
+    if (!input.ownerSpecialistId && input.ownerSlug && input.ownerSlug !== row.slug) {
       throw new BadRequestError("Private document owner does not match current specialist slug.");
     }
 
