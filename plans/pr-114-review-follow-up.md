@@ -11,5 +11,5 @@ document IDs and private Documents artifact links.
    resolving private document scope.
 2. [completed] Reuse filesystem-aware artifact path resolution for task-run
    artifacts.
-3. [in progress] Add focused regression tests, run checks, push, and resolve both
+3. [completed] Add focused regression tests, run checks, push, and resolve both
    review threads.
