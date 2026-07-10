@@ -11,4 +11,4 @@ Windows absolute paths.
    and reject Windows drive-letter paths.
 2. [completed] Add regression coverage for a Windows-style private Documents
    artifact path.
-3. [in progress] Run checks, push the fix, and resolve the review thread.
+3. [completed] Run checks, push the fix, and resolve the review thread.
