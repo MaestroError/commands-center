@@ -243,21 +243,7 @@ export function TaskTemplateForm(props: {
           </p>
         )}
       </section>
-      <div className="grid gap-1">
-        <label className="grid gap-1 text-sm text-text-secondary">
-          Acceptance criteria, one per line
-          <textarea
-            className="cc-input min-h-24 resize-y"
-            value={form.todosText}
-            onChange={(event) => updateForm({ todosText: event.target.value })}
-          />
-        </label>
-        <p className="text-xs text-text-muted">
-          What &ldquo;done&rdquo; looks like. The assigned specialist sees these in its run context
-          but can&apos;t check them off — you verify each during review.
-        </p>
-      </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="sticky bottom-3 z-10 flex flex-wrap gap-2 rounded-lg bg-surface py-2">
         <button
           className="cc-button"
           data-testid="task-template-save"
@@ -269,6 +255,20 @@ export function TaskTemplateForm(props: {
         <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
           {props.cancelLabel}
         </button>
+      </div>
+      <div className="grid gap-1">
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Acceptance criteria, one per line
+          <textarea
+            className="cc-input min-h-24 resize-none"
+            value={form.todosText}
+            onChange={(event) => updateForm({ todosText: event.target.value })}
+          />
+        </label>
+        <p className="text-xs text-text-muted">
+          What &ldquo;done&rdquo; looks like. The assigned specialist sees these in its run context
+          but can&apos;t check them off — you verify each during review.
+        </p>
       </div>
     </form>
   );

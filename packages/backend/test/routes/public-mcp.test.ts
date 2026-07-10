@@ -241,6 +241,49 @@ describe("public MCP route", () => {
     }
   });
 
+  it("allows document tools through an explicitly scoped MCP URL token", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+      await documents.create({
+        scope: "global",
+        path: "shared/brief.md",
+        content: "Deployment brief",
+      });
+      const token = apiTokenService.createToken("Documents", {
+        capabilities: ["read_document"],
+        templates: [],
+        documents: { global: true, privateSpecialistIds: [] },
+      }).token;
+
+      const read = parseSseJson(
+        (
+          await callMcpWithUrlToken(
+            server,
+            token,
+            "tools/call",
+            {
+              name: "read_document",
+              arguments: { scope: "global", path: "shared/brief.md" },
+            },
+            1,
+          )
+        ).body,
+      ) as { result?: { structuredContent?: Record<string, unknown> } };
+
+      expect(read.result?.structuredContent).toMatchObject({
+        scope: "global",
+        content: "Deployment brief",
+      });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("exposes async run variants only when the token can poll results", async () => {
     const testDb = await createTestDatabase();
     const apiTokenService = createApiTokenService({ db: testDb.client.db });

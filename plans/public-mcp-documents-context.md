@@ -2,7 +2,12 @@
 
 ## Status and Readiness Assessment
 
-**Readiness: ready to implement after the decisions in this revision.**
+**Status: implemented and hardened after review (2026-07-10).**
+
+The initial implementation is complete. Review hardening added symlink-safe document
+traversal, bounded public-search work, fail-closed legacy MCP normalization,
+document audit targets, real MCP-client coverage, and the mobile template-edit
+regression test.
 
 The document-access direction was correct, but the previous plan was not yet
 implementation-ready against the current codebase:

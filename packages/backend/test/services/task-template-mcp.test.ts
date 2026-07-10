@@ -80,6 +80,25 @@ describe("task template MCP config", () => {
     }
   });
 
+  it("keeps legacy exposeAsTool as a master switch for async tools", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const template = await taskService.createTemplate({
+        defaultAgentId: agentId,
+        title: "Legacy hidden report",
+        description: "",
+        mcpConfig: { exposeAsTool: false, asyncEnabled: true },
+      });
+
+      expect(template.mcpConfig).toMatchObject({ syncEnabled: false, asyncEnabled: false });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("rejects a tool name that collides with another template", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });

@@ -193,4 +193,30 @@ describe("createArtifactDeliveryService", () => {
       await testDb.cleanup();
     }
   });
+
+  it("signs only a download URL when display delivery is disabled", async () => {
+    const testDb = await createTestDatabase();
+    const artifactService = createArtifactService({ db: testDb.client.db, config: testDb.config });
+    const delivery = createArtifactDeliveryService({ artifactService, config: testDb.config });
+
+    try {
+      const artifact = await seedArtifact(testDb, {
+        type: "file",
+        link: "reports/notes.txt",
+        content: "hello",
+      });
+
+      const result = await delivery.buildDelivery(artifact, {
+        displayEnabled: false,
+        downloadEnabled: true,
+        baseUrl: "https://cc.example.test",
+        expiresAtMs: Date.now() + 60_000,
+      });
+
+      expect(result.displayUrl).toBeNull();
+      expect(result.downloadUrl).toContain(`/artifacts/${artifact.id}/download`);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
 });

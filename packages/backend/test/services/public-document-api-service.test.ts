@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
@@ -171,6 +173,89 @@ describe("public document API service", () => {
         token({ global: false, privateSpecialistIds: ["writer-id"] }),
         {},
       );
+      expect(result.documents).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("paginates global documents deterministically", async () => {
+    const testDb = await createTestDatabase();
+    const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+    const service = createPublicDocumentApiService({
+      db: testDb.client.db,
+      documentService: documents,
+    });
+
+    try {
+      await documents.create({ scope: "global", path: "briefs/a.md", content: "A" });
+      await documents.create({ scope: "global", path: "briefs/b.md", content: "B" });
+      await documents.create({ scope: "global", path: "briefs/c.md", content: "C" });
+
+      const page = await service.listDocuments(token({ global: true, privateSpecialistIds: [] }), {
+        limit: 1,
+        offset: 1,
+      });
+
+      expect(page).toMatchObject({ totalMatches: 3, nextOffset: 2 });
+      expect(page.documents).toEqual([expect.objectContaining({ relativePath: "briefs/b.md" })]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("does not let scope and owner filters expand private document access", async () => {
+    const testDb = await createTestDatabase();
+    const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+    const service = createPublicDocumentApiService({
+      db: testDb.client.db,
+      documentService: documents,
+    });
+
+    try {
+      await insertAgent(testDb.client.db, "writer-id", "writer");
+      await insertAgent(testDb.client.db, "planner-id", "planner");
+      await documents.create({
+        scope: "private",
+        ownerSpecialistId: "planner-id",
+        path: "notes/plan.md",
+        content: "Planner only",
+      });
+
+      const result = await service.listDocuments(
+        token({ global: false, privateSpecialistIds: ["writer-id"] }),
+        { scope: "private", ownerSlug: "planner" },
+      );
+
+      expect(result.documents).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("skips an oversized document when content search cannot read it within the byte cap", async () => {
+    const testDb = await createTestDatabase();
+    const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+    const service = createPublicDocumentApiService({
+      db: testDb.client.db,
+      documentService: documents,
+    });
+
+    try {
+      await documents.createFolder("seed");
+      await writeFile(
+        documents.fullPath("oversized.md"),
+        `needle ${"a".repeat(5 * 1024 * 1024)}`,
+        "utf8",
+      );
+
+      const result = await service.searchDocuments(
+        token({ global: true, privateSpecialistIds: [] }),
+        {
+          query: "needle",
+        },
+      );
+
       expect(result.documents).toEqual([]);
     } finally {
       await testDb.cleanup();

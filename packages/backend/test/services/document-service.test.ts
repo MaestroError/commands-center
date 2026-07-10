@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -431,6 +431,22 @@ describe("document service", () => {
         await testDb.cleanup();
       }
     });
+
+    it("rejects a symlinked markdown file that resolves outside the Documents root", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        const outside = join(testDb.config.paths.workspaceDir, "secret.md");
+        await writeFile(outside, "Outside document root", "utf8");
+        await symlink(outside, service.fullPath("linked.md"));
+
+        await expect(service.read("linked.md")).rejects.toThrow("not found");
+      } finally {
+        await testDb.cleanup();
+      }
+    });
   });
 
   describe("saveContent", () => {
@@ -694,6 +710,23 @@ describe("document service", () => {
         expect(items).toHaveLength(1);
         expect(items[0]?.relativePath).toBe("big.md");
         expect(items[0]?.description).toBeNull();
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("skips files reachable through a symlinked directory", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        const outside = join(testDb.config.paths.workspaceDir, "outside-documents");
+        await mkdir(outside);
+        await writeFile(join(outside, "secret.md"), "Outside document root", "utf8");
+        await symlink(outside, service.fullPath("linked"));
+
+        await expect(service.list()).resolves.toEqual([]);
       } finally {
         await testDb.cleanup();
       }

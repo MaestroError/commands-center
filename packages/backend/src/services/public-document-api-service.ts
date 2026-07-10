@@ -25,9 +25,14 @@ import { ApiError, NotFoundError } from "../lib/api-error.js";
 import type { DocumentService } from "./document-service.js";
 
 const ROOT_PAGE_SIZE = 200;
-const MAX_CONTENT_SEARCH_DOCUMENTS = 500;
+const MAX_SEARCH_ROOTS = 50;
+const MAX_SEARCH_CANDIDATES_PER_ROOT = 200;
+const MAX_SEARCH_CANDIDATES = 500;
+const MAX_CONTENT_SEARCH_READS = 500;
 const MAX_CONTENT_SEARCH_BYTES = 20 * 1024 * 1024;
 const MAX_EXCERPT_CHARACTERS = 300;
+const MAX_SEARCH_RESULTS = 200;
+const MAX_SEARCH_EXCERPTS_PER_RESULT = 16;
 
 type AuthorizedRoot = {
   scope: DocumentScope;
@@ -100,6 +105,27 @@ export function createPublicDocumentApiService(deps: {
     return documents.sort(compareDocuments);
   }
 
+  async function listSearchCandidates(
+    token: ApiTokenRecord,
+    filters?: { scope?: DocumentScope; ownerSlug?: string },
+  ): Promise<DocumentListItem[]> {
+    const roots = resolveRoots(token, filters).slice(0, MAX_SEARCH_ROOTS);
+    const candidates = (
+      await Promise.all(
+        roots.map((root) =>
+          deps.documentService.listSearchCandidates({
+            scope: root.scope,
+            ownerSpecialistId: root.ownerSpecialistId,
+            maxCandidates: MAX_SEARCH_CANDIDATES_PER_ROOT,
+          }),
+        ),
+      )
+    )
+      .flat()
+      .sort(compareDocuments);
+    return candidates.slice(0, MAX_SEARCH_CANDIDATES);
+  }
+
   return {
     async listDocuments(
       token: ApiTokenRecord,
@@ -155,31 +181,43 @@ export function createPublicDocumentApiService(deps: {
     ): Promise<PublicDocumentSearchResponse> {
       const parsed = publicDocumentSearchInputSchema.parse(input);
       const query = parsed.query.toLowerCase();
-      const candidates = await listAuthorizedDocuments(token, parsed);
+      const candidates = await listSearchCandidates(token, parsed);
       const matches: Array<PublicDocumentSummary & { matches: PublicDocumentSearchExcerpt[] }> = [];
-      let contentDocuments = 0;
+      let contentReads = 0;
       let contentBytes = 0;
 
       for (const candidate of candidates) {
-        const excerpts = metadataExcerpts(candidate, query);
+        if (matches.length >= MAX_SEARCH_RESULTS) {
+          break;
+        }
+
+        const excerpts = metadataExcerpts(candidate, query).slice(
+          0,
+          MAX_SEARCH_EXCERPTS_PER_RESULT,
+        );
         if (
           parsed.includeContent &&
-          contentDocuments < MAX_CONTENT_SEARCH_DOCUMENTS &&
+          contentReads < MAX_CONTENT_SEARCH_READS &&
           contentBytes < MAX_CONTENT_SEARCH_BYTES
         ) {
-          const content = await readSearchContent(deps.documentService, candidate);
+          contentReads += 1;
+          const content = await readSearchContent(
+            deps.documentService,
+            candidate,
+            MAX_CONTENT_SEARCH_BYTES - contentBytes,
+          );
           if (content !== undefined) {
             const size = Buffer.byteLength(content, "utf8");
-            if (contentBytes + size <= MAX_CONTENT_SEARCH_BYTES) {
-              contentDocuments += 1;
-              contentBytes += size;
-              excerpts.push(...contentExcerpts(content, query, parsed.maxSnippetsPerDocument));
-            }
+            contentBytes += size;
+            excerpts.push(...contentExcerpts(content, query, parsed.maxSnippetsPerDocument));
           }
         }
 
         if (excerpts.length > 0) {
-          matches.push({ ...toPublicSummary(candidate), matches: excerpts });
+          matches.push({
+            ...toPublicSummary(candidate),
+            matches: excerpts.slice(0, MAX_SEARCH_EXCERPTS_PER_RESULT),
+          });
         }
       }
 
@@ -237,12 +275,14 @@ function metadataExcerpts(
 async function readSearchContent(
   service: DocumentService,
   document: DocumentListItem,
+  maxContentBytes: number,
 ): Promise<string | undefined> {
   try {
     const read = await service.read({
       scope: document.scope,
       ownerSpecialistId: document.ownerSpecialistId,
       relativePath: document.relativePath,
+      maxContentBytes,
     });
     return read.content;
   } catch (error) {

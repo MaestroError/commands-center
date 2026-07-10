@@ -93,11 +93,11 @@ export const taskTemplateMcpConfigSchema = z.preprocess((value) => {
   }
 
   const record = value as Record<string, unknown>;
-  if (record["syncEnabled"] !== undefined || typeof record["exposeAsTool"] !== "boolean") {
+  if (record["syncEnabled"] !== undefined || record["exposeAsTool"] === undefined) {
     return value;
   }
 
-  const legacyExposed = record["exposeAsTool"];
+  const legacyExposed = record["exposeAsTool"] === true;
   return {
     ...record,
     syncEnabled: legacyExposed,

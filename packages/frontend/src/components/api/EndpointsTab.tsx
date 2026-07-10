@@ -88,7 +88,8 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
                 ?key=&lt;YOUR_API_TOKEN&gt;
               </code>
               . This is not recommended for production unless the token has explicitly scoped
-              permissions, because URLs are easier to leak through logs, history, and shared config.
+              permissions and the smallest necessary document roots, because URLs are easier to leak
+              through logs, history, and shared config.
             </p>
           </div>
           <CopyableCode code={mcpUrlTokenEndpoint} label="MCP endpoint with URL token" />

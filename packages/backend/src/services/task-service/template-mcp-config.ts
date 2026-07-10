@@ -34,6 +34,7 @@ export function resolveMcpConfig(options: {
 }): TaskTemplateMcpConfig {
   const base = options.existing ?? defaultMcpConfigForTitle(options.title);
   const input = options.input ?? {};
+  const isLegacyInput = input.syncEnabled === undefined && input.exposeAsTool !== undefined;
   const toolNameInput = input.toolName?.trim();
   const candidateName = toolNameInput && toolNameInput.length > 0 ? toolNameInput : base.toolName;
 
@@ -49,7 +50,9 @@ export function resolveMcpConfig(options: {
     textFieldDescription: input.textFieldDescription ?? base.textFieldDescription,
     allowFiles: input.allowFiles ?? base.allowFiles,
     filesFieldDescription: input.filesFieldDescription ?? base.filesFieldDescription,
-    asyncEnabled: input.asyncEnabled ?? base.asyncEnabled,
+    asyncEnabled: isLegacyInput
+      ? input.exposeAsTool === true && input.asyncEnabled === true
+      : (input.asyncEnabled ?? base.asyncEnabled),
     asyncAlwaysAcknowledge: input.asyncAlwaysAcknowledge ?? base.asyncAlwaysAcknowledge,
     artifacts: {
       displayableUrlEnabled:

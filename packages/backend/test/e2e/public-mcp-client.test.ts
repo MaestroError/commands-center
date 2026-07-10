@@ -190,7 +190,10 @@ describe("public MCP client e2e", () => {
     });
     disposers.push(() => taskExecutionService.dispose());
 
-    const agentId = await insertAgent(testDb.client.db);
+    const agentId = await insertAgent(testDb.client.db, {
+      id: "document-specialist-id",
+      slug: "document-specialist",
+    });
     const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
     await documents.create({
       scope: "global",
@@ -233,7 +236,7 @@ describe("public MCP client e2e", () => {
         }),
         expect.objectContaining({
           scope: "private",
-          ownerSlug: agentId,
+          ownerSlug: "document-specialist",
           relativePath: "research/private-brief.md",
         }),
       ]),
@@ -247,7 +250,7 @@ describe("public MCP client e2e", () => {
     }>(
       await client.callTool({
         name: "search_documents",
-        arguments: { query: "needle", scope: "private", ownerSlug: agentId },
+        arguments: { query: "needle", scope: "private", ownerSlug: "document-specialist" },
       }),
     );
     expect(searched.documents).toEqual([
@@ -269,14 +272,14 @@ describe("public MCP client e2e", () => {
         name: "read_document",
         arguments: {
           scope: "private",
-          ownerSlug: agentId,
+          ownerSlug: "document-specialist",
           path: "research/private-brief.md",
         },
       }),
     );
     expect(read).toMatchObject({
       scope: "private",
-      ownerSlug: agentId,
+      ownerSlug: "document-specialist",
       relativePath: "research/private-brief.md",
       content: "Private MCP discovery needle.",
     });
@@ -284,9 +287,19 @@ describe("public MCP client e2e", () => {
     await expect
       .poll(async () => {
         const activity = await tokenAuditService.listForToken({ tokenId: token.record.id });
-        return activity.entries.map((entry) => entry.action);
+        return activity.entries;
       })
-      .toEqual(expect.arrayContaining(["list_documents", "search_documents", "read_document"]));
+      .toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ action: "list_documents" }),
+          expect.objectContaining({ action: "search_documents" }),
+          expect.objectContaining({
+            action: "read_document",
+            targetKind: "document",
+            targetId: "private:document-specialist:research/private-brief.md",
+          }),
+        ]),
+      );
   });
 });
 
@@ -345,11 +358,12 @@ function structured<T extends Record<string, unknown>>(result: ToolResult): T {
   return result.structuredContent as T;
 }
 
-async function insertAgent(db: AppDb): Promise<string> {
-  const id = `agent-${randomUUID()}`;
+async function insertAgent(db: AppDb, input: { id?: string; slug?: string } = {}): Promise<string> {
+  const id = input.id ?? `agent-${randomUUID()}`;
+  const slug = input.slug ?? id;
   await db.insert(agents).values({
     id,
-    slug: id,
+    slug,
     name: "Public MCP Specialist",
     role: "run public MCP tasks",
     instructions: "Execute public MCP E2E tasks.",

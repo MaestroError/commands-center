@@ -82,6 +82,16 @@ describe("taskTemplateMcpConfigSchema", () => {
     ).toMatchObject({ syncEnabled: true, asyncEnabled: true });
   });
 
+  it("fails closed for malformed legacy exposure values", () => {
+    expect(
+      taskTemplateMcpConfigSchema.parse({
+        toolName: "malformed_legacy",
+        exposeAsTool: "false",
+        asyncEnabled: true,
+      }),
+    ).toMatchObject({ syncEnabled: false, asyncEnabled: false });
+  });
+
   it("requires a tool name", () => {
     expect(taskTemplateMcpConfigSchema.safeParse({}).success).toBe(false);
   });
