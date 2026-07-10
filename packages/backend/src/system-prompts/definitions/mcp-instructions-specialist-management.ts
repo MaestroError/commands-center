@@ -15,6 +15,6 @@ export const mcpInstructionsSpecialistManagementPrompt: SystemPromptDefinition =
   enabledByDefault: false,
   capabilityControlled: true,
   workspaceRelativePath: "configuration/system-prompts/mcp-instructions-specialist-management.md",
-  variables: [],
+  variables: ["WORKSPACE_DIR", "SPECIALIST_DIR"],
   defaultBody: "",
 };

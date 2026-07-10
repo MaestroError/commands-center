@@ -177,11 +177,15 @@ export function useTaskRunSessionQuery(taskId?: string, runId?: string) {
   });
 }
 
-export function useConversationArtifactsQuery(conversationId?: string) {
+export function useConversationArtifactsQuery(
+  conversationId?: string,
+  options: { refetchInterval?: number | false } = {},
+) {
   return useQuery({
     queryKey: queryKeys.conversationArtifacts(conversationId ?? "missing"),
     queryFn: () => listConversationArtifacts(conversationId ?? ""),
     enabled: Boolean(conversationId),
+    refetchInterval: options.refetchInterval,
   });
 }
 

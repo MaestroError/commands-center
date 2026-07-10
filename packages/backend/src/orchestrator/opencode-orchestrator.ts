@@ -4,6 +4,7 @@ import type { Logger } from "pino";
 
 import { resolveOpencodeBinary, type OpenCodeBinary } from "../lib/opencode-binary.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
+import { repairOpenCodeStorage } from "../opencode/opencode-storage-repair.js";
 
 export type EngineState = "stopped" | "starting" | "healthy" | "unhealthy" | "stopping";
 
@@ -109,6 +110,9 @@ export function createOpenCodeOrchestrator(options: {
 
       binary = await resolveBinary(options.config);
       const resolvedEnv = options.resolveEnv ? await options.resolveEnv() : process.env;
+      if (options.config.nodeEnv !== "test") {
+        repairOpenCodeStorage({ env: resolvedEnv, logger: options.logger });
+      }
 
       const next = spawnProcess(
         binary.path,

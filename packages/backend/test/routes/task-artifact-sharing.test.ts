@@ -57,9 +57,16 @@ describe("task artifact sharing", () => {
       });
       expect(listed.statusCode).toBe(200);
       const artifact = listed.json<{
-        artifacts: Array<{ id: string; type: string; shareLinks: unknown[] }>;
+        artifacts: Array<{
+          id: string;
+          type: string;
+          shareLinks: unknown[];
+          fileManagerPath?: string;
+        }>;
       }>().artifacts[0];
       expect(artifact?.type).toBe("file");
+      expect(artifact?.fileManagerPath).toMatch(/^specialists\/agent-/);
+      expect(artifact?.fileManagerPath).toContain("/reports/release.md");
 
       const created = await server.inject({
         method: "POST",
@@ -67,8 +74,18 @@ describe("task artifact sharing", () => {
         payload: {},
       });
       expect(created.statusCode).toBe(200);
-      const share = created.json<{ shareId: string; url: string; expiresAt: string }>();
+      const share = created.json<{
+        shareId: string;
+        url: string;
+        displayUrl: string;
+        downloadUrl: string;
+        expiresAt: string;
+      }>();
       expect(share.url).toContain("https://cc.example.test/api/public/v1/task-artifacts/download/");
+      expect(share.displayUrl).toContain("https://cc.example.test/api/public/v1/artifacts/");
+      expect(share.displayUrl).toContain("/display?");
+      expect(share.downloadUrl).toContain("https://cc.example.test/api/public/v1/artifacts/");
+      expect(share.downloadUrl).toContain("/download?");
       expect(share.expiresAt).toMatch(/Z$/);
 
       const row = await testDb.client.db.query.artifact_share_links.findFirst({
@@ -90,6 +107,24 @@ describe("task artifact sharing", () => {
       expect(downloaded.headers["cache-control"]).toBe("no-store, max-age=0");
       expect(downloaded.headers["content-disposition"]).toContain("release.md");
 
+      const displayUrl = new URL(share.displayUrl);
+      const displayed = await server.inject({
+        method: "GET",
+        url: `${displayUrl.pathname}${displayUrl.search}`,
+      });
+      expect(displayed.statusCode).toBe(200);
+      expect(displayed.body).toBe("release notes");
+      expect(displayed.headers["content-disposition"]).toContain("inline");
+
+      const publicDownloadUrl = new URL(share.downloadUrl);
+      const publicDownloaded = await server.inject({
+        method: "GET",
+        url: `${publicDownloadUrl.pathname}${publicDownloadUrl.search}`,
+      });
+      expect(publicDownloaded.statusCode).toBe(200);
+      expect(publicDownloaded.body).toBe("release notes");
+      expect(publicDownloaded.headers["content-disposition"]).toContain("attachment");
+
       const afterDownload = await testDb.client.db.query.artifact_share_links.findFirst({
         where: (table, operators) => operators.eq(table.id, share.shareId),
       });
@@ -103,6 +138,33 @@ describe("task artifact sharing", () => {
       expect(
         relisted.json<{ artifacts: Array<{ shareLinks: unknown[] }> }>().artifacts[0]?.shareLinks,
       ).toHaveLength(1);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns a File Manager path for a private Documents artifact", async () => {
+    const { testDb, taskService, server } = await setup();
+
+    try {
+      const { taskId, runId } = await createRunWithArtifact(testDb.client.db, taskService, {
+        workspaceDir: testDb.config.paths.workspaceDir,
+        artifactPath: "references/tool-list.md",
+        content: "tool list",
+        privateDocument: true,
+      });
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/tasks/${taskId}/runs/${runId}/artifacts`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(
+        response.json<{ artifacts: Array<{ fileManagerPath?: string }> }>().artifacts[0]
+          ?.fileManagerPath,
+      ).toMatch(/^specialists\/agent-[^/]+\/Documents\/references\/tool-list\.md$/);
     } finally {
       await server.close();
       await testDb.cleanup();
@@ -218,8 +280,16 @@ describe("task artifact sharing", () => {
         payload: {},
       });
       expect(created.statusCode).toBe(200);
-      const share = created.json<{ shareId: string; url: string; expiresAt: string | null }>();
+      const share = created.json<{
+        shareId: string;
+        url: string;
+        displayUrl: string;
+        downloadUrl: string;
+        expiresAt: string | null;
+      }>();
       expect(share.expiresAt).toBeNull();
+      expect(new URL(share.displayUrl).searchParams.get("exp")).toBe("0");
+      expect(new URL(share.downloadUrl).searchParams.get("exp")).toBe("0");
 
       const row = await testDb.client.db.query.artifact_share_links.findFirst({
         where: (table, operators) => operators.eq(table.id, share.shareId),
@@ -305,7 +375,12 @@ describe("task artifact sharing", () => {
 async function createRunWithArtifact(
   db: AppDb,
   taskService: ReturnType<typeof createTaskService>,
-  options: { workspaceDir: string; artifactPath: string; content: string },
+  options: {
+    workspaceDir: string;
+    artifactPath: string;
+    content: string;
+    privateDocument?: boolean;
+  },
 ): Promise<{ taskId: string; runId: string }> {
   const agent = await insertAgent(db);
   const task = await taskService.create({ agentId: agent.id, title: "Publish report" });
@@ -317,7 +392,13 @@ async function createRunWithArtifact(
     renderedPrompt: "Create report.",
   });
   await seedRunConversation(db, run.id, agent.id);
-  const absolutePath = join(options.workspaceDir, options.artifactPath);
+  const absolutePath = join(
+    options.workspaceDir,
+    "specialists",
+    agent.slug,
+    ...(options.privateDocument ? ["Documents"] : []),
+    options.artifactPath,
+  );
   await mkdir(dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, options.content, "utf8");
   await taskService.addRunArtifact(run.id, agent.id, {

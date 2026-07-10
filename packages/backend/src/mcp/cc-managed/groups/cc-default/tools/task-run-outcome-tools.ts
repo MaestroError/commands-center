@@ -39,7 +39,7 @@ export const addTaskArtifactToolMetadata = {
     'relative to Documents/, e.g. "design/overview.md"; the UI opens it in the Documents ' +
     'editor), "file" for any other workspace file (set `link` to the workspace-relative ' +
     'path; opens in the File Manager), or "url" for an external link. When a task creates ' +
-    "or updates a project document (e.g. via register_project_document), attach it here " +
+    "or updates a global document (e.g. via register_global_document), attach it here " +
     'with type "document" so the user can open it directly in the Documents module.',
   context: "task_run",
 } as const;

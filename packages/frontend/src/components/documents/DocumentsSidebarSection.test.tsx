@@ -6,13 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", () => ({
   getDocumentTree: vi.fn(),
+  listSpecialists: vi.fn(),
   createDocument: vi.fn(),
   createDocumentFolder: vi.fn(),
 }));
 
 import { DocumentsSidebarSection } from "./DocumentsSidebarSection";
-import { getDocumentTree } from "@/lib/api";
-import type { DocumentTreeResponse } from "@cc/shared/schemas";
+import { createDocument, getDocumentTree, listSpecialists } from "@/lib/api";
+import type { DocumentTreeResponse, Specialist } from "@cc/shared/schemas";
 
 function LocationProbe() {
   const location = useLocation();
@@ -51,8 +52,50 @@ function renderSidebar(
   );
 }
 
-function tree(...nodes: DocumentTreeResponse["tree"]): DocumentTreeResponse {
-  return { tree: nodes };
+type RawDocumentTreeNode = Omit<
+  DocumentTreeResponse["tree"][number],
+  "scope" | "ownerSlug" | "ownerSpecialistId" | "children"
+> & {
+  children?: RawDocumentTreeNode[];
+};
+
+function tree(...nodes: RawDocumentTreeNode[]): DocumentTreeResponse {
+  return { tree: nodes.map(scopedNode), privateTrees: [] };
+}
+
+function scopedNode(node: RawDocumentTreeNode): DocumentTreeResponse["tree"][number] {
+  return {
+    scope: "global",
+    ownerSlug: null,
+    ownerSpecialistId: null,
+    ...node,
+    children: node.children?.map(scopedNode),
+  };
+}
+
+function specialist(overrides: Partial<Specialist> = {}): Specialist {
+  return {
+    id: "agent-planner",
+    slug: "planner",
+    name: "Planner",
+    role: "Planning",
+    instructions: "Plan work.",
+    defaultModel: "openai/gpt-5",
+    workspacePath: "/workspace/specialists/planner",
+    status: "active",
+    capabilities: {
+      builtInSkills: [],
+      workspaceSkills: [],
+      customTools: [],
+      mcpServers: [],
+      toolPermissions: [],
+      appMcpServers: [],
+      appToolPermissions: [],
+    },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
 }
 
 /**
@@ -91,6 +134,8 @@ function renderWithNavigation(initialEntries: string[] = ["/documents"]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(listSpecialists).mockResolvedValue([specialist()]);
+  vi.mocked(createDocument).mockResolvedValue({ documents: [] });
 });
 
 afterEach(() => {
@@ -122,6 +167,68 @@ describe("DocumentsSidebarSection", () => {
     await user.click(screen.getByRole("button", { name: "Search documents" }));
 
     expect(onOpenSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("can create the first private document for a specialist without an existing private tree", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(tree());
+
+    const user = userEvent.setup();
+    renderSidebar();
+
+    await screen.findByTestId("documents-sidebar-section");
+    await user.click(screen.getByRole("button", { name: "New private document" }));
+
+    const picker = await screen.findByRole("dialog", { name: "New Private Document" });
+    await user.selectOptions(within(picker).getByLabelText("Specialist"), "planner");
+    await user.click(within(picker).getByRole("button", { name: "Continue" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "New Document" });
+    expect(within(dialog).getByDisplayValue("notes/")).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText("Title"), "Research Notes");
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(createDocument).toHaveBeenCalled();
+    });
+    expect(vi.mocked(createDocument).mock.calls[0]?.[0]).toEqual({
+      scope: "private",
+      ownerSlug: "planner",
+      path: "notes/research-notes.md",
+      title: "Research Notes",
+      description: undefined,
+    });
+  });
+
+  it("does not treat a private document URL without an owner as the selected target", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue({
+      tree: [],
+      privateTrees: [
+        {
+          ownerSlug: "planner",
+          ownerSpecialistId: "agent-planner",
+          ownerName: "Planner",
+          tree: [
+            {
+              scope: "private",
+              ownerSlug: "planner",
+              ownerSpecialistId: "agent-planner",
+              name: "research.md",
+              relativePath: "notes/research.md",
+              type: "file",
+              title: "Research",
+            },
+          ],
+        },
+      ],
+    });
+
+    renderSidebar(["/documents?scope=private&path=notes%2Fresearch.md"]);
+
+    const documentButton = await screen.findByRole("button", { name: "Research" });
+    expect(documentButton).not.toHaveClass("text-accent");
+    expect(screen.getByTestId("location-probe")).toHaveTextContent(
+      "/documents?scope=private&path=notes%2Fresearch.md",
+    );
   });
 
   it("renders folders and documents from the tree", async () => {
@@ -391,8 +498,8 @@ describe("DocumentsSidebarSection", () => {
   });
 });
 
-function nestedFolder(segments: string[]): DocumentTreeResponse["tree"][number] {
-  function build(index: number): DocumentTreeResponse["tree"][number] {
+function nestedFolder(segments: string[]): RawDocumentTreeNode {
+  function build(index: number): RawDocumentTreeNode {
     const relativePath = segments.slice(0, index + 1).join("/");
     const children = index < segments.length - 1 ? [build(index + 1)] : [];
     return {

@@ -43,6 +43,17 @@ describe("system prompt definitions registry", () => {
     }
   });
 
+  it("makes workspace directory variables available to every configurable prompt", () => {
+    for (const definition of systemPromptDefinitions) {
+      expect(definition.variables, `${definition.id} is missing WORKSPACE_DIR`).toContain(
+        "WORKSPACE_DIR",
+      );
+      expect(definition.variables, `${definition.id} is missing SPECIALIST_DIR`).toContain(
+        "SPECIALIST_DIR",
+      );
+    }
+  });
+
   it("stores workspace paths under configuration/system-prompts and ending in .md", () => {
     for (const definition of systemPromptDefinitions) {
       expect(definition.workspaceRelativePath).toBe(

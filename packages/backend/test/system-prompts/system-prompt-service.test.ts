@@ -15,6 +15,7 @@ const ctx: SystemPromptRenderContext = {
   appName: "CommandsCenter",
   currentDate: "2026-06-23",
   workspaceDir: "/ws",
+  specialistDir: "/ws/specialists/ada",
   conversationId: "conv-1",
   specialist: { name: "Ada", slug: "ada", role: "engineer", instructions: "Be precise." },
   task: { id: "task-1", title: "Ship it", runId: "run-1" },
@@ -111,7 +112,18 @@ describe("system prompt service", () => {
 
       expect(prompts.map((prompt) => prompt.id)).toEqual(["identity", "global-chat"]);
       expect(system).toContain("You are Ada");
+      expect(system).toContain("<environment>");
+      expect(system).toContain("Today: 2026-06-23");
+      expect(system).toContain("Global Workspace directory: /ws");
+      expect(system).toContain("Your Workspace directory: /ws/specialists/ada");
       expect(system).toContain("with a human operator");
+      expect(system.match(/2026-06-23/g)).toHaveLength(1);
+      expect(prompts.find((prompt) => prompt.id === "global-chat")?.renderedBody).not.toContain(
+        "Workspace directory:",
+      );
+      expect(prompts.find((prompt) => prompt.id === "global-chat")?.renderedBody).not.toContain(
+        "Today:",
+      );
       // task-only prompt excluded from chat scope
       expect(prompts.some((prompt) => prompt.id === "global-task")).toBe(false);
     });
@@ -123,6 +135,9 @@ describe("system prompt service", () => {
       expect(prompts.map((prompt) => prompt.id)).toEqual(["identity", "global-task"]);
       expect(system).toContain("TaskRunId: run-1");
       expect(system).toContain("call cc_default_set_task_result");
+      expect(prompts.find((prompt) => prompt.id === "global-task")?.renderedBody).not.toContain(
+        "Today:",
+      );
       expect(prompts.some((prompt) => prompt.id === "global-chat")).toBe(false);
     });
 

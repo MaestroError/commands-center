@@ -18,15 +18,42 @@ import {
   type SaveDocumentContentInput,
   type SaveDocumentContentResponse,
   type UpdateDocumentMetadataInput,
+  type DocumentScope,
 } from "@cc/shared/schemas";
+
+export type DocumentRequestIdentity = {
+  scope?: DocumentScope;
+  ownerSlug?: string | null;
+  path: string;
+};
+
+function normalizeDocumentIdentity(
+  input: string | DocumentRequestIdentity,
+): DocumentRequestIdentity {
+  return typeof input === "string" ? { scope: "global", path: input } : input;
+}
+
+function appendScopeParams(params: URLSearchParams, identity: DocumentRequestIdentity): void {
+  const scope = identity.scope ?? "global";
+  if (scope !== "global") {
+    params.set("scope", scope);
+  }
+  if (identity.ownerSlug) {
+    params.set("owner", identity.ownerSlug);
+  }
+}
 
 export async function getDocumentTree(): Promise<DocumentTreeResponse> {
   return requestJson<DocumentTreeResponse>("/api/documents/tree", documentTreeResponseSchema);
 }
 
-export async function getDocumentContent(path: string): Promise<DocumentReadResponse> {
+export async function getDocumentContent(
+  input: string | DocumentRequestIdentity,
+): Promise<DocumentReadResponse> {
+  const identity = normalizeDocumentIdentity(input);
   const params = new URLSearchParams();
-  params.set("path", path);
+  appendScopeParams(params, identity);
+  params.set("path", identity.path);
 
   return requestJson<DocumentReadResponse>(
     `/api/documents/file?${params.toString()}`,

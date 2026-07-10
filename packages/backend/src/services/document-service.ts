@@ -1,15 +1,20 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, posix, relative, resolve } from "node:path";
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
+  documentListFilterSchema,
   NEW_DOCUMENT_SUBFOLDER_MESSAGE,
   type CreateDocumentInput,
+  type DocumentListFilter,
   type DocumentListItem,
+  type DocumentListResponse,
   type DocumentReadResponse,
+  type DocumentScope,
   type DocumentTreeNode,
+  type PrivateDocumentTreeGroup,
   type SaveDocumentContentInput,
   type UpdateDocumentMetadataInput,
 } from "@cc/shared/schemas";
@@ -20,9 +25,46 @@ import { documents } from "../db/schema/index.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { WorkspaceReconciler } from "../lib/workspace-reconciler.js";
+import { resolveSpecialistWorkspacePath } from "./specialist-workspace.js";
 
 const MARKDOWN_EXTENSIONS = new Set([".md", ".markdown"]);
 const MAX_CONTENT_BYTES = 5 * 1024 * 1024;
+
+type ScopeInput = {
+  scope?: DocumentScope;
+  ownerSlug?: string | null;
+  ownerSpecialistId?: string | null;
+};
+
+type ResolvedScope = {
+  scope: DocumentScope;
+  ownerSlug: string | null;
+  ownerSpecialistId: string | null;
+  root: string;
+};
+
+type ScopedPathInput = ScopeInput & {
+  relativePath: string;
+};
+
+type ListDocumentsInput = ScopeInput & {
+  filter?: Partial<DocumentListFilter>;
+};
+
+type ServiceCreateDocumentInput = Omit<CreateDocumentInput, "scope"> & {
+  scope?: DocumentScope;
+  ownerSpecialistId?: string | null;
+};
+
+type ServiceUpdateMetadataInput = Omit<UpdateDocumentMetadataInput, "scope"> & {
+  scope?: DocumentScope;
+  ownerSpecialistId?: string | null;
+};
+
+type ServiceSaveContentInput = Omit<SaveDocumentContentInput, "scope"> & {
+  scope?: DocumentScope;
+  ownerSpecialistId?: string | null;
+};
 
 function isMarkdownFile(name: string): boolean {
   return MARKDOWN_EXTENSIONS.has(extname(name).toLowerCase());
@@ -32,18 +74,12 @@ function isHiddenOrExcluded(name: string): boolean {
   return name.startsWith(".") || name === "node_modules";
 }
 
-// Windows drive-letter prefix (e.g. `C:` in `C:\notes.md`), which is absolute
-// on Windows even without a leading separator — `resolve()` would then ignore
-// the Documents root and target an arbitrary location.
 const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
 
 function validateRelativePath(path: string): void {
   if (!path || path.startsWith("/") || WINDOWS_DRIVE_PREFIX.test(path)) {
     throw new BadRequestError("Path must be relative.");
   }
-  // Reject backslashes outright so persisted paths are always `/`-separated and
-  // portable (a `\` is a literal filename char on POSIX but a separator on
-  // Windows). This is the real gate for the MCP register_project_document path.
   if (path.includes("\\")) {
     throw new BadRequestError("Path must use '/' separators, not backslashes.");
   }
@@ -91,6 +127,13 @@ function toPosixPath(p: string): string {
   return p.split("/").join(posix.sep);
 }
 
+function assertDescendant(root: string, absolutePath: string): void {
+  const rel = relative(root, absolutePath);
+  if (rel.startsWith("..") || isAbsolute(rel)) {
+    throw new BadRequestError("Document path escapes the scoped Documents root.");
+  }
+}
+
 const ASSET_CONTENT_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -113,10 +156,6 @@ function contentTypeForPath(path: string): string {
   return ASSET_CONTENT_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
 }
 
-/**
- * Normalizes a workspace asset reference into a workspace-root-relative POSIX
- * path. Accepts an optional `workspace:` scheme prefix and leading slashes.
- */
 function normalizeWorkspaceAssetPath(path: string): string {
   let normalized = path.trim();
   if (!normalized) {
@@ -133,6 +172,41 @@ function normalizeWorkspaceAssetPath(path: string): string {
     throw new BadRequestError("Asset path must not contain '..'.");
   }
   return normalized;
+}
+
+function documentMatchesFilter(doc: DocumentListItem, filter: DocumentListFilter): boolean {
+  const relativePath = doc.relativePath.toLowerCase();
+  const title = doc.title.toLowerCase();
+  const description = doc.description?.toLowerCase() ?? "";
+  const query = filter.query?.toLowerCase();
+
+  if (
+    query &&
+    !relativePath.includes(query) &&
+    !title.includes(query) &&
+    !description.includes(query)
+  ) {
+    return false;
+  }
+  if (filter.pathContains && !relativePath.includes(filter.pathContains.toLowerCase())) {
+    return false;
+  }
+  if (filter.titleContains && !title.includes(filter.titleContains.toLowerCase())) {
+    return false;
+  }
+  if (
+    filter.descriptionContains &&
+    !description.includes(filter.descriptionContains.toLowerCase())
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function nextOffset(offset: number, limit: number, total: number): number | null {
+  const next = offset + limit;
+  return next < total ? next : null;
 }
 
 export type DocumentService = ReturnType<typeof createDocumentService>;
@@ -152,7 +226,89 @@ export function createDocumentService(options: {
     return resolve(documentsRoot(), relativePath);
   }
 
-  async function scanTree(dir: string, relativeBase: string): Promise<DocumentTreeNode[]> {
+  async function resolveScope(input: ScopeInput = {}): Promise<ResolvedScope> {
+    const scope = input.scope ?? "global";
+
+    if (scope === "global") {
+      return {
+        scope,
+        ownerSlug: null,
+        ownerSpecialistId: null,
+        root: documentsRoot(),
+      };
+    }
+
+    if (!input.ownerSpecialistId && !input.ownerSlug) {
+      throw new BadRequestError("Private document owner is required.");
+    }
+
+    const row = await db.query.agents.findFirst({
+      where: (table, operators) =>
+        operators.and(
+          input.ownerSpecialistId
+            ? operators.eq(table.id, input.ownerSpecialistId)
+            : operators.eq(table.slug, input.ownerSlug ?? ""),
+          operators.eq(table.status, "active"),
+        ),
+      columns: { id: true, slug: true, name: true, status: true },
+    });
+
+    if (!row) {
+      throw new NotFoundError("Private document owner not found.");
+    }
+
+    if (!input.ownerSpecialistId && input.ownerSlug && input.ownerSlug !== row.slug) {
+      throw new BadRequestError("Private document owner does not match current specialist slug.");
+    }
+
+    return {
+      scope,
+      ownerSlug: row.slug,
+      ownerSpecialistId: row.id,
+      root: join(
+        resolveSpecialistWorkspacePath({ config, slug: row.slug, status: "active" }),
+        "Documents",
+      ),
+    };
+  }
+
+  async function resolveScopedPath(
+    input: ScopedPathInput,
+  ): Promise<ResolvedScope & { path: string }> {
+    const target = await resolveScope(input);
+    const path = resolve(target.root, input.relativePath);
+    assertDescendant(target.root, path);
+    return { ...target, path };
+  }
+
+  function documentWhere(target: ResolvedScope, relativePath: string) {
+    if (target.scope === "global") {
+      return and(
+        eq(documents.scope, "global"),
+        isNull(documents.owner_slug),
+        isNull(documents.owner_specialist_id),
+        eq(documents.relative_path, relativePath),
+      );
+    }
+
+    return and(
+      eq(documents.scope, "private"),
+      eq(documents.owner_specialist_id, target.ownerSpecialistId ?? ""),
+      eq(documents.relative_path, relativePath),
+    );
+  }
+
+  async function findDocumentRow(target: ResolvedScope, relativePath: string) {
+    return db.query.documents.findFirst({
+      where: () => documentWhere(target, relativePath),
+    });
+  }
+
+  async function scanTree(
+    target: ResolvedScope,
+    dir: string,
+    relativeBase: string,
+  ): Promise<DocumentTreeNode[]> {
     let entries: string[];
     try {
       entries = await readdir(dir);
@@ -161,7 +317,6 @@ export function createDocumentService(options: {
     }
 
     const nodes: DocumentTreeNode[] = [];
-
     const sorted = entries.filter((e) => !isHiddenOrExcluded(e)).sort();
 
     for (const entry of sorted) {
@@ -171,8 +326,11 @@ export function createDocumentService(options: {
       if (!entryStat) continue;
 
       if (entryStat.isDirectory()) {
-        const children = await scanTree(entryPath, entryRelative);
+        const children = await scanTree(target, entryPath, entryRelative);
         nodes.push({
+          scope: target.scope,
+          ownerSlug: target.ownerSlug,
+          ownerSpecialistId: target.ownerSpecialistId,
           name: entry,
           relativePath: entryRelative,
           type: "directory",
@@ -180,10 +338,11 @@ export function createDocumentService(options: {
           children,
         });
       } else if (entryStat.isFile() && isMarkdownFile(entry)) {
-        const row = await db.query.documents.findFirst({
-          where: (t, { eq: equals }) => equals(t.relative_path, entryRelative),
-        });
+        const row = await findDocumentRow(target, entryRelative);
         nodes.push({
+          scope: target.scope,
+          ownerSlug: target.ownerSlug,
+          ownerSpecialistId: target.ownerSpecialistId,
           name: entry,
           relativePath: entryRelative,
           type: "file",
@@ -198,14 +357,379 @@ export function createDocumentService(options: {
     ];
   }
 
+  async function collectFiles(
+    target: ResolvedScope,
+    dir: string,
+    relativeBase: string,
+    items: DocumentListItem[],
+  ): Promise<void> {
+    let entries: string[];
+    try {
+      entries = await readdir(dir);
+    } catch {
+      return;
+    }
+
+    for (const entry of entries.filter((e) => !isHiddenOrExcluded(e)).sort()) {
+      const entryPath = join(dir, entry);
+      const entryRelative = toPosixPath(relativeBase ? `${relativeBase}/${entry}` : entry);
+      const entryStat = await stat(entryPath).catch(() => null);
+      if (!entryStat) continue;
+
+      if (entryStat.isDirectory()) {
+        await collectFiles(target, entryPath, entryRelative, items);
+      } else if (entryStat.isFile() && isMarkdownFile(entry)) {
+        const row = await findDocumentRow(target, entryRelative);
+
+        let description = row?.description ?? null;
+        if (!description && entryStat.size <= MAX_CONTENT_BYTES) {
+          const content = await readFile(entryPath, "utf8").catch(() => "");
+          description = descriptionFromContent(content);
+        }
+
+        items.push({
+          scope: target.scope,
+          ownerSlug: target.ownerSlug,
+          ownerSpecialistId: target.ownerSpecialistId,
+          relativePath: entryRelative,
+          fullPath: entryPath,
+          title: row?.title ?? titleFromFilename(entry),
+          description,
+          author: row?.author ?? null,
+        });
+      }
+    }
+  }
+
+  async function listGlobalDocuments(): Promise<DocumentListItem[]> {
+    const target = await resolveScope({ scope: "global" });
+    const items: DocumentListItem[] = [];
+    await collectFiles(target, target.root, "", items);
+    return items;
+  }
+
+  async function listScopedDocuments(input: ListDocumentsInput): Promise<DocumentListResponse> {
+    const target = await resolveScope(input);
+    const filter = documentListFilterSchema.parse(input.filter ?? {});
+    const items: DocumentListItem[] = [];
+    await collectFiles(target, target.root, "", items);
+
+    const documentsForPage = items
+      .filter((doc) => documentMatchesFilter(doc, filter))
+      .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+    const totalMatches = documentsForPage.length;
+    const page = documentsForPage.slice(filter.offset, filter.offset + filter.limit);
+
+    return {
+      documents: page,
+      totalMatches,
+      nextOffset: nextOffset(filter.offset, filter.limit, totalMatches),
+    };
+  }
+
+  function list(): Promise<DocumentListItem[]>;
+  function list(input: ListDocumentsInput): Promise<DocumentListResponse>;
+  async function list(
+    input?: ListDocumentsInput,
+  ): Promise<DocumentListItem[] | DocumentListResponse> {
+    if (!input) {
+      return listGlobalDocuments();
+    }
+
+    return listScopedDocuments(input);
+  }
+
+  async function getTree(input?: ScopeInput): Promise<DocumentTreeNode[]> {
+    const target = await resolveScope(input);
+    return scanTree(target, target.root, "");
+  }
+
+  async function getPrivateTreeGroups(): Promise<PrivateDocumentTreeGroup[]> {
+    const rows = await db.query.agents.findMany({
+      where: (table, operators) => operators.eq(table.status, "active"),
+      columns: { id: true, slug: true, name: true },
+      orderBy: (table, operators) => [operators.asc(table.name)],
+    });
+    const groups: PrivateDocumentTreeGroup[] = [];
+
+    for (const row of rows) {
+      const target = await resolveScope({
+        scope: "private",
+        ownerSpecialistId: row.id,
+      });
+      const rootStat = await stat(target.root).catch(() => null);
+      if (!rootStat?.isDirectory()) {
+        continue;
+      }
+
+      const tree = await scanTree(target, target.root, "");
+      if (tree.length === 0) {
+        continue;
+      }
+
+      groups.push({
+        ownerSlug: row.slug,
+        ownerSpecialistId: row.id,
+        ownerName: row.name,
+        tree,
+      });
+    }
+
+    return groups;
+  }
+
+  async function read(input: string | ScopedPathInput): Promise<DocumentReadResponse> {
+    const scopedInput =
+      typeof input === "string" ? { scope: "global" as const, relativePath: input } : input;
+    validateDocumentPath(scopedInput.relativePath);
+    const target = await resolveScopedPath(scopedInput);
+
+    let fileStat;
+    try {
+      fileStat = await stat(target.path);
+    } catch {
+      throw new NotFoundError(`Document not found: ${scopedInput.relativePath}`);
+    }
+
+    if (fileStat.size > MAX_CONTENT_BYTES) {
+      throw new BadRequestError("Document is too large to read.");
+    }
+
+    const content = await readFile(target.path, "utf8");
+    const row = await findDocumentRow(target, scopedInput.relativePath);
+
+    return {
+      scope: target.scope,
+      ownerSlug: target.ownerSlug,
+      ownerSpecialistId: target.ownerSpecialistId,
+      relativePath: scopedInput.relativePath,
+      fullPath: target.path,
+      title: row?.title ?? titleFromFilename(basename(scopedInput.relativePath)),
+      description: row?.description ?? descriptionFromContent(content),
+      author: row?.author ?? null,
+      content,
+      revision: {
+        mtimeMs: fileStat.mtimeMs,
+        sizeBytes: fileStat.size,
+      },
+      createdAt: row?.created_at ? row.created_at.getTime() : null,
+      updatedAt: row?.updated_at ? row.updated_at.getTime() : null,
+    };
+  }
+
+  async function create(input: ServiceCreateDocumentInput): Promise<DocumentListItem> {
+    validateDocumentPath(input.path);
+    validateNewDocumentPath(input.path);
+    const target = await resolveScopedPath({
+      scope: input.scope,
+      ownerSlug: input.ownerSlug,
+      ownerSpecialistId: input.ownerSpecialistId,
+      relativePath: input.path,
+    });
+
+    const exists = await stat(target.path).catch(() => null);
+    if (exists) {
+      throw new ConflictError(`Document already exists: ${input.path}`);
+    }
+
+    const content = input.content ?? "";
+    assertContentSize(content);
+
+    await mkdir(resolve(target.path, ".."), { recursive: true });
+    await writeFile(target.path, content, "utf8");
+
+    const timestamp = now();
+    await db.insert(documents).values({
+      id: createId(),
+      scope: target.scope,
+      owner_slug: target.ownerSlug,
+      owner_specialist_id: target.ownerSpecialistId,
+      relative_path: input.path,
+      title: input.title ?? null,
+      description: input.description ?? null,
+      author: input.author ?? null,
+      created_at: timestamp,
+      updated_at: timestamp,
+      last_seen_at: timestamp,
+    });
+
+    return {
+      scope: target.scope,
+      ownerSlug: target.ownerSlug,
+      ownerSpecialistId: target.ownerSpecialistId,
+      relativePath: input.path,
+      fullPath: target.path,
+      title: input.title ?? titleFromFilename(basename(input.path)),
+      description: input.description ?? descriptionFromContent(content),
+      author: input.author ?? null,
+    };
+  }
+
+  async function createFolder(
+    pathOrInput: string | (ScopeInput & { path: string }),
+  ): Promise<void> {
+    const input =
+      typeof pathOrInput === "string"
+        ? { scope: "global" as const, path: pathOrInput }
+        : pathOrInput;
+    validateRelativePath(input.path);
+    const target = await resolveScopedPath({ ...input, relativePath: input.path });
+    await mkdir(target.path, { recursive: true });
+  }
+
+  async function saveContent(
+    input: ServiceSaveContentInput,
+  ): Promise<{ revision: { mtimeMs: number; sizeBytes: number } }> {
+    validateDocumentPath(input.path);
+    assertContentSize(input.content);
+    const target = await resolveScopedPath({
+      scope: input.scope,
+      ownerSlug: input.ownerSlug,
+      ownerSpecialistId: input.ownerSpecialistId,
+      relativePath: input.path,
+    });
+
+    let currentStat;
+    try {
+      currentStat = await stat(target.path);
+    } catch {
+      throw new NotFoundError(`Document not found: ${input.path}`);
+    }
+
+    if (
+      currentStat.mtimeMs !== input.expectedRevision.mtimeMs ||
+      currentStat.size !== input.expectedRevision.sizeBytes
+    ) {
+      throw new ConflictError("Document has been modified since last read.", {
+        currentRevision: {
+          mtimeMs: currentStat.mtimeMs,
+          sizeBytes: currentStat.size,
+        },
+      });
+    }
+
+    await writeFile(target.path, input.content, "utf8");
+
+    const newStat = await stat(target.path);
+    const timestamp = now();
+    const existing = await findDocumentRow(target, input.path);
+    if (existing) {
+      await db
+        .update(documents)
+        .set({
+          owner_slug: target.ownerSlug,
+          updated_at: timestamp,
+          last_seen_at: timestamp,
+        })
+        .where(documentWhere(target, input.path));
+    }
+
+    return {
+      revision: {
+        mtimeMs: newStat.mtimeMs,
+        sizeBytes: newStat.size,
+      },
+    };
+  }
+
+  async function updateMetadata(input: ServiceUpdateMetadataInput): Promise<DocumentListItem> {
+    validateDocumentPath(input.path);
+    const target = await resolveScopedPath({
+      scope: input.scope,
+      ownerSlug: input.ownerSlug,
+      ownerSpecialistId: input.ownerSpecialistId,
+      relativePath: input.path,
+    });
+
+    const fileStat = await stat(target.path).catch(() => null);
+    if (!fileStat) {
+      throw new NotFoundError(`Document not found: ${input.path}`);
+    }
+
+    const timestamp = now();
+    const existing = await findDocumentRow(target, input.path);
+
+    if (existing) {
+      const updates: Record<string, unknown> = {
+        owner_slug: target.ownerSlug,
+        updated_at: timestamp,
+        last_seen_at: timestamp,
+      };
+      if (input.title !== undefined) updates["title"] = input.title;
+      if (input.description !== undefined) updates["description"] = input.description;
+      if (input.author !== undefined) updates["author"] = input.author;
+      await db.update(documents).set(updates).where(documentWhere(target, input.path));
+    } else {
+      await db.insert(documents).values({
+        id: createId(),
+        scope: target.scope,
+        owner_slug: target.ownerSlug,
+        owner_specialist_id: target.ownerSpecialistId,
+        relative_path: input.path,
+        title: input.title ?? null,
+        description: input.description ?? null,
+        author: input.author ?? null,
+        created_at: timestamp,
+        updated_at: timestamp,
+        last_seen_at: timestamp,
+      });
+    }
+
+    const content = await readFile(target.path, "utf8").catch(() => "");
+
+    return {
+      scope: target.scope,
+      ownerSlug: target.ownerSlug,
+      ownerSpecialistId: target.ownerSpecialistId,
+      relativePath: input.path,
+      fullPath: target.path,
+      title: input.title ?? existing?.title ?? titleFromFilename(basename(input.path)),
+      description: input.description ?? existing?.description ?? descriptionFromContent(content),
+      author: input.author ?? existing?.author ?? null,
+    };
+  }
+
+  async function search(query: string): Promise<DocumentListItem[]> {
+    const result = await listScopedDocuments({ scope: "global", filter: { query, limit: 200 } });
+    return result.documents;
+  }
+
+  async function upsertFromFilesystem(input: string | ScopedPathInput): Promise<void> {
+    const scopedInput =
+      typeof input === "string" ? { scope: "global" as const, relativePath: input } : input;
+    const target = await resolveScopedPath(scopedInput);
+    const fileStat = await stat(target.path).catch(() => null);
+    if (!fileStat || !fileStat.isFile()) return;
+
+    const timestamp = now();
+    const existing = await findDocumentRow(target, scopedInput.relativePath);
+
+    if (existing) {
+      await db
+        .update(documents)
+        .set({ owner_slug: target.ownerSlug, last_seen_at: timestamp })
+        .where(documentWhere(target, scopedInput.relativePath));
+    } else {
+      await db.insert(documents).values({
+        id: createId(),
+        scope: target.scope,
+        owner_slug: target.ownerSlug,
+        owner_specialist_id: target.ownerSpecialistId,
+        relative_path: scopedInput.relativePath,
+        title: null,
+        description: null,
+        author: null,
+        created_at: timestamp,
+        updated_at: timestamp,
+        last_seen_at: timestamp,
+      });
+    }
+  }
+
   return {
     documentsRoot,
     fullPath,
 
-    /**
-     * Resolves a `workspace:`/workspace-relative asset reference to an absolute
-     * path for serving, confined to the workspace root.
-     */
     async resolveWorkspaceAsset(
       assetPath: string,
     ): Promise<{ absolutePath: string; contentType: string; sizeBytes: number }> {
@@ -229,314 +753,110 @@ export function createDocumentService(options: {
       };
     },
 
-    async getTree(): Promise<DocumentTreeNode[]> {
-      return scanTree(documentsRoot(), "");
-    },
-
-    async list(): Promise<DocumentListItem[]> {
-      const root = documentsRoot();
-      const items: DocumentListItem[] = [];
-      await collectFiles(root, "", items);
-      return items;
-    },
-
-    async read(relativePath: string): Promise<DocumentReadResponse> {
-      validateDocumentPath(relativePath);
-      const absPath = fullPath(relativePath);
-
-      let fileStat;
-      try {
-        fileStat = await stat(absPath);
-      } catch {
-        throw new NotFoundError(`Document not found: ${relativePath}`);
-      }
-
-      if (fileStat.size > MAX_CONTENT_BYTES) {
-        throw new BadRequestError("Document is too large to read.");
-      }
-
-      const content = await readFile(absPath, "utf8");
-      const row = await db.query.documents.findFirst({
-        where: (t, { eq: equals }) => equals(t.relative_path, relativePath),
-      });
-
-      return {
-        relativePath,
-        fullPath: absPath,
-        title: row?.title ?? titleFromFilename(basename(relativePath)),
-        description: row?.description ?? descriptionFromContent(content),
-        author: row?.author ?? null,
-        content,
-        revision: {
-          mtimeMs: fileStat.mtimeMs,
-          sizeBytes: fileStat.size,
-        },
-        createdAt: row?.created_at ? row.created_at.getTime() : null,
-        updatedAt: row?.updated_at ? row.updated_at.getTime() : null,
-      };
-    },
-
-    async create(input: CreateDocumentInput): Promise<DocumentListItem> {
-      validateDocumentPath(input.path);
-      validateNewDocumentPath(input.path);
-      const absPath = fullPath(input.path);
-
-      const exists = await stat(absPath).catch(() => null);
-      if (exists) {
-        throw new ConflictError(`Document already exists: ${input.path}`);
-      }
-
-      const content = input.content ?? "";
-      assertContentSize(content);
-
-      const parentDir = resolve(absPath, "..");
-      await mkdir(parentDir, { recursive: true });
-
-      await writeFile(absPath, content, "utf8");
-
-      const id = createId();
-      const timestamp = now();
-
-      await db.insert(documents).values({
-        id,
-        relative_path: input.path,
-        title: input.title ?? null,
-        description: input.description ?? null,
-        author: input.author ?? null,
-        created_at: timestamp,
-        updated_at: timestamp,
-        last_seen_at: timestamp,
-      });
-
-      return {
-        relativePath: input.path,
-        fullPath: absPath,
-        title: input.title ?? titleFromFilename(basename(input.path)),
-        description: input.description ?? descriptionFromContent(content),
-        author: input.author ?? null,
-      };
-    },
-
-    async createFolder(path: string): Promise<void> {
-      validateRelativePath(path);
-      const absPath = fullPath(path);
-      await mkdir(absPath, { recursive: true });
-    },
-
-    async saveContent(
-      input: SaveDocumentContentInput,
-    ): Promise<{ revision: { mtimeMs: number; sizeBytes: number } }> {
-      validateDocumentPath(input.path);
-      assertContentSize(input.content);
-      const absPath = fullPath(input.path);
-
-      let currentStat;
-      try {
-        currentStat = await stat(absPath);
-      } catch {
-        throw new NotFoundError(`Document not found: ${input.path}`);
-      }
-
-      if (
-        currentStat.mtimeMs !== input.expectedRevision.mtimeMs ||
-        currentStat.size !== input.expectedRevision.sizeBytes
-      ) {
-        throw new ConflictError("Document has been modified since last read.", {
-          currentRevision: {
-            mtimeMs: currentStat.mtimeMs,
-            sizeBytes: currentStat.size,
-          },
-        });
-      }
-
-      await writeFile(absPath, input.content, "utf8");
-
-      const newStat = await stat(absPath);
-
-      const timestamp = now();
-      const existing = await db.query.documents.findFirst({
-        where: (t, { eq: equals }) => equals(t.relative_path, input.path),
-      });
-      if (existing) {
-        await db
-          .update(documents)
-          .set({ updated_at: timestamp, last_seen_at: timestamp })
-          .where(eq(documents.relative_path, input.path));
-      }
-
-      return {
-        revision: {
-          mtimeMs: newStat.mtimeMs,
-          sizeBytes: newStat.size,
-        },
-      };
-    },
-
-    async updateMetadata(input: UpdateDocumentMetadataInput): Promise<DocumentListItem> {
-      validateDocumentPath(input.path);
-      const absPath = fullPath(input.path);
-
-      const fileStat = await stat(absPath).catch(() => null);
-      if (!fileStat) {
-        throw new NotFoundError(`Document not found: ${input.path}`);
-      }
-
-      const timestamp = now();
-      const existing = await db.query.documents.findFirst({
-        where: (t, { eq: equals }) => equals(t.relative_path, input.path),
-      });
-
-      if (existing) {
-        const updates: Record<string, unknown> = { updated_at: timestamp, last_seen_at: timestamp };
-        if (input.title !== undefined) updates["title"] = input.title;
-        if (input.description !== undefined) updates["description"] = input.description;
-        if (input.author !== undefined) updates["author"] = input.author;
-        await db.update(documents).set(updates).where(eq(documents.relative_path, input.path));
-      } else {
-        await db.insert(documents).values({
-          id: createId(),
-          relative_path: input.path,
-          title: input.title ?? null,
-          description: input.description ?? null,
-          author: input.author ?? null,
-          created_at: timestamp,
-          updated_at: timestamp,
-          last_seen_at: timestamp,
-        });
-      }
-
-      const content = await readFile(absPath, "utf8").catch(() => "");
-
-      return {
-        relativePath: input.path,
-        fullPath: absPath,
-        title: input.title ?? existing?.title ?? titleFromFilename(basename(input.path)),
-        description: input.description ?? existing?.description ?? descriptionFromContent(content),
-        author: input.author ?? existing?.author ?? null,
-      };
-    },
-
-    async search(query: string): Promise<DocumentListItem[]> {
-      const lowerQuery = query.toLowerCase();
-      const allDocs = await this.list();
-      return allDocs.filter(
-        (doc) =>
-          doc.relativePath.toLowerCase().includes(lowerQuery) ||
-          doc.title.toLowerCase().includes(lowerQuery) ||
-          (doc.description && doc.description.toLowerCase().includes(lowerQuery)) ||
-          (doc.author && doc.author.toLowerCase().includes(lowerQuery)),
-      );
-    },
-
-    async upsertFromFilesystem(relativePath: string): Promise<void> {
-      const absPath = fullPath(relativePath);
-      const fileStat = await stat(absPath).catch(() => null);
-      if (!fileStat || !fileStat.isFile()) return;
-
-      const timestamp = now();
-      const existing = await db.query.documents.findFirst({
-        where: (t, { eq: equals }) => equals(t.relative_path, relativePath),
-      });
-
-      if (existing) {
-        await db
-          .update(documents)
-          .set({ last_seen_at: timestamp })
-          .where(eq(documents.relative_path, relativePath));
-      } else {
-        await db.insert(documents).values({
-          id: createId(),
-          relative_path: relativePath,
-          title: null,
-          description: null,
-          author: null,
-          created_at: timestamp,
-          updated_at: timestamp,
-          last_seen_at: timestamp,
-        });
-      }
-    },
+    getTree,
+    getPrivateTreeGroups,
+    list,
+    read,
+    create,
+    createFolder,
+    saveContent,
+    updateMetadata,
+    search,
+    upsertFromFilesystem,
   };
-
-  async function collectFiles(
-    dir: string,
-    relativeBase: string,
-    items: DocumentListItem[],
-  ): Promise<void> {
-    let entries: string[];
-    try {
-      entries = await readdir(dir);
-    } catch {
-      return;
-    }
-
-    for (const entry of entries.filter((e) => !isHiddenOrExcluded(e)).sort()) {
-      const entryPath = join(dir, entry);
-      const entryRelative = toPosixPath(relativeBase ? `${relativeBase}/${entry}` : entry);
-      const entryStat = await stat(entryPath).catch(() => null);
-      if (!entryStat) continue;
-
-      if (entryStat.isDirectory()) {
-        await collectFiles(entryPath, entryRelative, items);
-      } else if (entryStat.isFile() && isMarkdownFile(entry)) {
-        const row = await db.query.documents.findFirst({
-          where: (t, { eq: equals }) => equals(t.relative_path, entryRelative),
-        });
-
-        let description = row?.description ?? null;
-        // Only read the file for a fallback description when it's within the
-        // size cap. A very large .md dropped in directly (bypassing the
-        // create/save cap) would otherwise make listing/search read it in full.
-        if (!description && entryStat.size <= MAX_CONTENT_BYTES) {
-          const content = await readFile(entryPath, "utf8").catch(() => "");
-          description = descriptionFromContent(content);
-        }
-
-        items.push({
-          relativePath: entryRelative,
-          fullPath: entryPath,
-          title: row?.title ?? titleFromFilename(entry),
-          description,
-          author: row?.author ?? null,
-        });
-      }
-    }
-  }
 }
 
 export const documentReconciler: WorkspaceReconciler = {
   name: "documents",
 
   async reconcile({ config, db, logger }) {
-    const root = config.paths.subdirectories.documents;
+    const service = createDocumentService({ config, db, logger });
+    const globalTarget = {
+      scope: "global" as const,
+      ownerSlug: null,
+      ownerSpecialistId: null,
+      root: config.paths.subdirectories.documents,
+    };
 
-    let rootStat;
-    try {
-      rootStat = await stat(root);
-    } catch {
-      return;
-    }
-    if (!rootStat.isDirectory()) return;
+    await reconcileRoot(globalTarget, db, service, logger);
 
-    const seenPaths = new Set<string>();
-    await discoverFiles(root, "", seenPaths, db, logger);
+    const activeSpecialists = await db.query.agents.findMany({
+      where: (table, operators) => operators.eq(table.status, "active"),
+      columns: { id: true, slug: true },
+    });
 
-    const rows = await db
-      .select({ id: documents.id, relative_path: documents.relative_path })
-      .from(documents);
-    for (const row of rows) {
-      if (!seenPaths.has(row.relative_path)) {
-        await db.delete(documents).where(eq(documents.id, row.id));
+    for (const specialist of activeSpecialists) {
+      const root = join(
+        resolveSpecialistWorkspacePath({ config, slug: specialist.slug, status: "active" }),
+        "Documents",
+      );
+      const rootStat = await stat(root).catch(() => null);
+      if (!rootStat?.isDirectory()) {
+        continue;
       }
+
+      await reconcileRoot(
+        {
+          scope: "private",
+          ownerSlug: specialist.slug,
+          ownerSpecialistId: specialist.id,
+          root,
+        },
+        db,
+        service,
+        logger,
+      );
     }
   },
 };
 
+async function reconcileRoot(
+  target: ResolvedScope,
+  db: AppDb,
+  service: DocumentService,
+  logger: Logger,
+): Promise<void> {
+  const rootStat = await stat(target.root).catch(() => null);
+  if (!rootStat?.isDirectory()) return;
+
+  const seenPaths = new Set<string>();
+  await discoverFiles(target, target.root, "", seenPaths, service, logger);
+
+  const rows =
+    target.scope === "global"
+      ? await db
+          .select({ id: documents.id, relative_path: documents.relative_path })
+          .from(documents)
+          .where(
+            and(
+              eq(documents.scope, "global"),
+              isNull(documents.owner_slug),
+              isNull(documents.owner_specialist_id),
+            ),
+          )
+      : await db
+          .select({ id: documents.id, relative_path: documents.relative_path })
+          .from(documents)
+          .where(
+            and(
+              eq(documents.scope, "private"),
+              eq(documents.owner_specialist_id, target.ownerSpecialistId ?? ""),
+            ),
+          );
+
+  for (const row of rows) {
+    if (!seenPaths.has(row.relative_path)) {
+      await db.delete(documents).where(eq(documents.id, row.id));
+    }
+  }
+}
+
 async function discoverFiles(
+  target: ResolvedScope,
   dir: string,
   relativeBase: string,
   seenPaths: Set<string>,
-  db: AppDb,
+  service: DocumentService,
   _logger: Logger,
 ): Promise<void> {
   let entries: string[];
@@ -555,32 +875,15 @@ async function discoverFiles(
     if (!entryStat) continue;
 
     if (entryStat.isDirectory()) {
-      await discoverFiles(entryPath, entryRelative, seenPaths, db, _logger);
+      await discoverFiles(target, entryPath, entryRelative, seenPaths, service, _logger);
     } else if (entryStat.isFile() && isMarkdownFile(entry)) {
       seenPaths.add(entryRelative);
-
-      const existing = await db.query.documents.findFirst({
-        where: (t, { eq: equals }) => equals(t.relative_path, entryRelative),
+      await service.upsertFromFilesystem({
+        scope: target.scope,
+        ownerSlug: target.ownerSlug,
+        ownerSpecialistId: target.ownerSpecialistId,
+        relativePath: entryRelative,
       });
-
-      const timestamp = new Date();
-      if (existing) {
-        await db
-          .update(documents)
-          .set({ last_seen_at: timestamp })
-          .where(eq(documents.relative_path, entryRelative));
-      } else {
-        await db.insert(documents).values({
-          id: createId(),
-          relative_path: entryRelative,
-          title: null,
-          description: null,
-          author: null,
-          created_at: timestamp,
-          updated_at: timestamp,
-          last_seen_at: timestamp,
-        });
-      }
     }
   }
 }

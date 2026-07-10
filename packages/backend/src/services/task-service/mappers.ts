@@ -31,6 +31,7 @@ import { z } from "zod";
 import type { AppDb } from "../../db/client.js";
 import { createId } from "../../db/ids.js";
 import {
+  agents,
   artifact_share_links,
   artifacts as artifactsTable,
   conversations as conversationsTable,
@@ -40,6 +41,8 @@ import {
   type task_templates,
   tasks,
 } from "../../db/schema/index.js";
+import type { RuntimeConfig } from "../../lib/runtime-config.js";
+import { resolveArtifactFileManagerPath } from "../artifact-service.js";
 import {
   deriveRunSubtaskStatus,
   deriveSubtaskStatus,
@@ -256,14 +259,16 @@ export function mapTaskRunFollowup(row: typeof task_run_followups.$inferSelect):
 
 export async function mapTaskRunWithReplyState(
   db: AppDb,
+  config: RuntimeConfig,
   row: typeof task_runs.$inferSelect,
 ): Promise<TaskRun> {
-  const [run] = await mapTaskRunsWithReplyState(db, [row]);
+  const [run] = await mapTaskRunsWithReplyState(db, config, [row]);
   return run ?? mapTaskRun(row);
 }
 
 export async function mapTaskRunsWithReplyState(
   db: AppDb,
+  config: RuntimeConfig,
   rows: Array<typeof task_runs.$inferSelect>,
 ): Promise<TaskRun[]> {
   const runs = rows.map(mapTaskRun);
@@ -274,7 +279,7 @@ export async function mapTaskRunsWithReplyState(
   const runIds = runs.map((run) => run.id);
   const [activeReplyRunIds, artifactsByRunId] = await Promise.all([
     getActiveReplyRunIds(db, runIds),
-    getArtifactsByRunIds(db, runIds),
+    getArtifactsByRunIds(db, config, runIds),
   ]);
 
   return runs.map((run) => ({
@@ -289,6 +294,7 @@ export async function mapTaskRunsWithReplyState(
 
 export async function getArtifactsByRunIds(
   db: AppDb,
+  config: RuntimeConfig,
   runIds: string[],
 ): Promise<Map<string, Artifact[]>> {
   const grouped = new Map<string, Artifact[]>();
@@ -299,9 +305,14 @@ export async function getArtifactsByRunIds(
   }
 
   const rows = await db
-    .select({ runId: conversationsTable.task_run_id, artifact: artifactsTable })
+    .select({
+      runId: conversationsTable.task_run_id,
+      artifact: artifactsTable,
+      agentSlug: agents.slug,
+    })
     .from(artifactsTable)
     .innerJoin(conversationsTable, eq(artifactsTable.conversation_id, conversationsTable.id))
+    .innerJoin(agents, eq(conversationsTable.agent_id, agents.id))
     .where(inArray(conversationsTable.task_run_id, uniqueRunIds))
     .orderBy(desc(artifactsTable.created_at));
 
@@ -310,16 +321,32 @@ export async function getArtifactsByRunIds(
     rows.map((row) => row.artifact.id),
   );
 
-  for (const { runId, artifact } of rows) {
-    if (!runId) {
+  const mappedRows = await Promise.all(
+    rows.map(async ({ runId, artifact, agentSlug }) => {
+      if (!runId) {
+        return undefined;
+      }
+      return {
+        runId,
+        artifact: await mapArtifactRow(
+          config,
+          artifact,
+          shareLinks.get(artifact.id) ?? [],
+          agentSlug,
+        ),
+      };
+    }),
+  );
+
+  for (const mappedRow of mappedRows) {
+    if (!mappedRow) {
       continue;
     }
-    const mapped = mapArtifactRow(artifact, shareLinks.get(artifact.id) ?? []);
-    const existing = grouped.get(runId);
+    const existing = grouped.get(mappedRow.runId);
     if (existing) {
-      existing.push(mapped);
+      existing.push(mappedRow.artifact);
     } else {
-      grouped.set(runId, [mapped]);
+      grouped.set(mappedRow.runId, [mappedRow.artifact]);
     }
   }
 
@@ -369,10 +396,12 @@ export async function getShareLinksByArtifactIds(
   return grouped;
 }
 
-export function mapArtifactRow(
+export async function mapArtifactRow(
+  config: RuntimeConfig,
   row: typeof artifactsTable.$inferSelect,
   shareLinks: ArtifactShareLink[],
-): Artifact {
+  agentSlug?: string,
+): Promise<Artifact> {
   return artifactSchema.parse({
     id: row.id,
     conversationId: row.conversation_id,
@@ -380,6 +409,7 @@ export function mapArtifactRow(
     description: row.description ?? undefined,
     type: row.type,
     link: row.link,
+    fileManagerPath: await resolveArtifactFileManagerPath(config, row, agentSlug),
     createdAt: row.created_at.toISOString(),
     shareLinks,
   });

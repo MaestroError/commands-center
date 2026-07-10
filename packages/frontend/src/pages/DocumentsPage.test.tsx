@@ -19,7 +19,25 @@ vi.mock("@/components/documents/LazyMilkdownEditor", () => ({
 }));
 
 import { DocumentsPage } from "./DocumentsPage";
-import { getDocumentContent, saveDocumentContent } from "@/lib/api";
+import { getDocumentContent, saveDocumentContent, type DocumentRequestIdentity } from "@/lib/api";
+
+function doc(overrides: Partial<Awaited<ReturnType<typeof getDocumentContent>>> = {}) {
+  return {
+    scope: "global" as const,
+    ownerSlug: null,
+    ownerSpecialistId: null,
+    relativePath: "notes.md",
+    fullPath: "/workspace/Documents/notes.md",
+    title: "Notes",
+    description: "Project notes",
+    author: "operator",
+    content: "# Hello World",
+    revision: { mtimeMs: 1700000000000, sizeBytes: 13 },
+    createdAt: 1700000000000,
+    updatedAt: 1700000001000,
+    ...overrides,
+  };
+}
 
 function renderPage(initialEntries: string[] = ["/documents"]) {
   const queryClient = new QueryClient({
@@ -79,17 +97,7 @@ describe("DocumentsPage", () => {
   });
 
   it("shows the editor panel when a document is selected", async () => {
-    vi.mocked(getDocumentContent).mockResolvedValue({
-      relativePath: "notes.md",
-      fullPath: "/workspace/Documents/notes.md",
-      title: "Notes",
-      description: "Project notes",
-      author: "operator",
-      content: "# Hello World",
-      revision: { mtimeMs: 1700000000000, sizeBytes: 13 },
-      createdAt: 1700000000000,
-      updatedAt: 1700000001000,
-    });
+    vi.mocked(getDocumentContent).mockResolvedValue(doc());
 
     renderPage(["/documents?path=notes.md"]);
 
@@ -97,21 +105,47 @@ describe("DocumentsPage", () => {
     expect(editorPanel).toBeInTheDocument();
     expect(within(editorPanel).getByText("Notes")).toBeInTheDocument();
     expect(within(editorPanel).getByRole("button", { name: /Save/i })).toBeDisabled();
-    expect(getDocumentContent).toHaveBeenCalledWith("notes.md");
+    expect(getDocumentContent).toHaveBeenCalledWith({
+      scope: "global",
+      ownerSlug: null,
+      path: "notes.md",
+    });
+  });
+
+  it("loads a private document from scoped URL parameters", async () => {
+    vi.mocked(getDocumentContent).mockResolvedValue(
+      doc({
+        scope: "private",
+        ownerSlug: "planner",
+        ownerSpecialistId: "agent-planner",
+        relativePath: "notes/research.md",
+        fullPath: "/workspace/specialists/planner/Documents/notes/research.md",
+        title: "Research",
+      }),
+    );
+
+    renderPage(["/documents?scope=private&owner=planner&path=notes%2Fresearch.md"]);
+
+    const editorPanel = await screen.findByTestId("document-editor-panel");
+    expect(within(editorPanel).getByText("Research")).toBeInTheDocument();
+    expect(getDocumentContent).toHaveBeenCalledWith({
+      scope: "private",
+      ownerSlug: "planner",
+      path: "notes/research.md",
+    });
+  });
+
+  it("ignores private document URL parameters without an owner", async () => {
+    renderPage(["/documents?scope=private&path=notes%2Fresearch.md"]);
+
+    expect(await screen.findByText("No document selected")).toBeInTheDocument();
+    expect(getDocumentContent).not.toHaveBeenCalled();
   });
 
   it("defaults the context pane to the Actions tab", async () => {
-    vi.mocked(getDocumentContent).mockResolvedValue({
-      relativePath: "notes.md",
-      fullPath: "/workspace/Documents/notes.md",
-      title: "Notes",
-      description: "Project notes",
-      author: "operator",
-      content: "# Hello",
-      revision: { mtimeMs: 1700000000000, sizeBytes: 7 },
-      createdAt: 1700000000000,
-      updatedAt: 1700000001000,
-    });
+    vi.mocked(getDocumentContent).mockResolvedValue(
+      doc({ content: "# Hello", revision: { mtimeMs: 1700000000000, sizeBytes: 7 } }),
+    );
 
     renderPage(["/documents?path=notes.md"]);
 
@@ -120,17 +154,9 @@ describe("DocumentsPage", () => {
   });
 
   it("shows document info after switching to the Info tab", async () => {
-    vi.mocked(getDocumentContent).mockResolvedValue({
-      relativePath: "notes.md",
-      fullPath: "/workspace/Documents/notes.md",
-      title: "Notes",
-      description: "Project notes",
-      author: "operator",
-      content: "# Hello",
-      revision: { mtimeMs: 1700000000000, sizeBytes: 7 },
-      createdAt: 1700000000000,
-      updatedAt: 1700000001000,
-    });
+    vi.mocked(getDocumentContent).mockResolvedValue(
+      doc({ content: "# Hello", revision: { mtimeMs: 1700000000000, sizeBytes: 7 } }),
+    );
 
     const user = userEvent.setup();
     renderPage(["/documents?path=notes.md"]);
@@ -146,17 +172,7 @@ describe("DocumentsPage", () => {
   });
 
   it("allows saving after the editor content is cleared to an empty string", async () => {
-    vi.mocked(getDocumentContent).mockResolvedValue({
-      relativePath: "notes.md",
-      fullPath: "/workspace/Documents/notes.md",
-      title: "Notes",
-      description: null,
-      author: null,
-      content: "# Hello World",
-      revision: { mtimeMs: 1700000000000, sizeBytes: 13 },
-      createdAt: 1700000000000,
-      updatedAt: 1700000001000,
-    });
+    vi.mocked(getDocumentContent).mockResolvedValue(doc({ description: null, author: null }));
     vi.mocked(saveDocumentContent).mockResolvedValue({
       revision: { mtimeMs: 1700000002000, sizeBytes: 0 },
     });
@@ -174,6 +190,8 @@ describe("DocumentsPage", () => {
 
     expect(saveDocumentContent).toHaveBeenCalled();
     expect(vi.mocked(saveDocumentContent).mock.calls[0]?.[0]).toEqual({
+      scope: "global",
+      ownerSlug: undefined,
       path: "notes.md",
       content: "",
       expectedRevision: { mtimeMs: 1700000000000, sizeBytes: 13 },
@@ -181,10 +199,10 @@ describe("DocumentsPage", () => {
   });
 
   it("resets the Actions tab fields when switching to a different document", async () => {
-    vi.mocked(getDocumentContent).mockImplementation((path: string) =>
+    vi.mocked(getDocumentContent).mockImplementation((input: string | DocumentRequestIdentity) =>
       Promise.resolve(
-        path === "second.md"
-          ? {
+        (typeof input === "string" ? input : input.path) === "second.md"
+          ? doc({
               relativePath: "second.md",
               fullPath: "/workspace/Documents/second.md",
               title: "Second Doc",
@@ -194,18 +212,11 @@ describe("DocumentsPage", () => {
               revision: { mtimeMs: 1700000003000, sizeBytes: 8 },
               createdAt: 1700000003000,
               updatedAt: 1700000003000,
-            }
-          : {
-              relativePath: "notes.md",
-              fullPath: "/workspace/Documents/notes.md",
-              title: "Notes",
+            })
+          : doc({
               description: "First description",
               author: "author-one",
-              content: "# Hello World",
-              revision: { mtimeMs: 1700000000000, sizeBytes: 13 },
-              createdAt: 1700000000000,
-              updatedAt: 1700000001000,
-            },
+            }),
       ),
     );
 

@@ -14,7 +14,7 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import type { AppDb } from "../db/client.js";
-import { artifacts, conversations as conversationsTable } from "../db/schema/index.js";
+import { agents, artifacts, conversations as conversationsTable } from "../db/schema/index.js";
 import type { artifact_share_links } from "../db/schema/index.js";
 import { createId, now } from "../db/ids.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
@@ -22,6 +22,7 @@ import { writeConfigFileAtomic } from "../lib/config-file.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 
 const ARTIFACT_MANIFEST_FILE = "published-artifacts.json";
+const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
 
 const ARTIFACT_MIME_TYPES = {
   ".csv": "text/csv",
@@ -95,6 +96,17 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
     return grouped;
   }
 
+  async function getArtifactAgentSlug(conversationId: string): Promise<string | undefined> {
+    const [row] = await options.db
+      .select({ slug: agents.slug })
+      .from(conversationsTable)
+      .innerJoin(agents, eq(conversationsTable.agent_id, agents.id))
+      .where(eq(conversationsTable.id, conversationId))
+      .limit(1);
+
+    return row?.slug;
+  }
+
   return {
     async create(input: { conversationId: string } & AddArtifactInput): Promise<Artifact> {
       const id = createId();
@@ -116,7 +128,8 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
         throw new Error("Failed to create artifact record.");
       }
 
-      return mapArtifact(row, []);
+      const agentSlug = await getArtifactAgentSlug(row.conversation_id);
+      return mapArtifact(options.config, row, [], agentSlug);
     },
 
     async listByConversation(conversationId: string): Promise<Artifact[]> {
@@ -126,8 +139,13 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
       });
 
       const shareLinks = await listShareLinksByArtifactIds(rows.map((row) => row.id));
+      const agentSlug = await getArtifactAgentSlug(conversationId);
 
-      return rows.map((row) => mapArtifact(row, shareLinks.get(row.id) ?? []));
+      return Promise.all(
+        rows.map((row) =>
+          mapArtifact(options.config, row, shareLinks.get(row.id) ?? [], agentSlug),
+        ),
+      );
     },
 
     // Batched loader for task-run artifacts: returns each run's artifacts keyed
@@ -143,19 +161,26 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
         .select({
           runId: conversationsTable.task_run_id,
           artifact: artifacts,
+          agentSlug: agents.slug,
         })
         .from(artifacts)
         .innerJoin(conversationsTable, eq(artifacts.conversation_id, conversationsTable.id))
+        .innerJoin(agents, eq(conversationsTable.agent_id, agents.id))
         .where(inArray(conversationsTable.task_run_id, runIds))
         .orderBy(desc(artifacts.created_at));
 
       const shareLinks = await listShareLinksByArtifactIds(rows.map((row) => row.artifact.id));
 
-      for (const { runId, artifact } of rows) {
+      for (const { runId, artifact, agentSlug } of rows) {
         if (!runId) {
           continue;
         }
-        const mapped = mapArtifact(artifact, shareLinks.get(artifact.id) ?? []);
+        const mapped = await mapArtifact(
+          options.config,
+          artifact,
+          shareLinks.get(artifact.id) ?? [],
+          agentSlug,
+        );
         const existing = grouped.get(runId);
         if (existing) {
           existing.push(mapped);
@@ -173,7 +198,8 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
         return undefined;
       }
       const shareLinks = await listShareLinksByArtifactIds([artifactId]);
-      return mapArtifact(row, shareLinks.get(artifactId) ?? []);
+      const agentSlug = await getArtifactAgentSlug(row.conversation_id);
+      return mapArtifact(options.config, row, shareLinks.get(artifactId) ?? [], agentSlug);
     },
 
     // Copy the artifact's workspace file into stable storage so a shared link
@@ -199,10 +225,11 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
 
       const filename = validateFilename(row.link);
       const mimeType = resolveMimeType(filename);
+      const agentSlug = await getArtifactAgentSlug(row.conversation_id);
       const sourcePath =
         row.type === "document"
           ? resolveDocumentSourcePath(options.config, row.link)
-          : resolveWorkspaceSourcePath(options.config, row.link);
+          : await resolveFileSourcePath(options.config, row.link, agentSlug);
       const sourceStat = await stat(sourcePath).catch((error: unknown) => {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           throw new NotFoundError("Artifact source file not found.");
@@ -265,7 +292,12 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
   };
 }
 
-function mapArtifact(row: ArtifactRow, shareLinks: ArtifactShareLink[]): Artifact {
+async function mapArtifact(
+  config: RuntimeConfig,
+  row: ArtifactRow,
+  shareLinks: ArtifactShareLink[],
+  agentSlug?: string,
+): Promise<Artifact> {
   return artifactSchema.parse({
     id: row.id,
     conversationId: row.conversation_id,
@@ -273,6 +305,7 @@ function mapArtifact(row: ArtifactRow, shareLinks: ArtifactShareLink[]): Artifac
     description: row.description ?? undefined,
     type: row.type,
     link: row.link,
+    fileManagerPath: await resolveArtifactFileManagerPath(config, row, agentSlug),
     createdAt: row.created_at.toISOString(),
     shareLinks,
   });
@@ -341,11 +374,7 @@ async function writeManifest(
 }
 
 function validateFilename(path: string | undefined): string {
-  if (!path) {
-    throw new BadRequestError("Artifact path is missing.");
-  }
-
-  const filename = basename(path.trim());
+  const filename = basename(validateRelativeArtifactPath(path));
 
   if (filename.length === 0 || filename === "." || filename === "..") {
     throw new BadRequestError("Artifact filename is invalid.");
@@ -359,39 +388,122 @@ function resolveMimeType(filename: string): string {
   return ARTIFACT_MIME_TYPES[ext] ?? "application/octet-stream";
 }
 
-function resolveWorkspaceSourcePath(config: RuntimeConfig, path: string | undefined): string {
+async function resolveFileSourcePath(
+  config: RuntimeConfig,
+  path: string | undefined,
+  agentSlug: string | undefined,
+): Promise<string> {
+  const trimmed = validateRelativeArtifactPath(path);
+  const roots = agentSlug
+    ? [
+        resolve(config.paths.subdirectories.specialists, agentSlug),
+        resolve(config.paths.subdirectories.specialists, agentSlug, "Documents"),
+        config.paths.workspaceDir,
+      ]
+    : [config.paths.workspaceDir];
+
+  for (const root of roots) {
+    const sourcePath = resolve(root, trimmed);
+    ensureDescendant(sourcePath, root, "Artifact path must stay in workspace.");
+    if (await isFile(sourcePath)) {
+      return sourcePath;
+    }
+  }
+
+  throw new NotFoundError("Artifact source file not found.");
+}
+
+function validateRelativeArtifactPath(path: string | undefined): string {
   if (!path) {
     throw new BadRequestError("Artifact path is missing.");
   }
 
   const trimmed = path.trim();
 
-  if (trimmed.length === 0 || trimmed.startsWith("/") || trimmed === "." || trimmed === "..") {
+  if (
+    trimmed.length === 0 ||
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("\\") ||
+    WINDOWS_DRIVE_PREFIX.test(trimmed) ||
+    trimmed === "." ||
+    trimmed === ".."
+  ) {
     throw new BadRequestError("Artifact path is invalid.");
   }
 
-  const sourcePath = resolve(config.paths.workspaceDir, trimmed);
-  ensureDescendant(sourcePath, config.paths.workspaceDir, "Artifact path must stay in workspace.");
-  return sourcePath;
+  const segments = trimmed.split(/[\\/]/).filter(Boolean);
+  if (segments.length === 0 || segments.some((segment) => segment === "." || segment === "..")) {
+    throw new BadRequestError("Artifact path is invalid.");
+  }
+
+  return segments.join("/");
+}
+
+export async function resolveArtifactFileManagerPath(
+  config: RuntimeConfig,
+  row: ArtifactRow,
+  agentSlug: string | undefined,
+): Promise<string | undefined> {
+  if (row.type !== "file" || !agentSlug) {
+    return undefined;
+  }
+
+  const trimmed = row.link.trim();
+  const segments = trimmed.split(/[\\/]/).filter(Boolean);
+  if (
+    trimmed.length === 0 ||
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("\\") ||
+    WINDOWS_DRIVE_PREFIX.test(trimmed) ||
+    segments.length === 0 ||
+    segments.some((segment) => segment === "." || segment === "..")
+  ) {
+    return undefined;
+  }
+
+  const specialistPath = ["specialists", agentSlug, ...segments].join("/");
+  const specialistDocumentsPath = ["specialists", agentSlug, "Documents", ...segments].join("/");
+  const globalPath = segments.join("/");
+
+  if (await isWorkspaceFile(config, specialistPath)) {
+    return specialistPath;
+  }
+
+  if (await isWorkspaceFile(config, specialistDocumentsPath)) {
+    return specialistDocumentsPath;
+  }
+
+  if (await isWorkspaceFile(config, globalPath)) {
+    return undefined;
+  }
+
+  return specialistPath;
 }
 
 // Resolve a `document`-type artifact's Documents/-relative link to an absolute
 // path, hardened against traversal (reuses the same descendant check as files).
 function resolveDocumentSourcePath(config: RuntimeConfig, path: string | undefined): string {
-  if (!path) {
-    throw new BadRequestError("Artifact path is missing.");
-  }
-
-  const trimmed = path.trim();
-
-  if (trimmed.length === 0 || trimmed.startsWith("/") || trimmed === "." || trimmed === "..") {
-    throw new BadRequestError("Artifact path is invalid.");
-  }
+  const trimmed = validateRelativeArtifactPath(path);
 
   const root = config.paths.subdirectories.documents;
   const sourcePath = resolve(root, trimmed);
   ensureDescendant(sourcePath, root, "Artifact document path must stay in Documents.");
   return sourcePath;
+}
+
+async function isFile(path: string): Promise<boolean> {
+  return stat(path)
+    .then((details) => details.isFile())
+    .catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return false;
+      }
+      throw error;
+    });
+}
+
+async function isWorkspaceFile(config: RuntimeConfig, relativePath: string): Promise<boolean> {
+  return isFile(resolve(config.paths.workspaceDir, relativePath));
 }
 
 function resolveArtifactStoragePath(config: RuntimeConfig, storageKey: string): string {

@@ -3,7 +3,11 @@ import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ClipboardCopy, FolderOpen, Save } from "lucide-react";
 
-import type { DocumentReadResponse, FileManagerFileRevision } from "@cc/shared/schemas";
+import type {
+  DocumentReadResponse,
+  DocumentScope,
+  FileManagerFileRevision,
+} from "@cc/shared/schemas";
 
 import { LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
@@ -15,7 +19,8 @@ const CONTEXT_TAB_STORAGE_KEY = "cc.documents.context-tab";
 
 export function DocumentsPage() {
   const [searchParams] = useSearchParams();
-  const selectedPath = searchParams.get("path");
+  const selectedIdentity = parseSelectedDocument(searchParams);
+  const selectedPath = selectedIdentity?.path ?? null;
   const queryClient = useQueryClient();
   const [activeContextTabId, setActiveContextTabId] = useState<"info" | "actions">(() => {
     const stored = window.sessionStorage.getItem(CONTEXT_TAB_STORAGE_KEY);
@@ -23,9 +28,15 @@ export function DocumentsPage() {
   });
 
   const documentQuery = useQuery({
-    queryKey: queryKeys.documentContent(selectedPath ?? ""),
-    queryFn: () => getDocumentContent(selectedPath!),
-    enabled: !!selectedPath,
+    queryKey: selectedIdentity
+      ? queryKeys.documentContent(
+          selectedIdentity.scope,
+          selectedIdentity.ownerSlug,
+          selectedIdentity.path,
+        )
+      : queryKeys.documentContent("global", null, ""),
+    queryFn: () => getDocumentContent(selectedIdentity!),
+    enabled: selectedIdentity !== null,
   });
 
   const selectedDoc = documentQuery.data;
@@ -44,7 +55,15 @@ export function DocumentsPage() {
       currentRevisionRef.current = result.revision;
       setIsDirty(false);
       setSaveError(null);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.documentContent(selectedPath!) });
+      if (selectedIdentity) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.documentContent(
+            selectedIdentity.scope,
+            selectedIdentity.ownerSlug,
+            selectedIdentity.path,
+          ),
+        });
+      }
     },
     onError: (error) => {
       setSaveError(error instanceof Error ? error.message : "Save failed.");
@@ -58,9 +77,13 @@ export function DocumentsPage() {
   }, []);
 
   const handleSaveContent = () => {
-    if (!selectedPath || pendingContentRef.current === null || !currentRevisionRef.current) return;
+    if (!selectedIdentity || pendingContentRef.current === null || !currentRevisionRef.current) {
+      return;
+    }
     saveMutation.mutate({
-      path: selectedPath,
+      scope: selectedIdentity.scope,
+      ownerSlug: selectedIdentity.ownerSlug ?? undefined,
+      path: selectedIdentity.path,
       content: pendingContentRef.current,
       expectedRevision: currentRevisionRef.current,
     });
@@ -102,7 +125,7 @@ export function DocumentsPage() {
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto" data-testid="document-editor-scroll">
           <LazyMilkdownEditor
-            key={selectedPath}
+            key={documentIdentityKey(selectedDoc)}
             initialContent={selectedDoc.content}
             onChange={handleEditorChange}
           />
@@ -147,7 +170,9 @@ export function DocumentsPage() {
                 {
                   id: "actions",
                   label: "Actions",
-                  content: <DocumentActionsTab doc={selectedDoc} key={selectedDoc.relativePath} />,
+                  content: (
+                    <DocumentActionsTab doc={selectedDoc} key={documentIdentityKey(selectedDoc)} />
+                  ),
                 },
                 {
                   id: "info",
@@ -162,12 +187,48 @@ export function DocumentsPage() {
   );
 }
 
+type SelectedDocument = {
+  scope: DocumentScope;
+  ownerSlug: string | null;
+  path: string;
+};
+
+function parseSelectedDocument(searchParams: URLSearchParams): SelectedDocument | null {
+  const path = searchParams.get("path");
+  if (!path) {
+    return null;
+  }
+
+  const scope = searchParams.get("scope") === "private" ? "private" : "global";
+  const ownerSlug = scope === "private" ? searchParams.get("owner") : null;
+  if (scope === "private" && !ownerSlug) {
+    return null;
+  }
+
+  return {
+    scope,
+    ownerSlug,
+    path,
+  };
+}
+
+function documentIdentityKey(identity: {
+  scope: DocumentScope;
+  ownerSlug?: string | null;
+  relativePath?: string;
+  path?: string;
+}): string {
+  return `${identity.scope}:${identity.ownerSlug ?? ""}:${identity.relativePath ?? identity.path ?? ""}`;
+}
+
 function DocumentInfoTab(props: { doc: DocumentReadResponse }) {
   const { doc } = props;
 
   return (
     <div className="grid gap-3 p-2" data-testid="document-info-tab">
       <Metric label="Title" value={doc.title} />
+      <Metric label="Scope" value={doc.scope} />
+      {doc.ownerSlug ? <Metric label="Owner" value={doc.ownerSlug} /> : null}
       <Metric label="Relative path" value={doc.relativePath} />
       <Metric label="Full path" value={doc.fullPath} />
       {doc.description ? <Metric label="Description" value={doc.description} /> : null}
@@ -194,7 +255,9 @@ function DocumentActionsTab(props: { doc: DocumentReadResponse }) {
     mutationFn: updateDocumentMetadata,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.documentTree });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.documentContent(doc.relativePath) });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.documentContent(doc.scope, doc.ownerSlug, doc.relativePath),
+      });
     },
   });
 
@@ -205,6 +268,8 @@ function DocumentActionsTab(props: { doc: DocumentReadResponse }) {
 
   const handleSaveMetadata = () => {
     metadataMutation.mutate({
+      scope: doc.scope,
+      ownerSlug: doc.ownerSlug ?? undefined,
       path: doc.relativePath,
       title: editTitle || undefined,
       description: editDescription || undefined,
@@ -287,7 +352,7 @@ function DocumentActionsTab(props: { doc: DocumentReadResponse }) {
           </button>
           <a
             className="cc-button cc-button-secondary flex w-full items-center justify-center gap-1.5 text-xs no-underline"
-            href={`/files?root=workspace&path=${encodeURIComponent("Documents/" + doc.relativePath.substring(0, doc.relativePath.lastIndexOf("/")))}&select=Documents/${encodeURIComponent(doc.relativePath)}`}
+            href={fileManagerRevealHref(doc)}
           >
             <FolderOpen className="h-3.5 w-3.5" />
             Reveal in File Manager
@@ -296,6 +361,21 @@ function DocumentActionsTab(props: { doc: DocumentReadResponse }) {
       </div>
     </div>
   );
+}
+
+function fileManagerRevealHref(doc: DocumentReadResponse): string {
+  const base =
+    doc.scope === "private" && doc.ownerSlug
+      ? `specialists/${doc.ownerSlug}/Documents`
+      : "Documents";
+  const lastSlash = doc.relativePath.lastIndexOf("/");
+  const folder = lastSlash === -1 ? "" : doc.relativePath.slice(0, lastSlash);
+  const params = new URLSearchParams({
+    root: "workspace",
+    path: folder ? `${base}/${folder}` : base,
+    select: `${base}/${doc.relativePath}`,
+  });
+  return `/files?${params.toString()}`;
 }
 
 function Metric(props: { label: string; value: string }) {

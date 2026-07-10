@@ -16,6 +16,7 @@ import { getSetting, upsertSettingFilefirst } from "../db/helpers.js";
 import { createId, now } from "../db/ids.js";
 import { artifact_share_links } from "../db/schema/index.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
+import { buildArtifactSignedUrl } from "../lib/artifact-signed-url.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { ArtifactService } from "./artifact-service.js";
 
@@ -91,10 +92,25 @@ export function createArtifactShareLinkService(options: {
         input.baseUrl,
       );
       url.searchParams.set("token", token);
+      const expiresAtMs = expiresAt?.getTime() ?? 0;
 
       return {
         shareId,
         url: url.toString(),
+        displayUrl: buildArtifactSignedUrl({
+          artifactId: artifact.id,
+          disposition: "display",
+          expMs: expiresAtMs,
+          secretKey: options.config.secretKey,
+          baseUrl: input.baseUrl,
+        }),
+        downloadUrl: buildArtifactSignedUrl({
+          artifactId: artifact.id,
+          disposition: "download",
+          expMs: expiresAtMs,
+          secretKey: options.config.secretKey,
+          baseUrl: input.baseUrl,
+        }),
         expiresAt: expiresAt?.toISOString() ?? null,
       };
     },

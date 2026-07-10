@@ -70,8 +70,10 @@ import {
 } from "./groups/cc-default/tools/self-task-template-tools.js";
 import {
   createDocumentToolDefinitions,
-  listProjectDocumentsToolMetadata,
-  registerProjectDocumentToolMetadata,
+  listGlobalDocumentsToolMetadata,
+  listPrivateDocumentsToolMetadata,
+  registerGlobalDocumentToolMetadata,
+  registerPrivateDocumentToolMetadata,
 } from "./groups/cc-default/tools/document-tools.js";
 import {
   createArtifactToolDefinitions,
@@ -413,8 +415,10 @@ export function createCcManagedMcpServerRegistry(options: {
         listSelfTaskRunArtifactsToolMetadata,
         listSelfConversationsToolMetadata,
         getSelfConversationToolMetadata,
-        listProjectDocumentsToolMetadata,
-        registerProjectDocumentToolMetadata,
+        listGlobalDocumentsToolMetadata,
+        registerGlobalDocumentToolMetadata,
+        listPrivateDocumentsToolMetadata,
+        registerPrivateDocumentToolMetadata,
         addArtifactToolMetadata,
       ],
       tools: defaultTools,

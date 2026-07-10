@@ -8,6 +8,7 @@ import { createDocumentsAgentsGuideMigration } from "./0005-create-documents-age
 import { createDocumentsExamplesGuideMigration } from "./0006-create-documents-examples-guide.js";
 import { updateDocumentsAgentsGuideRootRuleMigration } from "./0007-update-documents-agents-guide-root-rule.js";
 import { movePreferencesUnderConfigurationMigration } from "./0008-move-preferences-under-configuration.js";
+import { updateDocumentsAgentsGuideGlobalToolNamesMigration } from "./0009-update-documents-agents-guide-global-tool-names.js";
 
 export const workspaceMigrations = [
   createMigrationSmokeTestDirectoryMigration,
@@ -18,4 +19,5 @@ export const workspaceMigrations = [
   createDocumentsExamplesGuideMigration,
   updateDocumentsAgentsGuideRootRuleMigration,
   movePreferencesUnderConfigurationMigration,
+  updateDocumentsAgentsGuideGlobalToolNamesMigration,
 ] satisfies WorkspaceMigration[];

@@ -30,6 +30,9 @@ describe("document schemas", () => {
         }),
       ).toEqual({
         id: "doc-1",
+        scope: "global",
+        ownerSlug: null,
+        ownerSpecialistId: null,
         relativePath: "notes/design.md",
         title: "Design Notes",
         description: "Overview of system design",
@@ -86,6 +89,7 @@ describe("document schemas", () => {
           content: "# Architecture\n\nOverview here.",
         }),
       ).toEqual({
+        scope: "global",
         path: "design/architecture.md",
         title: "Architecture",
         description: "System architecture overview",
@@ -108,6 +112,22 @@ describe("document schemas", () => {
       expect(createDocumentInputSchema.parse({ path: "docs/doc.markdown" })).toMatchObject({
         path: "docs/doc.markdown",
       });
+    });
+
+    it("rejects private documents without an ownerSlug", () => {
+      expect(() =>
+        createDocumentInputSchema.parse({ scope: "private", path: "notes/notes.md" }),
+      ).toThrow("Private documents require an ownerSlug");
+    });
+
+    it("rejects ownerSlug for global documents", () => {
+      expect(() =>
+        createDocumentInputSchema.parse({
+          scope: "global",
+          ownerSlug: "planner",
+          path: "notes/notes.md",
+        }),
+      ).toThrow("Global documents must not specify an ownerSlug");
     });
 
     it("rejects creating documents directly in the Documents root", () => {
@@ -177,6 +197,7 @@ describe("document schemas", () => {
   describe("createDocumentFolderInputSchema", () => {
     it("accepts valid folder path", () => {
       expect(createDocumentFolderInputSchema.parse({ path: "design/specs" })).toEqual({
+        scope: "global",
         path: "design/specs",
       });
     });
@@ -213,6 +234,22 @@ describe("document schemas", () => {
         "Path must not contain empty or hidden segments",
       );
     });
+
+    it("rejects private folders without an ownerSlug", () => {
+      expect(() =>
+        createDocumentFolderInputSchema.parse({ scope: "private", path: "design/specs" }),
+      ).toThrow("Private documents require an ownerSlug");
+    });
+
+    it("rejects ownerSlug for global folders", () => {
+      expect(() =>
+        createDocumentFolderInputSchema.parse({
+          scope: "global",
+          ownerSlug: "planner",
+          path: "design/specs",
+        }),
+      ).toThrow("Global documents must not specify an ownerSlug");
+    });
   });
 
   describe("updateDocumentMetadataInputSchema", () => {
@@ -237,6 +274,22 @@ describe("document schemas", () => {
           title: "Title",
         }),
       ).toThrow("Path must end with .md or .markdown");
+    });
+
+    it("rejects private metadata updates without an ownerSlug", () => {
+      expect(() =>
+        updateDocumentMetadataInputSchema.parse({ scope: "private", path: "notes.md" }),
+      ).toThrow("Private documents require an ownerSlug");
+    });
+
+    it("rejects ownerSlug for global metadata updates", () => {
+      expect(() =>
+        updateDocumentMetadataInputSchema.parse({
+          scope: "global",
+          ownerSlug: "planner",
+          path: "notes.md",
+        }),
+      ).toThrow("Global documents must not specify an ownerSlug");
     });
   });
 
@@ -269,6 +322,29 @@ describe("document schemas", () => {
 
       expect(result.expectedRevision.sha256).toBe("abc123");
     });
+
+    it("rejects private saves without an ownerSlug", () => {
+      expect(() =>
+        saveDocumentContentInputSchema.parse({
+          scope: "private",
+          path: "notes.md",
+          content: "# Updated Content",
+          expectedRevision: { mtimeMs: 1700000000000, sizeBytes: 100 },
+        }),
+      ).toThrow("Private documents require an ownerSlug");
+    });
+
+    it("rejects ownerSlug for global saves", () => {
+      expect(() =>
+        saveDocumentContentInputSchema.parse({
+          scope: "global",
+          ownerSlug: "planner",
+          path: "notes.md",
+          content: "# Updated Content",
+          expectedRevision: { mtimeMs: 1700000000000, sizeBytes: 100 },
+        }),
+      ).toThrow("Global documents must not specify an ownerSlug");
+    });
   });
 
   describe("documentTreeNodeSchema", () => {
@@ -281,6 +357,9 @@ describe("document schemas", () => {
           title: "My Notes",
         }),
       ).toEqual({
+        scope: "global",
+        ownerSlug: null,
+        ownerSpecialistId: null,
         name: "notes.md",
         relativePath: "notes.md",
         type: "file",

@@ -45,6 +45,11 @@ export const systemPromptVariables: Record<string, SystemPromptVariable> = {
     description: "Absolute path to the active workspace directory.",
     resolve: (ctx) => ctx.workspaceDir,
   },
+  SPECIALIST_DIR: {
+    label: "Specialist directory",
+    description: "Absolute path to the active specialist's own workspace directory.",
+    resolve: (ctx) => ctx.specialistDir ?? "",
+  },
   CONVERSATION_ID: {
     label: "Conversation ID",
     description: "The current conversation id.",

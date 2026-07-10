@@ -315,7 +315,9 @@ export function createTaskReadOps(ctx: TaskServiceContext, service: TaskServiceR
         orderBy: (table, operators) => [operators.desc(table.created_at)],
       });
 
-      return taskRunListSchema.parse(await mapTaskRunsWithReplyState(options.db, rows));
+      return taskRunListSchema.parse(
+        await mapTaskRunsWithReplyState(options.db, options.config, rows),
+      );
     },
 
     async getRun(taskId: string, runId: string): Promise<TaskRun | undefined> {
@@ -337,7 +339,7 @@ export function createTaskReadOps(ctx: TaskServiceContext, service: TaskServiceR
           operators.and(operators.inArray(table.task_id, taskIds), operators.eq(table.id, runId)),
       });
 
-      return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
+      return row ? mapTaskRunWithReplyState(options.db, options.config, row) : undefined;
     },
 
     async getRunById(runId: string): Promise<TaskRun | undefined> {
@@ -345,7 +347,7 @@ export function createTaskReadOps(ctx: TaskServiceContext, service: TaskServiceR
         where: (table, operators) => operators.eq(table.id, runId),
       });
 
-      return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
+      return row ? mapTaskRunWithReplyState(options.db, options.config, row) : undefined;
     },
 
     async listActiveRuns(): Promise<TaskRun[]> {
@@ -354,7 +356,9 @@ export function createTaskReadOps(ctx: TaskServiceContext, service: TaskServiceR
         orderBy: (table, operators) => [operators.desc(table.created_at)],
       });
 
-      return taskRunListSchema.parse(await mapTaskRunsWithReplyState(options.db, rows));
+      return taskRunListSchema.parse(
+        await mapTaskRunsWithReplyState(options.db, options.config, rows),
+      );
     },
 
     async getActiveRunForTask(taskId: string, subtaskId?: string): Promise<TaskRun | undefined> {
@@ -370,7 +374,7 @@ export function createTaskReadOps(ctx: TaskServiceContext, service: TaskServiceR
         orderBy: (table, operators) => [operators.desc(table.created_at)],
       });
 
-      return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
+      return row ? mapTaskRunWithReplyState(options.db, options.config, row) : undefined;
     },
 
     async getRunningRunForAgent(agentId: string): Promise<TaskRun | undefined> {
@@ -383,7 +387,7 @@ export function createTaskReadOps(ctx: TaskServiceContext, service: TaskServiceR
         orderBy: (table, operators) => [operators.asc(table.created_at)],
       });
 
-      return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
+      return row ? mapTaskRunWithReplyState(options.db, options.config, row) : undefined;
     },
 
     async getNextQueuedRunForAgent(agentId: string): Promise<TaskRun | undefined> {
@@ -396,7 +400,7 @@ export function createTaskReadOps(ctx: TaskServiceContext, service: TaskServiceR
         orderBy: (table, operators) => [operators.asc(table.created_at)],
       });
 
-      return row ? mapTaskRunWithReplyState(options.db, row) : undefined;
+      return row ? mapTaskRunWithReplyState(options.db, options.config, row) : undefined;
     },
   };
 }

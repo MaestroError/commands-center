@@ -61,26 +61,36 @@ describe("ArtifactShareControls", () => {
     createMutateAsync.mockResolvedValue({
       shareId: "share-1",
       url: "https://share.example/abc",
+      displayUrl: "https://share.example/render/abc",
+      downloadUrl: "https://share.example/download/abc",
       expiresAt: null,
     });
     render(<ArtifactShareControls artifact={artifact()} taskId="task-1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
 
-    expect(await screen.findByText("https://share.example/abc")).toBeInTheDocument();
+    expect(await screen.findByText("https://share.example/render/abc")).toBeInTheDocument();
+    expect(screen.getByText("https://share.example/download/abc")).toBeInTheDocument();
     expect(createMutateAsync).toHaveBeenCalledWith({
       artifactId: "art-1",
       conversationId: "conv-1",
       taskId: "task-1",
     });
     await waitFor(() =>
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("https://share.example/abc"),
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        "https://share.example/render/abc",
+      ),
     );
-    expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Render URL copied" })).toBeInTheDocument();
 
-    // Re-copy via the dedicated copy button.
-    fireEvent.click(screen.getByRole("button", { name: "Copied" }));
+    fireEvent.click(screen.getByRole("button", { name: "Render URL copied" }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "Copy Download URL" }));
+    await waitFor(() =>
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        "https://share.example/download/abc",
+      ),
+    );
   });
 
   it("still reveals the link when copying to the clipboard fails", async () => {
@@ -91,18 +101,31 @@ describe("ArtifactShareControls", () => {
     createMutateAsync.mockResolvedValue({
       shareId: "share-1",
       url: "https://share.example/abc",
+      displayUrl: "https://share.example/render/abc",
+      downloadUrl: "https://share.example/download/abc",
       expiresAt: null,
     });
     render(<ArtifactShareControls artifact={artifact()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
 
-    expect(await screen.findByText("https://share.example/abc")).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Copy link" })).toBeInTheDocument();
+    expect(await screen.findByText("https://share.example/render/abc")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Copy Render URL" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Download URL" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy Render URL" }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole("button", { name: "Copy link" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Render URL" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Download URL" })).toBeInTheDocument();
+  });
+
+  it("shows an error when signed link creation fails", async () => {
+    createMutateAsync.mockRejectedValue(new Error("Artifact source file not found."));
+    render(<ArtifactShareControls artifact={artifact()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
+
+    expect(await screen.findByText("Artifact source file not found.")).toBeInTheDocument();
   });
 
   it("lists existing share links and revokes one", async () => {

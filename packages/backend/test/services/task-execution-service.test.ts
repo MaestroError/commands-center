@@ -1684,7 +1684,7 @@ describe("createTaskExecutionService", () => {
   it("keeps the task cancelled when OpenCode abort fails", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
-    const logger = { warn: vi.fn() } as unknown as Logger;
+    const logger = { error: vi.fn(), warn: vi.fn() } as unknown as Logger;
     const opencodeService = createMockOpenCodeService({
       abortError: new Error("Abort failed."),
     });

@@ -29,12 +29,19 @@ export function readAgentName(agents: Specialist[], agentId: string): string {
   return agents.find((agent) => agent.id === agentId)?.name ?? agentId;
 }
 
-export function buildArtifactHref(artifact: { type: ArtifactType; link: string }): string {
+export function buildArtifactHref(artifact: {
+  type: ArtifactType;
+  link: string;
+  fileManagerPath?: string;
+}): string {
   switch (artifact.type) {
     case "document":
       return buildDocumentHref(artifact.link);
     case "file":
-      return buildFileManagerHref({ path: artifact.link, openInEditor: true });
+      return buildFileManagerHref({
+        path: artifact.fileManagerPath ?? artifact.link,
+        openInEditor: true,
+      });
     default:
       return artifact.link;
   }

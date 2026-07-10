@@ -1,8 +1,10 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { createId, now } from "../../src/db/ids";
+import { agents } from "../../src/db/schema";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import { createApiTokenService } from "../../src/services/api-token-service";
@@ -52,6 +54,37 @@ function createMockOpenCodeService(): OpenCodeService {
   } as unknown as OpenCodeService;
 }
 
+async function insertSpecialist(
+  testDb: Awaited<ReturnType<typeof createTestDatabase>>,
+  input: { slug: string; name?: string; status?: "active" | "archived" },
+): Promise<string> {
+  const timestamp = now();
+  const id = createId();
+  await testDb.client.db.insert(agents).values({
+    id,
+    slug: input.slug,
+    name: input.name ?? input.slug,
+    role: "Specialist",
+    instructions: "Do specialist work.",
+    default_model: "openai/gpt-5",
+    icon_path: null,
+    status: input.status ?? "active",
+    capabilities_json: JSON.stringify({
+      builtInSkills: [],
+      workspaceSkills: [],
+      customTools: [],
+      mcpServers: [],
+      toolPermissions: [],
+      appMcpServers: [],
+      appToolPermissions: [],
+    }),
+    created_at: timestamp,
+    updated_at: timestamp,
+    archived_at: input.status === "archived" ? timestamp : null,
+  });
+  return id;
+}
+
 describe("document routes", () => {
   describe("GET /api/documents/tree", () => {
     it("returns an empty tree for an empty Documents folder", async () => {
@@ -62,7 +95,7 @@ describe("document routes", () => {
         const response = await server.inject({ method: "GET", url: "/api/documents/tree" });
 
         expect(response.statusCode).toBe(200);
-        expect(response.json()).toEqual({ tree: [] });
+        expect(response.json()).toEqual({ tree: [], privateTrees: [] });
       } finally {
         await server.close();
         await testDb.cleanup();
@@ -261,6 +294,53 @@ describe("document routes", () => {
         await testDb.cleanup();
       }
     });
+
+    it("creates a private document and private root lazily", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        await insertSpecialist(testDb, { slug: "planner", name: "Planner" });
+
+        const response = await server.inject({
+          method: "POST",
+          url: "/api/documents",
+          payload: {
+            scope: "private",
+            ownerSlug: "planner",
+            path: "notes/research.md",
+            title: "Research",
+            content: "# Research",
+          },
+        });
+
+        expect(response.statusCode).toBe(201);
+        const body = response.json<{
+          documents: Array<{ scope: string; ownerSlug: string | null; relativePath: string }>;
+        }>();
+        expect(body.documents[0]).toMatchObject({
+          scope: "private",
+          ownerSlug: "planner",
+          relativePath: "notes/research.md",
+        });
+        await expect(
+          readFile(
+            join(
+              testDb.config.paths.workspaceDir,
+              "specialists",
+              "planner",
+              "Documents",
+              "notes",
+              "research.md",
+            ),
+            "utf8",
+          ),
+        ).resolves.toBe("# Research");
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
   });
 
   describe("POST /api/documents/folders", () => {
@@ -333,6 +413,138 @@ describe("document routes", () => {
         });
 
         expect(response.statusCode).toBe(404);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects private document reads without an owner", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        const response = await server.inject({
+          method: "GET",
+          url: "/api/documents/file?scope=private&path=notes%2Fresearch.md",
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(
+          response.json<{ error: { details: { fieldErrors: Record<string, string[]> } } }>(),
+        ).toMatchObject({
+          error: {
+            details: { fieldErrors: { "/owner": ["Private documents require an owner"] } },
+          },
+        });
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects owners for global document reads", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        const response = await server.inject({
+          method: "GET",
+          url: "/api/documents/file?scope=global&owner=planner&path=notes%2Fresearch.md",
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(
+          response.json<{ error: { details: { fieldErrors: Record<string, string[]> } } }>(),
+        ).toMatchObject({
+          error: {
+            details: {
+              fieldErrors: { "/owner": ["Global documents must not specify an owner"] },
+            },
+          },
+        });
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("reads a private document using scoped query parameters", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        await insertSpecialist(testDb, { slug: "planner", name: "Planner" });
+        await server.inject({
+          method: "POST",
+          url: "/api/documents",
+          payload: {
+            scope: "private",
+            ownerSlug: "planner",
+            path: "notes/research.md",
+            title: "Research",
+            content: "# Research",
+          },
+        });
+
+        const response = await server.inject({
+          method: "GET",
+          url: "/api/documents/file?scope=private&owner=planner&path=notes%2Fresearch.md",
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json<{
+          scope: string;
+          ownerSlug: string | null;
+          relativePath: string;
+          content: string;
+        }>();
+        expect(body).toMatchObject({
+          scope: "private",
+          ownerSlug: "planner",
+          relativePath: "notes/research.md",
+          content: "# Research",
+        });
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("keeps global and private documents with the same path distinct", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        await insertSpecialist(testDb, { slug: "planner", name: "Planner" });
+        await server.inject({
+          method: "POST",
+          url: "/api/documents",
+          payload: { path: "notes/shared.md", title: "Global", content: "global" },
+        });
+        await server.inject({
+          method: "POST",
+          url: "/api/documents",
+          payload: {
+            scope: "private",
+            ownerSlug: "planner",
+            path: "notes/shared.md",
+            title: "Private",
+            content: "private",
+          },
+        });
+
+        const globalResponse = await server.inject({
+          method: "GET",
+          url: "/api/documents/file?path=notes%2Fshared.md",
+        });
+        const privateResponse = await server.inject({
+          method: "GET",
+          url: "/api/documents/file?scope=private&owner=planner&path=notes%2Fshared.md",
+        });
+
+        expect(globalResponse.json<{ content: string }>().content).toBe("global");
+        expect(privateResponse.json<{ content: string }>().content).toBe("private");
       } finally {
         await server.close();
         await testDb.cleanup();
@@ -525,6 +737,48 @@ describe("document routes", () => {
         await testDb.cleanup();
       }
     });
+
+    it("updates private document metadata", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        await insertSpecialist(testDb, { slug: "planner", name: "Planner" });
+        await server.inject({
+          method: "POST",
+          url: "/api/documents",
+          payload: {
+            scope: "private",
+            ownerSlug: "planner",
+            path: "notes/research.md",
+            title: "Old",
+          },
+        });
+
+        const response = await server.inject({
+          method: "PATCH",
+          url: "/api/documents/metadata",
+          payload: {
+            scope: "private",
+            ownerSlug: "planner",
+            path: "notes/research.md",
+            title: "New",
+            description: "Updated private notes",
+          },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({
+          scope: "private",
+          ownerSlug: "planner",
+          title: "New",
+          description: "Updated private notes",
+        });
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
   });
 
   describe("PUT /api/documents/content", () => {
@@ -590,6 +844,54 @@ describe("document routes", () => {
         });
 
         expect(response.statusCode).toBe(409);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("saves private document content", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        await insertSpecialist(testDb, { slug: "planner", name: "Planner" });
+        await server.inject({
+          method: "POST",
+          url: "/api/documents",
+          payload: {
+            scope: "private",
+            ownerSlug: "planner",
+            path: "notes/research.md",
+            content: "original",
+          },
+        });
+        const readResponse = await server.inject({
+          method: "GET",
+          url: "/api/documents/file?scope=private&owner=planner&path=notes%2Fresearch.md",
+        });
+        const { revision } = readResponse.json<{
+          revision: { mtimeMs: number; sizeBytes: number };
+        }>();
+
+        const saveResponse = await server.inject({
+          method: "PUT",
+          url: "/api/documents/content",
+          payload: {
+            scope: "private",
+            ownerSlug: "planner",
+            path: "notes/research.md",
+            content: "updated",
+            expectedRevision: revision,
+          },
+        });
+
+        expect(saveResponse.statusCode).toBe(200);
+        const reread = await server.inject({
+          method: "GET",
+          url: "/api/documents/file?scope=private&owner=planner&path=notes%2Fresearch.md",
+        });
+        expect(reread.json<{ content: string }>().content).toBe("updated");
       } finally {
         await server.close();
         await testDb.cleanup();

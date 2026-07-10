@@ -3,7 +3,10 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { documents } from "../../src/db/schema/index";
+import { eq } from "drizzle-orm";
+
+import { createId, now } from "../../src/db/ids";
+import { agents, documents } from "../../src/db/schema/index";
 import { createDocumentService, documentReconciler } from "../../src/services/document-service";
 import { createTestDatabase } from "../helpers/db";
 
@@ -18,6 +21,37 @@ function makeService(testDb: Awaited<ReturnType<typeof createTestDatabase>>) {
 
 async function setupDocsDir(testDb: Awaited<ReturnType<typeof createTestDatabase>>) {
   await mkdir(testDb.config.paths.subdirectories.documents, { recursive: true });
+}
+
+async function insertSpecialist(
+  testDb: Awaited<ReturnType<typeof createTestDatabase>>,
+  input: { slug: string; name?: string; status?: "active" | "archived" },
+): Promise<string> {
+  const timestamp = now();
+  const id = createId();
+  await testDb.client.db.insert(agents).values({
+    id,
+    slug: input.slug,
+    name: input.name ?? input.slug,
+    role: "Specialist",
+    instructions: "Do specialist work.",
+    default_model: "openai/gpt-5",
+    icon_path: null,
+    status: input.status ?? "active",
+    capabilities_json: JSON.stringify({
+      builtInSkills: [],
+      workspaceSkills: [],
+      customTools: [],
+      mcpServers: [],
+      toolPermissions: [],
+      appMcpServers: [],
+      appToolPermissions: [],
+    }),
+    created_at: timestamp,
+    updated_at: timestamp,
+    archived_at: input.status === "archived" ? timestamp : null,
+  });
+  return id;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +117,61 @@ describe("document service", () => {
 
         const fileStat = await stat(service.fullPath("deep/nested/doc.md"));
         expect(fileStat.isFile()).toBe(true);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("allows global and private documents to share the same relative path", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        const ownerSpecialistId = await insertSpecialist(testDb, { slug: "planner" });
+
+        await service.create({ path: "notes/shared.md", title: "Global Notes" });
+        const privateDocument = await service.create({
+          scope: "private",
+          ownerSpecialistId,
+          path: "notes/shared.md",
+          title: "Private Notes",
+        });
+
+        const rows = await testDb.client.db.select().from(documents);
+        expect(rows).toHaveLength(2);
+        expect(privateDocument).toMatchObject({
+          scope: "private",
+          ownerSlug: "planner",
+          ownerSpecialistId,
+          relativePath: "notes/shared.md",
+          title: "Private Notes",
+        });
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("resolves private documents by owner ID after the owner slug changes", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        const ownerSpecialistId = await insertSpecialist(testDb, { slug: "planner" });
+        await testDb.client.db
+          .update(agents)
+          .set({ slug: "renamed-planner" })
+          .where(eq(agents.id, ownerSpecialistId));
+
+        const document = await service.create({
+          scope: "private",
+          ownerSpecialistId,
+          ownerSlug: "planner",
+          path: "notes/renamed.md",
+        });
+
+        expect(document.ownerSlug).toBe("renamed-planner");
+        expect((await stat(document.fullPath)).isFile()).toBe(true);
       } finally {
         await testDb.cleanup();
       }
@@ -215,6 +304,42 @@ describe("document service", () => {
         await expect(stat(service.fullPath("large/big.md"))).rejects.toMatchObject({
           code: "ENOENT",
         });
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects unknown private owners", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await expect(
+          service.create({
+            scope: "private",
+            ownerSlug: "missing",
+            path: "notes/notes.md",
+          }),
+        ).rejects.toThrow("Private document owner not found");
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects archived private owners", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await insertSpecialist(testDb, { slug: "old-planner", status: "archived" });
+
+        await expect(
+          service.create({
+            scope: "private",
+            ownerSlug: "old-planner",
+            path: "notes/notes.md",
+          }),
+        ).rejects.toThrow("Private document owner not found");
       } finally {
         await testDb.cleanup();
       }
@@ -848,6 +973,80 @@ describe("documentReconciler", () => {
 
       const rows = await testDb.client.db.select().from(documents);
       expect(rows).toHaveLength(0);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("indexes existing private document roots without creating missing private roots", async () => {
+    const testDb = await createTestDatabase();
+
+    try {
+      const plannerId = await insertSpecialist(testDb, { slug: "planner", name: "Planner" });
+      await insertSpecialist(testDb, { slug: "researcher", name: "Researcher" });
+      const plannerRoot = join(
+        testDb.config.paths.workspaceDir,
+        "specialists",
+        "planner",
+        "Documents",
+      );
+      const researcherRoot = join(
+        testDb.config.paths.workspaceDir,
+        "specialists",
+        "researcher",
+        "Documents",
+      );
+      await mkdir(join(plannerRoot, "notes"), { recursive: true });
+      await writeFile(join(plannerRoot, "notes", "research.md"), "# Research", "utf8");
+
+      await documentReconciler.reconcile({
+        config: testDb.config,
+        db: testDb.client.db,
+        logger,
+      });
+
+      const rows = await testDb.client.db.select().from(documents);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        scope: "private",
+        owner_slug: "planner",
+        owner_specialist_id: plannerId,
+        relative_path: "notes/research.md",
+      });
+      await expect(stat(researcherRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("cleans stale private rows without deleting matching global rows", async () => {
+    const testDb = await createTestDatabase();
+    const service = makeService(testDb);
+
+    try {
+      await setupDocsDir(testDb);
+      const ownerSpecialistId = await insertSpecialist(testDb, { slug: "planner" });
+      await service.create({ path: "notes/shared.md", title: "Global" });
+      const privateDocument = await service.create({
+        scope: "private",
+        ownerSpecialistId,
+        path: "notes/shared.md",
+        title: "Private",
+      });
+      await rm(privateDocument.fullPath);
+
+      await documentReconciler.reconcile({
+        config: testDb.config,
+        db: testDb.client.db,
+        logger,
+      });
+
+      const rows = await testDb.client.db.select().from(documents);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        scope: "global",
+        relative_path: "notes/shared.md",
+      });
     } finally {
       await testDb.cleanup();
     }

@@ -16,7 +16,9 @@ type ChatResultsPanelProps = {
 // by scrolling. After "Continue in chat" this also surfaces the originating
 // task run's artifacts, since they share the same conversation.
 export function ChatResultsPanel(props: ChatResultsPanelProps) {
-  const artifactsQuery = useConversationArtifactsQuery(props.conversationId);
+  const artifactsQuery = useConversationArtifactsQuery(props.conversationId, {
+    refetchInterval: 3_000,
+  });
   const artifacts = artifactsQuery.data?.artifacts ?? [];
 
   return (

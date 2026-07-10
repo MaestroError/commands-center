@@ -3,9 +3,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { createDocumentFolder } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+import type { DocumentScope } from "@cc/shared/schemas";
 
 type DocumentFolderDialogProps = {
   onClose: () => void;
+  scope?: DocumentScope;
+  ownerSlug?: string | null;
   /** Parent folder the new folder is created in, relative to Documents/ (no trailing slash). */
   defaultParent?: string;
 };
@@ -32,7 +35,11 @@ export function DocumentFolderDialog(props: DocumentFolderDialogProps) {
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    mutation.mutate({ path: trimmedPath });
+    mutation.mutate({
+      ...(props.scope && props.scope !== "global" ? { scope: props.scope } : {}),
+      ...(props.ownerSlug ? { ownerSlug: props.ownerSlug } : {}),
+      path: trimmedPath,
+    });
   };
 
   return (

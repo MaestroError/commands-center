@@ -26,6 +26,7 @@ export const artifactSchema = z.object({
   // "url": absolute URL. "file": workspace-relative path. "document": path
   // relative to the Documents/ module.
   link: z.string().min(1),
+  fileManagerPath: z.string().min(1).optional(),
   createdAt: z.string().datetime(),
   shareLinks: z.array(artifactShareLinkSchema).default([]),
 });
@@ -75,6 +76,8 @@ export const createArtifactShareLinkInputSchema = z.object({
 export const createArtifactShareLinkResponseSchema = z.object({
   shareId: z.string().min(1),
   url: z.string().url(),
+  displayUrl: z.string().url(),
+  downloadUrl: z.string().url(),
   expiresAt: z.string().datetime().nullable(),
 });
 

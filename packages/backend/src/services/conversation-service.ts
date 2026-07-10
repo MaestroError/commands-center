@@ -973,6 +973,7 @@ export function createConversationService(options: {
       appName: APP_NAME,
       currentDate: new Date().toISOString().slice(0, 10),
       workspaceDir: options.config.paths.workspaceDir,
+      specialistDir: agent.workspace_path,
       conversationId: conversation.id,
       specialist: {
         name: agent.name,

@@ -48,6 +48,7 @@ export type SystemPromptRenderContext = {
   /** ISO-8601 server date at send time. */
   currentDate: string;
   workspaceDir: string;
+  specialistDir?: string;
   conversationId?: string;
   specialist?: {
     name: string;
