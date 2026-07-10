@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
 import type { ApiTokenRecord } from "@cc/shared/schemas";
@@ -257,6 +257,52 @@ describe("public document API service", () => {
       );
 
       expect(result.documents).toEqual([]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("caps public search candidates, reads, and returned matches", async () => {
+    const testDb = await createTestDatabase();
+    const candidates = Array.from({ length: 600 }, (_, index) => ({
+      scope: "global" as const,
+      ownerSlug: null,
+      ownerSpecialistId: null,
+      relativePath: `docs/${String(index).padStart(3, "0")}.md`,
+      fullPath: `/unreachable/${String(index)}.md`,
+      title: "Document",
+      description: null,
+      author: null,
+    }));
+    const listSearchCandidates = vi.fn().mockResolvedValue(candidates);
+    const read = vi.fn((input: { relativePath: string }) =>
+      Promise.resolve({
+        ...candidates.find((candidate) => candidate.relativePath === input.relativePath)!,
+        content: "needle",
+        revision: { mtimeMs: 1, sizeBytes: 6 },
+        createdAt: null,
+        updatedAt: null,
+      }),
+    );
+    const service = createPublicDocumentApiService({
+      db: testDb.client.db,
+      documentService: { listSearchCandidates, read } as never,
+    });
+
+    try {
+      const result = await service.searchDocuments(
+        token({ global: true, privateSpecialistIds: [] }),
+        {
+          query: "needle",
+        },
+      );
+
+      expect(listSearchCandidates).toHaveBeenCalledWith(
+        expect.objectContaining({ maxCandidates: 200 }),
+      );
+      expect(read).toHaveBeenCalledTimes(200);
+      expect(result).toMatchObject({ totalMatches: 200, nextOffset: 50 });
+      expect(result.documents).toHaveLength(50);
     } finally {
       await testDb.cleanup();
     }
