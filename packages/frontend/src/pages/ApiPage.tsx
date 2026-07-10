@@ -18,13 +18,16 @@ import { TabBar } from "@/components/common/TabBar";
 import { EndpointsTab } from "@/components/api/EndpointsTab";
 import { getTokenActivity, getTokenAuditSettings, updateTokenAuditSettings } from "@/lib/api";
 import { useApiTokenMutations, useApiTokensQuery } from "@/hooks/use-api-tokens-query";
+import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useTaskTemplatesQuery } from "@/hooks/use-tasks-query";
 
 type TemplateOption = { id: string; title: string };
+type SpecialistOption = { id: string; name: string; slug: string };
 
 const GROUP_LABELS: Record<ApiTokenCapabilityGroup, string> = {
   templates: "Task Templates",
   tasks: "Tasks",
+  documents: "Documents",
 };
 
 export function ApiPage() {
@@ -60,10 +63,16 @@ type FormState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; token
 function TokensTab() {
   const tokensQuery = useApiTokensQuery();
   const templatesQuery = useTaskTemplatesQuery();
+  const specialistsQuery = useSpecialistsQuery();
   const mutations = useApiTokenMutations();
   const templateOptions: TemplateOption[] = (templatesQuery.data ?? [])
-    .filter((template) => template.mcpConfig.exposeAsTool)
+    .filter((template) => template.mcpConfig.syncEnabled || template.mcpConfig.asyncEnabled)
     .map((template) => ({ id: template.id, title: template.title }));
+  const specialistOptions: SpecialistOption[] = (specialistsQuery.data ?? []).map((specialist) => ({
+    id: specialist.id,
+    name: specialist.name,
+    slug: specialist.slug,
+  }));
   const [form, setForm] = useState<FormState>({ mode: "closed" });
   const [revealedToken, setRevealedToken] = useState<CreateApiTokenResponse>();
   const [revokeTarget, setRevokeTarget] = useState<ApiTokenRecord>();
@@ -108,6 +117,7 @@ function TokensTab() {
         <TokenForm
           busy={mutations.create.isPending}
           submitLabel="Create token"
+          specialistOptions={specialistOptions}
           templateOptions={templateOptions}
           title="New token"
           onCancel={() => setForm({ mode: "closed" })}
@@ -125,6 +135,7 @@ function TokensTab() {
           initialName={form.token.name}
           initialPermissions={form.token.permissions}
           submitLabel="Save changes"
+          specialistOptions={specialistOptions}
           templateOptions={templateOptions}
           title={`Edit ${form.token.name}`}
           onCancel={() => setForm({ mode: "closed" })}
@@ -197,6 +208,7 @@ function TokenForm(props: {
   initialName?: string;
   initialPermissions?: ApiTokenPermissions;
   submitLabel: string;
+  specialistOptions: SpecialistOption[];
   templateOptions: TemplateOption[];
   title: string;
   onSubmit: (input: { name: string; permissions: ApiTokenPermissions }) => Promise<void>;
@@ -209,9 +221,23 @@ function TokenForm(props: {
   const [templates, setTemplates] = useState<Set<string>>(
     () => new Set(props.initialPermissions?.templates ?? []),
   );
+  const [globalDocuments, setGlobalDocuments] = useState(
+    props.initialPermissions?.documents.global ?? false,
+  );
+  const [privateSpecialistIds, setPrivateSpecialistIds] = useState<Set<string>>(
+    () => new Set(props.initialPermissions?.documents.privateSpecialistIds ?? []),
+  );
   const [error, setError] = useState<string>();
   const trimmedName = name.trim();
-  const canSubmit = trimmedName.length > 0 && capabilities.size + templates.size > 0 && !props.busy;
+  const documentCapabilitySelected = API_TOKEN_CAPABILITIES.some(
+    (capability) => capability.group === "documents" && capabilities.has(capability.id),
+  );
+  const documentRootSelected = globalDocuments || privateSpecialistIds.size > 0;
+  const canSubmit =
+    trimmedName.length > 0 &&
+    capabilities.size + templates.size > 0 &&
+    (!documentCapabilitySelected || documentRootSelected) &&
+    !props.busy;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -225,7 +251,13 @@ function TokenForm(props: {
     try {
       await props.onSubmit({
         name: trimmedName,
-        permissions: { capabilities: [...capabilities], templates: [...templates] },
+        permissions: {
+          capabilities: [...capabilities],
+          templates: [...templates],
+          documents: documentCapabilitySelected
+            ? { global: globalDocuments, privateSpecialistIds: [...privateSpecialistIds] }
+            : { global: false, privateSpecialistIds: [] },
+        },
       });
     } catch (nextError) {
       setError(readError(nextError));
@@ -265,6 +297,59 @@ function TokenForm(props: {
         </label>
         <PermissionSelector value={capabilities} onChange={setCapabilities} />
       </div>
+
+      {documentCapabilitySelected ? (
+        <fieldset
+          className="mt-4 grid gap-2 rounded-lg border border-border bg-app-bg p-3 text-sm"
+          data-testid="token-documents-section"
+        >
+          <legend className="px-1 font-medium text-text-primary">Document access</legend>
+          <p className="text-xs text-text-secondary">
+            Choose which document roots the selected document permissions may read.
+          </p>
+          <label className="flex cursor-pointer items-center gap-3 text-text-primary">
+            <input
+              checked={globalDocuments}
+              data-testid="token-documents-global"
+              onChange={(event) => setGlobalDocuments(event.target.checked)}
+              type="checkbox"
+            />
+            Global Documents
+          </label>
+          {props.specialistOptions.length > 0 ? (
+            <div className="grid gap-2 border-t border-border pt-2">
+              <span className="text-xs font-medium uppercase tracking-[0.15em] text-text-muted">
+                Private Documents
+              </span>
+              {props.specialistOptions.map((specialist) => (
+                <label
+                  className="flex cursor-pointer items-center gap-3 text-text-secondary"
+                  key={specialist.id}
+                >
+                  <input
+                    checked={privateSpecialistIds.has(specialist.id)}
+                    data-testid={`token-documents-specialist-${specialist.id}`}
+                    onChange={(event) => {
+                      setPrivateSpecialistIds((current) => {
+                        const next = new Set(current);
+                        if (event.target.checked) next.add(specialist.id);
+                        else next.delete(specialist.id);
+                        return next;
+                      });
+                    }}
+                    type="checkbox"
+                  />
+                  <span className="text-text-primary">{specialist.name}</span>
+                  <code className="text-xs text-text-muted">{specialist.slug}</code>
+                </label>
+              ))}
+            </div>
+          ) : null}
+          {!documentRootSelected ? (
+            <p className="text-xs text-danger">Select at least one document root.</p>
+          ) : null}
+        </fieldset>
+      ) : null}
 
       {props.templateOptions.length > 0 ? (
         <fieldset
@@ -657,9 +742,17 @@ function summarizePermissions(permissions: ApiTokenPermissions): string[] {
     templateCount > 0
       ? [`${templateCount} template ${templateCount === 1 ? "tool" : "tools"}`]
       : [];
+  const documentBadges = [
+    ...(permissions.documents.global ? ["Global documents"] : []),
+    ...(permissions.documents.privateSpecialistIds.length > 0
+      ? [
+          `${permissions.documents.privateSpecialistIds.length} private document ${permissions.documents.privateSpecialistIds.length === 1 ? "root" : "roots"}`,
+        ]
+      : []),
+  ];
 
   if (enabled.size === 0) {
-    return templateBadges;
+    return [...templateBadges, ...documentBadges];
   }
 
   const fullyOnGroups = API_TOKEN_CAPABILITY_GROUPS.filter((group) =>
@@ -670,12 +763,17 @@ function summarizePermissions(permissions: ApiTokenPermissions): string[] {
   const everyEnabledCovered = [...enabled].every((id) => covered.has(id));
 
   if (fullyOnGroups.length > 0 && everyEnabledCovered) {
-    return [...fullyOnGroups.map((group) => GROUP_LABELS[group]), ...templateBadges];
+    return [
+      ...fullyOnGroups.map((group) => GROUP_LABELS[group]),
+      ...templateBadges,
+      ...documentBadges,
+    ];
   }
 
   return [
     `${enabled.size} ${enabled.size === 1 ? "permission" : "permissions"}`,
     ...templateBadges,
+    ...documentBadges,
   ];
 }
 

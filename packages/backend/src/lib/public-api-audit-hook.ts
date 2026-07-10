@@ -26,7 +26,8 @@ export function createPublicApiAuditHook(
     const method = request.method.toUpperCase();
     const routeTemplate = (request.routeOptions as { url?: string } | undefined)?.url ?? pathname;
     const params = request.params as Record<string, string> | undefined;
-    const target = deriveTarget(pathname, params);
+    const query = request.query as Record<string, string | undefined> | undefined;
+    const target = deriveTarget(pathname, params, query);
     const statusCode = reply.statusCode;
 
     void audit.record({
@@ -47,7 +48,26 @@ export function createPublicApiAuditHook(
 function deriveTarget(
   pathname: string,
   params: Record<string, string> | undefined,
+  query: Record<string, string | undefined> | undefined,
 ): { kind: string | null; id: string | null } {
+  if (pathname === "/api/public/v1/documents/read") {
+    const scope = query?.["scope"];
+    const path = query?.["path"];
+    if (!scope || !path) {
+      return { kind: "document", id: null };
+    }
+    if (scope === "private") {
+      const owner = query?.["owner"];
+      return { kind: "document", id: owner ? `private:${owner}:${path}` : null };
+    }
+    if (scope !== "global") {
+      return { kind: "document", id: null };
+    }
+    return {
+      kind: "document",
+      id: `global:${path}`,
+    };
+  }
   const runId = params?.["runId"];
   const id = params?.["id"];
   if (runId) {

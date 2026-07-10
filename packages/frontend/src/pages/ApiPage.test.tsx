@@ -17,6 +17,7 @@ import {
   getTokenActivity,
   getTokenAuditSettings,
   listApiTokens,
+  listSpecialists,
   listTaskTemplates,
   revokeApiToken,
   updateApiToken,
@@ -28,6 +29,7 @@ vi.mock("@/lib/api", async () => {
     ...actual,
     listApiTokens: vi.fn(),
     listTaskTemplates: vi.fn(),
+    listSpecialists: vi.fn(),
     createApiToken: vi.fn(),
     updateApiToken: vi.fn(),
     revokeApiToken: vi.fn(),
@@ -37,7 +39,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-function makeTemplate(id: string, title: string, exposeAsTool = true) {
+function makeTemplate(id: string, title: string, syncEnabled = true) {
   return {
     id,
     defaultAgentId: "agent-1",
@@ -46,13 +48,14 @@ function makeTemplate(id: string, title: string, exposeAsTool = true) {
     description: "",
     todos: [],
     mcpConfig: {
-      exposeAsTool,
+      syncEnabled,
       toolName: id.replace(/-/g, "_"),
       toolDescription: "",
       textFieldDescription: "",
       allowFiles: true,
       filesFieldDescription: "",
       asyncEnabled: false,
+      asyncAlwaysAcknowledge: false,
       artifacts: { displayableUrlEnabled: true, downloadableUrlEnabled: true },
     },
     enabled: true,
@@ -63,11 +66,12 @@ function makeTemplate(id: string, title: string, exposeAsTool = true) {
 
 const ALL_CAPABILITY_IDS = API_TOKEN_CAPABILITIES.map((capability) => capability.id);
 
-function permsFor(...groups: Array<"templates" | "tasks">): ApiTokenPermissions {
+function permsFor(...groups: Array<"templates" | "tasks" | "documents">): ApiTokenPermissions {
   const capabilities = [...new Set(groups.flatMap((group) => API_TOKEN_PRESETS[group]))];
   return {
     capabilities: ALL_CAPABILITY_IDS.filter((id) => capabilities.includes(id)),
     templates: [],
+    documents: { global: false, privateSpecialistIds: [] },
   };
 }
 
@@ -98,6 +102,8 @@ beforeEach(() => {
   vi.mocked(listApiTokens).mockReset();
   vi.mocked(listTaskTemplates).mockReset();
   vi.mocked(listTaskTemplates).mockResolvedValue([]);
+  vi.mocked(listSpecialists).mockReset();
+  vi.mocked(listSpecialists).mockResolvedValue([]);
   vi.mocked(getTokenAuditSettings).mockReset();
   vi.mocked(getTokenAuditSettings).mockResolvedValue({ retentionWeeks: 4 });
   vi.mocked(getTokenActivity).mockReset();
@@ -186,6 +192,7 @@ describe("ApiPage", () => {
     });
     // Select every permission at once.
     fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+    fireEvent.click(screen.getByTestId("token-documents-global"));
 
     fireEvent.click(screen.getByTestId("token-submit"));
 
@@ -219,7 +226,11 @@ describe("ApiPage", () => {
       token: "cc_secret_value",
       record: makeToken({
         id: "tok-new",
-        permissions: { capabilities: [], templates: ["tmpl-1"] },
+        permissions: {
+          capabilities: [],
+          templates: ["tmpl-1"],
+          documents: { global: false, privateSpecialistIds: [] },
+        },
       }),
     });
     renderPage();
@@ -238,6 +249,80 @@ describe("ApiPage", () => {
         expect.objectContaining({
           name: "Template token",
           permissions: expect.objectContaining({ templates: ["tmpl-1"] }),
+        }),
+      ),
+    );
+  });
+
+  it("offers async-only templates to tokens", async () => {
+    vi.mocked(listApiTokens).mockResolvedValue({ tokens: [] });
+    const asyncOnly = makeTemplate("tmpl-async", "Background report", false);
+    asyncOnly.mcpConfig.asyncEnabled = true;
+    vi.mocked(listTaskTemplates).mockResolvedValue([asyncOnly]);
+    renderPage();
+
+    await screen.findByText("No API tokens yet");
+    fireEvent.click(screen.getByRole("button", { name: "Create token" }));
+
+    expect(await screen.findByTestId("token-template-tmpl-async")).toBeInTheDocument();
+  });
+
+  it("selects global and private document roots", async () => {
+    vi.mocked(listApiTokens).mockResolvedValue({ tokens: [] });
+    vi.mocked(listSpecialists).mockResolvedValue([
+      {
+        id: "specialist-1",
+        slug: "writer",
+        name: "Writer",
+        role: "Write",
+        instructions: "Write.",
+        defaultModel: "openai/gpt-4.1",
+        workspacePath: "/workspace/specialists/writer",
+        status: "active",
+        capabilities: {
+          builtInSkills: [],
+          workspaceSkills: [],
+          customTools: [],
+          mcpServers: [],
+          toolPermissions: [],
+          appMcpServers: [],
+          appToolPermissions: [],
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+    vi.mocked(createApiToken).mockResolvedValue({
+      token: "cc_docs",
+      record: makeToken({
+        permissions: {
+          capabilities: ["read_document"],
+          templates: [],
+          documents: { global: true, privateSpecialistIds: ["specialist-1"] },
+        },
+      }),
+    });
+    renderPage();
+
+    await screen.findByText("No API tokens yet");
+    fireEvent.click(screen.getByRole("button", { name: "Create token" }));
+    fireEvent.change(screen.getByPlaceholderText("Release automation"), {
+      target: { value: "Docs" },
+    });
+    fireEvent.click(screen.getByTestId("permission-read_document"));
+    fireEvent.click(screen.getByTestId("token-documents-global"));
+    fireEvent.click(screen.getByTestId("token-documents-specialist-specialist-1"));
+    fireEvent.click(screen.getByTestId("token-submit"));
+
+    await waitFor(() =>
+      expect(createApiToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          permissions: expect.objectContaining({
+            documents: {
+              global: true,
+              privateSpecialistIds: ["specialist-1"],
+            },
+          }),
         }),
       ),
     );

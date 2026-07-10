@@ -7,6 +7,7 @@ import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orche
 import { createServer } from "../../src/server";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createApiTokenService } from "../../src/services/api-token-service";
+import { createDocumentService } from "../../src/services/document-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { createTaskService } from "../../src/services/task-service";
@@ -184,6 +185,134 @@ describe("public MCP route", () => {
       // get_task_result maps to the templates-group get_task_run capability.
       expect(tasksTools).not.toContain('"name":"get_task_result"');
       expect(tasksTools).not.toContain('"name":"task_template_run"');
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("lists and calls document tools within token-authorized roots", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+      await documents.create({
+        scope: "global",
+        path: "shared/brief.md",
+        content: "Deployment brief",
+      });
+      await documents.create({
+        scope: "global",
+        path: "shared/overview.md",
+        content: "Deployment overview",
+      });
+      const token = apiTokenService.createToken("Documents", {
+        capabilities: ["list_documents", "search_documents", "read_document"],
+        templates: [],
+        documents: { global: true, privateSpecialistIds: [] },
+      }).token;
+
+      const tools = (await callMcp(server, token, "tools/list", {}, 1)).body;
+      expect(tools).toContain('"name":"list_documents"');
+      expect(tools).toContain('"name":"search_documents"');
+      expect(tools).toContain('"name":"read_document"');
+      expect(tools).not.toContain('"name":"list_tasks"');
+
+      const listed = parseSseJson(
+        (
+          await callMcp(
+            server,
+            token,
+            "tools/call",
+            { name: "list_documents", arguments: { limit: 1 } },
+            2,
+          )
+        ).body,
+      ) as { result?: { content?: Array<{ text?: string }> } };
+      expect(listed.result?.content?.[0]?.text).toContain(
+        "Found 2 document match(es); returned 1 in this page.",
+      );
+
+      const searched = parseSseJson(
+        (
+          await callMcp(
+            server,
+            token,
+            "tools/call",
+            { name: "search_documents", arguments: { query: "deployment", limit: 1 } },
+            3,
+          )
+        ).body,
+      ) as { result?: { content?: Array<{ text?: string }> } };
+      expect(searched.result?.content?.[0]?.text).toContain(
+        "Found 2 document match(es); returned 1 in this page.",
+      );
+
+      const read = parseSseJson(
+        (
+          await callMcp(
+            server,
+            token,
+            "tools/call",
+            {
+              name: "read_document",
+              arguments: { scope: "global", path: "shared/brief.md" },
+            },
+            4,
+          )
+        ).body,
+      ) as { result?: { structuredContent?: Record<string, unknown> } };
+      expect(read.result?.structuredContent).toMatchObject({
+        scope: "global",
+        relativePath: "shared/brief.md",
+        content: "Deployment brief",
+      });
+      expect(JSON.stringify(read)).not.toContain(testDb.config.paths.workspaceDir);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("allows document tools through an explicitly scoped MCP URL token", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+      await documents.create({
+        scope: "global",
+        path: "shared/brief.md",
+        content: "Deployment brief",
+      });
+      const token = apiTokenService.createToken("Documents", {
+        capabilities: ["read_document"],
+        templates: [],
+        documents: { global: true, privateSpecialistIds: [] },
+      }).token;
+
+      const read = parseSseJson(
+        (
+          await callMcpWithUrlToken(
+            server,
+            token,
+            "tools/call",
+            {
+              name: "read_document",
+              arguments: { scope: "global", path: "shared/brief.md" },
+            },
+            1,
+          )
+        ).body,
+      ) as { result?: { structuredContent?: Record<string, unknown> } };
+
+      expect(read.result?.structuredContent).toMatchObject({
+        scope: "global",
+        content: "Deployment brief",
+      });
     } finally {
       await server.close();
       await testDb.cleanup();

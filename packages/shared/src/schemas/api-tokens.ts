@@ -5,12 +5,21 @@ import { z } from "zod";
 // store `permissions_json` instead; the record below no longer exposes scopes.
 export const apiTokenScopeSchema = z.enum(["templates", "tasks"]);
 
+export const apiTokenDocumentAccessSchema = z.object({
+  global: z.boolean().default(false),
+  privateSpecialistIds: z.array(z.string().min(1)).default([]),
+});
+
 // Per-token permissions. `capabilities` are catalog capability ids (validated
 // against API_TOKEN_CAPABILITIES in the service). `templates` is scaffolded here
 // and consumed in Phase 3 (per-template MCP tool toggles).
 export const apiTokenPermissionsSchema = z.object({
   capabilities: z.array(z.string().min(1)).default([]),
   templates: z.array(z.string().min(1)).default([]),
+  documents: apiTokenDocumentAccessSchema.default({
+    global: false,
+    privateSpecialistIds: [],
+  }),
 });
 
 const nonEmptyPermissions = (permissions: {
@@ -92,6 +101,7 @@ export type ApiTokenActivityEntry = z.infer<typeof apiTokenActivityEntrySchema>;
 export type ApiTokenActivityListResponse = z.infer<typeof apiTokenActivityListResponseSchema>;
 export type ApiTokenAuditSettings = z.infer<typeof apiTokenAuditSettingsSchema>;
 export type ApiTokenPermissions = z.infer<typeof apiTokenPermissionsSchema>;
+export type ApiTokenDocumentAccess = z.infer<typeof apiTokenDocumentAccessSchema>;
 export type ApiTokenRecord = z.infer<typeof apiTokenRecordSchema>;
 export type ApiTokenListResponse = z.infer<typeof apiTokenListResponseSchema>;
 export type CreateApiTokenInput = z.infer<typeof createApiTokenInputSchema>;

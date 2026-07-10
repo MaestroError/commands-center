@@ -9,8 +9,12 @@ import {
 } from "../../src/schemas/api-tokens.js";
 
 describe("api token permission inputs", () => {
-  it("apiTokenPermissionsSchema defaults both arrays", () => {
-    expect(apiTokenPermissionsSchema.parse({})).toEqual({ capabilities: [], templates: [] });
+  it("apiTokenPermissionsSchema defaults arrays and document access", () => {
+    expect(apiTokenPermissionsSchema.parse({})).toEqual({
+      capabilities: [],
+      templates: [],
+      documents: { global: false, privateSpecialistIds: [] },
+    });
   });
 
   it("createApiTokenInputSchema requires at least one capability or template", () => {

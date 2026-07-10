@@ -45,10 +45,11 @@ describe("task template MCP config", () => {
       });
 
       expect(template.mcpConfig).toMatchObject({
-        exposeAsTool: true,
+        syncEnabled: true,
         toolName: "create_linkedin_post",
         allowFiles: true,
         asyncEnabled: false,
+        asyncAlwaysAcknowledge: false,
         artifacts: { displayableUrlEnabled: true, downloadableUrlEnabled: true },
       });
     } finally {
@@ -66,14 +67,33 @@ describe("task template MCP config", () => {
         defaultAgentId: agentId,
         title: "Weekly Report",
         description: "",
-        mcpConfig: { toolName: "make_report", allowFiles: false, exposeAsTool: false },
+        mcpConfig: { toolName: "make_report", allowFiles: false, syncEnabled: false },
       });
 
       expect(template.mcpConfig).toMatchObject({
         toolName: "make_report",
         allowFiles: false,
-        exposeAsTool: false,
+        syncEnabled: false,
       });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("keeps legacy exposeAsTool as a master switch for async tools", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const template = await taskService.createTemplate({
+        defaultAgentId: agentId,
+        title: "Legacy hidden report",
+        description: "",
+        mcpConfig: { exposeAsTool: false, asyncEnabled: true },
+      });
+
+      expect(template.mcpConfig).toMatchObject({ syncEnabled: false, asyncEnabled: false });
     } finally {
       await testDb.cleanup();
     }

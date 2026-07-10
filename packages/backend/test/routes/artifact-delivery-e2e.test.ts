@@ -18,7 +18,10 @@ import { permissionsForPresets } from "../helpers/api-tokens";
 type InjectServer = Awaited<ReturnType<typeof createServer>>;
 type TestDb = Awaited<ReturnType<typeof createTestDatabase>>;
 
-async function seedRunWithArtifact(testDb: TestDb): Promise<{ taskId: string; runId: string }> {
+async function seedRunWithArtifact(
+  testDb: TestDb,
+  options?: { artifactUrlsEnabled?: boolean },
+): Promise<{ taskId: string; runId: string }> {
   const db = testDb.client.db;
   const taskService = createTaskService({ db, config: testDb.config });
   await db.insert(agents).values({
@@ -35,7 +38,23 @@ async function seedRunWithArtifact(testDb: TestDb): Promise<{ taskId: string; ru
     updated_at: new Date(),
     archived_at: null,
   });
-  const task = await taskService.create({ agentId: "agent-e2e", title: "Deliverable task" });
+  const task =
+    options?.artifactUrlsEnabled === false
+      ? await taskService
+          .createTemplate({
+            defaultAgentId: "agent-e2e",
+            title: "Private deliverable",
+            mcpConfig: {
+              artifacts: { displayableUrlEnabled: false, downloadableUrlEnabled: false },
+            },
+          })
+          .then((template) =>
+            taskService.createTaskFromTemplate(template.id, { triggerSource: "api" }),
+          )
+      : await taskService.create({ agentId: "agent-e2e", title: "Deliverable task" });
+  if (!task) {
+    throw new Error("Failed to create artifact task.");
+  }
   const run = await taskService.createRun({
     taskId: task.id,
     agentId: "agent-e2e",
@@ -80,6 +99,34 @@ function parseSse(body: string): unknown {
 }
 
 describe("artifact delivery end-to-end", () => {
+  it("returns artifact metadata without public URLs when both template toggles are disabled", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const server = await buildServer(testDb, apiTokenService);
+
+    try {
+      const { taskId, runId } = await seedRunWithArtifact(testDb, {
+        artifactUrlsEnabled: false,
+      });
+      const token = apiTokenService.createToken("Tasks", permissionsForPresets("tasks")).token;
+      const detail = await server.inject({
+        method: "GET",
+        url: `/api/public/v1/tasks/${taskId}/runs/${runId}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json<{ artifacts: unknown[] }>().artifacts).toEqual([
+        { title: "Report", type: "file" },
+      ]);
+      expect(detail.body).not.toContain("displayUrl");
+      expect(detail.body).not.toContain("downloadUrl");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("returns servable display/download URLs on the REST run detail", async () => {
     const testDb = await createTestDatabase();
     const apiTokenService = createApiTokenService({ db: testDb.client.db });

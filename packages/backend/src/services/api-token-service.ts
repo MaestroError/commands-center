@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { asc, and, eq, isNull } from "drizzle-orm";
+import { asc, and, eq, inArray, isNull } from "drizzle-orm";
 
 import {
   apiTokenPermissionsSchema,
@@ -14,13 +14,14 @@ import {
 
 import type { AppDb } from "../db/client.js";
 import { createId, now } from "../db/ids.js";
-import { api_tokens } from "../db/schema/index.js";
+import { agents, api_tokens } from "../db/schema/index.js";
 import { BadRequestError } from "../lib/api-error.js";
 
 const TOKEN_PREFIX = "cc_";
 const TOKEN_RANDOM_BYTES = 32;
 const TOKEN_DISPLAY_PREFIX_LENGTH = 12;
 const ORDERED_SCOPES = ["templates", "tasks"] as const;
+const DOCUMENT_CAPABILITIES = new Set(["list_documents", "search_documents", "read_document"]);
 
 export type ApiTokenService = ReturnType<typeof createApiTokenService>;
 
@@ -39,7 +40,7 @@ export function createApiTokenService(options: { db: AppDb }) {
         throw new BadRequestError("Token name is required.");
       }
 
-      const validated = validateInputPermissions(permissions);
+      const validated = validateInputPermissions(options.db, permissions);
       const token = `${TOKEN_PREFIX}${randomBytes(TOKEN_RANDOM_BYTES).toString("base64url")}`;
       const tokenHash = hashToken(token);
       const timestamp = now();
@@ -73,7 +74,7 @@ export function createApiTokenService(options: { db: AppDb }) {
       id: string,
       input: { name?: string; permissions: ApiTokenPermissions },
     ): ApiTokenRecord | null {
-      const validated = validateInputPermissions(input.permissions);
+      const validated = validateInputPermissions(options.db, input.permissions);
       const trimmedName = input.name?.trim();
 
       if (trimmedName !== undefined && trimmedName.length === 0) {
@@ -164,7 +165,10 @@ function hashToken(token: string): string {
 // Strict validation for user input: rejects unknown capability ids, dedupes, and
 // requires at least one capability or template. Templates are not validated
 // against a static catalog here (they are template ids, checked in Phase 3).
-function validateInputPermissions(permissions: ApiTokenPermissions): ApiTokenPermissions {
+function validateInputPermissions(
+  db: AppDb,
+  permissions: ApiTokenPermissions,
+): ApiTokenPermissions {
   const parsed = apiTokenPermissionsSchema.parse(permissions);
 
   for (const capabilityId of parsed.capabilities) {
@@ -175,12 +179,36 @@ function validateInputPermissions(permissions: ApiTokenPermissions): ApiTokenPer
 
   const capabilities = orderApiTokenCapabilityIds(parsed.capabilities);
   const templates = [...new Set(parsed.templates)];
+  const hasDocumentCapability = capabilities.some((id) => DOCUMENT_CAPABILITIES.has(id));
+  const privateSpecialistIds = [...new Set(parsed.documents.privateSpecialistIds)].sort();
+  const documents = hasDocumentCapability
+    ? { global: parsed.documents.global, privateSpecialistIds }
+    : { global: false, privateSpecialistIds: [] };
 
   if (capabilities.length === 0 && templates.length === 0) {
     throw new BadRequestError("At least one token permission is required.");
   }
 
-  return { capabilities, templates };
+  if (hasDocumentCapability && !documents.global && documents.privateSpecialistIds.length === 0) {
+    throw new BadRequestError("Select at least one document root.");
+  }
+
+  if (documents.privateSpecialistIds.length > 0) {
+    const activeIds = new Set(
+      db
+        .select({ id: agents.id })
+        .from(agents)
+        .where(and(inArray(agents.id, documents.privateSpecialistIds), eq(agents.status, "active")))
+        .all()
+        .map((row) => row.id),
+    );
+    const invalidId = documents.privateSpecialistIds.find((id) => !activeIds.has(id));
+    if (invalidId) {
+      throw new BadRequestError(`Unknown or inactive specialist '${invalidId}'.`);
+    }
+  }
+
+  return { capabilities, templates, documents };
 }
 
 // Lenient deserialisation for legacy DB rows: silently ignores unknown scope
@@ -203,6 +231,10 @@ function resolvePermissions(row: typeof api_tokens.$inferSelect): ApiTokenPermis
     return {
       capabilities: orderApiTokenCapabilityIds(parsed.capabilities),
       templates: [...new Set(parsed.templates)],
+      documents: {
+        global: parsed.documents.global,
+        privateSpecialistIds: [...new Set(parsed.documents.privateSpecialistIds)].sort(),
+      },
     };
   }
 
@@ -212,6 +244,7 @@ function resolvePermissions(row: typeof api_tokens.$inferSelect): ApiTokenPermis
   return {
     capabilities: orderApiTokenCapabilityIds(capabilityIds),
     templates: [],
+    documents: { global: false, privateSpecialistIds: [] },
   };
 }
 

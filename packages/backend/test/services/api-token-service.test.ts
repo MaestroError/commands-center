@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
-import { api_tokens } from "../../src/db/schema/index";
+import { agents, api_tokens } from "../../src/db/schema/index";
 import { createApiTokenService } from "../../src/services/api-token-service";
 import { createId, now } from "../../src/db/ids";
 import { createTestDatabase } from "../helpers/db";
@@ -83,7 +83,11 @@ describe("createApiTokenService", () => {
 
     try {
       expect(() =>
-        service.createToken("Bad", { capabilities: ["not_a_real_capability"], templates: [] }),
+        service.createToken("Bad", {
+          capabilities: ["not_a_real_capability"],
+          templates: [],
+          documents: { global: false, privateSpecialistIds: [] },
+        }),
       ).toThrow(/Unknown token capability/);
     } finally {
       await testDb.cleanup();
@@ -183,7 +187,125 @@ describe("createApiTokenService", () => {
     const service = createApiTokenService({ db: testDb.client.db });
 
     try {
-      expect(() => service.createToken("No access", { capabilities: [], templates: [] })).toThrow();
+      expect(() =>
+        service.createToken("No access", {
+          capabilities: [],
+          templates: [],
+          documents: { global: false, privateSpecialistIds: [] },
+        }),
+      ).toThrow();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("stores global and selected private document roots deterministically", async () => {
+    const testDb = await createTestDatabase();
+    const service = createApiTokenService({ db: testDb.client.db });
+
+    try {
+      const timestamp = new Date();
+      await testDb.client.db.insert(agents).values([
+        {
+          id: "specialist-b",
+          slug: "b",
+          name: "B",
+          role: "B",
+          instructions: "B",
+          default_model: "openai/gpt-4.1",
+          status: "active",
+          capabilities_json: "{}",
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        {
+          id: "specialist-a",
+          slug: "a",
+          name: "A",
+          role: "A",
+          instructions: "A",
+          default_model: "openai/gpt-4.1",
+          status: "active",
+          capabilities_json: "{}",
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+      ]);
+
+      const created = service.createToken("Docs", {
+        capabilities: ["read_document"],
+        templates: [],
+        documents: {
+          global: true,
+          privateSpecialistIds: ["specialist-b", "specialist-a", "specialist-b"],
+        },
+      });
+
+      expect(created.record.permissions.documents).toEqual({
+        global: true,
+        privateSpecialistIds: ["specialist-a", "specialist-b"],
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects document capabilities without a root", async () => {
+    const testDb = await createTestDatabase();
+    const service = createApiTokenService({ db: testDb.client.db });
+
+    try {
+      expect(() =>
+        service.createToken("Docs", {
+          capabilities: ["read_document"],
+          templates: [],
+          documents: { global: false, privateSpecialistIds: [] },
+        }),
+      ).toThrow(/document root/i);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects unknown private document specialists", async () => {
+    const testDb = await createTestDatabase();
+    const service = createApiTokenService({ db: testDb.client.db });
+
+    try {
+      expect(() =>
+        service.createToken("Docs", {
+          capabilities: ["list_documents"],
+          templates: [],
+          documents: { global: false, privateSpecialistIds: ["missing"] },
+        }),
+      ).toThrow(/unknown or inactive specialist/i);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("clears document roots when document capabilities are removed", async () => {
+    const testDb = await createTestDatabase();
+    const service = createApiTokenService({ db: testDb.client.db });
+
+    try {
+      const created = service.createToken("Docs", {
+        capabilities: ["read_document"],
+        templates: [],
+        documents: { global: true, privateSpecialistIds: [] },
+      });
+      const updated = service.updateToken(created.record.id, {
+        permissions: {
+          capabilities: ["list_tasks"],
+          templates: [],
+          documents: { global: true, privateSpecialistIds: [] },
+        },
+      });
+
+      expect(updated?.permissions.documents).toEqual({
+        global: false,
+        privateSpecialistIds: [],
+      });
     } finally {
       await testDb.cleanup();
     }

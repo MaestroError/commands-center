@@ -35,6 +35,18 @@ describe("EndpointsTab", () => {
       screen.getByText((content) => content.endsWith("/api/public/mcp?key=<YOUR_API_TOKEN>")),
     ).toBeInTheDocument();
   });
+
+  it("documents controlled REST and MCP document access", () => {
+    render(<EndpointsTab />);
+
+    expect(screen.getByText("Documents")).toBeInTheDocument();
+    expect(screen.getByText(/MCP tool: list_documents/)).toBeInTheDocument();
+    expect(screen.getByText(/MCP tool: search_documents/)).toBeInTheDocument();
+    expect(screen.getByText(/MCP tool: read_document/)).toBeInTheDocument();
+    const readResponse = screen.getByText(/"revision":/);
+    expect(readResponse).toHaveTextContent('"createdAt":');
+    expect(readResponse).toHaveTextContent('"updatedAt":');
+  });
 });
 
 describe("CopyableCode", () => {

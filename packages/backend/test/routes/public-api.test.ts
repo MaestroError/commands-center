@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { agents, task_runs } from "../../src/db/schema/index";
 import { createApiTokenService } from "../../src/services/api-token-service";
 import { createConversationService } from "../../src/services/conversation-service";
+import { createDocumentService } from "../../src/services/document-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
@@ -469,6 +470,90 @@ describe("public task API", () => {
         headers: auth,
       });
       expect(byTemplate.json()).toEqual({ tasks: [] });
+    } finally {
+      taskSchedulerService.stop();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("lists, searches, and reads only token-authorized document roots", async () => {
+    const { testDb, server, apiTokenService, taskSchedulerService } = await setup();
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+      await documents.create({
+        scope: "global",
+        path: "shared/brief.md",
+        content: "Shared deployment brief",
+      });
+      await documents.create({
+        scope: "private",
+        ownerSpecialistId: agent.id,
+        path: "notes/private.md",
+        content: "Private deployment notes",
+      });
+
+      const token = apiTokenService.createToken("Documents", {
+        capabilities: ["list_documents", "search_documents", "read_document"],
+        templates: [],
+        documents: { global: true, privateSpecialistIds: [agent.id] },
+      }).token;
+      const auth = { authorization: `Bearer ${token}` };
+
+      const listed = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/documents",
+        headers: auth,
+      });
+      expect(listed.statusCode).toBe(200);
+      expect(listed.json<{ documents: unknown[] }>().documents).toHaveLength(2);
+      expect(listed.body).not.toContain(testDb.config.paths.workspaceDir);
+      expect(listed.body).not.toContain("ownerSpecialistId");
+
+      const searched = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/documents/search?query=deployment",
+        headers: auth,
+      });
+      expect(searched.statusCode).toBe(200);
+      expect(searched.json<{ documents: unknown[] }>().documents).toHaveLength(2);
+
+      const read = await server.inject({
+        method: "GET",
+        url: `/api/public/v1/documents/read?scope=private&owner=${agent.slug}&path=notes/private.md`,
+        headers: auth,
+      });
+      expect(read.statusCode).toBe(200);
+      expect(read.json()).toMatchObject({
+        scope: "private",
+        ownerSlug: agent.slug,
+        content: "Private deployment notes",
+      });
+
+      const globalOnly = apiTokenService.createToken("Global only", {
+        capabilities: ["read_document"],
+        templates: [],
+        documents: { global: true, privateSpecialistIds: [] },
+      }).token;
+      const hidden = await server.inject({
+        method: "GET",
+        url: `/api/public/v1/documents/read?scope=private&owner=${agent.slug}&path=notes/private.md`,
+        headers: { authorization: `Bearer ${globalOnly}` },
+      });
+      expect(hidden.statusCode).toBe(404);
+
+      const tasksOnly = apiTokenService.createToken(
+        "Tasks only",
+        permissionsForPresets("tasks"),
+      ).token;
+      const forbidden = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/documents",
+        headers: { authorization: `Bearer ${tasksOnly}` },
+      });
+      expect(forbidden.statusCode).toBe(403);
     } finally {
       taskSchedulerService.stop();
       await server.close();

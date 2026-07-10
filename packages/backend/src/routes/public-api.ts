@@ -9,6 +9,9 @@ import {
   listPublicTasksQuerySchema,
   publicSpecialistListResponseSchema,
   publicCreateTaskBodySchema,
+  publicDocumentListResponseSchema,
+  publicDocumentReadSchema,
+  publicDocumentSearchResponseSchema,
   publicFeedbackListResponseSchema,
   publicGetTaskQuerySchema,
   publicScheduleTaskBodySchema,
@@ -34,6 +37,8 @@ import { createArtifactService } from "../services/artifact-service.js";
 import { createArtifactDeliveryService } from "../services/artifact-delivery-service.js";
 import { createArtifactShareLinkService } from "../services/artifact-share-link-service.js";
 import { createPublicTaskApiService } from "../services/public-task-api-service.js";
+import { createDocumentService } from "../services/document-service.js";
+import { createPublicDocumentApiService } from "../services/public-document-api-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskExecutionService } from "../services/task-execution-service.js";
 import { createTaskService } from "../services/task-service.js";
@@ -63,6 +68,38 @@ const artifactDownloadParamsSchema = z.object({
 const artifactDownloadQuerySchema = z.object({
   token: z.string().min(1),
 });
+
+const publicDocumentListQuerySchema = z.object({
+  scope: z.enum(["global", "private"]).optional(),
+  owner: z.string().trim().min(1).optional(),
+  query: z.string().trim().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+const publicDocumentSearchQuerySchema = publicDocumentListQuerySchema.extend({
+  query: z.string().trim().min(1),
+  includeContent: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  maxSnippetsPerDocument: z.coerce.number().int().min(1).max(10).default(3),
+});
+
+const publicDocumentReadQuerySchema = z
+  .object({
+    scope: z.enum(["global", "private"]),
+    owner: z.string().trim().min(1).optional(),
+    path: z.string().trim().min(1),
+  })
+  .superRefine((input, context) => {
+    if (input.scope === "private" && !input.owner) {
+      context.addIssue({ code: "custom", path: ["owner"], message: "Private owner is required" });
+    }
+    if (input.scope === "global" && input.owner) {
+      context.addIssue({ code: "custom", path: ["owner"], message: "Global owner is forbidden" });
+    }
+  });
 
 function parseExpand(expand: string | undefined): Set<string> {
   return new Set(
@@ -156,6 +193,68 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
         }),
     },
   });
+  const documentService = createPublicDocumentApiService({
+    db: context.database.db,
+    documentService: createDocumentService({
+      db: context.database.db,
+      config: context.config,
+      logger: context.logger,
+    }),
+  });
+
+  app.get(
+    "/api/public/v1/documents",
+    {
+      schema: {
+        querystring: publicDocumentListQuerySchema,
+        response: { 200: publicDocumentListResponseSchema },
+      },
+    },
+    async (request) =>
+      documentService.listDocuments(request.apiToken!, {
+        scope: request.query.scope,
+        ownerSlug: request.query.owner,
+        query: request.query.query,
+        limit: request.query.limit,
+        offset: request.query.offset,
+      }),
+  );
+
+  app.get(
+    "/api/public/v1/documents/search",
+    {
+      schema: {
+        querystring: publicDocumentSearchQuerySchema,
+        response: { 200: publicDocumentSearchResponseSchema },
+      },
+    },
+    async (request) =>
+      documentService.searchDocuments(request.apiToken!, {
+        query: request.query.query,
+        scope: request.query.scope,
+        ownerSlug: request.query.owner,
+        includeContent: request.query.includeContent,
+        limit: request.query.limit,
+        offset: request.query.offset,
+        maxSnippetsPerDocument: request.query.maxSnippetsPerDocument,
+      }),
+  );
+
+  app.get(
+    "/api/public/v1/documents/read",
+    {
+      schema: {
+        querystring: publicDocumentReadQuerySchema,
+        response: { 200: publicDocumentReadSchema },
+      },
+    },
+    async (request) =>
+      documentService.readDocument(request.apiToken!, {
+        scope: request.query.scope,
+        ownerSlug: request.query.owner,
+        path: request.query.path,
+      }),
+  );
 
   app.get(
     "/api/public/v1/task-artifacts/download/:shareId",

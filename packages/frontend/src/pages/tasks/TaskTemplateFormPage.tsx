@@ -243,21 +243,7 @@ export function TaskTemplateForm(props: {
           </p>
         )}
       </section>
-      <div className="grid gap-1">
-        <label className="grid gap-1 text-sm text-text-secondary">
-          Acceptance criteria, one per line
-          <textarea
-            className="cc-input min-h-24 resize-y"
-            value={form.todosText}
-            onChange={(event) => updateForm({ todosText: event.target.value })}
-          />
-        </label>
-        <p className="text-xs text-text-muted">
-          What &ldquo;done&rdquo; looks like. The assigned specialist sees these in its run context
-          but can&apos;t check them off — you verify each during review.
-        </p>
-      </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="sticky bottom-3 z-10 flex flex-wrap gap-2 rounded-lg bg-surface py-2">
         <button
           className="cc-button"
           data-testid="task-template-save"
@@ -269,6 +255,20 @@ export function TaskTemplateForm(props: {
         <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
           {props.cancelLabel}
         </button>
+      </div>
+      <div className="grid gap-1">
+        <label className="grid gap-1 text-sm text-text-secondary">
+          Acceptance criteria, one per line
+          <textarea
+            className="cc-input min-h-24 resize-none"
+            value={form.todosText}
+            onChange={(event) => updateForm({ todosText: event.target.value })}
+          />
+        </label>
+        <p className="text-xs text-text-muted">
+          What &ldquo;done&rdquo; looks like. The assigned specialist sees these in its run context
+          but can&apos;t check them off — you verify each during review.
+        </p>
       </div>
     </form>
   );
@@ -288,21 +288,52 @@ function McpConfigSection(props: {
 
   return (
     <section className="grid min-w-0 gap-3 rounded-xl border border-border bg-surface p-4">
+      <h2 className="font-medium text-text-primary">Public MCP tools</h2>
+      <p className="text-sm text-text-secondary">
+        Configure which versions of this template tool are offered on the public MCP server. Each
+        token still chooses which templates it may use.
+      </p>
       <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
         <input
-          checked={form.mcpExposeAsTool}
+          checked={form.mcpSyncEnabled}
           data-testid="template-mcp-expose-input"
-          onChange={(event) => updateForm({ mcpExposeAsTool: event.target.checked })}
+          onChange={(event) => updateForm({ mcpSyncEnabled: event.target.checked })}
           type="checkbox"
         />
-        Expose as MCP tool
+        Enable sync tool
       </label>
-      <p className="text-sm text-text-secondary">
-        When on, this template can be offered as a tool on the public MCP server (each token still
-        chooses which templates it may use).
+      <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
+        <input
+          checked={form.mcpAsyncEnabled}
+          data-testid="template-mcp-async-input"
+          onChange={(event) => updateForm({ mcpAsyncEnabled: event.target.checked })}
+          type="checkbox"
+        />
+        Enable async tool
+      </label>
+      <p className="text-xs text-text-muted">
+        Adds a <code className="font-mono">{effectiveName || "…"}_async</code> tool that starts the
+        task in the background.
       </p>
+      {form.mcpAsyncEnabled ? (
+        <label className="flex items-start gap-2 text-sm text-text-primary">
+          <input
+            checked={form.mcpAsyncAlwaysAcknowledge}
+            className="mt-1"
+            data-testid="template-mcp-async-acknowledge-input"
+            onChange={(event) => updateForm({ mcpAsyncAlwaysAcknowledge: event.target.checked })}
+            type="checkbox"
+          />
+          <span>
+            <span className="block font-medium">Always return success acknowledgement</span>
+            <span className="mt-1 block text-xs text-text-muted">
+              Never return a run id from this async tool, even when the token can check results.
+            </span>
+          </span>
+        </label>
+      ) : null}
 
-      {form.mcpExposeAsTool ? (
+      {form.mcpSyncEnabled || form.mcpAsyncEnabled ? (
         <div className="grid gap-3">
           <label className="grid gap-1 text-sm text-text-secondary">
             Tool name
@@ -360,20 +391,6 @@ function McpConfigSection(props: {
               />
             </label>
           ) : null}
-
-          <label className="flex items-center gap-2 text-sm text-text-primary">
-            <input
-              checked={form.mcpAsyncEnabled}
-              onChange={(event) => updateForm({ mcpAsyncEnabled: event.target.checked })}
-              type="checkbox"
-            />
-            Enable async variant
-          </label>
-          <p className="text-xs text-text-muted">
-            Adds a <code className="font-mono">{effectiveName || "…"}_async</code> tool that returns
-            an id to poll later. Requires the token to allow the result tool (used from a later
-            update).
-          </p>
 
           <div className="grid gap-2 rounded-lg border border-border bg-app-bg p-3">
             <span className="text-xs font-medium uppercase tracking-[0.15em] text-text-muted">

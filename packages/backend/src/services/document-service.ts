@@ -1,4 +1,5 @@
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import type { Stats } from "node:fs";
+import { lstat, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, posix, relative, resolve } from "node:path";
 
 import { and, eq, isNull } from "drizzle-orm";
@@ -47,8 +48,19 @@ type ScopedPathInput = ScopeInput & {
   relativePath: string;
 };
 
+type ReadDocumentInput = string | (ScopedPathInput & { maxContentBytes?: number });
+
 type ListDocumentsInput = ScopeInput & {
   filter?: Partial<DocumentListFilter>;
+};
+
+type ListSearchCandidatesInput = ScopeInput & {
+  maxCandidates: number;
+};
+
+type CollectFilesOptions = {
+  maxItems?: number;
+  includeDescription?: boolean;
 };
 
 type ServiceCreateDocumentInput = Omit<CreateDocumentInput, "scope"> & {
@@ -281,6 +293,37 @@ export function createDocumentService(options: {
     return { ...target, path };
   }
 
+  async function safeFileStat(target: ResolvedScope, relativePath: string): Promise<Stats | null> {
+    const root = await realpath(target.root).catch(() => null);
+    const path = await realpath(resolve(target.root, relativePath)).catch(() => null);
+    if (!root || !path) {
+      return null;
+    }
+
+    try {
+      assertDescendant(root, path);
+    } catch {
+      return null;
+    }
+
+    let current = target.root;
+    for (const segment of relativePath.split("/")) {
+      current = join(current, segment);
+      const currentStat = await lstat(current, { bigint: false }).catch(() => null);
+      if (!currentStat || currentStat.isSymbolicLink()) {
+        return null;
+      }
+    }
+
+    const fileStat = await lstat(resolve(target.root, relativePath), { bigint: false }).catch(
+      () => null,
+    );
+    if (!fileStat?.isFile()) {
+      return null;
+    }
+    return await stat(resolve(target.root, relativePath), { bigint: false }).catch(() => null);
+  }
+
   function documentWhere(target: ResolvedScope, relativePath: string) {
     if (target.scope === "global") {
       return and(
@@ -322,7 +365,7 @@ export function createDocumentService(options: {
     for (const entry of sorted) {
       const entryPath = join(dir, entry);
       const entryRelative = toPosixPath(relativeBase ? `${relativeBase}/${entry}` : entry);
-      const entryStat = await stat(entryPath).catch(() => null);
+      const entryStat = await lstat(entryPath).catch(() => null);
       if (!entryStat) continue;
 
       if (entryStat.isDirectory()) {
@@ -362,7 +405,11 @@ export function createDocumentService(options: {
     dir: string,
     relativeBase: string,
     items: DocumentListItem[],
+    options: CollectFilesOptions = {},
   ): Promise<void> {
+    if (options.maxItems !== undefined && items.length >= options.maxItems) {
+      return;
+    }
     let entries: string[];
     try {
       entries = await readdir(dir);
@@ -371,18 +418,25 @@ export function createDocumentService(options: {
     }
 
     for (const entry of entries.filter((e) => !isHiddenOrExcluded(e)).sort()) {
+      if (options.maxItems !== undefined && items.length >= options.maxItems) {
+        return;
+      }
       const entryPath = join(dir, entry);
       const entryRelative = toPosixPath(relativeBase ? `${relativeBase}/${entry}` : entry);
-      const entryStat = await stat(entryPath).catch(() => null);
+      const entryStat = await lstat(entryPath).catch(() => null);
       if (!entryStat) continue;
 
       if (entryStat.isDirectory()) {
-        await collectFiles(target, entryPath, entryRelative, items);
+        await collectFiles(target, entryPath, entryRelative, items, options);
       } else if (entryStat.isFile() && isMarkdownFile(entry)) {
         const row = await findDocumentRow(target, entryRelative);
 
         let description = row?.description ?? null;
-        if (!description && entryStat.size <= MAX_CONTENT_BYTES) {
+        if (
+          options.includeDescription !== false &&
+          !description &&
+          entryStat.size <= MAX_CONTENT_BYTES
+        ) {
           const content = await readFile(entryPath, "utf8").catch(() => "");
           description = descriptionFromContent(content);
         }
@@ -402,10 +456,14 @@ export function createDocumentService(options: {
   }
 
   async function listGlobalDocuments(): Promise<DocumentListItem[]> {
-    const target = await resolveScope({ scope: "global" });
+    return listAllDocuments({ scope: "global" });
+  }
+
+  async function listAllDocuments(input: ScopeInput): Promise<DocumentListItem[]> {
+    const target = await resolveScope(input);
     const items: DocumentListItem[] = [];
     await collectFiles(target, target.root, "", items);
-    return items;
+    return items.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   }
 
   async function listScopedDocuments(input: ListDocumentsInput): Promise<DocumentListResponse> {
@@ -425,6 +483,18 @@ export function createDocumentService(options: {
       totalMatches,
       nextOffset: nextOffset(filter.offset, filter.limit, totalMatches),
     };
+  }
+
+  async function listSearchCandidates(
+    input: ListSearchCandidatesInput,
+  ): Promise<DocumentListItem[]> {
+    const target = await resolveScope(input);
+    const items: DocumentListItem[] = [];
+    await collectFiles(target, target.root, "", items, {
+      maxItems: input.maxCandidates,
+      includeDescription: false,
+    });
+    return items.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   }
 
   function list(): Promise<DocumentListItem[]>;
@@ -478,20 +548,22 @@ export function createDocumentService(options: {
     return groups;
   }
 
-  async function read(input: string | ScopedPathInput): Promise<DocumentReadResponse> {
+  async function read(input: ReadDocumentInput): Promise<DocumentReadResponse> {
     const scopedInput =
       typeof input === "string" ? { scope: "global" as const, relativePath: input } : input;
     validateDocumentPath(scopedInput.relativePath);
     const target = await resolveScopedPath(scopedInput);
 
-    let fileStat;
-    try {
-      fileStat = await stat(target.path);
-    } catch {
+    const fileStat = await safeFileStat(target, scopedInput.relativePath);
+    if (!fileStat) {
       throw new NotFoundError(`Document not found: ${scopedInput.relativePath}`);
     }
 
-    if (fileStat.size > MAX_CONTENT_BYTES) {
+    const maxContentBytes = Math.min(
+      MAX_CONTENT_BYTES,
+      scopedInput.maxContentBytes ?? MAX_CONTENT_BYTES,
+    );
+    if (fileStat.size > maxContentBytes) {
       throw new BadRequestError("Document is too large to read.");
     }
 
@@ -756,6 +828,8 @@ export function createDocumentService(options: {
     getTree,
     getPrivateTreeGroups,
     list,
+    listAllDocuments,
+    listSearchCandidates,
     read,
     create,
     createFolder,
