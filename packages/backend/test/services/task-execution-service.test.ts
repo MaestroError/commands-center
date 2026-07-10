@@ -1147,7 +1147,7 @@ describe("createTaskExecutionService", () => {
       taskService,
       conversationService,
       monitor: { initialPollMs: 1, maxPollMs: 1, idlePolls: 1 },
-      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 20, jitterRatio: 0 },
+      transportRetry: { initialDelayMs: 1, maxDelayMs: 1, maxElapsedMs: 200, jitterRatio: 0 },
     });
 
     try {
