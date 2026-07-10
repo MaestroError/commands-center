@@ -140,6 +140,7 @@ function GeneratedLinkRow(props: {
       <span className="font-medium text-text-secondary">{props.label}</span>
       <span className="break-all text-text-muted [overflow-wrap:anywhere]">{props.url}</span>
       <button
+        aria-label={props.copied ? `${props.label} copied` : `Copy ${props.label}`}
         className="cc-button cc-button-secondary inline-flex w-fit items-center gap-1 px-2 py-1 text-xs"
         onClick={props.onCopy}
         type="button"

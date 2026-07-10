@@ -321,21 +321,32 @@ export async function getArtifactsByRunIds(
     rows.map((row) => row.artifact.id),
   );
 
-  for (const { runId, artifact, agentSlug } of rows) {
-    if (!runId) {
+  const mappedRows = await Promise.all(
+    rows.map(async ({ runId, artifact, agentSlug }) => {
+      if (!runId) {
+        return undefined;
+      }
+      return {
+        runId,
+        artifact: await mapArtifactRow(
+          config,
+          artifact,
+          shareLinks.get(artifact.id) ?? [],
+          agentSlug,
+        ),
+      };
+    }),
+  );
+
+  for (const mappedRow of mappedRows) {
+    if (!mappedRow) {
       continue;
     }
-    const mapped = await mapArtifactRow(
-      config,
-      artifact,
-      shareLinks.get(artifact.id) ?? [],
-      agentSlug,
-    );
-    const existing = grouped.get(runId);
+    const existing = grouped.get(mappedRow.runId);
     if (existing) {
-      existing.push(mapped);
+      existing.push(mappedRow.artifact);
     } else {
-      grouped.set(runId, [mapped]);
+      grouped.set(mappedRow.runId, [mappedRow.artifact]);
     }
   }
 

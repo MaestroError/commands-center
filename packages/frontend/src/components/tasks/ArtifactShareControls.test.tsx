@@ -81,11 +81,11 @@ describe("ArtifactShareControls", () => {
         "https://share.example/render/abc",
       ),
     );
-    expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Render URL copied" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Copied" }));
+    fireEvent.click(screen.getByRole("button", { name: "Render URL copied" }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(2);
-    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy Download URL" }));
     await waitFor(() =>
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
         "https://share.example/download/abc",
@@ -110,11 +110,13 @@ describe("ArtifactShareControls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
 
     expect(await screen.findByText("https://share.example/render/abc")).toBeInTheDocument();
-    expect(await screen.findAllByRole("button", { name: "Copy" })).toHaveLength(2);
+    expect(await screen.findByRole("button", { name: "Copy Render URL" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Download URL" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Copy" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Copy Render URL" }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(2));
-    expect(screen.getAllByRole("button", { name: "Copy" })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Copy Render URL" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Download URL" })).toBeInTheDocument();
   });
 
   it("shows an error when signed link creation fails", async () => {
