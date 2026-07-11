@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Activity } from "@cc/shared/schemas";
@@ -86,9 +86,10 @@ describe("ActivityBell", () => {
     });
     fireEvent.click(screen.getByLabelText("Activity (1 need attention)"));
     fireEvent.click(screen.getByText("Mark all as read"));
-    const confirmButton = screen.getAllByRole("button", { name: "Mark all as read" })[1]!;
+    const dialog = screen.getByRole("dialog");
+    const confirmButton = within(dialog).getByRole("button", { name: "Mark all as read" });
     fireEvent.mouseDown(confirmButton);
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(dialog).toBeInTheDocument();
     fireEvent.click(confirmButton);
 
     await waitFor(() => expect(api.archiveAllActivities).toHaveBeenCalledOnce());

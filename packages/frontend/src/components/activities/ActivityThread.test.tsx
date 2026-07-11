@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Activity } from "@cc/shared/schemas";
@@ -87,7 +87,9 @@ describe("ActivityThread", () => {
 
     await waitFor(() => expect(screen.getByText("Mark all as read")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Mark all as read"));
-    fireEvent.click(screen.getAllByRole("button", { name: "Mark all as read" })[1]!);
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Mark all as read" }),
+    );
     await waitFor(() => expect(api.archiveAllActivities).toHaveBeenCalledOnce());
   });
 });
