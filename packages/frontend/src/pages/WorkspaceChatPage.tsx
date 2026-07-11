@@ -25,6 +25,7 @@ import { useChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useConversation } from "@/hooks/use-conversation";
 import { useSpecialistCatalogQuery } from "@/hooks/use-specialists-query";
+import { useTaskMutations } from "@/hooks/use-tasks-query";
 import { resolveSpecialistWorkspacePath } from "@/lib/specialist-workspace-path";
 import { recordRecentSpecialist } from "@/lib/recent-specialists";
 import {
@@ -52,6 +53,7 @@ export function WorkspaceChatPage() {
   const { data: catalog } = useSpecialistCatalogQuery();
   const isDesktop = useMediaQuery("(min-width: 1200px)");
   const inspection = useChatInspectionTabs(conv.conversation?.id);
+  const taskMutations = useTaskMutations();
   const resolveLiveRequest = conv.resolveLiveRequest;
   const replyPermission = conv.replyPermission;
   const rejectQuestion = conv.rejectQuestion;
@@ -269,6 +271,8 @@ export function WorkspaceChatPage() {
     );
   }
 
+  const conversationId = conv.conversation.id;
+
   return (
     <>
       <WorkspaceLayout
@@ -284,6 +288,12 @@ export function WorkspaceChatPage() {
                 <WorkspaceFilesTab
                   agentId={conv.agent?.id ?? ""}
                   agentSlug={agentSlug ?? ""}
+                  onAddArtifact={async (file) => {
+                    await taskMutations.addConversationArtifact.mutateAsync({
+                      conversationId,
+                      input: { title: file.name, type: "file", link: file.path },
+                    });
+                  }}
                   onOpenFile={handleOpenQuickFile}
                 />
               ),

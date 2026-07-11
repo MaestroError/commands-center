@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   abortConversation,
+  addConversationArtifact,
   acceptTask,
   cancelTaskRun,
   cancelLiveRequest,
@@ -858,6 +859,36 @@ describe("additional request wrapper coverage", () => {
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/conversations/conv%201/artifacts",
       expect.anything(),
+    );
+  });
+
+  it("adds a conversation artifact with an encoded id", async () => {
+    document.cookie = "cc_csrf_token=csrf-token; path=/";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse({
+        id: "art-2",
+        conversationId: "conv 2",
+        title: "Result.md",
+        type: "file",
+        link: "Result.md",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        shareLinks: [],
+      }),
+    );
+
+    await expect(
+      addConversationArtifact("conv 2", {
+        title: "Result.md",
+        type: "file",
+        link: "Result.md",
+      }),
+    ).resolves.toMatchObject({ id: "art-2" });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/conversations/conv%202/artifacts",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ title: "Result.md", type: "file", link: "Result.md" }),
+      }),
     );
   });
 

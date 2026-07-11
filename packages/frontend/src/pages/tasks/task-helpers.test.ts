@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { TaskTemplate } from "@cc/shared/schemas";
+import type { TaskRun, TaskTemplate } from "@cc/shared/schemas";
 
 import {
+  aggregateRunArtifacts,
   formToTemplateInput,
   getTaskTemplateCreationPrefill,
   templateToForm,
@@ -54,6 +55,42 @@ describe("getTaskTemplateCreationPrefill", () => {
 
     expect(prefill?.title).toBe("No schedule");
     expect(prefill?.recurrence).toBeUndefined();
+  });
+});
+
+describe("aggregateRunArtifacts", () => {
+  it("builds an internal Documents URL for a document artifact", () => {
+    const artifacts = aggregateRunArtifacts([
+      {
+        id: "run-1",
+        taskId: "task-1",
+        agentId: "agent-1",
+        fallbackModels: [],
+        status: "completed",
+        triggerSource: "manual",
+        renderedPrompt: "Create a document",
+        needsHumanReview: false,
+        hasActiveReply: false,
+        artifacts: [
+          {
+            id: "artifact-1",
+            conversationId: "conversation-1",
+            title: "Overview",
+            type: "document",
+            link: "design/overview.md",
+            createdAt: "2026-07-11T00:00:00.000Z",
+            shareLinks: [],
+          },
+        ],
+        createdAt: "2026-07-11T00:00:00.000Z",
+        updatedAt: "2026-07-11T00:00:00.000Z",
+      } satisfies TaskRun,
+    ]);
+
+    expect(artifacts[0]).toMatchObject({
+      href: "/documents?path=design%2Foverview.md",
+      external: false,
+    });
   });
 });
 

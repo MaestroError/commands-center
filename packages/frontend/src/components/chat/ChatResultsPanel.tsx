@@ -67,7 +67,7 @@ function ResultItem({ artifact }: { artifact: Artifact }) {
           <span className="block text-[11px] text-text-muted [overflow-wrap:anywhere]">
             {artifact.link}
           </span>
-          <ArtifactShareControls artifact={artifact} />
+          <ArtifactShareControls artifact={artifact} compact />
         </span>
       </div>
     </li>

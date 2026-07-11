@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 
 import type {
   CancelTaskRunInput,
+  AddArtifactInput,
   CreateTaskFeedbackInput,
   CreateTaskInput,
   CreateTaskRunFollowupInput,
@@ -22,6 +23,7 @@ import type {
 
 import {
   acceptTask,
+  addConversationArtifact,
   archiveTask,
   cancelTaskRun,
   createArtifactShareLink,
@@ -478,6 +480,20 @@ export function useTaskMutations() {
             queryKey: queryKeys.taskRunSession(variables.taskId, variables.runId),
           }),
         ]);
+      },
+    }),
+    addConversationArtifact: useMutation({
+      mutationFn: ({
+        conversationId,
+        input,
+      }: {
+        conversationId: string;
+        input: AddArtifactInput;
+      }) => addConversationArtifact(conversationId, input),
+      onSuccess: async (_artifact, variables) => {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.conversationArtifacts(variables.conversationId),
+        });
       },
     }),
     createArtifactShareLink: useMutation({

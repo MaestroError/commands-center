@@ -2,6 +2,7 @@ import { Markdown } from "@/components/chat/Markdown";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { TabBar } from "@/components/common/TabBar";
 import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
+import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { TaskFeedbackPanelSection } from "@/components/tasks/task-feedback-section";
 import { formatDate, formatToken, readAgentName } from "@/components/tasks/task-format";
 import { StatusBadge } from "@/components/tasks/task-ui";
@@ -255,7 +256,7 @@ function TaskOverview(props: {
             </aside>
           </section>
 
-          <TaskRunOutcomeSummary runs={runsQuery.data ?? []} />
+          <TaskRunOutcomeSummary runs={runsQuery.data ?? []} taskId={task.id} />
           <TaskFeedbackPanelSection
             agent={props.agent}
             agents={props.agents}
@@ -297,7 +298,7 @@ function TaskDecisionSummary(props: { latestRunResult?: string; task: Task }) {
   );
 }
 
-function TaskRunOutcomeSummary(props: { runs: TaskRun[] }) {
+function TaskRunOutcomeSummary(props: { runs: TaskRun[]; taskId: string }) {
   const resultRuns = props.runs.filter(hasTaskResultSummary);
   const artifacts = aggregateRunArtifacts(props.runs);
 
@@ -379,6 +380,7 @@ function TaskRunOutcomeSummary(props: { runs: TaskRun[] }) {
                   Latest:{" "}
                   {formatDate(artifact.latestRun.completedAt ?? artifact.latestRun.updatedAt)}
                 </p>
+                <ArtifactShareControls artifact={artifact.artifact} taskId={props.taskId} />
               </article>
             ))}
           </div>

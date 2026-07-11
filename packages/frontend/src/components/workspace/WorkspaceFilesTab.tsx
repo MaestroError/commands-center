@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FilePenLine, FolderPlus, FolderSearch, Trash2 } from "lucide-react";
+import { FilePenLine, FilePlus2, FolderPlus, FolderSearch, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -19,6 +19,7 @@ type WorkspaceFilesTabProps = {
   agentId: string;
   agentSlug: string;
   onOpenFile?: (path: string) => void;
+  onAddArtifact?: (file: { name: string; path: string }) => Promise<void>;
 };
 
 type TreeNodeProps = {
@@ -28,11 +29,13 @@ type TreeNodeProps = {
   loadingPaths: Set<string>;
   childrenByPath: Record<string, FileNode[]>;
   actionBusyKey?: string;
+  pendingArtifactPaths: Set<string>;
   dropTargetPath: string | null;
   onSelect: (path: string) => void;
   depth: number;
   onOpenLocation: (path: string) => void;
   onOpenFile?: (path: string) => void;
+  onAddArtifact?: (file: { name: string; path: string }) => Promise<void>;
   onDeleteNode: (node: FileNode) => Promise<void>;
   onToggleDirectory: (path: string) => Promise<void>;
   onDropExternalFiles: (
@@ -43,7 +46,12 @@ type TreeNodeProps = {
   onDragTargetChange: (path: string | null) => void;
 };
 
-export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceFilesTabProps) {
+export function WorkspaceFilesTab({
+  agentId,
+  agentSlug,
+  onOpenFile,
+  onAddArtifact,
+}: WorkspaceFilesTabProps) {
   const navigate = useNavigate();
   const [roots, setRoots] = useState<FileNode[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +63,11 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [createFolderValue, setCreateFolderValue] = useState("");
   const [actionBusyKey, setActionBusyKey] = useState<string>();
+  const [pendingArtifactPaths, setPendingArtifactPaths] = useState<Set<string>>(() => new Set());
+  const [artifactStatus, setArtifactStatus] = useState<{
+    message: string;
+    type: "error" | "success";
+  }>();
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const expandedPathsRef = useRef(expandedPaths);
@@ -274,6 +287,33 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
     [agentSlug, refreshTree, selectedPath],
   );
 
+  const handleAddArtifact = useCallback(
+    async (file: { name: string; path: string }) => {
+      if (!onAddArtifact) {
+        return;
+      }
+
+      setPendingArtifactPaths((current) => new Set(current).add(file.path));
+      setArtifactStatus(undefined);
+      try {
+        await onAddArtifact(file);
+        setArtifactStatus({ message: `${file.name} added as an artifact.`, type: "success" });
+      } catch (nextError) {
+        setArtifactStatus({
+          message: nextError instanceof Error ? nextError.message : "Failed to add artifact.",
+          type: "error",
+        });
+      } finally {
+        setPendingArtifactPaths((current) => {
+          const next = new Set(current);
+          next.delete(file.path);
+          return next;
+        });
+      }
+    },
+    [onAddArtifact],
+  );
+
   const handleMoveNode = useCallback(
     async (sourcePath: string, destinationPath: string) => {
       if (sourcePath === destinationPath || sourcePath.startsWith(`${destinationPath}/`)) {
@@ -360,6 +400,14 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
 
     return (
       <>
+        {artifactStatus ? (
+          <p
+            className={`px-1 pb-2 text-xs ${artifactStatus.type === "error" ? "text-danger" : "text-text-secondary"}`}
+            role={artifactStatus.type === "error" ? "alert" : "status"}
+          >
+            {artifactStatus.message}
+          </p>
+        ) : null}
         <p className="px-1 pb-2 text-[11px] text-text-secondary">
           Drop files here to upload. Drag files into message area to mention.
         </p>
@@ -390,7 +438,9 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
               expandedPaths={expandedPaths}
               loadingPaths={loadingPaths}
               node={node}
+              pendingArtifactPaths={pendingArtifactPaths}
               onDeleteNode={handleDeleteNode}
+              onAddArtifact={handleAddArtifact}
               onDragTargetChange={setDropTargetPath}
               onDropExternalFiles={handleDropExternalFiles}
               onMoveNode={handleMoveNode}
@@ -406,6 +456,7 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
     );
   }, [
     actionBusyKey,
+    artifactStatus,
     childrenByPath,
     createFolderValue,
     creatingFolder,
@@ -413,6 +464,7 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
     error,
     expandedPaths,
     handleCreateFolder,
+    handleAddArtifact,
     handleDeleteNode,
     handleDropExternalFiles,
     handleMoveNode,
@@ -420,6 +472,7 @@ export function WorkspaceFilesTab({ agentId, agentSlug, onOpenFile }: WorkspaceF
     loadingPaths,
     onOpenFile,
     openLocation,
+    pendingArtifactPaths,
     roots,
     selectedPath,
     toggleDirectory,
@@ -596,6 +649,21 @@ function TreeNode(props: TreeNodeProps) {
             <FilePenLine className="h-3.5 w-3.5" />
           </button>
         ) : null}
+        {!isDir && props.onAddArtifact ? (
+          <button
+            aria-label={`Add ${node.name} as artifact`}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary opacity-100 transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-40 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+            disabled={props.pendingArtifactPaths.has(node.path)}
+            onClick={(event) => {
+              event.stopPropagation();
+              void props.onAddArtifact?.({ name: node.name, path: node.path });
+            }}
+            title="Add as artifact"
+            type="button"
+          >
+            <FilePlus2 className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
         <button
           aria-label={`Delete ${node.name}`}
           className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary opacity-100 transition hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
@@ -627,7 +695,9 @@ function TreeNode(props: TreeNodeProps) {
               expandedPaths={props.expandedPaths}
               loadingPaths={props.loadingPaths}
               node={child}
+              pendingArtifactPaths={props.pendingArtifactPaths}
               onDeleteNode={props.onDeleteNode}
+              onAddArtifact={props.onAddArtifact}
               onDragTargetChange={props.onDragTargetChange}
               onDropExternalFiles={props.onDropExternalFiles}
               onMoveNode={props.onMoveNode}

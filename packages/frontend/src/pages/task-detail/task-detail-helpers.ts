@@ -2,13 +2,7 @@
 
 import { buildArtifactHref, formatDate } from "@/components/tasks/task-format";
 import { buildFileManagerHref } from "@/lib/file-manager-href";
-import type {
-  ConversationPart,
-  Task,
-  TaskRun,
-  TaskRunArtifact,
-  TaskSubtask,
-} from "@cc/shared/schemas";
+import type { Artifact, ConversationPart, Task, TaskRun, TaskSubtask } from "@cc/shared/schemas";
 
 export function buildTaskContextAttachmentHref(storageKey: string): string {
   return buildFileManagerHref({
@@ -34,6 +28,7 @@ export function readLatestRunResult(
 }
 
 type AggregatedRunArtifact = {
+  artifact: Artifact;
   key: string;
   title: string;
   description?: string;
@@ -49,10 +44,7 @@ export function hasTaskResultSummary(run: TaskRun): boolean {
 }
 
 export function aggregateRunArtifacts(runs: TaskRun[]): AggregatedRunArtifact[] {
-  const byKey = new Map<
-    string,
-    { artifact: TaskRunArtifact; latestRun: TaskRun; runIds: Set<string> }
-  >();
+  const byKey = new Map<string, { artifact: Artifact; latestRun: TaskRun; runIds: Set<string> }>();
 
   for (const run of runs) {
     for (const artifact of run.artifacts) {
@@ -73,6 +65,7 @@ export function aggregateRunArtifacts(runs: TaskRun[]): AggregatedRunArtifact[] 
   }
 
   return [...byKey.entries()].map(([key, entry]) => ({
+    artifact: entry.artifact,
     key,
     title: entry.artifact.title,
     description: entry.artifact.description,

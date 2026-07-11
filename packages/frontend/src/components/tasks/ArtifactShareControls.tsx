@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Copy, Link2, X } from "lucide-react";
 
 import type { Artifact, CreateArtifactShareLinkResponse } from "@cc/shared/schemas";
@@ -7,9 +7,12 @@ import { useTaskMutations } from "@/hooks/use-tasks-query";
 
 type ArtifactShareControlsProps = {
   artifact: Artifact;
+  compact?: boolean;
   // Optional owning task, used to refresh the task's runs after a share change.
   taskId?: string;
 };
+
+const COPIED_FEEDBACK_DURATION_MS = 2_500;
 
 export function ArtifactShareControls(props: ArtifactShareControlsProps) {
   const mutations = useTaskMutations();
@@ -17,14 +20,26 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
   const [copiedLink, setCopiedLink] = useState<"display" | "download" | undefined>();
   const [errorMessage, setErrorMessage] = useState<string>();
 
-  // URL artifacts already point at their public destination.
-  if (props.artifact.type === "url") {
+  useEffect(() => {
+    if (!copiedLink) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setCopiedLink(undefined);
+    }, COPIED_FEEDBACK_DURATION_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [copiedLink]);
+
+  if (props.artifact.type !== "file") {
     return null;
   }
 
   const busy =
     mutations.createArtifactShareLink.isPending || mutations.revokeArtifactShareLink.isPending;
   const shareLinks = props.artifact.shareLinks.filter((link) => link.revokedAt === null);
+  const hasActiveShare = createdLinks !== undefined || shareLinks.length > 0;
 
   async function createLink() {
     setErrorMessage(undefined);
@@ -58,6 +73,7 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
   }
 
   async function copyLink(kind: "display" | "download", url: string) {
+    setCopiedLink(undefined);
     try {
       await copyText(url);
       setCopiedLink(navigator.clipboard ? kind : undefined);
@@ -76,7 +92,7 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
           type="button"
         >
           <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
-          {createdLinks ? "Refresh signed links" : "Create signed link"}
+          {hasActiveShare ? "Replace signed links" : "Create signed links"}
         </button>
       </div>
       {createdLinks ? (
@@ -88,12 +104,14 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
             copied={copiedLink === "display"}
             label="Render URL"
             onCopy={() => void copyLink("display", createdLinks.displayUrl)}
+            showUrl={!props.compact}
             url={createdLinks.displayUrl}
           />
           <GeneratedLinkRow
             copied={copiedLink === "download"}
             label="Download URL"
             onCopy={() => void copyLink("download", createdLinks.downloadUrl)}
+            showUrl={!props.compact}
             url={createdLinks.downloadUrl}
           />
         </div>
@@ -133,12 +151,17 @@ function GeneratedLinkRow(props: {
   copied: boolean;
   label: string;
   onCopy: () => void;
+  showUrl: boolean;
   url: string;
 }) {
   return (
-    <div className="grid gap-1 sm:grid-cols-[5.5rem_minmax(0,1fr)_auto] sm:items-center">
+    <div
+      className={`grid items-center gap-1 ${props.showUrl ? "sm:grid-cols-[5.5rem_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"}`}
+    >
       <span className="font-medium text-text-secondary">{props.label}</span>
-      <span className="break-all text-text-muted [overflow-wrap:anywhere]">{props.url}</span>
+      {props.showUrl ? (
+        <span className="break-all text-text-muted [overflow-wrap:anywhere]">{props.url}</span>
+      ) : null}
       <button
         aria-label={props.copied ? `${props.label} copied` : `Copy ${props.label}`}
         className="cc-button cc-button-secondary inline-flex w-fit items-center gap-1 px-2 py-1 text-xs"

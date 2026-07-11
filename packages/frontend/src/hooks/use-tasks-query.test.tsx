@@ -12,6 +12,7 @@ import type {
 
 vi.mock("@/lib/api", () => ({
   acceptTask: vi.fn(),
+  addConversationArtifact: vi.fn(),
   archiveTask: vi.fn(),
   cancelTaskRun: vi.fn(),
   createTask: vi.fn(),
@@ -55,6 +56,7 @@ vi.mock("@/lib/api", () => ({
 
 import {
   acceptTask,
+  addConversationArtifact,
   archiveTask,
   cancelTaskRun,
   createTask,
@@ -439,6 +441,40 @@ describe("useTaskMutations", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(listConversationArtifacts).toHaveBeenCalledWith("conv-1");
     expect(result.current.data?.artifacts).toHaveLength(1);
+  });
+
+  it("adds an artifact and invalidates only its conversation artifacts", async () => {
+    const queryClient = createQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    vi.mocked(addConversationArtifact).mockResolvedValue({
+      id: "art-2",
+      conversationId: "conv-2",
+      title: "Result.md",
+      type: "file",
+      link: "Result.md",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      shareLinks: [],
+    });
+    const { result } = renderHook(() => useTaskMutations(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.addConversationArtifact.mutateAsync({
+        conversationId: "conv-2",
+        input: { title: "Result.md", type: "file", link: "Result.md" },
+      });
+    });
+
+    expect(addConversationArtifact).toHaveBeenCalledWith("conv-2", {
+      title: "Result.md",
+      type: "file",
+      link: "Result.md",
+    });
+    expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.conversationArtifacts("conv-2"),
+    });
   });
 
   it("disables the artifacts query when the conversation id is missing", () => {

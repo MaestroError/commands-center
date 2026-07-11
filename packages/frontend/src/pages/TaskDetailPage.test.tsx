@@ -41,6 +41,8 @@ vi.mock("@/hooks/use-tasks-query", () => ({
     update: { mutate: updateMutate, isPending: false },
     trigger: { mutate: triggerMutate },
     openInChat: { mutateAsync: openInChatMutateAsync },
+    createArtifactShareLink: { isPending: false, mutateAsync: vi.fn() },
+    revokeArtifactShareLink: { isPending: false, mutateAsync: vi.fn() },
   }),
 }));
 
@@ -77,10 +79,14 @@ function buildRun(overrides: Partial<TaskRun> = {}): TaskRun {
     humanReviewReason: "Please double-check the output.",
     artifacts: [
       {
+        id: "artifact-1",
+        conversationId: "conversation-1",
         type: "file",
         link: "output.txt",
         title: "output.txt",
         description: "Generated file",
+        createdAt: "2026-01-01T00:02:30.000Z",
+        shareLinks: [],
       },
     ],
     ...overrides,
@@ -148,6 +154,7 @@ describe("TaskDetailPage overview", () => {
 
     expect(screen.getByTestId("task-detail-page")).toBeInTheDocument();
     expect(screen.getByText("Review needed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create signed links" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Edit task title" }));
     const input = screen.getByLabelText("Task title");

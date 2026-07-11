@@ -2,7 +2,9 @@ import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
+  addArtifactInputSchema,
   artifactListResponseSchema,
+  artifactSchema,
   pendingInteractionsSchema,
   replyPermissionInputSchema,
   replyQuestionInputSchema,
@@ -63,6 +65,24 @@ export function registerConversationRoutes(server: AppServer, context: RuntimeCo
     async (request) => ({
       artifacts: await artifactService.listByConversation(request.params.conversationId),
     }),
+  );
+
+  app.post(
+    "/api/conversations/:conversationId/artifacts",
+    {
+      schema: {
+        params: conversationParamsSchema,
+        body: addArtifactInputSchema,
+        response: {
+          200: artifactSchema,
+        },
+      },
+    },
+    async (request) =>
+      artifactService.create({
+        conversationId: request.params.conversationId,
+        ...request.body,
+      }),
   );
 
   app.get(

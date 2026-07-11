@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -76,6 +76,71 @@ describe("WorkspaceFilesTab", () => {
     ).toBeInTheDocument();
     expect(await screen.findByText("src")).toBeInTheDocument();
     expect(screen.getByText("README.md")).toBeInTheDocument();
+  });
+
+  it("adds a file as an artifact and never offers the action for a directory", async () => {
+    vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce(rootNodes);
+    const onAddArtifact = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    renderWithRouter({ onAddArtifact });
+
+    expect(await screen.findByRole("button", { name: "Add README.md as artifact" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Add src as artifact" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add README.md as artifact" }));
+
+    expect(onAddArtifact).toHaveBeenCalledWith({ name: "README.md", path: "README.md" });
+    expect(screen.getByRole("status")).toHaveTextContent("README.md added as an artifact.");
+    expect(
+      screen.getByRole("button", { name: /^README.md$/i }).parentElement?.className,
+    ).not.toContain("text-accent");
+  });
+
+  it("shows an artifact registration error and allows retry", async () => {
+    vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce(rootNodes);
+    const onAddArtifact = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Artifact registration failed"))
+      .mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+
+    renderWithRouter({ onAddArtifact });
+    const action = await screen.findByRole("button", { name: "Add README.md as artifact" });
+    await user.click(action);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Artifact registration failed");
+    expect(action).toBeEnabled();
+    await user.click(action);
+    expect(onAddArtifact).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps artifact registration pending while an unrelated delete completes", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(api.getWorkspaceTree)
+      .mockResolvedValueOnce(rootNodes)
+      .mockResolvedValueOnce(rootNodes);
+    let resolveArtifact: (() => void) | undefined;
+    const onAddArtifact = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveArtifact = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+
+    renderWithRouter({ onAddArtifact });
+    const artifactAction = await screen.findByRole("button", {
+      name: "Add README.md as artifact",
+    });
+    await user.click(artifactAction);
+    expect(artifactAction).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Delete src" }));
+    await waitFor(() => expect(api.deleteFileManagerEntry).toHaveBeenCalled());
+    expect(artifactAction).toBeDisabled();
+
+    act(() => resolveArtifact?.());
+    await waitFor(() => expect(artifactAction).toBeEnabled());
   });
 
   it("hides critical entries from the workspace file tab", async () => {
@@ -274,7 +339,10 @@ describe("WorkspaceFilesTab", () => {
   });
 });
 
-function renderWithRouter(options?: { onOpenFile?: (path: string) => void }) {
+function renderWithRouter(options?: {
+  onOpenFile?: (path: string) => void;
+  onAddArtifact?: (file: { name: string; path: string }) => Promise<void>;
+}) {
   return render(
     <MemoryRouter initialEntries={["/chat/agent-1/conversation-1"]}>
       <Routes>
@@ -284,6 +352,7 @@ function renderWithRouter(options?: { onOpenFile?: (path: string) => void }) {
               <WorkspaceFilesTab
                 agentId="agent-1"
                 agentSlug="testing-agent"
+                onAddArtifact={options?.onAddArtifact}
                 onOpenFile={options?.onOpenFile}
               />
               <LocationProbe />
