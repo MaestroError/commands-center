@@ -4,5 +4,5 @@
       selecting duplicate button labels by array position; retain the bell test's
       browser-like `mousedown` regression coverage.
 - [x] Run focused tests, ESLint, typecheck, and the full test suite.
-- [ ] Commit and push the review fixes, update PR #116's title and description
+- [x] Commit and push the review fixes, update PR #116's title and description
       to include the theme dropdown, and resolve the addressed review threads.
