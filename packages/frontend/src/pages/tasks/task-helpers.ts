@@ -1,6 +1,7 @@
 // Split out of TasksPage.tsx (issue #99).
 
 import {
+  buildArtifactHref,
   formatDate,
   formatRepeatSummary,
   formatToken,
@@ -936,11 +937,8 @@ export function aggregateRunArtifacts(runs: TaskRun[]): AggregatedRunArtifact[] 
     title: entry.artifact.title,
     description: entry.artifact.description,
     link: entry.artifact.link,
-    href:
-      entry.artifact.type === "file"
-        ? buildFileManagerHref({ path: entry.artifact.link, openInEditor: true })
-        : entry.artifact.link,
-    external: entry.artifact.type !== "file",
+    href: buildArtifactHref(entry.artifact),
+    external: entry.artifact.type === "url",
     latestRun: entry.latestRun,
     runCount: entry.runIds.size,
   }));

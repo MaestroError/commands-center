@@ -29,6 +29,7 @@ type TreeNodeProps = {
   loadingPaths: Set<string>;
   childrenByPath: Record<string, FileNode[]>;
   actionBusyKey?: string;
+  pendingArtifactPaths: Set<string>;
   dropTargetPath: string | null;
   onSelect: (path: string) => void;
   depth: number;
@@ -62,6 +63,7 @@ export function WorkspaceFilesTab({
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [createFolderValue, setCreateFolderValue] = useState("");
   const [actionBusyKey, setActionBusyKey] = useState<string>();
+  const [pendingArtifactPaths, setPendingArtifactPaths] = useState<Set<string>>(() => new Set());
   const [artifactStatus, setArtifactStatus] = useState<{
     message: string;
     type: "error" | "success";
@@ -291,7 +293,7 @@ export function WorkspaceFilesTab({
         return;
       }
 
-      setActionBusyKey(`artifact:${file.path}`);
+      setPendingArtifactPaths((current) => new Set(current).add(file.path));
       setArtifactStatus(undefined);
       try {
         await onAddArtifact(file);
@@ -302,7 +304,11 @@ export function WorkspaceFilesTab({
           type: "error",
         });
       } finally {
-        setActionBusyKey(undefined);
+        setPendingArtifactPaths((current) => {
+          const next = new Set(current);
+          next.delete(file.path);
+          return next;
+        });
       }
     },
     [onAddArtifact],
@@ -432,6 +438,7 @@ export function WorkspaceFilesTab({
               expandedPaths={expandedPaths}
               loadingPaths={loadingPaths}
               node={node}
+              pendingArtifactPaths={pendingArtifactPaths}
               onDeleteNode={handleDeleteNode}
               onAddArtifact={handleAddArtifact}
               onDragTargetChange={setDropTargetPath}
@@ -465,6 +472,7 @@ export function WorkspaceFilesTab({
     loadingPaths,
     onOpenFile,
     openLocation,
+    pendingArtifactPaths,
     roots,
     selectedPath,
     toggleDirectory,
@@ -645,7 +653,7 @@ function TreeNode(props: TreeNodeProps) {
           <button
             aria-label={`Add ${node.name} as artifact`}
             className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary opacity-100 transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-40 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-            disabled={props.actionBusyKey === `artifact:${node.path}`}
+            disabled={props.pendingArtifactPaths.has(node.path)}
             onClick={(event) => {
               event.stopPropagation();
               void props.onAddArtifact?.({ name: node.name, path: node.path });
@@ -687,6 +695,7 @@ function TreeNode(props: TreeNodeProps) {
               expandedPaths={props.expandedPaths}
               loadingPaths={props.loadingPaths}
               node={child}
+              pendingArtifactPaths={props.pendingArtifactPaths}
               onDeleteNode={props.onDeleteNode}
               onAddArtifact={props.onAddArtifact}
               onDragTargetChange={props.onDragTargetChange}

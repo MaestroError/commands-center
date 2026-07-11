@@ -54,10 +54,11 @@ afterEach(() => {
 });
 
 describe("ArtifactShareControls", () => {
-  it("renders nothing for a non-file artifact", () => {
-    const { container } = render(
-      <ArtifactShareControls artifact={artifact({ type: "url", link: "https://example.com" })} />,
-    );
+  it.each([
+    { type: "url" as const, link: "https://example.com" },
+    { type: "document" as const, link: "reports/summary.md" },
+  ])("renders nothing for a $type artifact", ({ type, link }) => {
+    const { container } = render(<ArtifactShareControls artifact={artifact({ type, link })} />);
     expect(container).toBeEmptyDOMElement();
   });
 

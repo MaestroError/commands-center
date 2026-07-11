@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -111,6 +111,35 @@ describe("WorkspaceFilesTab", () => {
     expect(action).toBeEnabled();
     await user.click(action);
     expect(onAddArtifact).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps artifact registration pending while an unrelated delete completes", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(api.getWorkspaceTree)
+      .mockResolvedValueOnce(rootNodes)
+      .mockResolvedValueOnce(rootNodes);
+    let resolveArtifact: (() => void) | undefined;
+    const onAddArtifact = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveArtifact = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+
+    renderWithRouter({ onAddArtifact });
+    const artifactAction = await screen.findByRole("button", {
+      name: "Add README.md as artifact",
+    });
+    await user.click(artifactAction);
+    expect(artifactAction).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Delete src" }));
+    await waitFor(() => expect(api.deleteFileManagerEntry).toHaveBeenCalled());
+    expect(artifactAction).toBeDisabled();
+
+    act(() => resolveArtifact?.());
+    await waitFor(() => expect(artifactAction).toBeEnabled());
   });
 
   it("hides critical entries from the workspace file tab", async () => {

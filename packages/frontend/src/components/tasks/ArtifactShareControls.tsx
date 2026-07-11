@@ -32,8 +32,7 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
     return () => window.clearTimeout(timeout);
   }, [copiedLink]);
 
-  // URL artifacts already point at their public destination.
-  if (props.artifact.type === "url") {
+  if (props.artifact.type !== "file") {
     return null;
   }
 
