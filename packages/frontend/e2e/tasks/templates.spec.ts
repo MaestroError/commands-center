@@ -70,13 +70,22 @@ test.describe("task templates", { tag: "@tasks" }, () => {
 
     await expect(page).toHaveURL(/\/tasks\/templates\/template-1\/edit/);
     await page.getByTestId("task-template-title-input").fill("Biweekly release notes");
+    await expect(page.locator("form :invalid")).toHaveCount(0);
 
     const patch = page.waitForResponse(
       (response) =>
         response.url().endsWith("/api/tasks/templates/template-1") &&
         response.request().method() === "PATCH",
     );
-    await page.getByTestId("task-template-save").click();
+    const save = page.getByTestId("task-template-save");
+    await save.scrollIntoViewIfNeeded();
+    const centerTarget = await save.evaluate((button) => {
+      const bounds = button.getBoundingClientRect();
+      return document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+        ?.tagName;
+    });
+    expect(centerTarget).toBe("BUTTON");
+    await save.click();
     await patch;
 
     await expect(page).toHaveURL(/view=templates&template=template-1/);

@@ -112,4 +112,52 @@ describe("activity service", () => {
     expect(await service.list()).toHaveLength(0);
     expect(await service.actionRequiredCount()).toBe(0);
   });
+
+  it("archives every pending activity while preserving resolved history", async () => {
+    const pending = await service.emit({
+      kind: "task_completed",
+      level: "action_required",
+      title: "Pending",
+    });
+    const resolved = await service.emit({
+      kind: "feedback_resolved",
+      level: "info",
+      title: "Resolved",
+    });
+    await service.archive(resolved.id);
+
+    expect(await service.archiveAllPending()).toBe(1);
+    const archivedIds = (await service.list({ status: "archived" })).map((activity) => activity.id);
+    expect(archivedIds.sort()).toEqual([pending.id, resolved.id].sort());
+  });
+
+  it("archives only the matching pending completed-task activity", async () => {
+    const matching = await service.emit({
+      kind: "task_completed",
+      level: "action_required",
+      title: "Matching",
+      payload: { taskId: "task-1" },
+    });
+    const otherTask = await service.emit({
+      kind: "task_completed",
+      level: "action_required",
+      title: "Other task",
+      payload: { taskId: "task-2" },
+    });
+    const otherKind = await service.emit({
+      kind: "task_needs_review",
+      level: "action_required",
+      title: "Review",
+      payload: { taskId: "task-1" },
+    });
+
+    expect(await service.archiveCompletedTaskActivities("task-1")).toBe(1);
+    expect((await service.list()).map((activity) => activity.id)).toEqual([
+      otherTask.id,
+      otherKind.id,
+    ]);
+    expect((await service.list({ status: "archived" })).map((activity) => activity.id)).toEqual([
+      matching.id,
+    ]);
+  });
 });

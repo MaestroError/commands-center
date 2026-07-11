@@ -5,6 +5,7 @@ import type { OpenCodeOrchestrator } from "../../src/orchestrator/opencode-orche
 import { createServer } from "../../src/server";
 import type { OpenCodeService } from "../../src/services/opencode-service";
 import { createApiTokenService } from "../../src/services/api-token-service";
+import { createDocumentService } from "../../src/services/document-service";
 import { createSchedulerService } from "../../src/services/scheduler-service";
 import { createSecretService } from "../../src/services/secret-service";
 import { createTaskService } from "../../src/services/task-service";
@@ -101,6 +102,49 @@ describe("per-token execution audit", () => {
         entries: Array<{ surface: string; action: string; outcome: string }>;
       }>();
       expect(body.entries.some((e) => e.surface === "mcp" && e.action === "list_tasks")).toBe(true);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("records a scoped document target for public REST reads", async () => {
+    const testDb = await createTestDatabase();
+    const apiTokenService = createApiTokenService({ db: testDb.client.db });
+    const audit = createTokenAuditService({ db: testDb.client.db, config: testDb.config });
+    const server = await buildServer(testDb, apiTokenService, audit);
+
+    try {
+      const documents = createDocumentService({ db: testDb.client.db, config: testDb.config });
+      await documents.create({
+        scope: "global",
+        path: "shared/brief.md",
+        content: "Deployment brief",
+      });
+      const token = apiTokenService.createToken("Documents", {
+        ...permissionsForPresets("documents"),
+        documents: { global: true, privateSpecialistIds: [] },
+      });
+
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/documents/read?scope=global&path=shared%2Fbrief.md",
+        headers: { authorization: `Bearer ${token.token}` },
+      });
+      expect(response.statusCode).toBe(200);
+
+      await expect
+        .poll(async () => (await audit.listForToken({ tokenId: token.record.id })).entries)
+        .toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              surface: "rest",
+              action: "GET /api/public/v1/documents/read",
+              targetKind: "document",
+              targetId: "global:shared/brief.md",
+            }),
+          ]),
+        );
     } finally {
       await server.close();
       await testDb.cleanup();

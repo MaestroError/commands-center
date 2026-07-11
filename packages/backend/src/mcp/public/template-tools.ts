@@ -22,6 +22,8 @@ import type { PublicMcpRunService } from "./run-service.js";
 
 const ASYNC_NOTE =
   " Starts the run and returns immediately with its id and current status (not the final result); poll get_task_result with the returned runId for the outcome and artifacts.";
+const ASYNC_ACKNOWLEDGEMENT_NOTE =
+  " Starts the run in the background and returns a success acknowledgement without a result identifier.";
 
 type TemplateToolArgs = {
   text?: string;
@@ -39,9 +41,8 @@ export type PublicMcpTemplateToolBuilder = ReturnType<typeof createPublicMcpTemp
 
 export function createPublicMcpTemplateToolBuilder(deps: TemplateToolDeps) {
   return {
-    // Build the per-template tools visible to a token: each active, MCP-exposed
-    // template the token enables becomes one tool (plus an async sibling when the
-    // template opts in and the token can poll results).
+    // Build the independently enabled sync and async tools for each active
+    // template selected by the token.
     async buildForToken(token: ApiTokenRecord): Promise<RegisterableMcpTool[]> {
       const templates = await deps.taskService.listTemplates();
       const canPollResults = tokenHasCapability(token, GET_TASK_RESULT_CAPABILITY);
@@ -49,11 +50,10 @@ export function createPublicMcpTemplateToolBuilder(deps: TemplateToolDeps) {
       const seen = new Set<string>();
 
       for (const template of templates) {
-        if (
-          !template.enabled ||
-          !template.mcpConfig.exposeAsTool ||
-          !tokenHasTemplate(token, template.id)
-        ) {
+        if (!template.enabled || !tokenHasTemplate(token, template.id)) {
+          continue;
+        }
+        if (!template.mcpConfig.syncEnabled && !template.mcpConfig.asyncEnabled) {
           continue;
         }
 
@@ -64,8 +64,7 @@ export function createPublicMcpTemplateToolBuilder(deps: TemplateToolDeps) {
         }
         seen.add(template.mcpConfig.toolName);
 
-        const includeAsync = template.mcpConfig.asyncEnabled && canPollResults;
-        tools.push(...buildTemplateTools(template, deps, includeAsync));
+        tools.push(...buildTemplateTools(template, deps, canPollResults));
       }
 
       return tools;
@@ -76,7 +75,7 @@ export function createPublicMcpTemplateToolBuilder(deps: TemplateToolDeps) {
 function buildTemplateTools(
   template: TaskTemplate,
   deps: TemplateToolDeps,
-  includeAsync: boolean,
+  canPollResults: boolean,
 ): RegisterableMcpTool[] {
   const config = template.mcpConfig;
   const textField = z
@@ -127,8 +126,10 @@ function buildTemplateTools(
     return outcome.run.id;
   }
 
-  const tools: RegisterableMcpTool[] = [
-    {
+  const tools: RegisterableMcpTool[] = [];
+
+  if (config.syncEnabled) {
+    tools.push({
       name: config.toolName,
       description,
       inputSchema,
@@ -140,24 +141,30 @@ function buildTemplateTools(
           }
           return okResult(result);
         }, fallback),
-    },
-  ];
+    });
+  }
 
-  if (includeAsync) {
+  if (config.asyncEnabled) {
+    const returnsRunId = canPollResults && !config.asyncAlwaysAcknowledge;
     tools.push({
       name: `${config.toolName}_async`,
-      description: `${description}${ASYNC_NOTE}`,
+      description: `${description}${returnsRunId ? ASYNC_NOTE : ASYNC_ACKNOWLEDGEMENT_NOTE}`,
       inputSchema,
       execute: (args) =>
         runTool(async () => {
-          const result = await deps.runService.getResult(await trigger(args));
-          if (!result) {
-            throw new Error("Task run not found after trigger.");
-          }
-          return okResult(result);
+          const runId = await trigger(args);
+          return registrationResult(
+            returnsRunId
+              ? `Task registered successfully. runId: ${runId}. Poll get_task_result with this runId.`
+              : "Task registered successfully.",
+          );
         }, fallback),
     });
   }
 
   return tools;
+}
+
+function registrationResult(message: string): ReturnType<typeof okResult> {
+  return { content: [{ type: "text", text: message }] };
 }

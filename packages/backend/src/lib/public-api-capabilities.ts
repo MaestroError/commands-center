@@ -15,6 +15,21 @@ type Matcher = {
 const ROUTE_CAPABILITIES: readonly Matcher[] = [
   {
     method: "GET",
+    pattern: /^\/api\/public\/v1\/documents\/search$/,
+    capability: "search_documents",
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/public\/v1\/documents\/read$/,
+    capability: "read_document",
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/public\/v1\/documents$/,
+    capability: "list_documents",
+  },
+  {
+    method: "GET",
     pattern: /^\/api\/public\/v1\/task-templates$/,
     capability: "list_task_templates",
   },

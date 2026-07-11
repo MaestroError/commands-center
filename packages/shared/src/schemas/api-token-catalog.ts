@@ -12,7 +12,7 @@
 // `list_task_templates` (preserving the pre-capability `either` behavior) even
 // though that capability displays under the `templates` group.
 
-export const API_TOKEN_CAPABILITY_GROUPS = ["templates", "tasks"] as const;
+export const API_TOKEN_CAPABILITY_GROUPS = ["templates", "tasks", "documents"] as const;
 
 export type ApiTokenCapabilityGroup = (typeof API_TOKEN_CAPABILITY_GROUPS)[number];
 
@@ -114,6 +114,24 @@ export const API_TOKEN_CAPABILITIES: readonly ApiTokenCapability[] = [
     label: "List task feedback",
     description: "Read a task's feedback threads and subtask replies.",
   },
+  {
+    id: "list_documents",
+    group: "documents",
+    label: "List documents",
+    description: "List documents available to this token.",
+  },
+  {
+    id: "search_documents",
+    group: "documents",
+    label: "Search documents",
+    description: "Search document metadata and markdown content.",
+  },
+  {
+    id: "read_document",
+    group: "documents",
+    label: "Read document",
+    description: "Read a specific document.",
+  },
 ] as const;
 
 const CAPABILITY_ID_SET: ReadonlySet<string> = new Set(
@@ -138,6 +156,7 @@ export const API_TOKEN_PRESETS: Record<ApiTokenCapabilityGroup, readonly string[
     "get_task_run_detail",
     "list_task_feedback",
   ],
+  documents: ["list_documents", "search_documents", "read_document"],
 };
 
 export function isApiTokenCapabilityId(id: string): boolean {

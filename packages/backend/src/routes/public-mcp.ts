@@ -9,8 +9,10 @@ import { createPublicMcpTemplateToolBuilder } from "../mcp/public/template-tools
 import { createArtifactService } from "../services/artifact-service.js";
 import { createArtifactDeliveryService } from "../services/artifact-delivery-service.js";
 import { createArtifactShareLinkService } from "../services/artifact-share-link-service.js";
+import { createDocumentService } from "../services/document-service.js";
 import { createConversationService } from "../services/conversation-service.js";
 import { createPublicMcpSettingsService } from "../services/public-mcp-settings-service.js";
+import { createPublicDocumentApiService } from "../services/public-document-api-service.js";
 import { createPublicTaskApiService } from "../services/public-task-api-service.js";
 import { createSpecialistService } from "../services/specialist-service.js";
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
@@ -111,7 +113,19 @@ export function registerPublicMcpRoutes(server: AppServer, context: RuntimeConte
     deliveryService,
     resolveDeliveryContext,
   });
-  const registry = createPublicMcpRegistry({ service: publicTaskApiService, runService });
+  const publicDocumentService = createPublicDocumentApiService({
+    db: context.database.db,
+    documentService: createDocumentService({
+      db: context.database.db,
+      config: context.config,
+      logger: context.logger,
+    }),
+  });
+  const registry = createPublicMcpRegistry({
+    service: publicTaskApiService,
+    runService,
+    documentService: publicDocumentService,
+  });
   const templateToolBuilder = createPublicMcpTemplateToolBuilder({
     taskService,
     executionService,

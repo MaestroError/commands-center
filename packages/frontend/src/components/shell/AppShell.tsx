@@ -12,7 +12,6 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useEngineStatusQuery } from "@/hooks/use-engine-status-query";
 import { useSystemVersionQuery } from "@/hooks/use-system-version-query";
 import { useActiveTaskRunsQuery } from "@/hooks/use-tasks-query";
-import { useTheme } from "@/context/use-theme";
 import {
   specialistsSidebarRoute,
   dashboardSidebarRoute,
@@ -23,6 +22,8 @@ import {
 } from "@/app/routes";
 import { readRecentSpecialists } from "@/lib/recent-specialists";
 
+import { ThemeMenu } from "./ThemeMenu";
+
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "cc-sidebar-collapsed";
 const FIRST_RUN_ENV_NOTICE_STORAGE_KEY = "cc-first-run-env-notice-dismissed";
 
@@ -31,7 +32,6 @@ export function AppShell() {
   const pathname = location.pathname;
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const title = getRouteTitle(pathname);
-  const { theme, themes, setTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
@@ -170,18 +170,7 @@ export function AppShell() {
                     cmd+Shift+F
                   </kbd>
                 </button>
-                <button
-                  className="hidden h-9 items-center rounded-md border border-border bg-surface px-3 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary sm:inline-flex"
-                  onClick={() => {
-                    const idx = themes.indexOf(theme ?? themes[0] ?? "dark");
-                    const next = themes[(idx + 1) % themes.length];
-                    if (next) setTheme(next);
-                  }}
-                  type="button"
-                  title="Click to cycle theme"
-                >
-                  Theme: {theme}
-                </button>
+                <ThemeMenu />
                 <ActivityBell />
                 <NavLink className="cc-button cc-button-secondary h-9 rounded-md" to="/profile">
                   Profile

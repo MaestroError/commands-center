@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Artifact } from "@cc/shared/schemas";
 
@@ -43,6 +43,7 @@ async function seedArtifact(
     triggerSource: "manual",
     renderedPrompt: "p",
   });
+
   await db.insert(conversations).values({
     id: `conv-${run.id}`,
     agent_id: agent!.id,
@@ -72,6 +73,64 @@ async function seedArtifact(
 }
 
 describe("createArtifactDeliveryService", () => {
+  it("returns metadata without publishing when both URL types are disabled", async () => {
+    const testDb = await createTestDatabase();
+    const publishArtifact = vi.fn();
+    const delivery = createArtifactDeliveryService({
+      artifactService: { publishArtifact },
+      config: testDb.config,
+    });
+
+    try {
+      const result = await delivery.buildDelivery(
+        {
+          id: "artifact-private",
+          conversationId: "conversation-1",
+          title: "Artifact",
+          type: "file",
+          link: "reports/private.txt",
+          createdAt: new Date().toISOString(),
+          shareLinks: [],
+        },
+        {
+          displayEnabled: false,
+          downloadEnabled: false,
+          baseUrl: "https://cc.example.test",
+          expiresAtMs: 0,
+        },
+      );
+
+      expect(result).toEqual({ title: "Artifact", description: undefined, type: "file" });
+      expect(publishArtifact).not.toHaveBeenCalled();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("suppresses external URL artifact links when display is disabled", async () => {
+    const testDb = await createTestDatabase();
+    const artifactService = createArtifactService({ db: testDb.client.db, config: testDb.config });
+    const delivery = createArtifactDeliveryService({ artifactService, config: testDb.config });
+
+    try {
+      const artifact = await seedArtifact(testDb, {
+        type: "url",
+        link: "https://example.com/private",
+      });
+      const result = await delivery.buildDelivery(artifact, {
+        displayEnabled: false,
+        downloadEnabled: false,
+        baseUrl: "https://cc.example.test",
+        expiresAtMs: 0,
+      });
+
+      expect(result.displayUrl).toBeNull();
+      expect(JSON.stringify(result)).not.toContain("example.com/private");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("passes a url artifact's link through as displayUrl with no download", async () => {
     const testDb = await createTestDatabase();
     const artifactService = createArtifactService({ db: testDb.client.db, config: testDb.config });
@@ -130,6 +189,32 @@ describe("createArtifactDeliveryService", () => {
       });
       expect(displayOnly.displayUrl).toContain("/display");
       expect(displayOnly.downloadUrl).toBeNull();
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("signs only a download URL when display delivery is disabled", async () => {
+    const testDb = await createTestDatabase();
+    const artifactService = createArtifactService({ db: testDb.client.db, config: testDb.config });
+    const delivery = createArtifactDeliveryService({ artifactService, config: testDb.config });
+
+    try {
+      const artifact = await seedArtifact(testDb, {
+        type: "file",
+        link: "reports/notes.txt",
+        content: "hello",
+      });
+
+      const result = await delivery.buildDelivery(artifact, {
+        displayEnabled: false,
+        downloadEnabled: true,
+        baseUrl: "https://cc.example.test",
+        expiresAtMs: Date.now() + 60_000,
+      });
+
+      expect(result.displayUrl).toBeNull();
+      expect(result.downloadUrl).toContain(`/artifacts/${artifact.id}/download`);
     } finally {
       await testDb.cleanup();
     }

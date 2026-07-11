@@ -5,6 +5,7 @@ import { NavLink } from "react-router-dom";
 import { useActivitiesQuery, useArchiveActivityMutation } from "@/hooks/use-activities-query";
 
 import { ActivityCard } from "./ActivityCard";
+import { ArchiveAllActivitiesButton } from "./ArchiveAllActivitiesButton";
 
 export function ActivityBell() {
   const [open, setOpen] = useState(false);
@@ -65,13 +66,16 @@ export function ActivityBell() {
         >
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="text-sm font-semibold text-text-primary">Needs attention</span>
-            <NavLink
-              to="/"
-              className="text-xs text-accent hover:underline"
-              onClick={() => setOpen(false)}
-            >
-              View all
-            </NavLink>
+            <div className="flex items-center gap-3">
+              <ArchiveAllActivitiesButton count={query.data?.activities.length ?? 0} compact />
+              <NavLink
+                to="/"
+                className="text-xs text-accent hover:underline"
+                onClick={() => setOpen(false)}
+              >
+                View all
+              </NavLink>
+            </div>
           </div>
           <div className="max-h-[calc(100vh-10rem)] overflow-y-auto p-2 sm:max-h-96">
             {actionable.length === 0 ? (

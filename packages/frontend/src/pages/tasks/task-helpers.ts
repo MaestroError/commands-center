@@ -265,25 +265,27 @@ export type FormState = {
   enabled: boolean;
   todosText: string;
   // MCP tool config (templates only; tasks ignore these).
-  mcpExposeAsTool: boolean;
+  mcpSyncEnabled: boolean;
   mcpToolName: string;
   mcpToolDescription: string;
   mcpTextFieldDescription: string;
   mcpAllowFiles: boolean;
   mcpFilesFieldDescription: string;
   mcpAsyncEnabled: boolean;
+  mcpAsyncAlwaysAcknowledge: boolean;
   mcpDisplayableUrlEnabled: boolean;
   mcpDownloadableUrlEnabled: boolean;
 };
 
 const DEFAULT_MCP_FORM_FIELDS = {
-  mcpExposeAsTool: true,
+  mcpSyncEnabled: true,
   mcpToolName: "",
   mcpToolDescription: "",
   mcpTextFieldDescription: "",
   mcpAllowFiles: true,
   mcpFilesFieldDescription: "",
   mcpAsyncEnabled: false,
+  mcpAsyncAlwaysAcknowledge: false,
   mcpDisplayableUrlEnabled: true,
   mcpDownloadableUrlEnabled: true,
 } as const;
@@ -345,13 +347,14 @@ export function templateToForm(
     repeatEnabled: Boolean(recurrence),
     enabled: template?.enabled ?? true,
     todosText: template?.todos.map((todo) => todo.content).join("\n") ?? "",
-    mcpExposeAsTool: template?.mcpConfig.exposeAsTool ?? true,
+    mcpSyncEnabled: template?.mcpConfig.syncEnabled ?? true,
     mcpToolName: template?.mcpConfig.toolName ?? "",
     mcpToolDescription: template?.mcpConfig.toolDescription ?? "",
     mcpTextFieldDescription: template?.mcpConfig.textFieldDescription ?? "",
     mcpAllowFiles: template?.mcpConfig.allowFiles ?? true,
     mcpFilesFieldDescription: template?.mcpConfig.filesFieldDescription ?? "",
     mcpAsyncEnabled: template?.mcpConfig.asyncEnabled ?? false,
+    mcpAsyncAlwaysAcknowledge: template?.mcpConfig.asyncAlwaysAcknowledge ?? false,
     mcpDisplayableUrlEnabled: template?.mcpConfig.artifacts.displayableUrlEnabled ?? true,
     mcpDownloadableUrlEnabled: template?.mcpConfig.artifacts.downloadableUrlEnabled ?? true,
   };
@@ -478,7 +481,7 @@ export function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
     : null;
 
   input.mcpConfig = {
-    exposeAsTool: form.mcpExposeAsTool,
+    syncEnabled: form.mcpSyncEnabled,
     // Empty means "derive from title" server-side.
     toolName: form.mcpToolName.trim() ? form.mcpToolName.trim() : undefined,
     toolDescription: form.mcpToolDescription,
@@ -486,6 +489,7 @@ export function formToTemplateInput(form: FormState): CreateTaskTemplateInput {
     allowFiles: form.mcpAllowFiles,
     filesFieldDescription: form.mcpFilesFieldDescription,
     asyncEnabled: form.mcpAsyncEnabled,
+    asyncAlwaysAcknowledge: form.mcpAsyncAlwaysAcknowledge,
     artifacts: {
       displayableUrlEnabled: form.mcpDisplayableUrlEnabled,
       downloadableUrlEnabled: form.mcpDownloadableUrlEnabled,

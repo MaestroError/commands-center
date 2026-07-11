@@ -12,6 +12,7 @@ import { createTaskContextAttachmentService } from "../../src/services/task-cont
 import { createTaskExecutionService } from "../../src/services/task-execution-service";
 import { createTaskSchedulerService } from "../../src/services/task-scheduler-service";
 import { createTaskService } from "../../src/services/task-service";
+import { createActivityService } from "../../src/services/activity-service";
 import { createLogger } from "../../src/lib/logger";
 import { createServer } from "../../src/server";
 import type { AppDb } from "../../src/db/client";
@@ -27,6 +28,7 @@ describe("task routes", () => {
   it("supports board task lifecycle and run history endpoints", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const activityService = createActivityService({ db: testDb.client.db });
     const opencodeService = createMockOpenCodeService();
     const conversationService = createConversationService({
       db: testDb.client.db,
@@ -73,6 +75,18 @@ describe("task routes", () => {
 
       expect(created.statusCode).toBe(201);
       const task = created.json<{ id: string }>();
+      const completedActivity = await activityService.emit({
+        kind: "task_completed",
+        level: "action_required",
+        title: "Task completed: Ship release",
+        payload: { taskId: task.id },
+      });
+      const unrelatedActivity = await activityService.emit({
+        kind: "task_completed",
+        level: "action_required",
+        title: "Task completed: Other task",
+        payload: { taskId: "other-task" },
+      });
 
       const listed = await server.inject({ method: "GET", url: "/api/tasks" });
       const fetched = await server.inject({ method: "GET", url: `/api/tasks/${task.id}` });
@@ -211,6 +225,8 @@ describe("task routes", () => {
       expect(activeRuns.json()).toEqual([]);
       expect(accepted.statusCode).toBe(200);
       expect(accepted.json().status).toBe("done");
+      expect((await activityService.get(completedActivity.id))?.status).toBe("archived");
+      expect((await activityService.get(unrelatedActivity.id))?.status).toBe("pending");
       expect(archiveList.statusCode).toBe(200);
       expect(archiveList.json()).toEqual([]);
       expect(schedulerState.statusCode).toBe(200);
