@@ -73,6 +73,7 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
   }
 
   async function copyLink(kind: "display" | "download", url: string) {
+    setCopiedLink(undefined);
     try {
       await copyText(url);
       setCopiedLink(navigator.clipboard ? kind : undefined);

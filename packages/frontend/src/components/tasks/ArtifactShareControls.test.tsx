@@ -147,6 +147,41 @@ describe("ArtifactShareControls", () => {
     expect(screen.getByRole("button", { name: "Copy Render URL" })).toBeInTheDocument();
   });
 
+  it("restarts copied feedback when the same URL is copied again", async () => {
+    vi.useFakeTimers();
+    createMutateAsync.mockResolvedValue({
+      shareId: "share-1",
+      url: "https://share.example/abc",
+      displayUrl: "https://share.example/render/abc",
+      downloadUrl: "https://share.example/download/abc",
+      expiresAt: null,
+    });
+    render(<ArtifactShareControls artifact={artifact()} compact />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create signed links" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Render URL copied" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(screen.getByRole("button", { name: "Render URL copied" })).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(1_900);
+    });
+    expect(screen.getByRole("button", { name: "Copy Render URL" })).toBeInTheDocument();
+  });
+
   it("still reveals the link when copying to the clipboard fails", async () => {
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },

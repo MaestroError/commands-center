@@ -403,7 +403,7 @@ export function WorkspaceFilesTab({
         {artifactStatus ? (
           <p
             className={`px-1 pb-2 text-xs ${artifactStatus.type === "error" ? "text-danger" : "text-text-secondary"}`}
-            role="status"
+            role={artifactStatus.type === "error" ? "alert" : "status"}
           >
             {artifactStatus.message}
           </p>

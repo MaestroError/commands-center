@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import type { AppDb } from "../../src/db/client";
 import { agents, artifact_share_links, conversations } from "../../src/db/schema/index";
@@ -288,6 +288,53 @@ describe("task artifact sharing", () => {
         });
         expect(response.statusCode).toBe(200);
       }
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("preserves the active share when replacement insertion fails", async () => {
+    const { testDb, taskService, server } = await setup();
+
+    try {
+      const { taskId, runId } = await createRunWithArtifact(testDb.client.db, taskService, {
+        workspaceDir: testDb.config.paths.workspaceDir,
+        artifactPath: "reports/atomic.md",
+        content: "atomic report",
+      });
+      const artifact = (
+        await server.inject({
+          method: "GET",
+          url: `/api/tasks/${taskId}/runs/${runId}/artifacts`,
+        })
+      ).json<{ artifacts: Array<{ id: string }> }>().artifacts[0]!;
+      const first = (
+        await server.inject({
+          method: "POST",
+          url: `/api/artifacts/${artifact.id}/share-links`,
+          payload: {},
+        })
+      ).json<{ shareId: string }>();
+
+      testDb.client.db.run(sql`
+        CREATE TRIGGER reject_artifact_share_insert
+        BEFORE INSERT ON artifact_share_links
+        BEGIN
+          SELECT RAISE(ABORT, 'forced replacement failure');
+        END
+      `);
+      const replacement = await server.inject({
+        method: "POST",
+        url: `/api/artifacts/${artifact.id}/share-links`,
+        payload: {},
+      });
+
+      expect(replacement.statusCode).toBe(500);
+      const row = await testDb.client.db.query.artifact_share_links.findFirst({
+        where: (table, operators) => operators.eq(table.id, first.shareId),
+      });
+      expect(row?.revoked_at).toBeNull();
     } finally {
       await server.close();
       await testDb.cleanup();

@@ -21,3 +21,17 @@ Address all four unresolved review threads on PR 117 and resolve them after veri
 4. Verify and close review threads.
    - Run ESLint with `--fix`, typecheck, focused tests, and full relevant suites.
    - Reply to each thread with the implemented change and resolve it through GitHub's review-thread API.
+
+## Second review round
+
+1. Make share-link rotation atomic.
+   - Run active-row revocation and replacement insertion in one database transaction.
+   - Verify an insertion failure rolls back the revocation and preserves the previous active share.
+
+2. Restart copy feedback on every copy click.
+   - Clear copied state before the asynchronous clipboard write so repeated clicks of the same Render or Download button schedule a fresh 2.5-second timeout.
+   - Add fake-timer coverage for repeated same-button copying.
+
+3. Use the correct live-region role for artifact results.
+   - Render failures with `role="alert"` and successes with `role="status"`.
+   - Cover both announcement modes in component tests.

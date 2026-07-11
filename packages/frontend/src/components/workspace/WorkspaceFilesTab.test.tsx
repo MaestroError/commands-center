@@ -90,6 +90,7 @@ describe("WorkspaceFilesTab", () => {
     await user.click(screen.getByRole("button", { name: "Add README.md as artifact" }));
 
     expect(onAddArtifact).toHaveBeenCalledWith({ name: "README.md", path: "README.md" });
+    expect(screen.getByRole("status")).toHaveTextContent("README.md added as an artifact.");
     expect(
       screen.getByRole("button", { name: /^README.md$/i }).parentElement?.className,
     ).not.toContain("text-accent");
@@ -107,7 +108,7 @@ describe("WorkspaceFilesTab", () => {
     const action = await screen.findByRole("button", { name: "Add README.md as artifact" });
     await user.click(action);
 
-    expect(await screen.findByText("Artifact registration failed")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Artifact registration failed");
     expect(action).toBeEnabled();
     await user.click(action);
     expect(onAddArtifact).toHaveBeenCalledTimes(2);

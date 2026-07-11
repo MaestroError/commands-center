@@ -74,26 +74,30 @@ export function createArtifactShareLinkService(options: {
         expiresInMinutes === 0 ? null : new Date(timestamp.getTime() + expiresInMinutes * 60_000);
       const shareId = createId();
 
-      await options.db
-        .update(artifact_share_links)
-        .set({ revoked_at: timestamp })
-        .where(
-          and(
-            eq(artifact_share_links.artifact_id, artifact.id),
-            isNull(artifact_share_links.revoked_at),
-          ),
-        );
+      options.db.transaction((tx) => {
+        tx.update(artifact_share_links)
+          .set({ revoked_at: timestamp })
+          .where(
+            and(
+              eq(artifact_share_links.artifact_id, artifact.id),
+              isNull(artifact_share_links.revoked_at),
+            ),
+          )
+          .run();
 
-      await options.db.insert(artifact_share_links).values({
-        id: shareId,
-        artifact_id: artifact.id,
-        token_hash: tokenHash,
-        token_prefix: token.slice(0, 8),
-        created_at: timestamp,
-        expires_at: expiresAt,
-        revoked_at: null,
-        last_used_at: null,
-        download_count: 0,
+        tx.insert(artifact_share_links)
+          .values({
+            id: shareId,
+            artifact_id: artifact.id,
+            token_hash: tokenHash,
+            token_prefix: token.slice(0, 8),
+            created_at: timestamp,
+            expires_at: expiresAt,
+            revoked_at: null,
+            last_used_at: null,
+            download_count: 0,
+          })
+          .run();
       });
 
       const displayUrl = buildShareUrl(input.baseUrl, shareId, "display", token);
