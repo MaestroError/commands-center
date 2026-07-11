@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 export function ConfirmDialog(props: {
   title: string;
@@ -9,11 +10,13 @@ export function ConfirmDialog(props: {
   onCancel: () => void;
   secondaryLabel?: string;
   onSecondary?: () => void;
+  confirmDisabled?: boolean;
 }) {
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6"
       onClick={props.onCancel}
+      onMouseDown={(event) => event.stopPropagation()}
     >
       <section
         aria-labelledby="confirm-dialog-title"
@@ -31,6 +34,7 @@ export function ConfirmDialog(props: {
             className={
               props.confirmVariant === "danger" ? "cc-button cc-button-danger" : "cc-button"
             }
+            disabled={props.confirmDisabled}
             onClick={props.onConfirm}
             type="button"
           >
@@ -50,6 +54,7 @@ export function ConfirmDialog(props: {
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

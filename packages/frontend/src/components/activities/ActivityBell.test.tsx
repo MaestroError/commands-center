@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Activity } from "@cc/shared/schemas";
@@ -12,6 +12,7 @@ import * as api from "@/lib/api";
 vi.mock("@/lib/api", () => ({
   getActivities: vi.fn(),
   archiveActivity: vi.fn(),
+  archiveAllActivities: vi.fn(),
 }));
 
 function makeWrapper() {
@@ -40,6 +41,7 @@ function activity(overrides: Partial<Activity> & { id: string; title: string }):
 beforeEach(() => {
   vi.mocked(api.getActivities).mockReset();
   vi.mocked(api.archiveActivity).mockReset();
+  vi.mocked(api.archiveAllActivities).mockReset();
 });
 
 describe("ActivityBell", () => {
@@ -68,5 +70,28 @@ describe("ActivityBell", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Activity")).toBeInTheDocument();
     });
+  });
+
+  it("marks all pending activities as read after confirmation", async () => {
+    vi.mocked(api.getActivities).mockResolvedValue({
+      activities: [activity({ id: "a1", title: "Secret needed: GITHUB_TOKEN" })],
+      actionRequiredCount: 1,
+    });
+    vi.mocked(api.archiveAllActivities).mockResolvedValue({ archivedCount: 1 });
+
+    render(<ActivityBell />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Activity (1 need attention)")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByLabelText("Activity (1 need attention)"));
+    fireEvent.click(screen.getByText("Mark all as read"));
+    const dialog = screen.getByRole("dialog");
+    const confirmButton = within(dialog).getByRole("button", { name: "Mark all as read" });
+    fireEvent.mouseDown(confirmButton);
+    expect(dialog).toBeInTheDocument();
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(api.archiveAllActivities).toHaveBeenCalledOnce());
   });
 });

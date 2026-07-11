@@ -368,7 +368,16 @@ export function useTaskMutations() {
       },
     }),
     archive: useMutation({ mutationFn: archiveTask, onSuccess: invalidateTasks }),
-    accept: useMutation({ mutationFn: acceptTask, onSuccess: invalidateTasks }),
+    accept: useMutation({
+      mutationFn: acceptTask,
+      onSuccess: async (task) => {
+        await Promise.all([
+          invalidateTasks(task),
+          queryClient.invalidateQueries({ queryKey: queryKeys.activities }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.activitiesResolved }),
+        ]);
+      },
+    }),
     restore: useMutation({ mutationFn: restoreTask, onSuccess: invalidateTasks }),
     enable: useMutation({ mutationFn: enableTask, onSuccess: invalidateTasks }),
     disable: useMutation({ mutationFn: disableTask, onSuccess: invalidateTasks }),

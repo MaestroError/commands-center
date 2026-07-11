@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { activityListResponseSchema, activitySchema } from "@cc/shared/schemas";
+import {
+  activityListResponseSchema,
+  activitySchema,
+  archiveAllActivitiesResponseSchema,
+} from "@cc/shared/schemas";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
@@ -34,6 +38,14 @@ export function registerActivityRoutes(server: AppServer, context: RuntimeContex
       ]);
       return { activities, actionRequiredCount };
     },
+  );
+
+  app.post(
+    "/api/activities/archive-all",
+    {
+      schema: { response: { 200: archiveAllActivitiesResponseSchema } },
+    },
+    async () => ({ archivedCount: await service.archiveAllPending() }),
   );
 
   app.post(

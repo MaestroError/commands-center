@@ -81,6 +81,32 @@ describe("activity routes", () => {
     }
   });
 
+  it("archives all pending activities", async () => {
+    const { testDb, server, activityService } = await setup();
+    try {
+      await activityService.emit({
+        kind: "task_completed",
+        level: "action_required",
+        title: "Done",
+      });
+      await activityService.emit({ kind: "feedback_resolved", level: "info", title: "Feedback" });
+
+      const response = await server.inject({ method: "POST", url: "/api/activities/archive-all" });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ archivedCount: 2 });
+      expect((await server.inject({ method: "GET", url: "/api/activities" })).json()).toMatchObject(
+        {
+          activities: [],
+          actionRequiredCount: 0,
+        },
+      );
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("404s when archiving an unknown activity", async () => {
     const { testDb, server } = await setup();
     try {

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { archiveActivity, fillSecret, getActivities } from "@/lib/api";
+import { archiveActivity, archiveAllActivities, fillSecret, getActivities } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 
 import type { ActivityListResponse } from "@cc/shared/schemas";
@@ -50,6 +50,17 @@ export function useArchiveActivityMutation() {
       }
     },
     onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.activities });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.activitiesResolved });
+    },
+  });
+}
+
+export function useArchiveAllActivitiesMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: archiveAllActivities,
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.activities });
       void queryClient.invalidateQueries({ queryKey: queryKeys.activitiesResolved });
     },
