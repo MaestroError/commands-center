@@ -2,6 +2,8 @@ import { apiFetch, readApiError, requestJson } from "./client";
 
 import {
   cancelTaskRunInputSchema,
+  addArtifactInputSchema,
+  artifactSchema,
   createArtifactShareLinkInputSchema,
   createArtifactShareLinkResponseSchema,
   conversationSnapshotSchema,
@@ -33,6 +35,8 @@ import {
   uploadTaskContextAttachmentInputSchema,
   uploadTaskContextAttachmentResponseSchema,
   type CancelTaskRunInput,
+  type AddArtifactInput,
+  type Artifact,
   type CreateTaskFeedbackInput,
   type CreateArtifactShareLinkInput,
   type CreateArtifactShareLinkResponse,
@@ -343,6 +347,20 @@ export async function listConversationArtifacts(
   return requestJson<ArtifactListResponse>(
     `/api/conversations/${encodeURIComponent(conversationId)}/artifacts`,
     artifactListResponseSchema,
+  );
+}
+
+export async function addConversationArtifact(
+  conversationId: string,
+  input: AddArtifactInput,
+): Promise<Artifact> {
+  return requestJson<Artifact>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/artifacts`,
+    artifactSchema,
+    {
+      method: "POST",
+      body: addArtifactInputSchema.parse(input),
+    },
   );
 }
 

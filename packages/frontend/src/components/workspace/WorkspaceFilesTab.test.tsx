@@ -78,6 +78,41 @@ describe("WorkspaceFilesTab", () => {
     expect(screen.getByText("README.md")).toBeInTheDocument();
   });
 
+  it("adds a file as an artifact and never offers the action for a directory", async () => {
+    vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce(rootNodes);
+    const onAddArtifact = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    renderWithRouter({ onAddArtifact });
+
+    expect(await screen.findByRole("button", { name: "Add README.md as artifact" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Add src as artifact" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add README.md as artifact" }));
+
+    expect(onAddArtifact).toHaveBeenCalledWith({ name: "README.md", path: "README.md" });
+    expect(
+      screen.getByRole("button", { name: /^README.md$/i }).parentElement?.className,
+    ).not.toContain("text-accent");
+  });
+
+  it("shows an artifact registration error and allows retry", async () => {
+    vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce(rootNodes);
+    const onAddArtifact = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Artifact registration failed"))
+      .mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+
+    renderWithRouter({ onAddArtifact });
+    const action = await screen.findByRole("button", { name: "Add README.md as artifact" });
+    await user.click(action);
+
+    expect(await screen.findByText("Artifact registration failed")).toBeInTheDocument();
+    expect(action).toBeEnabled();
+    await user.click(action);
+    expect(onAddArtifact).toHaveBeenCalledTimes(2);
+  });
+
   it("hides critical entries from the workspace file tab", async () => {
     vi.mocked(api.getWorkspaceTree).mockResolvedValueOnce([
       ...rootNodes,
@@ -274,7 +309,10 @@ describe("WorkspaceFilesTab", () => {
   });
 });
 
-function renderWithRouter(options?: { onOpenFile?: (path: string) => void }) {
+function renderWithRouter(options?: {
+  onOpenFile?: (path: string) => void;
+  onAddArtifact?: (file: { name: string; path: string }) => Promise<void>;
+}) {
   return render(
     <MemoryRouter initialEntries={["/chat/agent-1/conversation-1"]}>
       <Routes>
@@ -284,6 +322,7 @@ function renderWithRouter(options?: { onOpenFile?: (path: string) => void }) {
               <WorkspaceFilesTab
                 agentId="agent-1"
                 agentSlug="testing-agent"
+                onAddArtifact={options?.onAddArtifact}
                 onOpenFile={options?.onOpenFile}
               />
               <LocationProbe />

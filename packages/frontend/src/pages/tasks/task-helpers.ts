@@ -23,6 +23,7 @@ import {
   MAX_FALLBACK_MODELS,
   recurringTaskScheduleSchema,
   type BoardTaskStatus,
+  type Artifact,
   type CreateTaskInput,
   type CreateTaskTemplateInput,
   type Specialist,
@@ -30,7 +31,6 @@ import {
   type Task,
   type TaskRepeatRule,
   type TaskRun,
-  type TaskRunArtifact,
   type TaskSchedulerState,
   type TaskSubtaskProgress,
   type TaskTemplate,
@@ -898,6 +898,7 @@ export function readLatestRunResult(
 }
 
 type AggregatedRunArtifact = {
+  artifact: Artifact;
   key: string;
   title: string;
   description?: string;
@@ -909,10 +910,7 @@ type AggregatedRunArtifact = {
 };
 
 export function aggregateRunArtifacts(runs: TaskRun[]): AggregatedRunArtifact[] {
-  const byKey = new Map<
-    string,
-    { artifact: TaskRunArtifact; latestRun: TaskRun; runIds: Set<string> }
-  >();
+  const byKey = new Map<string, { artifact: Artifact; latestRun: TaskRun; runIds: Set<string> }>();
 
   for (const run of runs) {
     for (const artifact of run.artifacts) {
@@ -933,6 +931,7 @@ export function aggregateRunArtifacts(runs: TaskRun[]): AggregatedRunArtifact[] 
   }
 
   return [...byKey.entries()].map(([key, entry]) => ({
+    artifact: entry.artifact,
     key,
     title: entry.artifact.title,
     description: entry.artifact.description,

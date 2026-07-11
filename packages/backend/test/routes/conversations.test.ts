@@ -69,6 +69,71 @@ describe("conversation routes", () => {
     expect(snapshot.previous).toEqual([]);
   });
 
+  it("registers a file artifact for the exact conversation", async () => {
+    const first = await server.inject({
+      method: "GET",
+      url: `/api/specialists/${agentId}/conversations/active`,
+    });
+    const firstConversationId = first.json<{ current: { id: string } }>().current.id;
+    const fresh = await server.inject({
+      method: "POST",
+      url: `/api/specialists/${agentId}/conversations/start-fresh`,
+    });
+    const secondConversationId = fresh.json<{ current: { id: string } }>().current.id;
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/conversations/${firstConversationId}/artifacts`,
+      payload: { title: "Report", type: "file", link: "reports/result.md" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      conversationId: firstConversationId,
+      title: "Report",
+      type: "file",
+      link: "reports/result.md",
+      shareLinks: [],
+    });
+
+    const firstList = await server.inject({
+      method: "GET",
+      url: `/api/conversations/${firstConversationId}/artifacts`,
+    });
+    const secondList = await server.inject({
+      method: "GET",
+      url: `/api/conversations/${secondConversationId}/artifacts`,
+    });
+    expect(firstList.json<{ artifacts: unknown[] }>().artifacts).toHaveLength(1);
+    expect(secondList.json<{ artifacts: unknown[] }>().artifacts).toEqual([]);
+  });
+
+  it("rejects artifact registration for a missing conversation", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/conversations/missing/artifacts",
+      payload: { title: "Report", type: "file", link: "reports/result.md" },
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("rejects invalid artifact registration input", async () => {
+    const opened = await server.inject({
+      method: "GET",
+      url: `/api/specialists/${agentId}/conversations/active`,
+    });
+    const conversationId = opened.json<{ current: { id: string } }>().current.id;
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/conversations/${conversationId}/artifacts`,
+      payload: { title: "", type: "file", link: "" },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
   it("persists prompt request and response in the session", async () => {
     const opened = await server.inject({
       method: "GET",

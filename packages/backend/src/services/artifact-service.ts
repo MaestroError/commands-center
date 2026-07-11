@@ -109,6 +109,15 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
 
   return {
     async create(input: { conversationId: string } & AddArtifactInput): Promise<Artifact> {
+      const conversation = await options.db.query.conversations.findFirst({
+        where: (table, operators) => operators.eq(table.id, input.conversationId),
+        columns: { id: true },
+      });
+
+      if (!conversation) {
+        throw new NotFoundError("Conversation not found.");
+      }
+
       const id = createId();
       const timestamp = now();
 

@@ -8,6 +8,7 @@ const navigateMock = vi.fn();
 const useConversationMock = vi.fn();
 const useSpecialistCatalogQueryMock = vi.fn();
 const useMediaQueryMock = vi.fn();
+const addConversationArtifactMock = vi.fn();
 
 let mockParams: { agentId?: string; conversationId?: string } = {};
 
@@ -26,6 +27,12 @@ vi.mock("@/hooks/use-specialists-query", () => ({
 
 vi.mock("@/hooks/use-media-query", () => ({
   useMediaQuery: (query: string) => Boolean(useMediaQueryMock(query)),
+}));
+
+vi.mock("@/hooks/use-tasks-query", () => ({
+  useTaskMutations: () => ({
+    addConversationArtifact: { mutateAsync: addConversationArtifactMock },
+  }),
 }));
 
 vi.mock("@/components/layout/WorkspaceLayout", () => ({
@@ -142,7 +149,13 @@ vi.mock("@/components/chat/TodoDock", () => ({
 }));
 
 vi.mock("@/components/workspace/WorkspaceFilesTab", () => ({
-  WorkspaceFilesTab: ({ onOpenFile }: { onOpenFile?: (path: string) => void }) => (
+  WorkspaceFilesTab: ({
+    onAddArtifact,
+    onOpenFile,
+  }: {
+    onAddArtifact?: (file: { name: string; path: string }) => Promise<void>;
+    onOpenFile?: (path: string) => void;
+  }) => (
     <div>
       <button
         data-testid="workspace-files-open"
@@ -150,6 +163,13 @@ vi.mock("@/components/workspace/WorkspaceFilesTab", () => ({
         type="button"
       >
         Open workspace file
+      </button>
+      <button
+        data-testid="workspace-files-add-artifact"
+        onClick={() => void onAddArtifact?.({ name: "README.md", path: "README.md" })}
+        type="button"
+      >
+        Add artifact
       </button>
       <div data-testid="workspace-files-tab">WorkspaceFilesTab</div>
     </div>
@@ -237,6 +257,7 @@ afterEach(() => {
   useConversationMock.mockReset();
   useSpecialistCatalogQueryMock.mockReset();
   useMediaQueryMock.mockReset();
+  addConversationArtifactMock.mockReset();
   window.sessionStorage.clear();
 });
 
@@ -407,6 +428,31 @@ describe("WorkspaceChatPage", () => {
     expect(screen.getByTestId("media-tab")).toHaveTextContent("MediaTab:conv-1:");
     expect(screen.getByTestId("tools-tab")).toBeInTheDocument();
     expect(screen.queryByTestId("session-settings-tab")).not.toBeInTheDocument();
+  });
+
+  it("adds a workspace file to the exact open conversation", async () => {
+    mockParams = { agentId: "planner", conversationId: "conv-task-run" };
+    useConversationMock.mockReturnValue(
+      makeConversation({
+        conversation: {
+          id: "conv-task-run",
+          messages: [],
+          taskId: "task-1",
+          taskRunId: "run-1",
+        },
+      }),
+    );
+    useSpecialistCatalogQueryMock.mockReturnValue({ data: { builtInSkills: [] } });
+    addConversationArtifactMock.mockResolvedValue({});
+    const user = userEvent.setup();
+
+    render(<WorkspaceChatPage />);
+    await user.click(screen.getByTestId("workspace-files-add-artifact"));
+
+    expect(addConversationArtifactMock).toHaveBeenCalledWith({
+      conversationId: "conv-task-run",
+      input: { title: "README.md", type: "file", link: "README.md" },
+    });
   });
 
   it("opens the media tab and seeds search when an attachment pill is clicked", async () => {
