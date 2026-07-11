@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Artifact } from "@cc/shared/schemas";
 
@@ -49,6 +49,10 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("ArtifactShareControls", () => {
   it("renders nothing for a non-file artifact", () => {
     const { container } = render(
@@ -91,6 +95,55 @@ describe("ArtifactShareControls", () => {
         "https://share.example/download/abc",
       ),
     );
+  });
+
+  it("hides signed URLs in compact mode while retaining direct copy actions", async () => {
+    createMutateAsync.mockResolvedValue({
+      shareId: "share-1",
+      url: "https://share.example/abc",
+      displayUrl: "https://share.example/render/abc",
+      downloadUrl: "https://share.example/download/abc",
+      expiresAt: null,
+    });
+    render(<ArtifactShareControls artifact={artifact()} compact />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
+
+    expect(await screen.findByText("Render URL")).toBeInTheDocument();
+    expect(screen.getByText("Download URL")).toBeInTheDocument();
+    expect(screen.queryByText("https://share.example/render/abc")).not.toBeInTheDocument();
+    expect(screen.queryByText("https://share.example/download/abc")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Copy Download URL" }));
+    await waitFor(() =>
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        "https://share.example/download/abc",
+      ),
+    );
+  });
+
+  it("resets copied feedback after two and a half seconds", async () => {
+    vi.useFakeTimers();
+    createMutateAsync.mockResolvedValue({
+      shareId: "share-1",
+      url: "https://share.example/abc",
+      displayUrl: "https://share.example/render/abc",
+      downloadUrl: "https://share.example/download/abc",
+      expiresAt: null,
+    });
+    render(<ArtifactShareControls artifact={artifact()} compact />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Render URL copied" })).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(2_500);
+    });
+
+    expect(screen.getByRole("button", { name: "Copy Render URL" })).toBeInTheDocument();
   });
 
   it("still reveals the link when copying to the clipboard fails", async () => {

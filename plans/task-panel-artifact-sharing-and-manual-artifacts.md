@@ -4,6 +4,10 @@
 
 Let users share file artifacts directly from the task panel through the existing public render/download URL flow, and let users register any file shown in a chat page's Files tree as an artifact for that exact conversation (regular chat or task-run chat).
 
+Chat Results uses a compact copy-only presentation for generated share links so long signed URLs do not expand the narrow sidebar. Task artifact cards continue showing the full URLs.
+
+Copy confirmation is temporary: a copied button returns to its normal “Copy” label after 2.5 seconds.
+
 ## Assumptions and scope
 
 - “Two types” of public URL means the existing render/display URL and download URL returned by the artifact share-link API.
@@ -87,6 +91,8 @@ These tests are part of the implementation, not optional manual checks. Prefer a
 - Each copy button writes its own full URL and reports copied state independently; clipboard failure leaves the URLs visible and usable.
 - Existing active share links remain listed after rerender/refetch and can be revoked; backend errors remain visible without removing existing links.
 - Passing the task ID causes task-run data to refresh so regenerated share state is not lost when navigating between task sections.
+- Chat Results hides the generated render/download URL text while retaining labeled copy buttons that copy the complete values; task artifact surfaces retain the full URL presentation.
+- Copy feedback resets after 2.5 seconds and switching between render/download copy actions does not leave stale confirmation state.
 
 ### Playwright end-to-end tests
 
