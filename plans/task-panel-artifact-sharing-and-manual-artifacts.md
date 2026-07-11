@@ -8,6 +8,21 @@ Chat Results uses a compact copy-only presentation for generated share links so 
 
 Copy confirmation is temporary: a copied button returns to its normal “Copy” label after 2.5 seconds.
 
+## Revocable URL correction
+
+The render and download URLs returned by an explicit share operation must be backed by the created `artifact_share_links` row. Stateless artifact signatures are retained only for existing automated/public delivery flows; they are not used by the user-facing share controls because a database revocation cannot invalidate a stateless signature.
+
+Generating links for an artifact is replacement/rotation semantics:
+
+- Revoke every currently active share row for that artifact.
+- Create one new share row and token.
+- Return render and download URLs containing that share ID and token.
+- Validate the share row, token, expiry, and revocation on every render/download request.
+- Count only successful download access as a download; rendering does not increment the download counter.
+- Keep historical revoked rows for audit/history, but exclude them from the artifact's active share-link response.
+
+The UI labels regeneration as replacement when an active share already exists and shows only the single active share after query refresh.
+
 ## Assumptions and scope
 
 - “Two types” of public URL means the existing render/display URL and download URL returned by the artifact share-link API.
@@ -65,6 +80,9 @@ These tests are part of the implementation, not optional manual checks. Prefer a
 - An empty title/link, unsupported type, or malformed URL artifact returns a validation error and creates no artifact row.
 - File paths remain specialist-workspace-relative in the stored artifact while the response exposes the correct file-manager path.
 - Existing share-link integration coverage is exercised through an artifact created by the new route: creation publishes the file, returns distinct render and download URLs, both public endpoints serve the expected content/disposition, revocation disables both URLs, and configured expiry remains honored.
+- Creating a replacement automatically revokes the prior active share, leaves exactly one active row, and makes both prior URLs return not found.
+- Both replacement URLs validate through their share ID/token record; revoking the active row makes both render and download URLs return not found immediately.
+- Render access does not increment `downloadCount`; download access increments it once.
 
 ### Frontend API and query tests
 
@@ -90,6 +108,7 @@ These tests are part of the implementation, not optional manual checks. Prefer a
 - Creating a share renders both returned values under stable labels (`Render URL` and `Download URL`) with separate copy buttons.
 - Each copy button writes its own full URL and reports copied state independently; clipboard failure leaves the URLs visible and usable.
 - Existing active share links remain listed after rerender/refetch and can be revoked; backend errors remain visible without removing existing links.
+- The action reads “Replace signed links” when an active share exists and does not accumulate multiple active Revoke rows after replacement.
 - Passing the task ID causes task-run data to refresh so regenerated share state is not lost when navigating between task sections.
 - Chat Results hides the generated render/download URL text while retaining labeled copy buttons that copy the complete values; task artifact surfaces retain the full URL presentation.
 - Copy feedback resets after 2.5 seconds and switching between render/download copy actions does not leave stale confirmation state.

@@ -40,6 +40,7 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
   const busy =
     mutations.createArtifactShareLink.isPending || mutations.revokeArtifactShareLink.isPending;
   const shareLinks = props.artifact.shareLinks.filter((link) => link.revokedAt === null);
+  const hasActiveShare = createdLinks !== undefined || shareLinks.length > 0;
 
   async function createLink() {
     setErrorMessage(undefined);
@@ -91,7 +92,7 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
           type="button"
         >
           <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
-          {createdLinks ? "Refresh signed links" : "Create signed link"}
+          {hasActiveShare ? "Replace signed links" : "Create signed links"}
         </button>
       </div>
       {createdLinks ? (

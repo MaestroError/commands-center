@@ -16,7 +16,6 @@ import { getSetting, upsertSettingFilefirst } from "../db/helpers.js";
 import { createId, now } from "../db/ids.js";
 import { artifact_share_links } from "../db/schema/index.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
-import { buildArtifactSignedUrl } from "../lib/artifact-signed-url.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { ArtifactService } from "./artifact-service.js";
 
@@ -75,6 +74,16 @@ export function createArtifactShareLinkService(options: {
         expiresInMinutes === 0 ? null : new Date(timestamp.getTime() + expiresInMinutes * 60_000);
       const shareId = createId();
 
+      await options.db
+        .update(artifact_share_links)
+        .set({ revoked_at: timestamp })
+        .where(
+          and(
+            eq(artifact_share_links.artifact_id, artifact.id),
+            isNull(artifact_share_links.revoked_at),
+          ),
+        );
+
       await options.db.insert(artifact_share_links).values({
         id: shareId,
         artifact_id: artifact.id,
@@ -87,30 +96,14 @@ export function createArtifactShareLinkService(options: {
         download_count: 0,
       });
 
-      const url = new URL(
-        `/api/public/v1/task-artifacts/download/${encodeURIComponent(shareId)}`,
-        input.baseUrl,
-      );
-      url.searchParams.set("token", token);
-      const expiresAtMs = expiresAt?.getTime() ?? 0;
+      const displayUrl = buildShareUrl(input.baseUrl, shareId, "display", token);
+      const downloadUrl = buildShareUrl(input.baseUrl, shareId, "download", token);
 
       return {
         shareId,
-        url: url.toString(),
-        displayUrl: buildArtifactSignedUrl({
-          artifactId: artifact.id,
-          disposition: "display",
-          expMs: expiresAtMs,
-          secretKey: options.config.secretKey,
-          baseUrl: input.baseUrl,
-        }),
-        downloadUrl: buildArtifactSignedUrl({
-          artifactId: artifact.id,
-          disposition: "download",
-          expMs: expiresAtMs,
-          secretKey: options.config.secretKey,
-          baseUrl: input.baseUrl,
-        }),
+        url: downloadUrl,
+        displayUrl,
+        downloadUrl,
         expiresAt: expiresAt?.toISOString() ?? null,
       };
     },
@@ -135,28 +128,46 @@ export function createArtifactShareLinkService(options: {
     },
 
     async validateDownload(input: { shareId: string; token: string }): Promise<RegisteredArtifact> {
-      const row = await options.db.query.artifact_share_links.findFirst({
-        where: (table, operators) => operators.eq(table.id, input.shareId),
-      });
+      return validateAccess({ ...input, trackDownload: true });
+    },
 
-      if (!row || row.revoked_at || (row.expires_at && row.expires_at.getTime() <= Date.now())) {
-        throw new NotFoundError("Artifact share link not found.");
-      }
+    async validateAccess(input: {
+      shareId: string;
+      token: string;
+      trackDownload: boolean;
+    }): Promise<RegisteredArtifact> {
+      return validateAccess(input);
+    },
+  };
 
-      if (!isTokenMatch(input.token, row.token_hash)) {
-        throw new NotFoundError("Artifact share link not found.");
-      }
+  async function validateAccess(input: {
+    shareId: string;
+    token: string;
+    trackDownload: boolean;
+  }): Promise<RegisteredArtifact> {
+    const row = await options.db.query.artifact_share_links.findFirst({
+      where: (table, operators) => operators.eq(table.id, input.shareId),
+    });
 
-      const artifact = await options.artifactService.getRegisteredArtifact(row.artifact_id);
+    if (!row || row.revoked_at || (row.expires_at && row.expires_at.getTime() <= Date.now())) {
+      throw new NotFoundError("Artifact share link not found.");
+    }
 
-      if (!artifact) {
-        throw new NotFoundError("Artifact share link not found.");
-      }
+    if (!isTokenMatch(input.token, row.token_hash)) {
+      throw new NotFoundError("Artifact share link not found.");
+    }
 
-      if (!artifact.storageKey) {
-        throw new BadRequestError("Artifact has not been published.");
-      }
+    const artifact = await options.artifactService.getRegisteredArtifact(row.artifact_id);
 
+    if (!artifact) {
+      throw new NotFoundError("Artifact share link not found.");
+    }
+
+    if (!artifact.storageKey) {
+      throw new BadRequestError("Artifact has not been published.");
+    }
+
+    if (input.trackDownload) {
       await options.db
         .update(artifact_share_links)
         .set({
@@ -164,10 +175,24 @@ export function createArtifactShareLinkService(options: {
           download_count: sql`${artifact_share_links.download_count} + 1`,
         })
         .where(eq(artifact_share_links.id, row.id));
+    }
 
-      return artifact;
-    },
-  };
+    return artifact;
+  }
+}
+
+function buildShareUrl(
+  baseUrl: string,
+  shareId: string,
+  disposition: "display" | "download",
+  token: string,
+): string {
+  const url = new URL(
+    `/api/public/v1/artifact-shares/${encodeURIComponent(shareId)}/${disposition}`,
+    baseUrl,
+  );
+  url.searchParams.set("token", token);
+  return url.toString();
 }
 
 function hashToken(token: string): string {

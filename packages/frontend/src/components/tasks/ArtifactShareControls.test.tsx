@@ -71,7 +71,7 @@ describe("ArtifactShareControls", () => {
     });
     render(<ArtifactShareControls artifact={artifact()} taskId="task-1" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create signed links" }));
 
     expect(await screen.findByText("https://share.example/render/abc")).toBeInTheDocument();
     expect(screen.getByText("https://share.example/download/abc")).toBeInTheDocument();
@@ -107,7 +107,7 @@ describe("ArtifactShareControls", () => {
     });
     render(<ArtifactShareControls artifact={artifact()} compact />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create signed links" }));
 
     expect(await screen.findByText("Render URL")).toBeInTheDocument();
     expect(screen.getByText("Download URL")).toBeInTheDocument();
@@ -132,7 +132,7 @@ describe("ArtifactShareControls", () => {
     });
     render(<ArtifactShareControls artifact={artifact()} compact />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create signed links" }));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -160,7 +160,7 @@ describe("ArtifactShareControls", () => {
     });
     render(<ArtifactShareControls artifact={artifact()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create signed links" }));
 
     expect(await screen.findByText("https://share.example/render/abc")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Copy Render URL" })).toBeInTheDocument();
@@ -176,7 +176,7 @@ describe("ArtifactShareControls", () => {
     createMutateAsync.mockRejectedValue(new Error("Artifact source file not found."));
     render(<ArtifactShareControls artifact={artifact()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Create signed link" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create signed links" }));
 
     expect(await screen.findByText("Artifact source file not found.")).toBeInTheDocument();
   });
@@ -203,6 +203,7 @@ describe("ArtifactShareControls", () => {
     );
 
     expect(screen.getByLabelText("Active artifact share links")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Replace signed links" })).toBeInTheDocument();
     expect(screen.getByText(/1 download$/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Revoke" }));

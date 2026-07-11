@@ -154,7 +154,7 @@ describe("TaskDetailPage overview", () => {
 
     expect(screen.getByTestId("task-detail-page")).toBeInTheDocument();
     expect(screen.getByText("Review needed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create signed link" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create signed links" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Edit task title" }));
     const input = screen.getByLabelText("Task title");

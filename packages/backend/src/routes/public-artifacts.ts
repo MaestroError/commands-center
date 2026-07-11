@@ -19,6 +19,7 @@ import { readOwnerSessionCookie } from "../lib/owner-session-cookie.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import type { RuntimeContext } from "../lib/start-server-runtime.js";
 import { createArtifactService } from "../services/artifact-service.js";
+import { createArtifactShareLinkService } from "../services/artifact-share-link-service.js";
 import type { ArtifactDeliveryOptions } from "../services/artifact-delivery-service.js";
 import type { ArtifactShareLinkService } from "../services/artifact-share-link-service.js";
 import type { TaskService } from "../services/task-service.js";
@@ -45,6 +46,15 @@ const artifactParamsSchema = z.object({
 const artifactQuerySchema = z.object({
   exp: z.string().min(1),
   sig: z.string().min(1),
+});
+
+const artifactShareParamsSchema = z.object({
+  shareId: z.string().min(1),
+  disposition: z.enum(["display", "download"]),
+});
+
+const artifactShareQuerySchema = z.object({
+  token: z.string().min(1),
 });
 
 /**
@@ -89,6 +99,31 @@ export function registerPublicArtifactRoutes(server: AppServer, context: Runtime
     db: context.database.db,
     config: context.config,
   });
+  const artifactShareLinkService = createArtifactShareLinkService({
+    db: context.database.db,
+    config: context.config,
+    artifactService,
+  });
+
+  app.get(
+    "/api/public/v1/artifact-shares/:shareId/:disposition",
+    { schema: { params: artifactShareParamsSchema, querystring: artifactShareQuerySchema } },
+    async (request, reply) => {
+      const { shareId, disposition } = request.params;
+      const { token } = request.query;
+      const artifact = await artifactShareLinkService.validateAccess({
+        shareId,
+        token,
+        trackDownload: disposition === "download",
+      });
+      const downloadHref =
+        disposition === "display"
+          ? `/api/public/v1/artifact-shares/${encodeURIComponent(shareId)}/download?${new URLSearchParams({ token }).toString()}`
+          : undefined;
+
+      return serve(reply, artifact, disposition, downloadHref);
+    },
+  );
 
   app.get(
     "/api/public/v1/artifacts/:artifactId/:disposition",
@@ -110,18 +145,24 @@ export function registerPublicArtifactRoutes(server: AppServer, context: Runtime
         if (!valid || expired) {
           throw new NotFoundError("Artifact link not found.");
         }
-        return serve(reply, await resolve(artifactId), "download", exp, true);
+        return serve(reply, await resolve(artifactId), "download");
       }
 
       // Display: signed access, or an authenticated owner after expiry. The flag
       // tracks whether a signed download link (built from this exp) is still
       // usable, so the download-page button never points at an expired URL.
       if (valid && !expired) {
-        return serve(reply, await resolve(artifactId), "display", exp, true);
+        const downloadHref = buildArtifactSignedPath({
+          artifactId,
+          disposition: "download",
+          expMs: Number(exp),
+          secretKey: context.config.secretKey,
+        });
+        return serve(reply, await resolve(artifactId), "display", downloadHref);
       }
 
       if (await isOwner(request.headers.cookie)) {
-        return serve(reply, await resolve(artifactId), "display", exp, false);
+        return serve(reply, await resolve(artifactId), "display");
       }
 
       // The signed window lapsed and there's no owner session: gate via login for
@@ -154,11 +195,7 @@ export function registerPublicArtifactRoutes(server: AppServer, context: Runtime
     reply: FastifyReply,
     artifact: RegisteredArtifact,
     disposition: ArtifactDisposition,
-    exp: string,
-    // Whether a signed download URL built from `exp` is still valid+unexpired.
-    // False on the owner-session display fallback, where a download button would
-    // 404 — so we stream the file to the owner directly instead.
-    signedDownloadUsable: boolean,
+    downloadHref?: string,
   ) {
     const path = artifactService.resolveArtifactPath(artifact.storageKey!);
     const details = await stat(path).catch((error: unknown) => {
@@ -173,13 +210,7 @@ export function registerPublicArtifactRoutes(server: AppServer, context: Runtime
 
     // Public non-renderable display → a download page whose (still-valid) button
     // links to the signed download URL.
-    if (nonRenderableDisplay && signedDownloadUsable) {
-      const downloadHref = buildArtifactSignedPath({
-        artifactId: artifact.id,
-        disposition: "download",
-        expMs: Number(exp),
-        secretKey: context.config.secretKey,
-      });
+    if (nonRenderableDisplay && downloadHref) {
       reply.header("Content-Type", "text/html; charset=utf-8");
       reply.header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
       reply.header("X-Content-Type-Options", "nosniff");

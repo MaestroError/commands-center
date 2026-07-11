@@ -22,6 +22,8 @@ const SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN =
 // (valid signature, or an owner session for the display fallback).
 const SIGNED_PUBLIC_ARTIFACT_DELIVERY_PATTERN =
   /^\/api\/public\/v1\/artifacts\/[^/]+\/(display|download)$/;
+const REVOCABLE_PUBLIC_ARTIFACT_DELIVERY_PATTERN =
+  /^\/api\/public\/v1\/artifact-shares\/[^/]+\/(display|download)$/;
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -39,7 +41,8 @@ export function registerOwnerAuthGuard(
     if (
       method === "GET" &&
       (SIGNED_PUBLIC_ARTIFACT_DOWNLOAD_PATTERN.test(pathname) ||
-        SIGNED_PUBLIC_ARTIFACT_DELIVERY_PATTERN.test(pathname))
+        SIGNED_PUBLIC_ARTIFACT_DELIVERY_PATTERN.test(pathname) ||
+        REVOCABLE_PUBLIC_ARTIFACT_DELIVERY_PATTERN.test(pathname))
     ) {
       return;
     }
