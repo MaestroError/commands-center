@@ -12,6 +12,7 @@ import * as api from "@/lib/api";
 vi.mock("@/lib/api", () => ({
   getActivities: vi.fn(),
   archiveActivity: vi.fn(),
+  archiveAllActivities: vi.fn(),
 }));
 
 function makeWrapper() {
@@ -40,6 +41,7 @@ function activity(overrides: Partial<Activity> & { id: string; title: string }):
 beforeEach(() => {
   vi.mocked(api.getActivities).mockReset();
   vi.mocked(api.archiveActivity).mockReset();
+  vi.mocked(api.archiveAllActivities).mockReset();
 });
 
 describe("ActivityBell", () => {
@@ -68,5 +70,27 @@ describe("ActivityBell", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Activity")).toBeInTheDocument();
     });
+  });
+
+  it("marks all pending activities as read after confirmation", async () => {
+    vi.mocked(api.getActivities).mockResolvedValue({
+      activities: [activity({ id: "a1", title: "Secret needed: GITHUB_TOKEN" })],
+      actionRequiredCount: 1,
+    });
+    vi.mocked(api.archiveAllActivities).mockResolvedValue({ archivedCount: 1 });
+
+    render(<ActivityBell />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Activity (1 need attention)")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByLabelText("Activity (1 need attention)"));
+    fireEvent.click(screen.getByText("Mark all as read"));
+    const confirmButton = screen.getAllByRole("button", { name: "Mark all as read" })[1]!;
+    fireEvent.mouseDown(confirmButton);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(api.archiveAllActivities).toHaveBeenCalledOnce());
   });
 });

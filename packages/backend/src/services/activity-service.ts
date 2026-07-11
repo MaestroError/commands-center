@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
@@ -138,6 +138,42 @@ export function createActivityService(options: { db: AppDb; logger?: Logger }) {
       return mapActivity({ ...existing, status: "archived", archived_at: now, updated_at: now });
     },
 
+    async archiveAllPending(): Promise<number> {
+      const now = new Date();
+      const archived = await db
+        .update(activities)
+        .set({ status: "archived", archived_at: now, updated_at: now })
+        .where(eq(activities.status, "pending"))
+        .returning({ id: activities.id });
+      return archived.length;
+    },
+
+    async archiveCompletedTaskActivities(taskId: string): Promise<number> {
+      const pendingCompletedActivities = await db.query.activities.findMany({
+        where: (table, operators) =>
+          operators.and(
+            operators.eq(table.status, "pending"),
+            operators.eq(table.kind, "task_completed"),
+          ),
+        columns: { id: true, payload_json: true },
+      });
+      const matchingIds = pendingCompletedActivities
+        .filter((activity) => readTaskId(activity.payload_json) === taskId)
+        .map((activity) => activity.id);
+
+      if (matchingIds.length === 0) {
+        return 0;
+      }
+
+      const now = new Date();
+      const archived = await db
+        .update(activities)
+        .set({ status: "archived", archived_at: now, updated_at: now })
+        .where(inArray(activities.id, matchingIds))
+        .returning({ id: activities.id });
+      return archived.length;
+    },
+
     /** Archive all pending activities sharing a dedupeKey (for producers superseding a card). */
     async archiveByDedupeKey(dedupeKey: string): Promise<void> {
       const now = new Date();
@@ -147,6 +183,22 @@ export function createActivityService(options: { db: AppDb; logger?: Logger }) {
         .where(and(eq(activities.dedupe_key, dedupeKey), eq(activities.status, "pending")));
     },
   };
+}
+
+function readTaskId(payloadJson: string | null): string | undefined {
+  if (!payloadJson) {
+    return undefined;
+  }
+  try {
+    const payload: unknown = JSON.parse(payloadJson);
+    if (typeof payload === "object" && payload !== null && "taskId" in payload) {
+      const taskId = payload.taskId;
+      return typeof taskId === "string" ? taskId : undefined;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
 
 function mapActivity(row: ActivityRow): Activity {

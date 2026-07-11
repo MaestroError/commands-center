@@ -5,6 +5,7 @@ import {
   WorkspaceSkillUploadRenameError,
   abortConversation,
   archiveActivity,
+  archiveAllActivities,
   archiveSpecialist,
   archiveTask,
   acceptTask,
@@ -382,6 +383,12 @@ const requestJsonCases: Case[] = [
     name: "archiveActivity",
     run: () => archiveActivity("act-1"),
     url: "/api/activities/act-1/archive",
+    method: "POST",
+  },
+  {
+    name: "archiveAllActivities",
+    run: () => archiveAllActivities(),
+    url: "/api/activities/archive-all",
     method: "POST",
   },
   {

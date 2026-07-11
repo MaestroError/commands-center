@@ -3,8 +3,10 @@ import { apiFetch, readApiError, requestJson } from "./client";
 import {
   activityListResponseSchema,
   activitySchema,
+  archiveAllActivitiesResponseSchema,
   type Activity,
   type ActivityListResponse,
+  type ArchiveAllActivitiesResponse,
   apiTokenActivityListResponseSchema,
   apiTokenAuditSettingsSchema,
   apiTokenListResponseSchema,
@@ -239,6 +241,14 @@ export async function archiveActivity(id: string): Promise<Activity> {
   return requestJson<Activity>(
     `/api/activities/${encodeURIComponent(id)}/archive`,
     activitySchema,
+    { method: "POST" },
+  );
+}
+
+export async function archiveAllActivities(): Promise<ArchiveAllActivitiesResponse> {
+  return requestJson<ArchiveAllActivitiesResponse>(
+    "/api/activities/archive-all",
+    archiveAllActivitiesResponseSchema,
     { method: "POST" },
   );
 }

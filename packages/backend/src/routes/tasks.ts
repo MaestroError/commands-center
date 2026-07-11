@@ -53,6 +53,7 @@ import { createTaskContextAttachmentService } from "../services/task-context-att
 import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
 import { createArtifactService } from "../services/artifact-service.js";
 import { createArtifactShareLinkService } from "../services/artifact-share-link-service.js";
+import { createActivityService } from "../services/activity-service.js";
 import { createTaskService } from "../services/task-service.js";
 import { triggerTemplateRun } from "../services/trigger-template-run.js";
 
@@ -86,6 +87,9 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     db: context.database.db,
     config: context.config,
   });
+  const activityService =
+    context.activityService ??
+    createActivityService({ db: context.database.db, logger: context.logger });
   const conversationService = createConversationService({
     db: context.database.db,
     config: context.config,
@@ -562,6 +566,8 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       if (!task) {
         throw new NotFoundError("Task not found.");
       }
+
+      await activityService.archiveCompletedTaskActivities(task.id);
 
       return task;
     },
