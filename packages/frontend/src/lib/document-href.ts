@@ -17,7 +17,13 @@ export function buildDocumentHref(
   link: string,
   options?: { scope?: DocumentScope | null; ownerSlug?: string | null },
 ): string {
-  const relativePath = link.replace(/^\/+/, "").replace(/^Documents\//, "");
+  // Document artifact links may be stored with Windows-style backslashes (the
+  // backend normalizes these when resolving on disk). The Documents page/API
+  // only accept `/`-separated paths, so canonicalize before building the query.
+  const relativePath = link
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^Documents\//, "");
   const scopePrefix =
     options?.scope === "private" && options.ownerSlug
       ? `scope=private&owner=${encodeURIComponent(options.ownerSlug)}&`

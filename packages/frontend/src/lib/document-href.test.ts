@@ -23,6 +23,18 @@ describe("buildDocumentHref", () => {
     );
   });
 
+  it("normalizes Windows-style backslashes in the path", () => {
+    expect(buildDocumentHref("Reports\\2026-07-13\\report.md")).toBe(
+      "/documents?path=Reports%2F2026-07-13%2Freport.md",
+    );
+  });
+
+  it("normalizes backslashes for a private document href", () => {
+    expect(
+      buildDocumentHref("Reports\\report.md", { scope: "private", ownerSlug: "tonny-reporter" }),
+    ).toBe("/documents?scope=private&owner=tonny-reporter&path=Reports%2Freport.md");
+  });
+
   it("adds scope and owner for a private document", () => {
     expect(
       buildDocumentHref("Reports/2026-07-13/report.md", {
