@@ -1689,8 +1689,28 @@ describe("cc-managed MCP routes", () => {
         result: { structuredContent: { resultText: "Done." } },
       });
       expect(parseSseJson(artifactResponse.body)).toMatchObject({
-        result: { structuredContent: { artifacts: [{ title: "Report" }] } },
+        result: {
+          structuredContent: {
+            taskId: task.id,
+            runId: run.id,
+            status: expect.any(String),
+            needsHumanReview: expect.any(Boolean),
+            taskUrl: expect.any(String),
+            artifacts: [{ title: "Report", type: "file", link: ".cc/artifacts/report.md" }],
+          },
+        },
       });
+      // The outcome result is a compact projection: the heavy task-run internals
+      // must not leak back to the calling specialist.
+      const artifactStructured = (
+        parseSseJson(artifactResponse.body) as {
+          result: { structuredContent: Record<string, unknown> };
+        }
+      ).result.structuredContent;
+      expect(artifactStructured).not.toHaveProperty("renderedPrompt");
+      expect(artifactStructured).not.toHaveProperty("renderedContext");
+      expect(artifactStructured).not.toHaveProperty("effectivePermissions");
+      expect(artifactStructured).not.toHaveProperty("triggerMetadata");
       expect(parseSseJson(reviewResponse.body)).toMatchObject({
         result: {
           structuredContent: {

@@ -2,9 +2,13 @@ import { z } from "zod";
 
 import {
   addTaskRunArtifactInputSchema,
+  artifactSchema,
   markTaskRunNeedsReviewInputSchema,
+  reviewQuestionSchema,
   setTaskRunResultInputSchema,
-  taskRunSchema,
+  taskRunOutcomeSchema,
+  taskRunStatusSchema,
+  type TaskRun,
 } from "@cc/shared/schemas";
 
 import type { AppDb } from "../../../../../db/client.js";
@@ -51,9 +55,48 @@ export const markNeedsHumanReviewToolMetadata = {
   context: "task_run",
 } as const;
 
-const mcpTaskRunSchema = taskRunSchema.extend({
+// Compact outcome projection for the task-run outcome tools. The full task-run
+// record carries the rendered prompt, rendered context, permission profile and
+// diagnostics — none of which the calling specialist needs back after setting a
+// result. Return only the run's headline metadata plus its artifacts so the
+// tool result stays small.
+const mcpTaskRunOutcomeResultSchema = z.object({
+  taskId: z.string().min(1),
+  runId: z.string().min(1),
+  status: taskRunStatusSchema,
+  outcome: taskRunOutcomeSchema.optional(),
+  resultText: z.string().optional(),
+  finalMessage: z.string().optional(),
+  needsHumanReview: z.boolean(),
+  humanReviewReason: z.string().optional(),
+  reviewQuestion: reviewQuestionSchema.optional(),
+  startedAt: z.string().datetime().optional(),
+  completedAt: z.string().datetime().optional(),
+  artifacts: z.array(artifactSchema).default([]),
   taskUrl: z.string().url(),
 });
+
+function toOutcomeResult(
+  config: RuntimeConfig,
+  run: TaskRun,
+): z.infer<typeof mcpTaskRunOutcomeResultSchema> {
+  const { taskUrl } = withTaskRunBoardUrl(config, run);
+  return mcpTaskRunOutcomeResultSchema.parse({
+    taskId: run.taskId,
+    runId: run.id,
+    status: run.status,
+    outcome: run.outcome,
+    resultText: run.resultText,
+    finalMessage: run.finalMessage,
+    needsHumanReview: run.needsHumanReview,
+    humanReviewReason: run.humanReviewReason,
+    reviewQuestion: run.reviewQuestion,
+    startedAt: run.startedAt,
+    completedAt: run.completedAt,
+    artifacts: run.artifacts,
+    taskUrl,
+  });
+}
 
 export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolOptions) {
   return [
@@ -62,7 +105,7 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
       description: setTaskResultToolMetadata.description,
       context: setTaskResultToolMetadata.context,
       inputSchema: setTaskRunResultInputSchema,
-      outputSchema: mcpTaskRunSchema,
+      outputSchema: mcpTaskRunOutcomeResultSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = setTaskRunResultInputSchema.parse(args);
@@ -73,10 +116,7 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
             parsed.resultText,
           );
 
-          return success(
-            "Task result updated.",
-            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, run)),
-          );
+          return success("Task result updated.", toOutcomeResult(options.config, run));
         }, "Failed to set task result."),
     },
     {
@@ -84,7 +124,7 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
       description: addTaskArtifactToolMetadata.description,
       context: addTaskArtifactToolMetadata.context,
       inputSchema: addTaskRunArtifactInputSchema,
-      outputSchema: mcpTaskRunSchema,
+      outputSchema: mcpTaskRunOutcomeResultSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = addTaskRunArtifactInputSchema.parse(args);
@@ -95,10 +135,7 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
             parsed.artifact,
           );
 
-          return success(
-            "Task artifact added.",
-            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, run)),
-          );
+          return success("Task artifact added.", toOutcomeResult(options.config, run));
         }, "Failed to add task artifact."),
     },
     {
@@ -106,7 +143,7 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
       description: markNeedsHumanReviewToolMetadata.description,
       context: markNeedsHumanReviewToolMetadata.context,
       inputSchema: markTaskRunNeedsReviewInputSchema,
-      outputSchema: mcpTaskRunSchema,
+      outputSchema: mcpTaskRunOutcomeResultSchema,
       execute: async (args: unknown, context: { agentSlug: string }) =>
         executeTool(async () => {
           const parsed = markTaskRunNeedsReviewInputSchema.parse(args);
@@ -119,10 +156,7 @@ export function createTaskRunOutcomeToolDefinitions(options: TaskRunOutcomeToolO
             parsed.suggestedReplies,
           );
 
-          return success(
-            "Task run marked for human review.",
-            mcpTaskRunSchema.parse(withTaskRunBoardUrl(options.config, run)),
-          );
+          return success("Task run marked for human review.", toOutcomeResult(options.config, run));
         }, "Failed to mark task run for human review."),
     },
   ] as const;

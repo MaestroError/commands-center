@@ -22,4 +22,37 @@ describe("buildDocumentHref", () => {
       "/documents?path=my%20notes%20%26%20ideas.md",
     );
   });
+
+  it("normalizes Windows-style backslashes in the path", () => {
+    expect(buildDocumentHref("Reports\\2026-07-13\\report.md")).toBe(
+      "/documents?path=Reports%2F2026-07-13%2Freport.md",
+    );
+  });
+
+  it("normalizes backslashes for a private document href", () => {
+    expect(
+      buildDocumentHref("Reports\\report.md", { scope: "private", ownerSlug: "tonny-reporter" }),
+    ).toBe("/documents?scope=private&owner=tonny-reporter&path=Reports%2Freport.md");
+  });
+
+  it("adds scope and owner for a private document", () => {
+    expect(
+      buildDocumentHref("Reports/2026-07-13/report.md", {
+        scope: "private",
+        ownerSlug: "tonny-reporter",
+      }),
+    ).toBe("/documents?scope=private&owner=tonny-reporter&path=Reports%2F2026-07-13%2Freport.md");
+  });
+
+  it("ignores private scope without an owner slug", () => {
+    expect(buildDocumentHref("design/overview.md", { scope: "private", ownerSlug: null })).toBe(
+      "/documents?path=design%2Foverview.md",
+    );
+  });
+
+  it("omits scope params for an explicit global document", () => {
+    expect(buildDocumentHref("design/overview.md", { scope: "global", ownerSlug: null })).toBe(
+      "/documents?path=design%2Foverview.md",
+    );
+  });
 });

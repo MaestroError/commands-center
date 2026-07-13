@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
-import { basename, dirname, extname, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 
 import {
   artifactSchema,
@@ -8,6 +8,7 @@ import {
   type AddArtifactInput,
   type Artifact,
   type ArtifactShareLink,
+  type DocumentScope,
   type RegisteredArtifact,
 } from "@cc/shared/schemas";
 import { desc, eq, inArray } from "drizzle-orm";
@@ -20,6 +21,17 @@ import { createId, now } from "../db/ids.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
 import { writeConfigFileAtomic } from "../lib/config-file.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
+import { resolveSpecialistWorkspacePath } from "./specialist-workspace.js";
+
+// A document artifact's resolved location: the shared Documents module
+// ("global") or a specialist's private Documents/ folder ("private").
+type DocumentLocation = { scope: DocumentScope; ownerSlug: string | null };
+
+// The private Documents/ root for a specialist, mirroring how document-service
+// resolves private-scope documents.
+function specialistDocumentsRoot(config: RuntimeConfig, slug: string): string {
+  return join(resolveSpecialistWorkspacePath({ config, slug, status: "active" }), "Documents");
+}
 
 const ARTIFACT_MANIFEST_FILE = "published-artifacts.json";
 const WINDOWS_DRIVE_PREFIX = /^[a-zA-Z]:/;
@@ -120,6 +132,16 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
 
       const id = createId();
       const timestamp = now();
+      const agentSlug = await getArtifactAgentSlug(input.conversationId);
+      // For document artifacts, resolve whether the path lives in the owning
+      // specialist's private Documents/ folder or the shared module, so both the
+      // in-app link and the public share URL target the right root.
+      const location = await resolveDocumentLocation(
+        options.config,
+        input.type,
+        input.link,
+        agentSlug,
+      );
 
       await options.db.insert(artifacts).values({
         id,
@@ -128,6 +150,8 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
         description: input.description ?? null,
         type: input.type,
         link: input.link,
+        document_scope: location.scope,
+        document_owner_slug: location.ownerSlug,
         created_at: timestamp,
       });
 
@@ -137,7 +161,6 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
         throw new Error("Failed to create artifact record.");
       }
 
-      const agentSlug = await getArtifactAgentSlug(row.conversation_id);
       return mapArtifact(options.config, row, [], agentSlug);
     },
 
@@ -237,7 +260,12 @@ export function createArtifactService(options: { db: AppDb; config: RuntimeConfi
       const agentSlug = await getArtifactAgentSlug(row.conversation_id);
       const sourcePath =
         row.type === "document"
-          ? resolveDocumentSourcePath(options.config, row.link)
+          ? resolveDocumentSourcePath(
+              options.config,
+              row.link,
+              row.document_scope,
+              row.document_owner_slug,
+            )
           : await resolveFileSourcePath(options.config, row.link, agentSlug);
       const sourceStat = await stat(sourcePath).catch((error: unknown) => {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -314,6 +342,8 @@ async function mapArtifact(
     description: row.description ?? undefined,
     type: row.type,
     link: row.link,
+    documentScope: row.document_scope,
+    documentOwnerSlug: row.document_owner_slug,
     fileManagerPath: await resolveArtifactFileManagerPath(config, row, agentSlug),
     createdAt: row.created_at.toISOString(),
     shareLinks,
@@ -332,6 +362,8 @@ function toRegisteredArtifact(
     description: row.description ?? undefined,
     type: "file",
     link: row.link,
+    documentScope: row.document_scope,
+    documentOwnerSlug: row.document_owner_slug,
     createdAt: row.created_at.toISOString(),
     originalFilename: published.originalFilename,
     mimeType: published.mimeType,
@@ -491,13 +523,64 @@ export async function resolveArtifactFileManagerPath(
 
 // Resolve a `document`-type artifact's Documents/-relative link to an absolute
 // path, hardened against traversal (reuses the same descendant check as files).
-function resolveDocumentSourcePath(config: RuntimeConfig, path: string | undefined): string {
+function resolveDocumentSourcePath(
+  config: RuntimeConfig,
+  path: string | undefined,
+  scope: DocumentScope,
+  ownerSlug: string | null,
+): string {
   const trimmed = validateRelativeArtifactPath(path);
+
+  if (scope === "private") {
+    if (!ownerSlug) {
+      throw new BadRequestError("Private document artifact is missing its owner.");
+    }
+    const root = specialistDocumentsRoot(config, ownerSlug);
+    const sourcePath = resolve(root, trimmed);
+    ensureDescendant(
+      sourcePath,
+      root,
+      "Artifact document path must stay in the owner's Documents.",
+    );
+    return sourcePath;
+  }
 
   const root = config.paths.subdirectories.documents;
   const sourcePath = resolve(root, trimmed);
   ensureDescendant(sourcePath, root, "Artifact document path must stay in Documents.");
   return sourcePath;
+}
+
+// Resolve where a document artifact lives. A specialist that authored the
+// artifact may have written it to its private Documents/ folder; if the path
+// exists there, treat it as private and record the owner. Otherwise it belongs
+// to the shared Documents module. Non-document artifacts are always global.
+async function resolveDocumentLocation(
+  config: RuntimeConfig,
+  type: string,
+  link: string,
+  agentSlug: string | undefined,
+): Promise<DocumentLocation> {
+  if (type !== "document" || !agentSlug) {
+    return { scope: "global", ownerSlug: null };
+  }
+
+  // Canonicalize the path exactly as publishing will (validateRelativeArtifactPath
+  // normalizes backslashes to `/` and rejects absolute/traversal paths), so the
+  // persisted scope agrees with how resolveDocumentSourcePath later resolves it —
+  // otherwise a Windows-style path would probe as global here but publish under
+  // the private root. Invalid paths fail fast at create time.
+  const normalized = validateRelativeArtifactPath(link);
+  const privateRoot = specialistDocumentsRoot(config, agentSlug);
+  const privatePath = resolve(privateRoot, normalized);
+  // Belt-and-suspenders: a path that escapes the private root isn't private.
+  if (!isDescendant(privatePath, privateRoot)) {
+    return { scope: "global", ownerSlug: null };
+  }
+
+  return (await isFile(privatePath))
+    ? { scope: "private", ownerSlug: agentSlug }
+    : { scope: "global", ownerSlug: null };
 }
 
 async function isFile(path: string): Promise<boolean> {
@@ -531,10 +614,13 @@ function resolveArtifactStoragePath(config: RuntimeConfig, storageKey: string): 
   return path;
 }
 
-function ensureDescendant(candidatePath: string, rootPath: string, message: string): void {
+function isDescendant(candidatePath: string, rootPath: string): boolean {
   const rel = relative(rootPath, candidatePath);
+  return rel !== "" && !rel.startsWith("..") && !rel.startsWith(sep);
+}
 
-  if (rel === "" || rel.startsWith("..") || rel.startsWith(sep)) {
+function ensureDescendant(candidatePath: string, rootPath: string, message: string): void {
+  if (!isDescendant(candidatePath, rootPath)) {
     throw new BadRequestError(message);
   }
 }

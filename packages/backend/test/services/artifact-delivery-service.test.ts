@@ -89,6 +89,8 @@ describe("createArtifactDeliveryService", () => {
           title: "Artifact",
           type: "file",
           link: "reports/private.txt",
+          documentScope: "global",
+          documentOwnerSlug: null,
           createdAt: new Date().toISOString(),
           shareLinks: [],
         },
