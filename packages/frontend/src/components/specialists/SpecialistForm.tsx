@@ -56,7 +56,7 @@ type SpecialistFormProps = {
  * Self-contained specialist form used by both the specialist editor page and the draft-specialist
  * review surface. It owns its own catalog/skill/tool/MCP data fetching and renders
  * every field (basics, model, skills, custom tools, CC-managed tools, MCP permissions).
- * It does not render a submit control or perform any save — the parent owns submission.
+ * It renders the edit-only instructions submit control, while the parent owns submission.
  */
 export function SpecialistForm(props: SpecialistFormProps) {
   const { value, onChange, mode } = props;
@@ -218,7 +218,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
               <button
                 aria-label="Save changes near instructions"
                 className="cc-button shrink-0"
-                disabled={props.isSaving}
+                disabled={props.isSaving || !hasProviderModels}
                 type="submit"
               >
                 {props.isSaving ? "Saving..." : "Save changes"}
