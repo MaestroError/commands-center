@@ -2,6 +2,10 @@ import type { ConversationDetail, ConversationMessage, TaskRun } from "@cc/share
 import type { Logger } from "pino";
 
 import {
+  PROVIDER_MODEL_NOT_FOUND_ERROR_NAME,
+  readProviderModelNotFoundError,
+} from "../lib/provider-model-not-found.js";
+import {
   TaskRunPromptError,
   type ConversationService,
   type TaskRunPendingInteraction,
@@ -183,6 +187,20 @@ export function isRetryableLocalOpenCodeError(error: unknown): boolean {
 }
 
 export function buildTaskRunErrorDetails(error: unknown, run: TaskRun): Record<string, unknown> {
+  const providerModelNotFound = readTaskRunProviderModelNotFoundError(error);
+  if (providerModelNotFound) {
+    return {
+      errorName: PROVIDER_MODEL_NOT_FOUND_ERROR_NAME,
+      ...providerModelNotFound.details,
+      stage:
+        error instanceof TaskRunPromptError || run.opencodeSessionId
+          ? "task_session_prompt"
+          : "task_session_create",
+      ...(error instanceof TaskRunPromptError ? { modelError: error.modelError } : {}),
+      ...(run.opencodeSessionId ? { opencodeSessionId: run.opencodeSessionId } : {}),
+    };
+  }
+
   if (error instanceof TaskRunPromptError) {
     return {
       errorName: error.modelError.name,
@@ -212,6 +230,19 @@ export function buildTaskRunErrorDetails(error: unknown, run: TaskRun): Record<s
   }
 
   return details;
+}
+
+export function formatTaskRunErrorMessage(error: unknown): string {
+  return (
+    readTaskRunProviderModelNotFoundError(error)?.message ??
+    (error instanceof Error ? error.message : "Task execution failed.")
+  );
+}
+
+function readTaskRunProviderModelNotFoundError(error: unknown) {
+  return error instanceof TaskRunPromptError
+    ? readProviderModelNotFoundError(error.modelError, error.attemptedModel)
+    : readProviderModelNotFoundError(error);
 }
 
 export function readElapsedRunMs(run: TaskRun): number | undefined {

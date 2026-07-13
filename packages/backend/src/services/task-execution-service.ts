@@ -33,6 +33,7 @@ import {
   buildTaskRunErrorDetails,
   createTaskRunTransport,
   DEFAULT_TRANSPORT_RETRY_CONFIG,
+  formatTaskRunErrorMessage,
   mergeOpencodeMonitorMetadata,
   readOptionalOpencodeMonitorMetadata,
   type TaskRunTransportRetryConfig,
@@ -542,7 +543,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
 
       const errored = await options.taskService.setRunStatus(running.id, "error", {
         completedAt: new Date().toISOString(),
-        errorMessage: error instanceof Error ? error.message : "Task execution failed.",
+        errorMessage: formatTaskRunErrorMessage(error),
         errorDetails: buildTaskRunErrorDetails(error, running),
       });
 
