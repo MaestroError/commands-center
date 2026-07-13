@@ -69,17 +69,17 @@ test("creates and edits a specialist", async ({ page }) => {
     "true",
   );
 
-  const updateResponse = page.waitForResponse(
-    (response) =>
-      response.url().includes("/api/specialists/agent-") &&
-      response.request().method() === "PATCH" &&
-      response.status() === 200,
+  const updateRequest = page.waitForRequest(
+    (request) => request.url().includes("/api/specialists/agent-") && request.method() === "PATCH",
   );
   await page.getByLabel(/^Role/).fill("plan features");
   await expect(page.getByLabel(/^Role/)).toHaveValue("plan features");
-  // force: same false interception as the create submit above.
-  await page.getByRole("button", { name: "Save changes" }).click({ force: true });
-  await updateResponse;
+  await page.getByRole("checkbox", { name: "Rewrite AGENTS.md on save" }).check();
+  await page.getByRole("button", { name: "Save changes near instructions" }).click();
+  expect((await updateRequest).postDataJSON()).toMatchObject({
+    role: "plan features",
+    rewriteAgentsMd: true,
+  });
 
   // Saving also returns to the specialists list, now showing the updated role.
   await expect(page).toHaveURL(/\/specialists$/);

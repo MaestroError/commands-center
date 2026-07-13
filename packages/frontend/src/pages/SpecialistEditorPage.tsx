@@ -140,6 +140,7 @@ export function SpecialistEditorPage(props: SpecialistEditorPageProps) {
           <SpecialistForm
             agentId={specialist?.id}
             errors={errors}
+            isSaving={specialistMutations.create.isPending || specialistMutations.update.isPending}
             mode={props.mode}
             onChange={(next) => {
               setForm(next);
