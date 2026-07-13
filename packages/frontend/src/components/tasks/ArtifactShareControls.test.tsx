@@ -54,12 +54,19 @@ afterEach(() => {
 });
 
 describe("ArtifactShareControls", () => {
-  it.each([
-    { type: "url" as const, link: "https://example.com" },
-    { type: "document" as const, link: "reports/summary.md" },
-  ])("renders nothing for a $type artifact", ({ type, link }) => {
-    const { container } = render(<ArtifactShareControls artifact={artifact({ type, link })} />);
+  it("renders nothing for a url artifact", () => {
+    const { container } = render(
+      <ArtifactShareControls artifact={artifact({ type: "url", link: "https://example.com" })} />,
+    );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it.each([
+    { type: "file" as const, link: "runs/run-1/report.pdf" },
+    { type: "document" as const, link: "reports/summary.md" },
+  ])("offers a share button for a $type artifact", ({ type, link }) => {
+    render(<ArtifactShareControls artifact={artifact({ type, link })} />);
+    expect(screen.getByRole("button", { name: "Create signed links" })).toBeInTheDocument();
   });
 
   it("creates a signed link and copies it to the clipboard", async () => {

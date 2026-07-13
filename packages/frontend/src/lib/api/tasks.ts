@@ -3,6 +3,7 @@ import { apiFetch, readApiError, requestJson } from "./client";
 import {
   cancelTaskRunInputSchema,
   addArtifactInputSchema,
+  artifactDeliveryUrlsResponseSchema,
   artifactSchema,
   createArtifactShareLinkInputSchema,
   createArtifactShareLinkResponseSchema,
@@ -37,6 +38,7 @@ import {
   type CancelTaskRunInput,
   type AddArtifactInput,
   type Artifact,
+  type ArtifactDeliveryUrlsResponse,
   type CreateTaskFeedbackInput,
   type CreateArtifactShareLinkInput,
   type CreateArtifactShareLinkResponse,
@@ -378,6 +380,17 @@ export async function createArtifactShareLink(
       method: "POST",
       body: createArtifactShareLinkInputSchema.parse(input),
     },
+  );
+}
+
+// The template-driven ("MCP") delivery URLs for an artifact, if the source
+// template enables them. Distinct from the manual, revocable share links.
+export async function getArtifactDeliveryUrls(
+  artifactId: string,
+): Promise<ArtifactDeliveryUrlsResponse> {
+  return requestJson<ArtifactDeliveryUrlsResponse>(
+    `/api/artifacts/${encodeURIComponent(artifactId)}/delivery-urls`,
+    artifactDeliveryUrlsResponseSchema,
   );
 }
 

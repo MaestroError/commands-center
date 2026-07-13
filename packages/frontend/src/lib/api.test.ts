@@ -18,6 +18,7 @@ import {
   createTaskFromTemplate,
   createApiToken,
   createArtifactShareLink,
+  getArtifactDeliveryUrls,
   createTaskTemplate,
   getTaskArtifactSharingPreferences,
   deleteConversation,
@@ -913,6 +914,24 @@ describe("additional request wrapper coverage", () => {
         method: "POST",
         body: JSON.stringify({ expiresInMinutes: 60 }),
       }),
+    );
+  });
+
+  it("fetches template delivery URLs for an artifact", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      makeJsonResponse({
+        displayUrl: "https://example.com/artifacts/art-1/display?exp=1&sig=a",
+        downloadUrl: "https://example.com/artifacts/art-1/download?exp=1&sig=b",
+        expiresAt: "2026-01-02T00:00:00.000Z",
+      }),
+    );
+
+    await expect(getArtifactDeliveryUrls("art-1")).resolves.toMatchObject({
+      displayUrl: "https://example.com/artifacts/art-1/display?exp=1&sig=a",
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/artifacts/art-1/delivery-urls",
+      expect.objectContaining({ method: "GET" }),
     );
   });
 

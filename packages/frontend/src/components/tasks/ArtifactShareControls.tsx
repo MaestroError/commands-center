@@ -32,7 +32,9 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
     return () => window.clearTimeout(timeout);
   }, [copiedLink]);
 
-  if (props.artifact.type !== "file") {
+  // Share links serve any publishable artifact (a workspace file or a Documents
+  // module document). External `url` artifacts are already just a link.
+  if (props.artifact.type === "url") {
     return null;
   }
 

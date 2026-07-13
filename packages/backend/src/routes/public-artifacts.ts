@@ -67,6 +67,11 @@ export async function buildArtifactDeliveryContext(deps: {
   taskService: TaskService;
   artifactShareLinkService: ArtifactShareLinkService;
   config: RuntimeConfig;
+  // Epoch-ms the signed-URL expiry window is measured from. Defaults to the
+  // run's completion so repeated polls of a finished run yield identical URLs.
+  // Callers that surface a link for immediate use (e.g. the task panel) pass
+  // `Date.now()` so the URL is valid from view time rather than run time.
+  anchorMs?: number;
 }): Promise<ArtifactDeliveryOptions> {
   let displayEnabled = true;
   let downloadEnabled = true;
@@ -83,7 +88,8 @@ export async function buildArtifactDeliveryContext(deps: {
 
   const prefs = await deps.artifactShareLinkService.getPreferences();
   const minutes = prefs.taskArtifactSignedUrlExpiresInMinutes;
-  const anchor = deps.run.completedAt ? Date.parse(deps.run.completedAt) : Date.now();
+  const anchor =
+    deps.anchorMs ?? (deps.run.completedAt ? Date.parse(deps.run.completedAt) : Date.now());
 
   return {
     displayEnabled,

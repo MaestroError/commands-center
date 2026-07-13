@@ -4,6 +4,7 @@ import { Markdown } from "@/components/chat/Markdown";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { TabBar } from "@/components/common/TabBar";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
+import { ArtifactGeneratedUrls } from "@/components/tasks/ArtifactGeneratedUrls";
 import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { TaskFeedbackPanelSection } from "@/components/tasks/task-feedback-section";
 import { formatDate, formatToken } from "@/components/tasks/task-format";
@@ -590,6 +591,7 @@ function TaskPanelArtifactSection(props: { runs: TaskRun[]; taskId: string }) {
             <p className="mt-2 text-xs text-text-secondary">
               Latest: {formatDate(artifact.latestRun.completedAt ?? artifact.latestRun.updatedAt)}
             </p>
+            <ArtifactGeneratedUrls artifact={artifact.artifact} />
             <ArtifactShareControls artifact={artifact.artifact} taskId={props.taskId} />
           </article>
         ))}

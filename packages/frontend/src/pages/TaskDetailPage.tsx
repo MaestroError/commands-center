@@ -2,6 +2,7 @@ import { Markdown } from "@/components/chat/Markdown";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { TabBar } from "@/components/common/TabBar";
 import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
+import { ArtifactGeneratedUrls } from "@/components/tasks/ArtifactGeneratedUrls";
 import { ArtifactShareControls } from "@/components/tasks/ArtifactShareControls";
 import { TaskFeedbackPanelSection } from "@/components/tasks/task-feedback-section";
 import { formatDate, formatToken, readAgentName } from "@/components/tasks/task-format";
@@ -380,6 +381,7 @@ function TaskRunOutcomeSummary(props: { runs: TaskRun[]; taskId: string }) {
                   Latest:{" "}
                   {formatDate(artifact.latestRun.completedAt ?? artifact.latestRun.updatedAt)}
                 </p>
+                <ArtifactGeneratedUrls artifact={artifact.artifact} />
                 <ArtifactShareControls artifact={artifact.artifact} taskId={props.taskId} />
               </article>
             ))}
