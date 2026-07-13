@@ -201,6 +201,40 @@ describe("createArtifactService", () => {
     }
   });
 
+  it("records a Windows-style private document path as private scope", async () => {
+    const { testDb, service } = await setup();
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const conversationId = await insertConversation(testDb.client.db, agentId);
+      const absolute = join(
+        testDb.config.paths.subdirectories.specialists,
+        agentId,
+        "Documents",
+        "Reports",
+        "report.md",
+      );
+      await mkdir(dirname(absolute), { recursive: true });
+      await writeFile(absolute, "windows report", "utf8");
+
+      const artifact = await service.create({
+        conversationId,
+        title: "Windows report",
+        type: "document",
+        link: "Reports\\report.md",
+      });
+
+      expect(artifact.documentScope).toBe("private");
+      expect(artifact.documentOwnerSlug).toBe(agentId);
+
+      const published = await service.publishArtifact(artifact.id);
+      await expect(
+        readFile(service.resolveArtifactPath(published.storageKey!), "utf8"),
+      ).resolves.toBe("windows report");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("treats a document only in the shared Documents module as global scope", async () => {
     const { testDb, service } = await setup();
     try {

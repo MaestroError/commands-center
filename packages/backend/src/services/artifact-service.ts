@@ -565,15 +565,15 @@ async function resolveDocumentLocation(
     return { scope: "global", ownerSlug: null };
   }
 
-  const trimmed = link.trim();
-  if (trimmed.length === 0) {
-    return { scope: "global", ownerSlug: null };
-  }
-
+  // Canonicalize the path exactly as publishing will (validateRelativeArtifactPath
+  // normalizes backslashes to `/` and rejects absolute/traversal paths), so the
+  // persisted scope agrees with how resolveDocumentSourcePath later resolves it —
+  // otherwise a Windows-style path would probe as global here but publish under
+  // the private root. Invalid paths fail fast at create time.
+  const normalized = validateRelativeArtifactPath(link);
   const privateRoot = specialistDocumentsRoot(config, agentSlug);
-  const privatePath = resolve(privateRoot, trimmed);
-  // Guard against traversal before touching the filesystem; a path that escapes
-  // the private root simply isn't a private document.
+  const privatePath = resolve(privateRoot, normalized);
+  // Belt-and-suspenders: a path that escapes the private root isn't private.
   if (!isDescendant(privatePath, privateRoot)) {
     return { scope: "global", ownerSlug: null };
   }
