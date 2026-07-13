@@ -989,7 +989,7 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       const empty = { displayUrl: null, downloadUrl: null, expiresAt: null };
 
       const artifact = await artifactService.getArtifact(request.params.artifactId);
-      if (!artifact) {
+      if (!artifact || artifact.type === "url") {
         return empty;
       }
 
@@ -1013,11 +1013,15 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
         anchorMs: Date.now(),
       });
       const summary = await artifactDeliveryService.buildDelivery(artifact, options);
+      const hasDeliveryUrl = Boolean(summary.displayUrl || summary.downloadUrl);
 
       return {
         displayUrl: summary.displayUrl ?? null,
         downloadUrl: summary.downloadUrl ?? null,
-        expiresAt: options.expiresAtMs === 0 ? null : new Date(options.expiresAtMs).toISOString(),
+        expiresAt:
+          hasDeliveryUrl && options.expiresAtMs !== 0
+            ? new Date(options.expiresAtMs).toISOString()
+            : null,
       };
     },
   );

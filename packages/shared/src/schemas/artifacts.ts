@@ -97,7 +97,8 @@ export const revokeArtifactShareLinkResponseSchema = z.object({
 // The template-driven ("MCP") delivery URLs for an artifact: deterministic,
 // signed, and gated by the source template's display/download toggles. Computed
 // on demand (no persisted row); `null` when the template disables that URL or
-// the artifact cannot be served. `expiresAt` is null when links never expire.
+// the artifact cannot be served. `expiresAt` is null when no URL is returned or
+// links never expire.
 export const artifactDeliveryUrlsResponseSchema = z.object({
   displayUrl: z.string().url().nullable(),
   downloadUrl: z.string().url().nullable(),

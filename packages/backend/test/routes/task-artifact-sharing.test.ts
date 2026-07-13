@@ -537,6 +537,66 @@ describe("task artifact sharing", () => {
       await testDb.cleanup();
     }
   });
+
+  it("returns empty delivery URLs for a URL artifact", async () => {
+    const { testDb, taskService, server } = await setup();
+
+    try {
+      const { taskId, runId } = await createRunWithArtifact(testDb.client.db, taskService, {
+        workspaceDir: testDb.config.paths.workspaceDir,
+        artifactPath: "https://example.com/report",
+        content: "",
+        artifactType: "url",
+      });
+      const artifact = (
+        await server.inject({
+          method: "GET",
+          url: `/api/tasks/${taskId}/runs/${runId}/artifacts`,
+        })
+      ).json<{ artifacts: Array<{ id: string }> }>().artifacts[0];
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/artifacts/${artifact?.id}/delivery-urls`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ displayUrl: null, downloadUrl: null, expiresAt: null });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns a null expiry when the template disables both delivery URLs", async () => {
+    const { testDb, taskService, server } = await setup();
+
+    try {
+      const { taskId, runId } = await createRunWithArtifact(testDb.client.db, taskService, {
+        workspaceDir: testDb.config.paths.workspaceDir,
+        artifactPath: "reports/private-delivery.md",
+        content: "private delivery",
+        deliveryUrlsEnabled: false,
+      });
+      const artifact = (
+        await server.inject({
+          method: "GET",
+          url: `/api/tasks/${taskId}/runs/${runId}/artifacts`,
+        })
+      ).json<{ artifacts: Array<{ id: string }> }>().artifacts[0];
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/artifacts/${artifact?.id}/delivery-urls`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ displayUrl: null, downloadUrl: null, expiresAt: null });
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 async function createRunWithArtifact(
@@ -547,10 +607,28 @@ async function createRunWithArtifact(
     artifactPath: string;
     content: string;
     privateDocument?: boolean;
+    artifactType?: "file" | "url";
+    deliveryUrlsEnabled?: boolean;
   },
 ): Promise<{ taskId: string; runId: string }> {
   const agent = await insertAgent(db);
-  const task = await taskService.create({ agentId: agent.id, title: "Publish report" });
+  const task =
+    options.deliveryUrlsEnabled === false
+      ? await taskService
+          .createTemplate({
+            defaultAgentId: agent.id,
+            title: "Private delivery",
+            mcpConfig: {
+              artifacts: { displayableUrlEnabled: false, downloadableUrlEnabled: false },
+            },
+          })
+          .then((template) =>
+            taskService.createTaskFromTemplate(template.id, { triggerSource: "manual" }),
+          )
+      : await taskService.create({ agentId: agent.id, title: "Publish report" });
+  if (!task) {
+    throw new Error("Failed to create artifact task.");
+  }
   const run = await taskService.createRun({
     taskId: task.id,
     agentId: agent.id,
@@ -570,7 +648,7 @@ async function createRunWithArtifact(
   await writeFile(absolutePath, options.content, "utf8");
   await taskService.addRunArtifact(run.id, agent.id, {
     title: "Release report",
-    type: "file",
+    type: options.artifactType ?? "file",
     link: options.artifactPath,
   });
 
