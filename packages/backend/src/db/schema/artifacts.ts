@@ -19,8 +19,16 @@ export const artifacts = sqliteTable(
     // "url" | "file" | "document"
     type: text("type").notNull(),
     // For "url": an absolute URL. For "file": a workspace-relative path.
-    // For "document": a path relative to the Documents/ module.
+    // For "document": a path relative to the Documents/ module (relative to the
+    // owner's private Documents/ when document_scope is "private").
     link: text("link").notNull(),
+    // Scope of a "document" artifact: "global" (shared Documents module) or
+    // "private" (a specialist's private workspace). document_owner_slug is the
+    // owning specialist's slug when private. Null/"global" for other types.
+    document_scope: text("document_scope", { enum: ["global", "private"] })
+      .notNull()
+      .default("global"),
+    document_owner_slug: text("document_owner_slug"),
     created_at: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [

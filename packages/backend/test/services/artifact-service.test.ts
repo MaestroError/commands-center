@@ -166,6 +166,70 @@ describe("createArtifactService", () => {
     }
   });
 
+  it("records a private-scope document artifact and publishes it from the owner's Documents", async () => {
+    const { testDb, service } = await setup();
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const conversationId = await insertConversation(testDb.client.db, agentId);
+      const relativePath = "Reports/2026-07-13/report.md";
+      const absolute = join(
+        testDb.config.paths.subdirectories.specialists,
+        agentId,
+        "Documents",
+        relativePath,
+      );
+      await mkdir(dirname(absolute), { recursive: true });
+      await writeFile(absolute, "private report", "utf8");
+
+      const artifact = await service.create({
+        conversationId,
+        title: "Private report",
+        type: "document",
+        link: relativePath,
+      });
+
+      expect(artifact.documentScope).toBe("private");
+      expect(artifact.documentOwnerSlug).toBe(agentId);
+
+      const published = await service.publishArtifact(artifact.id);
+      expect(published.originalFilename).toBe("report.md");
+      await expect(
+        readFile(service.resolveArtifactPath(published.storageKey!), "utf8"),
+      ).resolves.toBe("private report");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("treats a document only in the shared Documents module as global scope", async () => {
+    const { testDb, service } = await setup();
+    try {
+      const agentId = await insertAgent(testDb.client.db);
+      const conversationId = await insertConversation(testDb.client.db, agentId);
+      const relativePath = "Reports/2026-07-13/report.md";
+      const absolute = join(testDb.config.paths.subdirectories.documents, relativePath);
+      await mkdir(dirname(absolute), { recursive: true });
+      await writeFile(absolute, "shared report", "utf8");
+
+      const artifact = await service.create({
+        conversationId,
+        title: "Shared report",
+        type: "document",
+        link: relativePath,
+      });
+
+      expect(artifact.documentScope ?? "global").toBe("global");
+      expect(artifact.documentOwnerSlug ?? null).toBeNull();
+
+      const published = await service.publishArtifact(artifact.id);
+      await expect(
+        readFile(service.resolveArtifactPath(published.storageKey!), "utf8"),
+      ).resolves.toBe("shared report");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("publishes a file artifact, is idempotent, and resolves the registered file", async () => {
     const { testDb, service } = await setup();
     try {

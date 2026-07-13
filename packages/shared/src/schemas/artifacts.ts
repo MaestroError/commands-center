@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { documentScopeSchema } from "./documents.js";
+
 export const artifactTypeSchema = z.enum(["url", "file", "document"]);
 
 // A public download link for an artifact. Keyed by artifactId only — sharing is
@@ -24,8 +26,15 @@ export const artifactSchema = z.object({
   description: z.string().optional(),
   type: artifactTypeSchema,
   // "url": absolute URL. "file": workspace-relative path. "document": path
-  // relative to the Documents/ module.
+  // relative to the Documents/ module (relative to the owner's private
+  // Documents/ when `documentScope` is "private").
   link: z.string().min(1),
+  // Scope of a "document" artifact. "private" for a document in a specialist's
+  // private workspace (with `documentOwnerSlug` set to the owning specialist's
+  // slug), otherwise "global"/absent for the shared Documents module and
+  // non-document artifacts.
+  documentScope: documentScopeSchema.optional(),
+  documentOwnerSlug: z.string().min(1).nullable().optional(),
   fileManagerPath: z.string().min(1).optional(),
   createdAt: z.string().datetime(),
   shareLinks: z.array(artifactShareLinkSchema).default([]),

@@ -1,4 +1,4 @@
-import type { ArtifactType, Specialist, TaskRepeatRule } from "@cc/shared/schemas";
+import type { DocumentScope, ArtifactType, Specialist, TaskRepeatRule } from "@cc/shared/schemas";
 
 import { buildDocumentHref } from "@/lib/document-href";
 import { buildFileManagerHref } from "@/lib/file-manager-href";
@@ -33,10 +33,15 @@ export function buildArtifactHref(artifact: {
   type: ArtifactType;
   link: string;
   fileManagerPath?: string;
+  documentScope?: DocumentScope;
+  documentOwnerSlug?: string | null;
 }): string {
   switch (artifact.type) {
     case "document":
-      return buildDocumentHref(artifact.link);
+      return buildDocumentHref(artifact.link, {
+        scope: artifact.documentScope,
+        ownerSlug: artifact.documentOwnerSlug,
+      });
     case "file":
       return buildFileManagerHref({
         path: artifact.fileManagerPath ?? artifact.link,

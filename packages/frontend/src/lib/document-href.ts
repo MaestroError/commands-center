@@ -1,3 +1,5 @@
+import type { DocumentScope } from "@cc/shared/schemas";
+
 /**
  * Builds the in-app Documents module href for a document path.
  *
@@ -6,8 +8,19 @@
  * `Documents/` prefix (e.g. "Documents/design/overview.md"). Leading slashes
  * and a `Documents/` prefix are stripped so the resulting `path` query param is
  * always relative to the Documents root.
+ *
+ * Private documents live in a specialist's private workspace rather than the
+ * shared module, so their href carries `scope=private&owner=<slug>` to point
+ * the Documents page at the correct root.
  */
-export function buildDocumentHref(link: string): string {
+export function buildDocumentHref(
+  link: string,
+  options?: { scope?: DocumentScope | null; ownerSlug?: string | null },
+): string {
   const relativePath = link.replace(/^\/+/, "").replace(/^Documents\//, "");
-  return `/documents?path=${encodeURIComponent(relativePath)}`;
+  const scopePrefix =
+    options?.scope === "private" && options.ownerSlug
+      ? `scope=private&owner=${encodeURIComponent(options.ownerSlug)}&`
+      : "";
+  return `/documents?${scopePrefix}path=${encodeURIComponent(relativePath)}`;
 }
