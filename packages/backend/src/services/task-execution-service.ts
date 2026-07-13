@@ -140,6 +140,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
     finalizeStalledRun,
     finalizeBlockedInteraction,
     finalizeUsageLimitRun,
+    finalizeModelNotFoundRun,
     resolveAutoRetryLimit,
     readRequeueCount,
   } = createTaskRetryPolicy({
@@ -163,6 +164,7 @@ export function createTaskExecutionService(options: TaskExecutionServiceOptions)
       finalizeBlockedInteraction,
       finalizeStalledRun,
       finalizeUsageLimitRun,
+      finalizeModelNotFoundRun,
     },
   });
 

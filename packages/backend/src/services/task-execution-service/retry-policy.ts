@@ -8,6 +8,7 @@ import { NotFoundError } from "../../lib/api-error.js";
 import { TaskRunPromptError } from "../conversation-service.js";
 import type {
   TaskRunBlockedInteractionDetails,
+  TaskRunModelNotFoundDetails,
   TaskRunStallDetails,
   TaskRunUsageLimitDetails,
 } from "../task-run-monitor-service.js";
@@ -121,6 +122,41 @@ export function buildUsageLimitErrorDetails(
     lastAssistantMessageId: details.lastAssistantMessageId,
     fallbackQueued: fallbackModel !== undefined,
     ...(fallbackModel ? { fallbackModel } : {}),
+  };
+}
+
+export function formatModelNotFoundMessage(
+  details: TaskRunModelNotFoundDetails,
+  fallbackModel?: string,
+): string {
+  const base =
+    `Model not found (attempted model: ${details.attemptedModel}): ${details.message} ` +
+    `The model does not exist or is unavailable, so automatic retries were stopped.`;
+
+  return fallbackModel
+    ? `${base} Retrying automatically with fallback model ${fallbackModel}.`
+    : base;
+}
+
+export function buildModelNotFoundErrorDetails(
+  run: TaskRun,
+  details: TaskRunModelNotFoundDetails,
+): Record<string, unknown> {
+  const slash = details.attemptedModel.indexOf("/");
+  const provider = slash > 0 ? details.attemptedModel.slice(0, slash) : details.attemptedModel;
+
+  return {
+    errorName: "ModelNotFound",
+    stage: "opencode_session_retry",
+    taskRunId: run.id,
+    taskId: run.taskId,
+    opencodeSessionId: run.opencodeSessionId,
+    attemptedModel: details.attemptedModel,
+    provider,
+    retryAttempt: details.attempt,
+    retryMessage: details.message,
+    monitorElapsedMs: details.monitorElapsedMs,
+    lastAssistantMessageId: details.lastAssistantMessageId,
   };
 }
 
@@ -366,6 +402,71 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
     scheduleAgentDrain(finalized.agentId);
   }
 
+  async function finalizeModelNotFoundRun(
+    run: TaskRun,
+    details: TaskRunModelNotFoundDetails,
+  ): Promise<void> {
+    const latest = await options.taskService.getRunById(run.id);
+
+    if (!latest || latest.status !== "running") {
+      return;
+    }
+
+    // OpenCode is still actively retrying the missing model, so abort the session
+    // before finalizing or it would keep looping in the background.
+    await abortOpenCodeTaskRun(latest);
+
+    // Synthesize a model/provider error so this routes through the same fallback
+    // machinery as an error surfaced directly in an assistant message. A missing
+    // model is model-specific (not provider-wide), so a valid fallback model —
+    // even on the same provider — is eligible (see selectNextFallbackModel).
+    const error = new TaskRunPromptError({
+      modelError: {
+        name: "APIError",
+        message: details.message,
+        data: {
+          statusCode: 404,
+          isRetryable: false,
+          retryAttempt: details.attempt,
+        },
+      },
+      attemptedModel: details.attemptedModel,
+    });
+
+    const errored = await options.taskService.setRunStatus(latest.id, "error", {
+      completedAt: new Date().toISOString(),
+      errorMessage: formatModelNotFoundMessage(details),
+      errorDetails: buildModelNotFoundErrorDetails(latest, details),
+    });
+
+    if (!errored) {
+      throw new NotFoundError("Task run not found.");
+    }
+
+    // queueFallbackRun fires notifyRunTerminal itself when it queues a fallback;
+    // when none is eligible it returns undefined and we finalize the run here.
+    const fallbackRun = await queueFallbackRun(errored, error, {
+      logMessage: "task run targeted a non-existent model; queued fallback model run",
+    });
+
+    if (fallbackRun) {
+      return;
+    }
+
+    notifyRunTerminal(errored);
+    options.logger?.warn(
+      {
+        taskId: errored.taskId,
+        taskRunId: errored.id,
+        opencodeSessionId: errored.opencodeSessionId,
+        attemptedModel: details.attemptedModel,
+        retryAttempt: details.attempt,
+      },
+      "task run finalized: model not found and no eligible fallback model available",
+    );
+    scheduleAgentDrain(errored.agentId);
+  }
+
   async function resolveRequeueSettings(): Promise<{ enabled: boolean; limit: number }> {
     const fallback = { enabled: false, limit: 10 };
 
@@ -601,6 +702,7 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
     finalizeStalledRun,
     finalizeBlockedInteraction,
     finalizeUsageLimitRun,
+    finalizeModelNotFoundRun,
     resolveAutoRetryLimit,
     readRequeueCount,
   };
