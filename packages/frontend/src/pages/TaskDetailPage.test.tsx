@@ -36,6 +36,7 @@ vi.mock("@/hooks/use-tasks-query", () => ({
   useTaskSubtasksQuery: () => mockUseTaskSubtasksQuery(),
   useTaskRunQuery: () => mockUseTaskRunQuery(),
   useTaskRunSessionQuery: () => mockUseTaskRunSessionQuery(),
+  useArtifactDeliveryUrlsQuery: () => ({ data: undefined }),
   useTaskMutations: () => ({
     duplicate: { mutateAsync: duplicateMutateAsync },
     update: { mutate: updateMutate, isPending: false },

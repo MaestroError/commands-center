@@ -3,6 +3,7 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
   activeTaskRunListSchema,
+  artifactDeliveryUrlsResponseSchema,
   artifactListResponseSchema,
   artifactSharingPreferencesSchema,
   cancelTaskRunInputSchema,
@@ -52,7 +53,9 @@ import { createTaskExecutionService } from "../services/task-execution-service.j
 import { createTaskContextAttachmentService } from "../services/task-context-attachment-service.js";
 import { createTaskSchedulerService } from "../services/task-scheduler-service.js";
 import { createArtifactService } from "../services/artifact-service.js";
+import { createArtifactDeliveryService } from "../services/artifact-delivery-service.js";
 import { createArtifactShareLinkService } from "../services/artifact-share-link-service.js";
+import { buildArtifactDeliveryContext } from "./public-artifacts.js";
 import { createActivityService } from "../services/activity-service.js";
 import { createTaskService } from "../services/task-service.js";
 import { triggerTemplateRun } from "../services/trigger-template-run.js";
@@ -135,6 +138,11 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
     db: context.database.db,
     config: context.config,
     artifactService,
+  });
+  const artifactDeliveryService = createArtifactDeliveryService({
+    artifactService,
+    config: context.config,
+    logger: context.logger,
   });
 
   app.get(
@@ -960,6 +968,61 @@ export function registerTaskRoutes(server: AppServer, context: RuntimeContext): 
       });
 
       return { revoked: true as const };
+    },
+  );
+
+  // The template-driven ("MCP") delivery URLs for an artifact, if any. These are
+  // deterministic signed URLs gated by the source template's display/download
+  // toggles — distinct from the manual, revocable share links above. Computed on
+  // demand and anchored to now so the returned URLs are valid from view time.
+  app.get(
+    "/api/artifacts/:artifactId/delivery-urls",
+    {
+      schema: {
+        params: artifactParamsSchema,
+        response: {
+          200: artifactDeliveryUrlsResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const empty = { displayUrl: null, downloadUrl: null, expiresAt: null };
+
+      const artifact = await artifactService.getArtifact(request.params.artifactId);
+      if (!artifact || artifact.type === "url") {
+        return empty;
+      }
+
+      // Delivery toggles live on the source template, resolved via the artifact's
+      // run. Chat artifacts (no run) have no template-driven URLs.
+      const conversation = await context.database.db.query.conversations.findFirst({
+        where: (table, operators) => operators.eq(table.id, artifact.conversationId),
+        columns: { task_run_id: true },
+      });
+      const runId = conversation?.task_run_id ?? undefined;
+      const run = runId ? await service.getRunById(runId) : undefined;
+      if (!run) {
+        return empty;
+      }
+
+      const options = await buildArtifactDeliveryContext({
+        run,
+        taskService: service,
+        artifactShareLinkService,
+        config: context.config,
+        anchorMs: Date.now(),
+      });
+      const summary = await artifactDeliveryService.buildDelivery(artifact, options);
+      const hasDeliveryUrl = Boolean(summary.displayUrl || summary.downloadUrl);
+
+      return {
+        displayUrl: summary.displayUrl ?? null,
+        downloadUrl: summary.downloadUrl ?? null,
+        expiresAt:
+          hasDeliveryUrl && options.expiresAtMs !== 0
+            ? new Date(options.expiresAtMs).toISOString()
+            : null,
+      };
     },
   );
 

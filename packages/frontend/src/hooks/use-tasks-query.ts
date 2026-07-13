@@ -27,6 +27,7 @@ import {
   archiveTask,
   cancelTaskRun,
   createArtifactShareLink,
+  getArtifactDeliveryUrls,
   createRunFollowup,
   createTask,
   createTaskFeedback,
@@ -122,6 +123,16 @@ export function useTaskRunsQuery(taskId?: string) {
     queryKey: queryKeys.taskRuns(taskId ?? "missing"),
     queryFn: () => listTaskRuns(taskId ?? ""),
     enabled: Boolean(taskId),
+  });
+}
+
+// The template-driven ("MCP") delivery URLs for a publishable artifact. Only
+// enabled for file/document artifacts (external `url` artifacts are a link).
+export function useArtifactDeliveryUrlsQuery(artifactId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.artifactDeliveryUrls(artifactId),
+    queryFn: () => getArtifactDeliveryUrls(artifactId),
+    enabled: enabled && Boolean(artifactId),
   });
 }
 

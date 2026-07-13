@@ -116,6 +116,7 @@ export {
 } from "./api.js";
 export {
   addArtifactInputSchema,
+  artifactDeliveryUrlsResponseSchema,
   artifactListResponseSchema,
   artifactSchema,
   artifactShareLinkSchema,
@@ -129,6 +130,7 @@ export {
   updateArtifactSharingPreferencesInputSchema,
   type AddArtifactInput,
   type Artifact,
+  type ArtifactDeliveryUrlsResponse,
   type ArtifactListResponse,
   type ArtifactShareLink,
   type ArtifactSharingPreferences,

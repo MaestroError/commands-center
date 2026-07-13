@@ -94,6 +94,17 @@ export const revokeArtifactShareLinkResponseSchema = z.object({
   revoked: z.literal(true),
 });
 
+// The template-driven ("MCP") delivery URLs for an artifact: deterministic,
+// signed, and gated by the source template's display/download toggles. Computed
+// on demand (no persisted row); `null` when the template disables that URL or
+// the artifact cannot be served. `expiresAt` is null when no URL is returned or
+// links never expire.
+export const artifactDeliveryUrlsResponseSchema = z.object({
+  displayUrl: z.string().url().nullable(),
+  downloadUrl: z.string().url().nullable(),
+  expiresAt: z.string().datetime().nullable(),
+});
+
 export const artifactSharingPreferencesSchema = z.object({
   // Setting key/field name preserved for backward compatibility with the
   // persisted setting; it governs all artifact share links now, not just task
@@ -116,6 +127,7 @@ export type RegisteredArtifactListResponse = z.infer<typeof registeredArtifactLi
 export type AddArtifactInput = z.input<typeof addArtifactInputSchema>;
 export type CreateArtifactShareLinkInput = z.input<typeof createArtifactShareLinkInputSchema>;
 export type CreateArtifactShareLinkResponse = z.infer<typeof createArtifactShareLinkResponseSchema>;
+export type ArtifactDeliveryUrlsResponse = z.infer<typeof artifactDeliveryUrlsResponseSchema>;
 export type ArtifactSharingPreferences = z.infer<typeof artifactSharingPreferencesSchema>;
 export type UpdateArtifactSharingPreferencesInput = z.input<
   typeof updateArtifactSharingPreferencesInputSchema
