@@ -1,2 +1,4 @@
 User-agent: *
+Allow: /api/public/v1/artifacts/
+Allow: /api/public/v1/artifact-shares/
 Disallow: /
