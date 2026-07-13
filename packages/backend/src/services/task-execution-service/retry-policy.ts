@@ -433,6 +433,11 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
       attemptedModel: details.attemptedModel,
     });
 
+    // Resolve the fallback up-front so the terminal message can name the model it
+    // hands off to. The run is still labeled generically first; the label is
+    // corrected below only once a fallback has actually been queued.
+    const fallbackInput = buildFallbackRunInput(latest, error);
+
     const errored = await options.taskService.setRunStatus(latest.id, "error", {
       completedAt: new Date().toISOString(),
       errorMessage: formatModelNotFoundMessage(details),
@@ -443,28 +448,51 @@ export function createTaskRetryPolicy(ctx: TaskRetryPolicyContext) {
       throw new NotFoundError("Task run not found.");
     }
 
-    // queueFallbackRun fires notifyRunTerminal itself when it queues a fallback;
-    // when none is eligible it returns undefined and we finalize the run here.
-    const fallbackRun = await queueFallbackRun(errored, error, {
-      logMessage: "task run targeted a non-existent model; queued fallback model run",
-    });
+    let fallbackRun: TaskRun | undefined;
 
-    if (fallbackRun) {
-      return;
+    if (fallbackInput) {
+      try {
+        fallbackRun = await queueTask(errored.taskId, fallbackInput);
+      } catch (queueError) {
+        options.logger?.error(
+          { err: queueError, taskId: errored.taskId, taskRunId: errored.id },
+          "failed to queue model-not-found fallback run; finalizing without fallback",
+        );
+      }
     }
 
-    notifyRunTerminal(errored);
-    options.logger?.warn(
-      {
-        taskId: errored.taskId,
-        taskRunId: errored.id,
-        opencodeSessionId: errored.opencodeSessionId,
-        attemptedModel: details.attemptedModel,
-        retryAttempt: details.attempt,
-      },
-      "task run finalized: model not found and no eligible fallback model available",
-    );
-    scheduleAgentDrain(errored.agentId);
+    const finalized = fallbackRun
+      ? ((await options.taskService.updateRun(errored.id, {
+          errorMessage: formatModelNotFoundMessage(details, fallbackInput?.model),
+        })) ?? errored)
+      : errored;
+
+    notifyRunTerminal(finalized);
+
+    if (fallbackRun) {
+      options.logger?.warn(
+        {
+          taskId: finalized.taskId,
+          previousRunId: finalized.id,
+          fallbackRunId: fallbackRun.id,
+          model: fallbackInput?.model,
+        },
+        "task run targeted a non-existent model; queued fallback model run",
+      );
+    } else {
+      options.logger?.warn(
+        {
+          taskId: finalized.taskId,
+          taskRunId: finalized.id,
+          opencodeSessionId: finalized.opencodeSessionId,
+          attemptedModel: details.attemptedModel,
+          retryAttempt: details.attempt,
+        },
+        "task run finalized: model not found and no eligible fallback model available",
+      );
+    }
+
+    scheduleAgentDrain(finalized.agentId);
   }
 
   async function resolveRequeueSettings(): Promise<{ enabled: boolean; limit: number }> {
