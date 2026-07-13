@@ -192,7 +192,10 @@ export function buildTaskRunErrorDetails(error: unknown, run: TaskRun): Record<s
     return {
       errorName: PROVIDER_MODEL_NOT_FOUND_ERROR_NAME,
       ...providerModelNotFound.details,
-      stage: "task_session_prompt",
+      stage:
+        error instanceof TaskRunPromptError || run.opencodeSessionId
+          ? "task_session_prompt"
+          : "task_session_create",
       ...(error instanceof TaskRunPromptError ? { modelError: error.modelError } : {}),
       ...(run.opencodeSessionId ? { opencodeSessionId: run.opencodeSessionId } : {}),
     };

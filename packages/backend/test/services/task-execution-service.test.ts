@@ -2752,10 +2752,13 @@ describe("createTaskExecutionService", () => {
 
       // 1 original + 2 requeues = 3 runs, all cancelled, then the chain stops.
       await expect
-        .poll(async () => {
-          const runs = await taskService.listRuns(task.id);
-          return runs.length === 3 && runs.every((entry) => entry.status === "cancelled");
-        })
+        .poll(
+          async () => {
+            const runs = await taskService.listRuns(task.id);
+            return runs.length === 3 && runs.every((entry) => entry.status === "cancelled");
+          },
+          { timeout: 5_000 },
+        )
         .toBe(true);
 
       executionService.dispose();

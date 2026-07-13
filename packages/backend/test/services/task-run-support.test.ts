@@ -75,6 +75,34 @@ describe("buildTaskRunErrorDetails", () => {
     expect(details["opencodeSessionId"]).toBe("s1");
     expect(typeof details["elapsedRunMs"]).toBe("number");
   });
+
+  it("uses the create stage for a provider model error before a session exists", () => {
+    const error = new Error("Model not found: openai/gpt-5.6-terra-fast");
+    error.name = "ProviderModelNotFoundError";
+
+    expect(buildTaskRunErrorDetails(error, run())).toMatchObject({
+      errorName: "ProviderModelNotFoundError",
+      attemptedModel: "openai/gpt-5.6-terra-fast",
+      stage: "task_session_create",
+    });
+  });
+
+  it("uses the prompt stage for a wrapped provider model prompt error", () => {
+    const error = new TaskRunPromptError({
+      attemptedModel: "openai/gpt-5.6-terra-fast",
+      modelError: {
+        name: "ProviderModelNotFoundError",
+        message: "Model not found: openai/gpt-5.6-terra-fast",
+        data: {},
+      },
+    });
+
+    expect(buildTaskRunErrorDetails(error, run())).toMatchObject({
+      errorName: "ProviderModelNotFoundError",
+      attemptedModel: "openai/gpt-5.6-terra-fast",
+      stage: "task_session_prompt",
+    });
+  });
 });
 
 describe("readElapsedRunMs", () => {
