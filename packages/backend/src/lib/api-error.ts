@@ -10,6 +10,11 @@ import {
   type ApiValidationErrorResponse,
 } from "@cc/shared/schemas";
 
+import {
+  PROVIDER_MODEL_NOT_FOUND_ERROR_NAME,
+  readProviderModelNotFoundError,
+} from "./provider-model-not-found.js";
+
 export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly statusCode: number;
@@ -106,6 +111,24 @@ export function registerApiErrorHandler(
     }
 
     void reply.status(error.statusCode).send(body);
+    return;
+  }
+
+  const providerModelNotFound = readProviderModelNotFoundError(error);
+  if (providerModelNotFound) {
+    const body = apiErrorResponseSchema.parse({
+      error: {
+        code: "bad_request",
+        message: providerModelNotFound.message,
+        details: {
+          errorName: PROVIDER_MODEL_NOT_FOUND_ERROR_NAME,
+          ...providerModelNotFound.details,
+        },
+      },
+    });
+
+    request.log.warn({ err: error }, "provider model not found");
+    void reply.status(400).send(body);
     return;
   }
 

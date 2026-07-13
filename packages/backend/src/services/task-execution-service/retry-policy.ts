@@ -5,6 +5,10 @@ import type { QueueTaskExecutionInput } from "../task-execution-service.js";
 import type { TaskExecutionServiceOptions } from "./context.js";
 import type { TaskRun } from "@cc/shared/schemas";
 import { NotFoundError } from "../../lib/api-error.js";
+import {
+  PROVIDER_MODEL_NOT_FOUND_ERROR_NAME,
+  readProviderModelNotFoundError,
+} from "../../lib/provider-model-not-found.js";
 import { TaskRunPromptError } from "../conversation-service.js";
 import type {
   TaskRunBlockedInteractionDetails,
@@ -129,9 +133,11 @@ export function formatModelNotFoundMessage(
   details: TaskRunModelNotFoundDetails,
   fallbackModel?: string,
 ): string {
-  const base =
-    `Model not found (attempted model: ${details.attemptedModel}): ${details.message} ` +
-    `The model does not exist or is unavailable, so automatic retries were stopped.`;
+  const providerError = readProviderModelNotFoundError(
+    { name: PROVIDER_MODEL_NOT_FOUND_ERROR_NAME, message: details.message },
+    details.attemptedModel,
+  );
+  const base = `${providerError?.message ?? details.message} Automatic retries were stopped.`;
 
   return fallbackModel
     ? `${base} Retrying automatically with fallback model ${fallbackModel}.`
@@ -142,17 +148,18 @@ export function buildModelNotFoundErrorDetails(
   run: TaskRun,
   details: TaskRunModelNotFoundDetails,
 ): Record<string, unknown> {
-  const slash = details.attemptedModel.indexOf("/");
-  const provider = slash > 0 ? details.attemptedModel.slice(0, slash) : details.attemptedModel;
+  const providerError = readProviderModelNotFoundError(
+    { name: PROVIDER_MODEL_NOT_FOUND_ERROR_NAME, message: details.message },
+    details.attemptedModel,
+  );
 
   return {
-    errorName: "ModelNotFound",
+    errorName: PROVIDER_MODEL_NOT_FOUND_ERROR_NAME,
     stage: "opencode_session_retry",
     taskRunId: run.id,
     taskId: run.taskId,
     opencodeSessionId: run.opencodeSessionId,
-    attemptedModel: details.attemptedModel,
-    provider,
+    ...providerError?.details,
     retryAttempt: details.attempt,
     retryMessage: details.message,
     monitorElapsedMs: details.monitorElapsedMs,

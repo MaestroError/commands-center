@@ -175,6 +175,38 @@ describe("opencode-event-service", () => {
     });
   });
 
+  it("adds recovery guidance to provider model-not-found session errors", async () => {
+    const onEvent = await collectEvents([
+      {
+        type: "session.error",
+        properties: {
+          sessionID: "sess-1",
+          error: {
+            name: "ProviderModelNotFoundError",
+            message: "Model not found: openai/gpt-5.6-terra-fast.",
+          },
+        },
+      },
+    ]);
+
+    expect(onEvent).toHaveBeenCalledWith({
+      type: "session.error",
+      properties: {
+        sessionID: "sess-1",
+        error: expect.objectContaining({
+          name: "ProviderModelNotFoundError",
+          message:
+            "Model not found: openai/gpt-5.6-terra-fast. Re-save the specialist's model configuration or restart the OpenCode instance, then try again.",
+          data: expect.objectContaining({
+            attemptedModel: "openai/gpt-5.6-terra-fast",
+            modelID: "gpt-5.6-terra-fast",
+            providerID: "openai",
+          }),
+        }),
+      },
+    });
+  });
+
   it("maps server connection and heartbeat events", async () => {
     const onEvent = await collectEvents([
       { type: "server.connected", properties: {} },

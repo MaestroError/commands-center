@@ -151,6 +151,27 @@ describe("message-mapper", () => {
     ).toMatchObject({ name: "E" });
   });
 
+  it("returns actionable details for provider model-not-found errors", () => {
+    expect(
+      sanitizeMessageError({
+        name: "ProviderModelNotFoundError",
+        message:
+          "Model not found: openai/gpt-5.6-terra-fast. Did you mean: gpt-5.6-terra-fast? at SessionPrompt.getModel",
+      }),
+    ).toEqual({
+      name: "ProviderModelNotFoundError",
+      message:
+        "Model not found: openai/gpt-5.6-terra-fast. Re-save the specialist's model configuration or restart the OpenCode instance, then try again.",
+      data: {
+        attemptedModel: "openai/gpt-5.6-terra-fast",
+        modelID: "gpt-5.6-terra-fast",
+        originalMessage:
+          "Model not found: openai/gpt-5.6-terra-fast. Did you mean: gpt-5.6-terra-fast? at SessionPrompt.getModel",
+        providerID: "openai",
+      },
+    });
+  });
+
   it("classifies records and attachment types", () => {
     expect(isRecord({})).toBe(true);
     expect(isRecord([])).toBe(false);

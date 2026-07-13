@@ -9,6 +9,10 @@ import {
 } from "@cc/shared/schemas";
 
 import type { OpenCodeSessionMessage } from "../services/opencode-service.js";
+import {
+  PROVIDER_MODEL_NOT_FOUND_ERROR_NAME,
+  readProviderModelNotFoundError,
+} from "./provider-model-not-found.js";
 
 type OpenCodePart = OpenCodeSessionMessage["parts"][number];
 
@@ -136,6 +140,18 @@ export function sanitizeMessageError(error: unknown): ConversationMessageError |
 
   if (!name || !message) {
     return undefined;
+  }
+
+  const providerModelNotFound = readProviderModelNotFoundError({ name, message, data });
+  if (providerModelNotFound) {
+    return {
+      name: PROVIDER_MODEL_NOT_FOUND_ERROR_NAME,
+      message: providerModelNotFound.message,
+      data: {
+        ...data,
+        ...providerModelNotFound.details,
+      },
+    };
   }
 
   return {

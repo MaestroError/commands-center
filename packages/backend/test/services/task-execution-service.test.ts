@@ -1055,6 +1055,53 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("fails with actionable details when task prompt startup throws ProviderModelNotFoundError", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService();
+    const baseConversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const promptError = new Error(
+      "Model not found: openai/gpt-5.6-terra-fast. Did you mean: gpt-5.6-terra-fast?",
+    );
+    promptError.name = "ProviderModelNotFoundError";
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService: {
+        ...baseConversationService,
+        startTaskRunPrompt: vi.fn(() => Promise.reject(promptError)),
+      },
+    });
+
+    try {
+      const agent = await insertAgent(testDb.client.db, {}, "openai/gpt-5.6-terra-fast");
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Unavailable provider model",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      const errored = await taskService.getRunById(run.id);
+      expect(errored?.errorMessage).toContain(
+        "Re-save the specialist's model configuration or restart the OpenCode instance",
+      );
+      expect(errored?.errorDetails).toMatchObject({
+        errorName: "ProviderModelNotFoundError",
+        attemptedModel: "openai/gpt-5.6-terra-fast",
+        providerID: "openai",
+        modelID: "gpt-5.6-terra-fast",
+        stage: "task_session_prompt",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("retries local transport failures while creating task OpenCode sessions", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -2296,12 +2343,16 @@ describe("createTaskExecutionService", () => {
       await expectRunStatus(taskService, run.id, "error");
       const errored = await taskService.getRunById(run.id);
       expect(errored?.errorMessage).toContain("Model not found");
+      expect(errored?.errorMessage).toContain(
+        "Re-save the specialist's model configuration or restart the OpenCode instance",
+      );
       expect(errored?.errorDetails).toMatchObject({
-        errorName: "ModelNotFound",
+        errorName: "ProviderModelNotFoundError",
         stage: "opencode_session_retry",
         opencodeSessionId: "session-1",
         attemptedModel: "openai/gpt-5.6-luna",
-        provider: "openai",
+        providerID: "openai",
+        modelID: "gpt-5.6-luna",
         retryMessage: "Model not found gpt-5.6-luna",
       });
       // The actively-retrying session is aborted so it stops looping.
@@ -2367,7 +2418,7 @@ describe("createTaskExecutionService", () => {
       await expectRunStatus(taskService, run.id, "error");
       const errored = await taskService.getRunById(run.id);
       expect(errored?.errorDetails).toMatchObject({
-        errorName: "ModelNotFound",
+        errorName: "ProviderModelNotFoundError",
         attemptedModel: "openai/gpt-5.6-luna",
       });
       // The terminal message names the fallback model it handed off to.

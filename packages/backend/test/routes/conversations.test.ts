@@ -182,6 +182,36 @@ describe("conversation routes", () => {
     ]);
   });
 
+  it("returns actionable details when a streamed prompt model is unavailable", async () => {
+    const active = await server.inject({
+      method: "GET",
+      url: `/api/specialists/${agentId}/conversations/active`,
+    });
+    const conversationId = active.json<{ current: { id: string } }>().current.id;
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/conversations/${conversationId}/prompt?stream=true`,
+      payload: { text: "Use missing provider model", attachments: [] },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: {
+        code: "bad_request",
+        message:
+          "Model not found: openai/gpt-5.6-terra-fast. Re-save the specialist's model configuration or restart the OpenCode instance, then try again.",
+        details: {
+          errorName: "ProviderModelNotFoundError",
+          attemptedModel: "openai/gpt-5.6-terra-fast",
+          modelID: "gpt-5.6-terra-fast",
+          originalMessage: "Model not found: openai/gpt-5.6-terra-fast.",
+          providerID: "openai",
+        },
+      },
+    });
+  });
+
   it("returns session media from message parts and tool attachments", async () => {
     const opened = await server.inject({
       method: "GET",
@@ -519,6 +549,12 @@ function createMockOpenCodeService(): OpenCodeService {
       return Promise.resolve(assistantMessage);
     },
     promptSessionAsync: ({ sessionID, text }) => {
+      if (text === "Use missing provider model") {
+        const error = new Error("Model not found: openai/gpt-5.6-terra-fast.");
+        error.name = "ProviderModelNotFoundError";
+        return Promise.reject(error);
+      }
+
       const session = mustSession(sessionID);
       const list = mustMessages(sessionID);
       const userId = nextMessageId();
