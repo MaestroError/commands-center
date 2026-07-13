@@ -2247,6 +2247,146 @@ describe("createTaskExecutionService", () => {
     }
   });
 
+  it("fails fast with a ModelNotFound error when the retry status reports a missing model", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    // The session accepts the prompt but only ever reports a "model not found"
+    // retry status, mirroring a run that targeted a non-existent model.
+    const opencodeService = createMockOpenCodeService({
+      statusSequenceBySession: {
+        "session-1": Array.from({ length: 30 }, () => ({
+          type: "retry" as const,
+          attempt: 2,
+          message: "Model not found gpt-5.6-luna",
+          next: Date.now() + 4_000,
+        })),
+      },
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        idlePolls: 1,
+        // A large fail-fast/stall window proves model-not-found is finalized
+        // immediately, not after waiting out a threshold.
+        retryFailFastMs: 5 * 60 * 1_000,
+        noProgressMs: 5 * 60 * 1_000,
+        maxLifetimeMs: 5 * 60 * 1_000,
+      },
+    });
+
+    try {
+      // The agent default is the non-existent model, so the run genuinely
+      // attempts it (the unvalidated default path in resolveRunModel).
+      const agent = await insertAgent(testDb.client.db, {}, "openai/gpt-5.6-luna");
+      const task = await taskService.create({
+        agentId: agent.id,
+        title: "Missing model, no fallback",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      const errored = await taskService.getRunById(run.id);
+      expect(errored?.errorMessage).toContain("Model not found");
+      expect(errored?.errorDetails).toMatchObject({
+        errorName: "ModelNotFound",
+        stage: "opencode_session_retry",
+        opencodeSessionId: "session-1",
+        attemptedModel: "openai/gpt-5.6-luna",
+        provider: "openai",
+        retryMessage: "Model not found gpt-5.6-luna",
+      });
+      // The actively-retrying session is aborted so it stops looping.
+      expect(opencodeService.abortSession).toHaveBeenCalledWith(expect.any(String), "session-1");
+      // No fallback model was configured, so no additional run is created.
+      expect(await taskService.listRuns(task.id)).toHaveLength(1);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("queues a same-provider fallback run when the model is not found", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const opencodeService = createMockOpenCodeService({
+      completeAsyncPromptAfter: 1,
+      providers: {
+        all: [{ id: "openai", models: { "gpt-4.1": {}, "gpt-4o": {} } }],
+        default: {},
+        connected: ["openai"],
+      },
+      statusSequenceBySession: {
+        "session-1": Array.from({ length: 30 }, () => ({
+          type: "retry" as const,
+          attempt: 2,
+          message: "Model not found gpt-5.6-luna",
+          next: Date.now() + 4_000,
+        })),
+      },
+    });
+    const conversationService = createConversationService({
+      db: testDb.client.db,
+      config: testDb.config,
+      opencodeService,
+    });
+    const executionService = createTaskExecutionService({
+      taskService,
+      conversationService,
+      monitor: {
+        initialPollMs: 1,
+        maxPollMs: 1,
+        idlePolls: 1,
+        retryFailFastMs: 5 * 60 * 1_000,
+        noProgressMs: 5 * 60 * 1_000,
+        maxLifetimeMs: 5 * 60 * 1_000,
+      },
+    });
+
+    try {
+      // The agent default is the non-existent model, so the first run genuinely
+      // attempts it; the fallback resolves to the valid same-provider model.
+      const agent = await insertAgent(testDb.client.db, {}, "openai/gpt-5.6-luna");
+      const task = await taskService.create({
+        agentId: agent.id,
+        // Unlike a usage limit (provider-wide), a missing model is model-specific,
+        // so a different model on the *same* provider is a valid fallback.
+        fallbackModels: ["openai/gpt-4o"],
+        title: "Missing model, same-provider fallback",
+      });
+
+      const run = await executionService.trigger(task.id, { triggerSource: "manual" });
+
+      await expectRunStatus(taskService, run.id, "error");
+      const errored = await taskService.getRunById(run.id);
+      expect(errored?.errorDetails).toMatchObject({
+        errorName: "ModelNotFound",
+        attemptedModel: "openai/gpt-5.6-luna",
+      });
+      // The terminal message names the fallback model it handed off to.
+      expect(errored?.errorMessage).toContain("fallback model openai/gpt-4o");
+
+      await expect.poll(async () => taskService.listRuns(task.id)).toHaveLength(2);
+      const runs = await taskService.listRuns(task.id);
+      const fallbackRun = runs.find((entry) => entry.retryOfRunId === run.id);
+
+      expect(fallbackRun).toBeDefined();
+      if (!fallbackRun) throw new Error("Expected fallback run.");
+      expect(fallbackRun.model).toBe("openai/gpt-4o");
+
+      await expectRunStatus(taskService, fallbackRun.id, "completed");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
   it("times out monitors for stuck async task sessions", async () => {
     const testDb = await createTestDatabase();
     const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
@@ -3145,6 +3285,7 @@ async function expectTaskRunInspectionMessageCount(
 async function insertAgent(
   db: AppDb,
   capabilities: Record<string, unknown> = {},
+  defaultModel = "openai/gpt-4.1",
 ): Promise<typeof agents.$inferSelect> {
   const timestamp = new Date();
   const id = `agent-${crypto.randomUUID()}`;
@@ -3156,7 +3297,7 @@ async function insertAgent(
       name: "Task Specialist",
       role: "help with tasks",
       instructions: "Be useful.",
-      default_model: "openai/gpt-4.1",
+      default_model: defaultModel,
       icon_path: null,
       status: "active",
       capabilities_json: JSON.stringify(capabilities),

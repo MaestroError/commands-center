@@ -99,6 +99,12 @@ export type TaskRunUsageLimitDetails = {
   lastAssistantMessageId?: string;
 };
 
+/**
+ * Same shape as a usage-limit finalization; the run is finalized because the
+ * targeted model is unknown/invalid rather than because a limit was hit.
+ */
+export type TaskRunModelNotFoundDetails = TaskRunUsageLimitDetails;
+
 export type TaskRunMonitorHooks = {
   /** Run terminal handling (archive finalization, feedback subtasks, queue drain). */
   handleTerminalRun(run: TaskRun): Promise<void>;
@@ -126,6 +132,12 @@ export type TaskRunMonitorHooks = {
    * the monitor only detects the sustained retry.
    */
   finalizeUsageLimitRun(run: TaskRun, details: TaskRunUsageLimitDetails): Promise<void>;
+  /**
+   * Finalize a run whose provider `retry` status reports a non-existent/invalid
+   * model. Retrying can never succeed, so this fails fast: abort the session,
+   * mark the run errored, and queue a different-model fallback when configured.
+   */
+  finalizeModelNotFoundRun(run: TaskRun, details: TaskRunModelNotFoundDetails): Promise<void>;
 };
 
 export type TaskRunMonitorService = ReturnType<typeof createTaskRunMonitorService>;
@@ -288,6 +300,15 @@ export function createTaskRunMonitorService(deps: {
 
     if (pendingInteraction) {
       return finalizeBlockedInteraction(handle, run, pendingInteraction);
+    }
+
+    // A `retry` status reporting a non-existent/invalid model will never succeed
+    // on retry — the model simply does not exist. Fail fast immediately (no
+    // persistence threshold, unlike the usage-limit case below) instead of
+    // burning the much larger stall timeout, routing it through the model-error
+    // fallback path so a valid fallback model can take over.
+    if (retryStatus && isModelNotFoundRetryMessage(retryStatus.message)) {
+      return finalizeModelNotFound(handle, run, retryStatus, monitorMetadata.attemptedModel);
     }
 
     // A sustained provider `retry` status that reads as a usage/rate limit
@@ -570,6 +591,23 @@ export function createTaskRunMonitorService(deps: {
     return true;
   }
 
+  async function finalizeModelNotFound(
+    handle: TaskRunMonitorHandle,
+    run: TaskRun,
+    retryStatus: { attempt: number; message: string; next: number },
+    attemptedModel: string,
+  ): Promise<boolean> {
+    await hooks.finalizeModelNotFoundRun(run, {
+      ...retryStatus,
+      attemptedModel,
+      // Detected on first observation, so there is no accumulated retry window.
+      retryElapsedMs: 0,
+      monitorElapsedMs: Date.now() - handle.startedAtMs,
+      lastAssistantMessageId: handle.lastAssistantMessageId,
+    });
+    return true;
+  }
+
   function isMonitorTimedOut(
     handle: TaskRunMonitorHandle,
     run: TaskRun,
@@ -603,4 +641,24 @@ const USAGE_LIMIT_RETRY_MARKERS = [
 export function isUsageLimitRetryMessage(message: string): boolean {
   const text = message.toLowerCase();
   return USAGE_LIMIT_RETRY_MARKERS.some((marker) => text.includes(marker));
+}
+
+const MODEL_NOT_FOUND_RETRY_MARKERS = [
+  "model not found",
+  "model_not_found",
+  "no such model",
+  "unknown model",
+  "invalid model",
+  "unsupported model",
+  "no endpoints found",
+];
+
+/**
+ * Whether a `retry` status message reads as a non-existent/invalid model. Such a
+ * run can never succeed on retry, so it is failed fast immediately rather than
+ * being tolerated for a threshold like a usage/rate limit.
+ */
+export function isModelNotFoundRetryMessage(message: string): boolean {
+  const text = message.toLowerCase();
+  return MODEL_NOT_FOUND_RETRY_MARKERS.some((marker) => text.includes(marker));
 }
