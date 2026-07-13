@@ -44,6 +44,7 @@ type SpecialistFormProps = {
   mode: "create" | "edit";
   value: SpecialistFormState;
   onChange: (next: SpecialistFormState) => void;
+  isSaving?: boolean;
   errors?: SpecialistFormErrors;
   /** Edit/draft-update: specialist id used to show the current specialist-local tool drift. */
   agentId?: string;
@@ -55,7 +56,7 @@ type SpecialistFormProps = {
  * Self-contained specialist form used by both the specialist editor page and the draft-specialist
  * review surface. It owns its own catalog/skill/tool/MCP data fetching and renders
  * every field (basics, model, skills, custom tools, CC-managed tools, MCP permissions).
- * It does not render a submit control or perform any save — the parent owns submission.
+ * It renders the edit-only instructions submit control, while the parent owns submission.
  */
 export function SpecialistForm(props: SpecialistFormProps) {
   const { value, onChange, mode } = props;
@@ -197,19 +198,31 @@ export function SpecialistForm(props: SpecialistFormProps) {
         </div>
         {mode === "edit" ? (
           <div className="lg:col-span-2">
-            <div className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle p-4">
-              <div>
-                <p className="font-medium text-text-primary">Rewrite AGENTS.md</p>
-                <p className="mt-1 text-sm text-text-secondary">
-                  Off by default. When on, saving regenerates the specialist&apos;s AGENTS.md from
-                  the role and instructions above, overwriting any manual edits.
-                </p>
-              </div>
-              <Switch
-                aria-label="Rewrite AGENTS.md on save"
-                checked={value.rewriteAgentsMd}
-                onChange={(checked) => update("rewriteAgentsMd", checked)}
-              />
+            <div className="flex flex-col items-start gap-4 rounded-lg border border-border-subtle p-4 sm:flex-row sm:items-center sm:justify-between">
+              <label className="flex min-w-0 cursor-pointer items-start gap-3">
+                <input
+                  aria-label="Rewrite AGENTS.md on save"
+                  checked={value.rewriteAgentsMd}
+                  className="mt-0.5 size-5 shrink-0 cursor-pointer accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  onChange={(event) => update("rewriteAgentsMd", event.target.checked)}
+                  type="checkbox"
+                />
+                <span className="min-w-0">
+                  <span className="block font-medium text-text-primary">Rewrite AGENTS.md</span>
+                  <span className="mt-1 block text-sm text-text-secondary">
+                    Off by default. When on, saving regenerates the specialist&apos;s AGENTS.md from
+                    the role and instructions above, overwriting any manual edits.
+                  </span>
+                </span>
+              </label>
+              <button
+                aria-label="Save changes near instructions"
+                className="cc-button shrink-0"
+                disabled={props.isSaving || !hasProviderModels}
+                type="submit"
+              >
+                {props.isSaving ? "Saving..." : "Save changes"}
+              </button>
             </div>
           </div>
         ) : null}

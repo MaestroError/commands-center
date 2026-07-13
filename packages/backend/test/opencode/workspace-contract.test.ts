@@ -86,6 +86,26 @@ describe("OPENCODE_WORKSPACE_CONTRACT", () => {
     expect(() => validateOpenCodeWorkspace(rendered)).not.toThrow();
   });
 
+  it("omits workspace boundaries from rendered specialist rules", () => {
+    const rendered = renderOpenCodeWorkspace({
+      name: "Writer",
+      role: "write docs",
+      instructions: "Write useful docs and keep them accurate.",
+      defaultModel: "openai/gpt-4.1",
+      capabilities: {
+        builtInSkills: [],
+        workspaceSkills: [],
+        customTools: [],
+        mcpServers: [],
+        toolPermissions: [],
+        appMcpServers: [],
+        appToolPermissions: [],
+      },
+    });
+
+    expect(rendered.rulesMarkdown).not.toContain("Workspace Boundaries");
+  });
+
   it("renders server wildcards before tool overrides so specific rules win", () => {
     const rendered = renderOpenCodeWorkspace({
       name: "Writer",

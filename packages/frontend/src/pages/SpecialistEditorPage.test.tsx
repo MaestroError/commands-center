@@ -224,13 +224,38 @@ describe("SpecialistEditorPage", () => {
     });
   });
 
-  it("sends rewriteAgentsMd true only when the Rewrite AGENTS.md switch is enabled", async () => {
+  it("shows Rewrite AGENTS.md unchecked by default", () => {
+    renderEditor();
+
+    expect(screen.getByRole("checkbox", { name: "Rewrite AGENTS.md on save" })).not.toBeChecked();
+  });
+
+  it("disables the instructions save action when no provider models are available", () => {
+    vi.mocked(useSpecialistCatalogQuery).mockReturnValue({
+      data: {
+        builtInSkills: [],
+        workspaceSkills: [],
+        mcpServers: [],
+        appMcpServers: [],
+        customTools: [],
+        providerModels: [],
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    renderEditor();
+
+    expect(screen.getByRole("button", { name: "Save changes near instructions" })).toBeDisabled();
+  });
+
+  it("sends rewriteAgentsMd true from the instructions save action", async () => {
     updateMutateAsync.mockResolvedValue({ slug: "writer", name: "Writer" });
 
     renderEditor();
 
-    fireEvent.click(screen.getByRole("switch", { name: "Rewrite AGENTS.md on save" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Rewrite AGENTS.md on save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes near instructions" }));
 
     await waitFor(() => {
       expect(updateMutateAsync).toHaveBeenCalledWith(
