@@ -8,3 +8,4 @@ export {
   type TemplateEndpointDocs,
   type TaskApiDocs,
 } from "./public-api-docs.js";
+export { resolvePromptAttachmentMimeType } from "./prompt-attachment-mime.js";

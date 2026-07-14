@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { resolvePromptAttachmentMimeType } from "@cc/shared/lib";
 import type { SendConversationAttachmentInput } from "@cc/shared/schemas";
 import { usePromptHistory } from "../../hooks/use-prompt-history";
 import { useMediaQuery } from "../../hooks/use-media-query";
 
 import { AutoApproveToggle } from "./AutoApproveToggle";
 import { AttachmentBar } from "./AttachmentBar";
-import { resolveAttachmentMimeType } from "./attachment-utils";
 import { FileMentionPopover } from "./FileMentionPopover";
 import { isMentionableWorkspacePath } from "./file-mention";
 import { ModelSelector } from "./ModelSelector";
@@ -429,7 +429,7 @@ export function ChatComposer({
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
-        const mimeType = resolveAttachmentMimeType(file);
+        const mimeType = resolvePromptAttachmentMimeType(file.name, file.type);
         const attachment: SendConversationAttachmentInput = {
           id: `${Date.now()}-${file.name}`,
           type: mimeType.startsWith("image/") ? "image" : "file",

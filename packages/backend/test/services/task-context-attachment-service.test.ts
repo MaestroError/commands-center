@@ -10,6 +10,7 @@ import { createTaskService } from "../../src/services/task-service";
 import { createTestDatabase } from "../helpers/db";
 
 const HELLO_DATA_URL = "data:text/plain;base64,aGVsbG8=";
+const MARKDOWN_DATA_URL = "data:text/markdown;base64,IyBOb3Rlcw==";
 
 describe("createTaskContextAttachmentService", () => {
   it("stores new attachments under the session archive task folder", async () => {
@@ -38,6 +39,28 @@ describe("createTaskContextAttachmentService", () => {
       );
       await expect(access(absolutePath)).resolves.toBeUndefined();
       await expect(readFile(absolutePath, "utf8")).resolves.toBe("hello");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("preserves the canonical Markdown MIME type in task metadata", async () => {
+    const testDb = await createTestDatabase();
+    const taskService = createTaskService({ db: testDb.client.db, config: testDb.config });
+    const service = createTaskContextAttachmentService({ config: testDb.config, taskService });
+
+    try {
+      const agent = await insertAgent(testDb.client.db);
+      const task = await taskService.create({ agentId: agent.id, title: "Review notes" });
+
+      const { attachment } = await service.upload(task.id, {
+        filename: "notes.md",
+        mimeType: "text/markdown",
+        sizeBytes: 7,
+        dataUrl: MARKDOWN_DATA_URL,
+      });
+
+      expect(attachment.mimeType).toBe("text/markdown");
     } finally {
       await testDb.cleanup();
     }
