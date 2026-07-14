@@ -86,6 +86,18 @@ redeploys. Add explicit storage:
 
 Without this, every redeploy wipes the secret key, database, owner auth, and all tasks.
 
+The image also sets `CC_OPENCODE_STATE_DIR=/workspace/.cc/opencode`, so the OpenCode engine's
+global state — provider connections, MCP auth, sessions, and its SQLite db — lands on this same
+volume and survives redeploys. Without the volume (or if you clear `CC_OPENCODE_STATE_DIR`), you
+must reconnect providers after every rebuild.
+
+> **Migrating an existing deployment.** If you already have a running instance from before this
+> variable existed, its OpenCode state lives at `~/.local/share/opencode` inside the old container
+> and is not on the volume. Provider connections will need to be re-added once after upgrading to
+> the image that sets `CC_OPENCODE_STATE_DIR`. To preserve them instead, copy the old state onto
+> the volume before the first restart:
+> `mkdir -p /workspace/.cc/opencode/data && cp -a /home/node/.local/share/opencode /workspace/.cc/opencode/data/`.
+
 ## 5. Health check (recommended)
 
 The bundled OpenCode engine takes ~30–90s to warm up on first boot. `/api/health` returns HTTP

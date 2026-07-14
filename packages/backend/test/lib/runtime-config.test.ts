@@ -267,4 +267,31 @@ describe("loadRuntimeConfig", () => {
 
     expect(config.security.publicOrigin).toBe("https://commands.example.com");
   });
+
+  it("leaves opencode.stateDir undefined when CC_OPENCODE_STATE_DIR is unset", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test" },
+    });
+
+    expect(config.opencode.stateDir).toBeUndefined();
+  });
+
+  it("keeps an absolute CC_OPENCODE_STATE_DIR as-is", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test", CC_OPENCODE_STATE_DIR: "/workspace/.cc/opencode" },
+    });
+
+    expect(config.opencode.stateDir).toBe("/workspace/.cc/opencode");
+  });
+
+  it("resolves a relative CC_OPENCODE_STATE_DIR against cwd", () => {
+    const config = loadRuntimeConfig({
+      cwd: "/tmp/project",
+      env: { NODE_ENV: "test", CC_OPENCODE_STATE_DIR: ".cc/opencode" },
+    });
+
+    expect(config.opencode.stateDir).toBe("/tmp/project/.cc/opencode");
+  });
 });

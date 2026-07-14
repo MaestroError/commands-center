@@ -17,7 +17,7 @@
  */
 
 import { createServer as createNetServer } from "node:net";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -206,6 +206,77 @@ describe("startServerRuntime boot", () => {
       await expect(bootTestRuntime(cwd, occupiedPort)).rejects.toThrow();
     } finally {
       await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OpenCode state dir (CC_OPENCODE_STATE_DIR)
+// ---------------------------------------------------------------------------
+
+describe("startServerRuntime opencode state dir", () => {
+  it("injects state-dir XDG overrides into the opencode child env and creates the roots", async () => {
+    const cwd = await makeTempDir();
+    const stateDir = join(cwd, ".cc", "opencode");
+    let capturedResolveEnv: (() => Promise<NodeJS.ProcessEnv>) | undefined;
+
+    const runtime = await startServerRuntime({
+      cwd,
+      env: {
+        NODE_ENV: "test",
+        CC_LOG_LEVEL: "silent",
+        CC_OPENCODE_STATE_DIR: stateDir,
+        // An ambient XDG value the state dir must win over.
+        XDG_DATA_HOME: "/home/node/.local/share",
+      },
+      overrides: { host: "127.0.0.1", port: 0 },
+      installSignalHandlers: false,
+      createOrchestrator: (options) => {
+        capturedResolveEnv = options.resolveEnv;
+        return createFakeOrchestrator();
+      },
+    });
+
+    try {
+      expect(capturedResolveEnv).toBeInstanceOf(Function);
+      const childEnv = await capturedResolveEnv!();
+
+      expect(childEnv["XDG_DATA_HOME"]).toBe(join(stateDir, "data"));
+      expect(childEnv["XDG_CONFIG_HOME"]).toBe(join(stateDir, "config"));
+      expect(childEnv["XDG_CACHE_HOME"]).toBe(join(stateDir, "cache"));
+      expect(childEnv["XDG_STATE_HOME"]).toBe(join(stateDir, "state"));
+
+      for (const sub of ["data", "config", "cache", "state"]) {
+        await expect(stat(join(stateDir, sub))).resolves.toBeDefined();
+      }
+    } finally {
+      await runtime.shutdownRuntime?.();
+    }
+  });
+
+  it("leaves the opencode child env untouched when CC_OPENCODE_STATE_DIR is unset", async () => {
+    const cwd = await makeTempDir();
+    let capturedResolveEnv: (() => Promise<NodeJS.ProcessEnv>) | undefined;
+
+    const runtime = await startServerRuntime({
+      cwd,
+      env: { NODE_ENV: "test", CC_LOG_LEVEL: "silent" },
+      overrides: { host: "127.0.0.1", port: 0 },
+      installSignalHandlers: false,
+      createOrchestrator: (options) => {
+        capturedResolveEnv = options.resolveEnv;
+        return createFakeOrchestrator();
+      },
+    });
+
+    try {
+      const childEnv = await capturedResolveEnv!();
+      // No override injected: the child env carries no XDG_* keys beyond the base
+      // env (options.env here, which sets none).
+      expect(childEnv["XDG_DATA_HOME"]).toBeUndefined();
+      expect(childEnv["XDG_STATE_HOME"]).toBeUndefined();
+    } finally {
+      await runtime.shutdownRuntime?.();
     }
   });
 });
