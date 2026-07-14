@@ -183,6 +183,12 @@ export async function startServerRuntime(
 
   await ensureOpenCodeStateDirs(config.opencode.stateDir);
 
+  // Base the OpenCode child environment on the same env used to parse config
+  // (options.env for tests/programmatic callers, process.env for the CLI, which
+  // passes process.env explicitly), so a caller-supplied env is reflected in the
+  // child too rather than silently ignored.
+  const childBaseEnv = options?.env ?? process.env;
+
   const orchestratorFactory = options?.createOrchestrator ?? createOpenCodeOrchestrator;
   const orchestrator = orchestratorFactory({
     config,
@@ -190,7 +196,7 @@ export async function startServerRuntime(
     // Spread the state-dir XDG overrides last so they win over any ambient XDG_*
     // variables and secrets, keeping OpenCode's global state under CC_OPENCODE_STATE_DIR.
     resolveEnv: async () => ({
-      ...process.env,
+      ...childBaseEnv,
       ...(await secretService.buildEnvMap()),
       ...buildOpenCodeStateEnv(config.opencode.stateDir),
     }),

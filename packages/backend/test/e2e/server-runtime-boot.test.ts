@@ -271,9 +271,10 @@ describe("startServerRuntime opencode state dir", () => {
 
     try {
       const childEnv = await capturedResolveEnv!();
-      // No override injected: XDG values fall through to whatever process.env held.
-      expect(childEnv["XDG_DATA_HOME"]).toBe(process.env["XDG_DATA_HOME"]);
-      expect(childEnv["XDG_STATE_HOME"]).toBe(process.env["XDG_STATE_HOME"]);
+      // No override injected: the child env carries no XDG_* keys beyond the base
+      // env (options.env here, which sets none).
+      expect(childEnv["XDG_DATA_HOME"]).toBeUndefined();
+      expect(childEnv["XDG_STATE_HOME"]).toBeUndefined();
     } finally {
       await runtime.shutdownRuntime?.();
     }
