@@ -20,8 +20,9 @@ import { getTokenActivity, getTokenAuditSettings, updateTokenAuditSettings } fro
 import { useApiTokenMutations, useApiTokensQuery } from "@/hooks/use-api-tokens-query";
 import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useTaskTemplatesQuery } from "@/hooks/use-tasks-query";
+import { formatRepeatSummary, readAgentName } from "@/components/tasks/task-format";
 
-type TemplateOption = { id: string; title: string };
+type TemplateOption = { id: string; title: string; specialistName: string; cadence: string };
 type SpecialistOption = { id: string; name: string; slug: string };
 
 const GROUP_LABELS: Record<ApiTokenCapabilityGroup, string> = {
@@ -65,10 +66,16 @@ function TokensTab() {
   const templatesQuery = useTaskTemplatesQuery();
   const specialistsQuery = useSpecialistsQuery();
   const mutations = useApiTokenMutations();
+  const specialists = specialistsQuery.data ?? [];
   const templateOptions: TemplateOption[] = (templatesQuery.data ?? [])
     .filter((template) => template.mcpConfig.syncEnabled || template.mcpConfig.asyncEnabled)
-    .map((template) => ({ id: template.id, title: template.title }));
-  const specialistOptions: SpecialistOption[] = (specialistsQuery.data ?? []).map((specialist) => ({
+    .map((template) => ({
+      id: template.id,
+      title: template.title,
+      specialistName: readAgentName(specialists, template.defaultAgentId),
+      cadence: template.recurrence ? formatRepeatSummary(template.recurrence.repeatRule) : "Manual",
+    }));
+  const specialistOptions: SpecialistOption[] = specialists.map((specialist) => ({
     id: specialist.id,
     name: specialist.name,
     slug: specialist.slug,
@@ -371,7 +378,12 @@ function TokenForm(props: {
                 onChange={(event) => toggleTemplate(template.id, event.target.checked)}
                 type="checkbox"
               />
-              <span className="text-text-primary">{template.title}</span>
+              <span className="min-w-0">
+                <span className="block text-text-primary">{template.title}</span>
+                <span className="block truncate text-xs text-text-muted">
+                  {template.specialistName} · {template.cadence}
+                </span>
+              </span>
             </label>
           ))}
         </fieldset>

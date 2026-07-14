@@ -340,6 +340,13 @@ type MockFetchOptions = {
   feedbackPayload?: TaskFeedbackThread[];
   followupsPayload?: TaskRunFollowup[];
   subtaskProgressPayload?: TaskSubtaskProgress[];
+  workspaceFilesPayload?: Array<{
+    absolute: string;
+    ignored: boolean;
+    name: string;
+    path: string;
+    type: "directory" | "file";
+  }>;
   duplicateResponse?: Response;
 };
 
@@ -391,7 +398,7 @@ describe("TasksPage", () => {
     ]);
   });
 
-  it("offers Accept and Retry actions on a review task card", async () => {
+  it("offers Accept and Rerun actions on a review task card", async () => {
     mockFetch({ taskPayload: { ...task, status: "review" } });
 
     renderWithRouter(<TasksPage />, "/tasks");
@@ -401,10 +408,10 @@ describe("TasksPage", () => {
     if (!card) throw new Error("Expected task card.");
 
     expect(within(card).getByRole("button", { name: "Accept" })).toBeInTheDocument();
-    expect(within(card).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Rerun" })).toBeInTheDocument();
   });
 
-  it("offers a Retry action without Accept on a failed task card", async () => {
+  it("offers a Rerun action without Accept on a failed task card", async () => {
     mockFetch({ taskPayload: { ...task, status: "failed" } });
 
     renderWithRouter(<TasksPage />, "/tasks");
@@ -414,7 +421,7 @@ describe("TasksPage", () => {
     if (!card) throw new Error("Expected task card.");
 
     expect(screen.getByRole("heading", { name: "Failed" })).toBeInTheDocument();
-    expect(within(card).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Rerun" })).toBeInTheDocument();
     expect(within(card).queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
   });
 
@@ -2202,7 +2209,7 @@ describe("TasksPage", () => {
     });
   });
 
-  it("retries review cards", async () => {
+  it("reruns review cards", async () => {
     const fetchMock = mockFetch({
       taskPayload: {
         ...task,
@@ -2215,7 +2222,7 @@ describe("TasksPage", () => {
     renderWithRouter(<TasksPage />, "/tasks");
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Retry" }));
+    await user.click(await screen.findByRole("button", { name: "Rerun" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -2320,6 +2327,33 @@ describe("TasksPage", () => {
     expect(await screen.findByRole("heading", { name: "Backlog" })).toBeInTheDocument();
   });
 
+  it("does not offer artifact registration in the task form file panel", async () => {
+    mockFetch({
+      workspaceFilesPayload: [
+        {
+          absolute: "/tmp/planner/GOAL.md",
+          ignored: false,
+          name: "GOAL.md",
+          path: "GOAL.md",
+          type: "file",
+        },
+      ],
+    });
+
+    renderWithRouter(<TasksPage mode="create" />, "/tasks/new");
+
+    const user = userEvent.setup();
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: /Assigned specialist/i }),
+      "agent-1",
+    );
+    await screen.findByText("GOAL.md");
+
+    expect(
+      screen.queryByRole("button", { name: "Add GOAL.md as artifact" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("offers Restore for an archived task in the board panel", async () => {
     mockFetch({ taskPayload: { ...task, archived: true, status: "archived" } });
     renderWithRouter(<TasksPage />, "/tasks?view=archived");
@@ -2341,6 +2375,34 @@ describe("TasksPage", () => {
     await user.click(await screen.findByRole("link", { name: "Ship release" }));
 
     expect(await screen.findByRole("link", { name: "View active run" })).toBeInTheDocument();
+  });
+
+  it("offers Rerun for a review task in the board panel", async () => {
+    mockFetch({ taskPayload: { ...task, status: "review" } });
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    expect(within(panel).getByRole("button", { name: "Rerun" })).toBeInTheDocument();
+  });
+
+  it("reruns a failed task from the board panel", async () => {
+    const fetchMock = mockFetch({ taskPayload: { ...task, status: "failed" } });
+    renderWithRouter(<TasksPage />, "/tasks");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("link", { name: "Ship release" }));
+    const panel = await screen.findByRole("complementary", { name: "Task detail panel" });
+    await user.click(within(panel).getByRole("button", { name: "Rerun" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/tasks/task-1/queue",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
   });
 
   it("adds and removes a fallback model row in the create form", async () => {
@@ -3444,6 +3506,7 @@ function mockFetch(options: MockFetchOptions = {}) {
   const feedbackPayload = options.feedbackPayload ?? [];
   const followupsPayload = options.followupsPayload ?? [];
   const subtaskProgressPayload = options.subtaskProgressPayload ?? [];
+  const workspaceFilesPayload = options.workspaceFilesPayload ?? [];
 
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : input.toString();
@@ -3462,10 +3525,13 @@ function mockFetch(options: MockFetchOptions = {}) {
     if (url.startsWith("/api/specialists/agent-2/workspace/find/file")) {
       return Promise.resolve(jsonResponse(200, ["REVIEW.md"]));
     }
-    if (url.startsWith("/api/specialists/agent-1/workspace/file")) {
+    if (url === "/api/specialists/agent-1/workspace/events") {
       return Promise.resolve(
-        jsonResponse(200, [{ name: "GOAL.md", path: "GOAL.md", type: "file", ignored: false }]),
+        new Response("", { status: 200, headers: { "Content-Type": "text/event-stream" } }),
       );
+    }
+    if (url.startsWith("/api/specialists/agent-1/workspace/file")) {
+      return Promise.resolve(jsonResponse(200, workspaceFilesPayload));
     }
     if (url === "/api/tasks/archive")
       return Promise.resolve(jsonResponse(200, archivedTasksPayload));

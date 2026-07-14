@@ -317,7 +317,7 @@ export function WorkspaceChatPage() {
             },
             {
               id: "system-prompts",
-              label: "System Prompts",
+              label: "Prompts",
               content: (
                 <SystemPromptsTab
                   conversationId={conv.conversation.id}

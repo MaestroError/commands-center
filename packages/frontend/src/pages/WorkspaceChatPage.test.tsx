@@ -411,7 +411,7 @@ describe("WorkspaceChatPage", () => {
     );
   });
 
-  it("wires Files, Uploads, Tools, and System Prompts tabs into the context pane", () => {
+  it("wires Files, Uploads, Tools, and Prompts tabs into the context pane", () => {
     mockParams = { agentId: "planner", conversationId: "conv-1" };
     useConversationMock.mockReturnValue(
       makeConversation({ conversation: { id: "conv-1", messages: [] } }),
@@ -420,9 +420,7 @@ describe("WorkspaceChatPage", () => {
 
     render(<WorkspaceChatPage />);
 
-    expect(screen.getByTestId("context-tabs")).toHaveTextContent(
-      "Files,Uploads,Tools,System Prompts",
-    );
+    expect(screen.getByTestId("context-tabs")).toHaveTextContent("Files,Uploads,Tools,Prompts");
     expect(screen.getByTestId("workspace-files-tab")).toBeInTheDocument();
     expect(screen.getByTestId("system-prompts-tab")).toHaveTextContent("SystemPromptsTab:conv-1");
     expect(screen.getByTestId("media-tab")).toHaveTextContent("MediaTab:conv-1:");

@@ -128,6 +128,8 @@ describe("DocumentsPage", () => {
 
     const editorPanel = await screen.findByTestId("document-editor-panel");
     expect(within(editorPanel).getByText("Research")).toBeInTheDocument();
+    expect(within(editorPanel).getByText("research.md")).toBeInTheDocument();
+    expect(within(editorPanel).queryByText("notes/research.md")).not.toBeInTheDocument();
     expect(getDocumentContent).toHaveBeenCalledWith({
       scope: "private",
       ownerSlug: "planner",

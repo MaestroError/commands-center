@@ -582,7 +582,7 @@ function TaskCardActions(props: {
       <>
         <TaskCardIconButton
           icon={RotateCcw}
-          label="Retry"
+          label="Rerun"
           onClick={props.onQueue}
           variant="warning"
         />
@@ -610,7 +610,7 @@ function TaskCardActions(props: {
         />
         <TaskCardIconButton
           icon={RotateCcw}
-          label="Retry"
+          label="Rerun"
           onClick={props.onQueue}
           variant="warning"
         />

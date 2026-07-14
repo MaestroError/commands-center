@@ -95,9 +95,14 @@ export function DocumentsPage() {
       <div className="flex h-full flex-col" data-testid="document-editor-panel">
         <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border p-4">
           <div className="min-w-0">
-            <h2 className="truncate text-lg font-semibold text-text-primary">
-              {selectedDoc.title}
-            </h2>
+            <div className="flex min-w-0 items-baseline gap-2">
+              <h2 className="truncate text-lg font-semibold text-text-primary">
+                {selectedDoc.title}
+              </h2>
+              <span className="min-w-0 truncate text-xs text-text-muted">
+                {documentFilename(selectedDoc.relativePath)}
+              </span>
+            </div>
             {selectedDoc.description ? (
               <p className="mt-0.5 truncate text-sm text-text-secondary">
                 {selectedDoc.description}
@@ -219,6 +224,10 @@ function documentIdentityKey(identity: {
   path?: string;
 }): string {
   return `${identity.scope}:${identity.ownerSlug ?? ""}:${identity.relativePath ?? identity.path ?? ""}`;
+}
+
+function documentFilename(relativePath: string): string {
+  return relativePath.split("/").at(-1) ?? relativePath;
 }
 
 function DocumentInfoTab(props: { doc: DocumentReadResponse }) {

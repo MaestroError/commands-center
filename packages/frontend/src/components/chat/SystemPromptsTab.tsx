@@ -81,11 +81,6 @@ function SystemPromptCard({
             <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-text-secondary" />
           )}
           <span className="truncate text-sm font-medium text-text-primary">{prompt.title}</span>
-          {prompt.danger ? (
-            <span className="shrink-0 rounded bg-danger/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger">
-              Danger
-            </span>
-          ) : null}
         </button>
         <Toggle enabled={prompt.enabled} label={`Toggle ${prompt.title}`} onChange={onToggle} />
       </div>

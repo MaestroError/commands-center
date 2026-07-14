@@ -464,7 +464,7 @@ function TaskPanelPrimaryActions(props: {
   if (status === "failed") {
     return (
       <button className="cc-button" onClick={props.onQueue} type="button">
-        Retry
+        Rerun
       </button>
     );
   }
@@ -476,7 +476,7 @@ function TaskPanelPrimaryActions(props: {
           Accept
         </button>
         <button className="cc-button cc-button-secondary" onClick={props.onQueue} type="button">
-          Retry
+          Rerun
         </button>
       </>
     );
