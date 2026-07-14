@@ -14,6 +14,9 @@ ENV CC_DOCKER=true
 ENV CC_HOST=0.0.0.0
 ENV CC_PORT=3000
 ENV CC_WORKSPACE_DIR=/workspace/.cc/workspace
+# Keep OpenCode global state (provider connections, sessions, db) on the mounted
+# /workspace volume so it survives container rebuilds.
+ENV CC_OPENCODE_STATE_DIR=/workspace/.cc/opencode
 ENV CC_OPENCODE_STARTUP_TIMEOUT_MS=90000
 
 WORKDIR /workspace

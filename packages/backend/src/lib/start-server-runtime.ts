@@ -64,6 +64,7 @@ import { documentReconciler } from "../services/document-service.js";
 import { specialistReconciler } from "../services/specialist-file.js";
 import { taskTemplateReconciler } from "../services/task-service.js";
 import { bootstrapRuntimePaths, bootstrapWorkspaceRoot } from "./runtime-paths.js";
+import { buildOpenCodeStateEnv, ensureOpenCodeStateDirs } from "../opencode/opencode-env.js";
 import { runBootReconcile } from "./workspace-reconciler.js";
 import { runWorkspaceMigrations } from "../workspace-migrations/service.js";
 import { createDrainController, type DrainHandlers } from "./drain-protocol.js";
@@ -180,11 +181,19 @@ export async function startServerRuntime(
   });
   logPublicBindingGuidance(config, logger);
 
+  await ensureOpenCodeStateDirs(config.opencode.stateDir);
+
   const orchestratorFactory = options?.createOrchestrator ?? createOpenCodeOrchestrator;
   const orchestrator = orchestratorFactory({
     config,
     logger,
-    resolveEnv: async () => ({ ...process.env, ...(await secretService.buildEnvMap()) }),
+    // Spread the state-dir XDG overrides last so they win over any ambient XDG_*
+    // variables and secrets, keeping OpenCode's global state under CC_OPENCODE_STATE_DIR.
+    resolveEnv: async () => ({
+      ...process.env,
+      ...(await secretService.buildEnvMap()),
+      ...buildOpenCodeStateEnv(config.opencode.stateDir),
+    }),
   });
 
   const opencodeClient = createOpenCodeClient(config);

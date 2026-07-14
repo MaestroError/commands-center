@@ -77,6 +77,8 @@ CC_SECRET_KEY=replace-with-a-long-random-secret
 
 SQLite is stored at `$CC_DATA_DIR/cc.db` (default: `~/.cc/data/cc.db`). Set `CC_DATA_DIR` to move disposable runtime data to a different location. PostgreSQL primary mode is not part of the current runtime.
 
+Set `CC_OPENCODE_STATE_DIR` to persist the managed OpenCode engine's global state (provider connections, MCP auth, sessions, and its SQLite db). When set, CommandsCenter redirects the `opencode serve` child's XDG data/config/cache/state directories under that root; leave it empty to use OpenCode's default `$HOME`-derived paths (`~/.local/share/opencode`, etc.). Docker deployments default it to `/workspace/.cc/opencode` so connections survive container rebuilds. Note that CommandsCenter terminals and task runs are children of the OpenCode process, so tools launched inside them (e.g. `gh`) also see the redirected XDG paths.
+
 ### Global NPM Install
 
 ```bash

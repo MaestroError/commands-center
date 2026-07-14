@@ -140,6 +140,7 @@ const envSchema = z.object({
   ),
   CC_ALLOWED_ORIGINS: z.string().trim().optional(),
   CC_OPENCODE_PATH: z.string().trim().optional(),
+  CC_OPENCODE_STATE_DIR: z.string().trim().optional(),
   CC_SECRET_KEY: z.string().trim().optional().default(DEFAULT_SECRET_KEY),
   CC_MAX_TASKS: optionalLimit("CC_MAX_TASKS"),
 });
@@ -186,6 +187,13 @@ export type RuntimeConfig = {
     port: number;
     maxRestarts: number;
     baseUrl: string;
+    /**
+     * When set, CommandsCenter redirects the managed `opencode serve` child's XDG
+     * base directories under this root so OpenCode global state (auth, sessions,
+     * db, caches) persists across container rebuilds. Undefined means OpenCode
+     * uses its default `$HOME`-derived XDG paths. See `opencode-env.ts`.
+     */
+    stateDir?: string;
   };
   updates: {
     enabled: boolean;
@@ -244,6 +252,12 @@ export function loadRuntimeConfig(options?: {
       : resolve(cwd, parsedEnv.data.CC_DATA_DIR)
     : resolve(cwd, DEFAULT_DATA_DIR);
 
+  const opencodeStateDir = parsedEnv.data.CC_OPENCODE_STATE_DIR
+    ? isAbsolute(parsedEnv.data.CC_OPENCODE_STATE_DIR)
+      ? parsedEnv.data.CC_OPENCODE_STATE_DIR
+      : resolve(cwd, parsedEnv.data.CC_OPENCODE_STATE_DIR)
+    : undefined;
+
   const resolvedHost = options?.overrides?.host ?? parsedEnv.data.CC_HOST;
   const resolvedPort = options?.overrides?.port ?? parsedEnv.data.CC_PORT;
   const originHost = ["0.0.0.0", "::"].includes(resolvedHost) ? "localhost" : resolvedHost;
@@ -289,6 +303,7 @@ export function loadRuntimeConfig(options?: {
       port: parsedEnv.data.CC_OPENCODE_PORT,
       maxRestarts: parsedEnv.data.CC_OPENCODE_MAX_RESTARTS,
       baseUrl: `http://${parsedEnv.data.CC_OPENCODE_HOST}:${String(parsedEnv.data.CC_OPENCODE_PORT)}`,
+      stateDir: opencodeStateDir,
     },
     updates: {
       enabled: parsedEnv.data.CC_UPDATE_CHECK,
