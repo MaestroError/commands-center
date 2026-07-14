@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getMessageAttachments, resolveAttachmentMimeType } from "./attachment-utils";
+import { getMessageAttachments } from "./attachment-utils";
 
 import type { ConversationPart } from "@cc/shared/schemas";
 
@@ -46,23 +46,5 @@ describe("attachment-utils", () => {
         mimeType: "text/plain",
       },
     ]);
-  });
-
-  it("infers text/plain for source files when the browser omits the mime type", () => {
-    const file = new File(["const x = 1;"], "index.ts", { type: "" });
-
-    expect(resolveAttachmentMimeType(file)).toBe("text/plain");
-  });
-
-  it("normalizes known text file extensions when the browser provides a text subtype", () => {
-    const file = new File(["hello"], "notes.md", { type: "text/markdown" });
-
-    expect(resolveAttachmentMimeType(file)).toBe("text/plain");
-  });
-
-  it("preserves browser-provided mime types for non-text attachments", () => {
-    const file = new File(["%PDF"], "notes.pdf", { type: "application/pdf" });
-
-    expect(resolveAttachmentMimeType(file)).toBe("application/pdf");
   });
 });

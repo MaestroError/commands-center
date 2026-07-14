@@ -113,6 +113,28 @@ describe("ChatComposer attachments", () => {
     );
   });
 
+  it("normalizes an attached Markdown file to text/plain before sending", async () => {
+    const user = userEvent.setup();
+    const { props } = renderComposer();
+
+    await user.click(screen.getByTitle("Attach files"));
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const markdown = new File(["# Notes"], "notes.md", { type: "text/markdown" });
+    await user.upload(input, markdown);
+
+    expect(await screen.findByText("notes.md")).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText(messagePlaceholder), "review");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(props.onSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [expect.objectContaining({ filename: "notes.md", mimeType: "text/plain" })],
+      }),
+    );
+  });
+
   it("attaches files pasted into the composer", async () => {
     renderComposer();
     const textarea = screen.getByPlaceholderText(messagePlaceholder);

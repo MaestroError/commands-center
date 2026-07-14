@@ -6,6 +6,7 @@ import { NotFoundError } from "../lib/api-error.js";
 import type { RuntimeConfig } from "../lib/runtime-config.js";
 import { z } from "zod";
 
+import { resolvePromptAttachmentMimeType } from "@cc/shared/lib";
 import {
   configProvidersSchema,
   mcpAuthRemoveResultSchema,
@@ -693,12 +694,31 @@ function buildPromptParts(text: string, attachments: SendConversationAttachmentI
 function buildAttachmentParts(
   attachments: SendConversationAttachmentInput[],
 ): SessionAttachmentPart[] {
-  return attachments.map((attachment) => ({
-    type: "file" as const,
-    mime: attachment.mimeType,
-    filename: attachment.filename,
-    url: attachment.dataUrl,
-  }));
+  return attachments.map((attachment) => {
+    const mime = resolvePromptAttachmentMimeType(attachment.filename, attachment.mimeType);
+    return {
+      type: "file" as const,
+      mime,
+      filename: attachment.filename,
+      url:
+        mime === attachment.mimeType
+          ? attachment.dataUrl
+          : rewriteDataUrlMimeType(attachment.dataUrl, mime),
+    };
+  });
+}
+
+function rewriteDataUrlMimeType(dataUrl: string, mimeType: string): string {
+  const commaIndex = dataUrl.indexOf(",");
+
+  if (!dataUrl.startsWith("data:") || commaIndex === -1) {
+    return dataUrl;
+  }
+
+  const metadata = dataUrl.slice("data:".length, commaIndex);
+  const parameterIndex = metadata.indexOf(";");
+  const parameters = parameterIndex === -1 ? "" : metadata.slice(parameterIndex);
+  return `data:${mimeType}${parameters},${dataUrl.slice(commaIndex + 1)}`;
 }
 
 // Thrown by requestOpenCodeJson when OpenCode responds with a non-2xx status.
