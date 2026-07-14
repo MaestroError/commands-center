@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Activity, Task } from "@cc/shared/schemas";
 
+import { makeTabKey, parseTabsParam } from "@/hooks/use-editor-tabs";
+
 import { ActivityCard } from "./ActivityCard";
 
 const { updateMutate } = vi.hoisted(() => ({ updateMutate: vi.fn() }));
@@ -90,7 +92,7 @@ describe("ActivityCard acceptance criteria", () => {
     expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0);
   });
 
-  it("task_needs_review: shows the question instead of the raw reason", () => {
+  it("task_needs_review: shows both the reason and question", () => {
     renderCard(
       activity({
         id: "a1",
@@ -106,7 +108,112 @@ describe("ActivityCard acceptance criteria", () => {
     );
 
     expect(screen.getByText("Should this be published?")).toBeInTheDocument();
-    expect(screen.queryByText("Internal reason only.")).not.toBeInTheDocument();
+    expect(screen.getByText("Internal reason only.")).toBeInTheDocument();
+  });
+
+  it("task_needs_review: groups the question and reply controls", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: {
+          taskId: "t1",
+          taskRunId: "r1",
+          question: "Should this be published?",
+          suggestedReplies: ["Publish", "Revise"],
+        },
+      }),
+    );
+
+    const reviewSection = screen.getByRole("region", { name: "Review question and reply" });
+
+    expect(within(reviewSection).getByText("Should this be published?")).toBeInTheDocument();
+    expect(
+      within(reviewSection).getByRole("button", { name: "Use suggested reply: Publish" }),
+    ).toBeInTheDocument();
+    expect(within(reviewSection).getByLabelText("Review reply")).toBeInTheDocument();
+    expect(within(reviewSection).getByRole("button", { name: "Reply" })).toBeInTheDocument();
+  });
+
+  it("task_needs_review: emphasizes the question with a Q prefix", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: {
+          taskId: "t1",
+          taskRunId: "r1",
+          question: "Should this be published?",
+        },
+      }),
+    );
+
+    const prefix = screen.getByText("Q:");
+
+    expect(prefix).toHaveClass("text-accent");
+    expect(prefix.parentElement).toHaveClass("text-sm", "font-semibold");
+  });
+
+  it("task_needs_review: places artifacts between the reason and question", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        body: "Review is needed because the task produced a file.",
+        payload: {
+          taskId: "t1",
+          taskRunId: "r1",
+          question: "Does the file look correct?",
+          artifacts: [
+            {
+              title: "Generated report",
+              type: "file",
+              link: "reports/generated.md",
+            },
+          ],
+        },
+      }),
+    );
+
+    const reason = screen.getByText("Review is needed because the task produced a file.");
+    const artifacts = screen.getByRole("list", { name: "Activity artifacts" });
+    const question = screen.getByText("Does the file look correct?");
+
+    expect(
+      reason.compareDocumentPosition(artifacts) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      artifacts.compareDocumentPosition(question) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("task_needs_review: shows a reason without a question", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        body: "Check the generated report.",
+        payload: { taskId: "t1", taskRunId: "r1" },
+      }),
+    );
+
+    expect(screen.getByText("Check the generated report.")).toBeInTheDocument();
+  });
+
+  it("task_needs_review: shows a question without a reason", () => {
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: {
+          taskId: "t1",
+          taskRunId: "r1",
+          question: "Should this be published?",
+        },
+      }),
+    );
+
+    expect(screen.getByText("Should this be published?")).toBeInTheDocument();
   });
 
   it("task_completed: shows artifact titles", () => {
@@ -159,6 +266,48 @@ describe("ActivityCard acceptance criteria", () => {
     expect(params.get("root")).toBe("workspace");
     expect(params.get("path")).toBe("reports");
     expect(params.get("select")).toBe("reports/review.md");
+  });
+
+  it("task_needs_review: opens private file artifacts in the specialist workspace", () => {
+    const fileManagerPath = "specialists/testing-agent/Documents/references/tools-list.md";
+    renderCard(
+      activity({
+        id: "a1",
+        kind: "task_needs_review",
+        payload: {
+          taskId: "t1",
+          taskRunId: "r1",
+          artifacts: [
+            {
+              id: "artifact-1",
+              conversationId: "conversation-1",
+              title: "Tools List Markdown",
+              type: "file",
+              link: "Documents/references/tools-list.md",
+              fileManagerPath,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              shareLinks: [],
+            },
+          ],
+        },
+      }),
+    );
+
+    const artifactLink = screen.getByRole("link", { name: "Tools List Markdown" });
+    const params = new URLSearchParams(artifactLink.getAttribute("href")?.replace("/files?", ""));
+    const tabs = parseTabsParam(params.get("tabs"));
+    const activeKey = makeTabKey("workspace", fileManagerPath);
+
+    expect(params.get("path")).toBe("specialists/testing-agent/Documents/references");
+    expect(params.get("select")).toBe(fileManagerPath);
+    expect(params.get("active")).toBe(activeKey);
+    expect(tabs).toEqual([
+      expect.objectContaining({
+        key: activeKey,
+        path: fileManagerPath,
+        root: "workspace",
+      }),
+    ]);
   });
 
   it("read-only history renders non-interactive criteria", () => {

@@ -440,7 +440,7 @@ export function WorkspaceFilesTab({
               node={node}
               pendingArtifactPaths={pendingArtifactPaths}
               onDeleteNode={handleDeleteNode}
-              onAddArtifact={handleAddArtifact}
+              onAddArtifact={onAddArtifact ? handleAddArtifact : undefined}
               onDragTargetChange={setDropTargetPath}
               onDropExternalFiles={handleDropExternalFiles}
               onMoveNode={handleMoveNode}
@@ -470,6 +470,7 @@ export function WorkspaceFilesTab({
     handleMoveNode,
     loading,
     loadingPaths,
+    onAddArtifact,
     onOpenFile,
     openLocation,
     pendingArtifactPaths,

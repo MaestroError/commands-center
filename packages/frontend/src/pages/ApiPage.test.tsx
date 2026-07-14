@@ -9,6 +9,8 @@ import {
   API_TOKEN_PRESETS,
   type ApiTokenPermissions,
   type ApiTokenRecord,
+  type Specialist,
+  type TaskTemplate,
 } from "@cc/shared/schemas";
 
 import { ApiPage } from "./ApiPage";
@@ -39,7 +41,12 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-function makeTemplate(id: string, title: string, syncEnabled = true) {
+function makeTemplate(
+  id: string,
+  title: string,
+  syncEnabled = true,
+  overrides: Partial<TaskTemplate> = {},
+): TaskTemplate {
   return {
     id,
     defaultAgentId: "agent-1",
@@ -61,6 +68,32 @@ function makeTemplate(id: string, title: string, syncEnabled = true) {
     enabled: true,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeSpecialist(overrides: Partial<Specialist> = {}): Specialist {
+  return {
+    id: "agent-1",
+    slug: "planner",
+    name: "Planner",
+    role: "Plans work",
+    instructions: "Plan carefully.",
+    defaultModel: "openai/gpt-4.1",
+    workspacePath: "/tmp/planner",
+    status: "active",
+    capabilities: {
+      builtInSkills: [],
+      workspaceSkills: [],
+      customTools: [],
+      mcpServers: [],
+      toolPermissions: [],
+      appMcpServers: [],
+      appToolPermissions: [],
+    },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
   };
 }
 
@@ -265,6 +298,39 @@ describe("ApiPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create token" }));
 
     expect(await screen.findByTestId("token-template-tmpl-async")).toBeInTheDocument();
+  });
+
+  it("shows the assigned specialist for template tools", async () => {
+    vi.mocked(listApiTokens).mockResolvedValue({ tokens: [] });
+    vi.mocked(listSpecialists).mockResolvedValue([makeSpecialist()]);
+    vi.mocked(listTaskTemplates).mockResolvedValue([makeTemplate("tmpl-1", "Background report")]);
+    renderPage();
+
+    await screen.findByText("No API tokens yet");
+    fireEvent.click(screen.getByRole("button", { name: "Create token" }));
+
+    expect(await screen.findByText(/Planner · Manual/)).toBeInTheDocument();
+  });
+
+  it("shows the repeating cadence for template tools", async () => {
+    vi.mocked(listApiTokens).mockResolvedValue({ tokens: [] });
+    vi.mocked(listSpecialists).mockResolvedValue([makeSpecialist()]);
+    vi.mocked(listTaskTemplates).mockResolvedValue([
+      makeTemplate("tmpl-1", "Background report", true, {
+        recurrence: {
+          mode: "recurring",
+          anchorAt: "2026-01-05T09:00:00.000Z",
+          timezone: "UTC",
+          repeatRule: { frequency: "week", interval: 1, weekdays: [1] },
+        },
+      }),
+    ]);
+    renderPage();
+
+    await screen.findByText("No API tokens yet");
+    fireEvent.click(screen.getByRole("button", { name: "Create token" }));
+
+    expect(await screen.findByText(/Planner · Every 1 week on Mon/)).toBeInTheDocument();
   });
 
   it("selects global and private document roots", async () => {

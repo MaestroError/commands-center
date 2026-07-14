@@ -54,7 +54,7 @@ beforeEach(() => {
 });
 
 describe("SystemPromptsTab", () => {
-  it("renders a card per prompt with a danger badge and empty hint", async () => {
+  it("renders prompt cards without danger badges", async () => {
     vi.mocked(api.getConversationSystemPrompts).mockResolvedValue(prompts);
 
     render(<SystemPromptsTab conversationId="conv-1" />, { wrapper: makeWrapper() });
@@ -62,9 +62,20 @@ describe("SystemPromptsTab", () => {
     await waitFor(() => {
       expect(screen.getByText("Identity")).toBeInTheDocument();
     });
-    expect(screen.getByText("Danger")).toBeInTheDocument();
+    expect(screen.queryByText("Danger")).not.toBeInTheDocument();
 
-    // Expanding the empty optional prompt shows the not-configured hint.
+    expect(screen.getByText("Additional")).toBeInTheDocument();
+  });
+
+  it("shows the empty hint for an expanded optional prompt", async () => {
+    vi.mocked(api.getConversationSystemPrompts).mockResolvedValue(prompts);
+
+    render(<SystemPromptsTab conversationId="conv-1" />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByText("Additional")).toBeInTheDocument();
+    });
+
     fireEvent.click(screen.getByText("Additional"));
     expect(screen.getByText(/not configured/i)).toBeInTheDocument();
   });

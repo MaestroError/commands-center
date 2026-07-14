@@ -1,15 +1,17 @@
 import {
+  artifactSchema,
   reviewActivityPayloadSchema,
   taskRunArtifactSchema,
   type Activity,
   type ActivityKind,
+  type Artifact,
   type TaskRunArtifact,
 } from "@cc/shared/schemas";
 
 import { Markdown } from "@/components/chat/Markdown";
 import { AcceptanceCriteriaList } from "@/components/tasks/AcceptanceCriteria";
+import { buildArtifactHref } from "@/components/tasks/task-format";
 import { useTaskQuery } from "@/hooks/use-tasks-query";
-import { buildFileManagerHref } from "@/lib/file-manager-href";
 
 import { ActivityActions } from "./ActivityActions";
 import { getActivityKindMeta } from "./activity-registry";
@@ -83,13 +85,7 @@ export function ActivityCard({
               {relativeTime(activity.createdAt)}
             </span>
           </div>
-          {reviewQuestion && !compact ? (
-            <div className="mt-1.5 rounded-md border border-accent/20 bg-accent/5 px-2 py-1.5">
-              <p className="break-words text-xs font-medium text-text-primary [overflow-wrap:anywhere]">
-                {reviewQuestion}
-              </p>
-            </div>
-          ) : activity.body && !compact ? (
+          {activity.body && !compact ? (
             <div className="mt-1.5 max-h-48 overflow-auto break-words text-xs text-text-secondary">
               <Markdown content={activity.body} />
             </div>
@@ -100,7 +96,26 @@ export function ActivityCard({
           {!compact && ACTIVITY_KINDS_WITH_CRITERIA.has(activity.kind) ? (
             <ActivityAcceptanceCriteria activity={activity} interactive={!readOnly} />
           ) : null}
-          {!readOnly && onArchive ? (
+          {reviewQuestion && !compact ? (
+            <section
+              aria-label="Review question and reply"
+              className="mt-2 rounded-md border border-accent/30 bg-accent/5 p-3"
+            >
+              <p className="flex items-start gap-1.5 break-words text-sm font-semibold text-text-primary [overflow-wrap:anywhere]">
+                <span className="shrink-0 text-accent">Q:</span>
+                <span>{reviewQuestion}</span>
+              </p>
+              {!readOnly && onArchive ? (
+                <div className="mt-3 border-t border-accent/20 pt-3">
+                  <ActivityActions
+                    activity={activity}
+                    onArchive={onArchive}
+                    archiving={archiving}
+                  />
+                </div>
+              ) : null}
+            </section>
+          ) : !readOnly && onArchive ? (
             <div className="mt-2">
               <ActivityActions activity={activity} onArchive={onArchive} archiving={archiving} />
             </div>
@@ -125,10 +140,7 @@ function ActivityArtifacts({ activity }: { activity: Activity }) {
       </p>
       <ul className="mt-1.5 grid gap-1.5" aria-label="Activity artifacts">
         {artifacts.map((artifact) => {
-          const href =
-            artifact.type === "file"
-              ? buildFileManagerHref({ path: artifact.link, openInEditor: true })
-              : artifact.link;
+          const href = buildArtifactHref(artifact);
           return (
             <li
               className="rounded-md border border-border bg-background px-2 py-1.5"
@@ -138,7 +150,7 @@ function ActivityArtifacts({ activity }: { activity: Activity }) {
                 className="break-words text-xs font-medium text-accent underline-offset-4 hover:underline [overflow-wrap:anywhere]"
                 href={href}
                 rel="noreferrer"
-                target={artifact.type === "file" ? undefined : "_blank"}
+                target={artifact.type === "url" ? "_blank" : undefined}
               >
                 {artifact.title}
               </a>
@@ -182,17 +194,22 @@ function ActivityAcceptanceCriteria({
   );
 }
 
-function readActivityArtifacts(activity: Activity): TaskRunArtifact[] {
+function readActivityArtifacts(activity: Activity): Array<Artifact | TaskRunArtifact> {
   const artifacts = activity.payload["artifacts"];
 
   if (!Array.isArray(artifacts)) {
     return [];
   }
 
-  return artifacts
-    .map((artifact) => taskRunArtifactSchema.safeParse(artifact))
-    .filter((result) => result.success)
-    .map((result) => result.data);
+  return artifacts.flatMap((artifact) => {
+    const enrichedArtifact = artifactSchema.safeParse(artifact);
+    if (enrichedArtifact.success) {
+      return [enrichedArtifact.data];
+    }
+
+    const legacyArtifact = taskRunArtifactSchema.safeParse(artifact);
+    return legacyArtifact.success ? [legacyArtifact.data] : [];
+  });
 }
 
 function readReviewQuestion(activity: Activity): string | undefined {
