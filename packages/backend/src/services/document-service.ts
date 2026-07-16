@@ -686,32 +686,41 @@ export function createDocumentService(options: {
     await mkdir(resolve(to.path, ".."), { recursive: true });
     await rename(from.path, to.path);
 
-    const timestamp = now();
-    const existing = await findDocumentRow(from, input.fromPath);
-    if (existing) {
-      await db
-        .update(documents)
-        .set({
+    // The file has already moved. If the metadata write fails, roll the file
+    // back to its original path (best effort) so the filesystem and DB do not
+    // drift — otherwise the next reconcile would drop the old row and reindex the
+    // moved file as a fresh document, losing the very metadata this preserves.
+    try {
+      const timestamp = now();
+      const existing = await findDocumentRow(from, input.fromPath);
+      if (existing) {
+        await db
+          .update(documents)
+          .set({
+            owner_slug: to.ownerSlug,
+            relative_path: input.toPath,
+            updated_at: timestamp,
+            last_seen_at: timestamp,
+          })
+          .where(documentWhere(from, input.fromPath));
+      } else {
+        await db.insert(documents).values({
+          id: createId(),
+          scope: to.scope,
           owner_slug: to.ownerSlug,
+          owner_specialist_id: to.ownerSpecialistId,
           relative_path: input.toPath,
+          title: null,
+          description: null,
+          author: null,
+          created_at: timestamp,
           updated_at: timestamp,
           last_seen_at: timestamp,
-        })
-        .where(documentWhere(from, input.fromPath));
-    } else {
-      await db.insert(documents).values({
-        id: createId(),
-        scope: to.scope,
-        owner_slug: to.ownerSlug,
-        owner_specialist_id: to.ownerSpecialistId,
-        relative_path: input.toPath,
-        title: null,
-        description: null,
-        author: null,
-        created_at: timestamp,
-        updated_at: timestamp,
-        last_seen_at: timestamp,
-      });
+        });
+      }
+    } catch (error) {
+      await rename(to.path, from.path).catch(() => undefined);
+      throw error;
     }
 
     const row = await findDocumentRow(to, input.toPath);
