@@ -560,6 +560,65 @@ describe("public task API", () => {
       await testDb.cleanup();
     }
   });
+
+  it("creates a document in an authorized root and gates it on the capability", async () => {
+    const { testDb, server, apiTokenService, taskSchedulerService } = await setup();
+
+    try {
+      const token = apiTokenService.createToken("Documents", {
+        capabilities: ["create_document", "read_document"],
+        templates: [],
+        documents: { global: true, privateSpecialistIds: [] },
+      }).token;
+      const auth = { authorization: `Bearer ${token}` };
+
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/public/v1/documents",
+        headers: auth,
+        payload: {
+          scope: "global",
+          path: "shared/created.md",
+          title: "Created",
+          content: "Body from REST.",
+        },
+      });
+      expect(created.statusCode).toBe(200);
+      expect(created.json()).toMatchObject({
+        scope: "global",
+        ownerSlug: null,
+        relativePath: "shared/created.md",
+        title: "Created",
+      });
+      expect(created.body).not.toContain("ownerSpecialistId");
+
+      const read = await server.inject({
+        method: "GET",
+        url: "/api/public/v1/documents/read?scope=global&path=shared/created.md",
+        headers: auth,
+      });
+      expect(read.statusCode).toBe(200);
+      expect(read.json()).toMatchObject({ content: "Body from REST." });
+
+      // Rejected without the create_document capability.
+      const readerOnly = apiTokenService.createToken("Reader only", {
+        capabilities: ["read_document"],
+        templates: [],
+        documents: { global: true, privateSpecialistIds: [] },
+      }).token;
+      const forbidden = await server.inject({
+        method: "POST",
+        url: "/api/public/v1/documents",
+        headers: { authorization: `Bearer ${readerOnly}` },
+        payload: { scope: "global", path: "shared/nope.md", content: "x" },
+      });
+      expect(forbidden.statusCode).toBe(403);
+    } finally {
+      taskSchedulerService.stop();
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
 });
 
 async function insertAgent(db: AppDb): Promise<typeof agents.$inferSelect> {

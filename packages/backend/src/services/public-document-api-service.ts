@@ -3,12 +3,14 @@ import { Buffer } from "node:buffer";
 import { and, eq, inArray } from "drizzle-orm";
 
 import {
+  publicDocumentCreateInputSchema,
   publicDocumentListInputSchema,
   publicDocumentReadInputSchema,
   publicDocumentSearchInputSchema,
   type ApiTokenRecord,
   type DocumentListItem,
   type DocumentScope,
+  type PublicDocumentCreateInput,
   type PublicDocumentListInput,
   type PublicDocumentListResponse,
   type PublicDocumentRead,
@@ -161,6 +163,32 @@ export function createPublicDocumentApiService(deps: {
         }
         throw error;
       }
+    },
+
+    async createDocument(
+      token: ApiTokenRecord,
+      input: PublicDocumentCreateInput,
+    ): Promise<PublicDocumentSummary> {
+      const parsed = publicDocumentCreateInputSchema.parse(input);
+      const root = resolveRoots(token, parsed).find(
+        (candidate) => candidate.scope === parsed.scope,
+      );
+      if (!root) {
+        throw new NotFoundError("Document root not found.");
+      }
+
+      const created = await deps.documentService.create({
+        scope: root.scope,
+        ownerSlug: root.ownerSlug ?? undefined,
+        ownerSpecialistId: root.ownerSpecialistId,
+        path: parsed.path,
+        title: parsed.title,
+        description: parsed.description,
+        author: parsed.author,
+        content: parsed.content,
+      });
+
+      return toPublicSummary(created);
     },
 
     async searchDocuments(

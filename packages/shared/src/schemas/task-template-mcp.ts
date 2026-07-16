@@ -38,6 +38,7 @@ export const RESERVED_MCP_TOOL_NAMES: readonly string[] = [
   "list_documents",
   "search_documents",
   "read_document",
+  "create_document",
   // Auto-exposed async variants (Phase 4). Also covered by the `_async` suffix
   // rule below, but listed explicitly for a complete reserved surface.
   "task_run_async",

@@ -1085,3 +1085,90 @@ describe("documentReconciler", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// move
+// ---------------------------------------------------------------------------
+
+describe("document service move", () => {
+  it("renames the file and carries the metadata row (same id) to the new path", async () => {
+    const testDb = await createTestDatabase();
+    try {
+      await setupDocsDir(testDb);
+      const service = makeService(testDb);
+      const docsRoot = testDb.config.paths.subdirectories.documents;
+
+      await service.create({ path: "drafts/plan.md", title: "The Plan", content: "body" });
+      const [before] = await testDb.client.db.select().from(documents);
+
+      const moved = await service.move({
+        fromPath: "drafts/plan.md",
+        toPath: "final/2026/plan.md",
+      });
+      expect(moved.relativePath).toBe("final/2026/plan.md");
+
+      // File moved (destination folders auto-created), source gone.
+      expect(await readFile(join(docsRoot, "final/2026/plan.md"), "utf8")).toBe("body");
+      await expect(stat(join(docsRoot, "drafts/plan.md"))).rejects.toThrow();
+
+      // Same DB row carried over — id and metadata preserved, not recreated.
+      const rows = await testDb.client.db.select().from(documents);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        id: before?.id,
+        relative_path: "final/2026/plan.md",
+        title: "The Plan",
+      });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rolls the file back to its original path when the metadata write fails", async () => {
+    const testDb = await createTestDatabase();
+    try {
+      await setupDocsDir(testDb);
+      const docsRoot = testDb.config.paths.subdirectories.documents;
+
+      // Seed the document (and its DB row) with the real service.
+      await makeService(testDb).create({
+        path: "drafts/plan.md",
+        title: "The Plan",
+        content: "body",
+      });
+      const [before] = await testDb.client.db.select().from(documents);
+
+      // A service whose metadata update throws, to simulate a DB failure after
+      // the file has already been renamed on disk.
+      const failingDb = new Proxy(testDb.client.db, {
+        get(target, prop, receiver) {
+          if (prop === "update") {
+            return () => {
+              throw new Error("db boom");
+            };
+          }
+          return Reflect.get(target, prop, receiver) as unknown;
+        },
+      });
+      const failingService = createDocumentService({
+        db: failingDb as never,
+        config: testDb.config,
+      });
+
+      await expect(
+        failingService.move({ fromPath: "drafts/plan.md", toPath: "final/plan.md" }),
+      ).rejects.toThrow("db boom");
+
+      // File rolled back to the source; destination was not left behind.
+      expect(await readFile(join(docsRoot, "drafts/plan.md"), "utf8")).toBe("body");
+      await expect(stat(join(docsRoot, "final/plan.md"))).rejects.toThrow();
+
+      // DB row is untouched — still points at the original path.
+      const rows = await testDb.client.db.select().from(documents);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ id: before?.id, relative_path: "drafts/plan.md" });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+});

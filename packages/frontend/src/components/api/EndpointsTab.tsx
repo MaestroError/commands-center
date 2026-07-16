@@ -345,6 +345,22 @@ export function EndpointsTab(props: { onGoToTokens?: () => void }) {
           updatedAt: 1_725_000_100_000,
         }}
       />
+
+      <EndpointBlock
+        method="POST"
+        path="/api/public/v1/documents"
+        scope="Create document"
+        description="Create a new markdown document in an authorized root. The path must live in at least one subfolder and end with .md or .markdown; private writes require the owning specialist slug in owner. MCP tool: create_document."
+        snippets={[{ label: "curl", code: documentDocs.createCurl }]}
+        responseExample={{
+          scope: "global",
+          ownerSlug: null,
+          relativePath: "notes/new-brief.md",
+          title: "New brief",
+          description: null,
+          author: null,
+        }}
+      />
     </div>
   );
 }

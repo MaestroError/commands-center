@@ -37,7 +37,7 @@ const documentRelativePathSchema = z
     message: "Path must end with .md or .markdown",
   });
 
-const createDocumentPathSchema = documentRelativePathSchema.refine((p) => p.includes("/"), {
+export const createDocumentPathSchema = documentRelativePathSchema.refine((p) => p.includes("/"), {
   message: NEW_DOCUMENT_SUBFOLDER_MESSAGE,
 });
 

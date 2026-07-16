@@ -4,6 +4,8 @@ import { z } from "zod";
 import {
   listPublicTasksQuerySchema,
   mcpTaskRunResultSchema,
+  publicDocumentCreateInputSchema,
+  publicDocumentCreateResponseSchema,
   publicDocumentListInputSchema,
   publicDocumentListResponseSchema,
   publicDocumentReadInputSchema,
@@ -131,6 +133,22 @@ export function createPublicMcpRegistry(deps: {
           );
           return ok("Document found.", result);
         }, "Failed to read document."),
+    },
+    {
+      name: "create_document",
+      capability: "create_document",
+      description:
+        "Create a new markdown document in an authorized root. The path must live in at least one subfolder (e.g. 'notes/plan.md') and end with .md or .markdown. For private scope, pass the owning specialist's ownerSlug.",
+      inputSchema: publicDocumentCreateInputSchema,
+      outputSchema: publicDocumentCreateResponseSchema,
+      execute: (args, token) =>
+        runTool(async () => {
+          const document = await documentService.createDocument(
+            requireToken(token),
+            publicDocumentCreateInputSchema.parse(args),
+          );
+          return ok("Document created.", document);
+        }, "Failed to create document."),
     },
     {
       name: "list_task_templates",
