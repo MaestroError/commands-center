@@ -1,5 +1,14 @@
 import type { Stats } from "node:fs";
-import { lstat, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { basename, extname, isAbsolute, join, posix, relative, resolve } from "node:path";
 
 import { and, eq, isNull } from "drizzle-orm";
@@ -76,6 +85,11 @@ type ServiceUpdateMetadataInput = Omit<UpdateDocumentMetadataInput, "scope"> & {
 type ServiceSaveContentInput = Omit<SaveDocumentContentInput, "scope"> & {
   scope?: DocumentScope;
   ownerSpecialistId?: string | null;
+};
+
+type ServiceMoveDocumentInput = ScopeInput & {
+  fromPath: string;
+  toPath: string;
 };
 
 function isMarkdownFile(name: string): boolean {
@@ -637,6 +651,84 @@ export function createDocumentService(options: {
     };
   }
 
+  // Move (rename) a document within a single scoped root, carrying its DB
+  // metadata row (id, title, description, author, timestamps) to the new path so
+  // the manual-mv problem — where the reconciler would drop the old row and
+  // reinsert a fresh one with a new id and null metadata — is avoided. Missing
+  // destination folders are created automatically under the scoped root.
+  async function move(input: ServiceMoveDocumentInput): Promise<DocumentListItem> {
+    validateDocumentPath(input.fromPath);
+    validateDocumentPath(input.toPath);
+    validateNewDocumentPath(input.toPath);
+
+    const scopeInput = {
+      scope: input.scope,
+      ownerSlug: input.ownerSlug,
+      ownerSpecialistId: input.ownerSpecialistId,
+    };
+    const from = await resolveScopedPath({ ...scopeInput, relativePath: input.fromPath });
+    const to = await resolveScopedPath({ ...scopeInput, relativePath: input.toPath });
+
+    if (from.path === to.path) {
+      throw new BadRequestError("Source and destination paths are the same.");
+    }
+
+    const sourceStat = await stat(from.path).catch(() => null);
+    if (!sourceStat?.isFile()) {
+      throw new NotFoundError(`Document not found: ${input.fromPath}`);
+    }
+
+    const destExists = await stat(to.path).catch(() => null);
+    if (destExists) {
+      throw new ConflictError(`Document already exists: ${input.toPath}`);
+    }
+
+    await mkdir(resolve(to.path, ".."), { recursive: true });
+    await rename(from.path, to.path);
+
+    const timestamp = now();
+    const existing = await findDocumentRow(from, input.fromPath);
+    if (existing) {
+      await db
+        .update(documents)
+        .set({
+          owner_slug: to.ownerSlug,
+          relative_path: input.toPath,
+          updated_at: timestamp,
+          last_seen_at: timestamp,
+        })
+        .where(documentWhere(from, input.fromPath));
+    } else {
+      await db.insert(documents).values({
+        id: createId(),
+        scope: to.scope,
+        owner_slug: to.ownerSlug,
+        owner_specialist_id: to.ownerSpecialistId,
+        relative_path: input.toPath,
+        title: null,
+        description: null,
+        author: null,
+        created_at: timestamp,
+        updated_at: timestamp,
+        last_seen_at: timestamp,
+      });
+    }
+
+    const row = await findDocumentRow(to, input.toPath);
+    const content = await readFile(to.path, "utf8").catch(() => "");
+
+    return {
+      scope: to.scope,
+      ownerSlug: to.ownerSlug,
+      ownerSpecialistId: to.ownerSpecialistId,
+      relativePath: input.toPath,
+      fullPath: to.path,
+      title: row?.title ?? titleFromFilename(basename(input.toPath)),
+      description: row?.description ?? descriptionFromContent(content),
+      author: row?.author ?? null,
+    };
+  }
+
   async function createFolder(
     pathOrInput: string | (ScopeInput & { path: string }),
   ): Promise<void> {
@@ -832,6 +924,7 @@ export function createDocumentService(options: {
     listSearchCandidates,
     read,
     create,
+    move,
     createFolder,
     saveContent,
     updateMetadata,

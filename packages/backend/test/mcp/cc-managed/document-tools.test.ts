@@ -25,10 +25,19 @@ function makeTools(testDb: Awaited<ReturnType<typeof createTestDatabase>>) {
 
   const listTool = defs.find((d) => d.name === "list_global_documents") as TestTool;
   const registerTool = defs.find((d) => d.name === "register_global_document") as TestTool;
+  const moveTool = defs.find((d) => d.name === "move_global_document") as TestTool;
   const listPrivateTool = defs.find((d) => d.name === "list_private_documents") as TestTool;
   const registerPrivateTool = defs.find((d) => d.name === "register_private_document") as TestTool;
+  const movePrivateTool = defs.find((d) => d.name === "move_private_document") as TestTool;
 
-  return { listTool, registerTool, listPrivateTool, registerPrivateTool };
+  return {
+    listTool,
+    registerTool,
+    moveTool,
+    listPrivateTool,
+    registerPrivateTool,
+    movePrivateTool,
+  };
 }
 
 type RegisterResult = {
@@ -408,6 +417,152 @@ describe("private document MCP tools", () => {
         documents: [],
         totalMatches: 0,
       });
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+});
+
+describe("move_global_document", () => {
+  it("moves a document, preserving its metadata row and id, and creates folders", async () => {
+    const testDb = await createTestDatabase();
+    const { registerTool, moveTool, listTool } = makeTools(testDb);
+
+    try {
+      await setupDocsDir(testDb);
+      await registerTool.execute(
+        { path: "drafts/plan.md", title: "The Plan", description: "Roadmap" },
+        agentContext,
+      );
+
+      const before = await testDb.client.db.query.documents.findFirst({
+        where: (table, { eq }) => eq(table.relative_path, "drafts/plan.md"),
+      });
+      expect(before).toBeDefined();
+
+      const result = await moveTool.execute({
+        fromPath: "drafts/plan.md",
+        toPath: "published/2026/plan.md",
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toMatchObject({
+        scope: "global",
+        ownerSlug: null,
+        relativePath: "published/2026/plan.md",
+        title: "The Plan",
+        description: "Roadmap",
+        author: agentContext.agentSlug,
+      });
+      expect(result.content[0]?.text).toContain("Moved global document");
+
+      // The DB row is carried over (same id + metadata), not recreated.
+      const oldRow = await testDb.client.db.query.documents.findFirst({
+        where: (table, { eq }) => eq(table.relative_path, "drafts/plan.md"),
+      });
+      expect(oldRow).toBeUndefined();
+      const newRow = await testDb.client.db.query.documents.findFirst({
+        where: (table, { eq }) => eq(table.relative_path, "published/2026/plan.md"),
+      });
+      expect(newRow?.id).toBe(before?.id);
+      expect(newRow?.title).toBe("The Plan");
+
+      // The file is discoverable at the new nested path (auto-created folders).
+      const listed = await listTool.execute({});
+      const docs = (listed.structuredContent as { documents: Array<Record<string, unknown>> })
+        .documents;
+      expect(docs.map((doc) => doc["relativePath"])).toEqual(["published/2026/plan.md"]);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("errors when the source document does not exist", async () => {
+    const testDb = await createTestDatabase();
+    const { moveTool } = makeTools(testDb);
+
+    try {
+      await setupDocsDir(testDb);
+      const result = await moveTool.execute({
+        fromPath: "drafts/missing.md",
+        toPath: "published/missing.md",
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain("not found");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("errors when the destination already exists", async () => {
+    const testDb = await createTestDatabase();
+    const { registerTool, moveTool } = makeTools(testDb);
+
+    try {
+      await setupDocsDir(testDb);
+      await registerTool.execute({ path: "drafts/a.md", title: "A" }, agentContext);
+      await registerTool.execute({ path: "drafts/b.md", title: "B" }, agentContext);
+
+      const result = await moveTool.execute({ fromPath: "drafts/a.md", toPath: "drafts/b.md" });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain("already exists");
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects a destination that escapes the Documents root", async () => {
+    const testDb = await createTestDatabase();
+    const { registerTool, moveTool } = makeTools(testDb);
+
+    try {
+      await setupDocsDir(testDb);
+      await registerTool.execute({ path: "drafts/a.md", title: "A" }, agentContext);
+
+      const result = await moveTool.execute({
+        fromPath: "drafts/a.md",
+        toPath: "../escape.md",
+      });
+
+      expect(result.isError).toBe(true);
+    } finally {
+      await testDb.cleanup();
+    }
+  });
+});
+
+describe("move_private_document", () => {
+  it("moves a document within the caller's private Documents/ folder", async () => {
+    const testDb = await createTestDatabase();
+    const { registerPrivateTool, movePrivateTool, listPrivateTool } = makeTools(testDb);
+
+    try {
+      await setupDocsDir(testDb);
+      await insertActiveSpecialist(testDb);
+      await registerPrivateTool.execute(
+        { path: "notes/private.md", title: "Private" },
+        agentContext,
+      );
+
+      const result = await movePrivateTool.execute(
+        { fromPath: "notes/private.md", toPath: "archive/private.md" },
+        agentContext,
+      );
+
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toMatchObject({
+        scope: "private",
+        ownerSlug: agentContext.agentSlug,
+        relativePath: "archive/private.md",
+        title: "Private",
+      });
+
+      const listed = await listPrivateTool.execute({}, agentContext);
+      const docs = (listed.structuredContent as { documents: Array<Record<string, unknown>> })
+        .documents;
+      expect(docs.map((doc) => doc["relativePath"])).toEqual(["archive/private.md"]);
     } finally {
       await testDb.cleanup();
     }

@@ -84,6 +84,31 @@ const registerDocumentOutputSchema = z.object({
   created: z.boolean(),
 });
 
+const moveDocumentInputSchema = z.object({
+  fromPath: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("Current path of the document relative to the Documents/ folder."),
+  toPath: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "New path relative to the Documents/ folder. Must live in at least one subfolder and end with .md or .markdown. Missing folders are created automatically.",
+    ),
+});
+
+const moveDocumentOutputSchema = z.object({
+  scope: z.enum(["global", "private"]),
+  ownerSlug: z.string().nullable(),
+  relativePath: z.string(),
+  fullPath: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  author: z.string().nullable(),
+});
+
 export const listGlobalDocumentsToolMetadata = {
   name: "list_global_documents",
   description:
@@ -109,6 +134,20 @@ export const registerPrivateDocumentToolMetadata = {
   name: "register_private_document",
   description:
     "Register or create a markdown document in your private specialist Documents/ folder. Creates the private Documents/ folder lazily if needed and updates metadata for an existing file without overwriting content.",
+  context: "both",
+} as const;
+
+export const moveGlobalDocumentToolMetadata = {
+  name: "move_global_document",
+  description:
+    "Move or rename a document within the shared global Documents/ folder, preserving its stored metadata (title, description, author, id). Destination folders are created automatically. Use this instead of moving files manually so the metadata is not lost.",
+  context: "both",
+} as const;
+
+export const movePrivateDocumentToolMetadata = {
+  name: "move_private_document",
+  description:
+    "Move or rename a document within your private specialist Documents/ folder, preserving its stored metadata (title, description, author, id). Destination folders are created automatically. Use this instead of moving files manually so the metadata is not lost.",
   context: "both",
 } as const;
 
@@ -186,6 +225,25 @@ export function createDocumentToolDefinitions(options: { db: AppDb; config: Runt
     };
   }
 
+  async function moveDocument(args: unknown, scope: "global" | "private", agentSlug?: string) {
+    const parsed = moveDocumentInputSchema.parse(args);
+    const doc = await service.move({
+      scope,
+      ownerSlug: scope === "private" ? agentSlug : undefined,
+      fromPath: parsed.fromPath,
+      toPath: parsed.toPath,
+    });
+
+    const structuredContent = moveDocumentOutputSchema.parse(doc);
+    const label = scope === "private" ? "private document" : "global document";
+    const message = `Moved ${label} '${parsed.fromPath}' to '${parsed.toPath}'.`;
+
+    return {
+      structuredContent,
+      content: [{ type: "text" as const, text: withData(message, structuredContent) }],
+    };
+  }
+
   return [
     {
       name: listGlobalDocumentsToolMetadata.name,
@@ -252,6 +310,42 @@ export function createDocumentToolDefinitions(options: { db: AppDb; config: Runt
           return await registerDocument(args, "private", context.agentSlug);
         } catch (error) {
           const message = error instanceof Error ? error.message : "Failed to register document.";
+          return {
+            isError: true,
+            content: [{ type: "text" as const, text: message }],
+          };
+        }
+      },
+    },
+    {
+      name: moveGlobalDocumentToolMetadata.name,
+      description: moveGlobalDocumentToolMetadata.description,
+      context: moveGlobalDocumentToolMetadata.context,
+      inputSchema: moveDocumentInputSchema,
+      outputSchema: moveDocumentOutputSchema,
+      async execute(args: unknown) {
+        try {
+          return await moveDocument(args, "global");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Failed to move document.";
+          return {
+            isError: true,
+            content: [{ type: "text" as const, text: message }],
+          };
+        }
+      },
+    },
+    {
+      name: movePrivateDocumentToolMetadata.name,
+      description: movePrivateDocumentToolMetadata.description,
+      context: movePrivateDocumentToolMetadata.context,
+      inputSchema: moveDocumentInputSchema,
+      outputSchema: moveDocumentOutputSchema,
+      async execute(args: unknown, context: { agentSlug: string }) {
+        try {
+          return await moveDocument(args, "private", context.agentSlug);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Failed to move document.";
           return {
             isError: true,
             content: [{ type: "text" as const, text: message }],
