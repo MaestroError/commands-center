@@ -11,7 +11,7 @@ import {
 } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, posix, relative, resolve } from "node:path";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
@@ -363,6 +363,34 @@ export function createDocumentService(options: {
     });
   }
 
+  // Batched variant of findDocumentRow: fetches metadata rows for many relative
+  // paths in a single query (avoiding an N+1 when listing a folder) and returns
+  // them keyed by relative path.
+  async function findDocumentRows(
+    target: ResolvedScope,
+    relativePaths: string[],
+  ): Promise<Map<string, { title: string | null }>> {
+    if (relativePaths.length === 0) {
+      return new Map();
+    }
+    const scopeWhere =
+      target.scope === "global"
+        ? and(
+            eq(documents.scope, "global"),
+            isNull(documents.owner_slug),
+            isNull(documents.owner_specialist_id),
+          )
+        : and(
+            eq(documents.scope, "private"),
+            eq(documents.owner_specialist_id, target.ownerSpecialistId ?? ""),
+          );
+    const rows = await db.query.documents.findMany({
+      where: () => and(scopeWhere, inArray(documents.relative_path, relativePaths)),
+      columns: { relative_path: true, title: true },
+    });
+    return new Map(rows.map((row) => [row.relative_path, { title: row.title }]));
+  }
+
   async function scanTree(
     target: ResolvedScope,
     dir: string,
@@ -582,45 +610,56 @@ export function createDocumentService(options: {
       throw new BadRequestError("Path is not a folder.");
     }
 
-    let entries: string[];
-    try {
-      entries = await readdir(dir);
-    } catch {
-      entries = [];
+    // `dir` existence and type are validated above, so let readdir errors
+    // (permission/IO) propagate rather than masking them as an empty folder.
+    const entries = await readdir(dir);
+
+    // Collect entries with their (symlink-aware) stats in one pass so markdown
+    // metadata can be fetched in a single batched query below.
+    const listed: Array<{ name: string; relativePath: string; type: "file" | "directory" }> = [];
+    for (const entry of entries.filter((e) => !isHiddenOrExcluded(e)).sort()) {
+      const entryRelative = toPosixPath(relativePath ? `${relativePath}/${entry}` : entry);
+      const entryStat = await lstat(join(dir, entry)).catch(() => null);
+      if (!entryStat) continue;
+      if (entryStat.isDirectory()) {
+        listed.push({ name: entry, relativePath: entryRelative, type: "directory" });
+      } else if (entryStat.isFile()) {
+        listed.push({ name: entry, relativePath: entryRelative, type: "file" });
+      }
     }
+
+    const markdownPaths = listed
+      .filter((item) => item.type === "file" && isMarkdownFile(item.name))
+      .map((item) => item.relativePath);
+    const rowsByPath = await findDocumentRows(target, markdownPaths);
 
     const directories: DocumentFolderEntry[] = [];
     const files: DocumentFolderEntry[] = [];
 
-    for (const entry of entries.filter((e) => !isHiddenOrExcluded(e)).sort()) {
-      const entryPath = join(dir, entry);
-      const entryRelative = toPosixPath(relativePath ? `${relativePath}/${entry}` : entry);
-      const entryStat = await lstat(entryPath).catch(() => null);
-      if (!entryStat) continue;
-
-      if (entryStat.isDirectory()) {
+    for (const item of listed) {
+      if (item.type === "directory") {
         directories.push({
           scope: target.scope,
           ownerSlug: target.ownerSlug,
           ownerSpecialistId: target.ownerSpecialistId,
-          name: entry,
-          relativePath: entryRelative,
+          name: item.name,
+          relativePath: item.relativePath,
           type: "directory",
           isDocument: false,
           title: null,
         });
-      } else if (entryStat.isFile()) {
-        const isDocument = isMarkdownFile(entry);
-        const row = isDocument ? await findDocumentRow(target, entryRelative) : null;
+      } else {
+        const isDocument = isMarkdownFile(item.name);
+        const row = isDocument ? rowsByPath.get(item.relativePath) : null;
         files.push({
           scope: target.scope,
           ownerSlug: target.ownerSlug,
           ownerSpecialistId: target.ownerSpecialistId,
-          name: entry,
-          relativePath: entryRelative,
+          name: item.name,
+          relativePath: item.relativePath,
           type: "file",
           isDocument,
-          title: isDocument ? (row?.title ?? titleFromFilename(entry)) : null,
+          title: isDocument ? (row?.title ?? titleFromFilename(item.name)) : null,
         });
       }
     }
