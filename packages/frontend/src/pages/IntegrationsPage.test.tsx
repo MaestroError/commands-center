@@ -702,7 +702,6 @@ describe("IntegrationsPage", () => {
     expect(screen.getByRole("button", { name: "Add Brave Search" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Linear" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Jira" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add Figma" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Sentry" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Vercel" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Supabase" })).toBeInTheDocument();

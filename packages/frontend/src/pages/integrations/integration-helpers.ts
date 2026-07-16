@@ -152,20 +152,6 @@ export const SUGGESTED_MCP_SERVERS: SuggestedMcpServer[] = [
     },
   },
   {
-    id: "figma",
-    name: "Figma",
-    description: "Read designs and generate code from Figma files and selections.",
-    authBadge: "OAuth",
-    tags: ["auth:oauth", "category:design", "type:remote", "source:official"],
-    form: {
-      ...EMPTY_FORM_BASE,
-      name: "figma",
-      url: "https://mcp.figma.com/mcp",
-      transport: "streamable-http",
-      authMethod: "oauth",
-    },
-  },
-  {
     id: "sentry",
     name: "Sentry",
     description: "Inspect errors, releases, and performance issues.",
