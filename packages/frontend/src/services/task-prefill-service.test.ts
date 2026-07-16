@@ -36,8 +36,8 @@ describe("createTaskPrefillFromUserMessage", () => {
     expect(result.prefill.prompt).toEqual({
       text: "Check implementation",
       mentionedFiles: [
-        { path: "README.md", filename: "README.md" },
-        { path: "src/index.ts", filename: "index.ts" },
+        { path: "README.md", filename: "README.md", kind: "file" },
+        { path: "src/index.ts", filename: "index.ts", kind: "file" },
       ],
       mentionedAgents: [],
       selectedSkill: { slug: "review", description: "Review code" },
@@ -56,10 +56,25 @@ describe("createTaskPrefillFromUserMessage", () => {
 
     expect(result.prefill.prompt).toEqual({
       text: "Check files",
-      mentionedFiles: [{ path: "src/app.ts", filename: "app.ts" }],
+      mentionedFiles: [{ path: "src/app.ts", filename: "app.ts", kind: "file" }],
       mentionedAgents: [],
       selectedSkill: null,
     });
+  });
+
+  it("re-hydrates an absolute global-document reference as a readable file mention", () => {
+    const result = createTaskPrefillFromUserMessage({
+      agentId: "agent-1",
+      message: makeMessage({
+        content: "#/workspace/Documents/design/overview.md #src/app.ts Compare them",
+      }),
+      parts: [],
+    });
+
+    expect(result.prefill.prompt.mentionedFiles).toEqual([
+      { path: "/workspace/Documents/design/overview.md", filename: "overview.md", kind: "file" },
+      { path: "src/app.ts", filename: "app.ts", kind: "file" },
+    ]);
   });
 
   it("detects unsupported attachments", () => {

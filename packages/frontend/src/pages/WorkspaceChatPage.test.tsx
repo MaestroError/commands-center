@@ -526,7 +526,7 @@ describe("WorkspaceChatPage", () => {
           agentId: "agent-1",
           prompt: {
             text: "Check this",
-            mentionedFiles: [{ path: "README.md", filename: "README.md" }],
+            mentionedFiles: [{ path: "README.md", filename: "README.md", kind: "file" }],
             mentionedAgents: [],
             selectedSkill: { slug: "review", description: "Review code" },
           },

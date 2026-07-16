@@ -30,3 +30,47 @@ export function buildDocumentHref(
       : "";
   return `/documents?${scopePrefix}path=${encodeURIComponent(relativePath)}`;
 }
+
+/**
+ * Builds the in-app Documents folder-view href for a folder path relative to the
+ * Documents root. An empty `relativePath` targets the scope root. Private folders
+ * carry `scope=private&owner=<slug>`.
+ */
+export function buildDocumentFolderHref(
+  relativePath: string,
+  options?: { scope?: DocumentScope | null; ownerSlug?: string | null },
+): string {
+  const scopePrefix =
+    options?.scope === "private" && options.ownerSlug
+      ? `scope=private&owner=${encodeURIComponent(options.ownerSlug)}&`
+      : "";
+  return `/documents?${scopePrefix}folder=${encodeURIComponent(relativePath)}`;
+}
+
+/**
+ * Builds a File Manager href that reveals a Documents entry. Files open their
+ * parent folder with the file selected; directories open the directory itself.
+ * Private-scope entries live under `specialists/<slug>/Documents`.
+ */
+export function buildDocumentFileManagerHref(entry: {
+  scope: DocumentScope;
+  ownerSlug: string | null;
+  relativePath: string;
+  type: "file" | "directory";
+}): string {
+  const base =
+    entry.scope === "private" && entry.ownerSlug
+      ? `specialists/${entry.ownerSlug}/Documents`
+      : "Documents";
+
+  const params = new URLSearchParams({ root: "workspace" });
+  if (entry.type === "directory") {
+    params.set("path", `${base}/${entry.relativePath}`);
+  } else {
+    const lastSlash = entry.relativePath.lastIndexOf("/");
+    const folder = lastSlash === -1 ? "" : entry.relativePath.slice(0, lastSlash);
+    params.set("path", folder ? `${base}/${folder}` : base);
+    params.set("select", `${base}/${entry.relativePath}`);
+  }
+  return `/files?${params.toString()}`;
+}

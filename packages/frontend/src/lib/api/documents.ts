@@ -3,20 +3,24 @@ import { requestJson } from "./client";
 import {
   createDocumentFolderInputSchema,
   createDocumentInputSchema,
+  documentFolderListingResponseSchema,
   documentListResponseSchema,
   documentReadResponseSchema,
   documentTreeResponseSchema,
   saveDocumentContentInputSchema,
   saveDocumentContentResponseSchema,
+  searchDocumentsResponseSchema,
   updateDocumentMetadataInputSchema,
   type CreateDocumentInput,
   type CreateDocumentFolderInput,
+  type DocumentFolderListingResponse,
   type DocumentListItem,
   type DocumentListResponse,
   type DocumentReadResponse,
   type DocumentTreeResponse,
   type SaveDocumentContentInput,
   type SaveDocumentContentResponse,
+  type SearchDocumentsResponse,
   type UpdateDocumentMetadataInput,
   type DocumentScope,
 } from "@cc/shared/schemas";
@@ -45,6 +49,38 @@ function appendScopeParams(params: URLSearchParams, identity: DocumentRequestIde
 
 export async function getDocumentTree(): Promise<DocumentTreeResponse> {
   return requestJson<DocumentTreeResponse>("/api/documents/tree", documentTreeResponseSchema);
+}
+
+/**
+ * Search the shared global Documents root by name/title/description. Used to make
+ * global documents mentionable from specialist-scoped composers, where workspace
+ * file search alone would never surface them.
+ */
+export async function searchGlobalDocuments(query: string): Promise<DocumentListItem[]> {
+  const params = new URLSearchParams();
+  params.set("query", query);
+  const result = await requestJson<SearchDocumentsResponse>(
+    `/api/documents/search?${params.toString()}`,
+    searchDocumentsResponseSchema,
+  );
+  return result.documents;
+}
+
+export async function getDocumentFolder(
+  input: string | DocumentRequestIdentity,
+): Promise<DocumentFolderListingResponse> {
+  const identity = normalizeDocumentIdentity(input);
+  const params = new URLSearchParams();
+  appendScopeParams(params, identity);
+  if (identity.path) {
+    params.set("path", identity.path);
+  }
+  const query = params.toString();
+
+  return requestJson<DocumentFolderListingResponse>(
+    query ? `/api/documents/folder?${query}` : "/api/documents/folder",
+    documentFolderListingResponseSchema,
+  );
 }
 
 export async function getDocumentContent(

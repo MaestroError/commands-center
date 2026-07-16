@@ -7,6 +7,7 @@ import type { DocumentScope, DocumentTreeNode } from "@cc/shared/schemas";
 
 import { isRouteActive } from "@/app/routes";
 import { getDocumentTree, listSpecialists } from "@/lib/api";
+import { buildDocumentFolderHref } from "@/lib/document-href";
 import { queryKeys } from "@/lib/query-keys";
 
 import { DocumentCreateDialog } from "./DocumentCreateDialog";
@@ -35,6 +36,7 @@ export function DocumentsSidebarSection(props: DocumentsSidebarSectionProps) {
   const location = useLocation();
   const isActive = isRouteActive(props.pathname, DOCUMENTS_PATH);
   const selectedTarget = parseDocumentTarget(location.search);
+  const selectedFolderTarget = parseDocumentFolderTarget(location.search);
   const [open, setOpen] = useState(isActive);
   const [createDocTarget, setCreateDocTarget] = useState<DocumentTarget | null>(null);
   const [createFolderTarget, setCreateFolderTarget] = useState<DocumentTarget | null>(null);
@@ -147,10 +149,15 @@ export function DocumentsSidebarSection(props: DocumentsSidebarSectionProps) {
                 target={{ scope: "global", ownerSlug: null, path: "" }}
                 tree={tree}
                 selectedTarget={selectedTarget}
+                selectedFolderTarget={selectedFolderTarget}
                 onAddFolder={setCreateFolderTarget}
                 onAddDocument={setCreateDocTarget}
                 onOpenDocument={(target) => {
                   void navigate(documentUrl(target));
+                  props.onNavigate();
+                }}
+                onOpenFolder={(target) => {
+                  void navigate(folderUrl(target));
                   props.onNavigate();
                 }}
               />
@@ -161,10 +168,15 @@ export function DocumentsSidebarSection(props: DocumentsSidebarSectionProps) {
                   target={{ scope: "private", ownerSlug: group.ownerSlug, path: "" }}
                   tree={group.tree}
                   selectedTarget={selectedTarget}
+                  selectedFolderTarget={selectedFolderTarget}
                   onAddFolder={setCreateFolderTarget}
                   onAddDocument={setCreateDocTarget}
                   onOpenDocument={(target) => {
                     void navigate(documentUrl(target));
+                    props.onNavigate();
+                  }}
+                  onOpenFolder={(target) => {
+                    void navigate(folderUrl(target));
                     props.onNavigate();
                   }}
                 />
@@ -229,6 +241,29 @@ function parseDocumentTarget(search: string): DocumentTarget | null {
   };
 }
 
+function parseDocumentFolderTarget(search: string): DocumentTarget | null {
+  const params = new URLSearchParams(search);
+  if (!params.has("folder")) {
+    return null;
+  }
+  const path = params.get("folder") ?? "";
+
+  const scope = params.get("scope") === "private" ? "private" : "global";
+  const ownerSlug = scope === "private" ? params.get("owner") : null;
+  if (scope === "private" && !ownerSlug) {
+    return null;
+  }
+
+  return { scope, ownerSlug, path };
+}
+
+function folderUrl(target: DocumentTarget): string {
+  return buildDocumentFolderHref(target.path, {
+    scope: target.scope,
+    ownerSlug: target.ownerSlug,
+  });
+}
+
 function documentUrl(target: DocumentTarget): string {
   const params = new URLSearchParams();
   if (target.scope !== "global") {
@@ -250,25 +285,40 @@ function DocumentTreeGroup(props: {
   target: DocumentTarget;
   tree: DocumentTreeNode[];
   selectedTarget: DocumentTarget | null;
+  selectedFolderTarget: DocumentTarget | null;
   onAddFolder: (target: DocumentTarget) => void;
   onAddDocument: (target: DocumentTarget) => void;
   onOpenDocument: (target: DocumentTarget) => void;
+  onOpenFolder: (target: DocumentTarget) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const isSelected =
+    props.selectedFolderTarget !== null &&
+    targetKey(props.selectedFolderTarget) === targetKey(props.target);
 
   return (
     <div className="grid min-w-0 gap-0.5">
-      <div className="group flex min-w-0 items-center gap-1 rounded-lg px-1 py-1 text-sm font-medium text-text-secondary transition hover:bg-surface-elevated">
+      <div
+        className={`group flex min-w-0 items-center gap-1 rounded-lg px-1 py-1 text-sm font-medium transition ${
+          isSelected ? "bg-accent/10 text-accent" : "text-text-secondary hover:bg-surface-elevated"
+        }`}
+      >
         <button
           aria-expanded={open}
           aria-label={open ? `Collapse ${props.label}` : `Expand ${props.label}`}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded hover:text-text-primary"
           onClick={() => setOpen((value) => !value)}
           type="button"
         >
           <ChevronRight
             className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
           />
+        </button>
+        <button
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+          onClick={() => props.onOpenFolder(props.target)}
+          type="button"
+        >
           <Folder className="h-3.5 w-3.5 shrink-0" />
           <span className="min-w-0 flex-1 truncate">{props.label}</span>
         </button>
@@ -302,9 +352,11 @@ function DocumentTreeGroup(props: {
                 node={node}
                 depth={1}
                 selectedTarget={props.selectedTarget}
+                selectedFolderTarget={props.selectedFolderTarget}
                 onAddFolder={props.onAddFolder}
                 onAddDocument={props.onAddDocument}
                 onOpenDocument={props.onOpenDocument}
+                onOpenFolder={props.onOpenFolder}
               />
             ))}
           </div>
@@ -318,9 +370,11 @@ type DocumentSidebarNodeProps = {
   node: DocumentTreeNode;
   depth: number;
   selectedTarget: DocumentTarget | null;
+  selectedFolderTarget: DocumentTarget | null;
   onAddFolder: (target: DocumentTarget) => void;
   onAddDocument: (target: DocumentTarget) => void;
   onOpenDocument: (target: DocumentTarget) => void;
+  onOpenFolder: (target: DocumentTarget) => void;
 };
 
 function nodeTarget(node: DocumentTreeNode): DocumentTarget {
@@ -357,20 +411,35 @@ function DocumentSidebarNode(props: DocumentSidebarNodeProps) {
 
   if (node.type === "directory") {
     const canAddFolder = depth < MAX_FOLDER_DEPTH;
+    const isSelectedFolder =
+      props.selectedFolderTarget !== null &&
+      targetKey(props.selectedFolderTarget) === targetKey(target);
 
     return (
       <div className="min-w-0">
-        <div className="group flex min-w-0 items-center gap-1 rounded-lg px-1 py-1 text-sm text-text-secondary transition hover:bg-surface-elevated">
+        <div
+          className={`group flex min-w-0 items-center gap-1 rounded-lg px-1 py-1 text-sm transition ${
+            isSelectedFolder
+              ? "bg-accent/10 text-accent"
+              : "text-text-secondary hover:bg-surface-elevated"
+          }`}
+        >
           <button
             aria-expanded={open}
             aria-label={open ? `Collapse ${node.name}` : `Expand ${node.name}`}
-            className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded hover:text-text-primary"
             onClick={() => setOpen((value) => !value)}
             type="button"
           >
             <ChevronRight
               className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
             />
+          </button>
+          <button
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+            onClick={() => props.onOpenFolder(target)}
+            type="button"
+          >
             <Folder className="h-3.5 w-3.5 shrink-0" />
             <span className="min-w-0 flex-1 truncate">{node.name}</span>
           </button>
@@ -403,9 +472,11 @@ function DocumentSidebarNode(props: DocumentSidebarNodeProps) {
                 node={child}
                 depth={depth + 1}
                 selectedTarget={props.selectedTarget}
+                selectedFolderTarget={props.selectedFolderTarget}
                 onAddFolder={props.onAddFolder}
                 onAddDocument={props.onAddDocument}
                 onOpenDocument={props.onOpenDocument}
+                onOpenFolder={props.onOpenFolder}
               />
             ))}
           </div>
