@@ -154,6 +154,7 @@ describe("FileMentionPopover", () => {
         path: "Documents/notes.md",
         filename: "notes.md",
         kind: "document",
+        fullPath: undefined,
       });
     });
   });
@@ -213,6 +214,7 @@ describe("FileMentionPopover", () => {
         path: "design/overview.md",
         filename: "Architecture Overview",
         kind: "global-document",
+        fullPath: "/workspace/Documents/design/overview.md",
       });
     });
   });
@@ -281,6 +283,7 @@ describe("FileMentionPopover", () => {
         path: "README.md",
         filename: "README.md",
         kind: "file",
+        fullPath: undefined,
       });
     });
     expect(onKeyDown).not.toHaveBeenCalled();

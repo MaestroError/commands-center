@@ -247,7 +247,7 @@ describe("ChatComposer file mentions", () => {
 
     expect(props.onSend).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: "#GlobalDocuments/design/overview.md summarize it",
+        text: "#/workspace/Documents/design/overview.md summarize it",
       }),
     );
   });

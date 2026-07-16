@@ -22,6 +22,7 @@ interface FileOption {
   display: string;
   subtitle?: string;
   kind: MentionKind;
+  fullPath?: string;
 }
 
 export function FileMentionPopover({
@@ -61,6 +62,7 @@ export function FileMentionPopover({
               display: doc.title,
               subtitle: `Global Document: ${doc.relativePath}`,
               kind: "global-document" as const,
+              fullPath: doc.fullPath,
             }));
 
             return [...documentOptions, ...fileOptions];
@@ -86,7 +88,12 @@ export function FileMentionPopover({
       },
       filterKey: "display",
       onSelect: (item) =>
-        onSelect({ path: item.path, filename: mentionFilename(item), kind: item.kind }),
+        onSelect({
+          path: item.path,
+          filename: mentionFilename(item),
+          kind: item.kind,
+          fullPath: item.fullPath,
+        }),
       onClose,
     });
 
@@ -147,7 +154,12 @@ export function FileMentionPopover({
                   : "text-text-secondary hover:bg-surface-elevated"
               }`}
               onClick={() =>
-                onSelect({ path: item.path, filename: mentionFilename(item), kind: item.kind })
+                onSelect({
+                  path: item.path,
+                  filename: mentionFilename(item),
+                  kind: item.kind,
+                  fullPath: item.fullPath,
+                })
               }
               onMouseEnter={() => setActiveIndex(index)}
             >

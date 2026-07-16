@@ -352,14 +352,14 @@ export function ChatComposer({
 
   const handleFileMentionSelect = useCallback(
     (selection: FileMentionSelection) => {
-      const { path, filename, kind } = selection;
+      const { path, filename, kind, fullPath } = selection;
       if (!isMentionableWorkspacePath(path)) {
         return;
       }
 
       setMentionedFiles((prev) => {
         if (prev.some((f) => f.path === path && (f.kind ?? "file") === kind)) return prev;
-        return [...prev, { path, filename, kind }];
+        return [...prev, { path, filename, kind, fullPath }];
       });
 
       // Remove the #query from the text

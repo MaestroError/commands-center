@@ -8,6 +8,8 @@ import {
   parseMentionPath,
 } from "./file-mention";
 
+const GLOBAL_DOC_FULL_PATH = "/workspace/Documents/design/overview.md";
+
 describe("isMentionableWorkspacePath", () => {
   it("rejects any path segment named node_modules", () => {
     expect(isMentionableWorkspacePath("src/index.ts")).toBe(true);
@@ -28,9 +30,19 @@ describe("buildMentionToken", () => {
     );
   });
 
-  it("emits a #GlobalDocuments token for global documents", () => {
+  it("emits the absolute fullPath token for global documents", () => {
+    expect(
+      buildMentionToken({
+        path: "design/overview.md",
+        kind: "global-document",
+        fullPath: GLOBAL_DOC_FULL_PATH,
+      }),
+    ).toBe(`#${GLOBAL_DOC_FULL_PATH}`);
+  });
+
+  it("falls back to the relative path when a global document has no fullPath", () => {
     expect(buildMentionToken({ path: "design/overview.md", kind: "global-document" })).toBe(
-      "#GlobalDocuments/design/overview.md",
+      "#design/overview.md",
     );
   });
 });
@@ -40,9 +52,9 @@ describe("buildMentionPrefix", () => {
     expect(
       buildMentionPrefix([
         { path: "src/app.ts", kind: "file" },
-        { path: "design/overview.md", kind: "global-document" },
+        { path: "design/overview.md", kind: "global-document", fullPath: GLOBAL_DOC_FULL_PATH },
       ]),
-    ).toBe("#src/app.ts #GlobalDocuments/design/overview.md");
+    ).toBe(`#src/app.ts #${GLOBAL_DOC_FULL_PATH}`);
   });
 });
 
@@ -55,28 +67,20 @@ describe("isGlobalDocumentMention", () => {
 });
 
 describe("parseMentionPath", () => {
-  it("reconstructs a global-document mention from a GlobalDocuments token path", () => {
-    expect(parseMentionPath("GlobalDocuments/design/overview.md")).toEqual({
-      path: "design/overview.md",
-      filename: "overview.md",
-      kind: "global-document",
-    });
-  });
-
-  it("prefers an explicit display label when provided", () => {
-    expect(parseMentionPath("GlobalDocuments/design/overview.md", "Overview")).toEqual({
-      path: "design/overview.md",
-      filename: "Overview",
-      kind: "global-document",
-    });
-  });
-
-  it("treats other paths as workspace files, preserving folder paths", () => {
+  it("reconstructs a workspace file mention, preferring an explicit display label", () => {
     expect(parseMentionPath("src/app.ts")).toEqual({
       path: "src/app.ts",
       filename: "app.ts",
       kind: "file",
     });
+    expect(parseMentionPath("src/app.ts", "app.ts")).toEqual({
+      path: "src/app.ts",
+      filename: "app.ts",
+      kind: "file",
+    });
+  });
+
+  it("preserves folder paths as their own filename", () => {
     expect(parseMentionPath("tools/")).toEqual({
       path: "tools/",
       filename: "tools/",
@@ -84,13 +88,18 @@ describe("parseMentionPath", () => {
     });
   });
 
-  it("round-trips a global document through build then parse", () => {
-    const token = buildMentionToken({ path: "a/b/c.md", kind: "global-document" });
-    // Strip the leading '#' the way the prompt parser does before re-hydrating.
-    expect(parseMentionPath(token.slice(1))).toEqual({
-      path: "a/b/c.md",
-      filename: "c.md",
+  it("re-hydrates an absolute global-document token as a readable file mention", () => {
+    // Global documents are sent as absolute-path references, so on re-parse they
+    // resolve as plain files that still point at the right document.
+    const token = buildMentionToken({
+      path: "design/overview.md",
       kind: "global-document",
+      fullPath: GLOBAL_DOC_FULL_PATH,
+    });
+    expect(parseMentionPath(token.slice(1))).toEqual({
+      path: GLOBAL_DOC_FULL_PATH,
+      filename: "overview.md",
+      kind: "file",
     });
   });
 });

@@ -109,7 +109,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
 
   const handleFileMentionSelect = useCallback(
     (selection: FileMentionSelection) => {
-      const { path, filename, kind } = selection;
+      const { path, filename, kind, fullPath } = selection;
       if (!isMentionableWorkspacePath(path)) {
         setActivePopover(null);
         return;
@@ -120,7 +120,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
         (file) => file.path === path && (file.kind ?? "file") === kind,
       )
         ? currentValue.mentionedFiles
-        : [...currentValue.mentionedFiles, { path, filename, kind }];
+        : [...currentValue.mentionedFiles, { path, filename, kind, fullPath }];
 
       const cursorPosition = getCursorPosition();
       const beforeCursor = currentValue.text.substring(0, cursorPosition);
