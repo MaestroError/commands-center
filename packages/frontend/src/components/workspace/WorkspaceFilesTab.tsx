@@ -397,12 +397,13 @@ export function WorkspaceFilesTab({
       );
     }
 
-    if (error) {
-      return <div className="px-4 py-3 text-center text-sm text-danger">{error}</div>;
-    }
-
     return (
       <>
+        {error ? (
+          <div className="px-4 py-3 text-center text-sm text-danger" role="alert">
+            {error}
+          </div>
+        ) : null}
         {artifactStatus ? (
           <p
             className={`px-1 pb-2 text-xs ${artifactStatus.type === "error" ? "text-danger" : "text-text-secondary"}`}
@@ -737,14 +738,18 @@ function CreateFolderRow(props: {
     return (
       <div className="mb-1 flex items-center gap-2 px-1 py-0.5">
         <button
-          aria-label="Refresh files"
+          aria-busy={props.refreshing}
+          aria-label={props.refreshing ? "Refreshing files" : "Refresh files"}
           className="inline-flex h-6 w-6 items-center justify-center rounded text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
           disabled={props.refreshing}
           onClick={props.onRefresh}
-          title="Refresh files"
+          title={props.refreshing ? "Refreshing files" : "Refresh files"}
           type="button"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${props.refreshing ? "animate-spin" : ""}`} />
+          <RefreshCw
+            aria-hidden="true"
+            className={`h-3.5 w-3.5 ${props.refreshing ? "animate-spin motion-reduce:animate-none" : ""}`}
+          />
         </button>
         <button
           aria-label="Create folder"

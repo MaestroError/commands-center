@@ -315,6 +315,52 @@ describe("WorkspaceFilesTab", () => {
     expect(api.getWorkspaceTree).toHaveBeenCalledTimes(2);
   });
 
+  it("disables the refresh action while the request is pending", async () => {
+    let resolveRefresh: ((nodes: typeof rootNodes) => void) | undefined;
+    vi.mocked(api.getWorkspaceTree)
+      .mockResolvedValueOnce(rootNodes)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRefresh = resolve;
+          }),
+      );
+    const user = userEvent.setup();
+
+    renderWithRouter();
+
+    const refreshAction = await screen.findByRole("button", { name: "Refresh files" });
+    await user.click(refreshAction);
+
+    const pendingAction = screen.getByRole("button", { name: "Refreshing files" });
+    expect(pendingAction).toBeDisabled();
+    expect(pendingAction).toHaveAttribute("aria-busy", "true");
+
+    act(() => resolveRefresh?.(rootNodes));
+    await waitFor(() => expect(refreshAction).toBeEnabled());
+  });
+
+  it("allows retrying after a refresh request fails", async () => {
+    vi.mocked(api.getWorkspaceTree)
+      .mockResolvedValueOnce(rootNodes)
+      .mockRejectedValueOnce(new Error("Temporary refresh failure"))
+      .mockResolvedValueOnce([
+        ...rootNodes,
+        { name: "new-file.md", path: "new-file.md", type: "file" as const },
+      ]);
+    const user = userEvent.setup();
+
+    renderWithRouter();
+
+    await user.click(await screen.findByRole("button", { name: "Refresh files" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Temporary refresh failure");
+
+    await user.click(screen.getByRole("button", { name: "Refresh files" }));
+
+    expect(await screen.findByText("new-file.md")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("creates a folder from the inline root action", async () => {
     vi.mocked(api.getWorkspaceTree)
       .mockResolvedValueOnce(rootNodes)

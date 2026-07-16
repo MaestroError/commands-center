@@ -13,6 +13,13 @@
 - [x] Add a focused component test proving the button fetches and renders the latest visible tree.
 - [x] Run ESLint with fixes, the focused workspace-files tests, frontend typecheck, and the full frontend test suite.
 
+## Review follow-up
+
+- [x] Keep the refresh action available after a refresh request fails so the user can retry without remounting the tab.
+- [x] Expose the pending refresh state to assistive technology and respect reduced-motion preferences.
+- [x] Add focused tests for the pending state and retrying after a transient failure.
+- [x] Run ESLint with fixes, frontend typecheck, focused tests, and the full frontend test suite.
+
 ## Success criteria
 
 - The chat Files panel shows a refresh button immediately before the create-folder button.
