@@ -221,7 +221,12 @@ describe("public MCP client e2e", () => {
 
     const tools = await client.listTools();
     expect(tools.tools.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(["list_documents", "search_documents", "read_document"]),
+      expect.arrayContaining([
+        "list_documents",
+        "search_documents",
+        "read_document",
+        "create_document",
+      ]),
     );
 
     const listed = structured<{
@@ -284,6 +289,37 @@ describe("public MCP client e2e", () => {
       content: "Private MCP discovery needle.",
     });
 
+    const created = structured<{
+      scope: string;
+      ownerSlug: string | null;
+      relativePath: string;
+      title: string;
+    }>(
+      await client.callTool({
+        name: "create_document",
+        arguments: {
+          scope: "global",
+          path: "shared/created-by-mcp.md",
+          title: "Created By MCP",
+          content: "Fresh document body.",
+        },
+      }),
+    );
+    expect(created).toMatchObject({
+      scope: "global",
+      ownerSlug: null,
+      relativePath: "shared/created-by-mcp.md",
+      title: "Created By MCP",
+    });
+
+    const readBack = structured<{ content: string }>(
+      await client.callTool({
+        name: "read_document",
+        arguments: { scope: "global", path: "shared/created-by-mcp.md" },
+      }),
+    );
+    expect(readBack.content).toBe("Fresh document body.");
+
     await expect
       .poll(async () => {
         const activity = await tokenAuditService.listForToken({ tokenId: token.record.id });
@@ -297,6 +333,11 @@ describe("public MCP client e2e", () => {
             action: "read_document",
             targetKind: "document",
             targetId: "private:document-specialist:research/private-brief.md",
+          }),
+          expect.objectContaining({
+            action: "create_document",
+            targetKind: "document",
+            targetId: "global:shared/created-by-mcp.md",
           }),
         ]),
       );

@@ -119,6 +119,7 @@ export interface DocumentApiDocs {
   listCurl: string;
   searchCurl: string;
   readCurl: string;
+  createCurl: string;
 }
 
 export function buildDocumentApiDocs(baseUrl: string): DocumentApiDocs {
@@ -134,6 +135,12 @@ export function buildDocumentApiDocs(baseUrl: string): DocumentApiDocs {
     readCurl: [
       `curl '${apiBaseUrl}/documents/read?scope=private&owner=writer&path=notes%2Fresearch.md' \\`,
       `  ${auth}`,
+    ].join("\n"),
+    createCurl: [
+      `curl -X POST '${apiBaseUrl}/documents' \\`,
+      `  ${auth} \\`,
+      `  -H 'Content-Type: application/json' \\`,
+      `  -d '{"scope":"global","path":"notes/new-brief.md","title":"New brief","content":"# New brief"}'`,
     ].join("\n"),
   };
 }

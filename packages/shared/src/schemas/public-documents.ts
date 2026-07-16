@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { documentScopeSchema } from "./documents.js";
+import { createDocumentPathSchema, documentScopeSchema } from "./documents.js";
 import { fileManagerFileRevisionSchema } from "./file-manager.js";
 
 export const PUBLIC_DOCUMENT_LIST_LIMIT_DEFAULT = 50;
@@ -95,6 +95,35 @@ export const publicDocumentReadInputSchema = z
     }
   });
 
+export const publicDocumentCreateInputSchema = z
+  .object({
+    scope: documentScopeSchema,
+    ownerSlug: z.string().trim().min(1).optional(),
+    path: createDocumentPathSchema,
+    title: z.string().trim().min(1).optional(),
+    description: z.string().trim().optional(),
+    author: z.string().trim().min(1).optional(),
+    content: z.string().optional(),
+  })
+  .superRefine((input, context) => {
+    if (input.scope === "private" && !input.ownerSlug) {
+      context.addIssue({
+        code: "custom",
+        path: ["ownerSlug"],
+        message: "Private documents require an ownerSlug",
+      });
+    }
+    if (input.scope === "global" && input.ownerSlug) {
+      context.addIssue({
+        code: "custom",
+        path: ["ownerSlug"],
+        message: "Global documents must not specify an ownerSlug",
+      });
+    }
+  });
+
+export const publicDocumentCreateResponseSchema = publicDocumentSummarySchema;
+
 export const publicDocumentListResponseSchema = z.object({
   documents: z.array(publicDocumentSummarySchema),
   totalMatches: z.number().int().nonnegative(),
@@ -115,5 +144,6 @@ export type PublicDocumentSearchMatch = z.infer<typeof publicDocumentSearchMatch
 export type PublicDocumentListInput = z.input<typeof publicDocumentListInputSchema>;
 export type PublicDocumentSearchInput = z.input<typeof publicDocumentSearchInputSchema>;
 export type PublicDocumentReadInput = z.input<typeof publicDocumentReadInputSchema>;
+export type PublicDocumentCreateInput = z.input<typeof publicDocumentCreateInputSchema>;
 export type PublicDocumentListResponse = z.infer<typeof publicDocumentListResponseSchema>;
 export type PublicDocumentSearchResponse = z.infer<typeof publicDocumentSearchResponseSchema>;

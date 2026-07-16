@@ -132,6 +132,12 @@ export const API_TOKEN_CAPABILITIES: readonly ApiTokenCapability[] = [
     label: "Read document",
     description: "Read a specific document.",
   },
+  {
+    id: "create_document",
+    group: "documents",
+    label: "Create document",
+    description: "Create a new markdown document in an authorized root.",
+  },
 ] as const;
 
 const CAPABILITY_ID_SET: ReadonlySet<string> = new Set(
@@ -156,7 +162,7 @@ export const API_TOKEN_PRESETS: Record<ApiTokenCapabilityGroup, readonly string[
     "get_task_run_detail",
     "list_task_feedback",
   ],
-  documents: ["list_documents", "search_documents", "read_document"],
+  documents: ["list_documents", "search_documents", "read_document", "create_document"],
 };
 
 export function isApiTokenCapabilityId(id: string): boolean {

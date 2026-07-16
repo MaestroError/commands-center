@@ -43,6 +43,7 @@ describe("EndpointsTab", () => {
     expect(screen.getByText(/MCP tool: list_documents/)).toBeInTheDocument();
     expect(screen.getByText(/MCP tool: search_documents/)).toBeInTheDocument();
     expect(screen.getByText(/MCP tool: read_document/)).toBeInTheDocument();
+    expect(screen.getByText(/MCP tool: create_document/)).toBeInTheDocument();
     const readResponse = screen.getByText(/"revision":/);
     expect(readResponse).toHaveTextContent('"createdAt":');
     expect(readResponse).toHaveTextContent('"updatedAt":');

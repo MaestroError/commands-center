@@ -29,6 +29,11 @@ const ROUTE_CAPABILITIES: readonly Matcher[] = [
     capability: "list_documents",
   },
   {
+    method: "POST",
+    pattern: /^\/api\/public\/v1\/documents$/,
+    capability: "create_document",
+  },
+  {
     method: "GET",
     pattern: /^\/api\/public\/v1\/task-templates$/,
     capability: "list_task_templates",

@@ -8,7 +8,9 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import {
   listPublicTasksQuerySchema,
   publicSpecialistListResponseSchema,
+  createDocumentPathSchema,
   publicCreateTaskBodySchema,
+  publicDocumentCreateResponseSchema,
   publicDocumentListResponseSchema,
   publicDocumentReadSchema,
   publicDocumentSearchResponseSchema,
@@ -91,6 +93,25 @@ const publicDocumentReadQuerySchema = z
     scope: z.enum(["global", "private"]),
     owner: z.string().trim().min(1).optional(),
     path: z.string().trim().min(1),
+  })
+  .superRefine((input, context) => {
+    if (input.scope === "private" && !input.owner) {
+      context.addIssue({ code: "custom", path: ["owner"], message: "Private owner is required" });
+    }
+    if (input.scope === "global" && input.owner) {
+      context.addIssue({ code: "custom", path: ["owner"], message: "Global owner is forbidden" });
+    }
+  });
+
+const publicDocumentCreateBodySchema = z
+  .object({
+    scope: z.enum(["global", "private"]),
+    owner: z.string().trim().min(1).optional(),
+    path: createDocumentPathSchema,
+    title: z.string().trim().min(1).optional(),
+    description: z.string().trim().optional(),
+    author: z.string().trim().min(1).optional(),
+    content: z.string().optional(),
   })
   .superRefine((input, context) => {
     if (input.scope === "private" && !input.owner) {
@@ -253,6 +274,26 @@ export function registerPublicApiRoutes(server: AppServer, context: RuntimeConte
         scope: request.query.scope,
         ownerSlug: request.query.owner,
         path: request.query.path,
+      }),
+  );
+
+  app.post(
+    "/api/public/v1/documents",
+    {
+      schema: {
+        body: publicDocumentCreateBodySchema,
+        response: { 200: publicDocumentCreateResponseSchema },
+      },
+    },
+    async (request) =>
+      documentService.createDocument(request.apiToken!, {
+        scope: request.body.scope,
+        ownerSlug: request.body.owner,
+        path: request.body.path,
+        title: request.body.title,
+        description: request.body.description,
+        author: request.body.author,
+        content: request.body.content,
       }),
   );
 
