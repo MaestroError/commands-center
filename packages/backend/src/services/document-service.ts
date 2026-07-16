@@ -11,13 +11,15 @@ import {
 } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, posix, relative, resolve } from "node:path";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
   documentListFilterSchema,
   NEW_DOCUMENT_SUBFOLDER_MESSAGE,
   type CreateDocumentInput,
+  type DocumentFolderEntry,
+  type DocumentFolderListingResponse,
   type DocumentListFilter,
   type DocumentListItem,
   type DocumentListResponse,
@@ -361,6 +363,34 @@ export function createDocumentService(options: {
     });
   }
 
+  // Batched variant of findDocumentRow: fetches metadata rows for many relative
+  // paths in a single query (avoiding an N+1 when listing a folder) and returns
+  // them keyed by relative path.
+  async function findDocumentRows(
+    target: ResolvedScope,
+    relativePaths: string[],
+  ): Promise<Map<string, { title: string | null }>> {
+    if (relativePaths.length === 0) {
+      return new Map();
+    }
+    const scopeWhere =
+      target.scope === "global"
+        ? and(
+            eq(documents.scope, "global"),
+            isNull(documents.owner_slug),
+            isNull(documents.owner_specialist_id),
+          )
+        : and(
+            eq(documents.scope, "private"),
+            eq(documents.owner_specialist_id, target.ownerSpecialistId ?? ""),
+          );
+    const rows = await db.query.documents.findMany({
+      where: () => and(scopeWhere, inArray(documents.relative_path, relativePaths)),
+      columns: { relative_path: true, title: true },
+    });
+    return new Map(rows.map((row) => [row.relative_path, { title: row.title }]));
+  }
+
   async function scanTree(
     target: ResolvedScope,
     dir: string,
@@ -526,6 +556,120 @@ export function createDocumentService(options: {
   async function getTree(input?: ScopeInput): Promise<DocumentTreeNode[]> {
     const target = await resolveScope(input);
     return scanTree(target, target.root, "");
+  }
+
+  // List the immediate children of a single folder. Unlike scanTree (recursive,
+  // markdown-only) this is one level deep and includes every file so the folder
+  // page can render the full directory. Markdown files are flagged
+  // `isDocument: true` (openable in the editor); all other files are returned
+  // but not openable. An empty `path` lists the scope root.
+  async function listFolder(
+    input: ScopeInput & { path?: string },
+  ): Promise<DocumentFolderListingResponse> {
+    const relativePath = (input.path ?? "").trim();
+    if (relativePath) {
+      validateRelativePath(relativePath);
+    }
+
+    const target = await resolveScope(input);
+    const dir = relativePath ? resolve(target.root, relativePath) : target.root;
+    assertDescendant(target.root, dir);
+
+    // Reject symlinks anywhere in the requested path. `stat`/`readdir` follow
+    // symlinks, and `assertDescendant` only checks the unresolved path, so a
+    // symlink inside the Documents tree (e.g. `Documents/design -> /etc`) could
+    // otherwise redirect the listing outside the scoped root. This mirrors the
+    // segment walk in `safeFileStat`.
+    let current = target.root;
+    for (const segment of relativePath ? relativePath.split("/") : []) {
+      current = join(current, segment);
+      const segmentStat = await lstat(current).catch(() => null);
+      if (!segmentStat) {
+        throw new NotFoundError(`Folder not found: ${relativePath}`);
+      }
+      if (segmentStat.isSymbolicLink()) {
+        throw new BadRequestError("Folder path must not contain symbolic links.");
+      }
+    }
+
+    // The relative segments are symlink-free; confirm the resolved directory
+    // (following only legitimate symlinks in the scoped root itself) still lands
+    // inside the scoped root before reading it.
+    const realRoot = await realpath(target.root).catch(() => null);
+    const realDir = await realpath(dir).catch(() => null);
+    if (!realRoot || !realDir) {
+      throw new NotFoundError(`Folder not found: ${relativePath || "/"}`);
+    }
+    assertDescendant(realRoot, realDir);
+
+    const dirStat = await stat(dir).catch(() => null);
+    if (!dirStat) {
+      throw new NotFoundError(`Folder not found: ${relativePath || "/"}`);
+    }
+    if (!dirStat.isDirectory()) {
+      throw new BadRequestError("Path is not a folder.");
+    }
+
+    // `dir` existence and type are validated above, so let readdir errors
+    // (permission/IO) propagate rather than masking them as an empty folder.
+    const entries = await readdir(dir);
+
+    // Collect entries with their (symlink-aware) stats in one pass so markdown
+    // metadata can be fetched in a single batched query below.
+    const listed: Array<{ name: string; relativePath: string; type: "file" | "directory" }> = [];
+    for (const entry of entries.filter((e) => !isHiddenOrExcluded(e)).sort()) {
+      const entryRelative = toPosixPath(relativePath ? `${relativePath}/${entry}` : entry);
+      const entryStat = await lstat(join(dir, entry)).catch(() => null);
+      if (!entryStat) continue;
+      if (entryStat.isDirectory()) {
+        listed.push({ name: entry, relativePath: entryRelative, type: "directory" });
+      } else if (entryStat.isFile()) {
+        listed.push({ name: entry, relativePath: entryRelative, type: "file" });
+      }
+    }
+
+    const markdownPaths = listed
+      .filter((item) => item.type === "file" && isMarkdownFile(item.name))
+      .map((item) => item.relativePath);
+    const rowsByPath = await findDocumentRows(target, markdownPaths);
+
+    const directories: DocumentFolderEntry[] = [];
+    const files: DocumentFolderEntry[] = [];
+
+    for (const item of listed) {
+      if (item.type === "directory") {
+        directories.push({
+          scope: target.scope,
+          ownerSlug: target.ownerSlug,
+          ownerSpecialistId: target.ownerSpecialistId,
+          name: item.name,
+          relativePath: item.relativePath,
+          type: "directory",
+          isDocument: false,
+          title: null,
+        });
+      } else {
+        const isDocument = isMarkdownFile(item.name);
+        const row = isDocument ? rowsByPath.get(item.relativePath) : null;
+        files.push({
+          scope: target.scope,
+          ownerSlug: target.ownerSlug,
+          ownerSpecialistId: target.ownerSpecialistId,
+          name: item.name,
+          relativePath: item.relativePath,
+          type: "file",
+          isDocument,
+          title: isDocument ? (row?.title ?? titleFromFilename(item.name)) : null,
+        });
+      }
+    }
+
+    return {
+      scope: target.scope,
+      ownerSlug: target.ownerSlug,
+      path: relativePath,
+      entries: [...directories, ...files],
+    };
   }
 
   async function getPrivateTreeGroups(): Promise<PrivateDocumentTreeGroup[]> {
@@ -928,6 +1072,7 @@ export function createDocumentService(options: {
 
     getTree,
     getPrivateTreeGroups,
+    listFolder,
     list,
     listAllDocuments,
     listSearchCandidates,

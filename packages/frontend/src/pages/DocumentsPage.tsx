@@ -11,14 +11,17 @@ import type {
 
 import { LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
+import { DocumentFolderView } from "@/components/documents/DocumentFolderView";
 import { LazyMilkdownEditor } from "@/components/documents/LazyMilkdownEditor";
 import { getDocumentContent, saveDocumentContent, updateDocumentMetadata } from "@/lib/api";
+import { buildDocumentFileManagerHref } from "@/lib/document-href";
 import { queryKeys } from "@/lib/query-keys";
 
 const CONTEXT_TAB_STORAGE_KEY = "cc.documents.context-tab";
 
 export function DocumentsPage() {
   const [searchParams] = useSearchParams();
+  const selectedFolder = parseSelectedFolder(searchParams);
   const selectedIdentity = parseSelectedDocument(searchParams);
   const selectedPath = selectedIdentity?.path ?? null;
   const queryClient = useQueryClient();
@@ -90,7 +93,16 @@ export function DocumentsPage() {
   };
 
   let primaryContent: ReactNode;
-  if (selectedPath && selectedDoc) {
+  if (selectedFolder) {
+    primaryContent = (
+      <DocumentFolderView
+        key={`${selectedFolder.scope}:${selectedFolder.ownerSlug ?? ""}:${selectedFolder.path}`}
+        scope={selectedFolder.scope}
+        ownerSlug={selectedFolder.ownerSlug}
+        path={selectedFolder.path}
+      />
+    );
+  } else if (selectedPath && selectedDoc) {
     primaryContent = (
       <div className="flex h-full flex-col" data-testid="document-editor-panel">
         <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border p-4">
@@ -197,6 +209,21 @@ type SelectedDocument = {
   ownerSlug: string | null;
   path: string;
 };
+
+function parseSelectedFolder(searchParams: URLSearchParams): SelectedDocument | null {
+  if (!searchParams.has("folder")) {
+    return null;
+  }
+  const path = searchParams.get("folder") ?? "";
+
+  const scope = searchParams.get("scope") === "private" ? "private" : "global";
+  const ownerSlug = scope === "private" ? searchParams.get("owner") : null;
+  if (scope === "private" && !ownerSlug) {
+    return null;
+  }
+
+  return { scope, ownerSlug, path };
+}
 
 function parseSelectedDocument(searchParams: URLSearchParams): SelectedDocument | null {
   const path = searchParams.get("path");
@@ -373,18 +400,12 @@ function DocumentActionsTab(props: { doc: DocumentReadResponse }) {
 }
 
 function fileManagerRevealHref(doc: DocumentReadResponse): string {
-  const base =
-    doc.scope === "private" && doc.ownerSlug
-      ? `specialists/${doc.ownerSlug}/Documents`
-      : "Documents";
-  const lastSlash = doc.relativePath.lastIndexOf("/");
-  const folder = lastSlash === -1 ? "" : doc.relativePath.slice(0, lastSlash);
-  const params = new URLSearchParams({
-    root: "workspace",
-    path: folder ? `${base}/${folder}` : base,
-    select: `${base}/${doc.relativePath}`,
+  return buildDocumentFileManagerHref({
+    scope: doc.scope,
+    ownerSlug: doc.ownerSlug,
+    relativePath: doc.relativePath,
+    type: "file",
   });
-  return `/files?${params.toString()}`;
 }
 
 function Metric(props: { label: string; value: string }) {

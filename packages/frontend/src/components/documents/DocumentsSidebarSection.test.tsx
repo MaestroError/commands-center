@@ -255,6 +255,40 @@ describe("DocumentsSidebarSection", () => {
     expect(screen.queryByText("Overview")).not.toBeInTheDocument();
   });
 
+  it("navigates to the folder view when a folder name is clicked, keeping the chevron for toggling", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(
+      tree({
+        name: "ProjectInfo",
+        relativePath: "ProjectInfo",
+        type: "directory",
+        title: null,
+        children: [
+          {
+            name: "overview.md",
+            relativePath: "ProjectInfo/overview.md",
+            type: "file",
+            title: "Overview",
+          },
+        ],
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderSidebar();
+
+    // The folder name is its own button (distinct from the Expand chevron).
+    await user.click(await screen.findByRole("button", { name: "ProjectInfo" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location-probe")).toHaveTextContent(
+        "/documents?folder=ProjectInfo",
+      );
+    });
+
+    // The chevron still toggles independently.
+    expect(screen.getByRole("button", { name: "Expand ProjectInfo" })).toBeInTheDocument();
+  });
+
   it("navigates to the document path when a document is clicked", async () => {
     vi.mocked(getDocumentTree).mockResolvedValue(
       tree({

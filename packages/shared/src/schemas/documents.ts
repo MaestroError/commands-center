@@ -145,6 +145,27 @@ export const documentTreeResponseSchema = z.object({
   privateTrees: z.array(privateDocumentTreeGroupSchema).default([]),
 });
 
+// A single entry in a folder listing. Unlike the sidebar tree (markdown-only,
+// recursive), a folder listing is one level deep and includes every file so the
+// folder page can render the full directory. Only markdown files are openable
+// as documents (`isDocument: true`); other files are shown but not clickable.
+export const documentFolderEntrySchema = z.object({
+  ...scopedDocumentFields,
+  name: z.string().min(1),
+  relativePath: z.string().min(1),
+  type: z.enum(["file", "directory"]),
+  isDocument: z.boolean(),
+  title: z.string().nullable().default(null),
+});
+
+export const documentFolderListingResponseSchema = z.object({
+  scope: documentScopeSchema,
+  ownerSlug: z.string().min(1).nullable().default(null),
+  // Empty string denotes the scope root.
+  path: z.string(),
+  entries: z.array(documentFolderEntrySchema),
+});
+
 export const documentReadResponseSchema = z.object({
   ...scopedDocumentFields,
   relativePath: z.string().min(1),
@@ -225,6 +246,8 @@ export type DocumentTreeNode = {
   children?: DocumentTreeNode[];
 };
 export type PrivateDocumentTreeGroup = z.infer<typeof privateDocumentTreeGroupSchema>;
+export type DocumentFolderEntry = z.infer<typeof documentFolderEntrySchema>;
+export type DocumentFolderListingResponse = z.infer<typeof documentFolderListingResponseSchema>;
 export type DocumentListItem = z.infer<typeof documentListItemSchema>;
 export type DocumentListResponse = z.infer<typeof documentListResponseSchema>;
 export type DocumentTreeResponse = z.infer<typeof documentTreeResponseSchema>;

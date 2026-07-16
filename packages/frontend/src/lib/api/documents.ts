@@ -3,6 +3,7 @@ import { requestJson } from "./client";
 import {
   createDocumentFolderInputSchema,
   createDocumentInputSchema,
+  documentFolderListingResponseSchema,
   documentListResponseSchema,
   documentReadResponseSchema,
   documentTreeResponseSchema,
@@ -11,6 +12,7 @@ import {
   updateDocumentMetadataInputSchema,
   type CreateDocumentInput,
   type CreateDocumentFolderInput,
+  type DocumentFolderListingResponse,
   type DocumentListItem,
   type DocumentListResponse,
   type DocumentReadResponse,
@@ -45,6 +47,23 @@ function appendScopeParams(params: URLSearchParams, identity: DocumentRequestIde
 
 export async function getDocumentTree(): Promise<DocumentTreeResponse> {
   return requestJson<DocumentTreeResponse>("/api/documents/tree", documentTreeResponseSchema);
+}
+
+export async function getDocumentFolder(
+  input: string | DocumentRequestIdentity,
+): Promise<DocumentFolderListingResponse> {
+  const identity = normalizeDocumentIdentity(input);
+  const params = new URLSearchParams();
+  appendScopeParams(params, identity);
+  if (identity.path) {
+    params.set("path", identity.path);
+  }
+  const query = params.toString();
+
+  return requestJson<DocumentFolderListingResponse>(
+    query ? `/api/documents/folder?${query}` : "/api/documents/folder",
+    documentFolderListingResponseSchema,
+  );
 }
 
 export async function getDocumentContent(

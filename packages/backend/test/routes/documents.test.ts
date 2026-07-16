@@ -144,6 +144,89 @@ describe("document routes", () => {
     });
   });
 
+  describe("GET /api/documents/folder", () => {
+    it("lists a folder's immediate children including non-markdown files", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        await server.inject({
+          method: "POST",
+          url: "/api/documents/folders",
+          payload: { path: "design/sub" },
+        });
+        await server.inject({
+          method: "POST",
+          url: "/api/documents",
+          payload: { path: "design/overview.md", title: "Overview" },
+        });
+        await writeFile(
+          join(testDb.config.paths.subdirectories.documents, "design", "diagram.png"),
+          "png",
+          "utf8",
+        );
+
+        const response = await server.inject({
+          method: "GET",
+          url: "/api/documents/folder?path=design",
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json<{
+          path: string;
+          entries: Array<{ name: string; type: string; isDocument: boolean }>;
+        }>();
+        expect(body.path).toBe("design");
+        expect(body.entries.map((e) => e.name)).toEqual(["sub", "diagram.png", "overview.md"]);
+        expect(body.entries.find((e) => e.name === "overview.md")?.isDocument).toBe(true);
+        expect(body.entries.find((e) => e.name === "diagram.png")?.isDocument).toBe(false);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("lists the root when no path is provided", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        await server.inject({
+          method: "POST",
+          url: "/api/documents/folders",
+          payload: { path: "notes" },
+        });
+
+        const response = await server.inject({ method: "GET", url: "/api/documents/folder" });
+
+        expect(response.statusCode).toBe(200);
+        const body = response.json<{ path: string; entries: Array<{ name: string }> }>();
+        expect(body.path).toBe("");
+        expect(body.entries.map((e) => e.name)).toEqual(["notes"]);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+
+    it("returns 404 for a missing folder", async () => {
+      const testDb = await createTestDatabase();
+      const server = await createRouteServer(testDb);
+
+      try {
+        const response = await server.inject({
+          method: "GET",
+          url: "/api/documents/folder?path=missing",
+        });
+
+        expect(response.statusCode).toBe(404);
+      } finally {
+        await server.close();
+        await testDb.cleanup();
+      }
+    });
+  });
+
   describe("POST /api/documents", () => {
     it("creates a document and returns 201", async () => {
       const testDb = await createTestDatabase();

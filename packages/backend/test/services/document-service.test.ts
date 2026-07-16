@@ -659,6 +659,92 @@ describe("document service", () => {
     });
   });
 
+  describe("listFolder", () => {
+    it("lists immediate children with folders first and includes non-markdown files", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        const root = service.documentsRoot();
+        await service.createFolder("design/sub");
+        await service.create({ path: "design/overview.md", title: "Overview" });
+        await writeFile(join(root, "design", "diagram.png"), "png", "utf8");
+
+        const listing = await service.listFolder({ path: "design" });
+
+        expect(listing.scope).toBe("global");
+        expect(listing.path).toBe("design");
+        expect(listing.entries.map((e) => e.name)).toEqual(["sub", "diagram.png", "overview.md"]);
+
+        const dir = listing.entries[0];
+        expect(dir?.type).toBe("directory");
+        expect(dir?.isDocument).toBe(false);
+        expect(dir?.relativePath).toBe("design/sub");
+
+        const png = listing.entries.find((e) => e.name === "diagram.png");
+        expect(png?.type).toBe("file");
+        expect(png?.isDocument).toBe(false);
+        expect(png?.title).toBeNull();
+
+        const doc = listing.entries.find((e) => e.name === "overview.md");
+        expect(doc?.isDocument).toBe(true);
+        expect(doc?.title).toBe("Overview");
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("lists the scope root when path is empty and excludes hidden entries", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        const root = service.documentsRoot();
+        await mkdir(join(root, ".hidden"), { recursive: true });
+        await service.createFolder("notes");
+        await writeFile(join(root, "readme.md"), "# Readme", "utf8");
+
+        const listing = await service.listFolder({ path: "" });
+
+        expect(listing.path).toBe("");
+        expect(listing.entries.map((e) => e.name)).toEqual(["notes", "readme.md"]);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("throws NotFoundError for a missing folder", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        await expect(service.listFolder({ path: "missing" })).rejects.toThrow(/not found/i);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+
+    it("rejects a symlinked folder path that resolves outside the Documents root", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        const outside = join(testDb.config.paths.workspaceDir, "outside-documents");
+        await mkdir(outside);
+        await writeFile(join(outside, "secret.md"), "Outside document root", "utf8");
+        await symlink(outside, service.fullPath("linked"));
+
+        await expect(service.listFolder({ path: "linked" })).rejects.toThrow(/symbolic link/i);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
+  });
+
   describe("list", () => {
     it("lists all documents recursively with fallback metadata", async () => {
       const testDb = await createTestDatabase();
