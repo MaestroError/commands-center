@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { FileMentionPopover } from "@/components/chat/FileMentionPopover";
-import { isMentionableWorkspacePath } from "@/components/chat/file-mention";
+import {
+  isGlobalDocumentMention,
+  isMentionableWorkspacePath,
+  type FileMentionSelection,
+  type MentionedFile,
+} from "@/components/chat/file-mention";
 import { SlashCommandPopover, type SlashCommand } from "@/components/chat/SlashCommandPopover";
 import type { TaskPromptValue } from "@/components/tasks/task-prompt";
 
@@ -103,18 +108,19 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
   );
 
   const handleFileMentionSelect = useCallback(
-    (path: string) => {
+    (selection: FileMentionSelection) => {
+      const { path, filename, kind } = selection;
       if (!isMentionableWorkspacePath(path)) {
         setActivePopover(null);
         return;
       }
 
       const currentValue = valueRef.current;
-      const isFolder = path.endsWith("/");
-      const filename = isFolder ? path : (path.split("/").pop() ?? path);
-      const mentionedFiles = currentValue.mentionedFiles.some((file) => file.path === path)
+      const mentionedFiles = currentValue.mentionedFiles.some(
+        (file) => file.path === path && (file.kind ?? "file") === kind,
+      )
         ? currentValue.mentionedFiles
-        : [...currentValue.mentionedFiles, { path, filename }];
+        : [...currentValue.mentionedFiles, { path, filename, kind }];
 
       const cursorPosition = getCursorPosition();
       const beforeCursor = currentValue.text.substring(0, cursorPosition);
@@ -241,9 +247,12 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
   );
 
   const handleRemoveMention = useCallback(
-    (path: string) => {
+    (mention: MentionedFile) => {
       updateValue({
-        mentionedFiles: value.mentionedFiles.filter((file) => file.path !== path),
+        mentionedFiles: value.mentionedFiles.filter(
+          (file) =>
+            !(file.path === mention.path && (file.kind ?? "file") === (mention.kind ?? "file")),
+        ),
       });
     },
     [updateValue, value.mentionedFiles],
@@ -316,13 +325,16 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
           {value.mentionedFiles.map((file) => (
             <span
               className="inline-flex items-center gap-1 rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent"
-              key={file.path}
-              title={file.path}
+              key={`${file.kind ?? "file"}:${file.path}`}
+              title={isGlobalDocumentMention(file) ? `Global Document: ${file.path}` : file.path}
             >
+              {isGlobalDocumentMention(file) ? (
+                <span className="opacity-70">Global Document:</span>
+              ) : null}
               {file.filename}
               <button
                 className="ml-0.5 rounded-full p-0.5 hover:bg-accent/20"
-                onClick={() => handleRemoveMention(file.path)}
+                onClick={() => handleRemoveMention(file)}
                 type="button"
               >
                 x

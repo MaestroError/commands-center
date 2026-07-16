@@ -7,6 +7,7 @@ import * as api from "../../lib/api";
 vi.mock("../../lib/api", () => ({
   searchAgentWorkspaceFiles: vi.fn(),
   searchWorkspaceFiles: vi.fn(),
+  searchGlobalDocuments: vi.fn(),
 }));
 
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
@@ -20,6 +21,9 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Safe defaults so tests that don't exercise a given source don't reject.
+  vi.mocked(api.searchGlobalDocuments).mockResolvedValue([]);
+  vi.mocked(api.searchAgentWorkspaceFiles).mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -146,11 +150,15 @@ describe("FileMentionPopover", () => {
     fireEvent.click(button.closest("button")!);
 
     await waitFor(() => {
-      expect(onSelect).toHaveBeenCalledWith("Documents/notes.md");
+      expect(onSelect).toHaveBeenCalledWith({
+        path: "Documents/notes.md",
+        filename: "notes.md",
+        kind: "document",
+      });
     });
   });
 
-  it("does not include document matches when searching within a specialist workspace", async () => {
+  it("searches global documents (not the global workspace) within a specialist workspace", async () => {
     vi.mocked(api.searchAgentWorkspaceFiles).mockResolvedValueOnce(["README.md"]);
 
     render(
@@ -164,7 +172,87 @@ describe("FileMentionPopover", () => {
     );
 
     expect(await screen.findByRole("button", { name: /README\.md/i })).toBeInTheDocument();
+    expect(api.searchGlobalDocuments).toHaveBeenCalledWith("read");
     expect(api.searchWorkspaceFiles).not.toHaveBeenCalled();
+  });
+
+  it("surfaces global documents as distinct options in a specialist workspace", async () => {
+    vi.mocked(api.searchAgentWorkspaceFiles).mockResolvedValueOnce(["src/index.ts"]);
+    vi.mocked(api.searchGlobalDocuments).mockResolvedValueOnce([
+      {
+        scope: "global",
+        ownerSlug: null,
+        ownerSpecialistId: null,
+        relativePath: "design/overview.md",
+        fullPath: "/workspace/Documents/design/overview.md",
+        title: "Architecture Overview",
+        description: null,
+        author: null,
+      },
+    ]);
+    const onSelect = vi.fn();
+
+    render(
+      <FileMentionPopover
+        agentId="agent-1"
+        query="overview"
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        onKeyDown={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Architecture Overview")).toBeInTheDocument();
+    expect(screen.getByText("Global Document: design/overview.md")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /src\/index\.ts/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Architecture Overview").closest("button")!);
+
+    await waitFor(() => {
+      expect(onSelect).toHaveBeenCalledWith({
+        path: "design/overview.md",
+        filename: "Architecture Overview",
+        kind: "global-document",
+      });
+    });
+  });
+
+  it("keeps rendering global documents when the workspace file search fails", async () => {
+    vi.mocked(api.searchAgentWorkspaceFiles).mockRejectedValueOnce(new Error("boom"));
+    vi.mocked(api.searchGlobalDocuments).mockResolvedValueOnce([
+      {
+        scope: "global",
+        ownerSlug: null,
+        ownerSpecialistId: null,
+        relativePath: "notes.md",
+        fullPath: "/workspace/Documents/notes.md",
+        title: "Notes",
+        description: null,
+        author: null,
+      },
+    ]);
+
+    render(
+      <FileMentionPopover
+        agentId="agent-1"
+        query="notes"
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        onKeyDown={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Notes")).toBeInTheDocument();
+  });
+
+  it("opens upward so it is not clipped below the composer", () => {
+    render(
+      <FileMentionPopover query="read" onSelect={vi.fn()} onClose={vi.fn()} onKeyDown={vi.fn()} />,
+    );
+
+    const container = screen.getByText("File mention").parentElement as HTMLElement;
+    expect(container.style.bottom).toBe("calc(100% + 4px)");
+    expect(container.style.top).toBe("");
   });
 
   it("selects the active result when Enter is pressed", async () => {
@@ -189,7 +277,11 @@ describe("FileMentionPopover", () => {
     });
 
     await waitFor(() => {
-      expect(onSelect).toHaveBeenCalledWith("README.md");
+      expect(onSelect).toHaveBeenCalledWith({
+        path: "README.md",
+        filename: "README.md",
+        kind: "file",
+      });
     });
     expect(onKeyDown).not.toHaveBeenCalled();
   });

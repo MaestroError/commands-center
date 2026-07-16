@@ -1,12 +1,16 @@
 import { useEffect, useRef } from "react";
 import { useFilteredList } from "../../hooks/use-filtered-list";
 import * as api from "../../lib/api";
-import { isMentionableWorkspacePath } from "./file-mention";
+import {
+  isMentionableWorkspacePath,
+  type FileMentionSelection,
+  type MentionKind,
+} from "./file-mention";
 
 interface FileMentionPopoverProps {
   agentId?: string;
   query: string;
-  onSelect: (path: string) => void;
+  onSelect: (selection: FileMentionSelection) => void;
   onClose: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   registerKeyHandler?: (handler: ((e: React.KeyboardEvent) => boolean) | null) => void;
@@ -17,7 +21,7 @@ interface FileOption {
   path: string;
   display: string;
   subtitle?: string;
-  kind: "file" | "directory" | "document";
+  kind: MentionKind;
 }
 
 export function FileMentionPopover({
@@ -39,10 +43,27 @@ export function FileMentionPopover({
         }
         try {
           if (agentId) {
-            const files = await api.searchAgentWorkspaceFiles(agentId, q);
-            return files
+            // Specialist scope: search the specialist's own workspace files, and
+            // additionally surface shared global documents (which live outside the
+            // specialist workspace and would never appear in a file search). The
+            // two lookups are independent, so one failing must not drop the other.
+            const [files, documents] = await Promise.all([
+              api.searchAgentWorkspaceFiles(agentId, q).catch(() => [] as string[]),
+              api.searchGlobalDocuments(q).catch(() => []),
+            ]);
+
+            const fileOptions: FileOption[] = files
               .filter(isMentionableWorkspacePath)
               .map((path) => ({ path, display: path, kind: "file" as const }));
+
+            const documentOptions: FileOption[] = documents.map((doc) => ({
+              path: doc.relativePath,
+              display: doc.title,
+              subtitle: `Global Document: ${doc.relativePath}`,
+              kind: "global-document" as const,
+            }));
+
+            return [...documentOptions, ...fileOptions];
           }
 
           const result = await api.searchWorkspaceFiles(q);
@@ -64,7 +85,8 @@ export function FileMentionPopover({
         }
       },
       filterKey: "display",
-      onSelect: (item) => onSelect(item.path),
+      onSelect: (item) =>
+        onSelect({ path: item.path, filename: mentionFilename(item), kind: item.kind }),
       onClose,
     });
 
@@ -98,7 +120,9 @@ export function FileMentionPopover({
     <div
       className="absolute z-[100] max-h-64 w-80 overflow-hidden rounded-lg border border-border bg-surface shadow-lg"
       style={
-        position ? { top: position.top, left: position.left } : { top: "calc(100% + 4px)", left: 0 }
+        position
+          ? { top: position.top, left: position.left }
+          : { bottom: "calc(100% + 4px)", left: 0 }
       }
       onKeyDown={handleKeyDown}
     >
@@ -122,7 +146,9 @@ export function FileMentionPopover({
                   ? "bg-surface-elevated text-text-primary"
                   : "text-text-secondary hover:bg-surface-elevated"
               }`}
-              onClick={() => onSelect(item.path)}
+              onClick={() =>
+                onSelect({ path: item.path, filename: mentionFilename(item), kind: item.kind })
+              }
               onMouseEnter={() => setActiveIndex(index)}
             >
               <span className="inline-flex items-center gap-1.5 font-mono text-xs">
@@ -142,8 +168,18 @@ export function FileMentionPopover({
   );
 }
 
+function mentionFilename(item: FileOption): string {
+  if (item.kind === "global-document") {
+    return item.display;
+  }
+  if (item.path.endsWith("/")) {
+    return item.path;
+  }
+  return item.path.split("/").pop() ?? item.path;
+}
+
 function MentionIcon(props: { kind: FileOption["kind"]; isDirectory: boolean }) {
-  if (props.kind === "document") {
+  if (props.kind === "document" || props.kind === "global-document") {
     return (
       <svg
         className="h-3.5 w-3.5 shrink-0 text-text-secondary"

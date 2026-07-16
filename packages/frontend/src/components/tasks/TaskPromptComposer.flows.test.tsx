@@ -113,6 +113,31 @@ describe("TaskPromptComposer shortcuts and mentions", () => {
     expect(screen.getByLabelText("Task prompt")).toHaveValue("look ");
   });
 
+  it("mentions a global document with a distinct chip and strips the # token", async () => {
+    vi.spyOn(api, "searchAgentWorkspaceFiles").mockResolvedValue([]);
+    vi.spyOn(api, "searchGlobalDocuments").mockResolvedValue([
+      {
+        scope: "global",
+        ownerSlug: null,
+        ownerSpecialistId: null,
+        relativePath: "design/overview.md",
+        fullPath: "/workspace/Documents/design/overview.md",
+        title: "Architecture Overview",
+        description: null,
+        author: null,
+      },
+    ]);
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.type(screen.getByLabelText("Task prompt"), "read #overview");
+    await user.click(await screen.findByRole("button", { name: /Architecture Overview/ }));
+
+    expect(await screen.findByText("Global Document:")).toBeInTheDocument();
+    expect(screen.getByText("Architecture Overview")).toBeInTheDocument();
+    expect(screen.getByLabelText("Task prompt")).toHaveValue("read ");
+  });
+
   it("navigates the specialist popover with the keyboard and selects with Enter", async () => {
     const user = userEvent.setup();
     renderComposer();

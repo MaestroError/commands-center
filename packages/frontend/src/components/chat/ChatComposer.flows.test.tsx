@@ -216,6 +216,42 @@ describe("ChatComposer file mentions", () => {
     expect(screen.queryByText("app.ts")).not.toBeInTheDocument();
   });
 
+  it("mentions a global document and sends it with a #GlobalDocuments token", async () => {
+    vi.spyOn(api, "searchAgentWorkspaceFiles").mockResolvedValue([]);
+    vi.spyOn(api, "searchGlobalDocuments").mockResolvedValue([
+      {
+        scope: "global",
+        ownerSlug: null,
+        ownerSpecialistId: null,
+        relativePath: "design/overview.md",
+        fullPath: "/workspace/Documents/design/overview.md",
+        title: "Architecture Overview",
+        description: null,
+        author: null,
+      },
+    ]);
+    const user = userEvent.setup();
+    const { props } = renderComposer();
+
+    const textarea = screen.getByPlaceholderText(messagePlaceholder);
+    await user.type(textarea, "#overview");
+
+    await user.click(await screen.findByRole("button", { name: /Architecture Overview/ }));
+
+    // The chip is labelled as a global document, not a plain file.
+    expect(await screen.findByText("Global Document:")).toBeInTheDocument();
+    expect(screen.getByText("Architecture Overview")).toBeInTheDocument();
+
+    await user.type(textarea, "summarize it");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(props.onSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "#GlobalDocuments/design/overview.md summarize it",
+      }),
+    );
+  });
+
   it("sends a skill invocation together with a mentioned file as a normal message", async () => {
     const user = userEvent.setup();
     const { props } = renderComposer();
