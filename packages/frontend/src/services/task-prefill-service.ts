@@ -1,7 +1,7 @@
 import type { ConversationMessage, ConversationPart, TaskTemplate } from "@cc/shared/schemas";
 
 import { getMessageAttachments } from "@/components/chat/attachment-utils";
-import { isMentionableWorkspacePath } from "@/components/chat/file-mention";
+import { isMentionableWorkspacePath, parseMentionPath } from "@/components/chat/file-mention";
 import { parseUserMessage } from "@/components/chat/user-message-utils";
 import type { TaskPromptValue } from "@/components/tasks/task-prompt";
 
@@ -39,7 +39,7 @@ export function createTaskPrefillFromUserMessage(
   const supportedSkill = options.skills?.find((skill) => skill.slug === parsed.skill) ?? null;
   const mentionedFiles = parsed.files
     .filter((file) => isMentionableWorkspacePath(file.path))
-    .map((file) => ({ path: file.path, filename: file.display }));
+    .map((file) => parseMentionPath(file.path, file.display));
 
   return {
     prefill: {

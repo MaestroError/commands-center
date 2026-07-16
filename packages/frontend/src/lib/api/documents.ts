@@ -9,6 +9,7 @@ import {
   documentTreeResponseSchema,
   saveDocumentContentInputSchema,
   saveDocumentContentResponseSchema,
+  searchDocumentsResponseSchema,
   updateDocumentMetadataInputSchema,
   type CreateDocumentInput,
   type CreateDocumentFolderInput,
@@ -19,6 +20,7 @@ import {
   type DocumentTreeResponse,
   type SaveDocumentContentInput,
   type SaveDocumentContentResponse,
+  type SearchDocumentsResponse,
   type UpdateDocumentMetadataInput,
   type DocumentScope,
 } from "@cc/shared/schemas";
@@ -47,6 +49,21 @@ function appendScopeParams(params: URLSearchParams, identity: DocumentRequestIde
 
 export async function getDocumentTree(): Promise<DocumentTreeResponse> {
   return requestJson<DocumentTreeResponse>("/api/documents/tree", documentTreeResponseSchema);
+}
+
+/**
+ * Search the shared global Documents root by name/title/description. Used to make
+ * global documents mentionable from specialist-scoped composers, where workspace
+ * file search alone would never surface them.
+ */
+export async function searchGlobalDocuments(query: string): Promise<DocumentListItem[]> {
+  const params = new URLSearchParams();
+  params.set("query", query);
+  const result = await requestJson<SearchDocumentsResponse>(
+    `/api/documents/search?${params.toString()}`,
+    searchDocumentsResponseSchema,
+  );
+  return result.documents;
 }
 
 export async function getDocumentFolder(

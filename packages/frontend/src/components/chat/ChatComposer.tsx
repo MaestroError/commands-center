@@ -7,7 +7,13 @@ import { useMediaQuery } from "../../hooks/use-media-query";
 import { AutoApproveToggle } from "./AutoApproveToggle";
 import { AttachmentBar } from "./AttachmentBar";
 import { FileMentionPopover } from "./FileMentionPopover";
-import { isMentionableWorkspacePath } from "./file-mention";
+import {
+  buildMentionPrefix,
+  isGlobalDocumentMention,
+  isMentionableWorkspacePath,
+  type FileMentionSelection,
+  type MentionedFile,
+} from "./file-mention";
 import { ModelSelector } from "./ModelSelector";
 import { SlashCommandPopover, type SlashCommand } from "./SlashCommandPopover";
 
@@ -83,7 +89,7 @@ export function ChatComposer({
     () => (autoFocusKey ? readChatModel(autoFocusKey) : null) ?? defaultModel ?? null,
   );
   const [attachments, setAttachments] = useState<SendConversationAttachmentInput[]>([]);
-  const [mentionedFiles, setMentionedFiles] = useState<{ path: string; filename: string }[]>([]);
+  const [mentionedFiles, setMentionedFiles] = useState<MentionedFile[]>([]);
   const [selectedSkill, setSelectedSkill] = useState<{ slug: string; description?: string } | null>(
     null,
   );
@@ -198,7 +204,7 @@ export function ChatComposer({
       if (hasContent) {
         // Has extra context: send as normal message with /skill prefix so the LLM
         // sees attachments + file mentions and can invoke the skill naturally
-        const filePrefixes = mentionedFiles.map((f) => `#${f.path}`).join(" ");
+        const filePrefixes = buildMentionPrefix(mentionedFiles);
         const parts = [`Use skill "${selectedSkill.slug}".`, filePrefixes, trimmed].filter(Boolean);
         onSend({
           text: parts.join(" "),
@@ -215,7 +221,7 @@ export function ChatComposer({
       onCommand(cmd, args.join(" "));
     } else {
       // Prepend file mentions as #path references
-      const filePrefixes = mentionedFiles.map((f) => `#${f.path}`).join(" ");
+      const filePrefixes = buildMentionPrefix(mentionedFiles);
       const fullText = filePrefixes ? `${filePrefixes} ${trimmed}` : trimmed;
       onSend({
         text: fullText,
@@ -345,16 +351,15 @@ export function ChatComposer({
   );
 
   const handleFileMentionSelect = useCallback(
-    (path: string) => {
+    (selection: FileMentionSelection) => {
+      const { path, filename, kind, fullPath } = selection;
       if (!isMentionableWorkspacePath(path)) {
         return;
       }
 
-      const isFolder = path.endsWith("/");
-      const display = isFolder ? path : (path.split("/").pop() ?? path);
       setMentionedFiles((prev) => {
-        if (prev.some((f) => f.path === path)) return prev;
-        return [...prev, { path, filename: display }];
+        if (prev.some((f) => f.path === path && (f.kind ?? "file") === kind)) return prev;
+        return [...prev, { path, filename, kind, fullPath }];
       });
 
       // Remove the #query from the text
@@ -489,8 +494,12 @@ export function ChatComposer({
     setAttachments((prev) => prev.filter((_, currentIndex) => currentIndex !== index));
   }, []);
 
-  const handleRemoveMention = useCallback((path: string) => {
-    setMentionedFiles((prev) => prev.filter((f) => f.path !== path));
+  const handleRemoveMention = useCallback((mention: MentionedFile) => {
+    setMentionedFiles((prev) =>
+      prev.filter(
+        (f) => !(f.path === mention.path && (f.kind ?? "file") === (mention.kind ?? "file")),
+      ),
+    );
   }, []);
 
   const setPopoverKeyHandler = useCallback(
@@ -618,11 +627,25 @@ export function ChatComposer({
           )}
           {mentionedFiles.map((file) => (
             <span
-              key={file.path}
+              key={`${file.kind ?? "file"}:${file.path}`}
               className="inline-flex items-center gap-1 rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent"
-              title={file.path}
+              title={isGlobalDocumentMention(file) ? `Global Document: ${file.path}` : file.path}
             >
-              {file.path.endsWith("/") ? (
+              {isGlobalDocumentMention(file) ? (
+                <svg
+                  className="h-3 w-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                  />
+                </svg>
+              ) : file.path.endsWith("/") ? (
                 <svg
                   className="h-3 w-3"
                   fill="none"
@@ -651,11 +674,14 @@ export function ChatComposer({
                   />
                 </svg>
               )}
-              {file.filename}
+              {isGlobalDocumentMention(file) ? (
+                <span className="opacity-70">Global Document:</span>
+              ) : null}
+              {isGlobalDocumentMention(file) ? file.path : file.filename}
               <button
                 type="button"
                 className="ml-0.5 rounded-full p-0.5 hover:bg-accent/20"
-                onClick={() => handleRemoveMention(file.path)}
+                onClick={() => handleRemoveMention(file)}
               >
                 <svg
                   className="h-3 w-3"
