@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FilePenLine, FilePlus2, FolderPlus, FolderSearch, Trash2 } from "lucide-react";
+import { FilePenLine, FilePlus2, FolderPlus, FolderSearch, RefreshCw, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -69,6 +69,7 @@ export function WorkspaceFilesTab({
     type: "error" | "success";
   }>();
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const expandedPathsRef = useRef(expandedPaths);
   const refreshingRef = useRef(false);
@@ -94,6 +95,7 @@ export function WorkspaceFilesTab({
     }
 
     refreshingRef.current = true;
+    setRefreshing(true);
 
     try {
       const expanded = Array.from(expandedPathsRef.current);
@@ -143,6 +145,7 @@ export function WorkspaceFilesTab({
       setLoading(false);
     } finally {
       refreshingRef.current = false;
+      setRefreshing(false);
       if (refreshQueuedRef.current) {
         refreshQueuedRef.current = false;
         void refreshTree();
@@ -415,12 +418,14 @@ export function WorkspaceFilesTab({
           busy={actionBusyKey === "create-folder"}
           creating={creatingFolder}
           name={createFolderValue}
+          refreshing={refreshing}
           onChange={setCreateFolderValue}
           onCreate={() => setCreatingFolder(true)}
           onCancel={() => {
             setCreatingFolder(false);
             setCreateFolderValue("");
           }}
+          onRefresh={() => void refreshTree()}
           onSubmit={() => void handleCreateFolder()}
         />
         {!roots || roots.length === 0 ? (
@@ -474,6 +479,8 @@ export function WorkspaceFilesTab({
     onOpenFile,
     openLocation,
     pendingArtifactPaths,
+    refreshing,
+    refreshTree,
     roots,
     selectedPath,
     toggleDirectory,
@@ -719,14 +726,26 @@ function CreateFolderRow(props: {
   creating: boolean;
   name: string;
   busy: boolean;
+  refreshing: boolean;
   onCreate: () => void;
   onCancel: () => void;
   onChange: (value: string) => void;
+  onRefresh: () => void;
   onSubmit: () => void;
 }) {
   if (!props.creating) {
     return (
       <div className="mb-1 flex items-center gap-2 px-1 py-0.5">
+        <button
+          aria-label="Refresh files"
+          className="inline-flex h-6 w-6 items-center justify-center rounded text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={props.refreshing}
+          onClick={props.onRefresh}
+          title="Refresh files"
+          type="button"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${props.refreshing ? "animate-spin" : ""}`} />
+        </button>
         <button
           aria-label="Create folder"
           className="inline-flex h-6 w-6 items-center justify-center rounded text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"

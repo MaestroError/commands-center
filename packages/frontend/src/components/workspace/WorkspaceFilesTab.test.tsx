@@ -297,6 +297,24 @@ describe("WorkspaceFilesTab", () => {
     expect(await screen.findByText("new-file.md")).toBeInTheDocument();
   });
 
+  it("refreshes the visible tree from the root action", async () => {
+    vi.mocked(api.getWorkspaceTree)
+      .mockResolvedValueOnce(rootNodes)
+      .mockResolvedValueOnce([
+        ...rootNodes,
+        { name: "new-file.md", path: "new-file.md", type: "file" as const },
+      ]);
+    const user = userEvent.setup();
+
+    renderWithRouter();
+
+    expect(await screen.findByText("README.md")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Refresh files" }));
+
+    expect(await screen.findByText("new-file.md")).toBeInTheDocument();
+    expect(api.getWorkspaceTree).toHaveBeenCalledTimes(2);
+  });
+
   it("creates a folder from the inline root action", async () => {
     vi.mocked(api.getWorkspaceTree)
       .mockResolvedValueOnce(rootNodes)
