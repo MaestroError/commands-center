@@ -18,6 +18,8 @@ import {
   documentListFilterSchema,
   NEW_DOCUMENT_SUBFOLDER_MESSAGE,
   type CreateDocumentInput,
+  type DocumentFolderEntry,
+  type DocumentFolderListingResponse,
   type DocumentListFilter,
   type DocumentListItem,
   type DocumentListResponse,
@@ -528,6 +530,82 @@ export function createDocumentService(options: {
     return scanTree(target, target.root, "");
   }
 
+  // List the immediate children of a single folder. Unlike scanTree (recursive,
+  // markdown-only) this is one level deep and includes every file so the folder
+  // page can render the full directory. Markdown files are flagged
+  // `isDocument: true` (openable in the editor); all other files are returned
+  // but not openable. An empty `path` lists the scope root.
+  async function listFolder(
+    input: ScopeInput & { path?: string },
+  ): Promise<DocumentFolderListingResponse> {
+    const relativePath = (input.path ?? "").trim();
+    if (relativePath) {
+      validateRelativePath(relativePath);
+    }
+
+    const target = await resolveScope(input);
+    const dir = relativePath ? resolve(target.root, relativePath) : target.root;
+    assertDescendant(target.root, dir);
+
+    const dirStat = await stat(dir).catch(() => null);
+    if (!dirStat) {
+      throw new NotFoundError(`Folder not found: ${relativePath || "/"}`);
+    }
+    if (!dirStat.isDirectory()) {
+      throw new BadRequestError("Path is not a folder.");
+    }
+
+    let entries: string[];
+    try {
+      entries = await readdir(dir);
+    } catch {
+      entries = [];
+    }
+
+    const directories: DocumentFolderEntry[] = [];
+    const files: DocumentFolderEntry[] = [];
+
+    for (const entry of entries.filter((e) => !isHiddenOrExcluded(e)).sort()) {
+      const entryPath = join(dir, entry);
+      const entryRelative = toPosixPath(relativePath ? `${relativePath}/${entry}` : entry);
+      const entryStat = await lstat(entryPath).catch(() => null);
+      if (!entryStat) continue;
+
+      if (entryStat.isDirectory()) {
+        directories.push({
+          scope: target.scope,
+          ownerSlug: target.ownerSlug,
+          ownerSpecialistId: target.ownerSpecialistId,
+          name: entry,
+          relativePath: entryRelative,
+          type: "directory",
+          isDocument: false,
+          title: null,
+        });
+      } else if (entryStat.isFile()) {
+        const isDocument = isMarkdownFile(entry);
+        const row = isDocument ? await findDocumentRow(target, entryRelative) : null;
+        files.push({
+          scope: target.scope,
+          ownerSlug: target.ownerSlug,
+          ownerSpecialistId: target.ownerSpecialistId,
+          name: entry,
+          relativePath: entryRelative,
+          type: "file",
+          isDocument,
+          title: isDocument ? (row?.title ?? titleFromFilename(entry)) : null,
+        });
+      }
+    }
+
+    return {
+      scope: target.scope,
+      ownerSlug: target.ownerSlug,
+      path: relativePath,
+      entries: [...directories, ...files],
+    };
+  }
+
   async function getPrivateTreeGroups(): Promise<PrivateDocumentTreeGroup[]> {
     const rows = await db.query.agents.findMany({
       where: (table, operators) => operators.eq(table.status, "active"),
@@ -928,6 +1006,7 @@ export function createDocumentService(options: {
 
     getTree,
     getPrivateTreeGroups,
+    listFolder,
     list,
     listAllDocuments,
     listSearchCandidates,

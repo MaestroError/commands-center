@@ -6,6 +6,7 @@ import {
   createDocumentFolderInputSchema,
   createDocumentInputSchema,
   documentScopeSchema,
+  documentFolderListingResponseSchema,
   documentListResponseSchema,
   documentReadResponseSchema,
   documentTreeResponseSchema,
@@ -38,6 +39,22 @@ export function registerDocumentRoutes(server: AppServer, context: RuntimeContex
       tree: await service.getTree({ scope: "global" }),
       privateTrees: await service.getPrivateTreeGroups(),
     }),
+  );
+
+  app.get(
+    "/api/documents/folder",
+    {
+      schema: {
+        querystring: documentFolderListQuerySchema,
+        response: { 200: documentFolderListingResponseSchema },
+      },
+    },
+    async (request) =>
+      service.listFolder({
+        scope: request.query["scope"],
+        ownerSlug: request.query["owner"],
+        path: request.query["path"],
+      }),
   );
 
   app.get(
@@ -140,6 +157,31 @@ const documentReadQuerySchema = z
     scope: documentScopeSchema.default("global"),
     owner: z.string().trim().min(1).optional(),
     path: z.string().min(1),
+  })
+  .superRefine((input, context) => {
+    if (input.scope === "private" && !input.owner) {
+      context.addIssue({
+        code: "custom",
+        path: ["owner"],
+        message: "Private documents require an owner",
+      });
+    }
+
+    if (input.scope === "global" && input.owner) {
+      context.addIssue({
+        code: "custom",
+        path: ["owner"],
+        message: "Global documents must not specify an owner",
+      });
+    }
+  });
+
+const documentFolderListQuerySchema = z
+  .object({
+    scope: documentScopeSchema.default("global"),
+    owner: z.string().trim().min(1).optional(),
+    // Empty/omitted path lists the scope root.
+    path: z.string().default(""),
   })
   .superRefine((input, context) => {
     if (input.scope === "private" && !input.owner) {
