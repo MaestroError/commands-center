@@ -547,6 +547,33 @@ export function createDocumentService(options: {
     const dir = relativePath ? resolve(target.root, relativePath) : target.root;
     assertDescendant(target.root, dir);
 
+    // Reject symlinks anywhere in the requested path. `stat`/`readdir` follow
+    // symlinks, and `assertDescendant` only checks the unresolved path, so a
+    // symlink inside the Documents tree (e.g. `Documents/design -> /etc`) could
+    // otherwise redirect the listing outside the scoped root. This mirrors the
+    // segment walk in `safeFileStat`.
+    let current = target.root;
+    for (const segment of relativePath ? relativePath.split("/") : []) {
+      current = join(current, segment);
+      const segmentStat = await lstat(current).catch(() => null);
+      if (!segmentStat) {
+        throw new NotFoundError(`Folder not found: ${relativePath}`);
+      }
+      if (segmentStat.isSymbolicLink()) {
+        throw new BadRequestError("Folder path must not contain symbolic links.");
+      }
+    }
+
+    // The relative segments are symlink-free; confirm the resolved directory
+    // (following only legitimate symlinks in the scoped root itself) still lands
+    // inside the scoped root before reading it.
+    const realRoot = await realpath(target.root).catch(() => null);
+    const realDir = await realpath(dir).catch(() => null);
+    if (!realRoot || !realDir) {
+      throw new NotFoundError(`Folder not found: ${relativePath || "/"}`);
+    }
+    assertDescendant(realRoot, realDir);
+
     const dirStat = await stat(dir).catch(() => null);
     if (!dirStat) {
       throw new NotFoundError(`Folder not found: ${relativePath || "/"}`);

@@ -726,6 +726,23 @@ describe("document service", () => {
         await testDb.cleanup();
       }
     });
+
+    it("rejects a symlinked folder path that resolves outside the Documents root", async () => {
+      const testDb = await createTestDatabase();
+      const service = makeService(testDb);
+
+      try {
+        await setupDocsDir(testDb);
+        const outside = join(testDb.config.paths.workspaceDir, "outside-documents");
+        await mkdir(outside);
+        await writeFile(join(outside, "secret.md"), "Outside document root", "utf8");
+        await symlink(outside, service.fullPath("linked"));
+
+        await expect(service.listFolder({ path: "linked" })).rejects.toThrow(/symbolic link/i);
+      } finally {
+        await testDb.cleanup();
+      }
+    });
   });
 
   describe("list", () => {
