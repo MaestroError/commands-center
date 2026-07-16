@@ -134,7 +134,7 @@ describe("TaskPromptComposer shortcuts and mentions", () => {
     await user.click(await screen.findByRole("button", { name: /Architecture Overview/ }));
 
     expect(await screen.findByText("Global Document:")).toBeInTheDocument();
-    expect(screen.getByText("Architecture Overview")).toBeInTheDocument();
+    expect(screen.getByText("design/overview.md")).toBeInTheDocument();
     expect(screen.getByLabelText("Task prompt")).toHaveValue("read ");
   });
 

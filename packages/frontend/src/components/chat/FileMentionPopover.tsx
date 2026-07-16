@@ -146,7 +146,7 @@ export function FileMentionPopover({
         ) : (
           filtered.map((item, index) => (
             <button
-              key={item.path}
+              key={`${item.kind}:${item.path}`}
               type="button"
               className={`w-full px-3 py-2 text-left text-sm ${
                 index === activeIndex

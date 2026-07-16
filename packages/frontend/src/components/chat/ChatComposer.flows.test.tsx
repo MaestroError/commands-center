@@ -216,7 +216,7 @@ describe("ChatComposer file mentions", () => {
     expect(screen.queryByText("app.ts")).not.toBeInTheDocument();
   });
 
-  it("mentions a global document and sends it with a #GlobalDocuments token", async () => {
+  it("mentions a global document and sends it as an absolute-path token", async () => {
     vi.spyOn(api, "searchAgentWorkspaceFiles").mockResolvedValue([]);
     vi.spyOn(api, "searchGlobalDocuments").mockResolvedValue([
       {
@@ -238,9 +238,9 @@ describe("ChatComposer file mentions", () => {
 
     await user.click(await screen.findByRole("button", { name: /Architecture Overview/ }));
 
-    // The chip is labelled as a global document, not a plain file.
+    // The chip is labelled as a global document showing its relative path.
     expect(await screen.findByText("Global Document:")).toBeInTheDocument();
-    expect(screen.getByText("Architecture Overview")).toBeInTheDocument();
+    expect(screen.getByText("design/overview.md")).toBeInTheDocument();
 
     await user.type(textarea, "summarize it");
     await user.click(screen.getByRole("button", { name: "Send" }));

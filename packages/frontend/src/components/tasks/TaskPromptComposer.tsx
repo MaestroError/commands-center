@@ -331,7 +331,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
               {isGlobalDocumentMention(file) ? (
                 <span className="opacity-70">Global Document:</span>
               ) : null}
-              {file.filename}
+              {isGlobalDocumentMention(file) ? file.path : file.filename}
               <button
                 className="ml-0.5 rounded-full p-0.5 hover:bg-accent/20"
                 onClick={() => handleRemoveMention(file)}
