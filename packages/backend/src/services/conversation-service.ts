@@ -743,18 +743,21 @@ export function createConversationService(options: {
 
       await removeConversationArchive(agent, conversation);
 
-      const conversationArtifacts = await options.db
-        .select({ id: artifacts.id })
-        .from(artifacts)
-        .where(eq(artifacts.conversation_id, conversation.id));
-      const artifactIds = conversationArtifacts.map((row) => row.id);
-
       // Delete dependents before the conversation row. Artifacts (and their
       // share links) carry NOT NULL foreign keys to conversations.id, so with
       // foreign_keys=ON the conversation delete throws a constraint error unless
       // they are removed first. Task-run sessions opened in chat commonly carry
-      // artifacts, which is why they failed to delete.
+      // artifacts, which is why they failed to delete. The artifact ids are read
+      // inside the transaction so a concurrent insert can't slip a new dependent
+      // in between the read and the deletes.
       options.db.transaction((tx) => {
+        const artifactIds = tx
+          .select({ id: artifacts.id })
+          .from(artifacts)
+          .where(eq(artifacts.conversation_id, conversation.id))
+          .all()
+          .map((row) => row.id);
+
         if (artifactIds.length > 0) {
           tx.delete(artifact_share_links)
             .where(inArray(artifact_share_links.artifact_id, artifactIds))
