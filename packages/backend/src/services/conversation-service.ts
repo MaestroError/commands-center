@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import {
@@ -30,7 +30,13 @@ import {
 
 import { createId } from "../db/ids.js";
 import type { AppDb } from "../db/client.js";
-import { type agents, conversations, messages } from "../db/schema/index.js";
+import {
+  type agents,
+  artifact_share_links,
+  artifacts,
+  conversations,
+  messages,
+} from "../db/schema/index.js";
 import { resolveCompanionPromptOverrides } from "../mcp/cc-managed/group-metadata.js";
 import { BadRequestError, NotFoundError } from "../lib/api-error.js";
 import {
@@ -737,8 +743,27 @@ export function createConversationService(options: {
 
       await removeConversationArchive(agent, conversation);
 
-      await options.db.delete(messages).where(eq(messages.conversation_id, conversation.id));
-      await options.db.delete(conversations).where(eq(conversations.id, conversation.id));
+      const conversationArtifacts = await options.db
+        .select({ id: artifacts.id })
+        .from(artifacts)
+        .where(eq(artifacts.conversation_id, conversation.id));
+      const artifactIds = conversationArtifacts.map((row) => row.id);
+
+      // Delete dependents before the conversation row. Artifacts (and their
+      // share links) carry NOT NULL foreign keys to conversations.id, so with
+      // foreign_keys=ON the conversation delete throws a constraint error unless
+      // they are removed first. Task-run sessions opened in chat commonly carry
+      // artifacts, which is why they failed to delete.
+      options.db.transaction((tx) => {
+        if (artifactIds.length > 0) {
+          tx.delete(artifact_share_links)
+            .where(inArray(artifact_share_links.artifact_id, artifactIds))
+            .run();
+          tx.delete(artifacts).where(inArray(artifacts.id, artifactIds)).run();
+        }
+        tx.delete(messages).where(eq(messages.conversation_id, conversation.id)).run();
+        tx.delete(conversations).where(eq(conversations.id, conversation.id)).run();
+      });
     },
   };
 
