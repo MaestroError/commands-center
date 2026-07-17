@@ -21,6 +21,7 @@ export default defineConfig({
         // Dev-only debug panel; lazy-loaded solely under import.meta.env.DEV and
         // never shipped to production, so it is intentionally left untested.
         "src/components/dev/DevDebugPanel.tsx",
+        "src/components/dev/DesignSystemBaselinePage.tsx",
         // Heavy Milkdown WYSIWYG editor and its lazy Suspense wrapper. The editor
         // is a thin binding over the third-party @milkdown/crepe runtime that does
         // not render meaningfully under jsdom; it is validated via e2e instead.

@@ -32,6 +32,7 @@ import { SettingsPage } from "@/pages/SettingsPage";
 import { TaskDetailPage } from "@/pages/TaskDetailPage";
 import { TasksPage } from "@/pages/TasksPage";
 import { WorkspaceChatPage } from "@/pages/WorkspaceChatPage";
+import { DesignSystemBaselinePage } from "@/components/dev/DesignSystemBaselinePage";
 
 type AppRouteDefinition = {
   path: string;
@@ -191,6 +192,15 @@ export const appRoutes = [
     title: "Profile",
     element: <ProfilePage />,
   },
+  ...(import.meta.env.DEV
+    ? [
+        {
+          path: "/__design-system-baseline",
+          title: "Design System Baseline",
+          element: <DesignSystemBaselinePage />,
+        },
+      ]
+    : []),
 ] satisfies AppRouteDefinition[];
 
 export const sidebarRoutes = appRoutes.filter((route) => route.navLabel);
