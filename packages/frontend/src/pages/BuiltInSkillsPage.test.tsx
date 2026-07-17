@@ -259,6 +259,33 @@ describe("BuiltInSkillsPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("copies the full selected skill content from the Details tab", async () => {
+    const detailsMarkdown =
+      "# Code Review\n\nReview every changed file.\n\n## Checklist\n\n- Run tests";
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    vi.mocked(useSpecialistCatalogQuery).mockReturnValue({
+      data: {
+        ...catalog,
+        builtInSkills: [{ ...builtInSkill, detailsMarkdown }],
+      },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    renderPage();
+
+    const context = screen.getByTestId("workspace-context");
+    fireEvent.click(within(context).getByRole("button", { name: "Details" }));
+    fireEvent.click(within(context).getByRole("button", { name: "Copy" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(detailsMarkdown));
+    expect(within(context).getByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
+
   it("creates a workspace skill and redirects to its folder", async () => {
     createMutateAsync.mockResolvedValue({ skill: workspaceSkill });
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

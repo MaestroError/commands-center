@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { ToolsTabContent } from "./ToolsTab";
@@ -116,6 +117,154 @@ describe("ToolsTabContent", () => {
     expect(screen.getByText("create_issue")).toBeInTheDocument();
     expect(screen.getByText("No description available from this MCP server.")).toBeInTheDocument();
     expect(screen.getByText("Connected")).toBeInTheDocument();
+  });
+
+  it("explains that the tools panel is informational", () => {
+    render(
+      <ToolsTabContent
+        errors={[]}
+        loading={false}
+        summary={{
+          ...emptySummary,
+          customTools: [
+            {
+              slug: "release-helper",
+              name: "Release Helper",
+              description: "Draft release notes.",
+              source: "managed",
+              enabled: true,
+            },
+          ],
+          totalCount: 1,
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "This panel is informational only. It shows the tools CommandsCenter provides to this AI specialist.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("filters tools locally across tool sources", async () => {
+    const user = userEvent.setup();
+    render(
+      <ToolsTabContent
+        errors={[]}
+        loading={false}
+        summary={{
+          ccManaged: [
+            {
+              serverName: "cc_default",
+              description: "Default tools.",
+              enabledByDefault: true,
+              systemManaged: true,
+              tools: [
+                {
+                  name: "list_tasks",
+                  description: "List tasks.",
+                  context: "both",
+                  action: "allow",
+                },
+              ],
+            },
+          ],
+          customTools: [
+            {
+              slug: "release-helper",
+              name: "Release Helper",
+              description: "Draft release notes.",
+              source: "managed",
+              enabled: true,
+            },
+          ],
+          externalMcp: [
+            {
+              serverName: "github",
+              action: "ask",
+              permissionPatterns: [],
+              tools: [{ id: "github_create_issue", name: "create_issue", action: "ask" }],
+            },
+          ],
+          totalCount: 3,
+        }}
+      />,
+    );
+
+    await user.type(screen.getByRole("searchbox", { name: "Search tools" }), "create_issue");
+
+    expect(screen.getByText("create_issue")).toBeInTheDocument();
+    expect(screen.queryByText("list_tasks")).not.toBeInTheDocument();
+    expect(screen.queryByText("Release Helper")).not.toBeInTheDocument();
+  });
+
+  it("filters individual tools inside a matching source section", async () => {
+    const user = userEvent.setup();
+    render(
+      <ToolsTabContent
+        errors={[]}
+        loading={false}
+        summary={{
+          ...emptySummary,
+          ccManaged: [
+            {
+              serverName: "cc_default",
+              description: "Default tools.",
+              enabledByDefault: true,
+              systemManaged: true,
+              tools: [
+                {
+                  name: "list_tasks",
+                  description: "List tasks.",
+                  context: "both",
+                  action: "allow",
+                },
+                {
+                  name: "request_secret",
+                  description: "Ask the operator for a secret.",
+                  context: "chat",
+                  action: "allow",
+                },
+              ],
+            },
+          ],
+          totalCount: 2,
+        }}
+      />,
+    );
+
+    await user.type(screen.getByRole("searchbox", { name: "Search tools" }), "secret");
+
+    expect(screen.getByText("request_secret")).toBeInTheDocument();
+    expect(screen.queryByText("list_tasks")).not.toBeInTheDocument();
+  });
+
+  it("shows an empty result when no tools match the filter", async () => {
+    const user = userEvent.setup();
+    render(
+      <ToolsTabContent
+        errors={[]}
+        loading={false}
+        summary={{
+          ...emptySummary,
+          customTools: [
+            {
+              slug: "release-helper",
+              name: "Release Helper",
+              description: "Draft release notes.",
+              source: "managed",
+              enabled: true,
+            },
+          ],
+          totalCount: 1,
+        }}
+      />,
+    );
+
+    await user.type(screen.getByRole("searchbox", { name: "Search tools" }), "calendar");
+
+    expect(screen.getByText('No tools match "calendar".')).toBeInTheDocument();
   });
 
   it("shows external MCP configuration when discovered tool names are unavailable", () => {

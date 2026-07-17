@@ -28,6 +28,7 @@ function renderComposer(overrides?: {
           { id: "agent-2", name: "Reviewer" },
           { id: "agent-3", name: "Specialist" },
         ]}
+        enableSpecialistMentions
         onChange={setValue}
         skills={[{ slug: "components", description: "Work with components" }]}
         value={value}

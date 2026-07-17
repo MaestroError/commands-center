@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import type { Specialist, BuiltInSkill } from "@cc/shared/schemas";
 
+import { CopyableCode } from "@/components/api/EndpointsTab";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
@@ -651,9 +652,7 @@ function SkillDetail(props: { entry: SkillEntry }) {
         </div>
       ) : null}
       {props.entry.skill.detailsMarkdown ? (
-        <pre className="overflow-auto rounded-lg border border-border bg-terminal-bg p-4 text-sm text-terminal-fg whitespace-pre-wrap">
-          {props.entry.skill.detailsMarkdown}
-        </pre>
+        <CopyableCode code={props.entry.skill.detailsMarkdown} label="Skill content" />
       ) : null}
     </div>
   );

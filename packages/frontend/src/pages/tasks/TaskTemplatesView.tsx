@@ -215,124 +215,138 @@ export function TaskTemplateDetailPanel(props: {
   const error = readError(templateQuery.error ?? tasksQuery.error);
 
   return (
-    <aside
-      aria-label="Task template detail panel"
-      className="fixed inset-y-0 right-0 z-40 grid w-full grid-rows-[auto_1fr] border-l border-border bg-surface-elevated shadow-2xl sm:max-w-2xl"
-      data-testid="task-template-detail-panel"
-    >
-      <header className="flex items-start justify-between gap-4 border-b border-border bg-surface-elevated p-4">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-text-secondary">Task template</p>
-          <h2 className="mt-1 text-xl font-semibold text-text-primary">
-            {template?.title ?? "Loading template"}
-          </h2>
-        </div>
-        <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
-          Close
-        </button>
-      </header>
-      <div className="overflow-auto bg-surface-elevated p-4">
-        {templateQuery.isLoading ? <LoadingState testId="task-template-panel-loading" /> : null}
-        {error ? <ErrorState description={error} title="Template could not be loaded." /> : null}
-        {template ? (
-          <div className="grid gap-4">
-            <TabBar
-              activeTabId={detailTab}
-              onTabChange={setDetailTab}
-              tabs={[
-                { id: "details", label: "Details" },
-                { id: "docs", label: "Docs" },
-              ]}
-            />
-            {detailTab === "docs" ? <TemplateDocsTab template={template} /> : null}
-            <div className={detailTab === "details" ? "grid gap-4" : "hidden"}>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-border bg-surface px-2 py-1 text-xs text-text-secondary">
-                  {formatTemplateRepeat(template)}
-                </span>
-                <span
-                  className={
-                    template.enabled
-                      ? "rounded-full border border-success/40 bg-success/10 px-2 py-1 text-xs text-success"
-                      : "rounded-full border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning"
-                  }
-                  data-testid="task-template-detail-status"
-                >
-                  {template.enabled ? "Active" : "Disabled"}
-                </span>
-              </div>
-              <TextBlock
-                label="Description"
-                value={template.description || "No description provided."}
+    <>
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 z-40 bg-black/40"
+        data-testid="task-template-detail-backdrop"
+        onClick={props.onClose}
+      />
+      <aside
+        aria-label="Task template detail panel"
+        className="fixed inset-y-0 right-0 z-50 grid w-full grid-rows-[auto_1fr] border-l border-border bg-surface-elevated shadow-2xl sm:max-w-2xl"
+        data-testid="task-template-detail-panel"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-border bg-surface-elevated p-4">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-text-secondary">Task template</p>
+            <h2 className="mt-1 text-xl font-semibold text-text-primary">
+              {template?.title ?? "Loading template"}
+            </h2>
+          </div>
+          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+            Close
+          </button>
+        </header>
+        <div className="overflow-auto bg-surface-elevated p-4">
+          {templateQuery.isLoading ? <LoadingState testId="task-template-panel-loading" /> : null}
+          {error ? <ErrorState description={error} title="Template could not be loaded." /> : null}
+          {template ? (
+            <div className="grid gap-4">
+              <TabBar
+                activeTabId={detailTab}
+                onTabChange={setDetailTab}
+                tabs={[
+                  { id: "details", label: "Details" },
+                  { id: "docs", label: "Docs" },
+                ]}
               />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Metric label="Default specialist" value={agent?.name ?? template.defaultAgentId} />
-                <Metric label="Next occurrence" value={formatDate(template.nextOccurrenceAt)} />
-                <Metric
-                  label="Previous occurrence"
-                  value={formatDate(template.lastGeneratedOccurrenceAt)}
+              {detailTab === "docs" ? <TemplateDocsTab template={template} /> : null}
+              <div className={detailTab === "details" ? "grid gap-4" : "hidden"}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-border bg-surface px-2 py-1 text-xs text-text-secondary">
+                    {formatTemplateRepeat(template)}
+                  </span>
+                  <span
+                    className={
+                      template.enabled
+                        ? "rounded-full border border-success/40 bg-success/10 px-2 py-1 text-xs text-success"
+                        : "rounded-full border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning"
+                    }
+                    data-testid="task-template-detail-status"
+                  >
+                    {template.enabled ? "Active" : "Disabled"}
+                  </span>
+                </div>
+                <TextBlock
+                  label="Description"
+                  value={template.description || "No description provided."}
                 />
-                <Metric label="Timezone" value={template.recurrence?.timezone ?? "Not repeating"} />
-              </div>
-              <TaskTodos task={templateAsTask(template)} />
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="cc-button cc-button-secondary"
-                  data-testid="task-template-detail-create-task"
-                  onClick={() => props.onCreateTask(template)}
-                  type="button"
-                >
-                  Create task
-                </button>
-                <TaskCardIconButton
-                  icon={Pencil}
-                  label="Edit template"
-                  onClick={() => props.onEdit(template)}
-                />
-                <TaskCardIconButton
-                  icon={Play}
-                  label="Run now"
-                  onClick={() => props.onRunNow(template)}
-                  variant="success"
-                />
-                <TaskCardIconButton
-                  disabled={toggleBusy}
-                  icon={template.enabled ? PowerOff : Power}
-                  label={template.enabled ? "Disable template" : "Enable template"}
-                  onClick={() =>
-                    void (
-                      template.enabled ? mutations.disableTemplate : mutations.enableTemplate
-                    ).mutate(template.id)
-                  }
-                />
-                {template.latestTaskId ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Metric
+                    label="Default specialist"
+                    value={agent?.name ?? template.defaultAgentId}
+                  />
+                  <Metric label="Next occurrence" value={formatDate(template.nextOccurrenceAt)} />
+                  <Metric
+                    label="Previous occurrence"
+                    value={formatDate(template.lastGeneratedOccurrenceAt)}
+                  />
+                  <Metric
+                    label="Timezone"
+                    value={template.recurrence?.timezone ?? "Not repeating"}
+                  />
+                </div>
+                <TaskTodos task={templateAsTask(template)} />
+                <div className="flex flex-wrap gap-2">
                   <button
                     className="cc-button cc-button-secondary"
-                    onClick={() => props.onOpenTask(template.latestTaskId ?? "")}
+                    data-testid="task-template-detail-create-task"
+                    onClick={() => props.onCreateTask(template)}
                     type="button"
                   >
-                    Open latest task
+                    Create task
                   </button>
-                ) : null}
-                <TaskCardIconButton
-                  icon={Trash2}
-                  label="Delete template"
-                  onClick={() => props.onDelete(template)}
-                  variant="danger"
+                  <TaskCardIconButton
+                    icon={Pencil}
+                    label="Edit template"
+                    onClick={() => props.onEdit(template)}
+                  />
+                  <TaskCardIconButton
+                    icon={Play}
+                    label="Run now"
+                    onClick={() => props.onRunNow(template)}
+                    variant="success"
+                  />
+                  <TaskCardIconButton
+                    disabled={toggleBusy}
+                    icon={template.enabled ? PowerOff : Power}
+                    label={template.enabled ? "Disable template" : "Enable template"}
+                    onClick={() =>
+                      void (
+                        template.enabled ? mutations.disableTemplate : mutations.enableTemplate
+                      ).mutate(template.id)
+                    }
+                  />
+                  {template.latestTaskId ? (
+                    <button
+                      className="cc-button cc-button-secondary"
+                      onClick={() => props.onOpenTask(template.latestTaskId ?? "")}
+                      type="button"
+                    >
+                      Open latest task
+                    </button>
+                  ) : null}
+                  <TaskCardIconButton
+                    icon={Trash2}
+                    label="Delete template"
+                    onClick={() => props.onDelete(template)}
+                    variant="danger"
+                  />
+                </div>
+                <GeneratedTaskHistory
+                  currentSearch={props.currentSearch}
+                  error={tasksQuery.error}
+                  isLoading={tasksQuery.isLoading}
+                  onOpenTask={props.onOpenTask}
+                  tasks={tasksQuery.data ?? []}
                 />
               </div>
-              <GeneratedTaskHistory
-                currentSearch={props.currentSearch}
-                error={tasksQuery.error}
-                isLoading={tasksQuery.isLoading}
-                onOpenTask={props.onOpenTask}
-                tasks={tasksQuery.data ?? []}
-              />
             </div>
-          </div>
-        ) : null}
-      </div>
-    </aside>
+          ) : null}
+        </div>
+      </aside>
+    </>
   );
 }
 

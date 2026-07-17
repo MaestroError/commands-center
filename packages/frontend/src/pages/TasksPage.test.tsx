@@ -1884,6 +1884,28 @@ describe("TasksPage", () => {
     );
   });
 
+  it("dims the task board behind template detail", async () => {
+    mockFetch({ templatesPayload: [taskTemplate] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates&template=template-1");
+
+    await screen.findByRole("complementary", { name: "Task template detail panel" });
+    expect(screen.getByTestId("task-template-detail-backdrop")).toHaveClass("bg-black/40");
+  });
+
+  it("closes template detail when clicking the backdrop", async () => {
+    const user = userEvent.setup();
+    mockFetch({ templatesPayload: [taskTemplate] });
+
+    renderWithRouter(<TasksPage />, "/tasks?view=templates&template=template-1");
+
+    await screen.findByRole("complementary", { name: "Task template detail panel" });
+    await user.click(screen.getByTestId("task-template-detail-backdrop"));
+    expect(
+      screen.queryByRole("complementary", { name: "Task template detail panel" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows integration instructions on the template Docs tab and copies them", async () => {
     const user = userEvent.setup();
     mockFetch({ templatesPayload: [taskTemplate], templateTasksPayload: [generatedTask] });

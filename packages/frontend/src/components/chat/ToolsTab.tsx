@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Specialist, SpecialistCatalog } from "@cc/shared/schemas";
 
 import { useCustomToolsQuery, useSpecialistCustomToolsQuery } from "@/hooks/use-custom-tools-query";
@@ -61,6 +61,9 @@ export function ToolsTab({ agent, catalog }: ToolsTabProps) {
 }
 
 export function ToolsTabContent({ summary, loading, errors }: ToolsTabContentProps) {
+  const [filter, setFilter] = useState("");
+  const filteredSummary = useMemo(() => filterToolSummary(summary, filter), [filter, summary]);
+
   if (summary.totalCount === 0 && loading) {
     return (
       <div className="flex h-full items-center justify-center p-4 text-sm text-text-secondary">
@@ -71,41 +74,70 @@ export function ToolsTabContent({ summary, loading, errors }: ToolsTabContentPro
 
   if (summary.totalCount === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center text-sm text-text-secondary">
-        <ToolLoadErrors errors={errors} />
-        <p>No tools configured for this specialist.</p>
+      <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+        <ToolsPanelNote />
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center text-sm text-text-secondary">
+          <ToolLoadErrors errors={errors} />
+          <p>No tools configured for this specialist.</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-4">
+      <div className="grid gap-3">
+        <ToolsPanelNote />
+        <div className="grid gap-2">
+          <label
+            className="text-xs font-semibold uppercase tracking-wide text-text-secondary"
+            htmlFor="chat-tools-filter"
+          >
+            Search tools
+          </label>
+          <input
+            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text-primary outline-none transition placeholder:text-text-secondary/70 focus:border-accent"
+            id="chat-tools-filter"
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Filter tools"
+            type="search"
+            value={filter}
+          />
+        </div>
+      </div>
+
       <ToolLoadErrors errors={errors} />
 
-      {summary.ccManaged.length > 0 ? (
+      {filteredSummary.totalCount === 0 ? (
+        <p className="py-8 text-center text-sm text-text-secondary">
+          No tools match &quot;{filter}&quot;.
+        </p>
+      ) : null}
+
+      {filteredSummary.ccManaged.length > 0 ? (
         <ToolSection title="CommandsCenter">
           <div className="grid gap-3">
-            {summary.ccManaged.map((group) => (
+            {filteredSummary.ccManaged.map((group) => (
               <CcManagedToolGroupCard group={group} key={group.serverName} />
             ))}
           </div>
         </ToolSection>
       ) : null}
 
-      {summary.customTools.length > 0 ? (
+      {filteredSummary.customTools.length > 0 ? (
         <ToolSection title="Custom Tools">
           <div className="grid gap-2">
-            {summary.customTools.map((tool) => (
+            {filteredSummary.customTools.map((tool) => (
               <CustomToolRow key={tool.slug} tool={tool} />
             ))}
           </div>
         </ToolSection>
       ) : null}
 
-      {summary.externalMcp.length > 0 ? (
+      {filteredSummary.externalMcp.length > 0 ? (
         <ToolSection title="External MCP">
           <div className="grid gap-3">
-            {summary.externalMcp.map((server) => (
+            {filteredSummary.externalMcp.map((server) => (
               <ExternalMcpServerCard key={server.serverName} server={server} />
             ))}
           </div>
@@ -113,6 +145,81 @@ export function ToolsTabContent({ summary, loading, errors }: ToolsTabContentPro
       ) : null}
     </div>
   );
+}
+
+function ToolsPanelNote() {
+  return (
+    <p className="text-xs leading-5 text-text-secondary">
+      This panel is informational only. It shows the tools CommandsCenter provides to this AI
+      specialist.
+    </p>
+  );
+}
+
+function filterToolSummary(summary: ChatToolSummary, filter: string): ChatToolSummary {
+  const query = filter.trim().toLowerCase();
+
+  if (!query) {
+    return summary;
+  }
+
+  const ccManaged = summary.ccManaged.flatMap((group) => {
+    const groupMatches = includesQuery([group.serverName, group.description], query);
+    const tools = groupMatches
+      ? group.tools
+      : group.tools.filter((tool) =>
+          includesQuery(
+            [tool.name, tool.description, tool.context.replace("_", " "), tool.action],
+            query,
+          ),
+        );
+
+    return tools.length > 0 ? [{ ...group, tools }] : [];
+  });
+  const customTools = summary.customTools.filter((tool) =>
+    includesQuery(
+      [
+        tool.name,
+        tool.slug,
+        tool.description,
+        tool.source,
+        tool.status,
+        tool.enabled ? "enabled" : "unavailable",
+      ],
+      query,
+    ),
+  );
+  const externalMcp = summary.externalMcp.flatMap((server) => {
+    const serverMatches = includesQuery(
+      [
+        server.serverName,
+        server.action,
+        server.globalEnabled === false ? "globally disabled" : undefined,
+        server.runtimeStatus ? runtimeStatusLabel(server.runtimeStatus) : undefined,
+        ...server.permissionPatterns.flatMap((rule) => [rule.pattern, rule.action]),
+      ],
+      query,
+    );
+    const tools = serverMatches
+      ? server.tools
+      : server.tools.filter((tool) => includesQuery([tool.id, tool.name, tool.action], query));
+
+    return serverMatches || tools.length > 0 ? [{ ...server, tools }] : [];
+  });
+
+  return {
+    ccManaged,
+    customTools,
+    externalMcp,
+    totalCount:
+      ccManaged.reduce((sum, group) => sum + group.tools.length, 0) +
+      customTools.length +
+      externalMcp.reduce((sum, server) => sum + Math.max(server.tools.length, 1), 0),
+  };
+}
+
+function includesQuery(values: Array<string | undefined>, query: string): boolean {
+  return values.some((value) => value?.toLowerCase().includes(query));
 }
 
 function ToolLoadErrors({ errors }: { errors: string[] }) {
