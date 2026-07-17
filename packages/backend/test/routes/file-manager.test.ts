@@ -403,6 +403,109 @@ describe("file manager content routes", () => {
     }
   });
 
+  it("streams a file as an attachment via GET /api/file-manager/files/download", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      await mkdir(join(testDb.config.paths.workspaceDir, "notes"), { recursive: true });
+      await writeFile(join(testDb.config.paths.workspaceDir, "notes", "report.md"), "# hi", "utf8");
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/file-manager/files/download?root=workspace&path=${encodeURIComponent("notes/report.md")}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["content-disposition"]).toBe('attachment; filename="report.md"');
+      expect(response.headers["content-type"]).toContain("text/markdown");
+      expect(response.headers["content-length"]).toBe("4");
+      expect(response.body).toBe("# hi");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("streams a folder as a zip including nested and hidden files", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      const reportsDir = join(testDb.config.paths.workspaceDir, "reports");
+      await mkdir(join(reportsDir, "sub"), { recursive: true });
+      await writeFile(join(reportsDir, "report.md"), "# hi", "utf8");
+      await writeFile(join(reportsDir, "sub", "nested.txt"), "deep", "utf8");
+      await writeFile(join(reportsDir, ".hidden"), "secret", "utf8");
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/file-manager/files/download-zip?root=workspace&path=${encodeURIComponent("reports")}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["content-type"]).toContain("application/zip");
+      expect(response.headers["content-disposition"]).toBe('attachment; filename="reports.zip"');
+
+      const payload = response.rawPayload;
+      // ZIP local file header magic bytes.
+      expect(payload.subarray(0, 2).toString("latin1")).toBe("PK");
+      // Entry names are stored uncompressed in the local file headers.
+      const asText = payload.toString("latin1");
+      expect(asText).toContain("reports/report.md");
+      expect(asText).toContain("reports/sub/nested.txt");
+      expect(asText).toContain("reports/.hidden");
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects zipping a file with a 400", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      await writeFile(join(testDb.config.paths.workspaceDir, "single.md"), "x", "utf8");
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/file-manager/files/download-zip?root=workspace&path=${encodeURIComponent("single.md")}`,
+      });
+
+      expect(response.statusCode).toBe(400);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("rejects downloading a directory with a 400", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      await mkdir(join(testDb.config.paths.workspaceDir, "folder"), { recursive: true });
+
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/file-manager/files/download?root=workspace&path=${encodeURIComponent("folder")}`,
+      });
+
+      expect(response.statusCode).toBe(400);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
+  it("returns 404 when downloading a missing file", async () => {
+    const { testDb, server } = await bootServer();
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/file-manager/files/download?root=workspace&path=${encodeURIComponent("missing.md")}`,
+      });
+
+      expect(response.statusCode).toBe(404);
+    } finally {
+      await server.close();
+      await testDb.cleanup();
+    }
+  });
+
   it("reads workspace file content without consulting host edit preferences", async () => {
     const { testDb, server } = await bootServer();
     try {

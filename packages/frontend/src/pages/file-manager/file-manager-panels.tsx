@@ -148,6 +148,8 @@ export function SelectionActions(props: {
   selectedNode?: FileManagerNode;
   busyAction?: string;
   onOpen: (node: FileManagerNode) => void;
+  onDownload: (node: FileManagerNode) => void;
+  onDownloadZip: (node: FileManagerNode) => void;
   onStartMove: (node: FileManagerNode) => void;
   onStartRename: (node: FileManagerNode) => void;
   onStartDelete: (node: FileManagerNode) => void;
@@ -163,15 +165,32 @@ export function SelectionActions(props: {
   return (
     <div className="flex flex-col gap-2">
       {props.selectedNode.type === "directory" ? (
+        <>
+          <button
+            className="cc-button cc-button-secondary"
+            disabled={actionBusy}
+            onClick={() => props.onOpen(props.selectedNode!)}
+            type="button"
+          >
+            Open directory
+          </button>
+          <button
+            className="cc-button cc-button-secondary"
+            onClick={() => props.onDownloadZip(props.selectedNode!)}
+            type="button"
+          >
+            Download as zip
+          </button>
+        </>
+      ) : (
         <button
           className="cc-button cc-button-secondary"
-          disabled={actionBusy}
-          onClick={() => props.onOpen(props.selectedNode!)}
+          onClick={() => props.onDownload(props.selectedNode!)}
           type="button"
         >
-          Open directory
+          Download file
         </button>
-      ) : null}
+      )}
       {props.selectedNode.isCritical ? null : (
         <>
           <button

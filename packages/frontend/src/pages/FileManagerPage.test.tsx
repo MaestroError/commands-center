@@ -21,6 +21,8 @@ vi.mock("@/lib/api", () => ({
   moveFileManagerEntry: vi.fn(),
   searchFileManagerDirectories: vi.fn(),
   deleteFileManagerEntry: vi.fn(),
+  downloadFileManagerFile: vi.fn(),
+  downloadFileManagerFolderZip: vi.fn(),
   getFileManagerFileContent: vi.fn(),
   saveFileManagerFileContent: vi.fn(),
   FileSaveConflictError: class extends Error {

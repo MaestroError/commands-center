@@ -4,6 +4,8 @@ import { useEditorTabs } from "@/hooks/use-editor-tabs";
 import {
   createFileManagerEntry,
   deleteFileManagerEntry,
+  downloadFileManagerFile,
+  downloadFileManagerFolderZip,
   listFileManagerNodes,
   moveFileManagerEntry,
   renameFileManagerEntry,
@@ -395,6 +397,12 @@ export function FileManagerPage() {
                 <SelectionActions
                   busyAction={busyAction}
                   onOpen={openNode}
+                  onDownload={(node) =>
+                    downloadFileManagerFile({ root, path: node.path }, node.name)
+                  }
+                  onDownloadZip={(node) =>
+                    downloadFileManagerFolderZip({ root, path: node.path }, node.name)
+                  }
                   onStartMove={(node) => {
                     setMoveTarget(node);
                     setMoveValue(currentPath);
