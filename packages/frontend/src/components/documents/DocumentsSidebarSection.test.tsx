@@ -25,7 +25,7 @@ function renderSidebar(
   options: { onOpenSearch?: () => void } = {},
 ) {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
   });
 
   return render(
@@ -105,7 +105,9 @@ function specialist(overrides: Partial<Specialist> = {}): Specialist {
  * auto-expand/collapse effect.
  */
 function renderWithNavigation(initialEntries: string[] = ["/documents"]) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+  });
 
   function Harness() {
     const location = useLocation();
@@ -118,6 +120,7 @@ function renderWithNavigation(initialEntries: string[] = ["/documents"]) {
           pathname={location.pathname}
         />
         <Link to="/documents">Go to Documents</Link>
+        <Link to="/documents?path=ProjectInfo%2Foverview.md">Go to Document</Link>
         <Link to="/tasks">Go to Tasks</Link>
       </>
     );
@@ -381,6 +384,40 @@ describe("DocumentsSidebarSection", () => {
     expect(screen.queryByText("Overview")).not.toBeInTheDocument();
   });
 
+  it("refreshes the document tree once when manually reopened", async () => {
+    vi.mocked(getDocumentTree)
+      .mockResolvedValueOnce(
+        tree({
+          name: "Initial",
+          relativePath: "Initial",
+          type: "directory",
+          title: null,
+          children: [],
+        }),
+      )
+      .mockResolvedValueOnce(
+        tree({
+          name: "Refreshed",
+          relativePath: "Refreshed",
+          type: "directory",
+          title: null,
+          children: [],
+        }),
+      );
+
+    const user = userEvent.setup();
+    renderSidebar();
+
+    expect(await screen.findByText("Initial")).toBeInTheDocument();
+    expect(getDocumentTree).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Collapse Documents" }));
+    await user.click(screen.getByRole("button", { name: "Expand Documents" }));
+
+    expect(await screen.findByText("Refreshed")).toBeInTheDocument();
+    expect(getDocumentTree).toHaveBeenCalledTimes(2);
+  });
+
   it("auto-expands the ancestor folder chain for the selected document", async () => {
     vi.mocked(getDocumentTree).mockResolvedValue(
       tree({
@@ -507,6 +544,45 @@ describe("DocumentsSidebarSection", () => {
       expect(screen.getByRole("button", { name: "Collapse Documents" })).toBeInTheDocument();
     });
     expect(await screen.findByText("ProjectInfo")).toBeInTheDocument();
+  });
+
+  it("refreshes the document tree once when a document route auto-expands it", async () => {
+    vi.mocked(getDocumentTree)
+      .mockResolvedValueOnce(
+        tree({
+          name: "Initial",
+          relativePath: "Initial",
+          type: "directory",
+          title: null,
+          children: [],
+        }),
+      )
+      .mockResolvedValueOnce(
+        tree({
+          name: "ProjectInfo",
+          relativePath: "ProjectInfo",
+          type: "directory",
+          title: null,
+          children: [
+            {
+              name: "overview.md",
+              relativePath: "ProjectInfo/overview.md",
+              type: "file",
+              title: "Overview",
+            },
+          ],
+        }),
+      );
+
+    const user = userEvent.setup();
+    renderWithNavigation(["/documents"]);
+
+    expect(await screen.findByText("Initial")).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "Go to Tasks" }));
+    await user.click(screen.getByRole("link", { name: "Go to Document" }));
+
+    expect(await screen.findByText("Overview")).toBeInTheDocument();
+    expect(getDocumentTree).toHaveBeenCalledTimes(2);
   });
 
   it("does not override a manual toggle while staying on the Documents page", async () => {

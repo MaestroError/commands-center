@@ -54,7 +54,8 @@ export function DocumentsSidebarSection(props: DocumentsSidebarSectionProps) {
   const treeQuery = useQuery({
     queryKey: queryKeys.documentTree,
     queryFn: getDocumentTree,
-    enabled: !props.collapsed,
+    enabled: !props.collapsed && open,
+    staleTime: 0,
   });
   const specialistsQuery = useQuery({
     queryKey: queryKeys.specialists,
