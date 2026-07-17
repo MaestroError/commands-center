@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { eq } from "drizzle-orm";
+
+import { createId } from "../../src/db/ids";
+import { artifact_share_links, artifacts } from "../../src/db/schema/index";
+import { createArtifactService } from "../../src/services/artifact-service";
 import { createConversationService } from "../../src/services/conversation-service";
 import { createSpecialistService } from "../../src/services/specialist-service";
 import type { OpenCodeService, OpenCodeSession } from "../../src/services/opencode-service";
@@ -139,6 +144,51 @@ describe("conversation-service delegating methods", () => {
     // A fresh resolveCurrent creates a new conversation since the old one is gone.
     const after = await service.resolveCurrent(agent.id);
     expect(after.current.id).not.toBe(conversationId);
+  });
+
+  it("deletes a conversation that owns artifacts and share links", async () => {
+    const { testDb, service, agent } = await setup();
+    const snapshot = await service.resolveCurrent(agent.id);
+    const conversationId = snapshot.current.id;
+
+    const artifactService = createArtifactService({
+      db: testDb.client.db,
+      config: testDb.config,
+    });
+    const artifact = await artifactService.create({
+      conversationId,
+      title: "Report",
+      type: "url",
+      link: "https://example.com/report",
+    });
+    // A share link carries a NOT NULL foreign key to artifacts.id, so its
+    // presence exercises the second FK the delete must clear.
+    await testDb.client.db.insert(artifact_share_links).values({
+      id: createId(),
+      artifact_id: artifact.id,
+      token_hash: "hash",
+      token_prefix: "prefix",
+      created_at: new Date(),
+      expires_at: null,
+      revoked_at: null,
+      last_used_at: null,
+      download_count: 0,
+    });
+
+    // With foreign_keys=ON this threw SQLITE_CONSTRAINT_FOREIGNKEY before the fix.
+    await expect(service.deleteConversation(agent.id, conversationId)).resolves.toBeUndefined();
+
+    const remainingArtifacts = await testDb.client.db
+      .select({ id: artifacts.id })
+      .from(artifacts)
+      .where(eq(artifacts.conversation_id, conversationId));
+    expect(remainingArtifacts).toHaveLength(0);
+
+    const remainingLinks = await testDb.client.db
+      .select({ id: artifact_share_links.id })
+      .from(artifact_share_links)
+      .where(eq(artifact_share_links.artifact_id, artifact.id));
+    expect(remainingLinks).toHaveLength(0);
   });
 
   it("rejects task-run prompts against a plain chat conversation", async () => {
