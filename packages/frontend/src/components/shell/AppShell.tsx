@@ -508,7 +508,7 @@ function SidebarRouteLink(props: {
 function ActiveRunsBadge(props: { count: number }) {
   return (
     <NavLink
-      className="hidden items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs text-amber-300 transition hover:border-amber-300/60 sm:inline-flex"
+      className="hidden items-center gap-1.5 rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-xs text-warning transition hover:border-warning/60 sm:inline-flex"
       to="/tasks?status=running"
       title="Active task runs can delay refresh, shutdown, or update operations until they finish."
     >
@@ -542,12 +542,12 @@ function EngineStatusBadge(props: { state: string | undefined }) {
 
   switch (props.state) {
     case "healthy":
-      dotClass = "bg-emerald-500";
+      dotClass = "bg-success";
       label = "healthy";
       break;
     case "starting":
     case "stopping":
-      dotClass = "bg-amber-400";
+      dotClass = "bg-warning";
       label = props.state;
       pulse = true;
       break;
@@ -556,7 +556,7 @@ function EngineStatusBadge(props: { state: string | undefined }) {
       label = "unhealthy";
       break;
     case undefined:
-      dotClass = "bg-amber-400";
+      dotClass = "bg-warning";
       label = "restarting";
       pulse = true;
       break;

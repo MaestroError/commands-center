@@ -24,6 +24,12 @@ export function ConfirmDialog(props: {
   confirmDisabled?: boolean;
 }) {
   const actionCloseRef = useRef(false);
+  // Consumers render ConfirmDialog conditionally and unmount it on confirm or
+  // cancel, so the AlertDialog never transitions open -> closed while mounted
+  // and Radix's onCloseAutoFocus never runs. Capture the invoking control at
+  // mount (before Radix moves focus inward) and restore it ourselves so focus
+  // returns to the trigger. Do not remove this in favor of Radix's built-in
+  // focus return unless ConfirmDialog is changed to own its open state.
   const restoreFocusRef = useRef(
     typeof document !== "undefined" && document.activeElement instanceof HTMLElement
       ? document.activeElement

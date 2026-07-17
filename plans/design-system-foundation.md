@@ -531,15 +531,16 @@ Phase 4.
 - [x] Decompose Phase 4 into the
       [detailed Phase 4 task plan](design-system/phase-4/README.md), with the
       completed Phase 3 handoff as the implementation gate.
-- [ ] Complete
+- [x] Complete
       [DS-0401 — Accept the Phase 3 handoff and refresh migration inventories](design-system/phase-4/01-phase-3-handoff.md):
       recalculate palette/icon/class/interaction counts, assign every live match
       to a domain/exception/Phase 5 owner, and establish current ratchets.
-- [ ] Complete
+- [ ] In progress
       [DS-0402 — Migrate shell and global interaction surfaces](design-system/phase-4/02-shell-global-ui.md):
       move global actions, ordinary menus, tooltips, overlays, statuses, and
       equivalent glyphs onto CC-owned APIs while preserving responsive access,
-      shortcuts, and appearance behavior.
+      shortcuts, and appearance behavior. Semantic-token slice done; interaction
+      slices pending.
 - [ ] Complete
       [DS-0403 — Migrate specialist management flows](design-system/phase-4/03-specialists.md):
       migrate specialist list/form/editor controls and semantic states without

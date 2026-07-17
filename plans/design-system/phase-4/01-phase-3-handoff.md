@@ -1,6 +1,6 @@
 # DS-0401 — Accept the Phase 3 Handoff and Refresh Migration Inventories
 
-- Status: Planned
+- Status: Complete (artifacts: [live inventory](artifacts/live-migration-inventory.md), [domain-batch contract](artifacts/domain-batch-contract.md), [ratchets](artifacts/phase-4-ratchets.md))
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [Phase 4 scope](../../design-system-foundation.md#phase-4--migrate-domain-ui-incrementally)

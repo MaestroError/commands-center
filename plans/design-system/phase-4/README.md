@@ -1,6 +1,6 @@
 # Phase 4 — Migrate Domain UI Incrementally
 
-- Status: Planned
+- Status: In progress
 
 Parent plans:
 
@@ -41,20 +41,20 @@ migration is not permission to refactor business logic.
 
 ## Task sequence
 
-| ID      | Task                                                                                     | Blocked by              | Status  |
-| ------- | ---------------------------------------------------------------------------------------- | ----------------------- | ------- |
-| DS-0401 | [Accept the Phase 3 handoff and refresh migration inventories](01-phase-3-handoff.md)    | Phase 3 sign-off        | Planned |
-| DS-0402 | [Migrate shell and global interaction surfaces](02-shell-global-ui.md)                   | DS-0401                 | Planned |
-| DS-0403 | [Migrate specialist management flows](03-specialists.md)                                 | DS-0401                 | Planned |
-| DS-0404 | [Migrate task authoring and template flows](04-task-authoring.md)                        | DS-0401                 | Planned |
-| DS-0405 | [Migrate task board, detail, and run flows](05-task-operations.md)                       | DS-0401, DS-0404        | Planned |
-| DS-0406 | [Migrate integrations and provider flows](06-integrations-providers.md)                  | DS-0401                 | Planned |
-| DS-0407 | [Migrate settings, API, and custom-tool flows](07-settings-api-tools.md)                 | DS-0401                 | Planned |
-| DS-0408 | [Migrate chat and media chrome](08-chat-media.md)                                        | DS-0401                 | Planned |
-| DS-0409 | [Migrate workspace, Documents, and file-manager chrome](09-workspace-documents-files.md) | DS-0401                 | Planned |
-| DS-0410 | [Close palette, icon, component, and compatibility inventories](10-inventory-ratchet.md) | DS-0402 through DS-0409 | Planned |
-| DS-0411 | [Add integrated domain migration baselines](11-domain-baselines.md)                      | DS-0402 through DS-0410 | Planned |
-| DS-0412 | [Verify and sign off Phase 4](12-phase-4-signoff.md)                                     | DS-0402 through DS-0411 | Planned |
+| ID      | Task                                                                                     | Blocked by              | Status      |
+| ------- | ---------------------------------------------------------------------------------------- | ----------------------- | ----------- |
+| DS-0401 | [Accept the Phase 3 handoff and refresh migration inventories](01-phase-3-handoff.md)    | Phase 3 sign-off        | Complete    |
+| DS-0402 | [Migrate shell and global interaction surfaces](02-shell-global-ui.md)                   | DS-0401                 | In progress |
+| DS-0403 | [Migrate specialist management flows](03-specialists.md)                                 | DS-0401                 | Planned     |
+| DS-0404 | [Migrate task authoring and template flows](04-task-authoring.md)                        | DS-0401                 | Planned     |
+| DS-0405 | [Migrate task board, detail, and run flows](05-task-operations.md)                       | DS-0401, DS-0404        | Planned     |
+| DS-0406 | [Migrate integrations and provider flows](06-integrations-providers.md)                  | DS-0401                 | Planned     |
+| DS-0407 | [Migrate settings, API, and custom-tool flows](07-settings-api-tools.md)                 | DS-0401                 | Planned     |
+| DS-0408 | [Migrate chat and media chrome](08-chat-media.md)                                        | DS-0401                 | Planned     |
+| DS-0409 | [Migrate workspace, Documents, and file-manager chrome](09-workspace-documents-files.md) | DS-0401                 | Planned     |
+| DS-0410 | [Close palette, icon, component, and compatibility inventories](10-inventory-ratchet.md) | DS-0402 through DS-0409 | Planned     |
+| DS-0411 | [Add integrated domain migration baselines](11-domain-baselines.md)                      | DS-0402 through DS-0410 | Planned     |
+| DS-0412 | [Verify and sign off Phase 4](12-phase-4-signoff.md)                                     | DS-0402 through DS-0411 | Planned     |
 
 DS-0402, DS-0403, DS-0404, and DS-0406 through DS-0409 may proceed in parallel
 after DS-0401 when their file sets do not overlap. DS-0405 follows task

@@ -1,6 +1,6 @@
 # DS-0402 — Migrate Shell and Global Interaction Surfaces
 
-- Status: Planned
+- Status: In progress (semantic-token slice done — [record](artifacts/shell-global-migration-record.md); ThemeMenu/Tooltip/search interaction slices pending)
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [Tailwind and primitive ownership](../../design-system-foundation.md#1-keep-four-distinct-layers)
