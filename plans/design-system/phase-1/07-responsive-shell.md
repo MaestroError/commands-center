@@ -1,6 +1,6 @@
 # DS-0107 — Correct Narrow Shell Overflow
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 1](README.md)
 - Foundation reference:
   [Phase 1 responsive scope](../../design-system-foundation.md#phase-1--normalize-foundations-without-redesigning-screens)

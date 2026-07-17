@@ -1,6 +1,6 @@
 # DS-0103 — Add Semantic Base Guardrails and Inherited Defaults
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 1](README.md)
 - Foundation reference:
   [Phase 1 semantic HTML scope](../../design-system-foundation.md#phase-1--normalize-foundations-without-redesigning-screens)

@@ -349,6 +349,18 @@ function SemanticHtmlBaseline() {
           Final paragraph after the horizontal rule with a
           deliberately_long_unbreakable_token_that_exposes_the_current_overflow_behavior.
         </p>
+        <section
+          className="mt-8 rounded-lg border border-border bg-surface-elevated p-4"
+          data-testid="semantic-cascade-control"
+        >
+          <h2 className="text-base font-semibold text-text-primary">Cascade control</h2>
+          <p className="mt-2 text-danger">
+            This explicit utility color must override generic semantic defaults.
+          </p>
+          <a className="mt-2 inline-flex text-danger" href="#semantic-cascade-control">
+            Explicitly styled control link
+          </a>
+        </section>
       </div>
     </section>
   );

@@ -1,5 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, ChevronLeft, Clipboard, Clock3, ListChecks, Menu, Search } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  Clipboard,
+  Clock3,
+  ListChecks,
+  Menu,
+  Search,
+  UserRound,
+} from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { ActivityBell } from "@/components/activities/ActivityBell";
@@ -138,8 +147,8 @@ export function AppShell() {
 
         <div className="min-w-0">
           <header className="sticky top-0 z-30 border-b border-border bg-app-bg/90 backdrop-blur">
-            <div className="flex min-h-16 items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-              <div className="flex items-center gap-3">
+            <div className="flex min-h-16 items-center justify-between gap-2 px-3 py-3 sm:gap-4 sm:px-6 lg:px-8">
+              <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
                 {!isDesktop ? (
                   <button
                     aria-label="Open navigation"
@@ -150,14 +159,14 @@ export function AppShell() {
                     <Menu className="h-4 w-4" />
                   </button>
                 ) : null}
-                <h1 className="whitespace-nowrap text-sm font-semibold text-text-primary sm:text-xl">
+                <h1 className="min-w-0 truncate text-sm font-semibold text-text-primary sm:text-xl">
                   {title}
                 </h1>
                 <EngineStatusBadge state={engineState} />
                 {runningRuns.length > 0 ? <ActiveRunsBadge count={runningRuns.length} /> : null}
                 {queuedRuns.length > 0 ? <QueuedRunsBadge count={queuedRuns.length} /> : null}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1 sm:gap-2">
                 <button
                   aria-label="Open global search"
                   className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
@@ -172,8 +181,13 @@ export function AppShell() {
                 </button>
                 <ThemeMenu />
                 <ActivityBell />
-                <NavLink className="cc-button cc-button-secondary h-9 rounded-md" to="/profile">
-                  Profile
+                <NavLink
+                  aria-label="Profile"
+                  className="cc-button cc-button-secondary h-9 w-9 rounded-md px-0 sm:w-auto sm:px-4"
+                  to="/profile"
+                >
+                  <UserRound aria-hidden="true" className="h-4 w-4 sm:hidden" />
+                  <span className="hidden sm:inline">Profile</span>
                 </NavLink>
               </div>
             </div>
@@ -552,7 +566,10 @@ function EngineStatusBadge(props: { state: string | undefined }) {
   }
 
   return (
-    <div className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-text-secondary">
+    <div
+      aria-label={`Engine ${label}`}
+      className="hidden items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-text-secondary sm:flex"
+    >
       <span className={`h-1.5 w-1.5 rounded-full ${dotClass} ${pulse ? "animate-pulse" : ""}`} />
       {label}
     </div>

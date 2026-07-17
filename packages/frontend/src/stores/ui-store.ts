@@ -1,47 +1,47 @@
 import { create } from "zustand";
 
-export const themeNames = ["light", "dark", "modern"] as const;
-
-export type ThemeName = (typeof themeNames)[number];
+import {
+  COLOR_MODE_STORAGE_KEY,
+  readColorModePreference,
+  type ColorModePreference,
+} from "@/lib/appearance";
 
 type UiState = {
-  theme: ThemeName;
-  setTheme: (theme: ThemeName) => void;
+  colorModePreference: ColorModePreference;
+  setColorModePreference: (preference: ColorModePreference) => void;
 };
 
-export const THEME_STORAGE_KEY = "cc.theme";
-
 export const useUiStore = create<UiState>((set: (partial: Partial<UiState>) => void) => ({
-  theme: readStoredTheme(),
-  setTheme: (theme: ThemeName) => {
-    if (hasStorage()) {
-      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  colorModePreference: readColorModePreference(getBrowserStorage()),
+  setColorModePreference: (preference: ColorModePreference) => {
+    const storage = getBrowserStorage();
+
+    if (storage) {
+      persistColorModePreference(storage, preference);
     }
 
-    set({ theme });
+    set({ colorModePreference: preference });
   },
 }));
 
 export type { UiState };
 
-function readStoredTheme(): ThemeName {
-  if (!hasStorage()) {
-    return "light";
+function getBrowserStorage(): Storage | null {
+  if (typeof window === "undefined") {
+    return null;
   }
 
-  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-
-  return isThemeName(storedTheme) ? storedTheme : "light";
+  try {
+    return typeof window.localStorage?.getItem === "function" ? window.localStorage : null;
+  } catch {
+    return null;
+  }
 }
 
-function isThemeName(value: string | null): value is ThemeName {
-  return value !== null && themeNames.includes(value as ThemeName);
-}
-
-function hasStorage(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.localStorage?.getItem === "function" &&
-    typeof window.localStorage?.setItem === "function"
-  );
+function persistColorModePreference(storage: Storage, preference: ColorModePreference): void {
+  try {
+    storage.setItem(COLOR_MODE_STORAGE_KEY, preference);
+  } catch {
+    return;
+  }
 }

@@ -1,6 +1,6 @@
 # Phase 1 — Normalize Foundations Without Redesigning Screens
 
-- Status: Planned
+- Status: Complete
 
 Parent plans:
 
@@ -29,16 +29,16 @@ Those begin in Phase 2 after this foundation is stable.
 
 ## Task sequence
 
-| ID      | Task                                                                                  | Blocked by                                           | Status  |
-| ------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------- |
-| DS-0101 | [Implement the appearance state contract](01-appearance-state-contract.md)            | Phase 0                                              | Planned |
-| DS-0102 | [Complete semantic tokens and normalize compatibility styles](02-token-foundation.md) | DS-0101                                              | Planned |
-| DS-0103 | [Add semantic base guardrails and inherited defaults](03-semantic-base-guardrails.md) | DS-0102                                              | Planned |
-| DS-0104 | [Style headings, paragraphs, and document separators](04-semantic-typography.md)      | DS-0103                                              | Planned |
-| DS-0105 | [Style semantic lists](05-semantic-lists.md)                                          | DS-0104                                              | Planned |
-| DS-0106 | [Style tables, code, and remaining semantic elements](06-semantic-structures.md)      | DS-0105                                              | Planned |
-| DS-0107 | [Correct narrow shell overflow](07-responsive-shell.md)                               | DS-0101                                              | Planned |
-| DS-0108 | [Verify and sign off Phase 1](08-phase-1-signoff.md)                                  | DS-0102, DS-0103, DS-0104, DS-0105, DS-0106, DS-0107 | Planned |
+| ID      | Task                                                                                  | Blocked by                                           | Status   |
+| ------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------- |
+| DS-0101 | [Implement the appearance state contract](01-appearance-state-contract.md)            | Phase 0                                              | Complete |
+| DS-0102 | [Complete semantic tokens and normalize compatibility styles](02-token-foundation.md) | DS-0101                                              | Complete |
+| DS-0103 | [Add semantic base guardrails and inherited defaults](03-semantic-base-guardrails.md) | DS-0102                                              | Complete |
+| DS-0104 | [Style headings, paragraphs, and document separators](04-semantic-typography.md)      | DS-0103                                              | Complete |
+| DS-0105 | [Style semantic lists](05-semantic-lists.md)                                          | DS-0104                                              | Complete |
+| DS-0106 | [Style tables, code, and remaining semantic elements](06-semantic-structures.md)      | DS-0105                                              | Complete |
+| DS-0107 | [Correct narrow shell overflow](07-responsive-shell.md)                               | DS-0101                                              | Complete |
+| DS-0108 | [Verify and sign off Phase 1](08-phase-1-signoff.md)                                  | DS-0102, DS-0103, DS-0104, DS-0105, DS-0106, DS-0107 | Complete |
 
 DS-0107 is logically independent of the semantic rollout after DS-0101 and may
 be implemented alongside DS-0103 through DS-0106. DS-0108 remains blocked until

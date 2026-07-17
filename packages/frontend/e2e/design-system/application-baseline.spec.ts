@@ -42,16 +42,18 @@ test.describe("@design-system current application baseline", () => {
 async function openBaseline(
   page: Page,
   path: string,
-  theme: "light" | "dark",
+  colorMode: "light" | "dark",
   viewport: { width: number; height: number },
 ): Promise<void> {
   await page.setViewportSize(viewport);
-  await page.addInitScript((storedTheme) => {
-    window.localStorage.setItem("cc.theme", storedTheme);
+  await page.addInitScript((storedColorMode) => {
+    window.localStorage.setItem("cc.color-mode", storedColorMode);
+    window.localStorage.removeItem("cc.theme");
     window.localStorage.setItem("cc-sidebar-collapsed", "false");
-  }, theme);
+  }, colorMode);
   await page.goto(path);
-  await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "default");
+  await expect(page.locator("html")).toHaveAttribute("data-color-mode", colorMode);
 }
 
 function screenshotOptions() {

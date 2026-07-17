@@ -1,6 +1,6 @@
 # DS-0102 — Complete Semantic Tokens and Normalize Compatibility Styles
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 1](README.md)
 - Foundation reference:
   [Phase 1 token scope](../../design-system-foundation.md#phase-1--normalize-foundations-without-redesigning-screens)

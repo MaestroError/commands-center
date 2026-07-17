@@ -392,36 +392,36 @@ detectable.
 - [x] Decompose Phase 1 into the
       [detailed Phase 1 task plan](design-system/phase-1/README.md) before editing
       foundation code.
-- [ ] Complete
+- [x] Complete
       [DS-0101 — Implement the appearance state contract](design-system/phase-1/01-appearance-state-contract.md):
       separate theme, preference, and resolved mode; migrate legacy values;
       initialize before paint; add header mode ownership and Default-only
       Profile presentation; remove Modern.
-- [ ] Complete
+- [x] Complete
       [DS-0102 — Complete semantic tokens and normalize compatibility styles](design-system/phase-1/02-token-foundation.md):
       consolidate CSS/Tailwind mappings, add approved color/shape/emphasis
       roles, and repair foundation-level contrast and focus gaps.
-- [ ] Complete
+- [x] Complete
       [DS-0103 — Add semantic base guardrails and inherited defaults](design-system/phase-1/03-semantic-base-guardrails.md):
       establish low-specificity base ownership, inheritance, protected-surface
       isolation, and utility/component precedence.
-- [ ] Complete
+- [x] Complete
       [DS-0104 — Style headings, paragraphs, and document separators](design-system/phase-1/04-semantic-typography.md):
       introduce the first visible generic typography batch without changing
       component-owned or protected content.
-- [ ] Complete
+- [x] Complete
       [DS-0105 — Style semantic lists](design-system/phase-1/05-semantic-lists.md):
       add generic list hierarchy while protecting navigation, menus, Markdown,
       and Milkdown.
-- [ ] Complete
+- [x] Complete
       [DS-0106 — Style tables, code, and remaining semantic elements](design-system/phase-1/06-semantic-structures.md):
       complete element coverage and resolve the measured semantic-content
       overflow without enabling GFM tables.
-- [ ] Complete
+- [x] Complete
       [DS-0107 — Correct narrow shell overflow](design-system/phase-1/07-responsive-shell.md):
       resolve the existing 512px shell width at a 390px viewport as a separate
       responsive task.
-- [ ] Complete
+- [x] Complete
       [DS-0108 — Verify and sign off Phase 1](design-system/phase-1/08-phase-1-signoff.md):
       approve every visual difference, verify protected surfaces and production
       exclusion, and establish the Phase 2 gate.
@@ -434,27 +434,45 @@ sizes.
 
 ### Phase 2 — Establish typed UI primitives
 
-- [ ] Add the smallest reusable primitive set based on demonstrated current
-      usage.
-- [ ] Implement only entries approved for migration or wrapping in the Phase 0
-      adoption matrix.
-- [ ] Initialize the copy-owned Shadcn structure for the existing Vite,
-      Tailwind v4, and path-alias setup, using Radix as the primitive library.
-- [ ] Add the direct Radix dependency and only the Shadcn component files needed
-      by the first implementation batch.
-- [ ] Review generated Shadcn styles and replace its generic palette variables
-      with the established CC semantic theme contract.
-- [ ] Implement primitives on top of the normalized theme contract and existing
-      compatibility classes.
-- [ ] Use Lucide icons and expose accessible labels for icon-only controls.
-- [ ] Add the development/test component gallery.
-- [ ] Keep the first implementation batch limited to `Button`, `Dialog`,
-      `AlertDialog`, and `cn`, using only the dependencies approved by the Phase
-      0 adoption matrix.
+- [x] Decompose Phase 2 into the
+      [detailed Phase 2 task plan](design-system/phase-2/README.md) before adding
+      Shadcn/Radix code or dependencies.
+- [ ] Complete
+      [DS-0201 — Freeze the first primitive-batch contract](design-system/phase-2/01-batch-contract.md):
+      revalidate the approved files, APIs, dependencies, interaction behavior,
+      exclusions, and Phase 3 consumer expectations against the stabilized
+      Phase 1 repository.
+- [ ] Complete
+      [DS-0202 — Initialize the minimal Shadcn/Radix boundary and `cn`](design-system/phase-2/02-shadcn-radix-foundation.md):
+      configure copy-owned Shadcn for the existing Vite/Tailwind v4 stack,
+      explicitly use the Radix base, add only approved dependencies, reject the
+      generated palette, and enforce the CC-owned import boundary.
+- [ ] Complete
+      [DS-0203 — Implement the typed Button primitive](design-system/phase-2/03-button-primitive.md):
+      expose the existing primary, secondary, and danger compatibility contract
+      through a small native-button API without speculative variants.
+- [ ] Complete
+      [DS-0204 — Implement the Dialog primitive](design-system/phase-2/04-dialog-primitive.md):
+      use Radix for modal, portal, keyboard, outside-interaction, and focus
+      behavior while CC owns semantic Tailwind styling and exported composition.
+- [ ] Complete
+      [DS-0205 — Implement the AlertDialog primitive](design-system/phase-2/05-alert-dialog-primitive.md):
+      establish safe destructive focus and cancellation behavior while composing
+      the CC Button visual contract.
+- [ ] Complete
+      [DS-0206 — Add the primitive gallery and visual baselines](design-system/phase-2/06-primitive-gallery.md):
+      extend the existing development-only fixture with real primitive states,
+      interactions, narrow/wide coverage, and Default light/dark screenshots.
+- [ ] Complete
+      [DS-0207 — Verify and sign off Phase 2](design-system/phase-2/07-phase-2-signoff.md):
+      audit files, dependencies, import boundaries, behavior, appearance,
+      protected surfaces, production exclusion, and the Phase 3 gate.
 
 Verify: primitive behavior, keyboard interaction, focus states, disabled states,
 and all theme variants have focused coverage; Shadcn/Radix adds no parallel
-palette or visual contract.
+palette or visual contract. Phase 2 remains limited to `Button`, `Dialog`,
+`AlertDialog`, and `cn`; `ConfirmDialog`, `DocumentCreateDialog`, and
+`DocumentFolderDialog` migration begins in Phase 3 after sign-off.
 
 ### Phase 3 — Consolidate common compositions
 

@@ -1,6 +1,6 @@
 # DS-0108 — Verify and Sign Off Phase 1
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 1](README.md)
 - Foundation reference:
   [Phase 1 verification](../../design-system-foundation.md#phase-1--normalize-foundations-without-redesigning-screens)

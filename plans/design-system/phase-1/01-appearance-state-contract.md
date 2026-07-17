@@ -1,6 +1,6 @@
 # DS-0101 — Implement the Appearance State Contract
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 1](README.md)
 - Foundation reference:
   [Phase 1 appearance scope](../../design-system-foundation.md#phase-1--normalize-foundations-without-redesigning-screens)

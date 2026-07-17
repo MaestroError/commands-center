@@ -26,8 +26,8 @@ verification.
 | Phase                                       | Detailed plan                           | Status      |
 | ------------------------------------------- | --------------------------------------- | ----------- |
 | Phase 0 — Inventory and freeze the contract | [Phase 0 task index](phase-0/README.md) | Complete    |
-| Phase 1 — Normalize foundations             | [Phase 1 task index](phase-1/README.md) | Planned     |
-| Phase 2 — Establish typed UI primitives     | Not decomposed yet                      | Not started |
+| Phase 1 — Normalize foundations             | [Phase 1 task index](phase-1/README.md) | Complete    |
+| Phase 2 — Establish typed UI primitives     | [Phase 2 task index](phase-2/README.md) | Planned     |
 | Phase 3 — Consolidate common compositions   | Not decomposed yet                      | Not started |
 | Phase 4 — Migrate domain UI                 | Not decomposed yet                      | Not started |
 | Phase 5 — Complete third-party theming      | Not decomposed yet                      | Not started |
