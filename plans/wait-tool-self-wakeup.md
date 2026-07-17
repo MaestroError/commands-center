@@ -1,8 +1,8 @@
 # Wait tool — schedule a self-wakeup that re-prompts the same session
 
 **Source:** TickTick task "Wait tool: Prompt self in X minutes" (priority high) —
-*"For cases when it needs to wait something, just prompt 'X minutes passed, Waiting has
-finished, please continue'."*
+_"For cases when it needs to wait something, just prompt 'X minutes passed, Waiting has
+finished, please continue'."_
 
 ## Summary
 
@@ -42,6 +42,7 @@ continuation message. This is the pattern the Claude Code harness itself uses
    `<Conversation>` id tag using the existing `conversationId` system-prompt variable
    (`variables.ts:56`), (b) accept `conversationId` in the tool, (c) build the chat waiting
    UX — no tool rewrite.
+
 3. **Availability:** no hard gating. Set `context: "task_run"` so `withContextRecommendation`
    (`service.ts:183`) recommends it for task runs; the description steers chat usage to
    "only when the operator explicitly asked to wait/resume later."
@@ -69,13 +70,14 @@ it as a **derived runtime sub-state**, mirroring the existing `waiting_for_openc
   the detail panel can show the message.
 
 **Deferred:** a first-class persisted `waiting` board status. Approval gates (a task paused
-*between* runs, indefinitely, awaiting a human) are the case that actually justifies a
-persisted status; design that status contract *with* the approval-gate requirements in hand.
+_between_ runs, indefinitely, awaiting a human) are the case that actually justifies a
+persisted status; design that status contract _with_ the approval-gate requirements in hand.
 X→Y is additive because both share the reason-storage seam.
 
 ## Architecture
 
 ### Data model — new table `conversation_wakeups`
+
 ```
 id
 agent_id
@@ -90,29 +92,35 @@ status             pending | fired | cancelled | superseded
 created_at, fired_at, cancelled_at
 cancel_reason      user_message | manual | superseded
 ```
+
 Enforce **one pending wakeup per conversation** — a new `wait` supersedes the prior one.
 
 ### Tool — `wait` (cc-default group)
+
 - Input: `{ minutes (>=1, <= configured cap), reason, sessionRef, message? }`.
 - `execute`: validate `sessionRef` → resolve conversation + opencode session (and active task
   run, if any); insert/supersede the wakeup row; return "waiting scheduled — ending turn,
   will resume in X min." Turn ends naturally after the tool result.
 
 ### Firing
+
 Mirror `task-scheduler-service`'s DB-tick pattern (its own small `wakeup-scheduler-service`
 or folded into the same loop). On due pending rows → `opencodeService.promptSessionAsync({
 sessionID, text: prompt_text })`, mark `fired`. Reuse the scheduler's **catch-up** semantics so
 a wakeup that came due during downtime fires on next boot.
 
 ### Cancellation
+
 Hook the conversation send-path (`conversation-service` prompt path) to cancel any pending
 wakeup for that conversation (`cancel_reason: "user_message"`) before/with the send.
 
 ### Settings
+
 Add a **max-wait-minutes** setting (default 720) to the settings service + a CC settings UI
 control. The tool reads it to validate the cap.
 
 ### Frontend
+
 - **Chat:** waiting banner + countdown + Cancel button; Send-confirmation modal (decision 4).
 - **Board / run monitor / task detail:** "Paused" badge + countdown + reason (decision 7).
 - Expose the pending wakeup (due_at, reason) on conversation status + task/run read models so
@@ -130,6 +138,7 @@ control. The tool reads it to validate the cap.
   derived `paused_waiting` sub-state.
 
 ## Later / follow-ups
+
 - Per-session MCP identity (hardening for decision 2).
 - Persisted `waiting` board status, co-designed with **approval gates** (reuses the reason
   store and the paused UX).
