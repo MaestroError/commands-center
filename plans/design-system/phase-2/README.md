@@ -1,6 +1,6 @@
 # Phase 2 — Establish Typed UI Primitives
 
-- Status: Planned
+- Status: Complete
 
 Parent plans:
 
@@ -37,15 +37,15 @@ CC owns the exported API, semantic Tailwind classes, visual states, and tests.
 
 ## Task sequence
 
-| ID      | Task                                                                                   | Blocked by                | Status  |
-| ------- | -------------------------------------------------------------------------------------- | ------------------------- | ------- |
-| DS-0201 | [Freeze the first primitive-batch contract](01-batch-contract.md)                      | Phase 1                   | Planned |
-| DS-0202 | [Initialize the minimal Shadcn/Radix boundary and `cn`](02-shadcn-radix-foundation.md) | DS-0201                   | Planned |
-| DS-0203 | [Implement the typed Button primitive](03-button-primitive.md)                         | DS-0202                   | Planned |
-| DS-0204 | [Implement the Dialog primitive](04-dialog-primitive.md)                               | DS-0202, DS-0203          | Planned |
-| DS-0205 | [Implement the AlertDialog primitive](05-alert-dialog-primitive.md)                    | DS-0202, DS-0203          | Planned |
-| DS-0206 | [Add the primitive gallery and visual baselines](06-primitive-gallery.md)              | DS-0203, DS-0204, DS-0205 | Planned |
-| DS-0207 | [Verify and sign off Phase 2](07-phase-2-signoff.md)                                   | DS-0202 through DS-0206   | Planned |
+| ID      | Task                                                                                   | Blocked by                | Status   |
+| ------- | -------------------------------------------------------------------------------------- | ------------------------- | -------- |
+| DS-0201 | [Freeze the first primitive-batch contract](01-batch-contract.md)                      | Phase 1                   | Complete |
+| DS-0202 | [Initialize the minimal Shadcn/Radix boundary and `cn`](02-shadcn-radix-foundation.md) | DS-0201                   | Complete |
+| DS-0203 | [Implement the typed Button primitive](03-button-primitive.md)                         | DS-0202                   | Complete |
+| DS-0204 | [Implement the Dialog primitive](04-dialog-primitive.md)                               | DS-0202, DS-0203          | Complete |
+| DS-0205 | [Implement the AlertDialog primitive](05-alert-dialog-primitive.md)                    | DS-0202, DS-0203          | Complete |
+| DS-0206 | [Add the primitive gallery and visual baselines](06-primitive-gallery.md)              | DS-0203, DS-0204, DS-0205 | Complete |
+| DS-0207 | [Verify and sign off Phase 2](07-phase-2-signoff.md)                                   | DS-0202 through DS-0206   | Complete |
 
 Dialog and AlertDialog may be implemented independently after Button is stable.
 DS-0206 remains blocked until all three primitives are available. Production

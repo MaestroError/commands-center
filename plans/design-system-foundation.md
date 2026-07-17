@@ -348,8 +348,8 @@ Tailwind itself or static class aliases without observable behavior.
 ## Phased plan
 
 Detailed execution plans live under [`plans/design-system/`](design-system/README.md).
-Phases 0 and 1 have been decomposed so far; later phases must use the same task
-format and record blockers on dependent tasks.
+Phases 0 through 6 have been decomposed using the same task format and explicit
+blockers for dependent work.
 
 ### Phase 0 — Inventory and freeze the contract
 
@@ -437,33 +437,33 @@ sizes.
 - [x] Decompose Phase 2 into the
       [detailed Phase 2 task plan](design-system/phase-2/README.md) before adding
       Shadcn/Radix code or dependencies.
-- [ ] Complete
+- [x] Complete
       [DS-0201 — Freeze the first primitive-batch contract](design-system/phase-2/01-batch-contract.md):
       revalidate the approved files, APIs, dependencies, interaction behavior,
       exclusions, and Phase 3 consumer expectations against the stabilized
       Phase 1 repository.
-- [ ] Complete
+- [x] Complete
       [DS-0202 — Initialize the minimal Shadcn/Radix boundary and `cn`](design-system/phase-2/02-shadcn-radix-foundation.md):
       configure copy-owned Shadcn for the existing Vite/Tailwind v4 stack,
       explicitly use the Radix base, add only approved dependencies, reject the
       generated palette, and enforce the CC-owned import boundary.
-- [ ] Complete
+- [x] Complete
       [DS-0203 — Implement the typed Button primitive](design-system/phase-2/03-button-primitive.md):
       expose the existing primary, secondary, and danger compatibility contract
       through a small native-button API without speculative variants.
-- [ ] Complete
+- [x] Complete
       [DS-0204 — Implement the Dialog primitive](design-system/phase-2/04-dialog-primitive.md):
       use Radix for modal, portal, keyboard, outside-interaction, and focus
       behavior while CC owns semantic Tailwind styling and exported composition.
-- [ ] Complete
+- [x] Complete
       [DS-0205 — Implement the AlertDialog primitive](design-system/phase-2/05-alert-dialog-primitive.md):
       establish safe destructive focus and cancellation behavior while composing
       the CC Button visual contract.
-- [ ] Complete
+- [x] Complete
       [DS-0206 — Add the primitive gallery and visual baselines](design-system/phase-2/06-primitive-gallery.md):
       extend the existing development-only fixture with real primitive states,
       interactions, narrow/wide coverage, and Default light/dark screenshots.
-- [ ] Complete
+- [x] Complete
       [DS-0207 — Verify and sign off Phase 2](design-system/phase-2/07-phase-2-signoff.md):
       audit files, dependencies, import boundaries, behavior, appearance,
       protected surfaces, production exclusion, and the Phase 3 gate.
@@ -476,68 +476,199 @@ palette or visual contract. Phase 2 remains limited to `Button`, `Dialog`,
 
 ### Phase 3 — Consolidate common compositions
 
-- [ ] Update `PageHeader`, page states, tabs, confirmation dialogs, switches,
-      password fields, and searchable selects to compose the primitives.
-- [ ] Remove only duplication made obsolete by those conversions.
-- [ ] Keep public component APIs stable where practical.
-- [ ] Start dialog consolidation with `ConfirmDialog`,
-      `DocumentCreateDialog`, and `DocumentFolderDialog`; focus entry/return,
-      Escape, overlay, accessible naming, and safe destructive focus block their
-      migration.
+- [x] Decompose Phase 3 into the
+      [detailed Phase 3 task plan](design-system/phase-3/README.md), with Phase 2
+      sign-off as the implementation blocker.
+- [ ] Complete
+      [DS-0301 — Accept the Phase 2 handoff and freeze the common-composition contract](design-system/phase-3/01-phase-2-handoff.md):
+      reconcile actual primitive APIs, inventory common consumers and tests,
+      authorize only concrete support primitives/dependencies, and preserve
+      exclusion boundaries.
+- [ ] Complete
+      [DS-0302 — Migrate `ConfirmDialog` to AlertDialog](design-system/phase-3/02-confirm-dialog.md):
+      preserve its common API and callbacks while adopting safe focus,
+      portal/overlay, Escape, and focus-return behavior.
+- [ ] Complete
+      [DS-0303 — Migrate the document dialogs to Dialog](design-system/phase-3/03-document-dialogs.md):
+      replace duplicated modal shells while keeping document/folder validation,
+      mutations, errors, and public APIs separate and stable.
+- [ ] Complete
+      [DS-0304 — Consolidate `PageHeader` and page states](design-system/phase-3/04-page-structure.md):
+      compose approved Surface/Alert support primitives without moving page
+      layout or loading-state ownership out of the common layer.
+- [ ] Complete
+      [DS-0305 — Consolidate `PasswordInput` and field primitives](design-system/phase-3/05-password-input.md):
+      reuse native Input and concrete icon-action primitives while preserving
+      form behavior, visibility state, and Lucide accessibility.
+- [ ] Complete
+      [DS-0306 — Migrate the common Switch](design-system/phase-3/06-switch.md):
+      replace custom role/state behavior and raw colors with the approved
+      CC-owned Radix Switch primitive.
+- [ ] Complete
+      [DS-0307 — Migrate ordinary common tabs](design-system/phase-3/07-tabs.md):
+      add correct reusable tab keyboard/focus behavior while retaining
+      terminal/editor tab exclusions.
+- [ ] Complete
+      [DS-0308 — Migrate `SearchableSelect` to the approved combobox composition](design-system/phase-3/08-searchable-select.md):
+      preserve its common API while composing the approved Popover/Command
+      behavior and retaining composer/domain exclusions.
+- [ ] Complete
+      [DS-0309 — Add common-composition gallery coverage](design-system/phase-3/09-common-gallery.md):
+      review every migrated composition/state in Default light/dark at
+      narrow/wide widths through public APIs.
+- [ ] Complete
+      [DS-0310 — Verify and sign off Phase 3](design-system/phase-3/10-phase-3-signoff.md):
+      audit APIs, consumers, support dependencies, Radix boundaries, behavior,
+      protected surfaces, production exclusion, and the Phase 4 handoff.
 
 Verify: the common layer no longer reimplements primitive visual states and its
-existing tests continue to pass.
+existing tests continue to pass. Public APIs remain stable by default, Radix
+imports remain inside `components/ui`, and broad domain migration stays in
+Phase 4.
 
 ### Phase 4 — Migrate domain UI incrementally
 
-- [ ] Migrate high-repetition surfaces first: forms, page actions, status chips,
-      modal shells, and icon buttons.
-- [ ] Work by domain or user flow so each batch is reviewable and testable.
-- [ ] Replace raw palette colors with semantic tokens where the meaning is
-      theme-dependent.
-- [ ] Replace inline SVG icons with Lucide where an equivalent exists.
-- [ ] Do not refactor business logic during visual migrations.
-- [ ] Ratchet the Phase 0 inventory of 179 raw palette matches across 25 files
-      and 16 inline-SVG TSX files; retain only exceptions EX-001 through EX-003
-      and separately controlled category/brand decisions.
+- [x] Decompose Phase 4 into the
+      [detailed Phase 4 task plan](design-system/phase-4/README.md), with the
+      completed Phase 3 handoff as the implementation gate.
+- [ ] Complete
+      [DS-0401 — Accept the Phase 3 handoff and refresh migration inventories](design-system/phase-4/01-phase-3-handoff.md):
+      recalculate palette/icon/class/interaction counts, assign every live match
+      to a domain/exception/Phase 5 owner, and establish current ratchets.
+- [ ] Complete
+      [DS-0402 — Migrate shell and global interaction surfaces](design-system/phase-4/02-shell-global-ui.md):
+      move global actions, ordinary menus, tooltips, overlays, statuses, and
+      equivalent glyphs onto CC-owned APIs while preserving responsive access,
+      shortcuts, and appearance behavior.
+- [ ] Complete
+      [DS-0403 — Migrate specialist management flows](design-system/phase-4/03-specialists.md):
+      migrate specialist list/form/editor controls and semantic states without
+      changing schemas, mutations, navigation, or portable state.
+- [ ] Complete
+      [DS-0404 — Migrate task authoring and template flows](design-system/phase-4/04-task-authoring.md):
+      migrate forms, templates, scheduling, prompt chrome, and actions while
+      retaining domain-specific composer focus/insertion behavior.
+- [ ] Complete
+      [DS-0405 — Migrate task board, detail, and run flows](design-system/phase-4/05-task-operations.md):
+      map operational status/progress roles and migrate controls without
+      changing drag/drop, queue/run, monitoring, subtask, or artifact behavior.
+- [ ] Complete
+      [DS-0406 — Migrate integrations and provider flows](design-system/phase-4/06-integrations-providers.md):
+      migrate generic connection/configuration chrome while preserving exact
+      EX-002 provider identity and all auth/secret behavior.
+- [ ] Complete
+      [DS-0407 — Migrate settings, API, and custom-tool flows](design-system/phase-4/07-settings-api-tools.md):
+      migrate dense configuration/actions and the approved tri-state control
+      while retaining native controls and security/business boundaries.
+- [ ] Complete
+      [DS-0408 — Migrate chat and media chrome](design-system/phase-4/08-chat-media.md):
+      migrate chat controls, dialogs, media, models, icons, and semantic states
+      while freezing Markdown and composer suggestion focus behavior.
+- [ ] Complete
+      [DS-0409 — Migrate workspace, Documents, and file-manager chrome](design-system/phase-4/09-workspace-documents-files.md):
+      migrate CC-owned file/layout controls while retaining domain tab
+      controllers and handing editor/terminal/third-party bridges to Phase 5.
+- [ ] Complete
+      [DS-0410 — Close palette, icon, component, and compatibility inventories](design-system/phase-4/10-inventory-ratchet.md):
+      account for every residual value/glyph/class/import, update exceptions,
+      and recommend realistic Phase 6 audit ratchets.
+- [ ] Complete
+      [DS-0411 — Add integrated domain migration baselines](design-system/phase-4/11-domain-baselines.md):
+      review representative domain flows and states without creating blanket
+      page snapshots.
+- [ ] Complete
+      [DS-0412 — Verify and sign off Phase 4](design-system/phase-4/12-phase-4-signoff.md):
+      verify domain behavior, semantic appearance, inventories, exceptions,
+      protected surfaces, production exclusion, portability, and the Phase 5
+      handoff.
 
 Verify: each migrated flow is visually reviewed in the `Default` theme's light
-and dark modes and retains its unit and E2E behavior.
+and dark modes and retains its unit and E2E behavior. Phase 0's 179 raw-palette/
+25-file and 16 inline-SVG-file counts remain historical baselines; DS-0401 must
+set live post-Phase-3 ratchets before implementation.
 
 ### Phase 5 — Complete third-party theming
 
-- [ ] Make Monaco respond to the active CC theme.
-- [ ] Build xterm options from CC theme values while preserving intentional ANSI
-      colors.
-- [ ] Replace Milkdown's Crepe palette bridge with CC semantic theme tokens
-      while keeping its editor-specific styles scoped to
-      `.milkdown-editor-wrapper`.
-- [ ] Verify Milkdown's document data, editing behavior, and reviewed visual
-      baseline remain stable, and that global base-element rules do not leak
-      into the editor.
-- [ ] Add or normalize the file-manager theme bridge.
-- [ ] Use one scoped task and stable fixture per third-party surface. Reuse the
-      Milkdown editable/read-only/serialization/menu/selection/code/image/table
-      baselines; add equivalent stable fixtures for Monaco and xterm before
-      changing their fixed themes.
-- [ ] Do not create speculative assistant-ui or SVAR bridges while those
-      dependencies and consumers are absent.
+- [x] Decompose Phase 5 into the
+      [detailed Phase 5 task plan](design-system/phase-5/README.md), with the
+      completed Phase 4 handoff as the implementation gate.
+- [ ] Complete
+      [DS-0501 — Accept the Phase 4 handoff and freeze bridge contracts](design-system/phase-5/01-phase-4-handoff.md):
+      recalculate real consumers/values, define semantic mappings and lifecycle
+      rules, freeze fixtures, and reconcile EX-003 through EX-005.
+- [ ] Complete
+      [DS-0502 — Migrate the Milkdown and Crepe theme bridge](design-system/phase-5/02-milkdown-bridge.md):
+      normalize the scoped semantic adapter while preserving MILK-01 through
+      MILK-04, document behavior, and generic-style isolation.
+- [ ] Complete
+      [DS-0503 — Migrate the Monaco theme bridge](design-system/phase-5/03-monaco-bridge.md):
+      capture a real fixture, replace forced `vs-dark` with CC-owned light/dark
+      themes, and update mounted editors without model or interaction loss.
+- [ ] Complete
+      [DS-0504 — Migrate the xterm theme bridge](design-system/phase-5/04-xterm-bridge.md):
+      capture a real ANSI fixture, derive base roles from CC semantics, retain a
+      controlled EX-004 palette, and update without terminal/socket recreation.
+- [ ] Complete
+      [DS-0505 — Audit and normalize the file-manager bridge](design-system/phase-5/05-file-manager-bridge.md):
+      implement only a bridge proven by a real post-Phase-4 consumer and record
+      a no-op when SVAR/another third-party consumer remains absent.
+- [ ] Complete
+      [DS-0506 — Verify integrated live appearance switching](design-system/phase-5/06-live-appearance-switching.md):
+      exercise light, dark, reactive system mode, lazy loading, rapid switching,
+      state preservation, and lifecycle stability across every surface.
+- [ ] Complete
+      [DS-0507 — Close bridge inventories and exception ownership](design-system/phase-5/07-inventory-and-exceptions.md):
+      account for residual values/adapters, finalize EX-003 through EX-005, and
+      produce reproducible Phase 6 ratchets.
+- [ ] Complete
+      [DS-0508 — Verify and sign off Phase 5](design-system/phase-5/08-phase-5-signoff.md):
+      run focused/integrated quality gates, verify protected and portable-state
+      boundaries, and deliver the exact Phase 6 handoff.
 
 Verify: changing the theme or resolved color mode updates every major frontend
 surface without reloads, unreadable states, or fixed dark/light islands.
 
 ### Phase 6 — Document and enforce the system
 
-- [ ] Document token naming, class compatibility, component selection, allowed
-      Tailwind usage, and exception rules.
-- [ ] Document how to add a theme without editing component implementations.
-- [ ] Add a lightweight repository audit for new hardcoded palette colors,
-      inline SVGs, and unapproved primitive duplication.
-- [ ] Retire legacy classes only after all call sites have migrated and removal
-      produces a clear simplification.
-- [ ] Convert the Phase 0 reproduction commands and exception IDs into
-      lightweight audits only after migration batches establish realistic
-      count ratchets.
+- [x] Decompose Phase 6 into the
+      [detailed Phase 6 task plan](design-system/phase-6/README.md), with the
+      completed Phase 5 handoff as the implementation gate.
+- [ ] Complete
+      [DS-0601 — Accept the Phase 5 handoff and freeze the enforcement contract](design-system/phase-6/01-phase-5-handoff.md):
+      reproduce final APIs, inventories, ratchets, exceptions, documentation
+      gaps, compatibility consumers, and task ownership.
+- [ ] Complete
+      [DS-0602 — Write the canonical contributor design-system guide](design-system/phase-6/02-contributor-guide.md):
+      document token/Tailwind/CSS/content/component selection with real APIs and
+      a contributor decision tree.
+- [ ] Complete
+      [DS-0603 — Document theme authoring and exception workflows](design-system/phase-6/03-themes-and-exceptions.md):
+      prove themes can be added without component edits and define stable,
+      evidence-backed exception ownership.
+- [ ] Complete
+      [DS-0604 — Update AGENTS.md and contributor entry points](design-system/phase-6/04-agents-and-entry-points.md):
+      add concise mandatory design-system rules, correct live frontend-stack
+      claims, and align AGENTS, CONTRIBUTING, README, and canonical docs.
+- [ ] Complete
+      [DS-0605 — Consolidate the development gallery and visual contract](design-system/phase-6/05-gallery-and-visual-contract.md):
+      present final reusable/content/bridge states with focused visual,
+      responsive, keyboard, focus, and production-exclusion coverage.
+- [ ] Complete
+      [DS-0606 — Implement lightweight design-system audit ratchets](design-system/phase-6/06-audit-ratchets.md):
+      encode realistic exception-aware checks with positive/negative fixtures
+      and actionable failures while preserving existing ESLint ownership.
+- [ ] Complete
+      [DS-0607 — Retire proven-unused compatibility classes](design-system/phase-6/07-compatibility-retirement.md):
+      remove only zero-consumer families, ratchet retained consumers, and avoid
+      forced domain refactors.
+- [ ] Complete
+      [DS-0608 — Integrate design-system enforcement into contributor workflows](design-system/phase-6/08-workflow-enforcement.md):
+      expose the final local command, add it to CI/aggregate checks, and keep
+      local/CI output deterministic and actionable.
+- [ ] Complete
+      [DS-0609 — Verify and sign off Phase 6](design-system/phase-6/09-phase-6-signoff.md):
+      run a contributor usability exercise and full docs, audit, gallery,
+      compatibility, quality, production, and portability gates.
 
 Verify: a contributor can choose the correct token, utility, primitive, or
 composition without reading unrelated implementation files.

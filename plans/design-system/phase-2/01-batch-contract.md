@@ -1,6 +1,6 @@
 # DS-0201 — Freeze the First Primitive-Batch Contract
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 2](README.md)
 - Foundation reference:
   [Phase 2 scope](../../design-system-foundation.md#phase-2--establish-typed-ui-primitives)
@@ -58,22 +58,32 @@ separately from the accessibility gaps the new primitives are expected to fix.
 
 ## Acceptance criteria
 
-- [ ] Every proposed export maps to the approved first batch or a demonstrated
+- [x] Every proposed export maps to the approved first batch or a demonstrated
       first-batch state.
-- [ ] Button variants are limited to current primary, secondary, and danger
+- [x] Button variants are limited to current primary, secondary, and danger
       needs; polymorphic `asChild`, loading APIs, and speculative sizes are
       either excluded or justified by a named consumer.
-- [ ] Dialog and AlertDialog structural exports are sufficient for the three
+- [x] Dialog and AlertDialog structural exports are sufficient for the three
       named Phase 3 consumers without embedding domain behavior.
-- [ ] Ordinary and destructive overlay/Escape behavior is explicit and
+- [x] Ordinary and destructive overlay/Escape behavior is explicit and
       testable.
-- [ ] Existing callback, validation, pending, error, and close behavior for the
+- [x] Existing callback, validation, pending, error, and close behavior for the
       three future consumers is recorded and covered where necessary.
-- [ ] `radix-ui`, `class-variance-authority`, `clsx`, and `tailwind-merge` are the
+- [x] `radix-ui`, `class-variance-authority`, `clsx`, and `tailwind-merge` are the
       complete direct-dependency allowlist; any change requires matrix approval.
-- [ ] No Phase 2 decision expands into Input, Select, DropdownMenu, Tooltip,
+- [x] No Phase 2 decision expands into Input, Select, DropdownMenu, Tooltip,
       Switch, Tabs, domain surfaces, Markdown, or editor internals.
-- [ ] Phase 3 remains the owner of production consumer migration.
+- [x] Phase 3 remains the owner of production consumer migration.
+
+## Outcome
+
+Contract frozen in [`artifacts/batch-1-contract.md`](artifacts/batch-1-contract.md).
+Repository revalidation confirmed no `components/ui`, `cn`, Radix, CVA, `clsx`, or
+`tailwind-merge` exist yet, and the three Phase 3 consumers are unchanged.
+Approved overlay-dismissal decision: ordinary dialogs close on backdrop click and
+Escape; destructive alert dialogs require an explicit Cancel/Confirm. Pre-migration
+tests added to `ConfirmDialog.test.tsx` (callbacks, disabled, danger variant,
+secondary action, accessible name); document-dialog behavior was already covered.
 
 ## Verification tests
 

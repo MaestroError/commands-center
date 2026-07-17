@@ -1,6 +1,6 @@
 # DS-0202 — Initialize the Minimal Shadcn/Radix Boundary and `cn`
 
-- Status: Planned
+- Status: Complete (record: [shadcn-radix-foundation-record.md](artifacts/shadcn-radix-foundation-record.md); `radix-ui` install deferred to DS-0204)
 - Phase: [Phase 2](README.md)
 - Foundation reference:
   [React primitive ownership](../../design-system-foundation.md#react-primitives)

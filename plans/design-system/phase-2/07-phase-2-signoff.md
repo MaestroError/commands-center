@@ -1,6 +1,6 @@
 # DS-0207 — Verify and Sign Off Phase 2
 
-- Status: Planned
+- Status: Complete (sign-off: [phase-2-signoff.md](artifacts/phase-2-signoff.md))
 - Phase: [Phase 2](README.md)
 - Foundation reference:
   [Phase 2 verification](../../design-system-foundation.md#phase-2--establish-typed-ui-primitives)

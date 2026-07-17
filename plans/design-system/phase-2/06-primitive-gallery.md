@@ -1,6 +1,6 @@
 # DS-0206 — Add the Primitive Gallery and Visual Baselines
 
-- Status: Planned
+- Status: Complete (manifest: [primitive-gallery-manifest.md](artifacts/primitive-gallery-manifest.md))
 - Phase: [Phase 2](README.md)
 - Foundation reference:
   [gallery and focused tests](../../design-system-foundation.md#7-verify-through-a-component-gallery-and-focused-tests)

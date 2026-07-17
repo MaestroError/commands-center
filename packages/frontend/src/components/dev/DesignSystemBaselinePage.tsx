@@ -7,6 +7,28 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Switch } from "@/components/common/Switch";
 import { LazyMilkdownEditor } from "@/components/documents/LazyMilkdownEditor";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const MARKDOWN_FIXTURE = `# Reader heading
 
@@ -66,7 +88,13 @@ const protectedSurface = "milkdown";
 | Serialization | Protect |
 `;
 
-type BaselineSurface = "application" | "dialog" | "markdown" | "milkdown" | "semantic";
+type BaselineSurface =
+  | "application"
+  | "dialog"
+  | "markdown"
+  | "milkdown"
+  | "primitives"
+  | "semantic";
 
 export function DesignSystemBaselinePage() {
   const [searchParams] = useSearchParams();
@@ -74,6 +102,10 @@ export function DesignSystemBaselinePage() {
 
   if (surface === "dialog") {
     return <DialogBaseline />;
+  }
+
+  if (surface === "primitives") {
+    return <PrimitivesBaseline />;
   }
 
   if (surface === "markdown") {
@@ -366,8 +398,163 @@ function SemanticHtmlBaseline() {
   );
 }
 
+const LONG_TOKEN =
+  "an_intentionally_long_unbreakable_token_that_must_not_expand_the_dialog_beyond_a_narrow_viewport";
+
+function PrimitivesBaseline() {
+  const [controlledOpen, setControlledOpen] = useState(false);
+
+  return (
+    <div className="grid gap-4" data-testid="primitives-baseline">
+      <PageHeader
+        description="Typed CC primitives (Button, Dialog, AlertDialog) rendered through their public APIs. Development-only proving surface for Phase 2."
+        eyebrow="Phase 2 primitives"
+        title="Typed UI primitives"
+      />
+
+      <section className="cc-panel grid gap-4 p-6" data-testid="primitive-buttons">
+        <h2 className="text-lg font-semibold text-text-primary">Button variants</h2>
+        <div className="flex flex-wrap gap-2">
+          <Button>Primary</Button>
+          <Button variant="secondary">Secondary</Button>
+          <Button variant="danger">Danger</Button>
+          <Button disabled>Disabled primary</Button>
+          <Button variant="secondary" disabled>
+            Disabled secondary
+          </Button>
+        </div>
+      </section>
+
+      <section className="cc-panel grid gap-4 p-6">
+        <h2 className="text-lg font-semibold text-text-primary">Dialog</h2>
+        <div className="flex flex-wrap gap-2">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button>Open dialog</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Rename document</DialogTitle>
+                <DialogDescription>
+                  Ordinary dialogs close on Escape and on an outside click.
+                </DialogDescription>
+              </DialogHeader>
+              <p className="mt-3 text-sm text-text-secondary" data-testid="dialog-stress">
+                Long content verifies wrapping and narrow containment: {LONG_TOKEN}.
+              </p>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="secondary">Cancel</Button>
+                </DialogClose>
+                <DialogClose asChild>
+                  <Button>Save document</Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Button variant="secondary" onClick={() => setControlledOpen(true)}>
+            Open controlled dialog
+          </Button>
+          <Dialog open={controlledOpen} onOpenChange={setControlledOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Controlled dialog</DialogTitle>
+                <DialogDescription>Open state is owned by the fixture.</DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="secondary">Close</Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </section>
+
+      <section className="cc-panel grid gap-4 p-6">
+        <h2 className="text-lg font-semibold text-text-primary">AlertDialog</h2>
+        <div className="flex flex-wrap gap-2">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="danger">Open destructive alert</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete workspace?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Destructive alerts keep initial focus on the safe action and never dismiss the
+                  danger action through Escape or an outside click. {LONG_TOKEN}.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel asChild>
+                  <Button variant="secondary">Cancel</Button>
+                </AlertDialogCancel>
+                <AlertDialogAction asChild>
+                  <Button variant="danger">Delete workspace</Button>
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="secondary">Open ordinary alert</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Leave this page?</AlertDialogTitle>
+                <AlertDialogDescription>Your changes are already saved.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel asChild>
+                  <Button variant="secondary">Stay</Button>
+                </AlertDialogCancel>
+                <AlertDialogAction asChild>
+                  <Button>Leave</Button>
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="danger">Open disabled alert</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete permanently?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  The confirmation action is disabled until preconditions are met.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel asChild>
+                  <Button variant="secondary">Cancel</Button>
+                </AlertDialogCancel>
+                <AlertDialogAction asChild>
+                  <Button variant="danger" disabled>
+                    Delete permanently
+                  </Button>
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function readSurface(value: string | null): BaselineSurface {
-  if (value === "dialog" || value === "markdown" || value === "milkdown" || value === "semantic") {
+  if (
+    value === "dialog" ||
+    value === "markdown" ||
+    value === "milkdown" ||
+    value === "primitives" ||
+    value === "semantic"
+  ) {
     return value;
   }
 

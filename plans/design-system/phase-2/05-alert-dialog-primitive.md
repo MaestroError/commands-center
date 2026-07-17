@@ -1,6 +1,6 @@
 # DS-0205 — Implement the AlertDialog Primitive
 
-- Status: Planned
+- Status: Complete (unit + a11y coverage landed; real-browser safe-focus/Escape/overlay tests are driven through the fixture in DS-0206)
 - Phase: [Phase 2](README.md)
 - Foundation reference:
   [Radix and CC ownership](../../design-system-foundation.md#react-primitives)

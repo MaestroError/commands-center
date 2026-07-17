@@ -1,6 +1,6 @@
 # DS-0203 — Implement the Typed Button Primitive
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 2](README.md)
 - Foundation reference:
   [compatibility API](../../design-system-foundation.md#4-preserve-current-classes-as-a-compatibility-api)
