@@ -313,12 +313,12 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
         <div className="flex flex-wrap items-center gap-1.5">
           {value.selectedSkill ? (
             <span
-              className="inline-flex items-center gap-1 rounded-md bg-purple-500/15 px-2 py-1 text-xs font-medium text-purple-400"
+              className="inline-flex items-center gap-1 rounded-md bg-accent-surface px-2 py-1 text-xs font-medium text-accent"
               title={value.selectedSkill.description}
             >
               /{value.selectedSkill.slug}
               <button
-                className="ml-0.5 rounded-full p-0.5 hover:bg-purple-500/20"
+                className="ml-0.5 rounded-full p-0.5 hover:bg-accent/20"
                 onClick={() => updateValue({ selectedSkill: null })}
                 type="button"
               >
@@ -347,14 +347,14 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
           ))}
           {mentionedAgents.map((agent) => (
             <span
-              className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-1 text-xs font-medium text-emerald-400"
+              className="inline-flex items-center gap-1 rounded-md bg-info-surface px-2 py-1 text-xs font-medium text-info-foreground"
               data-testid={`task-specialist-mention-chip-${agent.id}`}
               key={agent.id}
               title={agent.name}
             >
               @{agent.name}
               <button
-                className="ml-0.5 rounded-full p-0.5 hover:bg-emerald-500/20"
+                className="ml-0.5 rounded-full p-0.5 hover:bg-info/20"
                 onClick={() => handleRemoveSpecialistMention(agent.id)}
                 type="button"
               >

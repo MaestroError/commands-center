@@ -8,51 +8,53 @@
 
 ## Reproduction commands
 
-Run from `packages/frontend/src`, excluding `.test.` files. Palette pattern:
+Run from the repository root, excluding `.test.` files. Palette occurrence pattern:
 
 ```
-(bg|text|border|ring|from|to|via|fill|stroke|divide|outline|decoration|shadow|accent|caret|placeholder)-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}
+(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}
 ```
 
 ## Live counts vs history
 
-| Concern                                      | Phase 0 | Phase 3 handoff | DS-0401 live | Note                                                                         |
-| -------------------------------------------- | ------: | --------------: | -----------: | ---------------------------------------------------------------------------- |
-| Raw palette matches (strict)                 |     179 |             178 |       **72** | Handoff used a broader pattern; this is the strict `prefix-color-NNN` count. |
-| Files with raw palette                       |      25 |              24 |       **23** |                                                                              |
-| TSX files with inline `<svg>`                |      16 |              16 |       **16** | Unchanged.                                                                   |
-| Files importing `lucide-react`               |      52 |              52 |       **53** | +1 from Phase 3 field/icon work.                                             |
-| Direct Radix/`cmdk` outside `components/ui/` |       0 |               0 |        **0** | Boundary holds.                                                              |
+| Concern                                      | Phase 0 | Phase 3 handoff | DS-0401 live | Note                                                                      |
+| -------------------------------------------- | ------: | --------------: | -----------: | ------------------------------------------------------------------------- |
+| Raw palette occurrences                      |     179 |             178 |      **178** | Counted with `rg -o`; matching-line counts are not a safe ratchet.        |
+| Files with raw palette                       |      25 |              24 |       **23** | The handoff's 24 included a test file; the live source scope excludes it. |
+| Hex/RGB/HSL occurrences                      |      82 |             136 |      **136** | Theme definitions plus the xterm bridge; counted by occurrence.           |
+| `cc-*` occurrences                           |       — |             776 |      **776** | Includes visual compatibility classes and nonvisual keys.                 |
+| TSX files with inline `<svg>`                |      16 |              16 |       **16** | Unchanged.                                                                |
+| Files importing `lucide-react`               |      52 |              52 |       **53** | +1 from Phase 3 field/icon work.                                          |
+| Direct Radix/`cmdk` outside `components/ui/` |       0 |               0 |        **0** | Boundary holds.                                                           |
 
 ## Raw-palette disposition by file → domain owner
 
 | File                                             | Matches | Disposition / owner                                                              |
 | ------------------------------------------------ | ------: | -------------------------------------------------------------------------------- |
-| `components/shell/AppShell.tsx`                  |   4 → 0 | **DS-0402 (done this batch)** — status dots + active-runs pill → semantic tokens |
-| `components/specialists/SpecialistForm.tsx`      |      11 | DS-0403 — validation/status roles                                                |
-| `pages/tasks/task-helpers.ts`                    |      10 | DS-0404/0405 — **category/status semantics; classify product meaning first**     |
-| `pages/integrations/integration-helpers.ts`      |       7 | DS-0406 — **category/brand semantics; classify before tokenizing**               |
-| `pages/SettingsPage.tsx`                         |       6 | DS-0407                                                                          |
-| `pages/IntegrationsPage.tsx`                     |       5 | DS-0406                                                                          |
-| `pages/CustomToolsPage.tsx`                      |       5 | DS-0407 (incl. API tri-state exception review)                                   |
-| `components/tasks/TaskPromptComposer.tsx`        |       4 | DS-0404                                                                          |
-| `components/workspace/MonacoFileEditor.tsx`      |       3 | DS-0409 chrome only; **editor theme mapping is Phase 5**                         |
-| `components/chat/ChatComposer.tsx`               |       3 | DS-0408 (chrome only; composer suggestion behavior excluded)                     |
-| `components/chat/UserMessage.tsx`                |       2 | DS-0408                                                                          |
-| `pages/tasks/TaskBoard.tsx`                      |       1 | DS-0405                                                                          |
-| `pages/TaskDetailPage.tsx`                       |       1 | DS-0405                                                                          |
-| `components/tasks/task-ui.tsx`                   |       1 | DS-0404/0405                                                                     |
-| `pages/integrations/mcp-server-dialog.tsx`       |       1 | DS-0406                                                                          |
-| `pages/file-manager/file-manager-panels.tsx`     |       1 | DS-0409                                                                          |
-| `pages/FileManagerPage.tsx`                      |       1 | DS-0409                                                                          |
+| `components/shell/AppShell.tsx`                  |   7 → 0 | **DS-0402 (done this batch)** — status dots + active-runs pill → semantic tokens |
+| `components/specialists/SpecialistForm.tsx`      |      34 | DS-0403 — permission/drift/runtime status roles                                  |
+| `pages/tasks/task-helpers.ts`                    |      32 | DS-0404/0405 — task-state semantics                                              |
+| `pages/CustomToolsPage.tsx`                      |      20 | DS-0407                                                                          |
+| `pages/integrations/integration-helpers.ts`      |      14 | DS-0406 — category/brand semantics                                               |
+| `pages/IntegrationsPage.tsx`                     |      10 | DS-0406                                                                          |
+| `components/workspace/MonacoFileEditor.tsx`      |       8 | DS-0409 chrome only; editor theme mapping is Phase 5                             |
+| `pages/SettingsPage.tsx`                         |       7 | DS-0407                                                                          |
+| `components/tasks/TaskPromptComposer.tsx`        |       6 | DS-0404                                                                          |
+| `components/chat/ChatComposer.tsx`               |       5 | DS-0408 (chrome only; composer suggestion behavior excluded)                     |
+| `components/chat/UserMessage.tsx`                |       5 | DS-0408                                                                          |
+| `pages/tasks/TaskBoard.tsx`                      |       4 | DS-0405                                                                          |
+| `pages/file-manager/file-manager-panels.tsx`     |       4 | DS-0409                                                                          |
+| `pages/FileManagerPage.tsx`                      |       4 | DS-0409                                                                          |
+| `pages/integrations/mcp-server-dialog.tsx`       |       3 | DS-0406                                                                          |
+| `components/tasks/task-ui.tsx`                   |       3 | DS-0404/0405                                                                     |
+| `components/chat/AutoApproveToggle.tsx`          |       3 | DS-0408                                                                          |
+| `pages/TaskDetailPage.tsx`                       |       2 | DS-0405                                                                          |
+| `components/chat/SlashCommandPopover.tsx`        |       2 | DS-0408 — audit-first composer surface; token color only                         |
+| `components/chat/CopyIdButton.tsx`               |       2 | DS-0408                                                                          |
 | `components/workspace/QuickInspectorSurface.tsx` |       1 | DS-0409                                                                          |
 | `components/workspace/EditorTabBar.tsx`          |       1 | DS-0409 — domain tab controller stays native; token the color only               |
-| `components/chat/SlashCommandPopover.tsx`        |       1 | DS-0408 — **audit-first composer surface; token color only, keep behavior**      |
 | `components/chat/MessageTimeline.tsx`            |       1 | DS-0408                                                                          |
-| `components/chat/CopyIdButton.tsx`               |       1 | DS-0408                                                                          |
-| `components/chat/AutoApproveToggle.tsx`          |       1 | DS-0408                                                                          |
 
-After the DS-0402 slice: **68 matches / 22 files**.
+After the DS-0402 slice: **171 occurrences / 22 files**.
 
 ## Category / product-semantic colors (classify before tokenizing)
 
@@ -65,8 +67,9 @@ generic category palette is proposed here.
 ## Inline-SVG disposition (16 files)
 
 - Keep under exception: `AppLogo` (EX-001), `pages/integrations/integration-icons`
-  (EX-002 brand), `MilkdownDocumentEditor` (EX-003 SVG-string / Phase 5),
-  `chat/Markdown` (protected `.cc-md`).
+  (EX-002 brand), and `MilkdownDocumentEditor` (EX-003 SVG-string / Phase 5).
+- DS-0408 owns `chat/Markdown`'s equivalent copy glyph while its `.cc-md`
+  markup and CSS contract remain frozen.
 - DS-0408 (equivalent glyph → Lucide, audit-first where noted): `AttachmentBar`,
   `AutoApproveToggle`, `ChatComposer`, `ChatHeader`, `ConversationHistoryModal`,
   `CopyIdButton`, `FileMentionPopover` (audit-first), `MediaTab`,

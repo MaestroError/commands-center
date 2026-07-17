@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ThemeMenu } from "./ThemeMenu";
@@ -21,35 +22,88 @@ beforeEach(() => {
 });
 
 describe("ThemeMenu", () => {
-  it("opens with all configured color modes and the current selection", () => {
+  it("opens with all configured color modes and the current selection", async () => {
+    const user = userEvent.setup();
     render(<ThemeMenu />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Choose color mode, current: Light" }));
+    await user.click(screen.getByRole("button", { name: "Choose color mode, current: Light" }));
 
-    expect(screen.getAllByRole("menuitemradio")).toHaveLength(3);
+    const items = await screen.findAllByRole("menuitemradio");
+    expect(items).toHaveLength(3);
     expect(screen.getByRole("menuitemradio", { name: "Light" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
   });
 
-  it("applies a selected color mode and closes the menu", () => {
+  it("applies a selected color mode and closes the menu", async () => {
+    const user = userEvent.setup();
     render(<ThemeMenu />);
-    fireEvent.click(screen.getByRole("button", { name: "Choose color mode, current: Light" }));
+    await user.click(screen.getByRole("button", { name: "Choose color mode, current: Light" }));
 
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Dark" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Dark" }));
 
     expect(setColorModePreference).toHaveBeenCalledWith("dark");
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
   });
 
-  it("closes on outside interaction without changing the theme", () => {
+  it("closes on Escape without changing the theme", async () => {
+    const user = userEvent.setup();
     render(<ThemeMenu />);
-    fireEvent.click(screen.getByRole("button", { name: "Choose color mode, current: Light" }));
+    await user.click(screen.getByRole("button", { name: "Choose color mode, current: Light" }));
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
 
-    fireEvent.mouseDown(document.body);
+    await user.keyboard("{Escape}");
 
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
     expect(setColorModePreference).not.toHaveBeenCalled();
+  });
+
+  it("navigates and selects with the keyboard", async () => {
+    const user = userEvent.setup();
+    render(<ThemeMenu />);
+
+    const trigger = screen.getByRole("button", { name: "Choose color mode, current: Light" });
+    trigger.focus();
+    // Enter opens the menu and moves focus to the first item; ArrowDown advances.
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    await user.keyboard("{ArrowDown}{Enter}");
+
+    expect(setColorModePreference).toHaveBeenCalledTimes(1);
+    expect(setColorModePreference).toHaveBeenCalledWith("dark");
+  });
+
+  it("supports typeahead selection", async () => {
+    const user = userEvent.setup();
+    render(<ThemeMenu />);
+
+    screen.getByRole("button", { name: "Choose color mode, current: Light" }).focus();
+    await user.keyboard("{Enter}s{Enter}");
+
+    expect(setColorModePreference).toHaveBeenCalledWith("system");
+  });
+
+  it("closes on outside interaction and returns focus to the trigger", async () => {
+    const user = userEvent.setup();
+    render(
+      <div>
+        <ThemeMenu />
+        <button type="button">Outside</button>
+      </div>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Choose color mode, current: Light" });
+    await user.click(trigger);
+    fireEvent.pointerDown(document.body);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+    expect(trigger).toHaveFocus();
   });
 });

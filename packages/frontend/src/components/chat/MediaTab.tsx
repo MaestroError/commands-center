@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Download, ExternalLink, FileText } from "lucide-react";
 
 import { fetchConversationMedia } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
@@ -259,87 +260,15 @@ function MediaListSection(props: {
 }
 
 function FileIcon() {
-  return (
-    <svg fill="none" height="18" viewBox="0 0 24 24" width="18">
-      <path
-        d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.7"
-      />
-      <path
-        d="M14 3v5h5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.7"
-      />
-      <path
-        d="M9 13h6M9 17h4"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.7"
-      />
-    </svg>
-  );
+  return <FileText aria-hidden="true" size={18} strokeWidth={1.7} />;
 }
 
 function OpenIcon() {
-  return (
-    <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
-      <path
-        d="M14 5h5v5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M10 14 19 5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
+  return <ExternalLink aria-hidden="true" size={16} strokeWidth={1.8} />;
 }
 
 function DownloadIcon() {
-  return (
-    <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
-      <path
-        d="M12 4v10"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="m8 10 4 4 4-4"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M5 19h14"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
+  return <Download aria-hidden="true" size={16} strokeWidth={1.8} />;
 }
 
 function isDocumentMime(mime: string): boolean {

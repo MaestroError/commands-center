@@ -63,7 +63,7 @@ export function QuickInspectorSurface(props: Props) {
               {tab.tabType === "file" && tab.dirty ? (
                 <span
                   aria-label="Unsaved changes"
-                  className="inline-block h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                  className="inline-block h-2 w-2 shrink-0 rounded-full bg-warning"
                   data-testid={`quick-inspector-dirty-${tab.key}`}
                 />
               ) : null}

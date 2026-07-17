@@ -180,6 +180,16 @@ Object.defineProperty(Element.prototype, "scrollIntoView", {
   value: vi.fn(),
 });
 
+// jsdom lacks the Pointer Capture API that Radix menu/select primitives call
+// during pointer interactions; provide inert implementations.
+for (const method of ["hasPointerCapture", "setPointerCapture", "releasePointerCapture"] as const) {
+  Object.defineProperty(Element.prototype, method, {
+    configurable: true,
+    writable: true,
+    value: method === "hasPointerCapture" ? vi.fn(() => false) : vi.fn(),
+  });
+}
+
 Object.assign(globalThis, {
   __ccTestXterm: {
     MockTerminal,

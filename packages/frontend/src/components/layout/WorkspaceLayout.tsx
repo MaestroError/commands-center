@@ -6,7 +6,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { TabBar, type TabItem } from "@/components/common/TabBar";
@@ -126,18 +126,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
               onClick={() => setMobileContextOpen(true)}
               type="button"
             >
-              <svg
-                fill="none"
-                height="14"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                width="14"
-              >
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
+              <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
             </button>
           ) : null}
           {props.bottomPane ? (
@@ -150,18 +139,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
               }}
               type="button"
             >
-              <svg
-                fill="none"
-                height="14"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                width="14"
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
             </button>
           ) : null}
         </div>
@@ -211,18 +189,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                   onClick={() => setContextCollapsed(false)}
                   type="button"
                 >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="15 18 9 12 15 6" />
-                  </svg>
+                  <ChevronLeft aria-hidden="true" className="h-3.5 w-3.5" />
                 </button>
               ) : null}
             </>
@@ -264,18 +231,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                       }}
                       type="button"
                     >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
+                      <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
                     </button>
                     <div className="min-w-0 flex-1">
                       <TabBar
@@ -368,18 +324,7 @@ function PaneHeader(props: { title: string; onToggle: () => void; toggleLabel: s
         onClick={props.onToggle}
         type="button"
       >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
+        <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
       </button>
       <span className="text-sm font-medium text-text-primary">{props.title}</span>
     </div>

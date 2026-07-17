@@ -752,9 +752,9 @@ export function readCardClassName(status: BoardTaskStatus, draggable: boolean): 
     status === "ready_to_check"
       ? "border-accent/40 bg-accent/5"
       : status === "review"
-        ? "border-amber-400/40 bg-amber-400/5"
+        ? "border-warning-border bg-warning-surface"
         : status === "failed"
-          ? "border-red-400/40 bg-red-400/5"
+          ? "border-danger-border bg-danger-surface"
           : status === "queued"
             ? "border-accent/30 bg-surface-elevated"
             : "border-border bg-surface";
@@ -834,11 +834,11 @@ export function readTaskCardIconActionClassName(
 ): string {
   const emphasis =
     variant === "success"
-      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:border-emerald-500/60 hover:bg-emerald-500/15 dark:text-emerald-400"
+      ? "border-success-border bg-success-surface text-success-foreground hover:border-success hover:bg-success/15"
       : variant === "warning"
-        ? "border-amber-500/30 bg-amber-500/10 text-amber-600 hover:border-amber-500/60 hover:bg-amber-500/15 dark:text-amber-400"
+        ? "border-warning-border bg-warning-surface text-warning-foreground hover:border-warning hover:bg-warning/15"
         : variant === "danger"
-          ? "border-red-500/30 bg-red-500/10 text-red-600 hover:border-red-500/60 hover:bg-red-500/15 dark:text-red-400"
+          ? "border-danger-border bg-danger-surface text-danger-foreground hover:border-danger hover:bg-danger/15"
           : "border-border bg-surface-elevated text-text-secondary hover:border-accent/50 hover:text-accent";
 
   return `group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 ${emphasis}`;
@@ -861,11 +861,11 @@ export function readSubtaskDotClassName(
 ): string {
   const color =
     status === "done"
-      ? "border-emerald-500 bg-emerald-500"
+      ? "border-success bg-success"
       : status === "failed"
-        ? "border-red-500 bg-red-500"
+        ? "border-danger bg-danger"
         : status === "review"
-          ? "border-amber-500 bg-amber-500"
+          ? "border-warning bg-warning"
           : "border-accent bg-accent";
 
   return `block h-3 w-3 rounded-full border-2 ring-2 ring-surface ${color}`;
@@ -883,9 +883,9 @@ export function readResultClassName(status: BoardTaskStatus): string {
     status === "ready_to_check"
       ? "border-accent/30 bg-accent/10 text-text-primary"
       : status === "review"
-        ? "border-amber-400/30 bg-amber-400/10 text-text-primary"
+        ? "border-warning-border bg-warning-surface text-warning-foreground"
         : status === "failed"
-          ? "border-red-400/30 bg-red-400/10 text-text-primary"
+          ? "border-danger-border bg-danger-surface text-danger-foreground"
           : "border-border bg-background text-text-secondary";
 
   return `min-w-0 break-words [overflow-wrap:anywhere] rounded-lg border p-3 text-sm leading-6 ${emphasis}`;

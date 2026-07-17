@@ -296,7 +296,7 @@ function SystemTab() {
                     : "You can still run the updater to reinstall the current package version."}
                 </p>
                 {activeRunCount > 0 ? (
-                  <p className="mt-2 text-sm text-amber-300">
+                  <p className="mt-2 text-sm text-warning-foreground">
                     {activeRunCount} active task {activeRunCount === 1 ? "run is" : "runs are"} in
                     progress. Wait for active task work to finish before applying updates.
                   </p>
@@ -316,7 +316,7 @@ function SystemTab() {
       ) : null}
 
       {updateResult ? (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-text-primary">
+        <div className="rounded-lg border border-success-border bg-success-surface p-4 text-sm text-success-foreground">
           <p>{updateResult.message}</p>
           {updateResult.instructions?.length ? (
             <ul className="mt-2 list-disc pl-5 text-text-secondary">
@@ -1054,7 +1054,7 @@ function SecretCreateForm(props: {
       </div>
 
       {duplicateKey ? (
-        <p className="mt-3 text-sm text-amber-500">Secret already exists. Update it below.</p>
+        <p className="mt-3 text-sm text-warning">Secret already exists. Update it below.</p>
       ) : null}
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
 
@@ -1176,16 +1176,16 @@ function SecretCard(props: {
       </div>
 
       {props.stale ? (
-        <p className="mt-3 text-sm text-amber-500">
+        <p className="mt-3 text-sm text-warning">
           This secret was encrypted with an older key and is unavailable until you save a new value.
         </p>
       ) : null}
       {!props.stale && !props.isSet ? (
-        <p className="mt-3 text-sm text-amber-500">
+        <p className="mt-3 text-sm text-warning">
           This secret is referenced but does not have a value yet.
         </p>
       ) : null}
-      {message ? <p className="mt-3 text-sm text-emerald-500">{message}</p> : null}
+      {message ? <p className="mt-3 text-sm text-success">{message}</p> : null}
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">

@@ -1,6 +1,6 @@
 # DS-0408 — Migrate Chat and Media Chrome
 
-- Status: Planned
+- Status: Complete ([record](artifacts/chat-media-migration-record.md))
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [protected Markdown contract](../../design-system-foundation.md#3-protect-the-existing-markdown-styles)
@@ -53,19 +53,20 @@ ownership and are explicitly excluded from generic Radix Popover migration.
 
 ## Acceptance criteria
 
-- [ ] Streaming, messages/tools, prompt send/history, attachments, permissions,
+- [x] Streaming, messages/tools, prompt send/history, attachments, permissions,
       conversations, models, media, and error/retry behavior remains unchanged.
-- [ ] `.cc-md` and `.cc-md--chat` markup, selectors, computed styles, and
-      screenshots have no intentional change.
-- [ ] Suggestion popovers retain textarea focus and existing insertion/keyboard
+- [x] `.cc-md` and `.cc-md--chat` content markup, selectors, and computed styles
+      have no intentional change; any baseline delta is limited to an approved
+      surrounding UI control such as the Lucide copy glyph.
+- [x] Suggestion popovers retain textarea focus and existing insertion/keyboard
       behavior; no focus-moving generic Popover replaces them.
-- [ ] Dialog/lightbox close, focus, overlay, and return behavior matches each
+- [x] Dialog/lightbox close, focus, overlay, and return behavior matches each
       audited domain contract.
-- [ ] Equivalent UI glyphs use Lucide and all icon actions remain labeled.
-- [ ] Theme-dependent category/status colors are semantic or explicitly bounded
+- [x] Equivalent UI glyphs use Lucide and all icon actions remain labeled.
+- [x] Theme-dependent category/status colors are semantic or explicitly bounded
       by documented product meaning.
-- [ ] Domain code imports only CC-owned APIs, never Radix directly.
-- [ ] Chat/composer/media layouts remain usable at narrow widths without new
+- [x] Domain code imports only CC-owned APIs, never Radix directly.
+- [x] Chat/composer/media layouts remain usable at narrow widths without new
       overflow.
 
 ## Verification tests

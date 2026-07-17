@@ -49,20 +49,20 @@ plan from stale counts or assume the Phase 3 support APIs match their plans.
 
 ## Acceptance criteria
 
-- [ ] Inventories are generated from the post-Phase-3 tree and retain Phase 0
+- [x] Inventories are generated from the post-Phase-3 tree and retain Phase 0
       counts only as historical comparison.
-- [ ] Every live raw palette and inline SVG match has exactly one disposition
+- [x] Every live raw palette and inline SVG match has exactly one disposition
       and task owner.
-- [ ] Category/mention/progress colors are classified by product meaning before
+- [x] Category/mention/progress colors are classified by product meaning before
       new tokens are proposed.
-- [ ] Every retained exception has a stable ID, exact path, owner, theme
+- [x] Every retained exception has a stable ID, exact path, owner, theme
       behavior, and verification method.
-- [ ] EX-001 through EX-005 and Phase 5 bridge boundaries are reconciled rather
+- [x] EX-001 through EX-005 and Phase 5 bridge boundaries are reconciled rather
       than silently reclassified.
-- [ ] Domain batches have non-overlapping primary file ownership or an explicit
+- [x] Domain batches have non-overlapping primary file ownership or an explicit
       shared-helper sequence.
-- [ ] Critical behavior tests exist before visual migration begins.
-- [ ] No domain task is authorized with unresolved business-versus-visual scope.
+- [x] Critical behavior tests exist before visual migration begins.
+- [x] No domain task is authorized with unresolved business-versus-visual scope.
 
 ## Verification tests
 

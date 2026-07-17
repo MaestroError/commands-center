@@ -310,7 +310,7 @@ export function CustomToolsPage() {
                         </span>
                       </div>
                       {tool.warnings.length > 0 ? (
-                        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                        <div className="mt-3 rounded-lg border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning-foreground">
                           {tool.warnings.map((warning) => warning.message).join(" ")}
                         </div>
                       ) : null}
@@ -468,7 +468,7 @@ export function CustomToolsPage() {
                     </div>
                   </div>
                   {tool.warnings.length > 0 ? (
-                    <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                    <div className="mt-3 rounded-lg border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning-foreground">
                       {tool.warnings.map((warning) => warning.message).join(" ")}
                     </div>
                   ) : null}
@@ -667,9 +667,9 @@ function StatusBadge(props: { status: CustomToolDriftStatus }) {
   const className = {
     global_only: "border-border bg-surface-elevated text-text-secondary",
     agent_only: "border-border bg-surface-elevated text-text-secondary",
-    matching: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    outdated: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-    modified: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+    matching: "border-success-border bg-success-surface text-success-foreground",
+    outdated: "border-warning-border bg-warning-surface text-warning-foreground",
+    modified: "border-danger-border bg-danger-surface text-danger-foreground",
     unknown: "border-border bg-surface-elevated text-text-secondary",
   }[props.status];
 

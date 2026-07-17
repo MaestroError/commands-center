@@ -1,6 +1,6 @@
 # DS-0407 — Migrate Settings, API, and Custom-Tool Flows
 
-- Status: Planned
+- Status: Complete ([record](artifacts/settings-api-tools-migration-record.md))
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [domain migration approach](../../design-system-foundation.md#phase-4--migrate-domain-ui-incrementally)
@@ -51,20 +51,20 @@ tri-state control is approved for a CC Checkbox backed by Radix.
 
 ## Acceptance criteria
 
-- [ ] Settings, tokens, public MCP, permissions, and custom-tool behavior remains
+- [x] Settings, tokens, public MCP, permissions, and custom-tool behavior remains
       unchanged.
-- [ ] Secret/token display, copy, revoke, and persistence boundaries are not
+- [x] Secret/token display, copy, revoke, and persistence boundaries are not
       weakened or refactored.
-- [ ] Tri-state checked/unchecked/indeterminate semantics, labels, keyboard, and
+- [x] Tri-state checked/unchecked/indeterminate semantics, labels, keyboard, and
       form/domain updates are accurate.
-- [ ] Ordinary native controls remain native unless DS-0401 records a concrete
+- [x] Ordinary native controls remain native unless DS-0401 records a concrete
       exception.
-- [ ] Repeated controls/modal shells use approved CC-owned APIs and semantic
+- [x] Repeated controls/modal shells use approved CC-owned APIs and semantic
       states in both modes.
-- [ ] Equivalent UI glyphs use Lucide with stable accessible names.
-- [ ] API payloads, validation, permission logic, and tool filesystem behavior
+- [x] Equivalent UI glyphs use Lucide with stable accessible names.
+- [x] API payloads, validation, permission logic, and tool filesystem behavior
       remain unchanged.
-- [ ] Dense settings/API layouts and dialogs remain usable at narrow widths.
+- [x] Dense settings/API layouts and dialogs remain usable at narrow widths.
 
 ## Verification tests
 

@@ -338,7 +338,7 @@ function TaskRunOutcomeSummary(props: { runs: TaskRun[]; taskId: string }) {
                 {run.finalMessage ?? run.resultText ?? run.errorMessage ?? "No result summary."}
               </p>
               {run.needsHumanReview ? (
-                <p className="mt-2 rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm leading-6 text-text-primary">
+                <p className="mt-2 rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm leading-6 text-warning-foreground">
                   {run.humanReviewReason ?? "Human review required."}
                 </p>
               ) : null}

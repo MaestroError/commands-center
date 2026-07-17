@@ -1,6 +1,6 @@
 # DS-0406 — Migrate Integrations and Provider Flows
 
-- Status: Planned
+- Status: Complete ([record](artifacts/integration-provider-migration-record.md))
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [domain migration approach](../../design-system-foundation.md#phase-4--migrate-domain-ui-incrementally)
@@ -50,19 +50,19 @@ containers, focus, status, warnings, and actions are not exempt.
 
 ## Acceptance criteria
 
-- [ ] Provider/integration list, filter, create/edit/duplicate, activate, test,
+- [x] Provider/integration list, filter, create/edit/duplicate, activate, test,
       connect/disconnect, OAuth/API-key, and MCP behavior remains unchanged.
-- [ ] Secret values and auth state remain handled by existing secure boundaries.
-- [ ] EX-002 is limited to provider identity; generic UI appearance uses CC
+- [x] Secret values and auth state remain handled by existing secure boundaries.
+- [x] EX-002 is limited to provider identity; generic UI appearance uses CC
       semantic roles in both modes.
-- [ ] Connected/disconnected/pending/error statuses are semantically consistent
+- [x] Connected/disconnected/pending/error statuses are semantically consistent
       and accessible.
-- [ ] Repeated controls and dialogs consume approved CC-owned APIs with no direct
+- [x] Repeated controls and dialogs consume approved CC-owned APIs with no direct
       Radix imports.
-- [ ] Equivalent generic glyphs use Lucide; provider artwork is preserved.
-- [ ] Mutation payloads, API routes, validation, and query invalidation are not
+- [x] Equivalent generic glyphs use Lucide; provider artwork is preserved.
+- [x] Mutation payloads, API routes, validation, and query invalidation are not
       refactored.
-- [ ] Narrow forms/dialogs and provider cards do not overflow.
+- [x] Narrow forms/dialogs and provider cards do not overflow.
 
 ## Verification tests
 

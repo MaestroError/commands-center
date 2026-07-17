@@ -1,6 +1,6 @@
 # DS-0411 — Add Integrated Domain Migration Baselines
 
-- Status: Planned
+- Status: Complete ([manifest](artifacts/domain-baseline-manifest.md))
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [gallery and focused tests](../../design-system-foundation.md#7-verify-through-a-component-gallery-and-focused-tests)
@@ -47,16 +47,16 @@ screenshots are migration inputs, not a blanket permanent suite.
 
 ## Acceptance criteria
 
-- [ ] Every domain batch has representative visual/interaction evidence without
+- [x] Every domain batch has representative visual/interaction evidence without
       snapshotting every page indiscriminately.
-- [ ] Status, focus, disabled, selected, modal, menu, and popup states are
+- [x] Status, focus, disabled, selected, modal, menu, and popup states are
       reviewed where each domain uses them.
-- [ ] Default light/dark and narrow/wide behavior is intentional and no page
+- [x] Default light/dark and narrow/wide behavior is intentional and no page
       hides overflow defects globally.
-- [ ] Markdown/Milkdown and excluded editor/terminal behavior remain protected.
-- [ ] Every snapshot difference has an owning migration rationale.
-- [ ] Fixture code remains development-only and absent from production assets.
-- [ ] Two consecutive no-update runs pass after approved updates.
+- [x] Markdown/Milkdown and excluded editor/terminal behavior remain protected.
+- [x] Every snapshot difference has an owning migration rationale.
+- [x] Fixture code remains development-only and absent from production assets.
+- [x] Two consecutive no-update runs pass after approved updates.
 
 ## Verification tests
 

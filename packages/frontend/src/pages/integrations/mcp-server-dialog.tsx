@@ -211,7 +211,7 @@ export function McpServerDialog(props: {
             )}
 
             {missingSecrets.length > 0 ? (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-500">
+              <div className="rounded-lg border border-warning-border bg-warning-surface p-3 text-sm text-warning-foreground">
                 Referenced secrets without values: {missingSecrets.join(", ")}
               </div>
             ) : null}

@@ -324,7 +324,7 @@ export function TaskTimingBadges(props: {
         </span>
       ) : null}
       {props.task.dueAt && isDueSoon(props.task.dueAt) ? (
-        <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 text-xs text-amber-700 dark:text-amber-300">
+        <span className="rounded-full border border-warning-border bg-warning-surface px-3 py-1 text-xs text-warning-foreground">
           {`Due: ${formatDateOnly(props.task.dueAt)}`}
         </span>
       ) : null}

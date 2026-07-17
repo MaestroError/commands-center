@@ -63,7 +63,7 @@ export function SelectionDetails(props: {
         <DetailMetric label="Lines" value={formatLineCount(props.selectedNode.lineCount)} />
       ) : null}
       {props.selectedNode.isCritical ? (
-        <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-3 text-amber-800 dark:text-amber-200">
+        <div className="rounded-lg border border-warning-border bg-warning-surface px-3 py-3 text-warning-foreground">
           {props.selectedNode.criticalReason}
         </div>
       ) : null}

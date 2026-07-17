@@ -1,6 +1,6 @@
 # DS-0403 — Migrate Specialist Management Flows
 
-- Status: Planned
+- Status: Complete ([record](artifacts/specialist-migration-record.md))
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [domain migration approach](../../design-system-foundation.md#phase-4--migrate-domain-ui-incrementally)
@@ -45,18 +45,18 @@ stabilized its common Switch and SearchableSelect dependencies before this task.
 
 ## Acceptance criteria
 
-- [ ] Specialist create/edit/delete/list/filter/navigation behavior remains
+- [x] Specialist create/edit/delete/list/filter/navigation behavior remains
       unchanged.
-- [ ] Schema validation, mutation payloads, tool/model/provider state, query
+- [x] Schema validation, mutation payloads, tool/model/provider state, query
       invalidation, and portable persistence are untouched.
-- [ ] Repeated controls consume approved CC-owned APIs; native controls remain
+- [x] Repeated controls consume approved CC-owned APIs; native controls remain
       native where classified.
-- [ ] Theme-dependent status colors use semantic roles in both resolved modes.
-- [ ] Category/mention identity colors have explicit product roles or are
+- [x] Theme-dependent status colors use semantic roles in both resolved modes.
+- [x] Category/mention identity colors have explicit product roles or are
       migrated to neutral semantic treatment.
-- [ ] Equivalent UI glyphs use Lucide; product/provider artwork is not replaced.
-- [ ] No direct Radix import or business-logic refactor is introduced.
-- [ ] Narrow forms and action groups do not overflow.
+- [x] Equivalent UI glyphs use Lucide; product/provider artwork is not replaced.
+- [x] No direct Radix import or business-logic refactor is introduced.
+- [x] Narrow forms and action groups do not overflow.
 
 ## Verification tests
 

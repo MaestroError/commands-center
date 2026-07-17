@@ -1,6 +1,6 @@
 # DS-0404 — Migrate Task Authoring and Template Flows
 
-- Status: Planned
+- Status: Complete ([record](artifacts/task-authoring-migration-record.md))
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [domain migration approach](../../design-system-foundation.md#phase-4--migrate-domain-ui-incrementally)
@@ -50,19 +50,19 @@ and must retain textarea focus and insertion semantics.
 
 ## Acceptance criteria
 
-- [ ] Task/template create, edit, validate, schedule, duplicate, and navigation
+- [x] Task/template create, edit, validate, schedule, duplicate, and navigation
       behavior remains unchanged.
-- [ ] Prompt content, attachments, mentions, slash commands, focus ownership,
+- [x] Prompt content, attachments, mentions, slash commands, focus ownership,
       and insertion semantics remain domain-controlled and covered.
-- [ ] Mutation payloads, query state, portable task/template files, and scheduler
+- [x] Mutation payloads, query state, portable task/template files, and scheduler
       semantics are untouched.
-- [ ] Repeated controls use approved CC APIs and native controls remain native
+- [x] Repeated controls use approved CC APIs and native controls remain native
       where classified.
-- [ ] Theme-dependent states use semantic roles in both modes; product progress
+- [x] Theme-dependent states use semantic roles in both modes; product progress
       roles are explicitly classified.
-- [ ] Equivalent UI glyphs use Lucide without changing accessible names.
-- [ ] No direct Radix import or business-logic refactor is introduced.
-- [ ] Dense/narrow forms and dialog actions remain usable without overflow.
+- [x] Equivalent UI glyphs use Lucide without changing accessible names.
+- [x] No direct Radix import or business-logic refactor is introduced.
+- [x] Dense/narrow forms and dialog actions remain usable without overflow.
 
 ## Verification tests
 

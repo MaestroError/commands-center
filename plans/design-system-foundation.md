@@ -535,49 +535,50 @@ Phase 4.
       [DS-0401 — Accept the Phase 3 handoff and refresh migration inventories](design-system/phase-4/01-phase-3-handoff.md):
       recalculate palette/icon/class/interaction counts, assign every live match
       to a domain/exception/Phase 5 owner, and establish current ratchets.
-- [ ] In progress
+- [x] Complete
       [DS-0402 — Migrate shell and global interaction surfaces](design-system/phase-4/02-shell-global-ui.md):
       move global actions, ordinary menus, tooltips, overlays, statuses, and
       equivalent glyphs onto CC-owned APIs while preserving responsive access,
-      shortcuts, and appearance behavior. Semantic-token slice done; interaction
-      slices pending.
-- [ ] Complete
+      shortcuts, and appearance behavior. Shell status tokens + ThemeMenu →
+      DropdownMenu; Tooltip assessed and deferred; global search stays
+      audit-first.
+- [x] Complete
       [DS-0403 — Migrate specialist management flows](design-system/phase-4/03-specialists.md):
       migrate specialist list/form/editor controls and semantic states without
       changing schemas, mutations, navigation, or portable state.
-- [ ] Complete
+- [x] Complete
       [DS-0404 — Migrate task authoring and template flows](design-system/phase-4/04-task-authoring.md):
       migrate forms, templates, scheduling, prompt chrome, and actions while
       retaining domain-specific composer focus/insertion behavior.
-- [ ] Complete
+- [x] Complete
       [DS-0405 — Migrate task board, detail, and run flows](design-system/phase-4/05-task-operations.md):
       map operational status/progress roles and migrate controls without
       changing drag/drop, queue/run, monitoring, subtask, or artifact behavior.
-- [ ] Complete
+- [x] Complete
       [DS-0406 — Migrate integrations and provider flows](design-system/phase-4/06-integrations-providers.md):
       migrate generic connection/configuration chrome while preserving exact
       EX-002 provider identity and all auth/secret behavior.
-- [ ] Complete
+- [x] Complete
       [DS-0407 — Migrate settings, API, and custom-tool flows](design-system/phase-4/07-settings-api-tools.md):
       migrate dense configuration/actions and the approved tri-state control
       while retaining native controls and security/business boundaries.
-- [ ] Complete
+- [x] Complete
       [DS-0408 — Migrate chat and media chrome](design-system/phase-4/08-chat-media.md):
       migrate chat controls, dialogs, media, models, icons, and semantic states
       while freezing Markdown and composer suggestion focus behavior.
-- [ ] Complete
+- [x] Complete
       [DS-0409 — Migrate workspace, Documents, and file-manager chrome](design-system/phase-4/09-workspace-documents-files.md):
       migrate CC-owned file/layout controls while retaining domain tab
       controllers and handing editor/terminal/third-party bridges to Phase 5.
-- [ ] Complete
+- [x] Complete
       [DS-0410 — Close palette, icon, component, and compatibility inventories](design-system/phase-4/10-inventory-ratchet.md):
       account for every residual value/glyph/class/import, update exceptions,
       and recommend realistic Phase 6 audit ratchets.
-- [ ] Complete
+- [x] Complete
       [DS-0411 — Add integrated domain migration baselines](design-system/phase-4/11-domain-baselines.md):
       review representative domain flows and states without creating blanket
       page snapshots.
-- [ ] Complete
+- [x] Complete
       [DS-0412 — Verify and sign off Phase 4](design-system/phase-4/12-phase-4-signoff.md):
       verify domain behavior, semantic appearance, inventories, exceptions,
       protected surfaces, production exclusion, portability, and the Phase 5

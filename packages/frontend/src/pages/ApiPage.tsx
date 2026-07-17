@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Check, Clipboard, KeyRound, Pencil, Plus, ScrollText, ShieldCheck, X } from "lucide-react";
 
 import {
@@ -15,6 +15,7 @@ import {
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { TabBar } from "@/components/common/TabBar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EndpointsTab } from "@/components/api/EndpointsTab";
 import { getTokenActivity, getTokenAuditSettings, updateTokenAuditSettings } from "@/lib/api";
 import { useApiTokenMutations, useApiTokensQuery } from "@/hooks/use-api-tokens-query";
@@ -470,10 +471,9 @@ function PermissionSelector(props: { value: Set<string>; onChange: (next: Set<st
             key={group}
           >
             <label className="flex cursor-pointer items-center gap-3 font-medium">
-              <TriStateCheckbox
-                checked={allOn}
-                indeterminate={someOn}
-                onChange={(event) => togglePreset(group, event.target.checked)}
+              <Checkbox
+                checked={someOn ? "indeterminate" : allOn}
+                onCheckedChange={(checked) => togglePreset(group, checked === true)}
               />
               {GROUP_LABELS[group]}
               <span className="text-xs font-normal text-text-secondary">
@@ -506,22 +506,6 @@ function PermissionSelector(props: { value: Set<string>; onChange: (next: Set<st
       })}
     </div>
   );
-}
-
-function TriStateCheckbox(props: {
-  checked: boolean;
-  indeterminate: boolean;
-  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (ref.current) {
-      ref.current.indeterminate = props.indeterminate && !props.checked;
-    }
-  }, [props.indeterminate, props.checked]);
-
-  return <input checked={props.checked} onChange={props.onChange} ref={ref} type="checkbox" />;
 }
 
 function TokenRevealPanel(props: { reveal: CreateApiTokenResponse; onDismiss: () => void }) {

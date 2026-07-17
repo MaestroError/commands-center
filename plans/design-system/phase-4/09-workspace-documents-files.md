@@ -1,6 +1,6 @@
 # DS-0409 — Migrate Workspace, Documents, and File-Manager Chrome
 
-- Status: Planned
+- Status: Complete ([record](artifacts/workspace-files-migration-record.md))
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [domain migration approach](../../design-system-foundation.md#phase-4--migrate-domain-ui-incrementally)
@@ -58,19 +58,19 @@ replaced by generic Tabs.
 
 ## Acceptance criteria
 
-- [ ] Workspace layout, panes, files, Documents, quick-file/picker, and
+- [x] Workspace layout, panes, files, Documents, quick-file/picker, and
       file-manager behavior remains unchanged.
-- [ ] Filesystem paths, operations, selection, navigation, editor/terminal
+- [x] Filesystem paths, operations, selection, navigation, editor/terminal
       lifecycle, and portable workspace state are not refactored.
-- [ ] Quick-file/file-picker focus, shortcuts, filtering, and selection retain
+- [x] Quick-file/file-picker focus, shortcuts, filtering, and selection retain
       their audited behavior.
-- [ ] Terminal/editor tab domain controllers remain intact.
-- [ ] CC-owned chrome uses approved primitives and semantic tokens; Radix is not
+- [x] Terminal/editor tab domain controllers remain intact.
+- [x] CC-owned chrome uses approved primitives and semantic tokens; Radix is not
       imported directly by domain files.
-- [ ] Equivalent UI glyphs use Lucide with stable accessible labels.
-- [ ] Milkdown, Monaco, xterm, and third-party bridge appearance remains scoped
+- [x] Equivalent UI glyphs use Lucide with stable accessible labels.
+- [x] Milkdown, Monaco, xterm, and third-party bridge appearance remains scoped
       and assigned to Phase 5.
-- [ ] Dense panes/dialogs remain usable without page-level overflow at narrow
+- [x] Dense panes/dialogs remain usable without page-level overflow at narrow
       widths.
 
 ## Verification tests

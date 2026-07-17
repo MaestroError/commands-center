@@ -1,6 +1,6 @@
 # DS-0410 — Close Palette, Icon, Component, and Compatibility Inventories
 
-- Status: Planned
+- Status: Complete ([inventory](artifacts/final-domain-inventory.md))
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [theme completeness](../../design-system-foundation.md#6-make-theme-completeness-measurable)
@@ -51,19 +51,19 @@ ratchets.
 
 ## Acceptance criteria
 
-- [ ] Every residual match has one exact owner/disposition; no unexplained raw
+- [x] Every residual match has one exact owner/disposition; no unexplained raw
       palette, hardcoded color, or inline SVG remains.
-- [ ] EX-001/EX-002/EX-003 paths remain narrow and Phase 5 EX-004/EX-005 paths
+- [x] EX-001/EX-002/EX-003 paths remain narrow and Phase 5 EX-004/EX-005 paths
       are handed off exactly.
-- [ ] Category/status tokens encode demonstrated product meaning and do not form
+- [x] Category/status tokens encode demonstrated product meaning and do not form
       an arbitrary palette.
-- [ ] No new theme/mode component branch, direct Radix domain import, or parallel
+- [x] No new theme/mode component branch, direct Radix domain import, or parallel
       CSS component system exists.
-- [ ] Count reductions come from migrated consumers, not ignored directories or
+- [x] Count reductions come from migrated consumers, not ignored directories or
       weakened search patterns.
-- [ ] Compatibility classes are retained or proposed for removal from actual
+- [x] Compatibility classes are retained or proposed for removal from actual
       consumer evidence.
-- [ ] Recommended Phase 6 ratchets are reproducible and practical.
+- [x] Recommended Phase 6 ratchets are reproducible and practical.
 
 ## Verification tests
 

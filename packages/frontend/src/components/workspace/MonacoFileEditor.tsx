@@ -74,7 +74,7 @@ export function MonacoFileEditor(props: Props) {
           {dirty ? (
             <span
               aria-label="Unsaved changes"
-              className="inline-block h-2 w-2 shrink-0 rounded-full bg-amber-500"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-warning"
             />
           ) : null}
         </div>
@@ -102,12 +102,12 @@ export function MonacoFileEditor(props: Props) {
         </div>
       </div>
       {!isWritable ? (
-        <div className="border-b border-border bg-amber-500/10 px-4 py-2 text-xs text-amber-700 dark:text-amber-300">
+        <div className="border-b border-border bg-warning-surface px-4 py-2 text-xs text-warning-foreground">
           This root is read-only. Enable host-filesystem editing in Settings to save changes.
         </div>
       ) : null}
       {conflict ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-warning-border bg-warning-surface px-4 py-3 text-sm text-warning-foreground">
           <span className="min-w-0">{conflict.message}</span>
           <div className="flex shrink-0 gap-2">
             <button

@@ -1,6 +1,6 @@
 # DS-0405 — Migrate Task Board, Detail, and Run Flows
 
-- Status: Planned
+- Status: Complete ([record](artifacts/task-operations-migration-record.md))
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [domain migration approach](../../design-system-foundation.md#phase-4--migrate-domain-ui-incrementally)
@@ -49,18 +49,18 @@ renamed.
 
 ## Acceptance criteria
 
-- [ ] Board, detail, run, queue, cancel, retry, progress, subtask, and artifact
+- [x] Board, detail, run, queue, cancel, retry, progress, subtask, and artifact
       behavior remains unchanged.
-- [ ] Drag-and-drop and keyboard/pointer interaction retain current semantics.
-- [ ] Status/progress colors map to documented product roles and remain legible
+- [x] Drag-and-drop and keyboard/pointer interaction retain current semantics.
+- [x] Status/progress colors map to documented product roles and remain legible
       in both resolved modes.
-- [ ] Repeated controls and modal shells consume approved CC-owned APIs.
-- [ ] Live events/polling, mutations, routing, selection, and task data are not
+- [x] Repeated controls and modal shells consume approved CC-owned APIs.
+- [x] Live events/polling, mutations, routing, selection, and task data are not
       refactored.
-- [ ] Equivalent UI glyphs use Lucide with stable accessible names.
-- [ ] Domain-specific status roles are bounded and not a second arbitrary
+- [x] Equivalent UI glyphs use Lucide with stable accessible names.
+- [x] Domain-specific status roles are bounded and not a second arbitrary
       palette.
-- [ ] Dense board/detail layouts remain usable at approved responsive widths.
+- [x] Dense board/detail layouts remain usable at approved responsive widths.
 
 ## Verification tests
 

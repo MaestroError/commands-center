@@ -402,7 +402,7 @@ export function statusBadgeClass(status: { status: string }): string {
       return "cc-badge cc-badge-connected";
     case "needs_auth":
     case "needs_client_registration":
-      return "cc-badge bg-amber-500/15 text-amber-500";
+      return "cc-badge bg-warning-surface text-warning-foreground";
     case "failed":
       return "cc-badge bg-danger/15 text-danger";
     default:
@@ -678,12 +678,12 @@ export const SEARCH_SUGGESTIONS = [
 ] as const;
 
 const TAG_PREFIX_STYLES: Record<string, string> = {
-  auth: "bg-sky-500/15 text-sky-400",
-  category: "bg-violet-500/15 text-violet-400",
-  language: "bg-emerald-500/15 text-emerald-400",
-  launcher: "bg-amber-500/15 text-amber-400",
-  type: "bg-cyan-500/15 text-cyan-400",
-  source: "bg-rose-500/15 text-rose-400",
+  auth: "bg-badge-neutral-surface text-badge-neutral-foreground",
+  category: "bg-badge-neutral-surface text-badge-neutral-foreground",
+  language: "bg-badge-neutral-surface text-badge-neutral-foreground",
+  launcher: "bg-badge-neutral-surface text-badge-neutral-foreground",
+  type: "bg-badge-neutral-surface text-badge-neutral-foreground",
+  source: "bg-badge-neutral-surface text-badge-neutral-foreground",
 };
 
 const DEFAULT_TAG_STYLE = "bg-surface-elevated text-text-secondary";

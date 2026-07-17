@@ -101,6 +101,53 @@ test.describe("@design-system Phase 2 primitives", () => {
     await expect(page.getByRole("button", { name: "Delete permanently" })).toBeDisabled();
   });
 
+  test("dropdown menu supports keyboard navigation and returns focus on Escape", async ({
+    page,
+  }) => {
+    await openPrimitives(page, "light", DESKTOP_VIEWPORT);
+    const trigger = page.getByRole("button", { name: "Open menu" });
+
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("menu")).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Rename" })).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("menuitem", { name: "Duplicate" })).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("menuitem", { name: "Duplicate" })).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
+  test("dropdown radio menu selects a value", async ({ page }) => {
+    await openPrimitives(page, "light", DESKTOP_VIEWPORT);
+    await page.getByRole("button", { name: "Radio menu" }).click();
+    await expect(page.getByRole("menuitemradio", { name: "System" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+
+    await page.getByRole("menuitemradio", { name: "Dark" }).click();
+    await expect(page.getByRole("menu")).toBeHidden();
+
+    await page.getByRole("button", { name: "Radio menu" }).click();
+    await expect(page.getByRole("menuitemradio", { name: "Dark" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  test("tri-state checkbox exposes and changes its mixed state", async ({ page }) => {
+    await openPrimitives(page, "light", DESKTOP_VIEWPORT);
+    const checkbox = page.getByRole("checkbox", { name: "Permission group" });
+
+    await expect(checkbox).toHaveAttribute("data-state", "indeterminate");
+    await checkbox.click();
+    await expect(checkbox).toBeChecked();
+  });
+
   for (const width of [320, 390]) {
     test(`open dialog stays within a ${width}px viewport`, async ({ page }) => {
       await openPrimitives(page, "light", { width, height: 844 });

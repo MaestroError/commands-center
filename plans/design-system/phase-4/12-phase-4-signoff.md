@@ -1,6 +1,6 @@
 # DS-0412 — Verify and Sign Off Phase 4
 
-- Status: Planned
+- Status: Complete ([sign-off](artifacts/phase-4-signoff.md))
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [Phase 4 verification](../../design-system-foundation.md#phase-4--migrate-domain-ui-incrementally)
@@ -49,25 +49,25 @@ portability rather than relying on isolated screenshots or count reduction.
 
 ## Acceptance criteria
 
-- [ ] Every prior Phase 4 task is complete with no unresolved blocker.
-- [ ] All domain critical flows retain their data, API, persistence, navigation,
+- [x] Every prior Phase 4 task is complete with no unresolved blocker.
+- [x] All domain critical flows retain their data, API, persistence, navigation,
       mutation, keyboard, and error behavior.
-- [ ] Every live raw palette, hardcoded color, inline SVG, direct Radix import,
+- [x] Every live raw palette, hardcoded color, inline SVG, direct Radix import,
       and compatibility-class result has an exact disposition.
-- [ ] Changed domain appearance uses semantic tokens and approved CC-owned APIs
+- [x] Changed domain appearance uses semantic tokens and approved CC-owned APIs
       without a parallel visual contract or theme branch.
-- [ ] Provider/product/third-party exceptions remain narrow and verified.
-- [ ] Markdown, Milkdown, composer suggestions, terminal/editor tabs, Monaco,
+- [x] Provider/product/third-party exceptions remain narrow and verified.
+- [x] Markdown, Milkdown, composer suggestions, terminal/editor tabs, Monaco,
       xterm, and other protected/deferred behavior has no unintended regression.
-- [ ] Default light/dark and narrow/wide domain reviews pass, including status,
+- [x] Default light/dark and narrow/wide domain reviews pass, including status,
       focus, disabled, selected, modal, menu, popup, and overflow states.
-- [ ] Two consecutive no-update integrated visual runs pass.
-- [ ] Formatting, lint, typecheck, unit/integration tests, E2E tests, and
+- [x] Two consecutive no-update integrated visual runs pass.
+- [x] Formatting, lint, typecheck, unit/integration tests, E2E tests, and
       production build pass.
-- [ ] Development fixtures are absent from production assets.
-- [ ] Portable workspace state remains recoverable and no visual migration moved
+- [x] Development fixtures are absent from production assets.
+- [x] Portable workspace state remains recoverable and no visual migration moved
       portable configuration into device-only state.
-- [ ] Phase 5 handoff accounts for every deferred bridge value and fixture.
+- [x] Phase 5 handoff accounts for every deferred bridge value and fixture.
 
 ## Verification tests
 

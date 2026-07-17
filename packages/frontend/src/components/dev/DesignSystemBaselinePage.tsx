@@ -25,6 +25,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -35,6 +36,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const MARKDOWN_FIXTURE = `# Reader heading
 
@@ -599,6 +609,8 @@ const LONG_TOKEN =
 
 function PrimitivesBaseline() {
   const [controlledOpen, setControlledOpen] = useState(false);
+  const [menuValue, setMenuValue] = useState("system");
+  const [checkboxState, setCheckboxState] = useState<boolean | "indeterminate">("indeterminate");
 
   return (
     <div className="grid gap-4" data-testid="primitives-baseline">
@@ -737,6 +749,58 @@ function PrimitivesBaseline() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+        </div>
+      </section>
+
+      <section className="cc-panel grid gap-4 p-6">
+        <h2 className="text-lg font-semibold text-text-primary">Dropdown menu</h2>
+        <div className="flex flex-wrap gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary">Open menu</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem>Rename</DropdownMenuItem>
+              <DropdownMenuItem>Duplicate</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled>Delete (disabled)</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary">Radio menu</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup onValueChange={setMenuValue} value={menuValue}>
+                <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </section>
+
+      <section className="cc-panel grid gap-4 p-6">
+        <h2 className="text-lg font-semibold text-text-primary">Checkbox</h2>
+        <div className="flex flex-wrap gap-5 text-sm text-text-primary">
+          <label className="flex items-center gap-2">
+            <Checkbox /> Unchecked
+          </label>
+          <label className="flex items-center gap-2">
+            <Checkbox checked /> Checked
+          </label>
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={checkboxState}
+              onCheckedChange={(checked) => setCheckboxState(checked)}
+            />
+            Permission group
+          </label>
+          <label className="flex items-center gap-2 text-text-disabled">
+            <Checkbox disabled /> Disabled
+          </label>
         </div>
       </section>
     </div>

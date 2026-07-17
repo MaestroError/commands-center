@@ -1,6 +1,6 @@
 # DS-0402 — Migrate Shell and Global Interaction Surfaces
 
-- Status: In progress (semantic-token slice done — [record](artifacts/shell-global-migration-record.md); ThemeMenu/Tooltip/search interaction slices pending)
+- Status: Complete ([record](artifacts/shell-global-migration-record.md)) — shell tokens + ThemeMenu→DropdownMenu; Tooltip assessed and deferred; global search remains audit-first
 - Phase: [Phase 4](README.md)
 - Foundation reference:
   [Tailwind and primitive ownership](../../design-system-foundation.md#1-keep-four-distinct-layers)
@@ -53,18 +53,18 @@ selection and shortcut behavior.
 
 ## Acceptance criteria
 
-- [ ] Every migrated shell behavior uses CC-owned primitives/common APIs; Radix
+- [x] Every migrated shell behavior uses CC-owned primitives/common APIs; Radix
       imports remain inside `components/ui`.
-- [ ] Light/Dark/System selection, selected preference, live System behavior,
+- [x] Light/Dark/System selection, selected preference, live System behavior,
       persistence, and accessible naming remain unchanged.
-- [ ] Menu arrows/typeahead/Escape/outside interaction and focus return follow
+- [x] Menu arrows/typeahead/Escape/outside interaction and focus return follow
       the approved contract.
-- [ ] Search, Activity, Profile, appearance, and navigation remain reachable at
+- [x] Search, Activity, Profile, appearance, and navigation remain reachable at
       320px, 390px, and desktop widths.
-- [ ] Global shortcuts and search/navigation selection behavior remain intact.
-- [ ] AppLogo remains EX-001 and equivalent non-brand UI glyphs use Lucide.
-- [ ] Status/focus/hover/disabled states use semantic tokens in both modes.
-- [ ] No shell information architecture or routing redesign is introduced.
+- [x] Global shortcuts and search/navigation selection behavior remain intact.
+- [x] AppLogo remains EX-001 and equivalent non-brand UI glyphs use Lucide.
+- [x] Status/focus/hover/disabled states use semantic tokens in both modes.
+- [x] No shell information architecture or routing redesign is introduced.
 
 ## Verification tests
 

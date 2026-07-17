@@ -48,6 +48,51 @@ test.describe("@design-system Phase 1 foundations", () => {
     }
   });
 
+  test("keeps every global action reachable and preserves shell keyboard behavior", async ({
+    page,
+  }) => {
+    for (const width of [1280, 390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto("/__design-system-baseline?surface=application");
+
+      const navigation = page.getByRole("button", { name: "Open navigation" });
+      if (width < 1024) {
+        await expect(navigation).toBeVisible();
+      } else {
+        await expect(navigation).toHaveCount(0);
+      }
+
+      const search = page.getByRole("button", { name: "Open global search" });
+      const appearance = page.getByRole("button", { name: /Choose color mode, current:/ });
+      const activity = page.getByRole("button", { name: "Activity", exact: true });
+      const profile = page.getByRole("link", { name: "Profile" });
+
+      await expect(search).toBeVisible();
+      await expect(appearance).toBeVisible();
+      await expect(activity).toBeVisible();
+      await expect(profile).toBeVisible();
+
+      await appearance.focus();
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("s");
+      await expect(page.getByRole("menuitemradio", { name: "System" })).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(appearance).toBeFocused();
+
+      await activity.click();
+      await expect(page.getByText("Needs attention")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByText("Needs attention")).toHaveCount(0);
+
+      await page.keyboard.press("Control+Shift+F");
+      await expect(page.getByRole("dialog", { name: "Global search" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog", { name: "Global search" })).toHaveCount(0);
+
+      expect(await readPageOverflow(page)).toEqual({ clientWidth: width, scrollWidth: width });
+    }
+  });
+
   test("applies semantic defaults without overriding protected or utility-styled content", async ({
     page,
   }) => {

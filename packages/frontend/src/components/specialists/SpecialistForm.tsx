@@ -724,17 +724,17 @@ function McpServerPermissionControl(props: {
     {
       value: "disabled" as const,
       label: "Disabled",
-      selectedClassName: "border-rose-500 bg-rose-500/10 text-rose-600",
+      selectedClassName: "border-danger-border bg-danger-surface text-danger-foreground",
     },
     {
       value: "ask" as const,
       label: "Ask",
-      selectedClassName: "border-amber-500 bg-amber-500/10 text-amber-600",
+      selectedClassName: "border-warning-border bg-warning-surface text-warning-foreground",
     },
     {
       value: "allow" as const,
       label: "Allow",
-      selectedClassName: "border-emerald-500 bg-emerald-500/10 text-emerald-600",
+      selectedClassName: "border-success-border bg-success-surface text-success-foreground",
     },
   ];
 
@@ -773,17 +773,17 @@ function AppMcpServerPermissionControl(props: {
     {
       value: "deny" as const,
       label: "Disabled",
-      selectedClassName: "border-rose-500 bg-rose-500/10 text-rose-600",
+      selectedClassName: "border-danger-border bg-danger-surface text-danger-foreground",
     },
     {
       value: "ask" as const,
       label: "Ask",
-      selectedClassName: "border-amber-500 bg-amber-500/10 text-amber-600",
+      selectedClassName: "border-warning-border bg-warning-surface text-warning-foreground",
     },
     {
       value: "allow" as const,
       label: "Allow",
-      selectedClassName: "border-emerald-500 bg-emerald-500/10 text-emerald-600",
+      selectedClassName: "border-success-border bg-success-surface text-success-foreground",
     },
   ];
 
@@ -826,11 +826,11 @@ function StatusBadge(props: { status: CustomToolDriftStatus }) {
     global_only: "rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary",
     agent_only: "rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary",
     matching:
-      "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-700 dark:text-emerald-300",
+      "rounded-full border border-success-border bg-success-surface px-2 py-0.5 text-xs text-success-foreground",
     outdated:
-      "rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300",
+      "rounded-full border border-warning-border bg-warning-surface px-2 py-0.5 text-xs text-warning-foreground",
     modified:
-      "rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-xs text-rose-700 dark:text-rose-300",
+      "rounded-full border border-danger-border bg-danger-surface px-2 py-0.5 text-xs text-danger-foreground",
     unknown: "rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary",
   }[props.status];
 
@@ -933,9 +933,9 @@ function statusLabel(server: McpServer): string {
 function statusBadgeClassName(server: McpServer): string {
   switch (server.runtimeStatus?.status) {
     case "connected":
-      return "rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400";
+      return "rounded-full bg-success-surface px-2 py-0.5 text-xs font-medium text-success-foreground";
     case "needs_auth":
-      return "rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400";
+      return "rounded-full bg-warning-surface px-2 py-0.5 text-xs font-medium text-warning-foreground";
     case "failed":
     case "needs_client_registration":
       return "rounded-full bg-danger/15 px-2 py-0.5 text-xs font-medium text-danger";

@@ -433,7 +433,7 @@ function McpServerCard(props: {
       <p className="mt-4 break-all text-xs text-text-secondary">{describeConfig(props.server)}</p>
 
       {props.missingSecrets.length > 0 ? (
-        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-500">
+        <div className="mt-3 rounded-lg border border-warning-border bg-warning-surface p-3 text-xs text-warning-foreground">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <p className="font-medium">Missing secret values</p>
@@ -445,7 +445,7 @@ function McpServerCard(props: {
             </div>
             <a
               aria-label="Open secrets in new tab"
-              className="rounded-md p-1.5 text-amber-500 transition hover:bg-amber-500/10"
+              className="rounded-md p-1.5 text-warning transition hover:bg-warning/10"
               href="/settings"
               rel="noreferrer"
               target="_blank"
@@ -648,9 +648,9 @@ function SecretKeyPill(props: { secret: string }) {
   const [copied, setCopied] = useState(false);
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1 font-mono text-[11px]">
+    <div className="inline-flex items-center gap-1 rounded-md border border-warning-border bg-warning-surface px-2 py-1 font-mono text-[11px]">
       <button
-        className="transition hover:text-amber-400"
+        className="transition hover:text-warning"
         onClick={() => void handleCopy()}
         title={`Copy ${props.secret}`}
         type="button"
@@ -659,7 +659,7 @@ function SecretKeyPill(props: { secret: string }) {
       </button>
       <button
         aria-label={`Copy ${props.secret}`}
-        className="rounded-sm p-0.5 transition hover:bg-amber-500/10 hover:text-amber-400"
+        className="rounded-sm p-0.5 transition hover:bg-warning/10 hover:text-warning"
         onClick={() => void handleCopy()}
         type="button"
       >

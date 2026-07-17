@@ -6,16 +6,16 @@
 
 ## Primary file ownership (non-overlapping)
 
-| Task    | Domain                 | Primary files (owner)                                                                  |
-| ------- | ---------------------- | -------------------------------------------------------------------------------------- |
-| DS-0402 | shell/global           | `components/shell/*`, `components/layout/*`, global search/activity/profile chrome     |
-| DS-0403 | specialists            | `components/specialists/*`, specialist pages                                           |
-| DS-0404 | task authoring         | `components/tasks/TaskPromptComposer`, task/template forms, `components/tasks/task-ui` |
-| DS-0405 | task operations        | `pages/tasks/TaskBoard`, `pages/TaskDetailPage`, run/detail cards                      |
-| DS-0406 | integrations/providers | `pages/IntegrationsPage`, `pages/integrations/*`                                       |
-| DS-0407 | settings/API/tools     | `pages/SettingsPage`, `pages/CustomToolsPage`, API/token/tool controls                 |
-| DS-0408 | chat/media             | `components/chat/*` (chrome only; protected/composer surfaces excluded)                |
-| DS-0409 | workspace/docs/files   | `components/workspace/*`, `pages/file-manager/*`, `pages/FileManagerPage`, doc chrome  |
+| Task    | Domain                 | Primary files (owner)                                                                                                      |
+| ------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| DS-0402 | shell/global           | `components/shell/*`, global search/activity/profile chrome                                                                |
+| DS-0403 | specialists            | `components/specialists/*`, specialist pages                                                                               |
+| DS-0404 | task authoring         | `components/tasks/TaskPromptComposer`, task/template forms, `components/tasks/task-ui`                                     |
+| DS-0405 | task operations        | `pages/tasks/TaskBoard`, `pages/TaskDetailPage`, run/detail cards                                                          |
+| DS-0406 | integrations/providers | `pages/IntegrationsPage`, `pages/integrations/*`                                                                           |
+| DS-0407 | settings/API/tools     | `pages/SettingsPage`, `pages/CustomToolsPage`, API/token/tool controls                                                     |
+| DS-0408 | chat/media             | `components/chat/*` (chrome only; protected/composer surfaces excluded)                                                    |
+| DS-0409 | workspace/docs/files   | `components/layout/WorkspaceLayout`, `components/workspace/*`, `pages/file-manager/*`, `pages/FileManagerPage`, doc chrome |
 
 ## Shared-helper sequencing
 
@@ -45,6 +45,22 @@ A domain batch may add a `components/ui` primitive only for a concrete consumer
 in that batch (e.g., DropdownMenu/Tooltip for DS-0402 ThemeMenu/icon actions),
 with focused tests and gallery coverage, and must keep Radix/`cmdk` imports
 inside `components/ui/`.
+
+## Color-token policy (approved 2026-07-18)
+
+For raw palette values carrying status or category meaning:
+
+- **Status roles** (e.g. running/queued/failed/done, healthy/degraded) reuse the
+  existing semantic state tokens — `success`, `warning`, `danger`, `accent`, and
+  the information role — rather than introducing new tokens.
+- **Genuinely brand/category-specific colors** (per-provider artwork, product
+  category identity that is not a state) are registered as exceptions and left as
+  raw values, not tokenized.
+- A new named token is added only when a status role has no existing home.
+
+This keeps the token set lean while still theming every status color. Category
+maps in `task-helpers.ts` and `integration-helpers.ts` are classified against
+this policy by their owning tasks (DS-0404/0405, DS-0406) before any change.
 
 ## No-business-refactor rule
 
