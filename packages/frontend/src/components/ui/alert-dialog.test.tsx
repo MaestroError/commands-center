@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   AlertDialog,
@@ -15,6 +15,13 @@ import {
   AlertDialogTrigger,
 } from "./alert-dialog";
 import { Button } from "./button";
+
+afterEach(async () => {
+  cleanup();
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
+});
 
 function DestructiveAlert(props: {
   open?: boolean;

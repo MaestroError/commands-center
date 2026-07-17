@@ -479,44 +479,44 @@ palette or visual contract. Phase 2 remains limited to `Button`, `Dialog`,
 - [x] Decompose Phase 3 into the
       [detailed Phase 3 task plan](design-system/phase-3/README.md), with Phase 2
       sign-off as the implementation blocker.
-- [ ] Complete
+- [x] Complete
       [DS-0301 — Accept the Phase 2 handoff and freeze the common-composition contract](design-system/phase-3/01-phase-2-handoff.md):
       reconcile actual primitive APIs, inventory common consumers and tests,
       authorize only concrete support primitives/dependencies, and preserve
       exclusion boundaries.
-- [ ] Complete
+- [x] Complete
       [DS-0302 — Migrate `ConfirmDialog` to AlertDialog](design-system/phase-3/02-confirm-dialog.md):
       preserve its common API and callbacks while adopting safe focus,
       portal/overlay, Escape, and focus-return behavior.
-- [ ] Complete
+- [x] Complete
       [DS-0303 — Migrate the document dialogs to Dialog](design-system/phase-3/03-document-dialogs.md):
       replace duplicated modal shells while keeping document/folder validation,
       mutations, errors, and public APIs separate and stable.
-- [ ] Complete
+- [x] Complete
       [DS-0304 — Consolidate `PageHeader` and page states](design-system/phase-3/04-page-structure.md):
       compose approved Surface/Alert support primitives without moving page
       layout or loading-state ownership out of the common layer.
-- [ ] Complete
+- [x] Complete
       [DS-0305 — Consolidate `PasswordInput` and field primitives](design-system/phase-3/05-password-input.md):
       reuse native Input and concrete icon-action primitives while preserving
       form behavior, visibility state, and Lucide accessibility.
-- [ ] Complete
+- [x] Complete
       [DS-0306 — Migrate the common Switch](design-system/phase-3/06-switch.md):
       replace custom role/state behavior and raw colors with the approved
       CC-owned Radix Switch primitive.
-- [ ] Complete
+- [x] Complete
       [DS-0307 — Migrate ordinary common tabs](design-system/phase-3/07-tabs.md):
       add correct reusable tab keyboard/focus behavior while retaining
       terminal/editor tab exclusions.
-- [ ] Complete
+- [x] Complete
       [DS-0308 — Migrate `SearchableSelect` to the approved combobox composition](design-system/phase-3/08-searchable-select.md):
       preserve its common API while composing the approved Popover/Command
       behavior and retaining composer/domain exclusions.
-- [ ] Complete
+- [x] Complete
       [DS-0309 — Add common-composition gallery coverage](design-system/phase-3/09-common-gallery.md):
       review every migrated composition/state in Default light/dark at
       narrow/wide widths through public APIs.
-- [ ] Complete
+- [x] Complete
       [DS-0310 — Verify and sign off Phase 3](design-system/phase-3/10-phase-3-signoff.md):
       audit APIs, consumers, support dependencies, Radix boundaries, behavior,
       protected surfaces, production exclusion, and the Phase 4 handoff.

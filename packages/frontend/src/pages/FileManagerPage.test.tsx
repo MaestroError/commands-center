@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { BrowserRouter, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -364,13 +365,14 @@ describe("FileManagerPage", () => {
   });
 
   it("moves an entry with the move dialog", async () => {
+    const user = userEvent.setup();
     renderWithRoute("/files");
 
     await screen.findAllByText("src");
 
-    fireEvent.click(screen.getByTestId("file-row-src"));
-    fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Move directory" }));
+    await user.click(screen.getByTestId("file-row-src"));
+    await user.click(screen.getByRole("tab", { name: "Actions" }));
+    await user.click(await screen.findByRole("button", { name: "Move directory" }));
 
     expect(screen.getByRole("dialog", { name: "Move entry" })).toBeInTheDocument();
     await waitFor(() => {

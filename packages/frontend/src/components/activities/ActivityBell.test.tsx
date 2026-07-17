@@ -86,9 +86,8 @@ describe("ActivityBell", () => {
     });
     fireEvent.click(screen.getByLabelText("Activity (1 need attention)"));
     fireEvent.click(screen.getByText("Mark all as read"));
-    const dialog = screen.getByRole("dialog");
+    const dialog = screen.getByRole("alertdialog");
     const confirmButton = within(dialog).getByRole("button", { name: "Mark all as read" });
-    fireEvent.mouseDown(confirmButton);
     expect(dialog).toBeInTheDocument();
     fireEvent.click(confirmButton);
 

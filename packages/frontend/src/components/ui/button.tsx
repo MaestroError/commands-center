@@ -16,9 +16,14 @@ const buttonVariants = cva("cc-button", {
       secondary: "cc-button-secondary",
       danger: "cc-button-danger",
     },
+    size: {
+      default: "",
+      icon: "cc-button-icon",
+    },
   },
   defaultVariants: {
     variant: "primary",
+    size: "default",
   },
 });
 
@@ -26,7 +31,7 @@ export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
   VariantProps<typeof buttonVariants>;
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant, type, ...props },
+  { className, size, variant, type, ...props },
   ref,
 ) {
   return (
@@ -35,7 +40,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       // Default to type="button" so a Button inside a form does not submit it
       // unless the consumer explicitly opts in.
       type={type ?? "button"}
-      className={cn(buttonVariants({ variant }), className)}
+      className={cn(buttonVariants({ size, variant }), className)}
       {...props}
     />
   );

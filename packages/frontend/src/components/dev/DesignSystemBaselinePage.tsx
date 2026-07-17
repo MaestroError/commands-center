@@ -1,11 +1,17 @@
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, CircleHelp, Plus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleHelp, Files, Plus, Search } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 
 import { Markdown } from "@/components/chat/Markdown";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PageHeader } from "@/components/common/PageHeader";
+import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
+import { PasswordInput } from "@/components/common/PasswordInput";
+import { SearchableSelect } from "@/components/common/SearchableSelect";
 import { Switch } from "@/components/common/Switch";
+import { TabBar } from "@/components/common/TabBar";
+import { DocumentCreateDialog } from "@/components/documents/DocumentCreateDialog";
+import { DocumentFolderDialog } from "@/components/documents/DocumentFolderDialog";
 import { LazyMilkdownEditor } from "@/components/documents/LazyMilkdownEditor";
 import {
   AlertDialog,
@@ -90,6 +96,7 @@ const protectedSurface = "milkdown";
 
 type BaselineSurface =
   | "application"
+  | "common"
   | "dialog"
   | "markdown"
   | "milkdown"
@@ -102,6 +109,10 @@ export function DesignSystemBaselinePage() {
 
   if (surface === "dialog") {
     return <DialogBaseline />;
+  }
+
+  if (surface === "common") {
+    return <CommonBaseline />;
   }
 
   if (surface === "primitives") {
@@ -248,6 +259,191 @@ function ApplicationBaseline() {
           Create first item
         </button>
       </section>
+    </div>
+  );
+}
+
+const COMMON_SELECT_OPTIONS = [
+  { id: "anthropic/claude-opus-4-8", label: "Claude Opus 4.8" },
+  { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { id: "openai/gpt-4.1", label: "GPT-4.1" },
+];
+
+type CommonOverlay = "confirm" | "document" | "folder" | null;
+
+function CommonBaseline() {
+  const [activeTabId, setActiveTabId] = useState("overview");
+  const [enabled, setEnabled] = useState(true);
+  const [model, setModel] = useState("openai/gpt-4.1");
+  const [overlay, setOverlay] = useState<CommonOverlay>(null);
+
+  return (
+    <div className="grid gap-4" data-testid="common-baseline">
+      <PageHeader
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setOverlay("folder")}>
+              New folder
+            </Button>
+            <Button onClick={() => setOverlay("document")}>New document</Button>
+          </>
+        }
+        description="Public common-component APIs composed from CC-owned primitives, with deterministic state for interaction and visual verification."
+        eyebrow="Phase 3 compositions"
+        title="Common application patterns"
+      />
+
+      <section className="cc-panel grid gap-5 p-6" data-testid="common-controls">
+        <div>
+          <h2 className="text-lg font-semibold text-text-primary">Controls</h2>
+          <p className="mt-2 text-sm text-text-secondary">
+            Password, switch, tabs, and searchable selection keep their established public APIs.
+          </p>
+        </div>
+
+        <div className="grid gap-5 md:grid-cols-2">
+          <label className="grid gap-2 text-sm font-medium text-text-primary">
+            Workspace token
+            <PasswordInput aria-label="Workspace token" defaultValue="cc-secret-value" />
+          </label>
+          <label className="grid gap-2 text-sm font-medium text-text-primary">
+            Disabled token
+            <PasswordInput aria-label="Disabled token" defaultValue="disabled-secret" disabled />
+          </label>
+          <label className="grid gap-2 text-sm font-medium text-text-primary">
+            Default model
+            <SearchableSelect
+              ariaLabel="Default model"
+              className="w-full"
+              onChange={setModel}
+              options={COMMON_SELECT_OPTIONS}
+              value={model}
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-medium text-text-primary">
+            Disabled model
+            <SearchableSelect
+              ariaLabel="Disabled model"
+              className="w-full"
+              disabled
+              onChange={() => undefined}
+              options={COMMON_SELECT_OPTIONS}
+              value="anthropic/claude-opus-4-8"
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-5">
+          <label className="inline-flex items-center gap-2 text-sm text-text-primary">
+            <Switch aria-label="Enable tools" checked={enabled} onChange={setEnabled} />
+            Enable tools
+          </label>
+          <label className="inline-flex items-center gap-2 text-sm text-text-secondary">
+            <Switch
+              aria-label="Locked setting"
+              checked={false}
+              disabled
+              onChange={() => undefined}
+            />
+            Locked setting
+          </label>
+        </div>
+
+        <div className="min-w-0">
+          <TabBar
+            activeTabId={activeTabId}
+            onTabChange={setActiveTabId}
+            tabs={[
+              {
+                id: "overview",
+                label: "Overview",
+                icon: <Files className="h-4 w-4" />,
+                panelId: "common-overview-panel",
+                triggerId: "common-overview-tab",
+              },
+              {
+                id: "search",
+                label: "Search",
+                icon: <Search className="h-4 w-4" />,
+                panelId: "common-search-panel",
+                triggerId: "common-search-tab",
+              },
+              {
+                id: "activity",
+                label: "Activity",
+                panelId: "common-activity-panel",
+                triggerId: "common-activity-tab",
+              },
+            ]}
+            testIdPrefix="common-tab"
+          />
+          <div
+            aria-labelledby={`common-${activeTabId}-tab`}
+            className="min-h-20 p-4 text-sm text-text-secondary"
+            id={`common-${activeTabId}-panel`}
+            role="tabpanel"
+          >
+            {activeTabId === "overview"
+              ? "Overview panel content"
+              : activeTabId === "search"
+                ? "Search panel content"
+                : "Activity panel content"}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4" data-testid="common-page-states">
+        <ErrorState
+          action={<Button variant="secondary">Retry</Button>}
+          description="The request failed while preserving the current page context."
+          title="Could not load specialists"
+        />
+        <EmptyState
+          action={<Button>Create specialist</Button>}
+          description="Create the first specialist to start a persistent direct conversation."
+          title="No specialists yet"
+        />
+        <LoadingState />
+      </section>
+
+      <section className="cc-panel flex flex-wrap gap-2 p-6" data-testid="common-dialog-triggers">
+        <Button variant="danger" onClick={() => setOverlay("confirm")}>
+          Delete specialist
+        </Button>
+        <Button variant="secondary" onClick={() => setOverlay("document")}>
+          Open document dialog
+        </Button>
+        <Button variant="secondary" onClick={() => setOverlay("folder")}>
+          Open folder dialog
+        </Button>
+      </section>
+
+      {overlay === "confirm" ? (
+        <ConfirmDialog
+          confirmLabel="Delete specialist"
+          confirmVariant="danger"
+          description="This removes the specialist configuration from the active workspace."
+          onCancel={() => setOverlay(null)}
+          onConfirm={() => setOverlay(null)}
+          title="Delete this specialist?"
+        />
+      ) : null}
+      {overlay === "document" ? (
+        <DocumentCreateDialog
+          defaultFolder="design"
+          onClose={() => setOverlay(null)}
+          ownerSlug="baseline-specialist"
+          scope="private"
+        />
+      ) : null}
+      {overlay === "folder" ? (
+        <DocumentFolderDialog
+          defaultParent="design"
+          onClose={() => setOverlay(null)}
+          ownerSlug="baseline-specialist"
+          scope="private"
+        />
+      ) : null}
     </div>
   );
 }
@@ -550,6 +746,7 @@ function PrimitivesBaseline() {
 function readSurface(value: string | null): BaselineSurface {
   if (
     value === "dialog" ||
+    value === "common" ||
     value === "markdown" ||
     value === "milkdown" ||
     value === "primitives" ||

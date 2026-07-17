@@ -1,4 +1,7 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
+
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/cn";
 
 export type TabItem = {
   id: string;
@@ -6,6 +9,8 @@ export type TabItem = {
   icon?: ReactNode;
   ariaLabel?: string;
   iconOnly?: boolean;
+  panelId?: string;
+  triggerId?: string;
 };
 
 type TabBarProps = {
@@ -17,36 +22,51 @@ type TabBarProps = {
 };
 
 export function TabBar({ tabs, activeTabId, onTabChange, testIdPrefix }: TabBarProps) {
+  const lastRequestedTabId = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    lastRequestedTabId.current = undefined;
+  }, [activeTabId]);
+
+  function requestTabChange(tabId: string) {
+    if (lastRequestedTabId.current === tabId) {
+      return;
+    }
+
+    lastRequestedTabId.current = tabId;
+    onTabChange(tabId);
+  }
+
   return (
-    <div
-      className="flex min-w-0 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      role="tablist"
+    <Tabs
+      activationMode="automatic"
+      orientation="horizontal"
+      value={activeTabId ?? ""}
+      onValueChange={requestTabChange}
     >
-      {tabs.map((tab) => {
-        const isActive = tab.id === activeTabId;
-        return (
-          <button
-            key={tab.id}
-            role="tab"
+      <TabsList className="overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {tabs.map((tab) => (
+          <TabsTrigger
+            aria-controls={tab.panelId}
             aria-label={tab.ariaLabel}
-            aria-selected={isActive}
+            className={cn(
+              tab.iconOnly
+                ? "inline-flex h-10 w-10 items-center justify-center px-0"
+                : tab.icon
+                  ? "inline-flex items-center gap-2"
+                  : undefined,
+            )}
             data-testid={testIdPrefix ? `${testIdPrefix}-${tab.id}` : undefined}
-            type="button"
-            onClick={() => onTabChange(tab.id)}
-            className={[
-              "relative shrink-0 px-4 py-2.5 text-sm transition-colors whitespace-nowrap",
-              "after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:transition-colors",
-              tab.iconOnly ? "inline-flex h-10 w-10 items-center justify-center px-0" : "",
-              isActive
-                ? "text-text-primary after:bg-accent"
-                : "text-text-secondary hover:text-text-primary after:bg-transparent",
-            ].join(" ")}
+            id={tab.triggerId}
+            key={tab.id}
+            onClick={() => requestTabChange(tab.id)}
+            value={tab.id}
           >
             {tab.icon ? <span aria-hidden="true">{tab.icon}</span> : null}
             {tab.iconOnly ? <span className="sr-only">{tab.label}</span> : tab.label}
-          </button>
-        );
-      })}
-    </div>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }

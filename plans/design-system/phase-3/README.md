@@ -1,6 +1,6 @@
 # Phase 3 — Consolidate Common Compositions
 
-- Status: Planned
+- Status: Complete
 
 Parent plans:
 
@@ -40,18 +40,18 @@ Shadcn registry code directly.
 
 ## Task sequence
 
-| ID      | Task                                                                                           | Blocked by              | Status  |
-| ------- | ---------------------------------------------------------------------------------------------- | ----------------------- | ------- |
-| DS-0301 | [Accept the Phase 2 handoff and freeze the common-composition contract](01-phase-2-handoff.md) | Phase 2 sign-off        | Planned |
-| DS-0302 | [Migrate `ConfirmDialog` to AlertDialog](02-confirm-dialog.md)                                 | DS-0301                 | Planned |
-| DS-0303 | [Migrate the document dialogs to Dialog](03-document-dialogs.md)                               | DS-0301                 | Planned |
-| DS-0304 | [Consolidate `PageHeader` and page states](04-page-structure.md)                               | DS-0301                 | Planned |
-| DS-0305 | [Consolidate `PasswordInput` and field primitives](05-password-input.md)                       | DS-0301                 | Planned |
-| DS-0306 | [Migrate the common Switch](06-switch.md)                                                      | DS-0301                 | Planned |
-| DS-0307 | [Migrate ordinary common tabs](07-tabs.md)                                                     | DS-0301                 | Planned |
-| DS-0308 | [Migrate `SearchableSelect` to the approved combobox composition](08-searchable-select.md)     | DS-0301                 | Planned |
-| DS-0309 | [Add common-composition gallery coverage](09-common-gallery.md)                                | DS-0302 through DS-0308 | Planned |
-| DS-0310 | [Verify and sign off Phase 3](10-phase-3-signoff.md)                                           | DS-0302 through DS-0309 | Planned |
+| ID      | Task                                                                                           | Blocked by              | Status   |
+| ------- | ---------------------------------------------------------------------------------------------- | ----------------------- | -------- |
+| DS-0301 | [Accept the Phase 2 handoff and freeze the common-composition contract](01-phase-2-handoff.md) | Phase 2 sign-off        | Complete |
+| DS-0302 | [Migrate `ConfirmDialog` to AlertDialog](02-confirm-dialog.md)                                 | DS-0301                 | Complete |
+| DS-0303 | [Migrate the document dialogs to Dialog](03-document-dialogs.md)                               | DS-0301                 | Complete |
+| DS-0304 | [Consolidate `PageHeader` and page states](04-page-structure.md)                               | DS-0301                 | Complete |
+| DS-0305 | [Consolidate `PasswordInput` and field primitives](05-password-input.md)                       | DS-0301                 | Complete |
+| DS-0306 | [Migrate the common Switch](06-switch.md)                                                      | DS-0301                 | Complete |
+| DS-0307 | [Migrate ordinary common tabs](07-tabs.md)                                                     | DS-0301                 | Complete |
+| DS-0308 | [Migrate `SearchableSelect` to the approved combobox composition](08-searchable-select.md)     | DS-0301                 | Complete |
+| DS-0309 | [Add common-composition gallery coverage](09-common-gallery.md)                                | DS-0302 through DS-0308 | Complete |
+| DS-0310 | [Verify and sign off Phase 3](10-phase-3-signoff.md)                                           | DS-0302 through DS-0309 | Complete |
 
 DS-0302 through DS-0308 are separate reviewable batches and may proceed in
 parallel after DS-0301 when they do not touch the same primitive or fixture.

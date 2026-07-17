@@ -1,6 +1,6 @@
 # DS-0301 — Accept the Phase 2 Handoff and Freeze the Common-Composition Contract
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 3](README.md)
 - Foundation reference:
   [Phase 3 scope](../../design-system-foundation.md#phase-3--consolidate-common-compositions)

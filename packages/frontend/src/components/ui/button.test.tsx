@@ -90,4 +90,10 @@ describe("Button", () => {
       "mt-4",
     );
   });
+
+  it("provides the bounded icon-action size", () => {
+    render(<Button aria-label="Refresh" size="icon" />);
+
+    expect(screen.getByRole("button", { name: "Refresh" })).toHaveClass("cc-button-icon");
+  });
 });

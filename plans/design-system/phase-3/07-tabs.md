@@ -1,6 +1,6 @@
 # DS-0307 — Migrate Ordinary Common Tabs
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 3](README.md)
 - Foundation reference:
   [React primitives](../../design-system-foundation.md#react-primitives)

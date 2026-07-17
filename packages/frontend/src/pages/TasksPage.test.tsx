@@ -994,7 +994,7 @@ describe("TasksPage", () => {
     expect(screen.getByText("Tests failed.")).toBeInTheDocument();
     expect(screen.getByText("Planner replied")).toBeInTheDocument();
     expect(screen.getByText("Planner commented")).toBeInTheDocument();
-    expect(screen.getAllByText("Done.").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Done.")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Retry subtask" })).not.toBeInTheDocument();
 
     const comments = screen.getByRole("region", { name: "Feedback comments" });
@@ -2639,7 +2639,7 @@ describe("TaskDetailPage", () => {
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
     await screen.findByText(`Scheduled ${formatDate(runAt)}`);
-    expect(screen.getAllByText("Done.").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Done.")).length).toBeGreaterThan(0);
   });
 
   it("renders the latest run result as markdown on the task detail page", async () => {
@@ -2674,7 +2674,7 @@ describe("TaskDetailPage", () => {
 
     expect(screen.queryByRole("tab", { name: "Feedback" })).not.toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "Feedback comments" })).toBeInTheDocument();
-    expect(screen.getByText("Please retest the release flow.")).toBeInTheDocument();
+    expect(await screen.findByText("Please retest the release flow.")).toBeInTheDocument();
     expect(screen.getByText("Planner replied")).toBeInTheDocument();
     expect(screen.getByText("Tests failed.")).toBeInTheDocument();
     expect(screen.getByText("Planner commented")).toBeInTheDocument();
@@ -2739,7 +2739,7 @@ describe("TaskDetailPage", () => {
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
     const comments = await screen.findByRole("region", { name: "Feedback comments" });
-    const replyButtons = within(comments).getAllByRole("button", { name: "Reply" });
+    const replyButtons = await within(comments).findAllByRole("button", { name: "Reply" });
 
     expect(
       within(comments).getAllByText("Replies require a recorded OpenCode session.").length,

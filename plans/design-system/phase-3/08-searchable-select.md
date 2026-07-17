@@ -1,6 +1,6 @@
 # DS-0308 — Migrate `SearchableSelect` to the Approved Combobox Composition
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 3](README.md)
 - Foundation reference:
   [React primitives](../../design-system-foundation.md#react-primitives)
@@ -56,20 +56,20 @@ popovers are explicitly excluded because they must retain textarea focus.
 
 ## Acceptance criteria
 
-- [ ] Public value/options/onChange behavior remains compatible.
-- [ ] The selected label is shown when closed and filtering matches both label
+- [x] Public value/options/onChange behavior remains compatible.
+- [x] The selected label is shown when closed and filtering matches both label
       and ID as before.
-- [ ] Combobox, popup, listbox, and active-option semantics are accurate and
+- [x] Combobox, popup, listbox, and active-option semantics are accurate and
       screen-reader names are stable.
-- [ ] Arrow keys, Enter, Escape, pointer selection, outside interaction, and
+- [x] Arrow keys, Enter, Escape, pointer selection, outside interaction, and
       focus return follow the approved behavior exactly once per interaction.
-- [ ] Empty results and disabled state are visible, semantic, and tested.
-- [ ] Controlled value/options changes do not leave stale query/highlight state.
-- [ ] Popover collision and narrow-width behavior keep the control within the
+- [x] Empty results and disabled state are visible, semantic, and tested.
+- [x] Controlled value/options changes do not leave stale query/highlight state.
+- [x] Popover collision and narrow-width behavior keep the control within the
       viewport.
-- [ ] Radix imports remain in `components/ui`; filtering/domain state remains in
+- [x] Radix imports remain in `components/ui`; filtering/domain state remains in
       the common composition or consumer as approved.
-- [ ] Composer suggestions and ModelSelector are not silently migrated.
+- [x] Composer suggestions and ModelSelector are not silently migrated.
 
 ## Verification tests
 

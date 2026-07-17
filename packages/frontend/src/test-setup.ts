@@ -159,6 +159,7 @@ Object.defineProperty(window.navigator, "clipboard", {
 
 class MockResizeObserver {
   observe = vi.fn();
+  unobserve = vi.fn();
   disconnect = vi.fn();
 }
 
@@ -170,6 +171,12 @@ Object.defineProperty(window, "ResizeObserver", {
 
 Object.defineProperty(window, "open", {
   configurable: true,
+  value: vi.fn(),
+});
+
+Object.defineProperty(Element.prototype, "scrollIntoView", {
+  configurable: true,
+  writable: true,
   value: vi.fn(),
 });
 

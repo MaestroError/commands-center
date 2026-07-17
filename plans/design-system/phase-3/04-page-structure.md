@@ -1,6 +1,6 @@
 # DS-0304 — Consolidate `PageHeader` and Page States
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 3](README.md)
 - Foundation reference:
   [component ownership boundaries](../../design-system-foundation.md#5-reuse-the-existing-component-hierarchy)

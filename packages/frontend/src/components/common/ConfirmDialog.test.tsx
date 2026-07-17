@@ -18,8 +18,10 @@ describe("ConfirmDialog", () => {
       </div>,
     );
 
-    expect(screen.getByTestId("clipped-ancestor")).not.toContainElement(screen.getByRole("dialog"));
-    expect(screen.getByRole("dialog").parentElement?.parentElement).toBe(document.body);
+    expect(screen.getByTestId("clipped-ancestor")).not.toContainElement(
+      screen.getByRole("alertdialog"),
+    );
+    expect(screen.getByRole("alertdialog").parentElement).toBe(document.body);
   });
 
   // Pre-migration contract (DS-0201): lock the public behavior Phase 3 must
@@ -38,17 +40,18 @@ describe("ConfirmDialog", () => {
       />,
     );
 
-    expect(screen.getByRole("dialog")).toHaveAccessibleName("Delete workspace?");
+    expect(screen.getByRole("alertdialog")).toHaveAccessibleName("Delete workspace?");
   });
 
   it("invokes onConfirm when the confirm action is activated", async () => {
     const onConfirm = vi.fn();
+    const onCancel = vi.fn();
     const user = userEvent.setup();
     render(
       <ConfirmDialog
         confirmLabel="Delete"
         description="This cannot be undone."
-        onCancel={vi.fn()}
+        onCancel={onCancel}
         onConfirm={onConfirm}
         title="Delete?"
       />,
@@ -57,6 +60,7 @@ describe("ConfirmDialog", () => {
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
   });
 
   it("invokes onCancel when the Cancel action is activated", async () => {
@@ -114,12 +118,13 @@ describe("ConfirmDialog", () => {
 
   it("renders an optional secondary action and wires its callback", async () => {
     const onSecondary = vi.fn();
+    const onCancel = vi.fn();
     const user = userEvent.setup();
     render(
       <ConfirmDialog
         confirmLabel="Save"
         description="Keep your changes?"
-        onCancel={vi.fn()}
+        onCancel={onCancel}
         onConfirm={vi.fn()}
         onSecondary={onSecondary}
         secondaryLabel="Discard"
@@ -130,6 +135,7 @@ describe("ConfirmDialog", () => {
     await user.click(screen.getByRole("button", { name: "Discard" }));
 
     expect(onSecondary).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
   });
 
   it("omits the secondary action when only a label is provided", () => {
@@ -145,5 +151,23 @@ describe("ConfirmDialog", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Discard" })).not.toBeInTheDocument();
+  });
+
+  it("routes Escape through onCancel", async () => {
+    const onCancel = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ConfirmDialog
+        confirmLabel="Confirm"
+        description="Confirm this action."
+        onCancel={onCancel}
+        onConfirm={vi.fn()}
+        title="Are you sure?"
+      />,
+    );
+
+    await user.keyboard("{Escape}");
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });

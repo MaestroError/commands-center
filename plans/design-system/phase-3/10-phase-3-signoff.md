@@ -1,6 +1,6 @@
 # DS-0310 — Verify and Sign Off Phase 3
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 3](README.md)
 - Foundation reference:
   [Phase 3 verification](../../design-system-foundation.md#phase-3--consolidate-common-compositions)
@@ -51,26 +51,26 @@ domain surfaces together.
 
 ## Acceptance criteria
 
-- [ ] Every prior Phase 3 task is complete with no unresolved blocker.
-- [ ] Support files and dependencies match the approved DS-0301 batches.
-- [ ] Direct Radix imports exist only in `components/ui/`; no undocumented
+- [x] Every prior Phase 3 task is complete with no unresolved blocker.
+- [x] Support files and dependencies match the approved DS-0301 batches.
+- [x] Direct Radix imports exist only in `components/ui/`; no undocumented
       exception exists.
-- [ ] Common public APIs and all consumers are compatible or have an approved,
+- [x] Common public APIs and all consumers are compatible or have an approved,
       atomic migration record.
-- [ ] Dialog, switch, tab, combobox, password, page-state, and action behavior
+- [x] Dialog, switch, tab, combobox, password, page-state, and action behavior
       passes focused unit and real-browser coverage.
-- [ ] Focus entry/containment/return, safe destructive focus, Escape, outside
+- [x] Focus entry/containment/return, safe destructive focus, Escape, outside
       interaction, arrow navigation, disabled states, and narrow overflow pass.
-- [ ] Changed appearance uses semantic tokens with no parallel Shadcn palette or
+- [x] Changed appearance uses semantic tokens with no parallel Shadcn palette or
       theme/mode branch.
-- [ ] Existing `cc-*` compatibility consumers remain functional for Phase 4.
-- [ ] Markdown, Milkdown, terminal/editor tabs, composer suggestions, and other
+- [x] Existing `cc-*` compatibility consumers remain functional for Phase 4.
+- [x] Markdown, Milkdown, terminal/editor tabs, composer suggestions, and other
       exclusions have no unintended behavior or visual change.
-- [ ] Two consecutive no-update design-system visual runs pass.
-- [ ] Formatting, lint, typecheck, unit/integration tests, E2E tests, and
+- [x] Two consecutive no-update design-system visual runs pass.
+- [x] Formatting, lint, typecheck, unit/integration tests, E2E tests, and
       production build pass.
-- [ ] Development fixture/gallery code is absent from production assets.
-- [ ] Phase 4 handoff accounts for remaining domain migration scope and current
+- [x] Development fixture/gallery code is absent from production assets.
+- [x] Phase 4 handoff accounts for remaining domain migration scope and current
       inventory deltas.
 
 ## Verification tests

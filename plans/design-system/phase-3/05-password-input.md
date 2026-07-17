@@ -1,6 +1,6 @@
 # DS-0305 — Consolidate `PasswordInput` and Field Primitives
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 3](README.md)
 - Foundation reference:
   [React primitives](../../design-system-foundation.md#react-primitives)

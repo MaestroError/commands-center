@@ -1,6 +1,6 @@
 # DS-0309 — Add Common-Composition Gallery Coverage
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 3](README.md)
 - Foundation reference:
   [gallery and focused tests](../../design-system-foundation.md#7-verify-through-a-component-gallery-and-focused-tests)
@@ -50,17 +50,17 @@ Storybook or second gallery runtime is needed.
 
 ## Acceptance criteria
 
-- [ ] Every Phase 3 composition and newly authorized support primitive has a
+- [x] Every Phase 3 composition and newly authorized support primitive has a
       deterministic gallery/test state.
-- [ ] Gallery examples use only public primitive/common APIs.
-- [ ] Focus-visible, disabled, selected, error, open, safe-destructive, and
+- [x] Gallery examples use only public primitive/common APIs.
+- [x] Focus-visible, disabled, selected, error, open, safe-destructive, and
       overflow states are reviewable in both resolved modes.
-- [ ] Portals/popups do not collide across tests and remain within narrow
+- [x] Portals/popups do not collide across tests and remain within narrow
       viewports.
-- [ ] Existing Phase 2 and protected-content baselines have no unexplained
+- [x] Existing Phase 2 and protected-content baselines have no unexplained
       differences.
-- [ ] Production assets contain neither the fixture nor common gallery code.
-- [ ] Screenshot updates are tied to a recorded Phase 3 migration rationale.
+- [x] Production assets contain neither the fixture nor common gallery code.
+- [x] Screenshot updates are tied to a recorded Phase 3 migration rationale.
 
 ## Verification tests
 

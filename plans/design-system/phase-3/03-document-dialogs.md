@@ -1,6 +1,6 @@
 # DS-0303 — Migrate the Document Dialogs to Dialog
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 3](README.md)
 - Foundation reference:
   [Phase 3 dialog gate](../../design-system-foundation.md#phase-3--consolidate-common-compositions)

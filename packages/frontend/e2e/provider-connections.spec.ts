@@ -80,7 +80,7 @@ test("starts and completes OAuth from the provider screen", async ({ page }) => 
 
 test("supports color-mode changes from the header", async ({ page }) => {
   await page.goto("/profile");
-  await expect(page.getByText("Default")).toBeVisible();
+  await expect(page.getByText("Default", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: /Choose color mode/ }).click();
   await page.getByRole("menuitemradio", { name: "Dark" }).click();
 

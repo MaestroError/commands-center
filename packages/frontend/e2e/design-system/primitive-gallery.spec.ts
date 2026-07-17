@@ -40,10 +40,11 @@ test.describe("@design-system Phase 2 primitives", () => {
     await expect(trigger).toBeFocused();
 
     await trigger.click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    // Click the overlay corner, away from the centered content.
-    await page.mouse.click(5, 5);
-    await expect(page.getByRole("dialog")).toBeHidden();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    const overlay = dialog.locator("xpath=preceding-sibling::*[1]");
+    await overlay.click({ position: { x: 5, y: 5 } });
+    await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();
   });
 
