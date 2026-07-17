@@ -16,6 +16,7 @@ type TaskPromptComposerProps = {
   agentId?: string;
   fileSearchAgentId?: string | null;
   agents?: { id: string; name: string }[];
+  enableSpecialistMentions?: boolean;
   skills?: { slug: string; description?: string }[];
   disabled?: boolean;
   autoFocus?: boolean;
@@ -27,6 +28,7 @@ type TaskPromptComposerProps = {
 
 export function TaskPromptComposer(props: TaskPromptComposerProps) {
   const { agentId, agents = [], disabled, fileSearchAgentId, onChange, skills, value } = props;
+  const specialistMentionsEnabled = props.enableSpecialistMentions === true;
   const effectiveFileSearchAgentId = fileSearchAgentId === undefined ? agentId : fileSearchAgentId;
   const [activePopover, setActivePopover] = useState<"specialist" | "file" | "slash" | null>(null);
   const [popoverQuery, setPopoverQuery] = useState("");
@@ -59,7 +61,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
 
     const agentMatch = beforeCursor.match(/@(\S*)$/);
 
-    if (agentMatch && agents.length > 0) {
+    if (specialistMentionsEnabled && agentMatch && agents.length > 0) {
       setActivePopover("specialist");
       setPopoverQuery(agentMatch[1] ?? "");
       return;
@@ -74,7 +76,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
     }
 
     setActivePopover(null);
-  }, [agents.length, value.text]);
+  }, [agents.length, specialistMentionsEnabled, value.text]);
 
   const updateValue = useCallback(
     (patch: Partial<TaskPromptValue>) => onChange({ ...valueRef.current, ...patch }),
@@ -269,7 +271,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
 
   const activateShortcut = useCallback(
     (shortcut: "#" | "/" | "@") => {
-      if (disabled) {
+      if (disabled || (shortcut === "@" && !specialistMentionsEnabled)) {
         return;
       }
 
@@ -282,15 +284,17 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
         textareaRef.current?.setSelectionRange(1, 1);
       }, 0);
     },
-    [disabled, updateValue],
+    [disabled, specialistMentionsEnabled, updateValue],
   );
 
   const placeholder =
     props.placeholder ??
     (value.selectedSkill
       ? `Prompt for /${value.selectedSkill.slug}...`
-      : 'Describe the task prompt... Use "#" for files, "/" for skills, and "@" for specialists');
-  const mentionedAgents = value.mentionedAgents ?? [];
+      : specialistMentionsEnabled
+        ? 'Describe the task prompt... Use "#" for files, "/" for skills, and "@" for specialists'
+        : 'Describe the task prompt... Use "#" for files and "/" for skills');
+  const mentionedAgents = specialistMentionsEnabled ? (value.mentionedAgents ?? []) : [];
   const specialistOptions = agents.filter((agent) =>
     agent.name.toLowerCase().includes(popoverQuery.toLowerCase()),
   );
@@ -380,14 +384,16 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
             >
               / skills
             </button>
-            <button
-              className="rounded-full border border-border px-2 py-0.5 font-mono transition hover:border-accent hover:text-text-primary"
-              disabled={disabled || agents.length === 0}
-              onClick={() => activateShortcut("@")}
-              type="button"
-            >
-              @ specialists
-            </button>
+            {specialistMentionsEnabled ? (
+              <button
+                className="rounded-full border border-border px-2 py-0.5 font-mono transition hover:border-accent hover:text-text-primary"
+                disabled={disabled || agents.length === 0}
+                onClick={() => activateShortcut("@")}
+                type="button"
+              >
+                @ specialists
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -403,7 +409,7 @@ export function TaskPromptComposer(props: TaskPromptComposerProps) {
           ref={textareaRef}
           value={value.text}
         />
-        {activePopover === "specialist" ? (
+        {specialistMentionsEnabled && activePopover === "specialist" ? (
           <SpecialistMentionPopover
             agents={specialistOptions}
             onClose={() => setActivePopover(null)}

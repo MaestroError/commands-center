@@ -178,6 +178,7 @@ function TaskFeedbackSection(props: {
               agentId={props.task.agentId}
               agents={props.agents}
               autoFocus
+              enableSpecialistMentions
               fileSearchAgentId={prompt.mentionedAgents[0]?.id ?? null}
               label="Feedback"
               onChange={setPrompt}

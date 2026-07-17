@@ -11,6 +11,23 @@ beforeAll(() => {
 });
 
 describe("TaskPromptComposer", () => {
+  it("does not expose specialist mentions by default", async () => {
+    const user = userEvent.setup();
+
+    renderComposer(false);
+
+    const prompt = screen.getByLabelText("Task prompt");
+    expect(screen.queryByRole("button", { name: "@ specialists" })).not.toBeInTheDocument();
+    expect(prompt).toHaveAttribute(
+      "placeholder",
+      'Describe the task prompt... Use "#" for files and "/" for skills',
+    );
+
+    await user.type(prompt, "Ask @review");
+
+    expect(screen.queryByRole("button", { name: "@Reviewer" })).not.toBeInTheDocument();
+  });
+
   it("does not open skill lookup for slash inside ordinary text", async () => {
     const user = userEvent.setup();
 
@@ -63,7 +80,7 @@ describe("TaskPromptComposer", () => {
   });
 });
 
-function renderComposer() {
+function renderComposer(enableSpecialistMentions = true) {
   function Harness() {
     const [value, setValue] = useState<TaskPromptValue>(() => createTaskPromptValue());
 
@@ -74,6 +91,7 @@ function renderComposer() {
           { id: "agent-2", name: "Reviewer" },
           { id: "agent-3", name: "Specialist" },
         ]}
+        enableSpecialistMentions={enableSpecialistMentions}
         onChange={setValue}
         skills={[{ slug: "components", description: "Work with components" }]}
         value={value}
