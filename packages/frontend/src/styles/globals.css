@@ -590,10 +590,6 @@ select.cc-input {
   box-shadow: inset 0 0 0 1px var(--badge-neutral-border);
 }
 
-.cc-nav-item {
-  @apply flex items-center rounded-lg px-4 py-3 text-left text-sm font-medium text-text-secondary transition hover:bg-surface hover:text-text-primary;
-}
-
 .cc-nav-item-active {
   @apply bg-surface-elevated text-text-primary;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);

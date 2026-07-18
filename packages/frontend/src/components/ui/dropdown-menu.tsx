@@ -5,8 +5,6 @@ import { cn } from "@/lib/cn";
 
 export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
-export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
-export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
 export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 
 export function DropdownMenuContent({
@@ -50,18 +48,6 @@ export function DropdownMenuRadioItem({
         <Check aria-hidden="true" className="h-3.5 w-3.5" />
       </DropdownMenuPrimitive.ItemIndicator>
     </DropdownMenuPrimitive.RadioItem>
-  );
-}
-
-export function DropdownMenuLabel({
-  className,
-  ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Label>) {
-  return (
-    <DropdownMenuPrimitive.Label
-      className={cn("px-3 py-2 text-xs font-medium text-text-muted", className)}
-      {...props}
-    />
   );
 }
 

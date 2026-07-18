@@ -5,5 +5,6 @@ pnpm-lock.yaml
 *.db
 .cc/
 .opencode/
+.claude/worktrees/
 examples/
 packages/frontend/src/components/ui/

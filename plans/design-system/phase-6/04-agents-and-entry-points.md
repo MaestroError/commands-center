@@ -1,6 +1,6 @@
 # DS-0604 — Update AGENTS.md and Contributor Entry Points
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 6](README.md)
 - Foundation reference:
   [Success criteria](../../design-system-foundation.md#success-criteria)
@@ -52,20 +52,20 @@ in `docs/design-system/`.
 
 ## Acceptance criteria
 
-- [ ] `AGENTS.md` explicitly tells agents how to choose Tailwind, semantic
+- [x] `AGENTS.md` explicitly tells agents how to choose Tailwind, semantic
       tokens, native HTML, CC-owned primitives, compositions, and scoped CSS.
-- [ ] `AGENTS.md` explicitly protects `.cc-md`/`.cc-md--chat`, Milkdown scoping,
+- [x] `AGENTS.md` explicitly protects `.cc-md`/`.cc-md--chat`, Milkdown scoping,
       and the direct-Radix boundary.
-- [ ] `AGENTS.md` forbids new theme-dependent raw palette roles, unapproved
+- [x] `AGENTS.md` forbids new theme-dependent raw palette roles, unapproved
       inline SVG, speculative bridges, and new legacy compatibility consumers.
-- [ ] Theme and exception changes point to the verified DS-0603 workflow.
-- [ ] Every stack claim matches package manifests and at least one real consumer;
+- [x] Theme and exception changes point to the verified DS-0603 workflow.
+- [x] Every stack claim matches package manifests and at least one real consumer;
       planned-but-absent assistant-ui/SVAR technologies are corrected.
-- [ ] Detailed guidance is linked rather than duplicated inconsistently across
+- [x] Detailed guidance is linked rather than duplicated inconsistently across
       AGENTS, CONTRIBUTING, and README.
-- [ ] Contributor commands exactly match package scripts introduced by DS-0606/
+- [x] Contributor commands exactly match package scripts introduced by DS-0606/
       DS-0608 or use an explicit sequencing placeholder until those tasks land.
-- [ ] Existing unrelated coding, testing, portability, and migration rules in
+- [x] Existing unrelated coding, testing, portability, and migration rules in
       `AGENTS.md` are preserved.
 
 ## Verification tests

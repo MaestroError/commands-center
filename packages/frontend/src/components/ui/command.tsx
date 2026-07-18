@@ -49,13 +49,6 @@ export const CommandEmpty = forwardRef<
   );
 });
 
-export const CommandGroup = forwardRef<
-  React.ComponentRef<typeof CommandPrimitive.Group>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Group>
->(function CommandGroup({ className, ...props }, ref) {
-  return <CommandPrimitive.Group ref={ref} className={cn("overflow-hidden", className)} {...props} />;
-});
-
 export const CommandItem = forwardRef<
   React.ComponentRef<typeof CommandPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item>

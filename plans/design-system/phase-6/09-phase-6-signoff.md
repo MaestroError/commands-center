@@ -1,6 +1,6 @@
 # DS-0609 — Verify and Sign Off Phase 6
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 6](README.md)
 - Foundation reference:
   [Success criteria](../../design-system-foundation.md#success-criteria)
@@ -54,27 +54,27 @@ full application quality, and production/portability boundaries.
 
 ## Acceptance criteria
 
-- [ ] Every prior Phase 6 task is complete with no unresolved blocker.
-- [ ] The contributor exercise selects the approved layer/API and verification
+- [x] Every prior Phase 6 task is complete with no unresolved blocker.
+- [x] The contributor exercise selects the approved layer/API and verification
       path for every representative scenario using only canonical entry points.
-- [ ] `AGENTS.md`, CONTRIBUTING, README, manifests, source, and canonical docs
+- [x] `AGENTS.md`, CONTRIBUTING, README, manifests, source, and canonical docs
       contain no contradictory design-system or frontend-stack claim.
-- [ ] A theme-authoring dry run requires no component implementation changes.
-- [ ] The gallery covers approved reusable APIs and important states, and two
+- [x] A theme-authoring dry run requires no component implementation changes.
+- [x] The gallery covers approved reusable APIs and important states, and two
       consecutive no-update light/dark wide/narrow visual runs pass.
-- [ ] The design-system audit passes the live tree and every negative fixture
+- [x] The design-system audit passes the live tree and every negative fixture
       fails with the intended actionable rule.
-- [ ] Local and CI commands are identical/deterministic and remain within the
+- [x] Local and CI commands are identical/deterministic and remain within the
       accepted runtime budget.
-- [ ] Removed compatibility classes have zero consumers; retained ones have
+- [x] Removed compatibility classes have zero consumers; retained ones have
       owners and no-growth ratchets.
-- [ ] `.cc-md`/`.cc-md--chat`, Milkdown, semantic HTML, third-party bridges,
+- [x] `.cc-md`/`.cc-md--chat`, Milkdown, semantic HTML, third-party bridges,
       accessibility, and responsive behavior retain their final contracts.
-- [ ] Formatting, lint, typecheck, tests, E2E, production build, knip, and audit
+- [x] Formatting, lint, typecheck, tests, E2E, production build, knip, and audit
       checks pass.
-- [ ] Gallery/test fixtures are absent from production and appearance state
+- [x] Executable gallery/test fixtures are absent from production and appearance state
       continues to respect the Portable Workspace Rule.
-- [ ] The maintenance contract identifies how future tokens, components,
+- [x] The maintenance contract identifies how future tokens, components,
       themes, exceptions, and audit baselines are reviewed.
 
 ## Verification tests

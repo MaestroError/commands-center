@@ -88,11 +88,7 @@ export function ClaimPage() {
             Remember this browser
           </label>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
-          <button
-            className="cc-button cc-button-primary justify-center"
-            disabled={submitting}
-            type="submit"
-          >
+          <button className="cc-button justify-center" disabled={submitting} type="submit">
             {submitting ? "Claiming..." : "Claim workspace"}
           </button>
         </form>

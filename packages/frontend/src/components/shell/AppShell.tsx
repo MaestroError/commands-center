@@ -269,7 +269,7 @@ function FirstRunEnvNotice(props: {
                 {copied ? "Copied" : "Copy"}
               </button>
             ) : null}
-            <button className="cc-button cc-button-primary" onClick={props.onClose} type="button">
+            <button className="cc-button" onClick={props.onClose} type="button">
               I saved it
             </button>
           </div>

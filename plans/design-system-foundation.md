@@ -636,39 +636,39 @@ surface without reloads, unreadable states, or fixed dark/light islands.
 - [x] Decompose Phase 6 into the
       [detailed Phase 6 task plan](design-system/phase-6/README.md), with the
       completed Phase 5 handoff as the implementation gate.
-- [ ] Complete
+- [x] Complete
       [DS-0601 — Accept the Phase 5 handoff and freeze the enforcement contract](design-system/phase-6/01-phase-5-handoff.md):
       reproduce final APIs, inventories, ratchets, exceptions, documentation
       gaps, compatibility consumers, and task ownership.
-- [ ] Complete
+- [x] Complete
       [DS-0602 — Write the canonical contributor design-system guide](design-system/phase-6/02-contributor-guide.md):
       document token/Tailwind/CSS/content/component selection with real APIs and
       a contributor decision tree.
-- [ ] Complete
+- [x] Complete
       [DS-0603 — Document theme authoring and exception workflows](design-system/phase-6/03-themes-and-exceptions.md):
       prove themes can be added without component edits and define stable,
       evidence-backed exception ownership.
-- [ ] Complete
+- [x] Complete
       [DS-0604 — Update AGENTS.md and contributor entry points](design-system/phase-6/04-agents-and-entry-points.md):
       add concise mandatory design-system rules, correct live frontend-stack
       claims, and align AGENTS, CONTRIBUTING, README, and canonical docs.
-- [ ] Complete
+- [x] Complete
       [DS-0605 — Consolidate the development gallery and visual contract](design-system/phase-6/05-gallery-and-visual-contract.md):
       present final reusable/content/bridge states with focused visual,
       responsive, keyboard, focus, and production-exclusion coverage.
-- [ ] Complete
+- [x] Complete
       [DS-0606 — Implement lightweight design-system audit ratchets](design-system/phase-6/06-audit-ratchets.md):
       encode realistic exception-aware checks with positive/negative fixtures
       and actionable failures while preserving existing ESLint ownership.
-- [ ] Complete
+- [x] Complete
       [DS-0607 — Retire proven-unused compatibility classes](design-system/phase-6/07-compatibility-retirement.md):
       remove only zero-consumer families, ratchet retained consumers, and avoid
       forced domain refactors.
-- [ ] Complete
+- [x] Complete
       [DS-0608 — Integrate design-system enforcement into contributor workflows](design-system/phase-6/08-workflow-enforcement.md):
       expose the final local command, add it to CI/aggregate checks, and keep
       local/CI output deterministic and actionable.
-- [ ] Complete
+- [x] Complete
       [DS-0609 — Verify and sign off Phase 6](design-system/phase-6/09-phase-6-signoff.md):
       run a contributor usability exercise and full docs, audit, gallery,
       compatibility, quality, production, and portability gates.

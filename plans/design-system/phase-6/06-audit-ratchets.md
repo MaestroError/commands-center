@@ -1,6 +1,6 @@
 # DS-0606 — Implement Lightweight Design-System Audit Ratchets
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 6](README.md)
 - Foundation reference:
   [Phase 6 scope](../../design-system-foundation.md#phase-6--document-and-enforce-the-system)
@@ -53,20 +53,20 @@ or hide values behind vague variables.
 
 ## Acceptance criteria
 
-- [ ] Every rule corresponds to a reproduced Phase 4/5 ratchet or explicit final
+- [x] Every rule corresponds to a reproduced Phase 4/5 ratchet or explicit final
       design-system boundary; no speculative style preference becomes CI policy.
-- [ ] Existing ESLint Radix ownership remains the single enforcement mechanism
+- [x] Existing ESLint Radix ownership remains the single enforcement mechanism
       for direct imports, with the audit checking only uncovered drift if needed.
-- [ ] The live reviewed tree passes with exact, human-readable baselines.
-- [ ] Each negative fixture fails only its intended rule and reports rule ID,
+- [x] The live reviewed tree passes with exact, human-readable baselines.
+- [x] Each negative fixture fails only its intended rule and reports rule ID,
       file, match, approved alternative, and documentation link.
-- [ ] Allowlisted results cite stable exception IDs or approved adapter paths;
+- [x] Allowlisted results cite stable exception IDs or approved adapter paths;
       line numbers and blanket directories are not used as suppressions.
-- [ ] New `cc-*` consumers fail even when retained legacy definitions still
+- [x] New `cc-*` consumers fail even when retained legacy definitions still
       exist; retained consumer counts cannot increase.
-- [ ] The audit is deterministic across macOS/Linux paths and completes quickly
+- [x] The audit is deterministic across macOS/Linux paths and completes quickly
       enough for local and CI static checks.
-- [ ] No new dependency is added unless the standard library/current tooling
+- [x] No new dependency is added unless the standard library/current tooling
       cannot implement a demonstrated rule safely.
 
 ## Verification tests

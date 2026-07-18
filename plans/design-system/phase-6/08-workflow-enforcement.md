@@ -1,6 +1,6 @@
 # DS-0608 — Integrate Design-System Enforcement into Contributor Workflows
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 6](README.md)
 - Foundation reference:
   [Phase 6 scope](../../design-system-foundation.md#phase-6--document-and-enforce-the-system)
@@ -47,17 +47,17 @@ are final.
 
 ## Acceptance criteria
 
-- [ ] A clean repository passes the identical local and CI audit command.
-- [ ] A representative forbidden fixture/change fails CI with the same rule ID
+- [x] A clean repository passes the identical local and CI audit command.
+- [x] A representative forbidden fixture/change fails CI with the same rule ID
       and remediation message as local execution.
-- [ ] The CI step has no network/runtime-state dependency and uses committed
+- [x] The CI step has no network/runtime-state dependency and uses committed
       deterministic configuration.
-- [ ] Import rules remain owned by ESLint and are not needlessly rescanned.
-- [ ] The final compatibility baseline is used; no transitional allowlist ships.
-- [ ] AGENTS and CONTRIBUTING name commands that exist in `package.json`.
-- [ ] Hook integration is included only when measured cost/scope is appropriate;
+- [x] Import rules remain owned by ESLint and are not needlessly rescanned.
+- [x] The final compatibility baseline is used; no transitional allowlist ships.
+- [x] AGENTS and CONTRIBUTING name commands that exist in `package.json`.
+- [x] Hook integration is included only when measured cost/scope is appropriate;
       otherwise the documented decision explains its omission.
-- [ ] CI runtime remains within the existing static-check budget.
+- [x] CI runtime remains within the existing static-check budget.
 
 ## Verification tests
 

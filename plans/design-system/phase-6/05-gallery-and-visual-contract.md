@@ -1,6 +1,6 @@
 # DS-0605 — Consolidate the Development Gallery and Visual Contract
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 6](README.md)
 - Foundation reference:
   [Verification strategy](../../design-system-foundation.md#verification-strategy)
@@ -50,20 +50,20 @@ responsive/focus states.
 
 ## Acceptance criteria
 
-- [ ] Every approved primitive/common composition and semantic content category
+- [x] Every approved primitive/common composition and semantic content category
       has a representative deterministic gallery state or a documented reason
       for behavior-only coverage.
-- [ ] Protected Markdown/Milkdown and third-party bridges retain their scoped
+- [x] Protected Markdown/Milkdown and third-party bridges retain their scoped
       fixtures rather than being approximated by generic HTML.
-- [ ] Default light/dark and narrow/wide reviews cover the important states
+- [x] Default light/dark and narrow/wide reviews cover the important states
       without blanket page or combinatorial fixture growth.
-- [ ] Keyboard order, accessible names/roles, focus-visible, escape/outside-
+- [x] Keyboard order, accessible names/roles, focus-visible, escape/outside-
       interaction, and modal focus behavior remain covered where applicable.
-- [ ] Gallery consumers import the same public APIs production uses.
-- [ ] Fixture changes do not mutate product data, require live services, or
+- [x] Gallery consumers import the same public APIs production uses.
+- [x] Fixture changes do not mutate product data, require live services, or
       depend on timing/network nondeterminism.
-- [ ] Production build contains no gallery route, marker, fixture data, or asset.
-- [ ] Two consecutive deterministic appearance runs pass.
+- [x] Production build contains no executable gallery route, marker, fixture data, or asset.
+- [x] Two consecutive deterministic appearance runs pass.
 
 ## Verification tests
 

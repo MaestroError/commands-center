@@ -60,11 +60,7 @@ export function LoginPage() {
             Remember this browser
           </label>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
-          <button
-            className="cc-button cc-button-primary justify-center"
-            disabled={submitting}
-            type="submit"
-          >
+          <button className="cc-button justify-center" disabled={submitting} type="submit">
             {submitting ? "Signing in..." : "Sign in"}
           </button>
         </form>

@@ -1,6 +1,6 @@
 # Phase 6 — Document and Enforce the System
 
-- Status: Planned
+- Status: Complete
 
 Parent plans:
 
@@ -44,17 +44,17 @@ components under the label of cleanup.
 
 ## Task sequence
 
-| ID      | Task                                                                                         | Blocked by                | Status  |
-| ------- | -------------------------------------------------------------------------------------------- | ------------------------- | ------- |
-| DS-0601 | [Accept the Phase 5 handoff and freeze the enforcement contract](01-phase-5-handoff.md)      | Phase 5 sign-off          | Planned |
-| DS-0602 | [Write the canonical contributor design-system guide](02-contributor-guide.md)               | DS-0601                   | Planned |
-| DS-0603 | [Document theme authoring and exception workflows](03-themes-and-exceptions.md)              | DS-0601                   | Planned |
-| DS-0604 | [Update AGENTS.md and contributor entry points](04-agents-and-entry-points.md)               | DS-0602, DS-0603          | Planned |
-| DS-0605 | [Consolidate the development gallery and visual contract](05-gallery-and-visual-contract.md) | DS-0601                   | Planned |
-| DS-0606 | [Implement lightweight design-system audit ratchets](06-audit-ratchets.md)                   | DS-0601                   | Planned |
-| DS-0607 | [Retire proven-unused compatibility classes](07-compatibility-retirement.md)                 | DS-0601, DS-0606          | Planned |
-| DS-0608 | [Integrate design-system enforcement into contributor workflows](08-workflow-enforcement.md) | DS-0604, DS-0606, DS-0607 | Planned |
-| DS-0609 | [Verify and sign off Phase 6](09-phase-6-signoff.md)                                         | DS-0601 through DS-0608   | Planned |
+| ID      | Task                                                                                         | Blocked by                | Status   |
+| ------- | -------------------------------------------------------------------------------------------- | ------------------------- | -------- |
+| DS-0601 | [Accept the Phase 5 handoff and freeze the enforcement contract](01-phase-5-handoff.md)      | Phase 5 sign-off          | Complete |
+| DS-0602 | [Write the canonical contributor design-system guide](02-contributor-guide.md)               | DS-0601                   | Complete |
+| DS-0603 | [Document theme authoring and exception workflows](03-themes-and-exceptions.md)              | DS-0601                   | Complete |
+| DS-0604 | [Update AGENTS.md and contributor entry points](04-agents-and-entry-points.md)               | DS-0602, DS-0603          | Complete |
+| DS-0605 | [Consolidate the development gallery and visual contract](05-gallery-and-visual-contract.md) | DS-0601                   | Complete |
+| DS-0606 | [Implement lightweight design-system audit ratchets](06-audit-ratchets.md)                   | DS-0601                   | Complete |
+| DS-0607 | [Retire proven-unused compatibility classes](07-compatibility-retirement.md)                 | DS-0601, DS-0606          | Complete |
+| DS-0608 | [Integrate design-system enforcement into contributor workflows](08-workflow-enforcement.md) | DS-0604, DS-0606, DS-0607 | Complete |
+| DS-0609 | [Verify and sign off Phase 6](09-phase-6-signoff.md)                                         | DS-0601 through DS-0608   | Complete |
 
 DS-0602, DS-0603, DS-0605, and DS-0606 may proceed in parallel after DS-0601
 when their declared files do not overlap. DS-0608 intentionally follows

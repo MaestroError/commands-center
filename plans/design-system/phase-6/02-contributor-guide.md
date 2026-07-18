@@ -1,6 +1,6 @@
 # DS-0602 — Write the Canonical Contributor Design-System Guide
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 6](README.md)
 - Foundation reference:
   [Layering approach](../../design-system-foundation.md#recommended-approach)
@@ -51,20 +51,20 @@ primitives, common compositions, domain-specific UI, or scoped CSS.
 
 ## Acceptance criteria
 
-- [ ] The guide answers how to style layout, theme-dependent color/shape,
+- [x] The guide answers how to style layout, theme-dependent color/shape,
       unclassed HTML, forms, dialogs, menus, statuses, Markdown, and third-party
       surfaces.
-- [ ] Tailwind is the default for ordinary styling; the guide does not promote
+- [x] Tailwind is the default for ordinary styling; the guide does not promote
       a parallel class framework or CSS-per-component convention.
-- [ ] Shadcn is described as copy-owned component source/convention and Radix as
+- [x] Shadcn is described as copy-owned component source/convention and Radix as
       behavior foundation; domain code consumes CC-owned APIs.
-- [ ] Direct Radix imports, custom accessible-interaction reimplementation, and
+- [x] Direct Radix imports, custom accessible-interaction reimplementation, and
       speculative component extraction are clearly bounded.
-- [ ] Native controls and audit-first behavior-rich domain surfaces are covered.
-- [ ] `.cc-md`/`.cc-md--chat` protection, Milkdown scoping, and generic HTML
+- [x] Native controls and audit-first behavior-rich domain surfaces are covered.
+- [x] `.cc-md`/`.cc-md--chat` protection, Milkdown scoping, and generic HTML
       fallback behavior cannot be confused with each other.
-- [ ] All examples compile or are mechanically checked against live exports.
-- [ ] Links are relative, valid, and do not make phase artifacts required
+- [x] All examples compile or are mechanically checked against live exports.
+- [x] Links are relative, valid, and do not make phase artifacts required
       reading for ordinary implementation work.
 
 ## Verification tests

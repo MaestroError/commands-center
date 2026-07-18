@@ -1,6 +1,6 @@
 # DS-0603 — Document Theme Authoring and Exception Workflows
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 6](README.md)
 - Foundation reference:
   [Theme model](../../design-system-foundation.md#1-separate-theme-identity-from-color-mode)
@@ -53,20 +53,20 @@ brand artwork, Crepe SVG format, ANSI, and syntax palettes need stable IDs.
 
 ## Acceptance criteria
 
-- [ ] Theme identity and color-mode preference are unmistakably separate.
-- [ ] The runbook covers complete light/dark semantic values plus shared shape,
+- [x] Theme identity and color-mode preference are unmistakably separate.
+- [x] The runbook covers complete light/dark semantic values plus shared shape,
       typography/emphasis, focus, status, and component-role expectations.
-- [ ] A hypothetical new theme requires only approved theme declarations,
+- [x] A hypothetical new theme requires only approved theme declarations,
       registration/metadata, and tests—not component implementation edits.
-- [ ] `system` behavior and persistence source are documented without persisting
+- [x] `system` behavior and persistence source are documented without persisting
       resolved mode or bridge output as portable workspace state.
-- [ ] Generic HTML, Markdown, Milkdown, Monaco, xterm, and file-manager coverage
+- [x] Generic HTML, Markdown, Milkdown, Monaco, xterm, and file-manager coverage
       are included in theme verification.
-- [ ] Exceptions require stable IDs and cannot be justified by count reduction,
+- [x] Exceptions require stable IDs and cannot be justified by count reduction,
       convenience, or vague third-party ownership.
-- [ ] EX-001 through EX-005 and later approved exceptions have exact owners and
+- [x] EX-001 through EX-005 and later approved exceptions have exact owners and
       live paths or are marked retired with evidence.
-- [ ] No teal, second production theme, or speculative bridge is added.
+- [x] No teal, second production theme, or speculative bridge is added.
 
 ## Verification tests
 

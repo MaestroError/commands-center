@@ -167,9 +167,9 @@ function ApplicationBaseline() {
             </button>
           </>
         }
-        description="A deterministic record of the current application styles. It is evidence for migration, not a future component API."
-        eyebrow="Phase 0 baseline"
-        title="Current CC application surface"
+        description="The supported CC application roles, controls, and semantic states in one deterministic development fixture."
+        eyebrow="Design system gallery"
+        title="CC application surface"
       />
 
       <section className="cc-panel grid gap-5 p-6">
@@ -204,7 +204,7 @@ function ApplicationBaseline() {
           <span className="cc-badge cc-badge-muted">Draft</span>
           <label className="inline-flex items-center gap-2 text-sm text-text-primary">
             <Switch
-              aria-label="Baseline switch"
+              aria-label="Gallery switch"
               checked={switchChecked}
               onChange={setSwitchChecked}
             />
@@ -305,7 +305,7 @@ function CommonBaseline() {
           </>
         }
         description="Public common-component APIs composed from CC-owned primitives, with deterministic state for interaction and visual verification."
-        eyebrow="Phase 3 compositions"
+        eyebrow="Common compositions"
         title="Common application patterns"
       />
 
@@ -469,8 +469,8 @@ function DialogBaseline() {
     <div className="grid gap-4" data-testid="dialog-baseline">
       <PageHeader
         description="The underlying page is retained so overlay opacity and elevation are visible."
-        eyebrow="Phase 0 baseline"
-        title="Current CC dialog surface"
+        eyebrow="Dialog contract"
+        title="CC dialog surface"
       />
       <section className="cc-panel p-6 text-sm text-text-secondary">
         This panel sits behind the modal overlay.
@@ -509,7 +509,7 @@ function MilkdownBaseline(props: { readonly: boolean }) {
     <div className="grid gap-4" data-testid="milkdown-baseline">
       <PageHeader
         description="The real lazy-loaded editor protects visual appearance, editability, and Markdown serialization."
-        eyebrow="Phase 0 baseline"
+        eyebrow="Protected content"
         title={props.readonly ? "Milkdown read-only surface" : "Milkdown editing surface"}
       />
       <section className="cc-panel min-w-0 overflow-hidden p-3 sm:p-6">
@@ -645,8 +645,8 @@ function PrimitivesBaseline() {
   return (
     <div className="grid gap-4" data-testid="primitives-baseline">
       <PageHeader
-        description="Typed CC primitives (Button, Dialog, AlertDialog) rendered through their public APIs. Development-only proving surface for Phase 2."
-        eyebrow="Phase 2 primitives"
+        description="Typed CC primitives rendered through the same public APIs used by production consumers."
+        eyebrow="UI primitives"
         title="Typed UI primitives"
       />
 

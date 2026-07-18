@@ -135,11 +135,7 @@ export function ProfilePage() {
           {passwordError ? <p className="text-sm text-danger">{passwordError}</p> : null}
           {passwordSuccess ? <p className="text-sm text-success">{passwordSuccess}</p> : null}
           <div>
-            <button
-              className="cc-button cc-button-primary"
-              disabled={passwordSubmitting}
-              type="submit"
-            >
+            <button className="cc-button" disabled={passwordSubmitting} type="submit">
               {passwordSubmitting ? "Changing password..." : "Change password"}
             </button>
           </div>

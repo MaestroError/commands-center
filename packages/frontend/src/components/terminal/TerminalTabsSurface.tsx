@@ -115,7 +115,7 @@ function EmptyTerminalState(props: { onNew: () => void }) {
         <p className="mb-1 font-medium text-text-primary">No terminal sessions</p>
         <p className="mb-4">Click the + button or press Ctrl+T to create a new terminal.</p>
       </div>
-      <button type="button" onClick={props.onNew} className="cc-button cc-button-primary">
+      <button type="button" onClick={props.onNew} className="cc-button">
         New Terminal
       </button>
     </div>

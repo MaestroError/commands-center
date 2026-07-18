@@ -1,6 +1,6 @@
 # DS-0607 — Retire Proven-Unused Compatibility Classes
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 6](README.md)
 - Foundation reference:
   [Compatibility API](../../design-system-foundation.md#4-preserve-current-classes-as-a-compatibility-api)
@@ -48,19 +48,19 @@ not remain as a second public styling API.
 
 ## Acceptance criteria
 
-- [ ] Every removed class has zero live production, test-selector, fixture, and
+- [x] Every removed class has zero live production, test-selector, fixture, and
       documentation consumers before its definition is deleted.
-- [ ] Dynamic/computed class construction is accounted for rather than missed by
+- [x] Dynamic/computed class construction is accounted for rather than missed by
       literal search alone.
-- [ ] Removal produces a smaller public styling contract without introducing a
+- [x] Removal produces a smaller public styling contract without introducing a
       replacement alias or page-specific CSS tree.
-- [ ] Retained classes have exact consumers, owners, rationale, and a ratchet
+- [x] Retained classes have exact consumers, owners, rationale, and a ratchet
       preventing count growth.
-- [ ] Blocked families remain functional; Phase 6 does not force unrelated
+- [x] Blocked families remain functional; Phase 6 does not force unrelated
       domain refactors.
-- [ ] Behavior, appearance, focus, responsive, Markdown, and third-party
+- [x] Behavior, appearance, focus, responsive, Markdown, and third-party
       fixtures show no regression after each removal batch.
-- [ ] Deleted class names fail the audit if reintroduced.
+- [x] Deleted class names fail the audit if reintroduced.
 
 ## Verification tests
 

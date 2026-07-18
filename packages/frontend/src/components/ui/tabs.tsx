@@ -30,5 +30,3 @@ export const TabsTrigger = forwardRef<
     />
   );
 });
-
-export const TabsContent = TabsPrimitive.Content;

@@ -1,6 +1,6 @@
 # DS-0601 — Accept the Phase 5 Handoff and Freeze the Enforcement Contract
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 6](README.md)
 - Foundation reference:
   [Phase 6 scope](../../design-system-foundation.md#phase-6--document-and-enforce-the-system)
@@ -51,18 +51,18 @@ claim must be reproduced against the live repository.
 
 ## Acceptance criteria
 
-- [ ] Every documented API, token, class, route, fixture, and command exists in
+- [x] Every documented API, token, class, route, fixture, and command exists in
       the post-Phase-5 tree.
-- [ ] Every required contributor decision has exactly one canonical docs owner.
-- [ ] `AGENTS.md`, CONTRIBUTING, README, and manifest discrepancies are listed
+- [x] Every required contributor decision has exactly one canonical docs owner.
+- [x] `AGENTS.md`, CONTRIBUTING, README, and manifest discrepancies are listed
       with an exact correction owner.
-- [ ] Every proposed automated rule has a reproducible baseline, approved
+- [x] Every proposed automated rule has a reproducible baseline, approved
       exceptions, and a reason to use ESLint, a repository audit, or a test.
-- [ ] Existing direct-Radix enforcement is preserved rather than duplicated.
-- [ ] Every compatibility class has current consumer evidence and one decision.
-- [ ] Documentation, gallery, audit, cleanup, and CI tasks have non-overlapping
+- [x] Existing direct-Radix enforcement is preserved rather than duplicated.
+- [x] Every compatibility class has current consumer evidence and one decision.
+- [x] Documentation, gallery, audit, cleanup, and CI tasks have non-overlapping
       primary file ownership or an explicit sequence.
-- [ ] No Phase 6 task is authorized from stale Phase 0 counts alone.
+- [x] No Phase 6 task is authorized from stale Phase 0 counts alone.
 
 ## Verification tests
 
