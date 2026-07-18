@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ResolvedSystemPrompt } from "@cc/shared/schemas";
@@ -35,11 +36,25 @@ describe("SystemPromptsModal", () => {
     expect(screen.getByText(/not captured at send time/i)).toBeInTheDocument();
   });
 
-  it("closes on overlay click and Escape", () => {
+  it("closes on Escape", async () => {
+    const user = userEvent.setup();
     const onClose = vi.fn();
     render(<SystemPromptsModal prompts={prompts} onClose={onClose} />);
 
-    fireEvent.keyDown(window, { key: "Escape" });
+    await user.keyboard("{Escape}");
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes on overlay click", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<SystemPromptsModal prompts={prompts} onClose={onClose} />);
+
+    const backdrop = document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]');
+    expect(backdrop).not.toBeNull();
+    await user.click(backdrop!);
+
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

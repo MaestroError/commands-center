@@ -6,6 +6,7 @@ import { BookOpenText, ChevronRight, FilePlus, Folder, FolderPlus, Search } from
 import type { DocumentScope, DocumentTreeNode } from "@cc/shared/schemas";
 
 import { isRouteActive } from "@/app/routes";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { getDocumentTree, listSpecialists } from "@/lib/api";
 import { buildDocumentFolderHref } from "@/lib/document-href";
 import { queryKeys } from "@/lib/query-keys";
@@ -513,20 +514,9 @@ function PrivateDocumentTargetDialog(props: {
   const [selectedSlug, setSelectedSlug] = useState("");
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/80 p-4 backdrop-blur-sm"
-      onClick={props.onClose}
-    >
-      <section
-        aria-labelledby="private-document-target-title"
-        aria-modal="true"
-        className="cc-panel w-full max-w-md p-6"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        <h2 className="text-xl font-semibold text-text-primary" id="private-document-target-title">
-          New Private Document
-        </h2>
+    <Dialog onOpenChange={(open) => !open && props.onClose()} open>
+      <DialogContent className="max-w-md" onEscapeKeyDown={(event) => event.preventDefault()}>
+        <DialogTitle>New Private Document</DialogTitle>
 
         <label className="mt-4 grid gap-1 text-sm text-text-secondary">
           Specialist
@@ -558,7 +548,7 @@ function PrivateDocumentTargetDialog(props: {
             Continue
           </button>
         </div>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

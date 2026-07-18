@@ -35,6 +35,35 @@ describe("GlobalSearchPalette", () => {
     vi.restoreAllMocks();
   });
 
+  it("exposes the existing Global search dialog name", () => {
+    renderWithProviders(<GlobalSearchPalette onClose={vi.fn()} open />, ["/"]);
+
+    expect(screen.getByRole("dialog", { name: "Global search" })).toBeInTheDocument();
+  });
+
+  it("closes on Escape from the autofocused search field", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    renderWithProviders(<GlobalSearchPalette onClose={onClose} open />, ["/"]);
+
+    expect(screen.getByRole("textbox", { name: "Search resources" })).toHaveFocus();
+    await user.keyboard("{Escape}");
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes on overlay click", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    renderWithProviders(<GlobalSearchPalette onClose={onClose} open />, ["/"]);
+
+    const overlay = document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]');
+    expect(overlay).not.toBeNull();
+    await user.click(overlay!);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("renders document search results and routes to the documents page", async () => {
     vi.mocked(searchWorkspaceFiles).mockResolvedValue({
       nameMatches: [],

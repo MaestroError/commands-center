@@ -710,3 +710,10 @@ composition without reading unrelated implementation files.
 - Building custom dialog, popover, dropdown, or tooltip behavior when an
   approved accessible primitive already solves it.
 - Migrating every screen in one pull request.
+
+## Post-foundation maintenance
+
+The foundation program is complete. Residual adoption and cleanup work is
+tracked separately in the
+[Design-System Maintenance Program](design-system-maintenance/README.md); those
+tasks do not reopen or revise the completed foundation contract.

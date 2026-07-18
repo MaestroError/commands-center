@@ -46,6 +46,18 @@ describe("Dialog", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("applies consumer overlay classes", () => {
+    render(
+      <Dialog open>
+        <DialogContent overlayClassName="z-[70]">
+          <DialogTitle>Layered dialog</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    expect(document.querySelector('[data-slot="dialog-overlay"]')).toHaveClass("z-[70]");
+  });
+
   it("opens from an uncontrolled trigger", async () => {
     const user = userEvent.setup();
     render(

@@ -326,6 +326,32 @@ describe("FileManagerPage", () => {
     });
   });
 
+  it("preserves the file-manager dialog no-Escape dismissal contract", async () => {
+    const user = userEvent.setup();
+    renderWithRoute("/files");
+
+    await screen.findAllByText("AGENTS.md");
+    await user.click(screen.getByRole("button", { name: "New folder" }));
+    await screen.findByRole("dialog", { name: "Create folder" });
+    await user.keyboard("{Escape}");
+
+    expect(screen.getByRole("dialog", { name: "Create folder" })).toBeInTheDocument();
+  });
+
+  it("closes a file-manager dialog on overlay click", async () => {
+    const user = userEvent.setup();
+    renderWithRoute("/files");
+
+    await screen.findAllByText("AGENTS.md");
+    await user.click(screen.getByRole("button", { name: "New folder" }));
+    await screen.findByRole("dialog", { name: "Create folder" });
+    const overlay = document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]');
+    expect(overlay).not.toBeNull();
+    await user.click(overlay!);
+
+    expect(screen.queryByRole("dialog", { name: "Create folder" })).not.toBeInTheDocument();
+  });
+
   it("uses in-app dialogs for rename and delete", async () => {
     renderWithRoute("/files");
 

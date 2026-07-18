@@ -12,19 +12,6 @@ const INLINE_SVG_EXCEPTIONS = new Map([
   ["packages/frontend/src/components/documents/MilkdownDocumentEditor.tsx", "EX-003"],
 ]);
 
-const CUSTOM_DIALOG_PATHS = new Set([
-  "packages/frontend/src/components/chat/ConversationHistoryModal.tsx",
-  "packages/frontend/src/components/chat/ImageLightbox.tsx",
-  "packages/frontend/src/components/chat/SystemPromptsModal.tsx",
-  "packages/frontend/src/components/documents/DocumentsSidebarSection.tsx",
-  "packages/frontend/src/components/documents/WorkspaceFilePickerDialog.tsx",
-  "packages/frontend/src/components/search/GlobalSearchPalette.tsx",
-  "packages/frontend/src/components/shell/AppShell.tsx",
-  "packages/frontend/src/components/tasks/RunTaskContextDialog.tsx",
-  "packages/frontend/src/pages/WorkspaceChatPage.tsx",
-  "packages/frontend/src/pages/file-manager/file-manager-dialogs.tsx",
-]);
-
 const RETAINED_COMPATIBILITY_COUNTS = new Map([
   ["cc-alert", 5],
   ["cc-badge", 9],
@@ -225,11 +212,7 @@ function auditRawThemeRoles(productionSources, violations) {
 function auditCustomDialogs(productionSources, violations) {
   const pattern = /aria-modal=["']true["']|role=["']dialog["']/;
   for (const [file, source] of productionSources) {
-    if (
-      !pattern.test(source) ||
-      CUSTOM_DIALOG_PATHS.has(file) ||
-      file.includes("/components/ui/")
-    ) {
+    if (!pattern.test(source) || file.includes("/components/ui/")) {
       continue;
     }
     addViolation(

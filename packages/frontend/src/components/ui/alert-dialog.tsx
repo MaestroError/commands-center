@@ -24,6 +24,7 @@ export function AlertDialogOverlay({
   return (
     <AlertDialogPrimitive.Overlay
       className={cn("fixed inset-0 z-50 bg-app-bg/75", className)}
+      data-slot="alert-dialog-overlay"
       {...props}
     />
   );
@@ -43,6 +44,7 @@ export function AlertDialogContent({
           "max-h-[calc(100dvh-2rem)] overflow-y-auto break-words",
           className,
         )}
+        data-slot="alert-dialog-content"
         {...props}
       >
         {children}

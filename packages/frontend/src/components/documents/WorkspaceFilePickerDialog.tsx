@@ -2,6 +2,7 @@ import { useDeferredValue, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileText, Image as ImageIcon, Search } from "lucide-react";
 
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { searchWorkspaceFiles } from "@/lib/api";
 
 import { isImagePath } from "./document-asset";
@@ -24,17 +25,12 @@ export function WorkspaceFilePickerDialog(props: WorkspaceFilePickerDialogProps)
   const matches = filesQuery.data?.nameMatches ?? [];
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-app-bg/80 px-4 pt-24 backdrop-blur-sm"
-      onClick={props.onClose}
-    >
-      <section
-        aria-label="Reference a workspace file"
-        aria-modal="true"
-        className="cc-panel w-full max-w-xl overflow-hidden"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
+    <Dialog onOpenChange={(open) => !open && props.onClose()} open>
+      <DialogContent
+        className="top-24 z-[60] max-w-xl translate-y-0 overflow-hidden p-0"
+        overlayClassName="z-[60] bg-app-bg/80 backdrop-blur-sm"
       >
+        <DialogTitle className="sr-only">Reference a workspace file</DialogTitle>
         <div className="border-b border-border p-3">
           <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-elevated px-3 py-2">
             <Search className="h-4 w-4 shrink-0 text-text-secondary" />
@@ -43,12 +39,6 @@ export function WorkspaceFilePickerDialog(props: WorkspaceFilePickerDialogProps)
               autoFocus
               className="flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary"
               onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  props.onClose();
-                }
-              }}
               placeholder="Search workspace files to reference…"
               type="text"
               value={query}
@@ -94,7 +84,7 @@ export function WorkspaceFilePickerDialog(props: WorkspaceFilePickerDialogProps)
             </ul>
           )}
         </div>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

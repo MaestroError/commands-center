@@ -17,6 +17,7 @@ import { ManageSidebarSection } from "@/components/shell/ManageSidebarSection";
 import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { AppLogo } from "@/components/common/AppLogo";
 import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useEngineStatusQuery } from "@/hooks/use-engine-status-query";
 import { useSystemVersionQuery } from "@/hooks/use-system-version-query";
@@ -236,17 +237,16 @@ function FirstRunEnvNotice(props: {
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-app-bg/75 px-4 backdrop-blur-sm">
-      <section
-        aria-labelledby="first-run-env-title"
-        className="w-full max-w-lg rounded-lg border border-border bg-surface p-6 shadow-2xl"
-        role="dialog"
+    <Dialog onOpenChange={(open) => !open && props.onClose()} open>
+      <DialogContent
+        className="z-[70] max-w-lg"
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+        overlayClassName="z-[70] backdrop-blur-sm"
       >
         <div className="grid gap-4">
           <div className="grid gap-2">
-            <h2 className="text-lg font-semibold text-text-primary" id="first-run-env-title">
-              Save your CC_SECRET_KEY
-            </h2>
+            <DialogTitle className="text-lg">Save your CC_SECRET_KEY</DialogTitle>
             <p className="text-sm leading-6 text-text-secondary">
               {props.secretKey
                 ? "CommandsCenter generated a secure CC_SECRET_KEY that encrypts your stored secrets. Copy it now and store it somewhere private — it will not be shown again."
@@ -274,8 +274,8 @@ function FirstRunEnvNotice(props: {
             </button>
           </div>
         </div>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

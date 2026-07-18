@@ -5,6 +5,8 @@ import type { FileManagerNode, FileManagerRootKind } from "@cc/shared/schemas";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+
 export function MoveEntryDialog(props: {
   root: FileManagerRootKind;
   currentPath: string;
@@ -311,18 +313,14 @@ export function DeleteEntryDialog(props: {
 
 function ModalFrame(props: { ariaLabel: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20"
-      onClick={props.onClose}
-    >
-      <div
-        aria-label={props.ariaLabel}
-        className="w-full max-w-md rounded-md border border-border bg-surface shadow-xl"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
+    <Dialog onOpenChange={(open) => !open && props.onClose()} open>
+      <DialogContent
+        className="top-20 max-w-md translate-y-0 overflow-hidden p-0"
+        onEscapeKeyDown={(event) => event.preventDefault()}
       >
+        <DialogTitle className="sr-only">{props.ariaLabel}</DialogTitle>
         {props.children}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

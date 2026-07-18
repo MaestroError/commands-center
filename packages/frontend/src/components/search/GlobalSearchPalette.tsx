@@ -26,6 +26,7 @@ import type {
   TaskTemplate,
 } from "@cc/shared/schemas";
 
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   getSpecialistCatalog,
   listSpecialists,
@@ -258,16 +259,12 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-4 pt-16 sm:px-6"
-      onClick={props.onClose}
-    >
-      <div
-        aria-label="Global search"
-        className="w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
+    <Dialog onOpenChange={(open) => !open && props.onClose()} open>
+      <DialogContent
+        className="top-16 max-h-[calc(100dvh-5rem)] max-w-3xl translate-y-0 overflow-hidden p-0"
+        onEscapeKeyDown={(event) => event.preventDefault()}
       >
+        <DialogTitle className="sr-only">Global search</DialogTitle>
         <div className="border-b border-border px-4 py-3">
           <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-elevated px-3 py-2">
             <Search className="h-4 w-4 shrink-0 text-text-secondary" />
@@ -302,8 +299,8 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
             <ResultGroups results={results} />
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

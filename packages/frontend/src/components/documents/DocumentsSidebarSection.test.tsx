@@ -202,6 +202,34 @@ describe("DocumentsSidebarSection", () => {
     });
   });
 
+  it("preserves the private-document picker's no-Escape dismissal contract", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(tree());
+    const user = userEvent.setup();
+    renderSidebar();
+
+    await screen.findByTestId("documents-sidebar-section");
+    await user.click(screen.getByRole("button", { name: "New private document" }));
+    await screen.findByRole("dialog", { name: "New Private Document" });
+    await user.keyboard("{Escape}");
+
+    expect(screen.getByRole("dialog", { name: "New Private Document" })).toBeInTheDocument();
+  });
+
+  it("closes the private-document picker on overlay click", async () => {
+    vi.mocked(getDocumentTree).mockResolvedValue(tree());
+    const user = userEvent.setup();
+    renderSidebar();
+
+    await screen.findByTestId("documents-sidebar-section");
+    await user.click(screen.getByRole("button", { name: "New private document" }));
+    await screen.findByRole("dialog", { name: "New Private Document" });
+    const overlay = document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]');
+    expect(overlay).not.toBeNull();
+    await user.click(overlay!);
+
+    expect(screen.queryByRole("dialog", { name: "New Private Document" })).not.toBeInTheDocument();
+  });
+
   it("does not treat a private document URL without an owner as the selected target", async () => {
     vi.mocked(getDocumentTree).mockResolvedValue({
       tree: [],

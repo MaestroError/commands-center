@@ -1,6 +1,6 @@
-import { useEffect } from "react";
-
 import type { SessionMediaItem } from "@cc/shared/schemas";
+
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 type ImageLightboxProps = {
   item: SessionMediaItem;
@@ -9,28 +9,10 @@ type ImageLightboxProps = {
 };
 
 export function ImageLightbox({ item, onClose, onDownload }: ImageLightboxProps) {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
   return (
-    <div
-      aria-label="Image preview"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/90 p-4 backdrop-blur-sm"
-      onClick={onClose}
-      role="dialog"
-    >
-      <div
-        className="cc-panel flex max-h-full w-full max-w-5xl flex-col gap-4 overflow-hidden p-4"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <Dialog onOpenChange={(open) => !open && onClose()} open>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-5xl gap-4 overflow-hidden p-4">
+        <DialogTitle className="sr-only">Image preview</DialogTitle>
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-text-primary">
@@ -66,7 +48,7 @@ export function ImageLightbox({ item, onClose, onDownload }: ImageLightboxProps)
             src={item.url}
           />
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

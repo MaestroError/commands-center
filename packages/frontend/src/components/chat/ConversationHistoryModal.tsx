@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Trash2, X } from "lucide-react";
 
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { listConversations, deleteConversation } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -74,22 +75,23 @@ export function ConversationHistoryModal({
   const deletableCount = conversations.filter((c) => c.id !== currentConversationId).length;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20"
-      onClick={() => {
-        setConfirmingId(null);
-        onClose();
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) {
+          setConfirmingId(null);
+          onClose();
+        }
       }}
+      open
     >
-      <div
-        className="w-full max-w-lg rounded-md border border-border bg-surface shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
+      <DialogContent
         aria-label="Conversation history"
+        className="top-20 max-h-[calc(100dvh-6rem)] max-w-lg translate-y-0 overflow-hidden p-0"
+        onEscapeKeyDown={(event) => event.preventDefault()}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-text-primary">History</h2>
+          <DialogTitle className="text-sm">History</DialogTitle>
           <button
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary hover:bg-surface-elevated hover:text-text-primary transition"
@@ -251,7 +253,7 @@ export function ConversationHistoryModal({
             )}
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
