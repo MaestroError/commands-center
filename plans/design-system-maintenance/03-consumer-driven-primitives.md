@@ -1,6 +1,6 @@
 # DSM-003 — Add Deferred Primitives Only for Proven Consumers
 
-- Status: Planned
+- Status: Complete
 - Program: [Design-System Maintenance](README.md)
 - Foundation reference:
   [React primitives](../design-system-foundation.md#react-primitives)
@@ -35,9 +35,9 @@ Tooltip.
 - Apply these decision rules:
   - `Textarea`: prefer a typed native wrapper when current text-area consumers
     share the Input visual/state contract.
-  - `Select`: use native `<select>` when sufficient; use the existing
-    `SearchableSelect` for searchable product selection; introduce a Radix/
-    Shadcn Select only when a current consumer requires custom popup behavior.
+  - `Select`: retain the completed consumer split: use `SearchableSelect` for
+    searchable product selection and the copy-owned Radix Select for fixed
+    choices. Do not reintroduce browser-native application selects.
   - `Badge`, `Pill`, and `Status`: keep semantic differences explicit. Combine
     them only when at least two consumers share role, variants, sizing, and
     accessibility behavior—not merely rounded appearance.
@@ -72,32 +72,32 @@ Tooltip.
 
 ## Acceptance criteria
 
-- [ ] Tooltip, Textarea, Select, and Badge/Pill/Status each have an explicit
+- [x] Tooltip, Textarea, Select, and Badge/Pill/Status each have an explicit
       `add`, `native`, `reuse`, or `defer` decision backed by exact live
       consumers.
-- [ ] Every introduced primitive ships with at least one immediate production
+- [x] Every introduced primitive ships with at least one immediate production
       consumer; common compositions require at least two consumers with the
       same product contract.
-- [ ] No introduced module or exported variant is unused, speculative, or
+- [x] No introduced module or exported variant is unused, speculative, or
       justified only by Shadcn availability.
-- [ ] Textarea preserves native value/defaultValue, form, ref, disabled,
+- [x] Textarea preserves native value/defaultValue, form, ref, disabled,
       readonly, validation, resize, and accessible-label behavior required by
       its consumers.
-- [ ] Select ownership is intentional: native controls remain native when
-      adequate, searchable behavior reuses `SearchableSelect`, and any popup
-      primitive meets full keyboard/focus/dismissal semantics.
-- [ ] Badge/Pill/Status APIs encode proven semantic roles and accessible status
+- [x] Select ownership remains intentional: searchable behavior reuses
+      `SearchableSelect`, fixed choices use the copy-owned Select, and no
+      browser-native application select is reintroduced.
+- [x] Badge/Pill/Status APIs encode proven semantic roles and accessible status
       communication rather than color alone; unrelated rounded labels are not
       forced into one abstraction.
-- [ ] Tooltip content appears for hover and keyboard focus, dismisses correctly,
+- [x] Tooltip content appears for hover and keyboard focus, dismisses correctly,
       does not trap focus, and is not the sole accessible label.
-- [ ] All Radix usage remains inside `components/ui/`, appearance uses semantic
+- [x] All Radix usage remains inside `components/ui/`, appearance uses semantic
       theme roles, and no component branches on theme identity.
-- [ ] Default light/dark, disabled/error/selected states, focus visibility, and
+- [x] Default light/dark, disabled/error/selected states, focus visibility, and
       320px/390px containment are covered for every introduced API.
-- [ ] Compatibility counts only decrease, zero-consumer definitions are
+- [x] Compatibility counts only decrease, zero-consumer definitions are
       removed, and audit failures name the approved replacement.
-- [ ] Deferred candidates have a concrete activation condition and do not leave
+- [x] Deferred candidates have a concrete activation condition and do not leave
       unused source, dependency, gallery, or documentation entries.
 
 ## Verification tests
@@ -115,10 +115,27 @@ Tooltip.
 - Search for direct Radix imports, unused exports, new raw palette roles, and
   retired compatibility definitions.
 
+## Completion evidence
+
+- The decision matrix records evidence and activation conditions for Textarea,
+  Select, Badge, Pill, Status, and Tooltip.
+- Textarea migrated 14 ordinary field consumers across 10 paths. The audit
+  retains exactly five specialized domain textareas and rejects growth.
+- Badge replaced every `cc-badge` consumer and retired all three badge
+  compatibility classes. Tooltip replaced five task-board implementations.
+- Component tests cover native textarea semantics, badge text/roles, and
+  tooltip hover, focus, and Escape behavior. The full workspace test run passes,
+  including 148 frontend files and 1,443 frontend tests.
+- Design-system Playwright passed twice with 45 desktop checks per run; the full
+  E2E suite passed 155 tests with 45 intentionally skipped mobile duplicates.
+- ESLint fix/check, typecheck, Prettier, Knip, production builds, the 24-case
+  design-system audit, and `git diff --check` pass. Manual gallery inspection
+  verified the introduced states in Default light and dark modes.
+
 ## Out of scope
 
 - Implementing every candidate regardless of present demand.
-- Replacing native select behavior solely for visual uniformity.
+- Replacing either established Select implementation with a new abstraction.
 - Treating status color as sufficient accessible meaning.
 - Building a field/form framework, polymorphic component system, or exhaustive
   variant catalogue.

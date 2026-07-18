@@ -26,6 +26,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -34,6 +35,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogClose,
@@ -206,8 +209,18 @@ function ApplicationBaseline() {
           <button className="cc-tab" type="button">
             Inactive tab
           </button>
-          <span className="cc-badge cc-badge-connected">Connected</span>
-          <span className="cc-badge cc-badge-muted">Draft</span>
+          <Badge variant="success">Connected</Badge>
+          <Badge>Draft</Badge>
+          <Badge variant="warning">Needs auth</Badge>
+          <Badge variant="danger">Failed</Badge>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="secondary" type="button">
+                More information
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Supplementary context works on hover and focus.</TooltipContent>
+          </Tooltip>
           <label className="inline-flex items-center gap-2 text-sm text-text-primary">
             <Switch
               aria-label="Gallery switch"
@@ -245,8 +258,8 @@ function ApplicationBaseline() {
           </div>
           <label className="grid gap-2 text-sm font-medium text-text-primary md:col-span-2">
             Text area
-            <textarea
-              className="cc-input min-h-28"
+            <Textarea
+              className="min-h-28"
               defaultValue="A longer field verifies typography, border, surface, and focus treatment."
             />
           </label>

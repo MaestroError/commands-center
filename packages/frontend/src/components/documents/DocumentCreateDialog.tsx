@@ -15,6 +15,7 @@ import { createDocument } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import type { DocumentScope } from "@cc/shared/schemas";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 type DocumentCreateDialogProps = {
   onClose: () => void;
@@ -111,8 +112,8 @@ export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
 
         <label className="mt-3 grid gap-1 text-sm text-text-secondary">
           Description
-          <textarea
-            className="cc-input min-h-16 resize-y"
+          <Textarea
+            className="min-h-16 resize-y"
             placeholder="Short description (optional)"
             value={description}
             onChange={(e) => setDescription(e.target.value)}

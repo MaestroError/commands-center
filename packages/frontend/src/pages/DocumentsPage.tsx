@@ -19,6 +19,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 const CONTEXT_TAB_STORAGE_KEY = "cc.documents.context-tab";
 
@@ -332,8 +333,8 @@ function DocumentActionsTab(props: { doc: DocumentReadResponse }) {
         </label>
         <label className="mt-2 grid gap-1 text-sm text-text-secondary">
           Description
-          <textarea
-            className="cc-input min-h-16 resize-y"
+          <Textarea
+            className="min-h-16 resize-y"
             value={editDescription}
             onChange={(e) => setEditDescription(e.target.value)}
           />

@@ -30,6 +30,7 @@ import {
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 export function TaskFormPage(props: { mode: "create" | "edit" }) {
   const navigate = useNavigate();
@@ -192,8 +193,8 @@ export function TaskFormPage(props: { mode: "create" | "edit" }) {
               <div className="grid gap-1">
                 <label className="grid gap-1 text-sm text-text-secondary">
                   Acceptance criteria, one per line
-                  <textarea
-                    className="cc-input min-h-28 resize-y"
+                  <Textarea
+                    className="min-h-28 resize-y"
                     value={form.todosText}
                     onChange={(event) => updateForm({ todosText: event.target.value })}
                   />

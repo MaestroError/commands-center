@@ -31,6 +31,7 @@ import {
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -264,8 +265,8 @@ export function TaskTemplateForm(props: {
       <div className="grid gap-1">
         <label className="grid gap-1 text-sm text-text-secondary">
           Acceptance criteria, one per line
-          <textarea
-            className="cc-input min-h-24 resize-none"
+          <Textarea
+            className="min-h-24 resize-none"
             value={form.todosText}
             onChange={(event) => updateForm({ todosText: event.target.value })}
           />
@@ -356,8 +357,8 @@ function McpConfigSection(props: {
 
           <label className="grid gap-1 text-sm text-text-secondary">
             Tool description
-            <textarea
-              className="cc-input min-h-16 resize-y"
+            <Textarea
+              className="min-h-16 resize-y"
               onChange={(event) => updateForm({ mcpToolDescription: event.target.value })}
               placeholder="Falls back to the task prompt when empty."
               value={form.mcpToolDescription}

@@ -104,29 +104,38 @@ test("accepts compatibility ownership inside the typed primitive layer", () => {
   assert.deepEqual(auditSources(sources).violations, []);
 });
 
-test("accepts an exact deferred textarea consumer", () => {
+test("accepts an exact retained specialized textarea consumer", () => {
   const sources = validSources();
   sources.set(
-    "packages/frontend/src/components/chat/QuestionDock.tsx",
-    'export const field = <textarea className="cc-input" />;',
+    "packages/frontend/src/components/chat/ChatComposer.tsx",
+    'export const field = <textarea aria-label="Message" />;',
   );
   assert.deepEqual(auditSources(sources).violations, []);
 });
 
-test("rejects an ordinary input in a deferred textarea path", () => {
+test("rejects a direct native textarea consumer", () => {
   const sources = validSources();
   sources.set(
-    "packages/frontend/src/components/chat/QuestionDock.tsx",
-    'export const field = <input className="cc-input" />;',
+    "packages/frontend/src/components/NewField.tsx",
+    'export const field = <textarea aria-label="Notes" />;',
   );
   assert.deepEqual(rulesFor(sources), ["DS004"]);
 });
 
-test("rejects growth in a deferred textarea path", () => {
+test("rejects native textarea growth in a retained specialized path", () => {
   const sources = validSources();
   sources.set(
-    "packages/frontend/src/components/chat/QuestionDock.tsx",
-    'export const fields = <><textarea className="cc-input" /><textarea className="cc-input" /></>;',
+    "packages/frontend/src/components/chat/ChatComposer.tsx",
+    'export const fields = <><textarea aria-label="Message" /><textarea aria-label="Extra" /></>;',
+  );
+  assert.deepEqual(rulesFor(sources), ["DS004"]);
+});
+
+test("rejects a retired badge compatibility class", () => {
+  const sources = validSources();
+  sources.set(
+    "packages/frontend/src/components/LegacyBadge.tsx",
+    'export const badge = <span className="cc-badge" />;',
   );
   assert.deepEqual(rulesFor(sources), ["DS004"]);
 });

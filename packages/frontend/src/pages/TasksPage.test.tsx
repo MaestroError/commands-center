@@ -372,10 +372,12 @@ describe("TasksPage", () => {
     expect(screen.getByRole("heading", { name: "Ready to Check" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Done" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Queued info")).toBeInTheDocument();
-    expect(screen.getByText("Tasks with queued or running AI work.")).toHaveAttribute(
-      "role",
-      "tooltip",
+    const user = userEvent.setup();
+    const queuedInfo = screen.getByLabelText("Queued info");
+    expect(queuedInfo).toBeInTheDocument();
+    await user.hover(queuedInfo);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Tasks with queued or running AI work.",
     );
   });
 
@@ -478,15 +480,18 @@ describe("TasksPage", () => {
     renderWithRouter(<TasksPage />, "/tasks");
 
     await screen.findByRole("link", { name: "Ship release" });
-    expect(screen.getByLabelText("Assignee: Planner")).toHaveAttribute("title", "Planner");
-    expect(screen.getByText("Planner", { selector: '[role="tooltip"]' })).toBeInTheDocument();
+    const user = userEvent.setup();
+    const assignee = screen.getByLabelText("Assignee: Planner");
+    await user.hover(assignee);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Planner");
     expect(screen.getByText("PL")).toBeInTheDocument();
     expect(screen.queryByText("Prepare release notes.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Queue" })).toBeInTheDocument();
-    expect(screen.getByText("Queue", { selector: '[role="tooltip"]' })).toBeInTheDocument();
+    const queueButton = screen.getByRole("button", { name: "Queue" });
+    await user.unhover(assignee);
+    await user.hover(queueButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Queue");
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Queue" }));
+    await user.click(queueButton);
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
@@ -507,10 +512,15 @@ describe("TasksPage", () => {
     renderWithRouter(<TasksPage />, "/tasks");
 
     expect(await screen.findByLabelText("Subtasks")).toBeInTheDocument();
-    expect(screen.getByLabelText("Subtask: Implement the docs updates.")).toBeInTheDocument();
-    expect(
-      screen.getByText(`${"Review generated content. ".repeat(3)}Review generated conte...`),
-    ).toBeInTheDocument();
+    const user = userEvent.setup();
+    const subtasks = screen.getAllByLabelText(/^Subtask:/);
+    expect(subtasks).toHaveLength(2);
+    const longSubtask = subtasks[1];
+    if (!longSubtask) throw new Error("Expected a second subtask.");
+    await user.hover(longSubtask.parentElement ?? longSubtask);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      `${"Review generated content. ".repeat(3)}Review generated conte...`,
+    );
   });
 
   it("keeps ready-to-check cards constrained inside the board column", async () => {
@@ -1709,8 +1719,10 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks");
 
-    expect(await screen.findByLabelText("Latest result message")).toBeInTheDocument();
-    expect(screen.getByText(`${"A".repeat(200)}...`)).toBeInTheDocument();
+    const user = userEvent.setup();
+    const resultMessage = await screen.findByLabelText("Latest result message");
+    await user.hover(resultMessage);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(`${"A".repeat(200)}...`);
     expect(screen.queryByText(longMessage)).not.toBeInTheDocument();
   });
 
@@ -1725,8 +1737,10 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks");
 
-    expect(await screen.findByLabelText("Latest result message")).toBeInTheDocument();
-    expect(screen.getByText("Explicit agent result.")).toBeInTheDocument();
+    const user = userEvent.setup();
+    const resultMessage = await screen.findByLabelText("Latest result message");
+    await user.hover(resultMessage);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Explicit agent result.");
     expect(screen.queryByText("Session summary text.")).not.toBeInTheDocument();
   });
 
@@ -1741,8 +1755,10 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks");
 
-    expect(await screen.findByLabelText("Latest result message")).toBeInTheDocument();
-    expect(screen.getByText("Session summary text.")).toBeInTheDocument();
+    const user = userEvent.setup();
+    const resultMessage = await screen.findByLabelText("Latest result message");
+    await user.hover(resultMessage);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Session summary text.");
   });
 
   it("deletes a template from the templates view", async () => {
@@ -2209,9 +2225,11 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks");
 
-    expect(await screen.findByText("Release notes are ready.")).toBeInTheDocument();
-
     const user = userEvent.setup();
+    const resultMessage = await screen.findByLabelText("Latest result message");
+    await user.hover(resultMessage);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Release notes are ready.");
+    await user.unhover(resultMessage);
     await user.click(screen.getByRole("link", { name: "Ship release" }));
     expect(
       await screen.findByRole("tab", { name: "Overview", selected: true }),

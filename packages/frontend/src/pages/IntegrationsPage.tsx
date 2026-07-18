@@ -23,7 +23,7 @@ import {
   friendlyStatus,
   isComposioServer,
   readError,
-  statusBadgeClass,
+  statusBadgeVariant,
   syncAgentAssignments,
   tagLabel,
   tagStyle,
@@ -39,6 +39,7 @@ import {
 } from "./integrations/integration-icons";
 import { McpServerDialog } from "./integrations/mcp-server-dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 
 export function IntegrationsPage() {
@@ -410,7 +411,7 @@ function McpServerCard(props: {
             {props.server.config.transport}
           </p>
         </div>
-        <span className={statusBadgeClass(status)}>{friendlyStatus(status)}</span>
+        <Badge variant={statusBadgeVariant(status)}>{friendlyStatus(status)}</Badge>
       </div>
 
       <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">
@@ -556,7 +557,7 @@ function ComposioSection(props: {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-semibold text-text-primary">Composio</h2>
-            <span className={statusBadgeClass(status)}>{friendlyStatus(status)}</span>
+            <Badge variant={statusBadgeVariant(status)}>{friendlyStatus(status)}</Badge>
             {!props.server.enabled ? (
               <span className="rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary">
                 Globally disabled
@@ -753,7 +754,7 @@ function SuggestedMcpServersSection(props: {
                       <h3 className="text-base font-semibold text-text-primary">
                         {suggestion.name}
                       </h3>
-                      <span className="cc-badge cc-badge-muted">{suggestion.authBadge}</span>
+                      <Badge>{suggestion.authBadge}</Badge>
                     </div>
                     <p className="text-sm text-text-secondary">{suggestion.description}</p>
                     <span className="mt-auto text-sm font-medium text-accent">Tap to connect</span>

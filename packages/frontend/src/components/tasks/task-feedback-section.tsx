@@ -31,6 +31,7 @@ import {
   useTaskRunFollowupsQuery,
 } from "@/hooks/use-tasks-query";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 function readError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "Request failed.";
@@ -276,9 +277,9 @@ function TaskFeedbackSection(props: {
                   >
                     {isEditing ? (
                       <div className="mt-3 grid gap-2">
-                        <textarea
+                        <Textarea
                           aria-label="Edit feedback"
-                          className="cc-input min-h-24"
+                          className="min-h-24"
                           onChange={(event) => setEditingFeedbackBody(event.target.value)}
                           value={editingFeedbackBody}
                         />
@@ -456,9 +457,9 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
 
       {isComposerOpen ? (
         <div className="grid gap-2">
-          <textarea
+          <Textarea
             aria-label={`Reply to run ${props.run.id}`}
-            className="cc-input min-h-24"
+            className="min-h-24"
             disabled={!canReply}
             onChange={(event) => setBody(event.target.value)}
             placeholder="Add a short follow-up for the specialist."

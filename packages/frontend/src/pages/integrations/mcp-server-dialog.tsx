@@ -17,6 +17,7 @@ import {
 import { ChevronIcon, CloseIcon } from "./integration-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -181,9 +182,9 @@ export function McpServerDialog(props: {
             {form.transport === "stdio" ? (
               <>
                 <Field error={errors.commandText} label="Command" required>
-                  <textarea
+                  <Textarea
                     aria-label="Command"
-                    className="cc-input min-h-24 resize-y font-mono text-xs"
+                    className="min-h-24 resize-y font-mono text-xs"
                     onChange={(event) => updateField("commandText", event.target.value)}
                     placeholder="npx\n-y\n@modelcontextprotocol/server-filesystem\n/Users/revazgh/Projects/cc"
                     value={form.commandText}
@@ -426,9 +427,9 @@ function VariableTextarea(props: {
 
   return (
     <div className="grid gap-3">
-      <textarea
+      <Textarea
         aria-label={props.ariaLabel}
-        className="cc-input min-h-32 resize-y font-mono text-xs"
+        className="min-h-32 resize-y font-mono text-xs"
         onChange={(event) => props.onChange(event.target.value)}
         placeholder={props.placeholder}
         ref={textareaRef}

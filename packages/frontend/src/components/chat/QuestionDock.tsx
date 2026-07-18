@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 type QuestionOption = {
   label: string;
@@ -116,9 +117,9 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
                 })}
               </div>
             ) : null}
-            <textarea
+            <Textarea
               aria-label={item.question}
-              className="cc-input w-full resize-y min-h-[2.5rem]"
+              className="min-h-[2.5rem] w-full resize-y"
               rows={2}
               placeholder={
                 item.options.length > 0 ? "Type your own answer (optional)" : "Type your answer"

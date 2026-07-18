@@ -5,6 +5,7 @@ import type { TaskTemplateRunNowInput, UploadTaskContextAttachmentInput } from "
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
   taskTitle: string;
@@ -63,8 +64,8 @@ export function RunTaskContextDialog(props: Props) {
 
         <label className="mt-4 grid gap-1 text-sm text-text-secondary">
           Run context
-          <textarea
-            className="cc-input min-h-32 resize-y"
+          <Textarea
+            className="min-h-32 resize-y"
             placeholder="Anything the specialist should know for this specific run..."
             value={contextText}
             onChange={(event) => setContextText(event.target.value)}

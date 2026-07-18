@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { PasswordInput } from "@/components/common/PasswordInput";
 import { useProviderMutations, useProvidersQuery } from "@/hooks/use-providers-query";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -217,15 +218,9 @@ export function ProviderConnectionsPage() {
                         </h2>
                         <p className="mt-1 text-sm text-text-secondary">{entry.provider.id}</p>
                       </div>
-                      <span
-                        className={
-                          entry.connected
-                            ? "cc-badge cc-badge-connected"
-                            : "cc-badge cc-badge-muted"
-                        }
-                      >
+                      <Badge variant={entry.connected ? "success" : "neutral"}>
                         {entry.connected ? "Connected" : "Not connected"}
-                      </span>
+                      </Badge>
                     </div>
 
                     <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">

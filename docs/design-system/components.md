@@ -14,9 +14,9 @@ Shadcn/UI is the copy-owned source convention. Radix supplies behavior for the
 approved interaction primitives. CC owns their exported API and semantic
 Tailwind appearance in `packages/frontend/src/components/ui/`.
 
-Available primitive modules are: `alert`, `alert-dialog`, `button`, `checkbox`,
-`command`, `dialog`, `dropdown-menu`, `input`, `popover`, `select`, `surface`,
-`switch`, and `tabs`. Domain code imports these modules through
+Available primitive modules are: `alert`, `alert-dialog`, `badge`, `button`,
+`checkbox`, `command`, `dialog`, `dropdown-menu`, `input`, `popover`, `select`,
+`surface`, `switch`, `tabs`, `textarea`, and `tooltip`. Domain code imports these modules through
 `@/components/ui/*` and
 must not import Radix directly.
 
@@ -100,6 +100,22 @@ For option selection, choose by interaction contract:
   as status, source, transport, or recurrence choices.
 - Do not use a browser-native `<select>` in application UI. The two CC-owned
   contracts provide consistent theme styling and keyboard behavior.
+
+For ordinary multiline fields, use `Textarea` from
+`@/components/ui/textarea`. Native textareas remain appropriate only inside an
+audited specialized composition whose container owns bespoke layout or keyboard
+behavior, such as the chat and task-prompt composers.
+
+Use `Badge` only for compact, non-interactive text labels. Its neutral, success,
+warning, and danger variants must retain readable text; color is supporting
+information, not the only status signal. Rounded actions, counters, metadata,
+and domain-specific task statuses are not automatically badges.
+
+Use `Tooltip` for supplementary information that must appear on pointer hover
+and keyboard focus. The trigger must already have an accessible name because
+tooltip content never replaces one. Tooltip owns portal placement and Escape
+dismissal; domain code must not recreate those behaviors with group-hover
+visibility classes.
 
 ## Behavior-rich domain UI
 

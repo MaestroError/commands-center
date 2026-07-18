@@ -571,24 +571,6 @@ textarea {
   color: var(--success-foreground);
 }
 
-.cc-badge {
-  @apply inline-flex items-center px-3 py-1 text-xs uppercase tracking-[0.16em];
-  border-radius: var(--radius-badge);
-  font-weight: var(--font-weight-badge);
-}
-
-.cc-badge-connected {
-  color: var(--success-foreground);
-  background-color: var(--success-surface);
-  box-shadow: inset 0 0 0 1px var(--success-border);
-}
-
-.cc-badge-muted {
-  color: var(--badge-neutral-foreground);
-  background-color: var(--badge-neutral-surface);
-  box-shadow: inset 0 0 0 1px var(--badge-neutral-border);
-}
-
 .cc-nav-item-active {
   @apply bg-surface-elevated text-text-primary;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);

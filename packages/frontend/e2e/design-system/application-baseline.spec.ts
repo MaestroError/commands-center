@@ -48,6 +48,29 @@ test.describe("@design-system current application baseline", () => {
       await expectNoHorizontalOverflow(page, dialog);
     });
   }
+
+  test("tooltip supports pointer and keyboard dismissal", async ({ page }) => {
+    await openBaseline(
+      page,
+      "/__design-system-baseline?surface=application",
+      "light",
+      DESKTOP_VIEWPORT,
+    );
+    const trigger = page.getByRole("button", { name: "More information" });
+
+    await trigger.hover();
+    await expect(page.getByRole("tooltip")).toContainText(
+      "Supplementary context works on hover and focus.",
+    );
+    await page.mouse.move(0, 0);
+    await expect(page.getByRole("tooltip")).toBeHidden();
+
+    await trigger.focus();
+    await expect(page.getByRole("tooltip")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("tooltip")).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
 });
 
 async function openBaseline(

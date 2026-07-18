@@ -32,7 +32,7 @@ real consumers, and finally a no-visual-change selector cleanup.
 | ------- | ------------------------------------------------------------------------------------- | ---------- | -------- |
 | DSM-001 | [Close retained custom-overlay accessibility debt](01-overlay-accessibility.md)       | None       | Complete |
 | DSM-002 | [Deepen Button and Input adoption](02-button-input-adoption.md)                       | DSM-001    | Complete |
-| DSM-003 | [Add deferred primitives only for proven consumers](03-consumer-driven-primitives.md) | DSM-002    | Planned  |
+| DSM-003 | [Add deferred primitives only for proven consumers](03-consumer-driven-primitives.md) | DSM-002    | Complete |
 | DSM-004 | [Normalize semantic base-selector specificity](04-base-selector-specificity.md)       | DSM-003    | Planned  |
 
 The order is intentional. Overlay migration closes correctness and accessibility

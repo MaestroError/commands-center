@@ -29,6 +29,7 @@ import {
 } from "./task-helpers";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 export function TaskSubtasksSection(props: {
   agents: Specialist[];
@@ -241,8 +242,8 @@ export function TaskContextPanelSection(props: {
             <div className="grid gap-3">
               <label className="grid gap-2 text-sm text-text-secondary">
                 Task context
-                <textarea
-                  className="cc-input min-h-32 resize-y"
+                <Textarea
+                  className="min-h-32 resize-y"
                   onChange={(event) => setText(event.target.value)}
                   placeholder="Optional persistent context for future task runs..."
                   value={text}
@@ -403,9 +404,9 @@ export function TaskTodosPanelSection(props: { task: Task }) {
             >
               <label className="grid gap-1 text-sm text-text-secondary">
                 Acceptance criteria, one per line
-                <textarea
+                <Textarea
                   aria-label="Acceptance criteria"
-                  className="cc-input min-h-28 resize-y"
+                  className="min-h-28 resize-y"
                   value={todosText}
                   onChange={(event) => setTodosText(event.target.value)}
                 />

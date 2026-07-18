@@ -14,16 +14,13 @@ const INLINE_SVG_EXCEPTIONS = new Map([
 
 const RETAINED_COMPATIBILITY_COUNTS = new Map([
   ["cc-alert", 5],
-  ["cc-badge", 9],
-  ["cc-badge-connected", 3],
-  ["cc-badge-muted", 4],
   ["cc-button", 3],
   ["cc-button-danger", 1],
   ["cc-button-icon", 1],
   ["cc-button-secondary", 1],
   ["cc-empty-state", 2],
   ["cc-eyebrow", 11],
-  ["cc-input", 17],
+  ["cc-input", 3],
   ["cc-logo-background", 1],
   ["cc-logo-icon", 2],
   ["cc-md", 1],
@@ -36,19 +33,19 @@ const RETAINED_COMPATIBILITY_COUNTS = new Map([
   ["cc-tab-active", 3],
 ]);
 
-const REMOVED_COMPATIBILITY_CLASSES = new Set(["cc-button-primary", "cc-nav-item"]);
-const DEFERRED_INPUT_COMPATIBILITY_COUNTS = new Map([
-  ["packages/frontend/src/components/chat/QuestionDock.tsx", 1],
-  ["packages/frontend/src/components/dev/DesignSystemBaselinePage.tsx", 1],
-  ["packages/frontend/src/components/documents/DocumentCreateDialog.tsx", 1],
-  ["packages/frontend/src/components/specialists/SpecialistForm.tsx", 1],
-  ["packages/frontend/src/components/tasks/RunTaskContextDialog.tsx", 1],
-  ["packages/frontend/src/components/tasks/task-feedback-section.tsx", 2],
-  ["packages/frontend/src/pages/DocumentsPage.tsx", 1],
-  ["packages/frontend/src/pages/integrations/mcp-server-dialog.tsx", 2],
-  ["packages/frontend/src/pages/tasks/TaskDetailSections.tsx", 2],
-  ["packages/frontend/src/pages/tasks/TaskFormPage.tsx", 1],
-  ["packages/frontend/src/pages/tasks/TaskTemplateFormPage.tsx", 2],
+const REMOVED_COMPATIBILITY_CLASSES = new Set([
+  "cc-badge",
+  "cc-badge-connected",
+  "cc-badge-muted",
+  "cc-button-primary",
+  "cc-nav-item",
+]);
+const RETAINED_NATIVE_TEXTAREA_COUNTS = new Map([
+  ["packages/frontend/src/components/activities/ActivityActions.tsx", 1],
+  ["packages/frontend/src/components/chat/ChatComposer.tsx", 1],
+  ["packages/frontend/src/components/live-requests/LiveRequestPane.tsx", 1],
+  ["packages/frontend/src/components/live-requests/LiveRequestReviewForm.tsx", 1],
+  ["packages/frontend/src/components/tasks/TaskPromptComposer.tsx", 1],
 ]);
 const REQUIRED_BRIDGE_PATHS = [
   "packages/frontend/src/styles/globals.css",
@@ -300,6 +297,18 @@ function auditTypedPrimitiveOwnership(productionSources, violations) {
       );
     }
 
+    const nativeTextareaCount = source.match(/<textarea\b/g)?.length ?? 0;
+    const nativeTextareaMaximum = RETAINED_NATIVE_TEXTAREA_COUNTS.get(file) ?? 0;
+    if (nativeTextareaCount > nativeTextareaMaximum) {
+      addViolation(
+        violations,
+        "DS004",
+        file,
+        `native textarea count ${nativeTextareaCount.toString()} exceeds ${nativeTextareaMaximum.toString()}`,
+        "Use @/components/ui/textarea for ordinary fields; retain native textarea only for an audited specialized composition.",
+      );
+    }
+
     for (const token of buttonTokens) {
       if (countExactToken(source, token) === 0) {
         continue;
@@ -313,35 +322,13 @@ function auditTypedPrimitiveOwnership(productionSources, violations) {
       );
     }
 
-    const deferredMaximum = DEFERRED_INPUT_COMPATIBILITY_COUNTS.get(file);
-    const deferredOpenings = source.match(/<textarea\b[\s\S]*?>/g) ?? [];
-    const deferredCount = deferredOpenings.reduce(
-      (total, opening) => total + countExactToken(opening, "cc-input"),
-      0,
-    );
-    const sourceWithoutDeferredOpenings = deferredOpenings.reduce(
-      (current, opening) => current.replace(opening, ""),
-      source,
-    );
-    const ordinaryInputCount = countExactToken(sourceWithoutDeferredOpenings, "cc-input");
-
-    if (ordinaryInputCount > 0) {
+    if (countExactToken(source, "cc-input") > 0) {
       addViolation(
         violations,
         "DS004",
         file,
         "direct domain consumer cc-input",
-        "Use Input for text-like inputs; defer only concrete select/textarea consumers through DSM-003.",
-      );
-    }
-
-    if (deferredCount > (deferredMaximum ?? 0)) {
-      addViolation(
-        violations,
-        "DS004",
-        file,
-        `deferred textarea cc-input count ${deferredCount.toString()} exceeds ${(deferredMaximum ?? 0).toString()}`,
-        "Use the DSM-003 consumer gate before adding or migrating Textarea consumers.",
+        "Use Input or Textarea from the CC-owned UI layer.",
       );
     }
   }

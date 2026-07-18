@@ -36,6 +36,7 @@ import type {
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 type PermissionAction = "allow" | "ask" | "deny";
 
@@ -184,8 +185,8 @@ export function SpecialistForm(props: SpecialistFormProps) {
         </div>
         <div className="lg:col-span-2">
           <Field error={errors.instructions} label="Instructions" required>
-            <textarea
-              className="cc-input min-h-48 resize-y"
+            <Textarea
+              className="min-h-48 resize-y"
               onChange={(event) => update("instructions", event.target.value)}
               value={value.instructions}
             />

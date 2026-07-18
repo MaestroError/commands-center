@@ -396,17 +396,19 @@ export function friendlyStatus(status: { status: string }): string {
   }
 }
 
-export function statusBadgeClass(status: { status: string }): string {
+export function statusBadgeVariant(status: {
+  status: string;
+}): "success" | "warning" | "danger" | "neutral" {
   switch (status.status) {
     case "connected":
-      return "cc-badge cc-badge-connected";
+      return "success";
     case "needs_auth":
     case "needs_client_registration":
-      return "cc-badge bg-warning-surface text-warning-foreground";
+      return "warning";
     case "failed":
-      return "cc-badge bg-danger/15 text-danger";
+      return "danger";
     default:
-      return "cc-badge cc-badge-muted";
+      return "neutral";
   }
 }
 
