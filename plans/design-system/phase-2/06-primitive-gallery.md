@@ -1,4 +1,4 @@
-# DS-0206 — Add the Primitive Gallery and Visual Baselines
+# DS-0206 — Add the Primitive Gallery and Appearance Contracts
 
 - Status: Complete (manifest: [primitive-gallery-manifest.md](artifacts/primitive-gallery-manifest.md))
 - Phase: [Phase 2](README.md)
@@ -30,15 +30,15 @@ Storybook or a second gallery stack.
   confirmation and safe initial focus.
 - Exercise Default light/dark through the application appearance contract; do
   not create gallery-only theme switches or palettes.
-- Add Playwright interaction and screenshot coverage at desktop, 390px, and the
-  320px overflow boundary where behavior differs.
+- Add Playwright interaction, semantic-style, and containment coverage at
+  desktop, 390px, and the 320px overflow boundary where behavior differs.
 - Keep existing application, Markdown, Milkdown, and semantic fixture surfaces
   intact.
 
 ## Required deliverables
 
 - The primitive fixture surface and deterministic interaction controls.
-- Light/dark desktop/narrow primitive screenshots.
+- Light/dark desktop/narrow semantic and responsive assertions.
 - Playwright tests covering keyboard and pointer flows through real portals.
 - `artifacts/primitive-gallery-manifest.md` listing examples, viewport/mode
   coverage, expected interactions, and approved visual differences.
@@ -53,29 +53,28 @@ Storybook or a second gallery stack.
 - [ ] Every approved Button variant and Dialog/AlertDialog state appears in the
       fixture with a named test owner.
 - [ ] Gallery examples consume public primitive APIs only.
-- [ ] Light/dark screenshots demonstrate semantic token response without a
+- [ ] Light/dark computed styles demonstrate semantic token response without a
       component-level mode branch.
 - [ ] Keyboard focus is visible and testable in open overlays.
 - [ ] Dialogs and overlays remain contained at 320px and 390px without document
       overflow or clipped actions.
 - [ ] Portal content is deterministic and cannot collide with parallel tests.
-- [ ] Existing fixture surfaces and protected Markdown/Milkdown screenshots
+- [ ] Existing fixture surfaces and protected Markdown/Milkdown assertions
       have no unexplained differences.
 - [ ] Gallery code remains development-only and absent from production assets.
 
 ## Verification tests
 
-- Screenshot the closed gallery and each open overlay state in both modes.
+- Assert the closed gallery and each open overlay state in both modes.
 - Exercise Tab, Shift+Tab, Enter, Space, Escape, overlay pointer interaction,
   controlled close, and focus return.
 - Assert `scrollWidth <= clientWidth` at 320px and 390px.
-- Run all design-system visual suites twice without updates after approving any
-  first-run primitive snapshots.
+- Run all design-system appearance suites twice.
 - Build production and search emitted assets for fixture/gallery markers.
 
 ## Out of scope
 
 - Storybook or another documentation runtime.
 - A permanent public component catalogue.
-- Phase 3 compositions or broad page screenshots solely to demonstrate new
+- Phase 3 compositions or broad page fixtures solely to demonstrate new
   primitives that pages do not yet consume.

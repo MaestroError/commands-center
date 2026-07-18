@@ -40,7 +40,7 @@ settings, activity, and system-prompt flows rely on its current props.
 - Expanded focused unit tests covering every public prop/action path.
 - Real-browser coverage for safe initial focus, Escape, overlay behavior, focus
   containment/return, disabled confirmation, and optional secondary action.
-- Reviewed application/dialog fixture screenshots in Default light/dark and at
+- Reviewed application/dialog fixture assertions in Default light/dark and at
   narrow/wide widths.
 
 ## Blockers and dependencies
@@ -71,7 +71,7 @@ settings, activity, and system-prompt flows rely on its current props.
   behavior.
 - Run all current ConfirmDialog consumer tests and affected application E2E
   flows.
-- Compare dialog fixture screenshots twice without unexplained updates.
+- Run dialog fixture assertions twice without unexplained changes.
 
 ## Out of scope
 

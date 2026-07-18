@@ -1,4 +1,9 @@
 import { expect, test, type Page } from "../fixtures";
+import {
+  expectNoHorizontalOverflow,
+  expectSemanticSurface,
+  expectThemeContract,
+} from "./theme-assertions";
 
 const DESKTOP_VIEWPORT = { width: 1280, height: 900 };
 
@@ -8,24 +13,22 @@ test.describe("@design-system Phase 2 primitives", () => {
   for (const theme of ["light", "dark"] as const) {
     test(`${theme} primitive gallery and open overlays`, async ({ page }) => {
       await openPrimitives(page, theme, DESKTOP_VIEWPORT);
-
-      await expect(page).toHaveScreenshot(`primitives-${theme}-desktop.png`, screenshotOptions());
+      await expectThemeContract(page, theme);
+      await expectSemanticSurface(page.getByTestId("primitive-buttons"), theme);
+      await expect(page.getByRole("button", { name: "Disabled primary" })).toBeDisabled();
 
       await page.getByRole("button", { name: "Open dialog" }).click();
-      await expect(page.getByRole("dialog")).toBeVisible();
-      await expect(page).toHaveScreenshot(
-        `primitives-dialog-${theme}-desktop.png`,
-        screenshotOptions(),
-      );
+      const dialog = page.getByRole("dialog");
+      await expectSemanticSurface(dialog, theme);
+      await expectNoHorizontalOverflow(page, dialog);
       await page.keyboard.press("Escape");
-      await expect(page.getByRole("dialog")).toBeHidden();
+      await expect(dialog).toBeHidden();
 
       await page.getByRole("button", { name: "Open destructive alert" }).click();
-      await expect(page.getByRole("alertdialog")).toBeVisible();
-      await expect(page).toHaveScreenshot(
-        `primitives-alert-${theme}-desktop.png`,
-        screenshotOptions(),
-      );
+      const alert = page.getByRole("alertdialog");
+      await expectSemanticSurface(alert, theme);
+      await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
+      await expectNoHorizontalOverflow(page, alert);
     });
   }
 
@@ -182,14 +185,5 @@ async function openPrimitives(
     window.localStorage.setItem("cc-sidebar-collapsed", "false");
   }, colorMode);
   await page.goto("/__design-system-baseline?surface=primitives");
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "default");
-  await expect(page.locator("html")).toHaveAttribute("data-color-mode", colorMode);
-}
-
-function screenshotOptions() {
-  return {
-    animations: "disabled" as const,
-    caret: "hide" as const,
-    fullPage: true,
-  };
+  await expectThemeContract(page, colorMode);
 }

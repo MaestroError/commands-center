@@ -309,6 +309,10 @@ describe("conversation routes", () => {
 - Use `data-testid` attributes for stable selectors (not CSS classes or text content)
 - E2E tests run against a fully built app with a real database (SQLite for CI speed)
 - Keep E2E tests focused on user flows, not implementation details
+- Prefer platform-independent semantic, computed-style, layout, and interaction
+  assertions for appearance contracts. Do not add committed Playwright
+  screenshot baselines unless the user explicitly approves them and CI owns a
+  pinned baseline-generation environment.
 
 ### What to Test
 

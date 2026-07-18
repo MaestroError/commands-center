@@ -96,7 +96,7 @@ coherent state; do not land a half-migrated provider, DOM contract, or UI.
 - Add Playwright coverage for first load, reload, Light, Dark, System under both
   emulated OS modes, and no observable wrong-mode frame.
 - Run application, Markdown, and Milkdown Phase 0 visual suites twice without
-  updating unexplained screenshots.
+  weakening unexplained appearance assertions.
 
 ## Out of scope
 

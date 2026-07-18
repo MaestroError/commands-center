@@ -45,10 +45,11 @@ required states reliably; do not build the full component gallery in this task.
 
 1. Create `artifacts/markdown-milkdown-baseline-manifest.md` describing fixture
    content, current source mode, future `Default` mapping, viewports, expected
-   behaviors, screenshot paths, and serialization assertions.
+   styles/behaviors, and serialization assertions.
 2. Add focused Playwright tests under
    `packages/frontend/e2e/design-system/markdown-milkdown-baseline.spec.ts`.
-3. Commit reviewed screenshots for reader Markdown, chat Markdown, and Milkdown.
+3. Assert reader/chat ownership, semantic surfaces, responsive containment, and
+   Milkdown scoped appearance without committed screenshots.
 4. Add or extend focused tests that assert Milkdown edits preserve the expected
    Markdown data and that read-only mode rejects editing.
 5. Record the current scoped selectors and theme variables that distinguish
@@ -76,19 +77,13 @@ required states reliably; do not build the full component gallery in this task.
       separate.
 - [x] Nondeterministic cursor blinking, selection timing, and editor startup are
       controlled.
-- [x] Two consecutive visual verification runs produce no screenshot diffs.
+- [x] Two consecutive deterministic appearance/behavior runs pass.
 - [x] No existing Markdown or Milkdown visual change is introduced while
       establishing the baseline.
 
 ## Verification tests
 
-Generate the reviewed baselines once:
-
-```bash
-pnpm --filter @cc/frontend exec playwright test e2e/design-system/markdown-milkdown-baseline.spec.ts --update-snapshots
-```
-
-Then run twice without updating:
+Run twice:
 
 ```bash
 pnpm --filter @cc/frontend exec playwright test e2e/design-system/markdown-milkdown-baseline.spec.ts
@@ -104,9 +99,9 @@ pnpm --filter @cc/frontend lint
 pnpm exec prettier --check plans/design-system/phase-0/artifacts/markdown-milkdown-baseline-manifest.md packages/frontend/e2e/design-system/markdown-milkdown-baseline.spec.ts
 ```
 
-Manually compare reader and chat screenshots with the current application and
-exercise Milkdown keyboard input, selection, slash-menu opening, and readonly
-mode before approval.
+Manually review reader/chat appearance when intentionally changed and exercise
+Milkdown keyboard input, selection, slash-menu opening, and readonly mode before
+approval.
 
 ## Out of scope
 

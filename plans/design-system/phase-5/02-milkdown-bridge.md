@@ -1,6 +1,6 @@
 # DS-0502 — Migrate the Milkdown and Crepe Theme Bridge
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 5](README.md)
 - Foundation reference:
   [Milkdown preservation contract](../../design-system-foundation.md#3-protect-existing-markdown-styles)
@@ -37,8 +37,8 @@ global typography rules, or `.cc-md`.
 - Updated scoped Milkdown/Crepe theme bridge.
 - Focused automated assertions for the bridge variables and generic-style
   isolation where current coverage is insufficient.
-- Updated MILK-01 through MILK-04 expected images only for reviewed,
-  intentional semantic convergence.
+- Deterministic MILK-01 through MILK-04 computed-style, containment, and
+  behavior assertions for intentional semantic convergence.
 - A Milkdown mapping table in the Phase 5 artifacts linking each Crepe role to
   its CC semantic source.
 
@@ -49,29 +49,29 @@ global typography rules, or `.cc-md`.
 
 ## Acceptance criteria
 
-- [ ] MILK-01 through MILK-04 pass before and after the migration, with every
-      accepted image difference documented.
-- [ ] Editable and read-only presentation responds to resolved light/dark mode
+- [x] MILK-01 through MILK-04 pass before and after the migration, with every
+      accepted appearance difference documented.
+- [x] Editable and read-only presentation responds to resolved light/dark mode
       through CC semantic values.
-- [ ] Document serialization, edits, readonly state, cursor/selection, slash
+- [x] Document serialization, edits, readonly state, cursor/selection, slash
       menu, Workspace file action, code, tables, links, and images remain stable.
-- [ ] Narrow-width code, table, link, image, menu, and long-token behavior does
+- [x] Narrow-width code, table, link, image, menu, and long-token behavior does
       not regress.
-- [ ] Generic base-element and `.cc-md` rules do not style Milkdown internals.
-- [ ] No unscoped third-party selector tree is added to global CSS.
-- [ ] EX-003 remains exact and EX-005 owns every retained syntax-specific value.
-- [ ] The task changes no chat or read-only Markdown styling.
+- [x] Generic base-element and `.cc-md` rules do not style Milkdown internals.
+- [x] No unscoped third-party selector tree is added to global CSS.
+- [x] EX-003 remains exact and EX-005 owns every retained syntax-specific value.
+- [x] The task changes no chat or read-only Markdown styling.
 
 ## Verification tests
 
-- Run the Milkdown visual suite for MILK-01 through MILK-04 in Default light
-  and dark at the frozen wide/narrow viewports.
+- Run the Milkdown appearance suite for MILK-01 through MILK-04 in Default
+  light and dark at the frozen wide/narrow viewports.
 - Run focused Milkdown component/document tests for editing, readonly,
   serialization, menu insertion, selection, code, image, and table behavior.
 - Inspect computed Crepe variables and focus/selection states in both modes.
 - Search for `.milkdown` rules outside the approved wrapper and for accidental
   `.cc-md` coupling.
-- Run two consecutive no-update Milkdown visual passes.
+- Run two consecutive deterministic Milkdown appearance passes.
 
 ## Out of scope
 

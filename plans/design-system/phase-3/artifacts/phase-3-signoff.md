@@ -40,7 +40,8 @@ No prior task has an unresolved blocker.
   `PasswordInput`, `SearchableSelect`, `Switch`, and `TabBar`.
 - Migrated document compositions: `DocumentCreateDialog` and
   `DocumentFolderDialog`.
-- Added the `common` design-system surface, six common-composition snapshots,
+- Added the `common` design-system surface and deterministic
+  common-composition appearance assertions,
   focused browser interactions, and the
   [common gallery manifest](common-gallery-manifest.md).
 - Added the [switch](switch-migration-record.md),
@@ -112,7 +113,7 @@ Final commands and results:
 - `pnpm build` — passed; existing large-chunk warnings remain informational.
 - `pnpm test:e2e` — 134 passed, 36 intentionally skipped across desktop/mobile.
 - `pnpm --filter @cc/frontend exec playwright test e2e/design-system --project=chromium`
-  — 36 passed twice consecutively with no snapshot update.
+  — passed twice consecutively.
 - Production executable-JavaScript scan under `packages/frontend/dist` and
   `packages/cli/dist/public` — no design-system fixture/gallery marker found.
 - Raw-palette, hardcoded-color, inline-SVG, Lucide, compatibility-class,

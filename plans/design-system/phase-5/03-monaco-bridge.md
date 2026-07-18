@@ -1,6 +1,6 @@
 # DS-0503 — Migrate the Monaco Theme Bridge
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 5](README.md)
 - Foundation reference:
   [Phase 5 scope](../../design-system-foundation.md#phase-5--complete-third-party-theming)
@@ -35,7 +35,8 @@ preference store.
 
 ## Required deliverables
 
-- Stable Monaco visual fixture and focused lifecycle/appearance assertions.
+- Stable Monaco appearance fixture and focused lifecycle/computed-style
+  assertions.
 - A narrow CC-to-Monaco theme adapter with typed theme definitions.
 - Updated `MonacoFileEditor` integration using the adapter.
 - Monaco role mapping and EX-005 disposition in Phase 5 artifacts.
@@ -47,19 +48,19 @@ preference store.
 
 ## Acceptance criteria
 
-- [ ] The Monaco fixture is captured and passes before `vs-dark` is removed.
-- [ ] Default light renders a true light editor and Default dark renders a true
+- [x] The Monaco fixture is captured and passes before `vs-dark` is removed.
+- [x] Default light renders a true light editor and Default dark renders a true
       dark editor with readable chrome, code, selection, cursor, and focus.
-- [ ] `light`, `dark`, and resolved `system` changes update the mounted editor
+- [x] `light`, `dark`, and resolved `system` changes update the mounted editor
       without reload, model recreation, value loss, scroll reset, or focus loss.
-- [ ] Theme registration/update uses supported Monaco APIs and remains inside a
+- [x] Theme registration/update uses supported Monaco APIs and remains inside a
       narrow bridge module or integration boundary.
-- [ ] Monaco remains lazy-loaded and initial bundle behavior does not regress.
-- [ ] File editing, language selection, save shortcut, reload, conflict,
+- [x] Monaco remains lazy-loaded and initial bundle behavior does not regress.
+- [x] File editing, language selection, save shortcut, reload, conflict,
       read-only, loading, and error behavior remain stable.
-- [ ] Every retained syntax color is owned by EX-005; editor base/chrome colors
+- [x] Every retained syntax color is owned by EX-005; editor base/chrome colors
       are not justified as syntax exceptions.
-- [ ] No global `.monaco-editor` descendant theme tree is introduced.
+- [x] No global `.monaco-editor` descendant theme tree is introduced.
 
 ## Verification tests
 
@@ -69,7 +70,7 @@ preference store.
   editor contains unsaved content, selection, scroll, and focus.
 - Verify `system` follows a simulated OS preference change without reload.
 - Compare build output/lazy chunk behavior before and after the adapter.
-- Run two consecutive no-update Monaco visual passes.
+- Run two consecutive deterministic Monaco appearance passes.
 
 ## Out of scope
 

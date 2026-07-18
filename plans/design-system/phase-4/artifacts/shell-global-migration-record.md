@@ -70,7 +70,7 @@ them). Same category as the existing `scrollIntoView` mock.
 
 The dev fixture route `/__design-system-baseline` renders **inside the real
 AppShell**, so the shell header — including the mocked-`healthy`
-`EngineStatusBadge` dot — appears in every fixture screenshot. Recoloring the
+`EngineStatusBadge` dot — appears in every application fixture. Recoloring the
 healthy dot (`emerald-500 → success`) therefore shifted ~16 px in the header of
 all shell-framed light-desktop snapshots (application, common, primitives,
 semantic, profile, markdown, and the four Milkdown surfaces). The protected

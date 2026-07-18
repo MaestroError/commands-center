@@ -1,6 +1,6 @@
 # DS-0507 — Close Bridge Inventories and Exception Ownership
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 5](README.md)
 - Foundation reference:
   [Phase 5 scope](../../design-system-foundation.md#phase-5--complete-third-party-theming)
@@ -46,20 +46,20 @@ adapters. Phase 6 needs exact searches and approved paths, not prose-only rules.
 
 ## Acceptance criteria
 
-- [ ] Every residual hardcoded third-party color or fixed theme ID has one exact
+- [x] Every residual hardcoded third-party color or fixed theme ID has one exact
       semantic, syntax/ANSI, structural, or exception disposition.
-- [ ] EX-004 lists the complete retained xterm ANSI palette and verification for
+- [x] EX-004 lists the complete retained xterm ANSI palette and verification for
       both resolved modes.
-- [ ] EX-005 separates bounded Monaco/Milkdown syntax colors from semantic
+- [x] EX-005 separates bounded Monaco/Milkdown syntax colors from semantic
       editor chrome and owns every retained syntax-specific value.
-- [ ] EX-003 remains limited to the Crepe-required SVG-string format using
+- [x] EX-003 remains limited to the Crepe-required SVG-string format using
       `currentColor`.
-- [ ] No unused bridge, duplicate preference read, theme persistence path, or
+- [x] No unused bridge, duplicate preference read, theme persistence path, or
       obsolete fixed-theme value remains.
-- [ ] No SVAR/assistant-ui dependency or bridge exists without a real consumer.
-- [ ] Proposed Phase 6 ratchets pass on the final tree and fail against a small
+- [x] No SVAR/assistant-ui dependency or bridge exists without a real consumer.
+- [x] Proposed Phase 6 ratchets pass on the final tree and fail against a small
       documented forbidden-value/import fixture or equivalent proof.
-- [ ] Counts are not reduced by hiding values behind vague CSS variables.
+- [x] Counts are not reduced by hiding values behind vague CSS variables.
 
 ## Verification tests
 

@@ -28,7 +28,7 @@ change possible.
 - Define explicit isolation or component-layer precedence for `.cc-md`,
   `.cc-md--chat`, Milkdown, Monaco, xterm, and other scoped surfaces.
 - Prove explicit Tailwind utilities and component classes override base rules.
-- Update the semantic fixture and affected screenshots only for intentional
+- Update the semantic fixture and affected assertions only for intentional
   differences.
 
 ## Required deliverables
@@ -37,7 +37,7 @@ change possible.
   boundaries.
 - Cascade fixtures/tests covering base, utility, component, Markdown, and
   editor contexts.
-- Updated semantic screenshots plus an execution note in the Phase 1 artifacts
+- Updated semantic assertions plus an execution note in the Phase 1 artifacts
   recording intentional computed-style differences.
 
 ## Blockers and dependencies
@@ -50,7 +50,7 @@ change possible.
 - [ ] Base selectors consume only semantic tokens and live in `@layer base`.
 - [ ] Unclassed text and links respond to Default light/dark modes.
 - [ ] Explicit utilities and `cc-*` component styles win without `!important`.
-- [ ] Reader/chat Markdown computed styles and screenshots remain unchanged.
+- [ ] Reader/chat Markdown computed styles and behavior remain unchanged.
 - [ ] Milkdown behavior and reviewed computed output remain unchanged.
 - [ ] Monaco, xterm, native controls, and third-party surfaces show no accidental
       inherited color or typography regressions.
@@ -62,7 +62,7 @@ change possible.
   component-styled equivalents.
 - Assert representative computed font and color values for base, utility, and
   protected contexts in both modes.
-- Run semantic, Markdown, and Milkdown screenshots at desktop and narrow widths
+- Run semantic, Markdown, and Milkdown appearance tests at desktop and narrow widths
   twice without unexplained diffs.
 - Manually inspect link focus, visited-state policy, native controls, and
   protected editor surfaces.

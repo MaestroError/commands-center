@@ -1,6 +1,6 @@
 # DS-0504 — Migrate the xterm Theme Bridge
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 5](README.md)
 - Foundation reference:
   [Phase 5 scope](../../design-system-foundation.md#phase-5--complete-third-party-theming)
@@ -50,18 +50,18 @@ the terminal, socket, addons, or buffer.
 
 ## Acceptance criteria
 
-- [ ] The xterm fixture is captured and passes before fixed theme values change.
-- [ ] Base terminal background, text, cursor, cursor accent, and selection use
+- [x] The xterm fixture is captured and passes before fixed theme values change.
+- [x] Base terminal background, text, cursor, cursor accent, and selection use
       documented CC semantic inputs in both resolved modes.
-- [ ] All normal/bright ANSI colors remain distinguishable and readable on both
+- [x] All normal/bright ANSI colors remain distinguishable and readable on both
       backgrounds, with exact ownership in EX-004.
-- [ ] Mode changes update the existing terminal without WebSocket reconnect,
+- [x] Mode changes update the existing terminal without WebSocket reconnect,
       terminal/addon recreation, buffer loss, scroll reset, selection loss, or
       additional resize/reconnect listeners.
-- [ ] Terminal input/output, clipboard, links, fit, resize, reconnect, exit,
+- [x] Terminal input/output, clipboard, links, fit, resize, reconnect, exit,
       prefill, serialization, and restore behavior remain stable.
-- [ ] xterm remains lazy-loaded and no global descendant theme CSS is added.
-- [ ] Rapid repeated mode changes settle on the last resolved mode without
+- [x] xterm remains lazy-loaded and no global descendant theme CSS is added.
+- [x] Rapid repeated mode changes settle on the last resolved mode without
       stale values or leaked listeners.
 
 ## Verification tests
@@ -72,7 +72,7 @@ the terminal, socket, addons, or buffer.
   changes while content, selection, scrollback, and a connection are active.
 - Review the ANSI matrix and text/selection/cursor readability in both modes.
 - Compare lazy-load/build behavior and listener/cleanup assertions.
-- Run two consecutive no-update xterm visual passes.
+- Run two consecutive deterministic xterm palette/appearance passes.
 
 ## Out of scope
 

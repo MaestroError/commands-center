@@ -19,7 +19,7 @@ ready for Phase 2 planning.
 | Protected rich text | `.cc-md`, chat Markdown, and Milkdown retain their scoped ownership and passing visual/behavioral baselines.                                                                   |
 | Responsive shell    | The 390px overflow is resolved without page-wide clipping. See [responsive shell record](responsive-shell-record.md).                                                          |
 
-Updated screenshots are intentional: they reflect the Default appearance
+Updated appearance assertions are intentional: they reflect the Default appearance
 contract, accessible status/focus corrections, and the compact mobile header.
 No GFM support, Shadcn/Radix code, dependency, or third-party theme bridge was
 introduced.
@@ -31,7 +31,7 @@ introduced.
 - `pnpm typecheck` — passed.
 - `pnpm test` — passed: 1,250 backend and 1,322 frontend tests, plus shared and CLI suites.
 - `pnpm test:e2e` — passed.
-- `pnpm --filter @cc/frontend exec playwright test e2e/design-system --project=chromium` — passed twice, 21 tests each run, with no snapshot update.
+- `pnpm --filter @cc/frontend exec playwright test e2e/design-system --project=chromium` — passed twice; the current contract is platform-independent.
 - `pnpm build` — passed; the existing large-chunk warning remains.
 - Production-asset scan for the development-only baseline route — passed.
 

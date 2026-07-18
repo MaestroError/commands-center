@@ -1,6 +1,6 @@
 # Phase 5 — Complete Third-Party Theming
 
-- Status: Planned
+- Status: Complete
 
 Parent plans:
 
@@ -43,16 +43,16 @@ text, cursor, selection, borders, focus, and overlays must follow CC semantics.
 
 ## Task sequence
 
-| ID      | Task                                                                               | Blocked by              | Status  |
-| ------- | ---------------------------------------------------------------------------------- | ----------------------- | ------- |
-| DS-0501 | [Accept the Phase 4 handoff and freeze bridge contracts](01-phase-4-handoff.md)    | Phase 4 sign-off        | Planned |
-| DS-0502 | [Migrate the Milkdown and Crepe theme bridge](02-milkdown-bridge.md)               | DS-0501                 | Planned |
-| DS-0503 | [Migrate the Monaco theme bridge](03-monaco-bridge.md)                             | DS-0501                 | Planned |
-| DS-0504 | [Migrate the xterm theme bridge](04-xterm-bridge.md)                               | DS-0501                 | Planned |
-| DS-0505 | [Audit and normalize the file-manager bridge](05-file-manager-bridge.md)           | DS-0501, DS-0409        | Planned |
-| DS-0506 | [Verify integrated live appearance switching](06-live-appearance-switching.md)     | DS-0502 through DS-0505 | Planned |
-| DS-0507 | [Close bridge inventories and exception ownership](07-inventory-and-exceptions.md) | DS-0502 through DS-0506 | Planned |
-| DS-0508 | [Verify and sign off Phase 5](08-phase-5-signoff.md)                               | DS-0501 through DS-0507 | Planned |
+| ID      | Task                                                                               | Blocked by              | Status   |
+| ------- | ---------------------------------------------------------------------------------- | ----------------------- | -------- |
+| DS-0501 | [Accept the Phase 4 handoff and freeze bridge contracts](01-phase-4-handoff.md)    | Phase 4 sign-off        | Complete |
+| DS-0502 | [Migrate the Milkdown and Crepe theme bridge](02-milkdown-bridge.md)               | DS-0501                 | Complete |
+| DS-0503 | [Migrate the Monaco theme bridge](03-monaco-bridge.md)                             | DS-0501                 | Complete |
+| DS-0504 | [Migrate the xterm theme bridge](04-xterm-bridge.md)                               | DS-0501                 | Complete |
+| DS-0505 | [Audit and normalize the file-manager bridge](05-file-manager-bridge.md)           | DS-0501, DS-0409        | Complete |
+| DS-0506 | [Verify integrated live appearance switching](06-live-appearance-switching.md)     | DS-0502 through DS-0505 | Complete |
+| DS-0507 | [Close bridge inventories and exception ownership](07-inventory-and-exceptions.md) | DS-0502 through DS-0506 | Complete |
+| DS-0508 | [Verify and sign off Phase 5](08-phase-5-signoff.md)                               | DS-0501 through DS-0507 | Complete |
 
 DS-0502, DS-0503, DS-0504, and DS-0505 may proceed in parallel after DS-0501
 when their production and fixture file sets do not overlap. Within DS-0503 and

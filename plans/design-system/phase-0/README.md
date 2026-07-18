@@ -12,7 +12,7 @@ Parent plans:
 Create a complete, reviewable record of CC's current visual and interaction
 contracts, approve the target appearance architecture, and use the evidence to
 revise all later phases before foundation code changes begin. Phase 0 changes
-documentation, test fixtures, and regression baselines; it does not redesign or
+documentation, test fixtures, and regression assertions; it does not redesign or
 migrate production components.
 
 ## Task sequence
@@ -22,7 +22,7 @@ migrate production components.
 | DS-0001 | [Inventory the current design system](01-current-system-inventory.md)                                    | None                                        | Complete |
 | DS-0002 | [Define the target appearance contract](02-target-appearance-contract.md)                                | DS-0001                                     | Complete |
 | DS-0003 | [Classify components and approve Shadcn/Radix adoption](03-component-disposition-and-adoption-matrix.md) | DS-0001, DS-0002                            | Complete |
-| DS-0004 | [Capture application visual baselines](04-application-visual-baselines.md)                               | DS-0001, DS-0002                            | Complete |
+| DS-0004 | [Define application appearance contracts](04-application-visual-baselines.md)                            | DS-0001, DS-0002                            | Complete |
 | DS-0005 | [Capture Markdown and Milkdown baselines](05-markdown-and-milkdown-baselines.md)                         | DS-0001, DS-0002                            | Complete |
 | DS-0006 | [Inventory semantic HTML impact](06-semantic-html-impact-inventory.md)                                   | DS-0001, DS-0002                            | Complete |
 | DS-0007 | [Approve exceptions, enrich later phases, and sign off Phase 0](07-exceptions-and-phase-0-signoff.md)    | DS-0002, DS-0003, DS-0004, DS-0005, DS-0006 | Complete |
@@ -35,7 +35,7 @@ upstream tasks are complete.
 ## Phase outputs
 
 Execution of these tasks creates records under
-`plans/design-system/phase-0/artifacts/` and deterministic Playwright baselines
+`plans/design-system/phase-0/artifacts/` and deterministic Playwright assertions
 under `packages/frontend/e2e/design-system/`.
 
 Expected records:
@@ -45,7 +45,7 @@ Expected records:
 - Approved target appearance contract for `Default`, light/dark/system
   preference behavior, semantic tokens, persistence, and legacy migration.
 - Approved component disposition and Shadcn/Radix adoption matrix.
-- Application visual-baseline manifest and screenshots.
+- Application appearance-contract manifest and deterministic assertions.
 - Markdown preservation and Milkdown behavior/baseline manifest.
 - Semantic HTML impact inventory.
 - Approved exception register, downstream-phase reassessment, updated Phase 1–6
@@ -59,7 +59,7 @@ Phase 0 is complete only when DS-0007 confirms that:
 - The `Default` theme and color-mode contract is approved before implementation.
 - The Shadcn/Radix adoption matrix is approved.
 - Existing application, Markdown, and Milkdown contracts have deterministic
-  baselines.
+  assertions.
 - Semantic HTML risks and intentional exceptions are documented.
 - Phases 1–6 are re-evaluated and enriched from Phase 0 evidence, and detailed
   Phase 1 planning is identified as the next gate.

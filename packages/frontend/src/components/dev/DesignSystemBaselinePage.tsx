@@ -13,6 +13,7 @@ import { TabBar } from "@/components/common/TabBar";
 import { DocumentCreateDialog } from "@/components/documents/DocumentCreateDialog";
 import { DocumentFolderDialog } from "@/components/documents/DocumentFolderDialog";
 import { LazyMilkdownEditor } from "@/components/documents/LazyMilkdownEditor";
+import { MonacoFileEditor } from "@/components/workspace/MonacoFileEditor";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -110,6 +111,7 @@ type BaselineSurface =
   | "dialog"
   | "markdown"
   | "milkdown"
+  | "monaco"
   | "primitives"
   | "semantic";
 
@@ -135,6 +137,10 @@ export function DesignSystemBaselinePage() {
 
   if (surface === "milkdown") {
     return <MilkdownBaseline readonly={searchParams.get("readonly") === "true"} />;
+  }
+
+  if (surface === "monaco") {
+    return <MonacoBaseline />;
   }
 
   if (surface === "semantic") {
@@ -211,7 +217,7 @@ function ApplicationBaseline() {
         <div>
           <h2 className="text-lg font-semibold text-text-primary">Form controls</h2>
           <p className="mt-2 text-sm text-text-secondary">
-            Inputs are intentionally static so visual snapshots remain deterministic.
+            Inputs are intentionally static so automated appearance assertions remain deterministic.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
@@ -520,6 +526,30 @@ function MilkdownBaseline(props: { readonly: boolean }) {
   );
 }
 
+function MonacoBaseline() {
+  const [draft, setDraft] = useState(
+    `// CC Monaco fixture\ntype ThemeMode = "light" | "dark";\nconst mode: ThemeMode = "light";\nconst attempts = 5;\nconsole.log({ mode, attempts });`,
+  );
+
+  return (
+    <div className="cc-panel h-[34rem] overflow-hidden" data-testid="monaco-baseline">
+      <MonacoFileEditor
+        baseline={draft}
+        busy={false}
+        dirty
+        draft={draft}
+        isWritable
+        name="theme-fixture.ts"
+        onDiscardConflict={() => undefined}
+        onDraftChange={setDraft}
+        onReloadRequested={() => undefined}
+        onSaveRequested={() => undefined}
+        path="/fixtures/theme-fixture.ts"
+      />
+    </div>
+  );
+}
+
 function SemanticHtmlBaseline() {
   return (
     <section className="cc-panel p-6" data-testid="semantic-baseline">
@@ -813,6 +843,7 @@ function readSurface(value: string | null): BaselineSurface {
     value === "common" ||
     value === "markdown" ||
     value === "milkdown" ||
+    value === "monaco" ||
     value === "primitives" ||
     value === "semantic"
   ) {

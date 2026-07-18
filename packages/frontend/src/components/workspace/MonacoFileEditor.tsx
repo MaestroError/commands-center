@@ -1,7 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import { RotateCw, Save } from "lucide-react";
 
 import type { FileManagerFileRevision } from "@cc/shared/schemas";
+
+import { useTheme } from "@/context/use-theme";
+
+import { getMonacoThemeId, registerMonacoTheme, type MonacoThemeApi } from "./monaco-theme";
 
 const MonacoEditor = lazy(async () => {
   const mod = await import("@monaco-editor/react");
@@ -27,6 +31,8 @@ type Props = {
 };
 
 export function MonacoFileEditor(props: Props) {
+  const { resolvedColorMode } = useTheme();
+  const monacoRef = useRef<MonacoThemeApi | null>(null);
   const {
     busy,
     conflict,
@@ -45,6 +51,23 @@ export function MonacoFileEditor(props: Props) {
   } = props;
 
   const language = useMemo(() => guessLanguage(name, mimeType), [name, mimeType]);
+
+  const handleBeforeMount = useCallback(
+    (monaco: MonacoThemeApi) => {
+      monacoRef.current = monaco;
+      registerMonacoTheme(monaco, resolvedColorMode);
+    },
+    [resolvedColorMode],
+  );
+
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) {
+      return;
+    }
+    const themeId = registerMonacoTheme(monaco, resolvedColorMode);
+    monaco.editor.setTheme(themeId);
+  }, [resolvedColorMode]);
 
   const handleSave = useCallback(() => {
     if (busy || !dirty || !isWritable) return;
@@ -145,6 +168,7 @@ export function MonacoFileEditor(props: Props) {
           }
         >
           <MonacoEditor
+            beforeMount={handleBeforeMount}
             value={draft}
             language={language}
             onChange={(value) => onDraftChange(value ?? "")}
@@ -156,7 +180,7 @@ export function MonacoFileEditor(props: Props) {
               wordWrap: "on",
               scrollBeyondLastLine: false,
             }}
-            theme="vs-dark"
+            theme={getMonacoThemeId(resolvedColorMode)}
           />
         </Suspense>
       </div>

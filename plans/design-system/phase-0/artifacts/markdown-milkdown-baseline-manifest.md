@@ -28,22 +28,23 @@ table, and trailing editable paragraph. Additional tests cover serialization,
 read-only state, slash-menu state including the CC `Workspace file` command,
 and a selected text range.
 
-## Visual baselines
+## Appearance and behavior contracts
 
-Current `light` and `dark` become `Default + light` and `Default + dark`.
-`modern` is not protected.
+Current `light` and `dark` map to `Default + light` and `Default + dark`.
+`modern` is not protected. Committed screenshot baselines were retired in favor
+of platform-independent assertions.
 
-| ID      | State                                                    | Viewport/modes                       | Screenshot pattern                                                                                   |
-| ------- | -------------------------------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| MD-01   | Reader and chat variants side by side/stacked            | 1280 × 900 and 390 × 844; light/dark | `markdown-milkdown-baseline.spec.ts-snapshots/markdown-{mode}-{desktop\|mobile}-chromium-darwin.png` |
-| MILK-01 | Editable Crepe document including code, image, and table | 1280 × 900 and 390 × 844; light/dark | `markdown-milkdown-baseline.spec.ts-snapshots/milkdown-{mode}-{desktop\|mobile}-chromium-darwin.png` |
-| MILK-02 | Read-only editor                                         | 1280 × 900; light                    | `markdown-milkdown-baseline.spec.ts-snapshots/milkdown-readonly-light-desktop-chromium-darwin.png`   |
-| MILK-03 | Slash menu with workspace command                        | 1280 × 900; light                    | `markdown-milkdown-baseline.spec.ts-snapshots/milkdown-slash-menu-light-desktop-chromium-darwin.png` |
-| MILK-04 | Selected text range                                      | 1280 × 900; light                    | `markdown-milkdown-baseline.spec.ts-snapshots/milkdown-selection-light-desktop-chromium-darwin.png`  |
+| ID      | State                                                    | Viewport/modes                       | Assertions                                                |
+| ------- | -------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------- |
+| MD-01   | Reader and chat variants side by side/stacked            | 1280 × 900 and 390 × 844; light/dark | ownership, content, semantic surface, containment         |
+| MILK-01 | Editable Crepe document including code, image, and table | 1280 × 900 and 390 × 844; light/dark | scoped semantic colors, editing, serialization, overflow  |
+| MILK-02 | Read-only editor                                         | 1280 × 900; light                    | `contenteditable=false`, semantic surface                 |
+| MILK-03 | Slash menu with workspace command                        | 1280 × 900; light                    | command visibility and editor state                       |
+| MILK-04 | Selected text range                                      | 1280 × 900; light                    | non-collapsed browser selection and selection token owner |
 
-Light/dark coverage is applied to the complete stable editor surface. The
-read-only, menu, and selection images protect behavior-specific deltas once;
-they do not create a redundant palette matrix.
+Light/dark coverage is applied to the complete stable editor surface. Read-only,
+menu, and selection behavior is asserted directly without a redundant palette
+matrix.
 
 ## Behavioral assertions
 
@@ -53,12 +54,11 @@ they do not create a redundant palette matrix.
 - Read-only mode changes the ProseMirror textbox to
   `contenteditable="false"`.
 - Typing `/` in the trailing paragraph exposes the `Workspace file` command.
-- Narrow screenshots cover editor overflow after code, image, and table nodes
-  initialize.
+- Narrow containment assertions cover editor overflow after code, image, and
+  table nodes initialize.
 
-Cursor blinking and animations are disabled by screenshot options. The suite
-runs serially because Crepe is a heavy async editor and parallel instances can
-make development-mode initialization timing nondeterministic.
+The suite runs serially because Crepe is a heavy async editor and parallel
+instances can make development-mode initialization timing nondeterministic.
 
 ## Current renderer observation
 

@@ -33,7 +33,7 @@ styles, not broad exceptions based on page names.
 
 - Generic ordered, unordered, nested, and description-list base rules.
 - Fixtures/tests distinguishing content lists from component-owned list roles.
-- Reviewed narrow/wide and light/dark list screenshots with overflow evidence.
+- Reviewed narrow/wide and light/dark list assertions with overflow evidence.
 
 ## Blockers and dependencies
 
@@ -48,7 +48,7 @@ styles, not broad exceptions based on page names.
 - [ ] Navigation, menus, tabs, trees, listboxes, and reset-owned component lists
       do not acquire prose markers or spacing.
 - [ ] Explicit utilities can remove or change markers and indentation.
-- [ ] Markdown and Milkdown list screenshots remain unchanged.
+- [ ] Markdown and Milkdown list behavior and scoped styling remain unchanged.
 - [ ] Zero-match list types remain represented in the semantic fixture.
 
 ## Verification tests

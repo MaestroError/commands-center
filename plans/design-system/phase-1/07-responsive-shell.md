@@ -35,7 +35,7 @@ cause and visual tradeoffs remain reviewable.
 - The smallest shell/header layout change that removes measured overflow while
   retaining every action.
 - Responsive interaction and bounding-box tests at 320px, 390px, and desktop.
-- Updated reviewed application screenshots and an implementation note recording
+- Updated application containment assertions and an implementation note recording
   the chosen narrow-header behavior.
 
 ## Blockers and dependencies
@@ -63,7 +63,7 @@ cause and visual tradeoffs remain reviewable.
 - Add Playwright assertions at 320px, 390px, and the existing desktop viewport.
 - Exercise every header action and color-mode choice at 390px using keyboard
   and pointer interaction.
-- Capture light/dark narrow and desktop shell screenshots.
+- Assert light/dark narrow and desktop shell containment and reachability.
 - Test menu/overlay bounding boxes against the viewport.
 - Run affected shell unit tests and two no-update application visual runs.
 

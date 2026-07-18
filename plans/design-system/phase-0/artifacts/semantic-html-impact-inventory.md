@@ -67,8 +67,9 @@ Markdown itself remains 378px wide with no fixture-level overflow. The app
 header has a separate existing 512px overflow recorded in the application
 manifest and must not be mistaken for semantic-content overflow.
 
-Snapshot pattern:
-`markdown-milkdown-baseline.spec.ts-snapshots/semantic-{mode}-{desktop|mobile}-chromium-darwin.png`.
+Assertion owner:
+`e2e/design-system/markdown-milkdown-baseline.spec.ts` verifies semantic
+surfaces, representative elements, theme roles, and desktop/mobile containment.
 
 ## Cascade contract
 
@@ -88,7 +89,7 @@ their internal DOM is not a generic-HTML styling target.
 ## Rollout order
 
 1. Inherited font/color/background, selection, focus, and safe reset behavior.
-2. Headings and paragraphs, with screenshots of the 21 literal bare paragraphs
+2. Headings and paragraphs, with assertions for the 21 literal bare paragraphs
    plus representative component-owned headings.
 3. Lists and links, separating document lists from menu/listbox structures.
 4. Tables, pre/code, quotations, rules, and the remaining inline elements, with

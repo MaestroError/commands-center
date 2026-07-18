@@ -13,10 +13,10 @@ dark and narrow/wide states without turning every page into a permanent snapshot
 
 ## Context
 
-Each domain task owns focused tests and screenshots. Phase 4 still needs an
+Each domain task owns focused tests and appearance assertions. Phase 4 still needs an
 integrated view of shell plus representative domain surfaces, error/status/
 disabled/focus states, and protected content. Phase 0 explicitly says baseline
-screenshots are migration inputs, not a blanket permanent suite.
+fixtures are migration inputs, not a blanket permanent suite.
 
 ## Scope
 
@@ -34,9 +34,9 @@ screenshots are migration inputs, not a blanket permanent suite.
 
 ## Required deliverables
 
-- `artifacts/domain-baseline-manifest.md` mapping each screenshot/interaction to
+- `artifacts/domain-baseline-manifest.md` mapping each assertion/interaction to
   domain task, risk, viewport, mode, fixture/E2E owner, and retention decision.
-- Deterministic integrated screenshots and interaction tests.
+- Deterministic integrated appearance and interaction tests.
 - Production exclusion verification for any new fixture code.
 - A reviewed visual-difference register tied to semantic/primitive migration.
 
@@ -54,9 +54,10 @@ screenshots are migration inputs, not a blanket permanent suite.
 - [x] Default light/dark and narrow/wide behavior is intentional and no page
       hides overflow defects globally.
 - [x] Markdown/Milkdown and excluded editor/terminal behavior remain protected.
-- [x] Every snapshot difference has an owning migration rationale.
+- [x] Every appearance difference has an owning migration rationale.
 - [x] Fixture code remains development-only and absent from production assets.
-- [x] Two consecutive no-update runs pass after approved updates.
+- [x] Two consecutive deterministic appearance runs pass after approved
+      updates.
 
 ## Verification tests
 
@@ -69,5 +70,5 @@ screenshots are migration inputs, not a blanket permanent suite.
 ## Out of scope
 
 - Storybook or a public domain component catalogue.
-- Permanent blanket screenshots for every page/state.
+- Permanent blanket fixtures for every page/state.
 - Phase 5 third-party visual convergence.

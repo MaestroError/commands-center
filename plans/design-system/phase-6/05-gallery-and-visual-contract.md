@@ -23,15 +23,15 @@ responsive/focus states.
 ## Scope
 
 - Inventory and reconcile Phase 1–5 fixture routes, surfaces, query contracts,
-  snapshots, and helper APIs.
+  appearance assertions, and helper APIs.
 - Present semantic HTML, approved primitives, common compositions, statuses,
   forms, dialogs/menus/tooltips, protected Markdown/Milkdown, and third-party
   bridge representatives with deterministic data.
 - Cover normal, hover where deterministic, focus-visible, active, selected,
   disabled, loading, empty, success, warning, danger, error, and overflow states
   only where the API supports them.
-- Keep behavior-rich fixtures focused and stable; do not snapshot every domain
-  page or every variant permutation.
+- Keep behavior-rich fixtures focused and stable; use semantic, computed-style,
+  containment, and interaction assertions instead of screenshot baselines.
 - Preserve keyboard/accessibility assertions alongside visual coverage.
 - Keep all gallery code, routes, data, and assets excluded from production.
 
@@ -40,7 +40,7 @@ responsive/focus states.
 - Consolidated development gallery/baseline surface using final exported APIs.
 - A documented fixture manifest mapping each state to its owner and test.
 - Focused light/dark wide/narrow visual tests and keyboard/focus assertions.
-- Removal of only obsolete fixture code/snapshots made redundant by the final
+- Removal of only obsolete fixture code/assertions made redundant by the final
   contract.
 
 ## Blockers and dependencies
@@ -56,25 +56,26 @@ responsive/focus states.
 - [ ] Protected Markdown/Milkdown and third-party bridges retain their scoped
       fixtures rather than being approximated by generic HTML.
 - [ ] Default light/dark and narrow/wide reviews cover the important states
-      without blanket page or combinatorial snapshot growth.
+      without blanket page or combinatorial fixture growth.
 - [ ] Keyboard order, accessible names/roles, focus-visible, escape/outside-
       interaction, and modal focus behavior remain covered where applicable.
 - [ ] Gallery consumers import the same public APIs production uses.
 - [ ] Fixture changes do not mutate product data, require live services, or
       depend on timing/network nondeterminism.
 - [ ] Production build contains no gallery route, marker, fixture data, or asset.
-- [ ] Two consecutive no-update visual runs pass.
+- [ ] Two consecutive deterministic appearance runs pass.
 
 ## Verification tests
 
 - Run focused gallery unit/E2E/accessibility tests in Default light and dark at
   frozen wide/narrow viewports.
-- Run the design-system Playwright project twice without snapshot updates.
+- Run the design-system Playwright project twice.
 - Build production and search output/routes for gallery markers and fixture data.
 - Compare fixture imports with approved source APIs and final exception scopes.
 
 ## Out of scope
 
 - Adding Storybook or another documentation/gallery dependency.
-- Snapshotting all production pages or every prop combination.
+- Reintroducing committed screenshot baselines or covering every prop
+  combination.
 - Redesigning components to make the gallery visually uniform.

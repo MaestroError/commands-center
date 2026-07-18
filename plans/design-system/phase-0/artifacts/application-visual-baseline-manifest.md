@@ -1,4 +1,4 @@
-# Application Visual Baseline Manifest
+# Application Appearance Contract Manifest
 
 Execution record for [DS-0004](../04-application-visual-baselines.md).
 
@@ -12,22 +12,22 @@ components; it does not define the future component API.
 
 Playwright intercepts owner status, logout, version, engine state, active task
 runs, and activity polling with fixed responses. Theme and sidebar state are
-fixed in local storage before navigation. Screenshot capture disables
-animations and hides the caret.
+fixed in local storage before navigation. Tests assert semantic theme values,
+surface roles, focus, overlay semantics, and horizontal containment.
 
-## Baselines
+## Contracts
 
-Current `light` maps to future `Default + light`; current `dark` maps to future
-`Default + dark`. `system` must resolve to one of those same images in Phase 1.
-`modern` is removal-only and has no protected screenshot.
+Current `light` maps to `Default + light`; current `dark` maps to
+`Default + dark`. `system` resolves to one of those same contracts. `modern` is
+removal-only and has no protected contract.
 
-| ID     | Route/state                    | Viewport   | Modes       | Protected contract                                                                                                       | Screenshot pattern                                                                      |
-| ------ | ------------------------------ | ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| APP-01 | `/profile`                     | 1280 × 900 | light, dark | App shell, current theme selector, panels, fields, buttons                                                               | `application-baseline.spec.ts-snapshots/profile-{mode}-desktop-chromium-darwin.png`     |
-| APP-02 | Baseline `surface=application` | 1280 × 900 | light, dark | Page header, panel, button variants, active/inactive tabs, badges, switch, fields, focus, status treatments, empty state | `application-baseline.spec.ts-snapshots/application-{mode}-desktop-chromium-darwin.png` |
-| APP-03 | Baseline `surface=application` | 390 × 844  | light, dark | Narrow stacking, wrapping, current header behavior, same state coverage as APP-02                                        | `application-baseline.spec.ts-snapshots/application-{mode}-mobile-chromium-darwin.png`  |
-| APP-04 | Baseline `surface=dialog`      | 1280 × 900 | light, dark | `ConfirmDialog`, overlay, portal, elevation, destructive action                                                          | `application-baseline.spec.ts-snapshots/dialog-{mode}-desktop-chromium-darwin.png`      |
-| APP-05 | Baseline `surface=dialog`      | 390 × 844  | light, dark | Bottom-aligned narrow dialog and responsive padding                                                                      | `application-baseline.spec.ts-snapshots/dialog-{mode}-mobile-chromium-darwin.png`       |
+| ID     | Route/state                    | Viewport   | Modes       | Protected contract                                                                                                       | Assertion owner                    |
+| ------ | ------------------------------ | ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| APP-01 | `/profile`                     | 1280 × 900 | light, dark | App shell, Default theme selector, panels, fields, buttons                                                               | profile surface browser test       |
+| APP-02 | Baseline `surface=application` | 1280 × 900 | light, dark | Page header, panel, button variants, active/inactive tabs, badges, switch, fields, focus, status treatments, empty state | application component browser test |
+| APP-03 | Baseline `surface=application` | 390 × 844  | light, dark | Narrow stacking, wrapping, current header behavior, same state coverage as APP-02                                        | application containment assertion  |
+| APP-04 | Baseline `surface=dialog`      | 1280 × 900 | light, dark | `ConfirmDialog`, overlay, portal, semantic surface, destructive action                                                   | confirmation dialog browser test   |
+| APP-05 | Baseline `surface=dialog`      | 390 × 844  | light, dark | Narrow dialog containment and responsive padding                                                                         | dialog containment assertion       |
 
 ## Represented states
 
@@ -52,11 +52,11 @@ Current `light` maps to future `Default + light`; current `dark` maps to future
 3. `Switch` uses raw `emerald-500` and white rather than the complete semantic
    state contract.
 4. Current controls mix pills, rounded rectangles, and hardcoded radius values.
-   These images are the comparison input for the future `Default` shape roles.
+   These fixture states remain manual-review inputs for future shape roles.
 
 ## Deterministic exclusions
 
-| Surface                      | Why it is not in this application screenshot batch                                                                               | Assigned work                                                  |
+| Surface                      | Why it is not in this application contract batch                                                                                 | Assigned work                                                  |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | File manager                 | Depends on a real workspace tree and SVAR internals; a synthetic tree here would protect a fabricated state                      | Phase 5 bridge baseline with a purpose-built workspace fixture |
 | Terminal                     | Requires a PTY and WebSocket lifecycle; terminal content, cursor, and ANSI timing are not deterministic in the app-shell fixture | Phase 5 xterm bridge tests                                     |
@@ -72,6 +72,5 @@ without their own before/after evidence.
 pnpm --filter @cc/frontend exec playwright test e2e/design-system/application-baseline.spec.ts --project=chromium
 ```
 
-Initial screenshots were reviewed against the live development route at wide
-and narrow widths. Two consecutive no-update runs are required by the Phase 0
-sign-off record.
+The live development route is covered at wide and narrow widths through
+platform-independent assertions. Two consecutive passes are required.

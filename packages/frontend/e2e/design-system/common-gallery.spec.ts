@@ -1,4 +1,9 @@
 import { expect, test, type Page } from "../fixtures";
+import {
+  expectNoHorizontalOverflow,
+  expectSemanticSurface,
+  expectThemeContract,
+} from "./theme-assertions";
 
 const DESKTOP_VIEWPORT = { width: 1280, height: 900 };
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
@@ -9,11 +14,12 @@ test.describe("@design-system Phase 3 common compositions", () => {
   for (const colorMode of ["light", "dark"] as const) {
     test(`${colorMode} common gallery`, async ({ page }) => {
       await openCommon(page, colorMode, DESKTOP_VIEWPORT);
-
-      await expect(page).toHaveScreenshot(`common-${colorMode}-desktop.png`, screenshotOptions());
+      await expectThemeContract(page, colorMode);
+      await expectSemanticSurface(page.getByTestId("common-controls"), colorMode);
+      await expectNoHorizontalOverflow(page, page.getByTestId("common-baseline"));
 
       await page.setViewportSize(MOBILE_VIEWPORT);
-      await expect(page).toHaveScreenshot(`common-${colorMode}-mobile.png`, screenshotOptions());
+      await expectNoHorizontalOverflow(page, page.getByTestId("common-baseline"));
     });
   }
 
@@ -104,15 +110,15 @@ test.describe("@design-system Phase 3 common compositions", () => {
 
     const input = page.getByRole("combobox", { name: "Default model" });
     await input.focus();
-    await expect(page.getByRole("listbox")).toBeVisible();
-    await expect(page).toHaveScreenshot("common-select-light-narrow.png", screenshotOptions());
-    await assertNoHorizontalOverflow(page);
+    const listbox = page.getByRole("listbox");
+    await expect(listbox).toBeVisible();
+    await expectNoHorizontalOverflow(page, listbox);
 
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Open document dialog" }).click();
-    await expect(page.getByRole("dialog", { name: "New Document" })).toBeVisible();
-    await expect(page).toHaveScreenshot("common-document-light-narrow.png", screenshotOptions());
-    await assertNoHorizontalOverflow(page);
+    const dialog = page.getByRole("dialog", { name: "New Document" });
+    await expectSemanticSurface(dialog, "light");
+    await expectNoHorizontalOverflow(page, dialog);
   });
 });
 
@@ -128,23 +134,6 @@ async function openCommon(
     window.localStorage.setItem("cc-sidebar-collapsed", "false");
   }, colorMode);
   await page.goto("/__design-system-baseline?surface=common");
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "default");
-  await expect(page.locator("html")).toHaveAttribute("data-color-mode", colorMode);
+  await expectThemeContract(page, colorMode);
   await expect(page.getByTestId("common-baseline")).toBeVisible();
-}
-
-async function assertNoHorizontalOverflow(page: Page): Promise<void> {
-  const dimensions = await page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }));
-  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
-}
-
-function screenshotOptions() {
-  return {
-    animations: "disabled" as const,
-    caret: "hide" as const,
-    fullPage: true,
-  };
 }

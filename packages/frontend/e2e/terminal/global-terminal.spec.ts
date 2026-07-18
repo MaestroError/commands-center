@@ -7,6 +7,53 @@ type TerminalSession = {
   createdAt: number;
 };
 
+const ANSI_FIXTURE = [
+  "CC terminal theme fixture",
+  "Default foreground and background",
+  "\u001b[30m black \u001b[31m red \u001b[32m green \u001b[33m yellow \u001b[34m blue \u001b[35m magenta \u001b[36m cyan \u001b[37m white \u001b[0m",
+  "\u001b[90m bright black \u001b[91m bright red \u001b[92m bright green \u001b[93m bright yellow \u001b[94m bright blue \u001b[95m bright magenta \u001b[96m bright cyan \u001b[97m bright white \u001b[0m",
+  "https://commands.center/terminal-theme",
+].join("\r\n");
+
+const ANSI_COLORS = {
+  Light: [
+    "rgb(15, 23, 42)",
+    "rgb(159, 18, 57)",
+    "rgb(20, 83, 45)",
+    "rgb(120, 53, 15)",
+    "rgb(23, 37, 84)",
+    "rgb(112, 26, 117)",
+    "rgb(22, 78, 99)",
+    "rgb(82, 98, 122)",
+    "rgb(89, 105, 127)",
+    "rgb(190, 18, 60)",
+    "rgb(22, 101, 52)",
+    "rgb(146, 64, 14)",
+    "rgb(30, 64, 175)",
+    "rgb(134, 25, 143)",
+    "rgb(21, 94, 117)",
+    "rgb(51, 65, 85)",
+  ],
+  Dark: [
+    "rgb(107, 123, 145)",
+    "rgb(244, 71, 71)",
+    "rgb(96, 139, 78)",
+    "rgb(220, 220, 170)",
+    "rgb(86, 156, 214)",
+    "rgb(197, 134, 192)",
+    "rgb(78, 201, 176)",
+    "rgb(212, 212, 212)",
+    "rgb(148, 163, 184)",
+    "rgb(255, 107, 107)",
+    "rgb(140, 194, 101)",
+    "rgb(245, 245, 165)",
+    "rgb(125, 183, 255)",
+    "rgb(215, 166, 209)",
+    "rgb(127, 231, 213)",
+    "rgb(255, 255, 255)",
+  ],
+} as const;
+
 test("renders the global terminal route", async ({ page }) => {
   await mockTerminalApi(page);
 
@@ -69,6 +116,79 @@ test("reconnects after transient attach interruption", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(page.getByText("status")).toBeVisible();
 });
+
+for (const mode of ["Light", "Dark"] as const) {
+  test(`renders the complete ${mode.toLowerCase()} ANSI palette`, async ({ page }) => {
+    await mockTerminalApi(page);
+    await page.goto("/terminal");
+    await selectColorMode(page, mode);
+    await installTerminalSocketMock(page, { initialOutput: ANSI_FIXTURE });
+    await page.getByTestId("new-terminal-btn").click();
+
+    const terminal = page.getByTestId("terminal-instance-term-1");
+    await expect(terminal).toBeVisible();
+    await expect(page.getByText("CC terminal theme fixture")).toBeVisible();
+    const renderedColors = await terminal
+      .locator(".xterm-rows span")
+      .evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color));
+    for (const color of ANSI_COLORS[mode]) {
+      expect(renderedColors).toContain(color);
+    }
+  });
+}
+
+test("updates a mounted terminal theme without reconnecting", async ({ page }) => {
+  await mockTerminalApi(page);
+  await page.goto("/terminal");
+  await installTerminalSocketMock(page);
+  await page.getByTestId("new-terminal-btn").click();
+
+  const viewport = page.locator(".xterm-viewport");
+  await expect(viewport).toBeVisible();
+  await selectColorMode(page, "Light");
+  await expect
+    .poll(() => viewport.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .toBe("rgb(226, 232, 240)");
+
+  await selectColorMode(page, "Dark");
+  await expect
+    .poll(() => viewport.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .toBe("rgb(2, 6, 23)");
+
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __ccWsCounts?: Record<string, number> }).__ccWsCounts?.["term-1"],
+    ),
+  ).toBe(1);
+});
+
+test("follows system appearance changes without reconnecting", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await mockTerminalApi(page);
+  await page.goto("/terminal");
+  await installTerminalSocketMock(page);
+  await page.getByTestId("new-terminal-btn").click();
+
+  const viewport = page.locator(".xterm-viewport");
+  await expect
+    .poll(() => viewport.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .toBe("rgb(226, 232, 240)");
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect
+    .poll(() => viewport.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .toBe("rgb(2, 6, 23)");
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __ccWsCounts?: Record<string, number> }).__ccWsCounts?.["term-1"],
+    ),
+  ).toBe(1);
+});
+
+async function selectColorMode(page: Page, label: "Light" | "Dark"): Promise<void> {
+  await page.getByRole("button", { name: /Choose color mode, current:/ }).click();
+  await page.getByRole("menuitemradio", { name: label }).click();
+}
 
 async function mockTerminalApi(page: Page): Promise<void> {
   const state = {
@@ -136,9 +256,9 @@ async function mockTerminalApi(page: Page): Promise<void> {
 
 async function installTerminalSocketMock(
   page: Page,
-  options: { disconnectFirstConnection?: boolean } = {},
+  options: { disconnectFirstConnection?: boolean; initialOutput?: string } = {},
 ) {
-  await page.evaluate(({ disconnectFirstConnection }) => {
+  await page.evaluate(({ disconnectFirstConnection, initialOutput }) => {
     class MockWebSocket extends EventTarget {
       static readonly CONNECTING = 0;
       static readonly OPEN = 1;
@@ -178,7 +298,7 @@ async function installTerminalSocketMock(
             return;
           }
 
-          this.emitMessage(`Welcome to ${sessionId}\r\n`);
+          this.emitMessage(initialOutput ?? `Welcome to ${sessionId}\r\n`);
 
           if (disconnectFirstConnection && counts[sessionId] === 1) {
             queueMicrotask(() => {

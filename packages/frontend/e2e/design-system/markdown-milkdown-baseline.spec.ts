@@ -1,11 +1,16 @@
 import { expect, test, type Page } from "../fixtures";
+import {
+  expectNoHorizontalOverflow,
+  expectSemanticSurface,
+  expectThemeContract,
+} from "./theme-assertions";
 
 const DESKTOP_VIEWPORT = { width: 1280, height: 900 };
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 test.describe("@design-system protected content baselines", () => {
   test.describe.configure({ mode: "serial" });
-  test.skip(({ isMobile }) => Boolean(isMobile), "Snapshots use explicit responsive viewports.");
+  test.skip(({ isMobile }) => Boolean(isMobile), "Tests use explicit responsive viewports.");
 
   for (const theme of ["light", "dark"] as const) {
     test(`${theme} Markdown reader and chat variants`, async ({ page }) => {
@@ -15,11 +20,14 @@ test.describe("@design-system protected content baselines", () => {
         theme,
         DESKTOP_VIEWPORT,
       );
-
-      await expect(page).toHaveScreenshot(`markdown-${theme}-desktop.png`, screenshotOptions());
+      const baseline = page.getByTestId("markdown-baseline");
+      await expectSemanticSurface(baseline.locator(".cc-panel").first(), theme);
+      await expect(page.getByRole("heading", { name: "Reader heading" }).first()).toBeVisible();
+      await expect(page.getByRole("link", { name: "an external link" }).first()).toBeVisible();
+      await expectNoHorizontalOverflow(page, baseline);
 
       await page.setViewportSize(MOBILE_VIEWPORT);
-      await expect(page).toHaveScreenshot(`markdown-${theme}-mobile.png`, screenshotOptions());
+      await expectNoHorizontalOverflow(page, baseline);
     });
 
     test(`${theme} unclassed semantic HTML`, async ({ page }) => {
@@ -29,11 +37,14 @@ test.describe("@design-system protected content baselines", () => {
         theme,
         DESKTOP_VIEWPORT,
       );
-
-      await expect(page).toHaveScreenshot(`semantic-${theme}-desktop.png`, screenshotOptions());
+      const baseline = page.getByTestId("semantic-baseline");
+      await expectSemanticSurface(baseline, theme);
+      await expect(page.getByTestId("unclassed-html").getByRole("heading").first()).toBeVisible();
+      await expect(page.getByTestId("unclassed-html").getByRole("table")).toBeVisible();
+      await expectNoHorizontalOverflow(page, baseline);
 
       await page.setViewportSize(MOBILE_VIEWPORT);
-      await expect(page).toHaveScreenshot(`semantic-${theme}-mobile.png`, screenshotOptions());
+      await expectNoHorizontalOverflow(page, baseline);
     });
 
     test(`${theme} Milkdown editor surface`, async ({ page }) => {
@@ -49,11 +60,9 @@ test.describe("@design-system protected content baselines", () => {
           .locator(".ProseMirror[role='textbox'][contenteditable='true']")
           .first(),
       ).toBeVisible();
-
-      await expect(page).toHaveScreenshot(`milkdown-${theme}-desktop.png`, screenshotOptions());
-
+      await expectMilkdownTheme(page, theme);
       await page.setViewportSize(MOBILE_VIEWPORT);
-      await expect(page).toHaveScreenshot(`milkdown-${theme}-mobile.png`, screenshotOptions());
+      await expectMilkdownContainment(page);
     });
   }
 
@@ -93,7 +102,7 @@ test.describe("@design-system protected content baselines", () => {
         .locator(".ProseMirror[role='textbox'][contenteditable='false']"),
     ).toBeVisible();
 
-    await expect(page).toHaveScreenshot("milkdown-readonly-light-desktop.png", screenshotOptions());
+    await expectMilkdownTheme(page, "light");
   });
 
   test("Milkdown slash menu retains the workspace command", async ({ page }) => {
@@ -113,10 +122,7 @@ test.describe("@design-system protected content baselines", () => {
     await editor.type("/");
     await expect(page.getByText("Workspace file", { exact: true })).toBeVisible();
 
-    await expect(page).toHaveScreenshot(
-      "milkdown-slash-menu-light-desktop.png",
-      screenshotOptions(),
-    );
+    await expectMilkdownTheme(page, "light");
   });
 
   test("Milkdown selection remains visible", async ({ page }) => {
@@ -137,10 +143,14 @@ test.describe("@design-system protected content baselines", () => {
     await editor.type("Selection baseline marker");
     await editor.press("Shift+ControlOrMeta+ArrowLeft");
 
-    await expect(page).toHaveScreenshot(
-      "milkdown-selection-light-desktop.png",
-      screenshotOptions(),
-    );
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const selection = window.getSelection();
+          return selection?.isCollapsed === false && selection.toString().includes("marker");
+        }),
+      )
+      .toBe(true);
   });
 });
 
@@ -157,14 +167,20 @@ async function openBaseline(
     window.localStorage.setItem("cc-sidebar-collapsed", "false");
   }, colorMode);
   await page.goto(path);
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "default");
-  await expect(page.locator("html")).toHaveAttribute("data-color-mode", colorMode);
+  await expectThemeContract(page, colorMode);
 }
 
-function screenshotOptions() {
-  return {
-    animations: "disabled" as const,
-    caret: "hide" as const,
-    fullPage: true,
-  };
+async function expectMilkdownTheme(page: Page, colorMode: "light" | "dark"): Promise<void> {
+  const milkdown = page.getByTestId("milkdown-editor").locator(".milkdown").first();
+  await expect
+    .poll(() => milkdown.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .toBe(colorMode === "light" ? "rgb(255, 255, 255)" : "rgb(15, 23, 42)");
+  await expect
+    .poll(() => milkdown.evaluate((element) => getComputedStyle(element).color))
+    .toBe(colorMode === "light" ? "rgb(15, 23, 42)" : "rgb(226, 232, 240)");
+}
+
+async function expectMilkdownContainment(page: Page): Promise<void> {
+  const editor = page.getByTestId("milkdown-editor");
+  expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 }

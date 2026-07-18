@@ -32,7 +32,7 @@ truly bare content without changing those owned contexts.
 
 - Low-specificity `h1`–`h6`, `p`, and `hr` base rules.
 - Expanded semantic fixture and computed-style precedence assertions.
-- Reviewed light/dark, desktop/narrow screenshots and an affected-consumer
+- Reviewed light/dark, desktop/narrow appearance assertions and an affected-consumer
   sampling record.
 
 ## Blockers and dependencies
@@ -53,7 +53,7 @@ truly bare content without changing those owned contexts.
 
 ## Verification tests
 
-- Capture semantic typography screenshots in Default light/dark at desktop and
+- Assert semantic typography in Default light/dark at desktop and
   narrow viewports.
 - Assert utility-styled headings and paragraphs retain their expected computed
   size, weight, margin, and color.

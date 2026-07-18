@@ -1,6 +1,6 @@
 # DS-0506 — Verify Integrated Live Appearance Switching
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 5](README.md)
 - Foundation reference:
   [Appearance coverage](../../design-system-foundation.md#6-treat-theme-coverage-as-a-feature)
@@ -38,7 +38,7 @@ changes just like native CC surfaces.
 - Integrated Phase 5 appearance fixture or deterministic extension of the
   existing design-system baseline route.
 - E2E coverage for explicit and system-resolved live updates.
-- Reviewed light/dark wide/narrow baselines for representative bridge states.
+- Reviewed light/dark wide/narrow computed states for representative bridges.
 - Lifecycle evidence showing no extra reconnect/recreation/listener behavior.
 
 ## Blockers and dependencies
@@ -48,20 +48,20 @@ changes just like native CC surfaces.
 
 ## Acceptance criteria
 
-- [ ] All applicable surfaces update on explicit light/dark changes without a
+- [x] All applicable surfaces update on explicit light/dark changes without a
       page reload.
-- [ ] `system` follows simulated OS light/dark changes while the preference
+- [x] `system` follows simulated OS light/dark changes while the preference
       remains `system`.
-- [ ] Surfaces lazy-loaded after a change use the current resolved mode on first
+- [x] Surfaces lazy-loaded after a change use the current resolved mode on first
       paint without a fixed-theme flash.
-- [ ] Milkdown content/selection/menu state, Monaco unsaved model/selection/
+- [x] Milkdown content/selection/menu state, Monaco unsaved model/selection/
       focus/scroll, and xterm buffer/selection/connection/scroll remain intact.
-- [ ] File-manager state remains intact and any proven bridge updates live.
-- [ ] Rapid switching and unmount/remount do not leak listeners, reconnect
+- [x] File-manager state remains intact and any proven bridge updates live.
+- [x] Rapid switching and unmount/remount do not leak listeners, reconnect
       sockets, recreate editors, or apply stale theme values.
-- [ ] No unreadable popup, overlay, selection, cursor, focus, code, or ANSI state
+- [x] No unreadable popup, overlay, selection, cursor, focus, code, or ANSI state
       remains in either resolved mode.
-- [ ] The fixture is unreachable and absent from production assets.
+- [x] The fixture is unreachable and absent from production assets.
 
 ## Verification tests
 
@@ -69,11 +69,11 @@ changes just like native CC surfaces.
 - Simulate `prefers-color-scheme` changes under the `system` preference.
 - Assert state identity/content before and after each switch and inspect
   editor/terminal construction and WebSocket counts.
-- Run two consecutive no-update integrated visual passes.
+- Run two consecutive deterministic integrated appearance passes.
 - Build production and search output/routes for fixture markers and test data.
 
 ## Out of scope
 
 - Adding themes beyond `Default` or changing appearance persistence semantics.
 - Redesigning the header appearance control or profile theme selection.
-- Broad page-level visual snapshots unrelated to third-party bridges.
+- Broad page-level fixtures unrelated to third-party bridges.

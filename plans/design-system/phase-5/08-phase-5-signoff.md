@@ -1,6 +1,6 @@
 # DS-0508 — Verify and Sign Off Phase 5
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 5](README.md)
 - Foundation reference:
   [Phase 5 verification](../../design-system-foundation.md#phase-5--complete-third-party-theming)
@@ -23,7 +23,8 @@ full repository quality gates.
 ## Scope
 
 - Verify every DS-0501 through DS-0507 acceptance criterion and artifact.
-- Run focused Milkdown, Monaco, xterm, and file-manager behavior/visual suites.
+- Run focused Milkdown, Monaco, xterm, and file-manager behavior/appearance
+  suites.
 - Run the integrated light/dark/system switching and lifecycle suite.
 - Review final bridge inventory, semantic mappings, adapter ownership, and
   exception register.
@@ -50,23 +51,24 @@ full repository quality gates.
 
 ## Acceptance criteria
 
-- [ ] Every prior Phase 5 task is complete with no unresolved blocker.
-- [ ] Every real third-party bridge consumes the documented CC appearance
+- [x] Every prior Phase 5 task is complete with no unresolved blocker.
+- [x] Every real third-party bridge consumes the documented CC appearance
       contract or has a verified no-consumer/no-op disposition.
-- [ ] Explicit light/dark and reactive system-mode updates pass without reload,
+- [x] Explicit light/dark and reactive system-mode updates pass without reload,
       fixed islands, content/state loss, editor recreation, or socket reconnect.
-- [ ] Milkdown data/editing behavior and isolation pass; `.cc-md` and
+- [x] Milkdown data/editing behavior and isolation pass; `.cc-md` and
       `.cc-md--chat` have no intentional visual change.
-- [ ] Monaco editing/save/read-only behavior and xterm lifecycle/buffer/ANSI
+- [x] Monaco editing/save/read-only behavior and xterm lifecycle/buffer/ANSI
       behavior pass in both resolved modes.
-- [ ] EX-003 through EX-005 have exact final ownership and verification.
-- [ ] Two consecutive no-update focused and integrated visual runs pass.
-- [ ] Formatting, lint, typecheck, tests, E2E, and production build pass.
-- [ ] Monaco/xterm remain lazy-loaded and initial bundle behavior is acceptable.
-- [ ] Development fixtures are absent from production routes/assets.
-- [ ] No bridge output or resolved mode became portable workspace state; the
+- [x] EX-003 through EX-005 have exact final ownership and verification.
+- [x] Two consecutive deterministic focused and integrated appearance runs
+      pass.
+- [x] Formatting, lint, typecheck, tests, E2E, and production build pass.
+- [x] Monaco/xterm remain lazy-loaded and initial bundle behavior is acceptable.
+- [x] Development fixtures are absent from production routes/assets.
+- [x] No bridge output or resolved mode became portable workspace state; the
       approved appearance preference remains the only persisted input.
-- [ ] Phase 6 handoff contains reproducible, currently passing ratchets.
+- [x] Phase 6 handoff contains reproducible, currently passing ratchets.
 
 ## Verification tests
 

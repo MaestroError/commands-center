@@ -59,7 +59,8 @@ Direct frontend dependencies added — exactly the DS-0201 allowlist, nothing el
 - AlertDialog: `alertdialog` role, action/cancel callbacks, disabled action,
   controlled state (unit); safe Cancel initial focus, overlay non-dismissal,
   Escape cancel, focus return (Playwright).
-- Default light and dark reviewed via gallery screenshots with no mode branch.
+- Default light and dark reviewed through gallery semantic assertions with no
+  mode branch.
 - One overflow regression found and fixed during gallery bring-up (`break-words`
   on dialog content); see gallery manifest.
 
@@ -70,7 +71,8 @@ Direct frontend dependencies added — exactly the DS-0201 allowlist, nothing el
 - `pnpm --filter @cc/frontend lint` — passed (0 warnings).
 - `pnpm --filter @cc/frontend test` — passed: 1,355 tests, 127 files (includes 25 batch-1 primitive tests).
 - `pnpm --filter @cc/frontend build` — passed; pre-existing large-chunk warning only.
-- `playwright test e2e/design-system --project=chromium` — 30 passed, run twice with no snapshot updates.
+- `playwright test e2e/design-system --project=chromium` — passed twice; the
+  current contract uses platform-independent assertions.
 - Production-asset scan for fixture/gallery markers — clean in executable JS.
 - Radix import-boundary grep + probe — clean.
 

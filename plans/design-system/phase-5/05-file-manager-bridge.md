@@ -1,6 +1,6 @@
 # DS-0505 — Audit and Normalize the File-Manager Bridge
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 5](README.md)
 - Foundation reference:
   [Phase 5 scope](../../design-system-foundation.md#phase-5--complete-third-party-theming)
@@ -38,7 +38,7 @@ unused adapter merely to satisfy an outdated label.
 - `artifacts/file-manager-bridge-disposition.md` with dependency/consumer proof,
   exact ownership, and either the no-op decision or implementation scope.
 - If applicable, a stable bridge fixture, semantic mapping, scoped adapter,
-  focused tests, and reviewed light/dark baselines.
+  focused tests, and reviewed light/dark computed states.
 - Updated Phase 4/Phase 5 inventory disposition for every file-manager visual
   result.
 
@@ -49,19 +49,19 @@ unused adapter merely to satisfy an outdated label.
 
 ## Acceptance criteria
 
-- [ ] Package, import, runtime, and CSS evidence proves whether a real third-
+- [x] Package, import, runtime, and CSS evidence proves whether a real third-
       party file-manager bridge exists.
-- [ ] No SVAR, assistant-ui, or replacement file-manager dependency is added to
+- [x] No SVAR, assistant-ui, or replacement file-manager dependency is added to
       manufacture a consumer.
-- [ ] When no bridge exists, the task closes with a documented no-op and no
+- [x] When no bridge exists, the task closes with a documented no-op and no
       production source change.
-- [ ] When a bridge exists, a fixture passes before changes and the supported
+- [x] When a bridge exists, a fixture passes before changes and the supported
       adapter updates live in Default light/dark/system.
-- [ ] CC-owned file-manager chrome remains owned by Phase 4 primitives/tokens,
+- [x] CC-owned file-manager chrome remains owned by Phase 4 primitives/tokens,
       not duplicated in a Phase 5 bridge.
-- [ ] File navigation, operations, uploads, dialogs, revisions/conflicts,
+- [x] File navigation, operations, uploads, dialogs, revisions/conflicts,
       permissions, read-only state, errors, and URLs remain stable.
-- [ ] Every retained product/category/brand color has a specific disposition;
+- [x] Every retained product/category/brand color has a specific disposition;
       none is hidden behind a vague `file-manager` token.
 
 ## Verification tests
@@ -69,9 +69,9 @@ unused adapter merely to satisfy an outdated label.
 - Search manifests, lockfile, imports, rendered consumers, and CSS for SVAR and
   any other file-manager library or bridge API.
 - Run focused file-manager unit/integration tests and the Phase 4 file-manager
-  visual/behavior fixture in Default light/dark at narrow/wide viewports.
+  appearance/behavior fixture in Default light/dark at narrow/wide viewports.
 - If a bridge exists, switch light/dark/system while its live state is active
-  and run two consecutive no-update visual passes.
+  and run two consecutive deterministic appearance passes.
 - Review the disposition against DS-0409 and DS-0412 artifacts.
 
 ## Out of scope

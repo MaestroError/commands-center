@@ -246,7 +246,7 @@ Protect that shared reader output, not only the chat-specific variant.
 - Preserve the current theme-token values consumed by Markdown. If foundation
   tokens are renamed, provide aliases so Markdown's computed values do not
   change.
-- Capture current chat Markdown screenshots for headings, paragraphs, nested
+- Capture current chat Markdown appearance assertions for headings, paragraphs, nested
   lists, links, inline code, fenced code, blockquotes, tables, horizontal rules,
   and images in the current light and dark modes before enabling global element
   defaults.
@@ -336,7 +336,8 @@ wide widths.
 Use the gallery for:
 
 - Fast manual review.
-- Playwright screenshots for visual regression coverage.
+- Platform-independent Playwright assertions for semantic theme roles,
+  computed styles, responsive containment, and interaction coverage.
 - Keyboard and focus-state verification.
 - Contrast and overflow review.
 - Confirming that every variant responds to theme and resolved color-mode
@@ -366,7 +367,7 @@ blockers for dependent work.
       classify current items as keep, normalize, wrap, migrate, or retire and
       approve the component adoption matrix.
 - [x] Complete
-      [DS-0004 — Capture application visual baselines](design-system/phase-0/04-application-visual-baselines.md):
+      [DS-0004 — Define application appearance contracts](design-system/phase-0/04-application-visual-baselines.md):
       preserve the current light/dark visual inputs for the `Default` theme at
       narrow and wide viewport sizes and document `modern` as removal-only.
 - [x] Complete
@@ -460,9 +461,9 @@ sizes.
       establish safe destructive focus and cancellation behavior while composing
       the CC Button visual contract.
 - [x] Complete
-      [DS-0206 — Add the primitive gallery and visual baselines](design-system/phase-2/06-primitive-gallery.md):
+      [DS-0206 — Add the primitive gallery and appearance contracts](design-system/phase-2/06-primitive-gallery.md):
       extend the existing development-only fixture with real primitive states,
-      interactions, narrow/wide coverage, and Default light/dark screenshots.
+      interactions, narrow/wide coverage, and Default light/dark appearance assertions.
 - [x] Complete
       [DS-0207 — Verify and sign off Phase 2](design-system/phase-2/07-phase-2-signoff.md):
       audit files, dependencies, import boundaries, behavior, appearance,
@@ -577,7 +578,7 @@ Phase 4.
 - [x] Complete
       [DS-0411 — Add integrated domain migration baselines](design-system/phase-4/11-domain-baselines.md):
       review representative domain flows and states without creating blanket
-      page snapshots.
+      deterministic page appearance assertions.
 - [x] Complete
       [DS-0412 — Verify and sign off Phase 4](design-system/phase-4/12-phase-4-signoff.md):
       verify domain behavior, semantic appearance, inventories, exceptions,
@@ -594,35 +595,35 @@ set live post-Phase-3 ratchets before implementation.
 - [x] Decompose Phase 5 into the
       [detailed Phase 5 task plan](design-system/phase-5/README.md), with the
       completed Phase 4 handoff as the implementation gate.
-- [ ] Complete
+- [x] Complete
       [DS-0501 — Accept the Phase 4 handoff and freeze bridge contracts](design-system/phase-5/01-phase-4-handoff.md):
       recalculate real consumers/values, define semantic mappings and lifecycle
       rules, freeze fixtures, and reconcile EX-003 through EX-005.
-- [ ] Complete
+- [x] Complete
       [DS-0502 — Migrate the Milkdown and Crepe theme bridge](design-system/phase-5/02-milkdown-bridge.md):
       normalize the scoped semantic adapter while preserving MILK-01 through
       MILK-04, document behavior, and generic-style isolation.
-- [ ] Complete
+- [x] Complete
       [DS-0503 — Migrate the Monaco theme bridge](design-system/phase-5/03-monaco-bridge.md):
       capture a real fixture, replace forced `vs-dark` with CC-owned light/dark
       themes, and update mounted editors without model or interaction loss.
-- [ ] Complete
+- [x] Complete
       [DS-0504 — Migrate the xterm theme bridge](design-system/phase-5/04-xterm-bridge.md):
       capture a real ANSI fixture, derive base roles from CC semantics, retain a
       controlled EX-004 palette, and update without terminal/socket recreation.
-- [ ] Complete
+- [x] Complete
       [DS-0505 — Audit and normalize the file-manager bridge](design-system/phase-5/05-file-manager-bridge.md):
       implement only a bridge proven by a real post-Phase-4 consumer and record
       a no-op when SVAR/another third-party consumer remains absent.
-- [ ] Complete
+- [x] Complete
       [DS-0506 — Verify integrated live appearance switching](design-system/phase-5/06-live-appearance-switching.md):
       exercise light, dark, reactive system mode, lazy loading, rapid switching,
       state preservation, and lifecycle stability across every surface.
-- [ ] Complete
+- [x] Complete
       [DS-0507 — Close bridge inventories and exception ownership](design-system/phase-5/07-inventory-and-exceptions.md):
       account for residual values/adapters, finalize EX-003 through EX-005, and
       produce reproducible Phase 6 ratchets.
-- [ ] Complete
+- [x] Complete
       [DS-0508 — Verify and sign off Phase 5](design-system/phase-5/08-phase-5-signoff.md):
       run focused/integrated quality gates, verify protected and portable-state
       boundaries, and deliver the exact Phase 6 handoff.

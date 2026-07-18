@@ -26,7 +26,7 @@ integration gate and a record of every approved visual difference from Phase 0.
   command.
 - Create `artifacts/phase-1-signoff.md` with command results, visual-difference
   register, remaining issues, and the Phase 2 readiness decision.
-- Compare application, semantic, Markdown, and Milkdown screenshots with Phase 0
+- Compare application, semantic, Markdown, and Milkdown appearance assertions with Phase 0
   and explain every accepted update.
 - Re-run theme/token/semantic inventories and record updated counts.
 - Confirm no Phase 2 Shadcn/Radix code or dependency entered Phase 1.
@@ -36,7 +36,7 @@ integration gate and a record of every approved visual difference from Phase 0.
 ## Required deliverables
 
 - `artifacts/phase-1-signoff.md` with acceptance status, exact verification
-  results, approved screenshot changes, inventory deltas, remaining issues, and
+  results, approved appearance-contract changes, inventory deltas, remaining issues, and
   Phase 2 readiness.
 - Updated Phase 1 task/index statuses and foundation-plan checkboxes.
 - A recorded decision confirming or revising the bounded Phase 2 first batch.
@@ -56,7 +56,7 @@ integration gate and a record of every approved visual difference from Phase 0.
 - [ ] Application changes are either visually stable or listed with an approved
       rationale.
 - [ ] `.cc-md`, `.cc-md--chat`, and Milkdown have no unintended computed or
-      screenshot changes.
+      appearance-contract changes.
 - [ ] Shell and semantic fixtures satisfy their no-horizontal-overflow
       assertions.
 - [ ] Two consecutive no-update visual runs pass.
@@ -87,5 +87,5 @@ responsive menus, semantic overflow, Markdown, and Milkdown.
 ## Out of scope
 
 - Installing Shadcn/Radix or implementing Phase 2 primitives.
-- Treating unexplained snapshot updates as approval.
+- Weakening appearance assertions to hide unexplained differences.
 - Deferring a Phase 1 regression to a later phase solely to close the gate.

@@ -115,7 +115,7 @@ pnpm test
 pnpm --filter @cc/frontend exec playwright test e2e/design-system
 ```
 
-Run the visual suites a second time without updating screenshots and confirm
+Run the appearance suites a second time and confirm
 there are no diffs:
 
 ```bash
@@ -128,7 +128,7 @@ Verify documentation links and artifact presence:
 find plans/design-system/phase-0 -maxdepth 2 -type f -print | sort
 ```
 
-Manually review and approve every initial screenshot, every exception, the
+Manually review and approve every fixture state, every exception, the
 target appearance contract, component-adoption matrix, intended semantic HTML
 change list, and downstream phase reassessment. Automated success alone does not
 authorize Phase 1.

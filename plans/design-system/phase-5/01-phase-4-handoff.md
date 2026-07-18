@@ -1,6 +1,6 @@
 # DS-0501 — Accept the Phase 4 Handoff and Freeze Bridge Contracts
 
-- Status: Planned
+- Status: Complete
 - Phase: [Phase 5](README.md)
 - Foundation reference:
   [Phase 5 scope](../../design-system-foundation.md#phase-5--complete-third-party-theming)
@@ -50,19 +50,19 @@ paths and counts, so these are planning inputs, not implementation truth.
 
 ## Acceptance criteria
 
-- [ ] Every real bridge consumer has an exact path and one task owner.
-- [ ] Every bridge field is classified as CC-semantic, bounded syntax/ANSI,
+- [x] Every real bridge consumer has an exact path and one task owner.
+- [x] Every bridge field is classified as CC-semantic, bounded syntax/ANSI,
       third-party structural, or nonvisual.
-- [ ] Monaco and xterm fixture content and behavior assertions are defined
+- [x] Monaco and xterm fixture content and behavior assertions are defined
       before their fixed themes may change.
-- [ ] Milkdown fixture reuse names MILK-01 through MILK-04 and the relevant
+- [x] Milkdown fixture reuse names MILK-01 through MILK-04 and the relevant
       behavior assertions explicitly.
-- [ ] The file-manager disposition is based on real post-Phase-4 dependencies
+- [x] The file-manager disposition is based on real post-Phase-4 dependencies
       and consumers; absence does not authorize installing SVAR.
-- [ ] Mounted-instance update behavior, listener ownership, cleanup, and no-
+- [x] Mounted-instance update behavior, listener ownership, cleanup, and no-
       recreation requirements are explicit for Monaco and xterm.
-- [ ] No adapter reads a second preference store or persists resolved mode.
-- [ ] Cross-task file overlap is absent or ordered explicitly.
+- [x] No adapter reads a second preference store or persists resolved mode.
+- [x] Cross-task file overlap is absent or ordered explicitly.
 
 ## Verification tests
 

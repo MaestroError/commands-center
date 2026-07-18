@@ -42,7 +42,7 @@ shells look alike.
 - Complete focused unit tests for domain behavior plus shared dialog behavior.
 - Playwright coverage opening each dialog from its real Documents trigger and
   exercising keyboard close/focus return.
-- Reviewed light/dark, narrow/wide document-dialog screenshots.
+- Reviewed light/dark, narrow/wide document-dialog assertions.
 
 ## Blockers and dependencies
 

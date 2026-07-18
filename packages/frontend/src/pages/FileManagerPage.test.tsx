@@ -56,6 +56,10 @@ vi.mock("@monaco-editor/react", () => ({
   ),
 }));
 
+vi.mock("@/context/use-theme", () => ({
+  useTheme: () => ({ resolvedColorMode: "light" }),
+}));
+
 describe("FileManagerPage", () => {
   const confirmSpy = vi.spyOn(window, "confirm");
   const writeTextSpy = vi.fn(() => Promise.resolve());

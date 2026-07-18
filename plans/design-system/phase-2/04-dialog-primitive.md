@@ -69,7 +69,7 @@ layer only. Phase 3 will migrate the document dialog compositions.
   controlled open changes, and close actions.
 - Use Playwright for Tab/Shift+Tab containment, initial focus, focus return,
   Escape, pointer overlay behavior, portal layering, and narrow bounds.
-- Capture Default light/dark primitive screenshots at desktop and narrow widths.
+- Assert Default light/dark primitive surfaces at desktop and narrow widths.
 - Run application and protected-content baselines for unintended global changes.
 
 ## Out of scope

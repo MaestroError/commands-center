@@ -98,11 +98,45 @@ describe("Default theme token contract", () => {
   it("does not retain a Modern theme selector", () => {
     expect(globalsCss).not.toContain('[data-theme="modern"]');
   });
+
+  it("keeps the complete Crepe bridge scoped to semantic CC values", () => {
+    const bridge = readRuleBlock(".milkdown-editor-wrapper .milkdown");
+    const requiredCrepeRoles = [
+      "background",
+      "surface",
+      "surface-low",
+      "on-background",
+      "on-surface",
+      "on-surface-variant",
+      "primary",
+      "secondary",
+      "on-secondary",
+      "inverse",
+      "on-inverse",
+      "outline",
+      "hover",
+      "selected",
+      "inline-code",
+      "inline-area",
+      "error",
+    ];
+
+    for (const role of requiredCrepeRoles) {
+      expect(bridge).toContain(`--crepe-color-${role}: var(--`);
+    }
+    expect(bridge).not.toMatch(/#[0-9a-f]{3,8}|rgba?\(/i);
+  });
 });
 
 function readThemeBlock(selector: string): string {
   const start = globalsCss.indexOf(selector);
   const end = globalsCss.indexOf("\n}", start);
 
+  return globalsCss.slice(start, end);
+}
+
+function readRuleBlock(selector: string): string {
+  const start = globalsCss.indexOf(`${selector} {`);
+  const end = globalsCss.indexOf("\n}", start);
   return globalsCss.slice(start, end);
 }

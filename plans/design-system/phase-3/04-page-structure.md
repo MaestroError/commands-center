@@ -67,7 +67,7 @@ the common layer and extract only behavior/appearance that is truly primitive.
 - Sample consumers across settings, tasks, specialists, integrations, and
   activity surfaces.
 - Review Default light/dark at desktop and 390px; assert no new page overflow.
-- Run affected page tests, application baselines, and design-system screenshots
+- Run affected page tests, application contracts, and design-system assertions
   twice without unexplained updates.
 
 ## Out of scope

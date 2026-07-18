@@ -65,8 +65,10 @@ class MockTerminal {
 
   selection = "";
   _onData?: (data: string) => void;
+  options: { theme?: Record<string, string> };
 
-  constructor() {
+  constructor(options: { theme?: Record<string, string> } = {}) {
+    this.options = options;
     mockTerminalInstances.push(this);
   }
 }

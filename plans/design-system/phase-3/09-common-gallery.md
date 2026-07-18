@@ -9,8 +9,8 @@
 ## Goal
 
 Extend the development-only design-system fixture with deterministic common
-composition examples and integrated keyboard/visual coverage for every Phase 3
-migration.
+composition examples and integrated keyboard/appearance coverage for every
+Phase 3 migration.
 
 ## Context
 
@@ -37,11 +37,11 @@ Storybook or second gallery runtime is needed.
 ## Required deliverables
 
 - Deterministic common-composition fixture coverage.
-- Default light/dark screenshots at desktop and 390px, plus 320px for overlay or
-  popup overflow contracts.
+- Default light/dark semantic assertions at desktop and 390px, plus 320px
+  containment checks for overlay or popup contracts.
 - Playwright keyboard/pointer tests across integrated compositions.
 - `artifacts/common-gallery-manifest.md` mapping every state, interaction,
-  viewport, screenshot, and expected visual difference to its owning task.
+  viewport, appearance assertion, and expected difference to its owning task.
 
 ## Blockers and dependencies
 
@@ -60,7 +60,8 @@ Storybook or second gallery runtime is needed.
 - [x] Existing Phase 2 and protected-content baselines have no unexplained
       differences.
 - [x] Production assets contain neither the fixture nor common gallery code.
-- [x] Screenshot updates are tied to a recorded Phase 3 migration rationale.
+- [x] Appearance-contract changes are tied to a recorded Phase 3 migration
+      rationale.
 
 ## Verification tests
 
@@ -68,8 +69,7 @@ Storybook or second gallery runtime is needed.
   pointer behavior, focus return, filtering, selection, and password toggling.
 - Assert document/application `scrollWidth <= clientWidth` at relevant 320px and
   390px states.
-- Run all design-system visual suites twice without updates after approving the
-  first common-composition snapshots.
+- Run all design-system appearance suites twice.
 - Build production and search emitted assets for fixture/common-gallery markers.
 
 ## Out of scope

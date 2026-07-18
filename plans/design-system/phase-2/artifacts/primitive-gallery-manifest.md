@@ -25,13 +25,11 @@ theme switch, palette, or implementation hook. The four pre-existing surfaces
 | AlertDialog | `Open ordinary alert`          | non-destructive confirm (Stay / Leave)                               |
 | AlertDialog | `Open disabled alert`          | disabled destructive action                                          |
 
-## Screenshot coverage (Default theme)
+## Appearance coverage (Default theme)
 
-Generated `-chromium-darwin` baselines, desktop (1280×900), both modes:
-
-- `primitives-{light,dark}-desktop` — closed gallery.
-- `primitives-dialog-{light,dark}-desktop` — open ordinary Dialog.
-- `primitives-alert-{light,dark}-desktop` — open destructive AlertDialog.
+Browser tests cover the closed gallery, open ordinary Dialog, and open
+destructive AlertDialog in both modes. They assert semantic surface colors,
+disabled/safe states, focus, roles, and responsive containment.
 
 Light and dark render from the same components with no component-level mode
 branch; only the semantic tokens differ.
@@ -52,18 +50,18 @@ branch; only the semantic tokens differ.
 
 - The `primitives` surface is entirely new; there is no prior baseline to differ
   from.
-- No existing application, dialog, Markdown, Milkdown, or semantic snapshot was
-  updated (full design-system suite: 30 tests, two no-update runs).
+- Existing application, dialog, Markdown, Milkdown, and semantic contracts
+  remain separately asserted.
 
 ## Regression found and fixed during gallery bring-up
 
 The 320/390 narrow test initially failed: a long unbreakable token overflowed the
 dialog horizontally (`scrollWidth` 716 vs `clientWidth` 356 at 390px). Fixed by
-adding `break-words` to `DialogContent` and `AlertDialogContent`; snapshots were
-regenerated after the fix. This is the gallery doing its job — catching an
+adding `break-words` to `DialogContent` and `AlertDialogContent`. This is the
+gallery doing its job — catching an
 overflow the unit layer could not observe.
 
 ## Runs
 
-- `playwright test e2e/design-system/primitive-gallery.spec.ts --project=chromium` — 9 passed, twice with no updates.
-- `playwright test e2e/design-system --project=chromium` — 30 passed, twice with no updates.
+- `playwright test e2e/design-system/primitive-gallery.spec.ts --project=chromium` — 9 passed twice.
+- `playwright test e2e/design-system --project=chromium` — passed twice.

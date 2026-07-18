@@ -44,7 +44,7 @@ CC owns the exported API, semantic Tailwind classes, visual states, and tests.
 | DS-0203 | [Implement the typed Button primitive](03-button-primitive.md)                         | DS-0202                   | Complete |
 | DS-0204 | [Implement the Dialog primitive](04-dialog-primitive.md)                               | DS-0202, DS-0203          | Complete |
 | DS-0205 | [Implement the AlertDialog primitive](05-alert-dialog-primitive.md)                    | DS-0202, DS-0203          | Complete |
-| DS-0206 | [Add the primitive gallery and visual baselines](06-primitive-gallery.md)              | DS-0203, DS-0204, DS-0205 | Complete |
+| DS-0206 | [Add the primitive gallery and appearance contracts](06-primitive-gallery.md)          | DS-0203, DS-0204, DS-0205 | Complete |
 | DS-0207 | [Verify and sign off Phase 2](07-phase-2-signoff.md)                                   | DS-0202 through DS-0206   | Complete |
 
 Dialog and AlertDialog may be implemented independently after Button is stable.
@@ -60,7 +60,7 @@ Phase 2 may add only:
 - `packages/frontend/src/components/ui/button.tsx`.
 - `packages/frontend/src/components/ui/dialog.tsx`.
 - `packages/frontend/src/components/ui/alert-dialog.tsx`.
-- Focused tests, fixture/gallery coverage, snapshots, and plan artifacts needed
+- Focused tests, fixture/gallery coverage, appearance assertions, and plan artifacts needed
   to prove those files.
 - Direct frontend dependencies `radix-ui`, `class-variance-authority`, `clsx`,
   and `tailwind-merge`, after DS-0201 confirms no equivalent exists.

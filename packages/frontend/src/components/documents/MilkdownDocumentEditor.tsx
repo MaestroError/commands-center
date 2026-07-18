@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Crepe } from "@milkdown/crepe";
 import { insert } from "@milkdown/kit/utils";
 import "@milkdown/crepe/theme/common/style.css";
-import "@milkdown/crepe/theme/frame-dark.css";
 
 import { buildFileManagerHref } from "@/lib/file-manager-href";
 

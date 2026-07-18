@@ -1,4 +1,4 @@
-# DS-0004 — Capture Application Visual Baselines
+# DS-0004 — Capture Application Appearance Contracts
 
 - Status: Complete
 - Phase: [Phase 0](README.md)
@@ -9,23 +9,22 @@
 
 ## Goal
 
-Create deterministic screenshots of representative existing CC screens and UI
+Create deterministic assertions for representative existing CC screens and UI
 states so later design-system work can distinguish intentional changes from
-regressions.
+regressions without platform-specific image baselines.
 
 ## Context
 
 Global element defaults, token normalization, component wrappers, and theme
-bridges can affect many screens at once. CC currently has no committed
-`toHaveScreenshot` baseline suite. Phase 0 must establish a focused suite before
-foundation styles change.
+bridges can affect many screens at once. The original Phase 0 implementation
+used committed macOS Chromium screenshots. That mechanism was retired because
+CI runs Linux and binary baselines added noisy, platform-specific maintenance.
 
 The baseline records the current application, not the generated design project.
 The current `light` and `dark` visuals are the protected source inputs for the
 future `Default` theme's resolved modes. `modern` is scheduled for removal and
 must be inventoried for safe migration, not frozen as a long-term visual
-contract. `system` will resolve to the same light or dark output and therefore
-does not require a third screenshot palette.
+contract. `system` resolves to the same asserted light or dark contract.
 
 ## Scope
 
@@ -41,8 +40,7 @@ approved DS-0002 baseline policy, including:
   Markdown fixture from DS-0005.
 - Representative file-manager, terminal, editor, and integration surfaces where
   stable fixture data is practical.
-- Focus-visible and selected states where a static screenshot can represent
-  them reliably.
+- Focus-visible and selected states with observable DOM/interaction contracts.
 
 Use stable API interception and fixed fixture data. Disable or normalize
 animations, timestamps, random IDs, caret blinking, and other nondeterministic
@@ -51,18 +49,17 @@ output within the baseline tests.
 ## Required deliverables
 
 1. Create `artifacts/application-visual-baseline-manifest.md` containing each
-   baseline ID, route, fixture state, viewport, current source mode, future
-   `Default` mapping, covered contracts, known nondeterminism controls, and
-   screenshot path.
-2. Add focused Playwright visual tests under
+   contract ID, route, fixture state, viewport, current source mode, future
+   `Default` mapping, covered contracts, and assertion owner.
+2. Add focused Playwright appearance/behavior tests under
    `packages/frontend/e2e/design-system/application-baseline.spec.ts`.
-3. Commit the corresponding Playwright snapshot files for current light and dark
-   modes at the agreed narrow and wide viewports.
+3. Assert semantic theme roles, representative surfaces, focus, overlay roles,
+   and narrow/wide containment without committed screenshots.
 4. Record any screen that cannot be made deterministic and the exact blocker;
    do not silently omit it.
 5. Record `modern` matches and migration-sensitive differences in the manifest.
    A minimal removal reference may be captured when useful, but it is not a
-   protected visual baseline and must not multiply the screenshot matrix.
+   protected appearance contract and must not multiply the fixture matrix.
 
 ## Blockers and dependencies
 
@@ -71,13 +68,13 @@ output within the baseline tests.
 
 ## Acceptance criteria
 
-- [x] The manifest maps every screenshot to one or more contracts from DS-0001.
+- [x] The manifest maps every fixture to one or more contracts from DS-0001.
 - [x] Current `light` and `dark` are covered by every mode-sensitive fixture and
       map explicitly to `Default + light` and `Default + dark`.
 - [x] `modern` is documented as removal-only and is not treated as a protected
       visual variant.
 - [x] `system` is verified by behavior in Phase 1 and reuses the resolved
-      light/dark baselines rather than creating a third palette.
+      light/dark assertions rather than creating a third palette.
 - [x] Both narrow and wide layouts are represented for responsive contracts.
 - [x] Fixture APIs and data are deterministic and do not depend on a developer's
       workspace contents.
@@ -87,17 +84,11 @@ output within the baseline tests.
       loading, warning, success, error, modal, and destructive states.
 - [x] The suite records current CC visuals without importing assets or styling
       from the generated design project.
-- [x] Two consecutive verification runs produce no screenshot diffs.
+- [x] Two consecutive deterministic verification runs pass.
 
 ## Verification tests
 
-Generate the initial reviewed baselines once:
-
-```bash
-pnpm --filter @cc/frontend exec playwright test e2e/design-system/application-baseline.spec.ts --update-snapshots
-```
-
-Then run the suite twice without updating snapshots:
+Run the suite twice:
 
 ```bash
 pnpm --filter @cc/frontend exec playwright test e2e/design-system/application-baseline.spec.ts
@@ -112,13 +103,13 @@ pnpm --filter @cc/frontend lint
 pnpm exec prettier --check plans/design-system/phase-0/artifacts/application-visual-baseline-manifest.md packages/frontend/e2e/design-system/application-baseline.spec.ts
 ```
 
-Manually review each initial screenshot against the running current application
-before accepting it. Snapshot generation alone is not approval.
+Manually review the running fixtures when an intentional visual direction
+changes; automated assertions own stable semantics, layout, and behavior.
 
 ## Out of scope
 
 - Approving a new visual direction.
 - Building the full Phase 2 component gallery.
 - Testing every page or every responsive breakpoint.
-- Updating baselines to hide unexplained differences.
+- Weakening assertions to hide unexplained differences.
 - Preserving `modern` as a selectable or protected theme.

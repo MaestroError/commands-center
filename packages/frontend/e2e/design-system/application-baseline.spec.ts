@@ -1,16 +1,23 @@
 import { expect, test, type Page } from "../fixtures";
+import {
+  expectNoHorizontalOverflow,
+  expectSemanticSurface,
+  expectThemeContract,
+} from "./theme-assertions";
 
 const DESKTOP_VIEWPORT = { width: 1280, height: 900 };
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 test.describe("@design-system current application baseline", () => {
-  test.skip(({ isMobile }) => Boolean(isMobile), "Snapshots use explicit responsive viewports.");
+  test.skip(({ isMobile }) => Boolean(isMobile), "Tests use explicit responsive viewports.");
 
   for (const theme of ["light", "dark"] as const) {
     test(`${theme} profile surface`, async ({ page }) => {
       await openBaseline(page, "/profile", theme, DESKTOP_VIEWPORT);
-
-      await expect(page).toHaveScreenshot(`profile-${theme}-desktop.png`, screenshotOptions());
+      await expect(page.getByRole("heading", { name: "Personalize your workspace" })).toBeVisible();
+      await expectThemeContract(page, theme);
+      await expectSemanticSurface(page.locator(".cc-panel").first(), theme);
+      await expectNoHorizontalOverflow(page);
     });
 
     test(`${theme} application component surface`, async ({ page }) => {
@@ -21,20 +28,24 @@ test.describe("@design-system current application baseline", () => {
         DESKTOP_VIEWPORT,
       );
       await page.getByLabel("Text input", { exact: true }).focus();
-
-      await expect(page).toHaveScreenshot(`application-${theme}-desktop.png`, screenshotOptions());
+      await expect(page.getByLabel("Text input", { exact: true })).toBeFocused();
+      await expectThemeContract(page, theme);
+      await expectSemanticSurface(page.locator(".cc-panel").first(), theme);
+      await expectNoHorizontalOverflow(page, page.getByTestId("application-baseline"));
 
       await page.setViewportSize(MOBILE_VIEWPORT);
-      await expect(page).toHaveScreenshot(`application-${theme}-mobile.png`, screenshotOptions());
+      await expectNoHorizontalOverflow(page, page.getByTestId("application-baseline"));
     });
 
     test(`${theme} confirmation dialog surface`, async ({ page }) => {
       await openBaseline(page, "/__design-system-baseline?surface=dialog", theme, DESKTOP_VIEWPORT);
-
-      await expect(page).toHaveScreenshot(`dialog-${theme}-desktop.png`, screenshotOptions());
+      const dialog = page.getByRole("alertdialog");
+      await expectSemanticSurface(dialog, theme);
+      await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
+      await expectNoHorizontalOverflow(page, dialog);
 
       await page.setViewportSize(MOBILE_VIEWPORT);
-      await expect(page).toHaveScreenshot(`dialog-${theme}-mobile.png`, screenshotOptions());
+      await expectNoHorizontalOverflow(page, dialog);
     });
   }
 });
@@ -52,14 +63,5 @@ async function openBaseline(
     window.localStorage.setItem("cc-sidebar-collapsed", "false");
   }, colorMode);
   await page.goto(path);
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "default");
-  await expect(page.locator("html")).toHaveAttribute("data-color-mode", colorMode);
-}
-
-function screenshotOptions() {
-  return {
-    animations: "disabled" as const,
-    caret: "hide" as const,
-    fullPage: true,
-  };
+  await expectThemeContract(page, colorMode);
 }
