@@ -1,6 +1,6 @@
 # DSM-004 — Normalize Semantic Base-Selector Specificity
 
-- Status: Planned
+- Status: Complete
 - Program: [Design-System Maintenance](README.md)
 - Foundation reference:
   [Semantic base-element contract](../design-system-foundation.md#2-give-unclassed-html-a-global-cc-appearance)
@@ -57,27 +57,27 @@ migrations and must be a no-visual-change cleanup.
 
 ## Acceptance criteria
 
-- [ ] Every changed selector is mapped from its previous form and retains the
+- [x] Every changed selector is mapped from its previous form and retains the
       same target elements, parent conditions, protected scopes, and pseudo-
       element behavior.
-- [ ] The element-targeting compound of generic base selectors has the agreed
+- [x] The element-targeting compound of generic base selectors has the agreed
       zero-specificity `:where(...)` contract; pseudo-elements contribute only
       their unavoidable type specificity.
-- [ ] No selector relies on a higher-specificity `:not(...)` chain outside the
+- [x] No selector relies on a higher-specificity `:not(...)` chain outside the
       low-specificity wrapper merely to enforce protected-scope exclusions.
-- [ ] Explicit Tailwind utilities and component classes continue to win through
+- [x] Explicit Tailwind utilities and component classes continue to win through
       the intended cascade-layer contract.
-- [ ] `.cc-md` and `.cc-md--chat` retain their existing reader/chat appearance
+- [x] `.cc-md` and `.cc-md--chat` retain their existing reader/chat appearance
       with no intentional visual change.
-- [ ] Milkdown/Crepe, Monaco, xterm, classed lists/tables, and nested component
+- [x] Milkdown/Crepe, Monaco, xterm, classed lists/tables, and nested component
       content remain excluded from generic defaults.
-- [ ] Unclassed semantic HTML retains typography, spacing, markers, overflow,
+- [x] Unclassed semantic HTML retains typography, spacing, markers, overflow,
       link/focus treatment, and table behavior in Default light/dark.
-- [ ] Narrow content at 320px/390px does not overflow and explicit responsive
+- [x] Narrow content at 320px/390px does not overflow and explicit responsive
       utilities retain precedence.
-- [ ] No new dependency, selector framework, compatibility class, or token is
+- [x] No new dependency, selector framework, compatibility class, or token is
       introduced for the cleanup.
-- [ ] The design-system audit and all semantic/protected-content tests pass
+- [x] The design-system audit and all semantic/protected-content tests pass
       without weakening an existing rule or updating appearance baselines.
 
 ## Verification tests
@@ -95,6 +95,32 @@ migrations and must be a no-visual-change cleanup.
   and `pnpm design-system:audit`.
 - Run a production marker search to confirm development fixtures remain
   excluded.
+
+## Completion evidence
+
+- The inventory maps all 33 semantic selectors from their previous form to the
+  normalized contract. Ordinary subjects are `(0,0,0)` and only `::marker`
+  contributes unavoidable type specificity.
+- A focused computed-style run exposed Tailwind Preflight precedence for
+  headings, links, lists, and small text. The explicit
+  `theme, base, cc-semantic, components, utilities` order now places CC
+  semantic defaults after Preflight while leaving components and utilities
+  authoritative.
+- The audit contains 27 passing source-contract cases and rejects bare semantic
+  selectors or protected-scope exclusions outside `:where(...)`.
+- Seventeen focused Phase 1 Chromium checks cover semantic categories,
+  utility/class exclusions, narrow containment, and Default light/dark. The
+  protected Markdown and Milkdown suite remains green without appearance
+  baseline updates.
+- Design-system Playwright passed twice with 56 desktop checks per run. The full
+  E2E suite passed 166 tests with 56 intentionally skipped mobile duplicates.
+- Full workspace tests passed, including 137 backend files/1,252 tests, 148
+  frontend files/1,443 tests, and 14 shared files/205 tests. ESLint fix/check,
+  typecheck, Prettier, Knip, production builds, `git diff --check`, and the
+  design-system audit also pass.
+- Manual browser inspection covered unclassed semantic HTML, protected reader
+  and chat Markdown, and Milkdown in Default light and dark. Production bundles
+  contain none of the development fixture markers outside source maps.
 
 ## Out of scope
 

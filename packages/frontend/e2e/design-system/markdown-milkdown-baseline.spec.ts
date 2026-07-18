@@ -40,7 +40,9 @@ test.describe("@design-system protected content baselines", () => {
       const baseline = page.getByTestId("semantic-baseline");
       await expectSemanticSurface(baseline, theme);
       await expect(page.getByTestId("unclassed-html").getByRole("heading").first()).toBeVisible();
-      await expect(page.getByTestId("unclassed-html").getByRole("table")).toBeVisible();
+      await expect(
+        page.getByTestId("unclassed-html").getByRole("table", { name: "Plain semantic table" }),
+      ).toBeVisible();
       await expectNoHorizontalOverflow(page, baseline);
 
       await page.setViewportSize(MOBILE_VIEWPORT);

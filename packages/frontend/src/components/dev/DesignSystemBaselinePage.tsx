@@ -601,6 +601,12 @@ function SemanticHtmlBaseline() {
           <li>First ordered item</li>
           <li>Second ordered item</li>
         </ol>
+        <dl>
+          <dt>Semantic owner</dt>
+          <dd>CC base layer</dd>
+          <dt>Theme contract</dt>
+          <dd>Default light and dark</dd>
+        </dl>
         <blockquote>
           A plain blockquote should eventually feel native to CC without requiring a class.
         </blockquote>
@@ -631,6 +637,7 @@ function SemanticHtmlBaseline() {
             </tr>
           </tfoot>
         </table>
+        <img alt="CC semantic baseline" height="32" src="/favicon-32x32.png" width="32" />
         <hr />
         <p>
           Final paragraph after the horizontal rule with a
@@ -647,6 +654,20 @@ function SemanticHtmlBaseline() {
           <a className="mt-2 inline-flex text-danger" href="#semantic-cascade-control">
             Explicitly styled control link
           </a>
+          <ul className="m-0 list-none p-0" data-testid="classed-list-control">
+            <li>Unclassed item inside a classed list</li>
+          </ul>
+          <dl className="mt-2 block" data-testid="classed-description-list-control">
+            <dt>Classed description term</dt>
+            <dd>Classed description value</dd>
+          </dl>
+          <table className="mt-2 table" data-testid="classed-table-control">
+            <tbody>
+              <tr>
+                <td className="border-0 p-0">Explicitly styled table cell</td>
+              </tr>
+            </tbody>
+          </table>
         </section>
       </div>
     </section>

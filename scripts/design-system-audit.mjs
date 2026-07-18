@@ -75,6 +75,7 @@ export function auditSources(inputSources) {
   const productionSources = [...sources].filter(([file]) => isProductionSource(file));
 
   auditRequiredPaths(sources, violations);
+  auditBaseSelectorSpecificity(sources, violations);
   auditInlineSvg(productionSources, violations);
   auditRawThemeRoles(productionSources, violations);
   auditCustomDialogs(productionSources, violations);
@@ -166,6 +167,91 @@ function auditRequiredPaths(sources, violations) {
       );
     }
   }
+}
+
+function auditBaseSelectorSpecificity(sources, violations) {
+  const file = "packages/frontend/src/styles/globals.css";
+  const source = sources.get(file) ?? "";
+  const layerOrder = "@layer theme, base, cc-semantic, components, utilities;";
+  if (source.includes('@import "tailwindcss"') && !source.trimStart().startsWith(layerOrder)) {
+    addViolation(
+      violations,
+      "DS009",
+      file,
+      "semantic layer is not ordered between Tailwind base and components",
+      "Declare theme, base, cc-semantic, components, utilities before importing Tailwind.",
+    );
+  }
+
+  const selectors = readLayerSelectors(source, "@layer cc-semantic");
+
+  for (const selector of selectors) {
+    const outsideWhere = removeWhereFunctions(selector).replaceAll(/\s+/g, "");
+    if (["", "+", "::marker", ":focus-visible"].includes(outsideWhere)) {
+      continue;
+    }
+    addViolation(
+      violations,
+      "DS009",
+      file,
+      `semantic selector has specificity outside :where(): ${selector.replaceAll(/\s+/g, " ")}`,
+      "Keep semantic element targets and exclusions inside :where(); only combinators, ::marker, and :focus-visible may remain outside.",
+    );
+  }
+}
+
+function readLayerSelectors(source, layerName) {
+  const layerStart = source.indexOf(layerName);
+  if (layerStart === -1) {
+    return [];
+  }
+  const bodyStart = source.indexOf("{", layerStart + layerName.length);
+  if (bodyStart === -1) {
+    return [];
+  }
+
+  const selectors = [];
+  let ruleStart = bodyStart + 1;
+  for (let index = bodyStart + 1; index < source.length; index += 1) {
+    if (source[index] !== "{") {
+      if (source[index] === "}") {
+        return selectors;
+      }
+      continue;
+    }
+
+    selectors.push(source.slice(ruleStart, index).trim());
+    index = findClosingParenthesisOrBrace(source, index, "{", "}");
+    ruleStart = index + 1;
+  }
+  return selectors;
+}
+
+function removeWhereFunctions(selector) {
+  let result = "";
+  for (let index = 0; index < selector.length; index += 1) {
+    if (!selector.startsWith(":where(", index)) {
+      result += selector[index];
+      continue;
+    }
+    index = findClosingParenthesisOrBrace(selector, index + 6, "(", ")");
+  }
+  return result;
+}
+
+function findClosingParenthesisOrBrace(source, openingIndex, opening, closing) {
+  let depth = 0;
+  for (let index = openingIndex; index < source.length; index += 1) {
+    if (source[index] === opening) {
+      depth += 1;
+    } else if (source[index] === closing) {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+  return source.length - 1;
 }
 
 function auditInlineSvg(productionSources, violations) {

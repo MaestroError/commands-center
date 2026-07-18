@@ -1,6 +1,6 @@
 # Design-System Maintenance Program
 
-- Status: In progress
+- Status: Complete
 - Parent: [CC Design System Foundation](../design-system-foundation.md)
 - Contributor contract: [CC Design System](../../docs/design-system/README.md)
 
@@ -33,7 +33,7 @@ real consumers, and finally a no-visual-change selector cleanup.
 | DSM-001 | [Close retained custom-overlay accessibility debt](01-overlay-accessibility.md)       | None       | Complete |
 | DSM-002 | [Deepen Button and Input adoption](02-button-input-adoption.md)                       | DSM-001    | Complete |
 | DSM-003 | [Add deferred primitives only for proven consumers](03-consumer-driven-primitives.md) | DSM-002    | Complete |
-| DSM-004 | [Normalize semantic base-selector specificity](04-base-selector-specificity.md)       | DSM-003    | Planned  |
+| DSM-004 | [Normalize semantic base-selector specificity](04-base-selector-specificity.md)       | DSM-003    | Complete |
 
 The order is intentional. Overlay migration closes correctness and accessibility
 risk first. That work also removes some direct button/input compatibility

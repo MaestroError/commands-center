@@ -35,6 +35,18 @@ low-specificity CC defaults. Explicit Tailwind utilities and component classes
 continue to win. Use unclassed content when markup should naturally look like
 CC-authored document content.
 
+Keep each generic element target, its `[class]` guard, and protected-surface
+exclusions inside the same `:where(...)` wrapper. Multi-element targets use
+`:is(...)` inside `:where(...)` so the shared exclusions still apply to every
+element. Combinators may connect zero-specificity wrappers; only behavior
+pseudo-classes such as `:focus-visible` and pseudo-elements such as `::marker`
+remain outside. The design-system audit enforces this source contract.
+
+These rules live in the `cc-semantic` cascade layer, explicitly ordered after
+Tailwind's `base`/Preflight layer and before `components` and `utilities`. This
+lets zero-specificity CC defaults replace Preflight while keeping every
+component class and explicit utility authoritative.
+
 ## Protected Markdown
 
 Rendered chat, task, and activity Markdown uses the shared `Markdown`

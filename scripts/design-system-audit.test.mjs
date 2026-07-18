@@ -26,6 +26,42 @@ test("accepts the isolated approved baseline", () => {
   assert.deepEqual(auditSources(validSources()).violations, []);
 });
 
+test("accepts semantic base exclusions contained by zero-specificity wrappers", () => {
+  const sources = validSources();
+  sources.set(
+    GLOBALS_PATH,
+    `${sources.get(GLOBALS_PATH)}\n@layer cc-semantic {
+      :where(p:not([class]):not(.cc-md *)) { color: inherit; }
+      :where(p:not([class])) + :where(p:not([class])) { margin-top: 1rem; }
+      :where(li:not([class]))::marker { color: var(--accent); }
+      :where(a, button):focus-visible { outline: solid; }
+    }`,
+  );
+  assert.deepEqual(auditSources(sources).violations, []);
+});
+
+test("rejects semantic base exclusions outside zero-specificity wrappers", () => {
+  const sources = validSources();
+  sources.set(
+    GLOBALS_PATH,
+    `${sources.get(GLOBALS_PATH)}\n@layer cc-semantic {
+      :where(p):not([class]) { color: inherit; }
+    }`,
+  );
+  assert.deepEqual(rulesFor(sources), ["DS009"]);
+});
+
+test("rejects a bare semantic base selector", () => {
+  const sources = validSources();
+  sources.set(
+    GLOBALS_PATH,
+    `${sources.get(GLOBALS_PATH)}\n@layer cc-semantic {
+      p { color: inherit; }
+    }`,
+  );
+  assert.deepEqual(rulesFor(sources), ["DS009"]);
+});
+
 test("rejects an unapproved inline SVG", () => {
   const sources = validSources();
   sources.set("packages/frontend/src/components/NewIcon.tsx", "export const icon = <svg />;");
