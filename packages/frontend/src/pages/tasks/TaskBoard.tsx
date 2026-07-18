@@ -54,6 +54,8 @@ import {
   readTaskCardIconActionClassName,
   taskCardActionTestId,
 } from "./task-helpers";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function TaskBoard(props: {
   tasks: Task[];
@@ -364,9 +366,8 @@ export function TaskScheduleDropDialog(props: {
         </div>
         <label className="grid gap-1 text-sm text-text-secondary">
           Schedule for
-          <input
+          <Input
             autoFocus
-            className="cc-input"
             required
             type="datetime-local"
             value={scheduledAtLocal}
@@ -374,17 +375,12 @@ export function TaskScheduleDropDialog(props: {
           />
         </label>
         <div className="flex flex-wrap justify-end gap-2">
-          <button
-            className="cc-button cc-button-secondary"
-            disabled={props.busy}
-            onClick={props.onCancel}
-            type="button"
-          >
+          <Button variant="secondary" disabled={props.busy} onClick={props.onCancel} type="button">
             Cancel
-          </button>
-          <button className="cc-button" disabled={props.busy || !scheduledAtLocal} type="submit">
+          </Button>
+          <Button disabled={props.busy || !scheduledAtLocal} type="submit">
             Schedule task
-          </button>
+          </Button>
         </div>
       </form>
     </div>

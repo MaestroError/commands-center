@@ -33,6 +33,8 @@ import {
 import { readRecentSpecialists } from "@/lib/recent-specialists";
 
 import { ThemeMenu } from "./ThemeMenu";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "cc-sidebar-collapsed";
 const FIRST_RUN_ENV_NOTICE_STORAGE_KEY = "cc-first-run-env-notice-dismissed";
@@ -184,7 +186,10 @@ export function AppShell() {
                 <ActivityBell />
                 <NavLink
                   aria-label="Profile"
-                  className="cc-button cc-button-secondary h-9 w-9 rounded-md px-0 sm:w-auto sm:px-4"
+                  className={buttonVariants({
+                    variant: "secondary",
+                    className: "h-9 w-9 rounded-md px-0 sm:w-auto sm:px-4",
+                  })}
                   to="/profile"
                 >
                   <UserRound aria-hidden="true" className="h-4 w-4 sm:hidden" />
@@ -258,8 +263,9 @@ function FirstRunEnvNotice(props: {
           </div>
           <div className="flex justify-end gap-2">
             {props.secretKey ? (
-              <button
-                className="cc-button cc-button-secondary inline-flex items-center gap-2"
+              <Button
+                variant="secondary"
+                className="inline-flex items-center gap-2"
                 disabled={!clipboardAvailable}
                 onClick={() => void copyKey()}
                 title={clipboardAvailable ? "Copy key" : "Clipboard is unavailable"}
@@ -267,11 +273,11 @@ function FirstRunEnvNotice(props: {
               >
                 {copied ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
                 {copied ? "Copied" : "Copy"}
-              </button>
+              </Button>
             ) : null}
-            <button className="cc-button" onClick={props.onClose} type="button">
+            <Button onClick={props.onClose} type="button">
               I saved it
-            </button>
+            </Button>
           </div>
         </div>
       </DialogContent>

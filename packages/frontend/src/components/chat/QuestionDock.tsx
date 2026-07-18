@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 
 type QuestionOption = {
   label: string;
@@ -130,12 +131,12 @@ export function QuestionDock({ question, onReply, onReject }: QuestionDockProps)
       })}
 
       <div className="flex items-center gap-2 pt-1">
-        <button type="button" className="cc-button" onClick={handleSubmit}>
+        <Button type="button" onClick={handleSubmit}>
           Submit
-        </button>
-        <button type="button" className="cc-button-secondary" onClick={handleDismiss}>
+        </Button>
+        <Button type="button" onClick={handleDismiss} variant="secondary">
           Dismiss
-        </button>
+        </Button>
       </div>
     </div>
   );

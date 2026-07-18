@@ -27,6 +27,8 @@ import {
   usePersistentTaskContextOpen,
   usePersistentTaskSectionOpen,
 } from "./task-helpers";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
 
 export function TaskSubtasksSection(props: {
   agents: Specialist[];
@@ -149,7 +151,10 @@ export function TaskRunsSection(props: {
         </p>
       ) : null}
       {props.activeRun ? (
-        <Link className="cc-button w-fit" to={`/tasks/${props.taskId}/runs/${props.activeRun.id}`}>
+        <Link
+          className={buttonVariants({ className: "w-fit" })}
+          to={`/tasks/${props.taskId}/runs/${props.activeRun.id}`}
+        >
           {props.activeRun.status === "running" ? "View active run" : "View queued run"}
         </Link>
       ) : null}
@@ -244,22 +249,17 @@ export function TaskContextPanelSection(props: {
                 />
               </label>
               <div className="flex flex-wrap gap-2">
-                <button
-                  className="cc-button"
-                  disabled={props.isSaving}
-                  onClick={handleSaveText}
-                  type="button"
-                >
+                <Button disabled={props.isSaving} onClick={handleSaveText} type="button">
                   {props.isSaving ? "Saving..." : "Save context"}
-                </button>
-                <button
-                  className="cc-button cc-button-secondary"
+                </Button>
+                <Button
+                  variant="secondary"
                   disabled={props.isSaving}
                   onClick={handleCancelText}
                   type="button"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
@@ -277,7 +277,9 @@ export function TaskContextPanelSection(props: {
           )}
 
           <div className="flex flex-wrap gap-2">
-            <label className="cc-button cc-button-secondary cursor-pointer">
+            <label
+              className={buttonVariants({ variant: "secondary", className: "cursor-pointer" })}
+            >
               Add attachment
               <input
                 accept=".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.gif"
@@ -414,11 +416,11 @@ export function TaskTodosPanelSection(props: { task: Task }) {
                 </p>
               ) : null}
               <div className="flex flex-wrap gap-2">
-                <button className="cc-button" disabled={mutations.update.isPending} type="submit">
+                <Button disabled={mutations.update.isPending} type="submit">
                   {mutations.update.isPending ? "Saving..." : "Save"}
-                </button>
-                <button
-                  className="cc-button cc-button-secondary"
+                </Button>
+                <Button
+                  variant="secondary"
                   disabled={mutations.update.isPending}
                   onClick={() => {
                     setTodosText(formatTodoItemsText(props.task));
@@ -427,7 +429,7 @@ export function TaskTodosPanelSection(props: { task: Task }) {
                   type="button"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </form>
           ) : (
@@ -438,13 +440,9 @@ export function TaskTodosPanelSection(props: { task: Task }) {
               </p>
               <AcceptanceCriteriaList interactive task={props.task} />
               <div>
-                <button
-                  className="cc-button cc-button-secondary"
-                  onClick={() => setIsEditing(true)}
-                  type="button"
-                >
+                <Button variant="secondary" onClick={() => setIsEditing(true)} type="button">
                   Edit criteria
-                </button>
+                </Button>
               </div>
             </div>
           )}

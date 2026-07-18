@@ -41,6 +41,7 @@ import {
   createTaskPrefillFromUserMessage,
   type TaskCreationPrefill,
 } from "@/services/task-prefill-service";
+import { Button } from "@/components/ui/button";
 
 const DevDebugPanel = import.meta.env.DEV
   ? lazy(() => import("@/components/dev/DevDebugPanel").then((m) => ({ default: m.DevDebugPanel })))
@@ -501,18 +502,14 @@ export function WorkspaceChatPage() {
             </AlertDialogDescription>
             <AlertDialogFooter className="mt-5">
               <AlertDialogCancel asChild>
-                <button autoFocus className="cc-button cc-button-secondary" type="button">
+                <Button variant="secondary" autoFocus type="button">
                   Cancel
-                </button>
+                </Button>
               </AlertDialogCancel>
               <AlertDialogAction asChild>
-                <button
-                  className="cc-button"
-                  onClick={handleConfirmAttachmentWarning}
-                  type="button"
-                >
+                <Button onClick={handleConfirmAttachmentWarning} type="button">
                   Continue without attachments
-                </button>
+                </Button>
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

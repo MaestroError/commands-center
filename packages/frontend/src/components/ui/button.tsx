@@ -1,32 +1,15 @@
 import { forwardRef } from "react";
-import { cva, type VariantProps } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
 
+import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/cn";
 
 /**
  * Typed entry point to CC's existing `cc-button*` visual contract. The
  * compatibility classes in styles/globals.css remain the single source of
- * truth for appearance; this primitive only selects among them and preserves
- * native <button> semantics. Class-only `cc-button` consumers are unaffected.
+ * truth for appearance; this primitive selects among them and preserves native
+ * <button> semantics. Link-like consumers use the adjacent buttonVariants API.
  */
-const buttonVariants = cva("cc-button", {
-  variants: {
-    variant: {
-      primary: "",
-      secondary: "cc-button-secondary",
-      danger: "cc-button-danger",
-    },
-    size: {
-      default: "",
-      icon: "cc-button-icon",
-    },
-  },
-  defaultVariants: {
-    variant: "primary",
-    size: "default",
-  },
-});
-
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
   VariantProps<typeof buttonVariants>;
 

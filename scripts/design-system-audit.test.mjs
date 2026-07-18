@@ -41,6 +41,24 @@ test("rejects a raw Tailwind palette role", () => {
   assert.deepEqual(rulesFor(sources), ["DS002"]);
 });
 
+test("rejects a raw foreground on an accent control", () => {
+  const sources = validSources();
+  sources.set(
+    "packages/frontend/src/components/RawAccentForeground.tsx",
+    'export const value = <button className="bg-accent text-white" />;',
+  );
+  assert.deepEqual(rulesFor(sources), ["DS002"]);
+});
+
+test("rejects the undefined accent-contrast utility", () => {
+  const sources = validSources();
+  sources.set(
+    "packages/frontend/src/components/UndefinedAccentForeground.tsx",
+    'export const value = <button className="bg-accent text-accent-contrast" />;',
+  );
+  assert.deepEqual(rulesFor(sources), ["DS002"]);
+});
+
 test("rejects a new custom dialog signature", () => {
   const sources = validSources();
   sources.set(
@@ -64,6 +82,60 @@ test("rejects growth in a retained compatibility class", () => {
   sources.set(
     "packages/frontend/src/components/ExtraPanels.tsx",
     `export const panels = "${"cc-panel ".repeat(86)}";`,
+  );
+  assert.deepEqual(rulesFor(sources), ["DS004"]);
+});
+
+test("rejects a direct domain button compatibility consumer below the global ratchet", () => {
+  const sources = validSources();
+  sources.set(
+    "packages/frontend/src/components/NewAction.tsx",
+    'export const action = <button className="cc-button" />;',
+  );
+  assert.deepEqual(rulesFor(sources), ["DS004"]);
+});
+
+test("accepts compatibility ownership inside the typed primitive layer", () => {
+  const sources = validSources();
+  sources.set(
+    "packages/frontend/src/components/ui/button-variants.ts",
+    'export const classes = "cc-button cc-button-secondary";',
+  );
+  assert.deepEqual(auditSources(sources).violations, []);
+});
+
+test("accepts an exact deferred textarea consumer", () => {
+  const sources = validSources();
+  sources.set(
+    "packages/frontend/src/components/chat/QuestionDock.tsx",
+    'export const field = <textarea className="cc-input" />;',
+  );
+  assert.deepEqual(auditSources(sources).violations, []);
+});
+
+test("rejects an ordinary input in a deferred textarea path", () => {
+  const sources = validSources();
+  sources.set(
+    "packages/frontend/src/components/chat/QuestionDock.tsx",
+    'export const field = <input className="cc-input" />;',
+  );
+  assert.deepEqual(rulesFor(sources), ["DS004"]);
+});
+
+test("rejects growth in a deferred textarea path", () => {
+  const sources = validSources();
+  sources.set(
+    "packages/frontend/src/components/chat/QuestionDock.tsx",
+    'export const fields = <><textarea className="cc-input" /><textarea className="cc-input" /></>;',
+  );
+  assert.deepEqual(rulesFor(sources), ["DS004"]);
+});
+
+test("rejects a direct native select consumer", () => {
+  const sources = validSources();
+  sources.set(
+    "packages/frontend/src/components/DomainFilter.tsx",
+    'export const filter = <select aria-label="Filter" />;',
   );
   assert.deepEqual(rulesFor(sources), ["DS004"]);
 });

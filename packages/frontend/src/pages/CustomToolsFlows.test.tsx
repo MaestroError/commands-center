@@ -79,8 +79,8 @@ describe("custom tools flow", () => {
 
     const user = userEvent.setup();
     await screen.findByRole("heading", { name: "Global tools" });
-    await screen.findByRole("option", { name: "Writer" });
-    await user.selectOptions(screen.getByRole("combobox"), "agent-1");
+    await user.click(screen.getByRole("combobox", { name: "Specialist tools" }));
+    await user.click(await screen.findByRole("option", { name: "Writer" }));
     await user.click(screen.getByRole("button", { name: ">>" }));
 
     await screen.findByText("Tool name conflict");

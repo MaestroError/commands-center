@@ -4,6 +4,7 @@ import { Copy, Link2, X } from "lucide-react";
 import type { Artifact, CreateArtifactShareLinkResponse } from "@cc/shared/schemas";
 
 import { useTaskMutations } from "@/hooks/use-tasks-query";
+import { Button } from "@/components/ui/button";
 
 type ArtifactShareControlsProps = {
   artifact: Artifact;
@@ -87,15 +88,16 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
   return (
     <div className="mt-3 grid gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          className="cc-button cc-button-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+        <Button
+          variant="secondary"
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-xs"
           disabled={busy}
           onClick={() => void createLink()}
           type="button"
         >
           <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
           {hasActiveShare ? "Replace signed links" : "Create signed links"}
-        </button>
+        </Button>
       </div>
       {createdLinks ? (
         <div
@@ -132,15 +134,16 @@ export function ArtifactShareControls(props: ArtifactShareControlsProps) {
                   : "Link does not expire"}{" "}
                 · {link.downloadCount} download{link.downloadCount === 1 ? "" : "s"}
               </span>
-              <button
-                className="cc-button cc-button-secondary inline-flex items-center gap-1 px-2 py-1 text-xs"
+              <Button
+                variant="secondary"
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs"
                 disabled={busy}
                 onClick={() => void revokeLink(link.id)}
                 type="button"
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
                 Revoke
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
@@ -164,15 +167,16 @@ function GeneratedLinkRow(props: {
       {props.showUrl ? (
         <span className="break-all text-text-muted [overflow-wrap:anywhere]">{props.url}</span>
       ) : null}
-      <button
+      <Button
+        variant="secondary"
         aria-label={props.copied ? `${props.label} copied` : `Copy ${props.label}`}
-        className="cc-button cc-button-secondary inline-flex w-fit items-center gap-1 px-2 py-1 text-xs"
+        className="inline-flex w-fit items-center gap-1 px-2 py-1 text-xs"
         onClick={props.onCopy}
         type="button"
       >
         <Copy className="h-3.5 w-3.5" aria-hidden="true" />
         {props.copied ? "Copied" : "Copy"}
-      </button>
+      </Button>
     </div>
   );
 }

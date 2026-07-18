@@ -497,7 +497,7 @@ function SpecialistMentionPopover(props: {
         <button
           className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
             index === activeIndex
-              ? "bg-accent text-accent-contrast"
+              ? "bg-accent text-on-accent"
               : "text-text-primary hover:bg-surface"
           }`}
           data-testid={`task-specialist-mention-option-${agent.id}`}

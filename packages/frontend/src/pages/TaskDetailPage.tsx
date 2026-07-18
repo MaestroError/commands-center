@@ -36,6 +36,9 @@ import {
   TaskRunDetail,
   TextBlock,
 } from "./task-detail/task-run-detail";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 type TaskDetailPageProps = {
   mode?: "task" | "run";
@@ -135,9 +138,9 @@ function TaskOverview(props: {
                   );
                 }}
               >
-                <input
+                <Input
                   aria-label="Task title"
-                  className="cc-input min-w-0 flex-1 text-3xl font-semibold tracking-tight"
+                  className="min-w-0 flex-1 text-3xl font-semibold tracking-tight"
                   onChange={(event) => setTitleDraft(event.target.value)}
                   value={titleDraft}
                 />
@@ -189,26 +192,28 @@ function TaskOverview(props: {
           </div>
           {task ? (
             <div className="flex flex-wrap gap-2">
-              <Link className="cc-button cc-button-secondary" to={`/tasks${location.search}`}>
+              <Link
+                className={buttonVariants({ variant: "secondary" })}
+                to={`/tasks${location.search}`}
+              >
                 All tasks
               </Link>
-              <Link className="cc-button cc-button-secondary" to={`/tasks/${task.id}/edit`}>
+              <Link
+                className={buttonVariants({ variant: "secondary" })}
+                to={`/tasks/${task.id}/edit`}
+              >
                 Edit
               </Link>
-              <button
-                className="cc-button cc-button-secondary"
+              <Button
+                variant="secondary"
                 onClick={() => void handleDuplicateTask(task)}
                 type="button"
               >
                 Duplicate
-              </button>
-              <button
-                className="cc-button"
-                onClick={() => mutations.trigger.mutate({ id: task.id })}
-                type="button"
-              >
+              </Button>
+              <Button onClick={() => mutations.trigger.mutate({ id: task.id })} type="button">
                 Run now
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>

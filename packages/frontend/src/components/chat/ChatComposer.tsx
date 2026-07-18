@@ -17,6 +17,7 @@ import {
 } from "./file-mention";
 import { ModelSelector } from "./ModelSelector";
 import { SlashCommandPopover, type SlashCommand } from "./SlashCommandPopover";
+import { Button } from "@/components/ui/button";
 
 type ComposerMode = "normal" | "shell";
 
@@ -686,18 +687,18 @@ export function ChatComposer({
           />
 
           {isBusy ? (
-            <button type="button" className="cc-button cc-button-danger shrink-0" onClick={onAbort}>
+            <Button variant="danger" type="button" className="shrink-0" onClick={onAbort}>
               Stop
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
-              className="cc-button shrink-0"
+              className="shrink-0"
               disabled={disabled || (!text.trim() && mentionedFiles.length === 0 && !selectedSkill)}
               onClick={handleSend}
             >
               Send
-            </button>
+            </Button>
           )}
         </div>
         {/* Popovers */}

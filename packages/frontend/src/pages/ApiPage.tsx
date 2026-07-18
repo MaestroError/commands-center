@@ -22,6 +22,8 @@ import { useApiTokenMutations, useApiTokensQuery } from "@/hooks/use-api-tokens-
 import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import { useTaskTemplatesQuery } from "@/hooks/use-tasks-query";
 import { formatRepeatSummary, readAgentName } from "@/components/tasks/task-format";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 type TemplateOption = { id: string; title: string; specialistName: string; cadence: string };
 type SpecialistOption = { id: string; name: string; slug: string };
@@ -107,8 +109,9 @@ function TokensTab() {
             exactly the permissions each token needs.
           </p>
         </div>
-        <button
-          className="cc-button cc-button-secondary inline-flex items-center gap-2"
+        <Button
+          variant="secondary"
+          className="inline-flex items-center gap-2"
           onClick={() =>
             setForm((current) =>
               current.mode === "create" ? { mode: "closed" } : { mode: "create" },
@@ -118,7 +121,7 @@ function TokensTab() {
         >
           {form.mode === "create" ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
           {form.mode === "create" ? "Cancel" : "Create token"}
-        </button>
+        </Button>
       </div>
 
       {form.mode === "create" ? (
@@ -293,9 +296,8 @@ function TokenForm(props: {
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         <label className="grid h-fit gap-2 text-sm font-medium text-text-primary">
           Token name
-          <input
+          <Input
             autoComplete="off"
-            className="cc-input"
             data-testid="token-name-input"
             maxLength={100}
             onChange={(event) => setName(event.target.value)}
@@ -393,17 +395,12 @@ function TokenForm(props: {
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
 
       <div className="mt-5 flex flex-wrap justify-end gap-2">
-        <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+        <Button variant="secondary" onClick={props.onCancel} type="button">
           Cancel
-        </button>
-        <button
-          className="cc-button"
-          data-testid="token-submit"
-          disabled={!canSubmit}
-          type="submit"
-        >
+        </Button>
+        <Button data-testid="token-submit" disabled={!canSubmit} type="submit">
           {props.busy ? "Saving..." : props.submitLabel}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -536,8 +533,9 @@ function TokenRevealPanel(props: { reveal: CreateApiTokenResponse; onDismiss: ()
         {props.reveal.token}
       </code>
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button
-          className="cc-button cc-button-secondary inline-flex items-center gap-2"
+        <Button
+          variant="secondary"
+          className="inline-flex items-center gap-2"
           disabled={!clipboardAvailable}
           onClick={() => void copyToken()}
           title={clipboardAvailable ? "Copy token" : "Clipboard is unavailable"}
@@ -545,10 +543,10 @@ function TokenRevealPanel(props: { reveal: CreateApiTokenResponse; onDismiss: ()
         >
           {copied ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
           {copied ? "Copied" : "Copy"}
-        </button>
-        <button className="cc-button" onClick={props.onDismiss} type="button">
+        </Button>
+        <Button onClick={props.onDismiss} type="button">
           Done
-        </button>
+        </Button>
       </div>
     </section>
   );
@@ -596,33 +594,30 @@ function TokenCard(props: {
           </dl>
         </div>
         <div className="flex gap-2 justify-self-start lg:justify-self-end">
-          <button
-            className="cc-button cc-button-secondary inline-flex items-center gap-2"
+          <Button
+            variant="secondary"
+            className="inline-flex items-center gap-2"
             onClick={props.onViewActivity}
             type="button"
           >
             <ScrollText className="h-4 w-4" />
             Activity
-          </button>
+          </Button>
           {!revoked ? (
             <>
-              <button
-                className="cc-button cc-button-secondary inline-flex items-center gap-2"
+              <Button
+                variant="secondary"
+                className="inline-flex items-center gap-2"
                 disabled={props.busy}
                 onClick={props.onEdit}
                 type="button"
               >
                 <Pencil className="h-4 w-4" />
                 Edit
-              </button>
-              <button
-                className="cc-button cc-button-danger"
-                disabled={props.busy}
-                onClick={props.onRevoke}
-                type="button"
-              >
+              </Button>
+              <Button variant="danger" disabled={props.busy} onClick={props.onRevoke} type="button">
                 Revoke
-              </button>
+              </Button>
             </>
           ) : null}
         </div>
@@ -711,17 +706,17 @@ function RevokeTokenDialog(props: {
         </p>
         {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
         <div className="mt-6 flex flex-wrap gap-2">
-          <button
-            className="cc-button cc-button-danger"
+          <Button
+            variant="danger"
             disabled={props.busy}
             onClick={() => void confirm()}
             type="button"
           >
             {props.busy ? "Revoking..." : "Confirm revoke"}
-          </button>
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          </Button>
+          <Button variant="secondary" onClick={props.onClose} type="button">
             Cancel
-          </button>
+          </Button>
         </div>
       </section>
     </div>
@@ -805,8 +800,8 @@ function RetentionControl() {
     <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
       <label className="grid gap-1 text-sm text-text-primary">
         <span className="font-medium">Activity retention (weeks)</span>
-        <input
-          className="cc-input w-32"
+        <Input
+          className="w-32"
           data-testid="token-retention-input"
           disabled={saving}
           max={20}
@@ -819,8 +814,9 @@ function RetentionControl() {
       <span className="mb-2 text-xs text-text-secondary">
         Per-token request history is pruned after this window (1–20 weeks).
       </span>
-      <button
-        className="cc-button cc-button-secondary mb-1 ml-auto"
+      <Button
+        variant="secondary"
+        className="mb-1 ml-auto"
         disabled={saving || invalid}
         onClick={() => {
           setSaving(true);
@@ -831,7 +827,7 @@ function RetentionControl() {
         type="button"
       >
         {saving ? "Saving..." : "Save"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -872,9 +868,9 @@ function TokenActivityDialog(props: { token: ApiTokenRecord; onClose: () => void
       >
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold text-text-primary">Activity — {props.token.name}</h2>
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          <Button variant="secondary" onClick={props.onClose} type="button">
             Close
-          </button>
+          </Button>
         </div>
         <p className="mt-1 text-sm text-text-secondary">
           Requests made with this token (most recent first).
@@ -936,14 +932,14 @@ function TokenActivityDialog(props: { token: ApiTokenRecord; onClose: () => void
 
         {cursor ? (
           <div className="mt-4 flex justify-center">
-            <button
-              className="cc-button cc-button-secondary"
+            <Button
+              variant="secondary"
               disabled={loading}
               onClick={() => load(cursor)}
               type="button"
             >
               Load more
-            </button>
+            </Button>
           </div>
         ) : null}
       </section>

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Command,
@@ -19,6 +19,9 @@ type SearchableSelectProps = {
   disabled?: boolean;
   className?: string;
   ariaLabel?: string;
+  emptyOptionLabel?: string;
+  required?: boolean;
+  testId?: string;
 };
 
 /**
@@ -33,6 +36,10 @@ export function SearchableSelect(props: SearchableSelectProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selectedLabel = options.find((option) => option.id === value)?.label ?? value;
+
+  useEffect(() => {
+    inputRef.current?.setCustomValidity(props.required && !value ? "Please select an option." : "");
+  }, [props.required, value]);
 
   function commit(option: SearchableSelectOption): void {
     onChange(option.id);
@@ -61,9 +68,12 @@ export function SearchableSelect(props: SearchableSelectProps) {
             ref={inputRef}
             aria-expanded={open && !disabled}
             aria-label={props.ariaLabel}
+            aria-required={props.required || undefined}
             className={props.className}
+            data-testid={props.testId}
             disabled={disabled}
             placeholder={props.placeholder}
+            required={props.required}
             value={open ? query : selectedLabel}
             onFocus={() => {
               setQuery("");
@@ -96,6 +106,16 @@ export function SearchableSelect(props: SearchableSelectProps) {
         >
           <CommandList>
             <CommandEmpty>No matches</CommandEmpty>
+            {props.emptyOptionLabel ? (
+              <CommandItem
+                keywords={[props.emptyOptionLabel]}
+                value="__cc-empty-option"
+                onPointerDown={(event) => event.preventDefault()}
+                onSelect={() => commit({ id: "", label: props.emptyOptionLabel ?? "" })}
+              >
+                {props.emptyOptionLabel}
+              </CommandItem>
+            ) : null}
             {options.map((option) => (
               <CommandItem
                 key={option.id}

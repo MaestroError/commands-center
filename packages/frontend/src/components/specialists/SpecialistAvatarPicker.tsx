@@ -3,6 +3,7 @@ import {
   SPECIALIST_EMOJI_OPTIONS,
   SPECIALIST_ICON_OPTIONS,
 } from "@/components/specialists/specialist-avatar-options";
+import { Input } from "@/components/ui/input";
 
 type SpecialistAvatarMode = "image" | "emoji" | "icon";
 
@@ -51,9 +52,8 @@ export function SpecialistAvatarPicker(props: SpecialistAvatarPickerProps) {
         {selection.mode === "image" ? (
           <div className="grid gap-2 text-sm text-text-primary">
             <span>Image URL or file path</span>
-            <input
+            <Input
               aria-label="Image URL or file path"
-              className="cc-input"
               onChange={(event) => props.onChange(event.target.value)}
               placeholder="https://... or file:///..."
               value={selection.imageValue}
@@ -68,9 +68,8 @@ export function SpecialistAvatarPicker(props: SpecialistAvatarPickerProps) {
           <div className="grid gap-3">
             <div className="grid gap-2 text-sm text-text-primary">
               <span>Emoji</span>
-              <input
+              <Input
                 aria-label="Emoji"
-                className="cc-input"
                 maxLength={8}
                 onChange={(event) => props.onChange(`emoji:${event.target.value}`)}
                 placeholder="🤖"
@@ -105,9 +104,8 @@ export function SpecialistAvatarPicker(props: SpecialistAvatarPickerProps) {
           <div className="grid gap-3">
             <div className="grid gap-2 text-sm text-text-primary">
               <span>Icon name</span>
-              <input
+              <Input
                 aria-label="Icon name"
-                className="cc-input"
                 onChange={(event) => props.onChange(`icon:${event.target.value}`)}
                 placeholder="bot"
                 value={selection.iconValue}

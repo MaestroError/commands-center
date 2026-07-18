@@ -4,6 +4,7 @@ import { Copy } from "lucide-react";
 import type { Artifact } from "@cc/shared/schemas";
 
 import { useArtifactDeliveryUrlsQuery } from "@/hooks/use-tasks-query";
+import { Button } from "@/components/ui/button";
 
 type ArtifactGeneratedUrlsProps = {
   artifact: Artifact;
@@ -94,15 +95,16 @@ function UrlRow(props: {
       {props.showUrl ? (
         <span className="break-all text-text-muted [overflow-wrap:anywhere]">{props.url}</span>
       ) : null}
-      <button
+      <Button
+        variant="secondary"
         aria-label={props.copied ? `${props.label} copied` : `Copy ${props.label}`}
-        className="cc-button cc-button-secondary inline-flex w-fit items-center gap-1 px-2 py-1 text-xs"
+        className="inline-flex w-fit items-center gap-1 px-2 py-1 text-xs"
         onClick={props.onCopy}
         type="button"
       >
         <Copy className="h-3.5 w-3.5" aria-hidden="true" />
         {props.copied ? "Copied" : "Copy"}
-      </button>
+      </Button>
     </div>
   );
 }

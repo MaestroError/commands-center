@@ -6,6 +6,7 @@ import type { FileManagerFileRevision } from "@cc/shared/schemas";
 import { useTheme } from "@/context/use-theme";
 
 import { getMonacoThemeId, registerMonacoTheme, type MonacoThemeApi } from "./monaco-theme";
+import { Button } from "@/components/ui/button";
 
 const MonacoEditor = lazy(async () => {
   const mod = await import("@monaco-editor/react");
@@ -114,7 +115,7 @@ export function MonacoFileEditor(props: Props) {
           </button>
           <button
             aria-label={busy ? "Saving" : "Save"}
-            className="inline-flex h-7 w-7 items-center justify-center rounded bg-accent text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-7 w-7 items-center justify-center rounded bg-accent text-on-accent hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             disabled={busy || !isWritable || !dirty}
             onClick={handleSave}
             title="Save (⌘/Ctrl+S)"
@@ -133,8 +134,8 @@ export function MonacoFileEditor(props: Props) {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-warning-border bg-warning-surface px-4 py-3 text-sm text-warning-foreground">
           <span className="min-w-0">{conflict.message}</span>
           <div className="flex shrink-0 gap-2">
-            <button
-              className="cc-button cc-button-secondary"
+            <Button
+              variant="secondary"
               onClick={() => {
                 onDiscardConflict();
                 onReloadRequested();
@@ -142,15 +143,15 @@ export function MonacoFileEditor(props: Props) {
               type="button"
             >
               Reload from disk
-            </button>
-            <button
-              className="cc-button cc-button-secondary"
+            </Button>
+            <Button
+              variant="secondary"
               disabled={busy}
               onClick={() => onSaveRequested(conflict.currentRevision)}
               type="button"
             >
               Overwrite
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}

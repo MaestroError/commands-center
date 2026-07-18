@@ -1,6 +1,7 @@
 import type { SessionMediaItem } from "@cc/shared/schemas";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 type ImageLightboxProps = {
   item: SessionMediaItem;
@@ -23,21 +24,12 @@ export function ImageLightbox({ item, onClose, onDownload }: ImageLightboxProps)
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              className="cc-button cc-button-secondary"
-              onClick={() => onDownload(item)}
-              type="button"
-            >
+            <Button variant="secondary" onClick={() => onDownload(item)} type="button">
               Download
-            </button>
-            <button
-              aria-label="Close preview"
-              className="cc-button cc-button-secondary"
-              onClick={onClose}
-              type="button"
-            >
+            </Button>
+            <Button variant="secondary" aria-label="Close preview" onClick={onClose} type="button">
               Close
-            </button>
+            </Button>
           </div>
         </div>
 

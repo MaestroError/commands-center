@@ -42,6 +42,7 @@ const REQUIRED_COLOR_TOKENS = [
   "on-warning",
   "danger",
   "danger-surface",
+  "danger-surface-subtle",
   "danger-border",
   "danger-foreground",
   "on-danger",

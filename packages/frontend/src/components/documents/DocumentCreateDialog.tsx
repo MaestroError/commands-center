@@ -14,6 +14,7 @@ import {
 import { createDocument } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import type { DocumentScope } from "@cc/shared/schemas";
+import { Input } from "@/components/ui/input";
 
 type DocumentCreateDialogProps = {
   onClose: () => void;
@@ -88,8 +89,7 @@ export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
 
         <label className="mt-4 grid gap-1 text-sm text-text-secondary">
           Title
-          <input
-            className="cc-input"
+          <Input
             placeholder="e.g. Architecture Overview"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -98,8 +98,8 @@ export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
 
         <label className="mt-3 grid gap-1 text-sm text-text-secondary">
           Path
-          <input
-            className="cc-input font-mono text-xs"
+          <Input
+            className="font-mono text-xs"
             placeholder={derivedPath || "e.g. design/overview.md"}
             value={path}
             onChange={(e) => setPath(e.target.value)}

@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/tasks/task-ui";
 import type { Specialist, Task } from "@cc/shared/schemas";
 import { Link } from "react-router-dom";
 import { Metric } from "./TaskDetailPanel";
+import { Button } from "@/components/ui/button";
 
 export function TaskArchiveView(props: {
   tasks: Task[];
@@ -54,20 +55,12 @@ export function TaskArchiveView(props: {
             <Metric label="Completed" value={formatDate(task.doneAt)} />
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              className="cc-button cc-button-secondary"
-              onClick={() => props.onRestore(task)}
-              type="button"
-            >
+            <Button variant="secondary" onClick={() => props.onRestore(task)} type="button">
               Restore
-            </button>
-            <button
-              className="cc-button cc-button-danger"
-              onClick={() => props.onDelete(task)}
-              type="button"
-            >
+            </Button>
+            <Button variant="danger" onClick={() => props.onDelete(task)} type="button">
               Delete
-            </button>
+            </Button>
           </div>
         </article>
       ))}

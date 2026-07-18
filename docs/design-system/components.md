@@ -3,7 +3,7 @@
 ## Native HTML first
 
 Use a native element when it already supplies the required semantics and
-behavior: `<button>`, `<a>`, `<input>`, `<select>`, `<textarea>`, `<details>`,
+behavior: `<button>`, `<a>`, `<input>`, `<textarea>`, `<details>`,
 and semantic document elements. Preserve accessible names, keyboard behavior,
 focus visibility, disabled state, and a minimum 44px touch target where the
 control is a primary mobile action.
@@ -15,8 +15,9 @@ approved interaction primitives. CC owns their exported API and semantic
 Tailwind appearance in `packages/frontend/src/components/ui/`.
 
 Available primitive modules are: `alert`, `alert-dialog`, `button`, `checkbox`,
-`command`, `dialog`, `dropdown-menu`, `input`, `popover`, `surface`, `switch`,
-and `tabs`. Domain code imports these modules through `@/components/ui/*` and
+`command`, `dialog`, `dropdown-menu`, `input`, `popover`, `select`, `surface`,
+`switch`, and `tabs`. Domain code imports these modules through
+`@/components/ui/*` and
 must not import Radix directly.
 
 ```tsx
@@ -24,6 +25,23 @@ import { Button } from "@/components/ui/button";
 
 export function SaveAction() {
   return <Button>Save</Button>;
+}
+```
+
+For navigation that must share button appearance, keep link semantics and use
+the bounded visual helper rather than rendering a button inside a link:
+
+```tsx
+import { Link } from "react-router-dom";
+
+import { buttonVariants } from "@/components/ui/button-variants";
+
+export function DocumentsAction() {
+  return (
+    <Link className={buttonVariants({ variant: "secondary" })} to="/documents">
+      Documents
+    </Link>
+  );
 }
 ```
 
@@ -73,6 +91,15 @@ Use the existing common component when its product contract matches:
 Do not extract a new common component for a single consumer. Do not recreate
 focus traps, roving focus, outside dismissal, modal portals, or menu keyboard
 behavior when an approved primitive already owns it.
+
+For option selection, choose by interaction contract:
+
+- Use `SearchableSelect` for dynamic, potentially long, or search-worthy option
+  sets such as specialists, models, providers, and timezones.
+- Use `Select` from `@/components/ui/select` for short fixed enumerations such
+  as status, source, transport, or recurrence choices.
+- Do not use a browser-native `<select>` in application UI. The two CC-owned
+  contracts provide consistent theme styling and keyboard behavior.
 
 ## Behavior-rich domain UI
 

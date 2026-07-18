@@ -12,6 +12,15 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageSt
 import { PageHeader } from "@/components/common/PageHeader";
 import { PasswordInput } from "@/components/common/PasswordInput";
 import { useProviderMutations, useProvidersQuery } from "@/hooks/use-providers-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type DialogState = {
   provider: ProviderStatus;
@@ -61,13 +70,9 @@ export function ProviderConnectionsPage() {
     <div className="grid gap-4">
       <PageHeader
         actions={
-          <button
-            className="cc-button cc-button-secondary"
-            onClick={() => void providersQuery.refetch()}
-            type="button"
-          >
+          <Button variant="secondary" onClick={() => void providersQuery.refetch()} type="button">
             Refresh
-          </button>
+          </Button>
         }
         description="CommandsCenter delegates provider authentication to OpenCode, then surfaces the connected providers and models inside the shared application shell."
         eyebrow="Provider Connections"
@@ -77,13 +82,9 @@ export function ProviderConnectionsPage() {
       {queryError ? (
         <ErrorState
           action={
-            <button
-              className="cc-button cc-button-secondary"
-              onClick={() => void providersQuery.refetch()}
-              type="button"
-            >
+            <Button variant="secondary" onClick={() => void providersQuery.refetch()} type="button">
               Try again
-            </button>
+            </Button>
           }
           description={queryError}
           title="Provider data could not be loaded."
@@ -126,9 +127,9 @@ export function ProviderConnectionsPage() {
           {modelsExpanded ? (
             <div className="mt-5 grid gap-4">
               {connectedModels.length > 0 ? (
-                <input
+                <Input
                   aria-label="Search models"
-                  className="cc-input w-full md:w-auto md:min-w-80"
+                  className="w-full md:w-auto md:min-w-80"
                   onChange={(event) => setModelSearch(event.target.value)}
                   placeholder="Search models"
                   value={modelSearch}
@@ -182,9 +183,9 @@ export function ProviderConnectionsPage() {
                 Connect or manage authentication for each available provider.
               </p>
             </div>
-            <input
+            <Input
               aria-label="Search providers"
-              className="cc-input w-full md:w-auto md:min-w-80"
+              className="w-full md:w-auto md:min-w-80"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search providers"
               value={search}
@@ -261,28 +262,27 @@ export function ProviderConnectionsPage() {
                     <div className="mt-auto pt-6">
                       <div className="flex flex-wrap gap-2">
                         {apiMethod ? (
-                          <button
-                            className="cc-button"
+                          <Button
                             disabled={busy}
                             onClick={() => setDialog({ provider: entry, mode: "api" })}
                             type="button"
                           >
                             {entry.connected ? "Update API key" : "Connect API key"}
-                          </button>
+                          </Button>
                         ) : null}
                         {oauthMethod ? (
-                          <button
-                            className="cc-button cc-button-secondary"
+                          <Button
+                            variant="secondary"
                             disabled={busy}
                             onClick={() => setDialog({ provider: entry, mode: "oauth" })}
                             type="button"
                           >
                             {entry.connected ? "Reconnect OAuth" : "Connect OAuth"}
-                          </button>
+                          </Button>
                         ) : null}
                         {entry.connected ? (
-                          <button
-                            className="cc-button cc-button-danger"
+                          <Button
+                            variant="danger"
                             disabled={busy}
                             onClick={() =>
                               void runProviderAction(
@@ -299,7 +299,7 @@ export function ProviderConnectionsPage() {
                             type="button"
                           >
                             Disconnect
-                          </button>
+                          </Button>
                         ) : null}
                       </div>
                       <p className="mt-3 text-xs leading-5 text-text-secondary">
@@ -612,9 +612,9 @@ function ProviderDialog(props: ProviderDialogProps) {
           onClick={(event) => event.stopPropagation()}
         >
           <div className="flex justify-end">
-            <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+            <Button variant="secondary" onClick={props.onClose} type="button">
               Close
-            </button>
+            </Button>
           </div>
           <div className="flex min-h-80 flex-col items-center justify-center gap-5 text-center">
             <div aria-label="success" className="text-6xl" role="img">
@@ -651,9 +651,9 @@ function ProviderDialog(props: ProviderDialogProps) {
               {props.mode === "api" ? "Connect with API key" : "Connect with OAuth"}
             </h2>
           </div>
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          <Button variant="secondary" onClick={props.onClose} type="button">
             Close
-          </button>
+          </Button>
         </div>
 
         {localError ? <div className="cc-alert mt-5">{localError}</div> : null}
@@ -672,13 +672,9 @@ function ProviderDialog(props: ProviderDialogProps) {
             <p className="text-sm text-text-secondary">
               OpenCode stores and validates the key with the selected provider.
             </p>
-            <button
-              className="cc-button"
-              disabled={props.busy || dialogBusy || apiKey.trim().length === 0}
-              type="submit"
-            >
+            <Button disabled={props.busy || dialogBusy || apiKey.trim().length === 0} type="submit">
               {props.busy || dialogBusy ? "Saving..." : "Save key"}
-            </button>
+            </Button>
           </form>
         ) : null}
 
@@ -717,8 +713,7 @@ function ProviderDialog(props: ProviderDialogProps) {
                     return (
                       <label className="grid gap-2 text-sm text-text-primary" key={prompt.key}>
                         <span>{prompt.message}</span>
-                        <input
-                          className="cc-input"
+                        <Input
                           onChange={(event) =>
                             setInputs((current) => ({
                               ...current,
@@ -733,35 +728,38 @@ function ProviderDialog(props: ProviderDialogProps) {
                   }
 
                   return (
-                    <label className="grid gap-2 text-sm text-text-primary" key={prompt.key}>
+                    <div className="grid gap-2 text-sm text-text-primary" key={prompt.key}>
                       <span>{prompt.message}</span>
-                      <select
-                        className="cc-input"
-                        onChange={(event) =>
-                          setInputs((current) => ({ ...current, [prompt.key]: event.target.value }))
-                        }
+                      <Select
                         value={inputs[prompt.key] ?? prompt.options[0]?.value ?? ""}
+                        onValueChange={(value) =>
+                          setInputs((current) => ({ ...current, [prompt.key]: value }))
+                        }
                       >
-                        {prompt.options.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                        <SelectTrigger aria-label={prompt.message}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {prompt.options.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   );
                 })}
               </div>
             ) : null}
 
-            <button
-              className="cc-button"
+            <Button
               disabled={props.busy || dialogBusy}
               onClick={() => void handleStartOauth()}
               type="button"
             >
               {props.busy || dialogBusy ? "Completing..." : "Open provider login"}
-            </button>
+            </Button>
 
             {oauthSession ? (
               <div className="rounded-xl border border-accent/20 bg-accent/5 p-4 text-sm text-text-primary">
@@ -781,23 +779,22 @@ function ProviderDialog(props: ProviderDialogProps) {
               <form className="space-y-4" onSubmit={(event) => void handleManualOauthSubmit(event)}>
                 <label className="grid gap-2 text-sm text-text-primary" htmlFor="oauth-code-input">
                   <span>Manual code or callback value</span>
-                  <input
-                    className="cc-input"
+                  <Input
                     id="oauth-code-input"
                     onChange={(event) => setManualCode(event.target.value)}
                     placeholder="Paste the redirected callback URL or code"
                     value={manualCode}
                   />
                 </label>
-                <button
-                  className="cc-button cc-button-secondary"
+                <Button
+                  variant="secondary"
                   disabled={props.busy || manualCompleting || dialogBusy}
                   type="submit"
                 >
                   {props.busy || manualCompleting || dialogBusy
                     ? "Completing..."
                     : "Complete OAuth"}
-                </button>
+                </Button>
               </form>
             ) : null}
           </div>

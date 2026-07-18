@@ -30,6 +30,8 @@ import {
   updateTaskArtifactSharingPreferences,
   updateTaskRunMonitorSettings,
 } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const TAB_IDS = ["system", "secrets", "file-manager", "sharing", "tasks", "system-prompts"];
 
@@ -164,14 +166,15 @@ function SystemTab() {
               Runtime status for the local AI engine instance.
             </p>
           </div>
-          <button
-            className="cc-button cc-button-secondary shrink-0 whitespace-nowrap sm:w-auto"
+          <Button
+            variant="secondary"
+            className="shrink-0 whitespace-nowrap sm:w-auto"
             disabled={engineRestartDisabled}
             onClick={() => setConfirmingRestart(true)}
             type="button"
           >
             {engineRestartMutation.isPending ? "Restarting..." : "Restart instance"}
-          </button>
+          </Button>
         </div>
 
         {engineQuery.isLoading ? <LoadingState testId="engine-status-loading" /> : null}
@@ -261,14 +264,15 @@ function SystemTab() {
             <ErrorState description={versionCheckError} title="Update check failed." />
           ) : null}
           <div className="flex justify-end">
-            <button
-              className="cc-button cc-button-secondary shrink-0 whitespace-nowrap sm:w-auto"
+            <Button
+              variant="secondary"
+              className="shrink-0 whitespace-nowrap sm:w-auto"
               disabled={versionCheckMutation.isPending}
               onClick={() => versionCheckMutation.mutate()}
               type="button"
             >
               {versionCheckMutation.isPending ? "Checking..." : "Check for updates"}
-            </button>
+            </Button>
           </div>
 
           {version.installMode === "docker" ? (
@@ -302,14 +306,14 @@ function SystemTab() {
                   </p>
                 ) : null}
               </div>
-              <button
-                className="cc-button shrink-0 whitespace-nowrap sm:w-auto"
+              <Button
+                className="shrink-0 whitespace-nowrap sm:w-auto"
                 disabled={updateMutation.isPending || activeRunCount > 0}
                 onClick={() => updateMutation.mutate()}
                 type="button"
               >
                 {updateMutation.isPending ? "Applying update..." : "Apply update"}
-              </button>
+              </Button>
             </div>
           )}
         </article>
@@ -492,8 +496,7 @@ function FileManagerTab() {
       </label>
       <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
         <span className="font-medium">Max upload size (bytes)</span>
-        <input
-          className="cc-input"
+        <Input
           disabled={saving}
           min={1}
           onChange={(event) => {
@@ -587,8 +590,7 @@ function SharingTab() {
       ) : null}
       <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
         <span className="font-medium">Default signed URL expiry (minutes)</span>
-        <input
-          className="cc-input"
+        <Input
           disabled={saving}
           max={10080}
           min={0}
@@ -601,14 +603,9 @@ function SharingTab() {
         </span>
       </label>
       <div className="flex justify-end">
-        <button
-          className="cc-button"
-          disabled={saving}
-          onClick={() => void savePreferences()}
-          type="button"
-        >
+        <Button disabled={saving} onClick={() => void savePreferences()} type="button">
           {saving ? "Saving..." : "Save sharing settings"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -700,8 +697,7 @@ function TasksTab() {
       {error ? <ErrorState description={error.description} title={error.title} /> : null}
       <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
         <span className="font-medium">No-progress (stall) timeout (minutes)</span>
-        <input
-          className="cc-input"
+        <Input
           disabled={saving}
           min={0}
           onChange={(event) => setNoProgressMinutes(Number(event.target.value))}
@@ -715,8 +711,7 @@ function TasksTab() {
       </label>
       <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
         <span className="font-medium">Usage-limit fail-fast timeout (minutes)</span>
-        <input
-          className="cc-input"
+        <Input
           disabled={saving}
           min={0}
           onChange={(event) => setUsageLimitFailFastMinutes(Number(event.target.value))}
@@ -748,8 +743,7 @@ function TasksTab() {
       {requeueAfterStall ? (
         <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
           <span className="font-medium">Requeue limit</span>
-          <input
-            className="cc-input"
+          <Input
             disabled={saving}
             min={1}
             onChange={(event) => setRequeueLimit(Number(event.target.value))}
@@ -768,8 +762,7 @@ function TasksTab() {
       ) : null}
       <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
         <span className="font-medium">Max automatic retries</span>
-        <input
-          className="cc-input"
+        <Input
           disabled={saving}
           min={1}
           onChange={(event) => setMaxAutoRetries(Number(event.target.value))}
@@ -788,8 +781,7 @@ function TasksTab() {
       </label>
       <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
         <span className="font-medium">Max run lifetime (minutes)</span>
-        <input
-          className="cc-input"
+        <Input
           disabled={saving}
           min={1}
           onChange={(event) => setMaxLifetimeMinutes(Number(event.target.value))}
@@ -802,14 +794,13 @@ function TasksTab() {
         </span>
       </label>
       <div className="flex justify-end">
-        <button
-          className="cc-button"
+        <Button
           disabled={saving || requeueLimitInvalid || maxAutoRetriesInvalid}
           onClick={() => void saveSettings()}
           type="button"
         >
           {saving ? "Saving..." : "Save task settings"}
-        </button>
+        </Button>
       </div>
       <PublicMcpSettingsCard />
     </div>
@@ -877,8 +868,7 @@ function PublicMcpSettingsCard() {
       {error ? <ErrorState description={error.description} title={error.title} /> : null}
       <label className="grid gap-2 rounded-lg border border-border bg-surface p-4 text-sm text-text-primary">
         <span className="font-medium">Sync tool wait cap (seconds)</span>
-        <input
-          className="cc-input"
+        <Input
           data-testid="public-mcp-sync-cap-input"
           disabled={saving}
           max={600}
@@ -893,14 +883,9 @@ function PublicMcpSettingsCard() {
         </span>
       </label>
       <div className="flex justify-end">
-        <button
-          className="cc-button"
-          disabled={saving || capInvalid}
-          onClick={() => void save()}
-          type="button"
-        >
+        <Button disabled={saving || capInvalid} onClick={() => void save()} type="button">
           {saving ? "Saving..." : "Save MCP settings"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -930,16 +915,17 @@ function SecretsTab(props: { onShowSystemTab: () => void }) {
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
-          <button
-            className="cc-button cc-button-secondary shrink-0 whitespace-nowrap"
+          <Button
+            variant="secondary"
+            className="shrink-0 whitespace-nowrap"
             onClick={() => setCreating((current) => !current)}
             type="button"
           >
             {creating ? "Cancel" : "Add secret"}
-          </button>
-          <input
+          </Button>
+          <Input
             aria-label="Search secrets"
-            className="cc-input w-full md:min-w-80"
+            className="w-full md:min-w-80"
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search secrets"
             value={search}
@@ -1028,9 +1014,9 @@ function SecretCreateForm(props: {
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <label className="grid gap-2 text-sm text-text-primary">
           <span>Secret key</span>
-          <input
+          <Input
             aria-label="Secret key"
-            className="cc-input font-mono"
+            className="font-mono"
             onChange={(event) => setKey(event.target.value)}
             placeholder="GITHUB_TOKEN"
             value={key}
@@ -1059,11 +1045,10 @@ function SecretCreateForm(props: {
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+        <Button variant="secondary" onClick={props.onCancel} type="button">
           Cancel
-        </button>
-        <button
-          className="cc-button"
+        </Button>
+        <Button
           disabled={
             props.busy || normalizedKey.length === 0 || normalizedValue.length === 0 || duplicateKey
           }
@@ -1078,7 +1063,7 @@ function SecretCreateForm(props: {
           type="button"
         >
           {props.busy ? "Saving..." : "Save secret"}
-        </button>
+        </Button>
       </div>
 
       {confirming ? (
@@ -1144,14 +1129,14 @@ function SecretCard(props: {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <label className="grid gap-2 text-sm text-text-primary">
           <span>Name</span>
-          <input className="cc-input font-mono" readOnly value={props.name} />
+          <Input className="font-mono" readOnly value={props.name} />
         </label>
         <label className="grid gap-2 text-sm text-text-primary">
           <span>Value</span>
           <div className="relative">
-            <input
+            <Input
               aria-label={`Value for ${props.name}`}
-              className="cc-input pr-12"
+              className="pr-12"
               onChange={(event) => setValue(event.target.value)}
               placeholder={
                 props.stale
@@ -1189,22 +1174,22 @@ function SecretCard(props: {
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button
-          className="cc-button cc-button-secondary"
+        <Button
+          variant="secondary"
           disabled={props.busy || value.trim().length === 0}
           onClick={() => setPendingAction("update")}
           type="button"
         >
           {props.busy ? "Updating..." : "Update"}
-        </button>
-        <button
-          className="cc-button cc-button-danger"
+        </Button>
+        <Button
+          variant="danger"
           disabled={props.busy}
           onClick={() => setPendingAction("delete")}
           type="button"
         >
           Delete
-        </button>
+        </Button>
       </div>
 
       {pendingAction ? (

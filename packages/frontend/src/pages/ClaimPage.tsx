@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { PasswordInput } from "@/components/common/PasswordInput";
 import { useOwnerAuth } from "@/context/use-owner-auth";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function ClaimPage() {
   const auth = useOwnerAuth();
@@ -44,9 +46,8 @@ export function ClaimPage() {
         <form className="mt-6 grid gap-4" onSubmit={(event) => void onSubmit(event)}>
           <label className="grid gap-2 text-sm font-medium text-text-primary">
             Claim code
-            <input
+            <Input
               autoComplete="one-time-code"
-              className="cc-input"
               onChange={(event) => setClaimCode(event.target.value)}
               required
               type="text"
@@ -88,9 +89,9 @@ export function ClaimPage() {
             Remember this browser
           </label>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
-          <button className="cc-button justify-center" disabled={submitting} type="submit">
+          <Button className="justify-center" disabled={submitting} type="submit">
             {submitting ? "Claiming..." : "Claim workspace"}
-          </button>
+          </Button>
         </form>
       </section>
     </main>

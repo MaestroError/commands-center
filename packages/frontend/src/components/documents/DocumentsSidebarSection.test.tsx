@@ -182,7 +182,8 @@ describe("DocumentsSidebarSection", () => {
     await user.click(screen.getByRole("button", { name: "New private document" }));
 
     const picker = await screen.findByRole("dialog", { name: "New Private Document" });
-    await user.selectOptions(within(picker).getByLabelText("Specialist"), "planner");
+    await user.click(within(picker).getByRole("combobox", { name: "Specialist" }));
+    await user.click(await screen.findByRole("option", { name: "Planner" }));
     await user.click(within(picker).getByRole("button", { name: "Continue" }));
 
     const dialog = await screen.findByRole("dialog", { name: "New Document" });

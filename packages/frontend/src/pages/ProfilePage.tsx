@@ -7,6 +7,7 @@ import { useTheme } from "@/context/use-theme";
 import { useOwnerAuth } from "@/context/use-owner-auth";
 import { changeOwnerPassword } from "@/lib/api";
 import { queryClient } from "@/lib/query-client";
+import { Button } from "@/components/ui/button";
 
 const MIN_PASSWORD_LENGTH = 10;
 const UPPERCASE_LETTER_PATTERN = /[A-Z]/;
@@ -135,9 +136,9 @@ export function ProfilePage() {
           {passwordError ? <p className="text-sm text-danger">{passwordError}</p> : null}
           {passwordSuccess ? <p className="text-sm text-success">{passwordSuccess}</p> : null}
           <div>
-            <button className="cc-button" disabled={passwordSubmitting} type="submit">
+            <Button disabled={passwordSubmitting} type="submit">
               {passwordSubmitting ? "Changing password..." : "Change password"}
-            </button>
+            </Button>
           </div>
         </form>
       </section>
@@ -146,14 +147,15 @@ export function ProfilePage() {
         <p className="mt-2 text-sm text-text-secondary">
           Sign out of this browser without changing the workspace owner password.
         </p>
-        <button
-          className="cc-button cc-button-secondary mt-5"
+        <Button
+          variant="secondary"
+          className="mt-5"
           disabled={logoutSubmitting}
           onClick={() => void onLogout()}
           type="button"
         >
           {logoutSubmitting ? "Signing out..." : "Sign out"}
-        </button>
+        </Button>
         {logoutError ? <p className="mt-3 text-sm text-danger">{logoutError}</p> : null}
       </section>
     </div>

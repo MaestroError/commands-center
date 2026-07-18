@@ -8,6 +8,7 @@ import type {
 } from "@cc/shared/schemas";
 import { RefreshCw, Upload } from "lucide-react";
 import { ROOT_LABELS, formatLineCount, formatSize } from "./file-manager-helpers";
+import { Button } from "@/components/ui/button";
 
 export function SelectionDetails(props: {
   root: FileManagerRootKind;
@@ -105,20 +106,12 @@ export function UploadPanel(props: {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            className="cc-button cc-button-secondary"
-            onClick={props.onSelectFiles}
-            type="button"
-          >
+          <Button variant="secondary" onClick={props.onSelectFiles} type="button">
             Files
-          </button>
-          <button
-            className="cc-button cc-button-secondary"
-            onClick={props.onSelectFolder}
-            type="button"
-          >
+          </Button>
+          <Button variant="secondary" onClick={props.onSelectFolder} type="button">
             Folder
-          </button>
+          </Button>
         </div>
       </div>
       <div className="mt-3 flex items-center gap-3 text-sm text-text-secondary">
@@ -166,57 +159,57 @@ export function SelectionActions(props: {
     <div className="flex flex-col gap-2">
       {props.selectedNode.type === "directory" ? (
         <>
-          <button
-            className="cc-button cc-button-secondary"
+          <Button
+            variant="secondary"
             disabled={actionBusy}
             onClick={() => props.onOpen(props.selectedNode!)}
             type="button"
           >
             Open directory
-          </button>
-          <button
-            className="cc-button cc-button-secondary"
+          </Button>
+          <Button
+            variant="secondary"
             onClick={() => props.onDownloadZip(props.selectedNode!)}
             type="button"
           >
             Download as zip
-          </button>
+          </Button>
         </>
       ) : (
-        <button
-          className="cc-button cc-button-secondary"
+        <Button
+          variant="secondary"
           onClick={() => props.onDownload(props.selectedNode!)}
           type="button"
         >
           Download file
-        </button>
+        </Button>
       )}
       {props.selectedNode.isCritical ? null : (
         <>
-          <button
-            className="cc-button cc-button-secondary"
+          <Button
+            variant="secondary"
             disabled={actionBusy}
             onClick={() => props.onStartMove(props.selectedNode!)}
             type="button"
           >
             Move {props.selectedNode.type}
-          </button>
-          <button
-            className="cc-button cc-button-secondary"
+          </Button>
+          <Button
+            variant="secondary"
             disabled={actionBusy}
             onClick={() => props.onStartRename(props.selectedNode!)}
             type="button"
           >
             Rename {props.selectedNode.type}
-          </button>
-          <button
-            className="cc-button cc-button-secondary"
+          </Button>
+          <Button
+            variant="secondary"
             disabled={actionBusy}
             onClick={() => props.onStartDelete(props.selectedNode!)}
             type="button"
           >
             Delete {props.selectedNode.type}
-          </button>
+          </Button>
         </>
       )}
     </div>

@@ -3,6 +3,8 @@ import { useState, type ChangeEvent } from "react";
 import type { TaskTemplateRunNowInput, UploadTaskContextAttachmentInput } from "@cc/shared/schemas";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   taskTitle: string;
@@ -70,7 +72,9 @@ export function RunTaskContextDialog(props: Props) {
         </label>
 
         <div className="mt-4 grid gap-2 text-sm text-text-secondary">
-          <label className="cc-button cc-button-secondary w-fit cursor-pointer">
+          <label
+            className={buttonVariants({ variant: "secondary", className: "w-fit cursor-pointer" })}
+          >
             Add attachments
             <input
               accept=".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.webp,.gif"
@@ -95,23 +99,17 @@ export function RunTaskContextDialog(props: Props) {
         </div>
 
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button
-            className="cc-button cc-button-secondary"
-            disabled={props.busy}
-            onClick={props.onCancel}
-            type="button"
-          >
+          <Button variant="secondary" disabled={props.busy} onClick={props.onCancel} type="button">
             Cancel
-          </button>
-          <button
-            className="cc-button"
+          </Button>
+          <Button
             data-testid="task-run-context-submit"
             disabled={props.busy}
             onClick={handleRun}
             type="button"
           >
             Run task
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

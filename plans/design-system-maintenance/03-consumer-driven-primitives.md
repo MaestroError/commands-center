@@ -21,6 +21,12 @@ styled controls and behavior gaps. Completion does not require creating every
 candidate: a documented defer/native/common-composition decision is correct
 when no current consumer proves a reusable primitive contract.
 
+The 2026-07-18 visual-review follow-up completed the Select decision: seven
+dynamic consumers reuse `SearchableSelect`, seven fixed consumers use the
+copy-owned Radix Select, and native application selects are retired. DSM-003
+must retain that contract while resolving Textarea, Badge/Pill/Status, and
+Tooltip.
+
 ## Scope
 
 - Build `artifacts/deferred-primitive-decision-matrix.md` from DSM-002's blocked

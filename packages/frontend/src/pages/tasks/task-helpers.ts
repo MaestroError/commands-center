@@ -754,7 +754,7 @@ export function readCardClassName(status: BoardTaskStatus, draggable: boolean): 
       : status === "review"
         ? "border-warning-border bg-warning-surface"
         : status === "failed"
-          ? "border-danger-border bg-danger-surface"
+          ? "border-danger-border bg-danger-surface-subtle"
           : status === "queued"
             ? "border-accent/30 bg-surface-elevated"
             : "border-border bg-surface";

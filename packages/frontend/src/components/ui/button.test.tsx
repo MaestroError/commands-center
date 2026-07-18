@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { Button } from "./button";
+import { buttonVariants } from "./button-variants";
 
 describe("Button", () => {
   it("defaults to the primary compatibility contract", () => {
@@ -95,5 +96,18 @@ describe("Button", () => {
     render(<Button aria-label="Refresh" size="icon" />);
 
     expect(screen.getByRole("button", { name: "Refresh" })).toHaveClass("cc-button-icon");
+  });
+
+  it("provides the secondary visual contract to a semantic link", () => {
+    render(
+      <a className={buttonVariants({ variant: "secondary" })} href="/documents">
+        Documents
+      </a>,
+    );
+
+    expect(screen.getByRole("link", { name: "Documents" })).toHaveClass(
+      "cc-button",
+      "cc-button-secondary",
+    );
   });
 });

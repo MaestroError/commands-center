@@ -33,6 +33,9 @@ import type {
   McpServer,
   WorkspaceSkill,
 } from "@cc/shared/schemas";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 type PermissionAction = "allow" | "ask" | "deny";
 
@@ -159,11 +162,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
       >
         <Field error={errors.name} label="Name" required>
           <div className="grid gap-2">
-            <input
-              className="cc-input"
-              onChange={(event) => update("name", event.target.value)}
-              value={value.name}
-            />
+            <Input onChange={(event) => update("name", event.target.value)} value={value.name} />
             <p className="text-xs text-text-secondary" data-testid="specialist-slug-preview">
               Identifier: <span className="font-medium text-text-primary">{slug}</span>
               {slugTaken ? <span className="ml-1 text-danger">(already in use)</span> : null}
@@ -171,11 +170,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
           </div>
         </Field>
         <Field error={errors.role} label="Role" required>
-          <input
-            className="cc-input"
-            onChange={(event) => update("role", event.target.value)}
-            value={value.role}
-          />
+          <Input onChange={(event) => update("role", event.target.value)} value={value.role} />
         </Field>
         <div className="lg:col-span-2">
           <Field error={undefined} label="Avatar">
@@ -215,14 +210,14 @@ export function SpecialistForm(props: SpecialistFormProps) {
                   </span>
                 </span>
               </label>
-              <button
+              <Button
                 aria-label="Save changes near instructions"
-                className="cc-button shrink-0"
+                className="shrink-0"
                 disabled={props.isSaving || !hasProviderModels}
                 type="submit"
               >
                 {props.isSaving ? "Saving..." : "Save changes"}
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
@@ -236,7 +231,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
               Only models from connected providers are selectable here.
             </p>
           </div>
-          <Link className="cc-button cc-button-secondary" to="/providers">
+          <Link className={buttonVariants({ variant: "secondary" })} to="/providers">
             Manage providers
           </Link>
         </div>
@@ -263,7 +258,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
 
       <CollapsibleSection
         action={
-          <Link className="cc-button cc-button-secondary" to="/skills">
+          <Link className={buttonVariants({ variant: "secondary" })} to="/skills">
             Browse skills
           </Link>
         }
@@ -294,8 +289,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
 
             <div className="grid gap-3 border-t border-border pt-5">
               <Field error={undefined} label="Search skills">
-                <input
-                  className="cc-input"
+                <Input
                   onChange={(event) => setSkillSearch(event.target.value)}
                   placeholder="Search built-in and workspace skills"
                   value={skillSearch}
@@ -329,7 +323,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
 
       <CollapsibleSection
         action={
-          <Link className="cc-button cc-button-secondary" to="/tools">
+          <Link className={buttonVariants({ variant: "secondary" })} to="/tools">
             Open tools library
           </Link>
         }
@@ -368,8 +362,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
 
             <div className="grid gap-3 border-t border-border pt-5">
               <Field error={undefined} label="Search global tools">
-                <input
-                  className="cc-input"
+                <Input
                   onChange={(event) => setCustomToolSearch(event.target.value)}
                   placeholder="Search tools by name, slug, or description"
                   value={customToolSearch}
@@ -532,7 +525,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
 
       <CollapsibleSection
         action={
-          <Link className="cc-button cc-button-secondary" to="/integrations">
+          <Link className={buttonVariants({ variant: "secondary" })} to="/integrations">
             Manage integrations
           </Link>
         }

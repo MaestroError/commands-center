@@ -27,6 +27,8 @@ import {
   readError,
   templateAsTask,
 } from "./task-helpers";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
 
 export function TaskTemplatesView(props: {
   templates: TaskTemplate[];
@@ -63,9 +65,9 @@ export function TaskTemplatesView(props: {
       <div className="grid gap-4">
         <EmptyState
           action={
-            <button className="cc-button" onClick={props.onStartCreate} type="button">
+            <Button onClick={props.onStartCreate} type="button">
               Create template
-            </button>
+            </Button>
           }
           description="Templates store reusable task setup. Add repetition only when the template should run on a schedule."
           title="No task templates yet"
@@ -119,17 +121,17 @@ export function TaskTemplatesView(props: {
                 <Metric label="Timezone" value={template.recurrence?.timezone ?? "Not repeating"} />
               </div>
               <div className="flex flex-wrap gap-2">
-                <button
-                  className="cc-button cc-button-secondary"
+                <Button
+                  variant="secondary"
                   data-testid="task-template-create-task"
                   onClick={() => props.onCreateTask(template)}
                   type="button"
                 >
                   Create task
-                </button>
+                </Button>
                 {template.latestTaskId ? (
                   <Link
-                    className="cc-button cc-button-secondary"
+                    className={buttonVariants({ variant: "secondary" })}
                     to={`/tasks/${template.latestTaskId}${props.currentSearch}`}
                   >
                     Open latest task
@@ -234,9 +236,9 @@ export function TaskTemplateDetailPanel(props: {
               {template?.title ?? "Loading template"}
             </h2>
           </div>
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          <Button variant="secondary" onClick={props.onClose} type="button">
             Close
-          </button>
+          </Button>
         </header>
         <div className="overflow-auto bg-surface-elevated p-4">
           {templateQuery.isLoading ? <LoadingState testId="task-template-panel-loading" /> : null}
@@ -289,14 +291,14 @@ export function TaskTemplateDetailPanel(props: {
                 </div>
                 <TaskTodos task={templateAsTask(template)} />
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    className="cc-button cc-button-secondary"
+                  <Button
+                    variant="secondary"
                     data-testid="task-template-detail-create-task"
                     onClick={() => props.onCreateTask(template)}
                     type="button"
                   >
                     Create task
-                  </button>
+                  </Button>
                   <TaskCardIconButton
                     icon={Pencil}
                     label="Edit template"
@@ -319,13 +321,13 @@ export function TaskTemplateDetailPanel(props: {
                     }
                   />
                   {template.latestTaskId ? (
-                    <button
-                      className="cc-button cc-button-secondary"
+                    <Button
+                      variant="secondary"
                       onClick={() => props.onOpenTask(template.latestTaskId ?? "")}
                       type="button"
                     >
                       Open latest task
-                    </button>
+                    </Button>
                   ) : null}
                   <TaskCardIconButton
                     icon={Trash2}
@@ -383,8 +385,8 @@ function TemplateDocsTab(props: { template: TaskTemplate }) {
               replace the placeholder with one from the API page.
             </p>
           </div>
-          <button
-            className="cc-button inline-flex items-center gap-2"
+          <Button
+            className="inline-flex items-center gap-2"
             disabled={!clipboardAvailable}
             onClick={() => void copyInstructions()}
             title={clipboardAvailable ? "Copy instructions" : "Clipboard is unavailable"}
@@ -392,7 +394,7 @@ function TemplateDocsTab(props: { template: TaskTemplate }) {
           >
             {copiedInstructions ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
             {copiedInstructions ? "Copied" : "Copy integration instructions"}
-          </button>
+          </Button>
         </div>
         <div className="min-w-0 rounded-lg border border-border bg-app-bg p-4 text-sm">
           <Markdown content={docs.agentInstructions} />
@@ -450,7 +452,7 @@ function GeneratedTaskHistory(props: {
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
-              className="cc-button cc-button-secondary"
+              className={buttonVariants({ variant: "secondary" })}
               to={`/tasks/${task.id}${props.currentSearch}`}
             >
               Open full page

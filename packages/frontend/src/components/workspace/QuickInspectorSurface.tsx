@@ -8,6 +8,7 @@ import { WorkspaceFileSurface } from "./WorkspaceFileSurface";
 
 import type { FileManagerFileRevision } from "@cc/shared/schemas";
 import type { ChatInspectionTab, UseChatInspectionTabs } from "@/hooks/use-chat-inspection-tabs";
+import { buttonVariants } from "@/components/ui/button-variants";
 
 type Props = {
   controller: UseChatInspectionTabs;
@@ -236,14 +237,14 @@ function renderMediaItem(item: Extract<ChatInspectionTab, { tabType: "media" }>[
       <p className="mt-4 break-all text-xs text-text-primary">{item.mime}</p>
       <div className="mt-4 flex flex-wrap gap-2">
         <a
-          className="cc-button cc-button-secondary"
+          className={buttonVariants({ variant: "secondary" })}
           href={item.url}
           rel="noreferrer"
           target="_blank"
         >
           Open in new tab
         </a>
-        <a className="cc-button" download={item.filename ?? "download"} href={item.url}>
+        <a className={buttonVariants({})} download={item.filename ?? "download"} href={item.url}>
           Download
         </a>
       </div>

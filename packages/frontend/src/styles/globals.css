@@ -39,6 +39,7 @@
   --color-on-warning: var(--on-warning);
   --color-danger: var(--danger);
   --color-danger-surface: var(--danger-surface);
+  --color-danger-surface-subtle: var(--danger-surface-subtle);
   --color-danger-border: var(--danger-border);
   --color-danger-foreground: var(--danger-foreground);
   --color-on-danger: var(--on-danger);
@@ -97,6 +98,7 @@
   --on-warning: #ffffff;
   --danger: #be123c;
   --danger-surface: #fff1f2;
+  --danger-surface-subtle: color-mix(in srgb, var(--danger) 5%, var(--surface));
   --danger-border: #fda4af;
   --danger-foreground: #9f1239;
   --on-danger: #ffffff;
@@ -169,6 +171,7 @@
   --on-warning: #451a03;
   --danger: #f43f5e;
   --danger-surface: #4c0519;
+  --danger-surface-subtle: color-mix(in srgb, var(--danger) 9%, var(--surface));
   --danger-border: #be123c;
   --danger-foreground: #fecdd3;
   --on-danger: #4c0519;
@@ -552,10 +555,6 @@ textarea {
 .cc-password-toggle {
   @apply absolute inset-y-0 right-0 border-0 bg-transparent text-text-muted shadow-none hover:bg-transparent hover:text-text-primary;
   border-radius: 0 var(--radius-field) var(--radius-field) 0;
-}
-
-select.cc-input {
-  @apply px-1;
 }
 
 .cc-alert {

@@ -16,6 +16,9 @@ import { LazyMilkdownEditor } from "@/components/documents/LazyMilkdownEditor";
 import { getDocumentContent, saveDocumentContent, updateDocumentMetadata } from "@/lib/api";
 import { buildDocumentFileManagerHref } from "@/lib/document-href";
 import { queryKeys } from "@/lib/query-keys";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const CONTEXT_TAB_STORAGE_KEY = "cc.documents.context-tab";
 
@@ -129,15 +132,15 @@ export function DocumentsPage() {
               </span>
             ) : null}
             {isDirty ? <span className="text-xs text-text-secondary">Unsaved changes</span> : null}
-            <button
-              className="cc-button gap-1.5"
+            <Button
+              className="gap-1.5"
               disabled={!isDirty || saveMutation.isPending}
               onClick={handleSaveContent}
               type="button"
             >
               <Save className="h-4 w-4" />
               {saveMutation.isPending ? "Saving..." : "Save"}
-            </button>
+            </Button>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto" data-testid="document-editor-scroll">
@@ -325,11 +328,7 @@ function DocumentActionsTab(props: { doc: DocumentReadResponse }) {
         </p>
         <label className="mt-3 grid gap-1 text-sm text-text-secondary">
           Title
-          <input
-            className="cc-input"
-            value={editTitle}
-            onChange={(e) => setEditTitle(e.target.value)}
-          />
+          <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
         </label>
         <label className="mt-2 grid gap-1 text-sm text-text-secondary">
           Description
@@ -341,11 +340,7 @@ function DocumentActionsTab(props: { doc: DocumentReadResponse }) {
         </label>
         <label className="mt-2 grid gap-1 text-sm text-text-secondary">
           Author
-          <input
-            className="cc-input"
-            value={editAuthor}
-            onChange={(e) => setEditAuthor(e.target.value)}
-          />
+          <Input value={editAuthor} onChange={(e) => setEditAuthor(e.target.value)} />
         </label>
         {metadataMutation.isError ? (
           <p className="mt-2 text-sm text-danger">
@@ -354,15 +349,15 @@ function DocumentActionsTab(props: { doc: DocumentReadResponse }) {
               : "Failed to save metadata."}
           </p>
         ) : null}
-        <button
-          className="cc-button mt-3 w-full gap-1.5"
+        <Button
+          className="mt-3 w-full gap-1.5"
           disabled={!hasChanges || metadataMutation.isPending}
           onClick={handleSaveMetadata}
           type="button"
         >
           <Save className="h-4 w-4" />
           {metadataMutation.isPending ? "Saving..." : "Save Metadata"}
-        </button>
+        </Button>
       </div>
 
       <div className="rounded-lg border border-border bg-surface p-4">
@@ -370,24 +365,29 @@ function DocumentActionsTab(props: { doc: DocumentReadResponse }) {
           Quick actions
         </p>
         <div className="mt-3 grid gap-2">
-          <button
-            className="cc-button cc-button-secondary w-full gap-1.5 text-xs"
+          <Button
+            variant="secondary"
+            className="w-full gap-1.5 text-xs"
             onClick={() => copyToClipboard(doc.relativePath)}
             type="button"
           >
             <ClipboardCopy className="h-3.5 w-3.5" />
             Copy relative path
-          </button>
-          <button
-            className="cc-button cc-button-secondary w-full gap-1.5 text-xs"
+          </Button>
+          <Button
+            variant="secondary"
+            className="w-full gap-1.5 text-xs"
             onClick={() => copyToClipboard(doc.fullPath)}
             type="button"
           >
             <ClipboardCopy className="h-3.5 w-3.5" />
             Copy full path
-          </button>
+          </Button>
           <a
-            className="cc-button cc-button-secondary flex w-full items-center justify-center gap-1.5 text-xs no-underline"
+            className={buttonVariants({
+              variant: "secondary",
+              className: "flex w-full items-center justify-center gap-1.5 text-xs no-underline",
+            })}
             href={fileManagerRevealHref(doc)}
           >
             <FolderOpen className="h-3.5 w-3.5" />

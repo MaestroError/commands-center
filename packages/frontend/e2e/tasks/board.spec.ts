@@ -1,6 +1,27 @@
 import { createTaskState, dragCard, expect, mockTaskApi, test } from "./fixtures";
 
 test.describe("tasks board", { tag: "@tasks" }, () => {
+  for (const colorMode of ["light", "dark"] as const) {
+    test(`${colorMode} accent controls share their foreground`, async ({ page }) => {
+      const state = createTaskState();
+      await mockTaskApi(page, state);
+      await page.addInitScript((mode) => {
+        window.localStorage.setItem("cc.color-mode", mode);
+      }, colorMode);
+
+      await page.goto("/tasks");
+
+      const boardColor = await page
+        .getByTestId("task-view-tab-board")
+        .evaluate((element) => getComputedStyle(element).color);
+      const createColor = await page
+        .getByRole("link", { name: "Create task" })
+        .evaluate((element) => getComputedStyle(element).color);
+
+      expect(boardColor).toBe(createColor);
+    });
+  }
+
   test("renders columns with task counts", async ({ page }) => {
     const state = createTaskState();
     await mockTaskApi(page, state);

@@ -28,6 +28,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogClose,
   DialogContent,
@@ -46,6 +53,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 
 const MARKDOWN_FIXTURE = `# Reader heading
 
@@ -158,13 +166,13 @@ function ApplicationBaseline() {
       <PageHeader
         actions={
           <>
-            <button className="cc-button cc-button-secondary" type="button">
+            <Button variant="secondary" type="button">
               Secondary action
-            </button>
-            <button className="cc-button" type="button">
+            </Button>
+            <Button type="button">
               <Plus aria-hidden="true" className="mr-2 h-4 w-4" />
               Primary action
-            </button>
+            </Button>
           </>
         }
         description="The supported CC application roles, controls, and semantic states in one deterministic development fixture."
@@ -180,18 +188,16 @@ function ApplicationBaseline() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="cc-button" type="button">
-            Primary
-          </button>
-          <button className="cc-button cc-button-secondary" type="button">
+          <Button type="button">Primary</Button>
+          <Button variant="secondary" type="button">
             Secondary
-          </button>
-          <button className="cc-button cc-button-danger" type="button">
+          </Button>
+          <Button variant="danger" type="button">
             Destructive
-          </button>
-          <button className="cc-button" disabled type="button">
+          </Button>
+          <Button disabled type="button">
             Disabled
-          </button>
+          </Button>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button className="cc-tab cc-tab-active" type="button">
@@ -223,20 +229,20 @@ function ApplicationBaseline() {
         <div className="grid gap-4 md:grid-cols-2">
           <label className="grid gap-2 text-sm font-medium text-text-primary">
             Text input
-            <input
-              className="cc-input"
-              placeholder="Placeholder text"
-              value="Current value"
-              readOnly
-            />
+            <Input placeholder="Placeholder text" value="Current value" readOnly />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-text-primary">
-            Select
-            <select className="cc-input" defaultValue="default">
-              <option value="default">Default option</option>
-              <option value="alternate">Alternate option</option>
-            </select>
-          </label>
+          <div className="grid gap-2 text-sm font-medium text-text-primary">
+            <span>Select</span>
+            <Select defaultValue="default">
+              <SelectTrigger aria-label="Select example">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default option</SelectItem>
+                <SelectItem value="alternate">Alternate option</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <label className="grid gap-2 text-sm font-medium text-text-primary md:col-span-2">
             Text area
             <textarea
@@ -271,9 +277,9 @@ function ApplicationBaseline() {
           Empty states need a consistent structure, action hierarchy, and theme-controlled
           appearance.
         </p>
-        <button className="cc-button mt-5" type="button">
+        <Button className="mt-5" type="button">
           Create first item
-        </button>
+        </Button>
       </section>
     </div>
   );

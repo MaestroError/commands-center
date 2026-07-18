@@ -30,6 +30,7 @@ import {
   useTaskMutations,
   useTaskRunFollowupsQuery,
 } from "@/hooks/use-tasks-query";
+import { Button } from "@/components/ui/button";
 
 function readError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "Request failed.";
@@ -282,16 +283,15 @@ function TaskFeedbackSection(props: {
                           value={editingFeedbackBody}
                         />
                         <div className="flex flex-wrap gap-2">
-                          <button
-                            className="cc-button"
+                          <Button
                             disabled={props.isUpdatingFeedback || !editingFeedbackBody.trim()}
                             onClick={() => void updateFeedback(entry.id)}
                             type="button"
                           >
                             Save
-                          </button>
-                          <button
-                            className="cc-button cc-button-secondary"
+                          </Button>
+                          <Button
+                            variant="secondary"
                             disabled={props.isUpdatingFeedback}
                             onClick={() => {
                               setEditingFeedbackId(undefined);
@@ -300,7 +300,7 @@ function TaskFeedbackSection(props: {
                             type="button"
                           >
                             Cancel
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     ) : null}
@@ -358,24 +358,23 @@ function SendButtons(props: {
 
   return (
     <div className="flex flex-wrap gap-2">
-      <button
-        className="cc-button cc-button-secondary"
+      <Button
+        variant="secondary"
         data-testid={props.sendTestId}
         disabled={props.disabled || isBusy}
         onClick={props.onSend}
         type="button"
       >
         {props.isSending ? "Sending..." : "Send"}
-      </button>
-      <button
-        className="cc-button"
+      </Button>
+      <Button
         data-testid={props.requeueTestId}
         disabled={props.disabled || isBusy}
         onClick={props.onSendAndRequeue}
         type="button"
       >
         {props.isRequeueing ? "Sending..." : "Send & requeue"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -438,15 +437,15 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
             Replies are sent immediately into this run&apos;s existing session.
           </p>
         </div>
-        <button
-          className="cc-button cc-button-secondary"
+        <Button
+          variant="secondary"
           disabled={!canReply}
           onClick={() => setIsComposerOpen((current) => !current)}
           title={disabledReason}
           type="button"
         >
           Reply
-        </button>
+        </Button>
       </div>
 
       {disabledReason ? (
@@ -465,15 +464,15 @@ export function RunReplyPanel(props: { taskId: string; run: TaskRun; agent?: Spe
             placeholder="Add a short follow-up for the specialist."
             value={body}
           />
-          <button
-            className="cc-button w-fit"
+          <Button
+            className="w-fit"
             data-testid={`task-run-reply-send-${props.run.id}`}
             disabled={!canReply || !body.trim() || isSending}
             onClick={() => void submit()}
             type="button"
           >
             {isSending ? "Sending..." : "Reply"}
-          </button>
+          </Button>
         </div>
       ) : null}
 

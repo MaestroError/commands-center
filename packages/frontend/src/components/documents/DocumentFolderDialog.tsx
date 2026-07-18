@@ -14,6 +14,7 @@ import {
 import { createDocumentFolder } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import type { DocumentScope } from "@cc/shared/schemas";
+import { Input } from "@/components/ui/input";
 
 type DocumentFolderDialogProps = {
   onClose: () => void;
@@ -72,8 +73,8 @@ export function DocumentFolderDialog(props: DocumentFolderDialogProps) {
 
         <label className="mt-4 grid gap-1 text-sm text-text-secondary">
           Folder path
-          <input
-            className="cc-input font-mono text-xs"
+          <Input
+            className="font-mono text-xs"
             placeholder="e.g. design/specs"
             value={path}
             onChange={(e) => setPath(e.target.value)}

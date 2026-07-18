@@ -220,8 +220,9 @@ describe("LiveRequestReviewForm — task review", () => {
 
     renderForm(request);
 
-    const agentSelect = await screen.findByDisplayValue("Reviewer");
-    expect(agentSelect.tagName).toBe("SELECT");
+    const agentSelect = await screen.findByRole("combobox", { name: "Specialist ID" });
+    expect(agentSelect).toHaveValue("Reviewer");
+    fireEvent.focus(agentSelect);
     expect(screen.getByRole("option", { name: "Builder" })).toBeInTheDocument();
   });
 

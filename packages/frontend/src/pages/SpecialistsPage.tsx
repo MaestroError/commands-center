@@ -7,6 +7,9 @@ import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useSpecialistMutations, useSpecialistsQuery } from "@/hooks/use-specialists-query";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const EMPTY_SPECIALISTS: Specialist[] = [];
 
@@ -34,7 +37,7 @@ export function SpecialistsPage() {
     <div className="grid gap-4">
       <PageHeader
         actions={
-          <Link className="cc-button" to="/specialists/new">
+          <Link className={buttonVariants({})} to="/specialists/new">
             Create specialist
           </Link>
         }
@@ -53,8 +56,7 @@ export function SpecialistsPage() {
           </div>
           <label className="block w-full max-w-md" htmlFor="specialist-search-input">
             <span className="sr-only">Search specialists</span>
-            <input
-              className="cc-input"
+            <Input
               id="specialist-search-input"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search by name or role"
@@ -68,13 +70,13 @@ export function SpecialistsPage() {
       {specialistsQuery.error ? (
         <ErrorState
           action={
-            <button
-              className="cc-button cc-button-secondary"
+            <Button
+              variant="secondary"
               onClick={() => void specialistsQuery.refetch()}
               type="button"
             >
               Try again
-            </button>
+            </Button>
           }
           description={readError(specialistsQuery.error)}
           title="Specialists could not be loaded."
@@ -84,7 +86,7 @@ export function SpecialistsPage() {
       {!specialistsQuery.isLoading && !specialistsQuery.error && specialists.length === 0 ? (
         <EmptyState
           action={
-            <Link className="cc-button" to="/specialists/new">
+            <Link className={buttonVariants({})} to="/specialists/new">
               Create your first specialist
             </Link>
           }
@@ -139,30 +141,26 @@ export function SpecialistsPage() {
               </div>
 
               <div className="mt-auto flex flex-wrap gap-2 pt-6">
-                <Link className="cc-button" to={`/chat/${specialist.slug}`}>
+                <Link className={buttonVariants({})} to={`/chat/${specialist.slug}`}>
                   Open chat
                 </Link>
                 <Link
-                  className="cc-button cc-button-secondary"
+                  className={buttonVariants({ variant: "secondary" })}
                   to={`/specialists/${specialist.slug}/edit`}
                 >
                   Edit
                 </Link>
                 <Link
-                  className="cc-button cc-button-secondary"
+                  className={buttonVariants({ variant: "secondary" })}
                   to={`/files?root=workspace&path=${encodeURIComponent(
                     `sessions/specialists/${specialist.id}`,
                   )}`}
                 >
                   Session archive
                 </Link>
-                <button
-                  className="cc-button cc-button-danger"
-                  onClick={() => setPendingDelete(specialist)}
-                  type="button"
-                >
+                <Button variant="danger" onClick={() => setPendingDelete(specialist)} type="button">
                   Delete
-                </button>
+                </Button>
               </div>
             </article>
           ))}
@@ -186,20 +184,12 @@ export function SpecialistsPage() {
               specialists folder.
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
-              <button
-                className="cc-button cc-button-danger"
-                onClick={() => void handleDelete()}
-                type="button"
-              >
+              <Button variant="danger" onClick={() => void handleDelete()} type="button">
                 Confirm delete
-              </button>
-              <button
-                className="cc-button cc-button-secondary"
-                onClick={() => setPendingDelete(undefined)}
-                type="button"
-              >
+              </Button>
+              <Button variant="secondary" onClick={() => setPendingDelete(undefined)} type="button">
                 Cancel
-              </button>
+              </Button>
             </div>
           </section>
         </div>

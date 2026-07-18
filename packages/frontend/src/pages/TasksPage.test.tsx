@@ -1852,7 +1852,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Create template" }));
     await user.type(screen.getByLabelText("Title"), "Reusable release checklist");
-    await user.selectOptions(screen.getByLabelText("Default specialist"), "agent-1");
+    await chooseComboboxOption(user, "Default specialist", "Planner");
     await user.type(screen.getByLabelText("Task prompt"), "Draft release notes.");
     const createButtons = screen.getAllByRole("button", { name: "Create template" });
     expect(createButtons[1]).toBeDefined();
@@ -2330,7 +2330,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     const prompt = "Draft nightly release notes for the platform launch and summarize blockers";
     await screen.findByRole("combobox", { name: /Assigned specialist/i });
-    await user.selectOptions(screen.getByLabelText(/Assigned specialist/i), "agent-1");
+    await chooseComboboxOption(user, /Assigned specialist/i, "Planner");
     expect(
       screen.queryByText("Browse workspace files and drag relevant files into the task prompt."),
     ).not.toBeInTheDocument();
@@ -2365,10 +2365,7 @@ describe("TasksPage", () => {
     renderWithRouter(<TasksPage mode="create" />, "/tasks/new");
 
     const user = userEvent.setup();
-    await user.selectOptions(
-      await screen.findByRole("combobox", { name: /Assigned specialist/i }),
-      "agent-1",
-    );
+    await chooseComboboxOption(user, /Assigned specialist/i, "Planner");
     await screen.findByText("GOAL.md");
 
     expect(
@@ -2462,7 +2459,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await screen.findByRole("combobox", { name: /Assigned specialist/i });
     await user.type(screen.getByLabelText(/Title/i), "Requirements review");
-    await user.selectOptions(screen.getByLabelText(/Assigned specialist/i), "agent-1");
+    await chooseComboboxOption(user, /Assigned specialist/i, "Planner");
     await user.type(screen.getByLabelText(/Task prompt/i), "#GOAL");
     await user.click(await screen.findByRole("button", { name: /GOAL.md/i }));
     await user.type(screen.getByLabelText(/Task prompt/i), "/code");
@@ -2511,7 +2508,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await screen.findByRole("combobox", { name: /Assigned specialist/i });
 
-    expect(screen.getByLabelText(/Assigned specialist/i)).toHaveValue("agent-1");
+    expect(screen.getByLabelText(/Assigned specialist/i)).toHaveValue("Planner");
     expect(screen.getByLabelText(/Task prompt/i)).toHaveValue("Update requirements");
     expect(screen.getByText("/code-reviewer")).toBeInTheDocument();
     expect(screen.getByText("GOAL.md")).toBeInTheDocument();
@@ -2567,7 +2564,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await screen.findByRole("combobox", { name: /Assigned specialist/i });
 
-    await user.selectOptions(screen.getByLabelText(/Assigned specialist/i), "agent-2");
+    await chooseComboboxOption(user, /Assigned specialist/i, "Writer");
 
     expect(screen.getByLabelText(/Task prompt/i)).toHaveValue("Update requirements");
     expect(screen.queryByText("/code-reviewer")).not.toBeInTheDocument();
@@ -2595,13 +2592,13 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Create template" }));
     await user.type(screen.getByLabelText("Title"), "Hourly review");
-    await user.selectOptions(screen.getByLabelText("Default specialist"), "agent-1");
+    await chooseComboboxOption(user, "Default specialist", "Planner");
     await user.click(screen.getByLabelText(/Repeat on a schedule/i));
-    await user.selectOptions(screen.getByLabelText(/^Repeat$/i), "custom");
-    await user.selectOptions(screen.getByLabelText(/Unit/i), "hour");
+    await chooseComboboxOption(user, /^Repeat$/i, "Custom");
+    await chooseComboboxOption(user, /Unit/i, "Hour");
     await user.clear(screen.getByLabelText(/Every/i));
     await user.type(screen.getByLabelText(/Every/i), "4");
-    await user.selectOptions(screen.getByLabelText(/Timezone/i), "UTC");
+    await chooseComboboxOption(user, /Timezone/i, "UTC");
     const createButtons = screen.getAllByRole("button", { name: "Create template" });
     expect(createButtons[1]).toBeDefined();
     await user.click(createButtons[1] as HTMLElement);
@@ -3755,6 +3752,15 @@ function jsonResponse(status: number, body: unknown): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+async function chooseComboboxOption(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string | RegExp,
+  option: string,
+): Promise<void> {
+  await user.click(await screen.findByRole("combobox", { name: label }));
+  await user.click(await screen.findByRole("option", { name: option }));
 }
 
 function fireDragEvent(element: Element, eventName: "dragStart" | "dragOver" | "drop") {

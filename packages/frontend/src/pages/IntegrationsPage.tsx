@@ -38,6 +38,8 @@ import {
   OpenInNewIcon,
 } from "./integrations/integration-icons";
 import { McpServerDialog } from "./integrations/mcp-server-dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function IntegrationsPage() {
   const agentsQuery = useSpecialistsQuery();
@@ -69,21 +71,17 @@ export function IntegrationsPage() {
       <PageHeader
         actions={
           <div className="flex flex-wrap gap-2">
-            <button
-              className="cc-button cc-button-secondary"
+            <Button
+              variant="secondary"
               disabled={mcpMutations.refresh.isPending}
               onClick={() => mcpMutations.refresh.mutate()}
               type="button"
             >
               {mcpMutations.refresh.isPending ? "Refreshing…" : "Refresh"}
-            </button>
-            <button
-              className="cc-button"
-              onClick={() => setDialog({ mode: "create" })}
-              type="button"
-            >
+            </Button>
+            <Button onClick={() => setDialog({ mode: "create" })} type="button">
               Add custom MCP server
-            </button>
+            </Button>
           </div>
         }
         description="Manage global external MCP servers once, then reuse them safely across specialists through permissions."
@@ -96,13 +94,13 @@ export function IntegrationsPage() {
       {queryError ? (
         <ErrorState
           action={
-            <button
-              className="cc-button cc-button-secondary"
+            <Button
+              variant="secondary"
               onClick={() => void mcpServersQuery.refetch()}
               type="button"
             >
               Try again
-            </button>
+            </Button>
           }
           description={queryError}
           title="MCP servers could not be loaded."
@@ -460,45 +458,29 @@ function McpServerCard(props: {
 
       <div className="mt-5 flex flex-wrap gap-2">
         {config.transport !== "stdio" && config.authMethod === "oauth" ? (
-          <button
-            className="cc-button cc-button-secondary"
-            onClick={props.onAuthenticate}
-            type="button"
-          >
+          <Button variant="secondary" onClick={props.onAuthenticate} type="button">
             {status.status === "connected" ? "Re-authenticate" : "Authenticate"}
-          </button>
+          </Button>
         ) : null}
         {config.transport !== "stdio" &&
         config.authMethod === "oauth" &&
         status.status === "connected" ? (
-          <button
-            className="cc-button cc-button-secondary"
-            onClick={() => void props.onRemoveAuth()}
-            type="button"
-          >
+          <Button variant="secondary" onClick={() => void props.onRemoveAuth()} type="button">
             {props.removingAuth ? "Removing..." : "Remove auth"}
-          </button>
+          </Button>
         ) : null}
-        <button
-          className="cc-button cc-button-secondary"
-          onClick={() => void props.onToggleEnabled()}
-          type="button"
-        >
+        <Button variant="secondary" onClick={() => void props.onToggleEnabled()} type="button">
           {props.toggling ? "Updating..." : props.server.enabled ? "Disable" : "Enable"}
-        </button>
-        <button className="cc-button cc-button-secondary" onClick={props.onEdit} type="button">
+        </Button>
+        <Button variant="secondary" onClick={props.onEdit} type="button">
           Edit
-        </button>
-        <button className="cc-button cc-button-secondary" onClick={props.onDuplicate} type="button">
+        </Button>
+        <Button variant="secondary" onClick={props.onDuplicate} type="button">
           Duplicate
-        </button>
-        <button
-          className="cc-button cc-button-danger"
-          onClick={() => void props.onRemove()}
-          type="button"
-        >
+        </Button>
+        <Button variant="danger" onClick={() => void props.onRemove()} type="button">
           Remove
-        </button>
+        </Button>
       </div>
     </article>
   );
@@ -550,9 +532,9 @@ function ComposioSection(props: {
               is preconfigured by CC.
             </p>
           </div>
-          <button className="cc-button" onClick={props.onActivate} type="button">
+          <Button onClick={props.onActivate} type="button">
             Connect Composio
-          </button>
+          </Button>
         </div>
       </section>
     );
@@ -603,39 +585,23 @@ function ComposioSection(props: {
         <div className="flex flex-wrap gap-2">
           {props.server.config.transport !== "stdio" &&
           props.server.config.authMethod === "oauth" ? (
-            <button
-              className="cc-button cc-button-secondary"
-              onClick={() => void props.onAuthenticate()}
-              type="button"
-            >
+            <Button variant="secondary" onClick={() => void props.onAuthenticate()} type="button">
               {status.status === "connected" ? "Re-authenticate" : "Authenticate"}
-            </button>
+            </Button>
           ) : null}
           {props.server.config.transport !== "stdio" &&
           props.server.config.authMethod === "oauth" &&
           status.status === "connected" ? (
-            <button
-              className="cc-button cc-button-secondary"
-              onClick={() => void props.onRemoveAuth()}
-              type="button"
-            >
+            <Button variant="secondary" onClick={() => void props.onRemoveAuth()} type="button">
               Remove auth
-            </button>
+            </Button>
           ) : null}
-          <button
-            className="cc-button cc-button-secondary"
-            onClick={() => void props.onToggleEnabled()}
-            type="button"
-          >
+          <Button variant="secondary" onClick={() => void props.onToggleEnabled()} type="button">
             {props.busy ? "Updating..." : props.server.enabled ? "Disable" : "Enable"}
-          </button>
-          <button
-            className="cc-button cc-button-danger"
-            onClick={() => void props.onDeactivate()}
-            type="button"
-          >
+          </Button>
+          <Button variant="danger" onClick={() => void props.onDeactivate()} type="button">
             Deactivate
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -732,9 +698,9 @@ function SuggestedMcpServersSection(props: {
         <>
           <div className="mt-5 grid gap-3">
             <div className="relative">
-              <input
+              <Input
                 aria-label="Search suggested MCPs"
-                className="cc-input pr-10"
+                className="pr-10"
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search by name, description, or tag (e.g. no-auth, oauth, search)"
                 type="search"
@@ -807,14 +773,14 @@ function SuggestedMcpServersSection(props: {
 
               {canToggleShowAll ? (
                 <div className="mt-5 flex justify-center">
-                  <button
+                  <Button
+                    variant="secondary"
                     aria-label={showAll ? "Show less suggested MCPs" : "Show all suggested MCPs"}
-                    className="cc-button cc-button-secondary"
                     onClick={() => setShowAll((current) => !current)}
                     type="button"
                   >
                     {showAll ? "Show less" : "Show all"}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </>

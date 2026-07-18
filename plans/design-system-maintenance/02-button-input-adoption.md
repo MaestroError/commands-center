@@ -1,6 +1,6 @@
 # DSM-002 — Deepen Button and Input Adoption
 
-- Status: Planned
+- Status: Complete
 - Program: [Design-System Maintenance](README.md)
 - Foundation reference:
   [Compatibility API](../design-system-foundation.md#4-preserve-current-classes-as-a-compatibility-api)
@@ -72,28 +72,50 @@ not merely global string totals or the number of UI imports.
 
 ## Acceptance criteria
 
-- [ ] Every targeted production occurrence is classified by exact path,
+- [x] Every targeted production occurrence is classified by exact path,
       element, owner, behavior, and final decision; dynamic class construction
       and non-element strings are accounted for.
-- [ ] Every ordinary button action uses `Button` with the correct primary,
+- [x] Every ordinary button action uses `Button` with the correct primary,
       secondary, danger, or icon contract.
-- [ ] Every ordinary text-like input uses `Input` without losing native props,
+- [x] Every ordinary text-like input uses `Input` without losing native props,
       form behavior, refs, autofill, validation, or accessible labeling.
-- [ ] Remaining raw buttons/inputs have a documented semantic or domain reason;
+- [x] Remaining raw buttons/inputs have a documented semantic or domain reason;
       raw-element count alone is not treated as failure.
-- [ ] No domain call site directly consumes a targeted compatibility class
+- [x] No domain call site directly consumes a targeted compatibility class
       unless it is explicitly handed to DSM-003 with a concrete missing-
       primitive requirement.
-- [ ] Submit/reset behavior is preserved explicitly; the `Button` default
+- [x] Submit/reset behavior is preserved explicitly; the `Button` default
       `type="button"` causes no silent form regression.
-- [ ] Icon-only controls retain accessible names and focus-visible behavior;
+- [x] Icon-only controls retain accessible names and focus-visible behavior;
       disabled/loading controls retain their existing interaction contract.
-- [ ] Existing visual density, responsive layout, and Default light/dark states
+- [x] Existing visual density, responsive layout, and Default light/dark states
       remain unchanged unless a separately approved product change exists.
-- [ ] The audit prevents any increase or reintroduction of direct domain
+- [x] The audit prevents any increase or reintroduction of direct domain
       compatibility consumers and reports the approved typed alternative.
-- [ ] No speculative variant, polymorphic API, or common abstraction is added
+- [x] No speculative variant, polymorphic API, or common abstraction is added
       solely to make migration counts reach zero.
+
+## Completion evidence
+
+- The frozen post-DSM-001 inventory classifies 342 targeted runtime records
+  across 53 exact paths, including dynamic class construction, semantic
+  link/label consumers, primitive-owned definitions, and the 28 concrete
+  `select`/`textarea` handoffs to DSM-003.
+- All 200 compatibility-styled button actions now use `Button` except the
+  documented compact activity action, which remains a native link-like button
+  and obtains its non-compact appearance from `buttonVariants`. Both dynamic
+  live-request consumers now receive typed `Button` props.
+- All 64 ordinary domain inputs now use `Input`; all 38 semantic links and
+  labels retain their native element and use `buttonVariants`.
+- Domain code has zero direct button-compatibility consumers and zero ordinary
+  `cc-input` consumers. The audit permits only primitive ownership and the 28
+  exact DSM-003 `select`/`textarea` handoffs, with negative tests for
+  reintroduction and growth.
+- ESLint fix, root/package linting, formatting, typecheck, Knip, production
+  build, design-system audit, and the complete unit/integration suite pass. The
+  design-system Playwright selection passes twice (44 passed and 44 intentional
+  mobile-project skips per run); full E2E passes with 150 passed and the same 44
+  intentional skips.
 
 ## Verification tests
 

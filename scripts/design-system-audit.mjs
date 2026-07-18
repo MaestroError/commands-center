@@ -17,13 +17,13 @@ const RETAINED_COMPATIBILITY_COUNTS = new Map([
   ["cc-badge", 9],
   ["cc-badge-connected", 3],
   ["cc-badge-muted", 4],
-  ["cc-button", 243],
-  ["cc-button-danger", 14],
+  ["cc-button", 3],
+  ["cc-button-danger", 1],
   ["cc-button-icon", 1],
-  ["cc-button-secondary", 151],
+  ["cc-button-secondary", 1],
   ["cc-empty-state", 2],
   ["cc-eyebrow", 11],
-  ["cc-input", 94],
+  ["cc-input", 17],
   ["cc-logo-background", 1],
   ["cc-logo-icon", 2],
   ["cc-md", 1],
@@ -37,6 +37,19 @@ const RETAINED_COMPATIBILITY_COUNTS = new Map([
 ]);
 
 const REMOVED_COMPATIBILITY_CLASSES = new Set(["cc-button-primary", "cc-nav-item"]);
+const DEFERRED_INPUT_COMPATIBILITY_COUNTS = new Map([
+  ["packages/frontend/src/components/chat/QuestionDock.tsx", 1],
+  ["packages/frontend/src/components/dev/DesignSystemBaselinePage.tsx", 1],
+  ["packages/frontend/src/components/documents/DocumentCreateDialog.tsx", 1],
+  ["packages/frontend/src/components/specialists/SpecialistForm.tsx", 1],
+  ["packages/frontend/src/components/tasks/RunTaskContextDialog.tsx", 1],
+  ["packages/frontend/src/components/tasks/task-feedback-section.tsx", 2],
+  ["packages/frontend/src/pages/DocumentsPage.tsx", 1],
+  ["packages/frontend/src/pages/integrations/mcp-server-dialog.tsx", 2],
+  ["packages/frontend/src/pages/tasks/TaskDetailSections.tsx", 2],
+  ["packages/frontend/src/pages/tasks/TaskFormPage.tsx", 1],
+  ["packages/frontend/src/pages/tasks/TaskTemplateFormPage.tsx", 2],
+]);
 const REQUIRED_BRIDGE_PATHS = [
   "packages/frontend/src/styles/globals.css",
   "packages/frontend/src/components/terminal/xterm-theme.ts",
@@ -48,7 +61,7 @@ const RESOLVED_MODE_CONSUMERS = new Set([
 ]);
 
 const RAW_TAILWIND_PALETTE_PATTERN =
-  /(?:bg|text|border|ring|fill|stroke)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b/g;
+  /(?:bg|text|border|ring|fill|stroke)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b|text-(?:black|white|accent-contrast)\b/g;
 const FIXED_COLOR_PATTERN = /(?<!&)#[\da-f]{3,8}\b|\b(?:rgb|rgba|hsl|hsla)\([^)]*\)/gi;
 const COMPATIBILITY_TOKEN_PATTERN = /(?<![a-z\d-])cc-[a-z\d-]+(?![a-z\d-])/gi;
 
@@ -227,6 +240,7 @@ function auditCustomDialogs(productionSources, violations) {
 
 function auditCompatibility(productionSources, violations) {
   const counts = countCompatibilityTokens(productionSources);
+  auditTypedPrimitiveOwnership(productionSources, violations);
   for (const className of REMOVED_COMPATIBILITY_CLASSES) {
     const count = counts.get(className) ?? 0;
     if (count > 0) {
@@ -263,6 +277,71 @@ function auditCompatibility(productionSources, violations) {
         "packages/frontend/src/styles/globals.css",
         `${className} definition was reintroduced`,
         "Use the supported semantic token/component contract.",
+      );
+    }
+  }
+}
+
+function auditTypedPrimitiveOwnership(productionSources, violations) {
+  const buttonTokens = ["cc-button", "cc-button-secondary", "cc-button-danger", "cc-button-icon"];
+
+  for (const [file, source] of productionSources) {
+    if (file.endsWith(".css") || file.includes("/components/ui/")) {
+      continue;
+    }
+
+    if (/<select\b/.test(source)) {
+      addViolation(
+        violations,
+        "DS004",
+        file,
+        "direct native select consumer",
+        "Use SearchableSelect for dynamic/search-worthy options or @/components/ui/select for short fixed options.",
+      );
+    }
+
+    for (const token of buttonTokens) {
+      if (countExactToken(source, token) === 0) {
+        continue;
+      }
+      addViolation(
+        violations,
+        "DS004",
+        file,
+        `direct domain consumer ${token}`,
+        "Use Button or buttonVariants from the CC-owned UI layer; do not select compatibility classes directly.",
+      );
+    }
+
+    const deferredMaximum = DEFERRED_INPUT_COMPATIBILITY_COUNTS.get(file);
+    const deferredOpenings = source.match(/<textarea\b[\s\S]*?>/g) ?? [];
+    const deferredCount = deferredOpenings.reduce(
+      (total, opening) => total + countExactToken(opening, "cc-input"),
+      0,
+    );
+    const sourceWithoutDeferredOpenings = deferredOpenings.reduce(
+      (current, opening) => current.replace(opening, ""),
+      source,
+    );
+    const ordinaryInputCount = countExactToken(sourceWithoutDeferredOpenings, "cc-input");
+
+    if (ordinaryInputCount > 0) {
+      addViolation(
+        violations,
+        "DS004",
+        file,
+        "direct domain consumer cc-input",
+        "Use Input for text-like inputs; defer only concrete select/textarea consumers through DSM-003.",
+      );
+    }
+
+    if (deferredCount > (deferredMaximum ?? 0)) {
+      addViolation(
+        violations,
+        "DS004",
+        file,
+        `deferred textarea cc-input count ${deferredCount.toString()} exceeds ${(deferredMaximum ?? 0).toString()}`,
+        "Use the DSM-003 consumer gate before adding or migrating Textarea consumers.",
       );
     }
   }
@@ -422,6 +501,12 @@ function countCompatibilityTokens(productionSources) {
     }
   }
   return counts;
+}
+
+function countExactToken(source, token) {
+  return (
+    source.match(new RegExp(`(?<![a-z\\d-])${escapeRegExp(token)}(?![a-z\\d-])`, "gi"))?.length ?? 0
+  );
 }
 
 function countMatchingFiles(sources, pattern) {
