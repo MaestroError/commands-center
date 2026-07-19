@@ -8,7 +8,7 @@ import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-spec
 import { useSpecialistCustomToolsQuery, useCustomToolsQuery } from "@/hooks/use-custom-tools-query";
 import { useMcpServersQuery } from "@/hooks/use-mcp-servers-query";
 
-import { isLiveRequestReviewKind } from "./live-request-helpers";
+import { getActionButtonProps, isLiveRequestReviewKind } from "./live-request-helpers";
 import { LiveRequestReviewForm } from "./LiveRequestReviewForm";
 
 vi.mock("@/hooks/use-specialists-query", () => ({
@@ -92,6 +92,20 @@ describe("isLiveRequestReviewKind", () => {
     expect(isLiveRequestReviewKind("task_update_review")).toBe(true);
     expect(isLiveRequestReviewKind("specialist_management_confirmation")).toBe(false);
     expect(isLiveRequestReviewKind("add_secret")).toBe(false);
+  });
+});
+
+describe("getActionButtonProps", () => {
+  it("maps a danger action to the Button danger variant", () => {
+    expect(
+      getActionButtonProps({
+        id: "delete",
+        label: "Delete",
+        variant: "danger",
+        kind: "submit",
+        disabledWhen: [],
+      }),
+    ).toEqual({ variant: "danger" });
   });
 });
 

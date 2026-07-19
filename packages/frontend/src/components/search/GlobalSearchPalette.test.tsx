@@ -52,6 +52,20 @@ describe("GlobalSearchPalette", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("closes on Escape from a focused search result", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    renderWithProviders(<GlobalSearchPalette onClose={onClose} open />, ["/"]);
+
+    await user.type(screen.getByRole("textbox", { name: "Search resources" }), "release");
+    const result = await screen.findByRole("button", { name: /Release checklist/ });
+    result.focus();
+    expect(result).toHaveFocus();
+    await user.keyboard("{Escape}");
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("closes on overlay click", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();

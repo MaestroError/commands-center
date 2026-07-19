@@ -47,10 +47,7 @@ export function getActionButtonProps(
   }
 
   if (action.variant === "danger") {
-    return {
-      className: "border-destructive/40 text-destructive hover:bg-destructive/10",
-      variant: "primary",
-    };
+    return { variant: "danger" };
   }
 
   return { variant: "secondary" };

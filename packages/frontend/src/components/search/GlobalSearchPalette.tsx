@@ -260,10 +260,7 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
 
   return (
     <Dialog onOpenChange={(open) => !open && props.onClose()} open>
-      <DialogContent
-        className="top-16 max-h-[calc(100dvh-5rem)] max-w-3xl translate-y-0 overflow-hidden p-0"
-        onEscapeKeyDown={(event) => event.preventDefault()}
-      >
+      <DialogContent className="top-16 max-h-[calc(100dvh-5rem)] max-w-3xl translate-y-0 overflow-hidden p-0">
         <DialogTitle className="sr-only">Global search</DialogTitle>
         <div className="border-b border-border px-4 py-3">
           <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-elevated px-3 py-2">
@@ -273,12 +270,6 @@ export function GlobalSearchPalette(props: GlobalSearchPaletteProps) {
               autoFocus
               className="flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary"
               onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  props.onClose();
-                }
-              }}
               placeholder="Search workspace resources"
               type="text"
               value={query}

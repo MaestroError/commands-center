@@ -1,3 +1,5 @@
+import { Zap } from "lucide-react";
+
 interface AutoApproveToggleProps {
   enabled: boolean;
   onChange: (enabled: boolean) => void;
@@ -20,4 +22,3 @@ export function AutoApproveToggle({ enabled, onChange }: AutoApproveToggleProps)
     </button>
   );
 }
-import { Zap } from "lucide-react";
