@@ -1,4 +1,5 @@
 import type { LiveRequest, LiveRequestAction } from "@cc/shared/schemas";
+import type { ButtonProps } from "@/components/ui/button";
 
 /**
  * True for any specialist/task draft review live request — any kind ending in `_review` that
@@ -38,16 +39,18 @@ export function getFallbackActions(request: LiveRequest): LiveRequestAction[] {
   ];
 }
 
-export function getActionClassName(action: LiveRequestAction): string {
+export function getActionButtonProps(
+  action: LiveRequestAction,
+): Pick<ButtonProps, "className" | "variant"> {
   if (action.variant === "primary") {
-    return "cc-button";
+    return { variant: "primary" };
   }
 
   if (action.variant === "danger") {
-    return "cc-button border-destructive/40 text-destructive hover:bg-destructive/10";
+    return { variant: "danger" };
   }
 
-  return "cc-button cc-button-secondary";
+  return { variant: "secondary" };
 }
 
 export function isActionDisabled(

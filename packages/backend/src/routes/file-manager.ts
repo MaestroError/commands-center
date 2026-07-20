@@ -1,3 +1,6 @@
+import { createReadStream } from "node:fs";
+
+import { ZipArchive } from "archiver";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 
 import {
@@ -242,6 +245,79 @@ export function registerFileManagerRoutes(server: AppServer, context: RuntimeCon
   );
 
   app.get(
+    "/api/file-manager/files/download",
+    {
+      schema: {
+        querystring: fileManagerFileContentQuerySchema,
+      },
+    },
+    async (request, reply) => {
+      const root = resolveFileManagerRoot({
+        kind: request.query.root,
+        config: context.config,
+      });
+
+      const target = await fileManagerService.resolveDownloadTarget(root, request.query.path);
+
+      reply.header("Content-Type", target.mimeType ?? "application/octet-stream");
+      reply.header("Content-Length", String(target.sizeBytes));
+      reply.header("X-Content-Type-Options", "nosniff");
+      reply.header("Cache-Control", "no-store, max-age=0");
+      reply.header(
+        "Content-Disposition",
+        `attachment; filename="${escapeDownloadFilename(target.name)}"`,
+      );
+
+      return reply.send(createReadStream(target.absolutePath));
+    },
+  );
+
+  app.get(
+    "/api/file-manager/files/download-zip",
+    {
+      schema: {
+        querystring: fileManagerFileContentQuerySchema,
+      },
+    },
+    async (request, reply) => {
+      const root = resolveFileManagerRoot({
+        kind: request.query.root,
+        config: context.config,
+      });
+
+      const target = await fileManagerService.collectZipEntries(root, request.query.path);
+
+      reply.header("Content-Type", "application/zip");
+      reply.header("X-Content-Type-Options", "nosniff");
+      reply.header("Cache-Control", "no-store, max-age=0");
+      reply.header(
+        "Content-Disposition",
+        `attachment; filename="${escapeDownloadFilename(target.name)}.zip"`,
+      );
+
+      const archive = new ZipArchive({ zlib: { level: 9 } });
+
+      // A missing entry mid-stream (e.g. a file deleted after the walk) should not
+      // abort the whole archive; log it and keep going. Fatal errors reject the stream.
+      archive.on("warning", (error) => {
+        request.log.warn({ err: error }, "file-manager zip archive warning");
+      });
+      archive.on("error", (error) => {
+        request.log.error({ err: error }, "file-manager zip archive error");
+        archive.destroy(error);
+      });
+
+      for (const file of target.files) {
+        archive.file(file.absolutePath, { name: file.archivePath });
+      }
+
+      void archive.finalize();
+
+      return reply.send(archive);
+    },
+  );
+
+  app.get(
     "/api/file-manager/preferences",
     {
       schema: {
@@ -265,4 +341,8 @@ export function registerFileManagerRoutes(server: AppServer, context: RuntimeCon
     },
     async (request) => preferencesService.update(request.body),
   );
+}
+
+function escapeDownloadFilename(filename: string): string {
+  return filename.replace(/["\\\r\n]/g, "_");
 }

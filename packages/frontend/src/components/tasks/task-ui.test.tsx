@@ -17,10 +17,10 @@ describe("StatusBadge", () => {
 
   it("uses the in-progress tone for active statuses", () => {
     const { rerender } = render(<StatusBadge status="running" />);
-    expect(screen.getByText("Running")).toHaveClass("text-amber-300");
+    expect(screen.getByText("Running")).toHaveClass("text-warning-foreground");
 
     rerender(<StatusBadge status="in_progress" />);
-    expect(screen.getByText("In Progress")).toHaveClass("text-amber-300");
+    expect(screen.getByText("In Progress")).toHaveClass("text-warning-foreground");
   });
 
   it("uses the queued tone for queued statuses", () => {

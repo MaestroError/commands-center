@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { BrowserRouter, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +22,8 @@ vi.mock("@/lib/api", () => ({
   moveFileManagerEntry: vi.fn(),
   searchFileManagerDirectories: vi.fn(),
   deleteFileManagerEntry: vi.fn(),
+  downloadFileManagerFile: vi.fn(),
+  downloadFileManagerFolderZip: vi.fn(),
   getFileManagerFileContent: vi.fn(),
   saveFileManagerFileContent: vi.fn(),
   FileSaveConflictError: class extends Error {
@@ -51,6 +54,10 @@ vi.mock("@monaco-editor/react", () => ({
       value={value}
     />
   ),
+}));
+
+vi.mock("@/context/use-theme", () => ({
+  useTheme: () => ({ resolvedColorMode: "light" }),
 }));
 
 describe("FileManagerPage", () => {
@@ -319,6 +326,32 @@ describe("FileManagerPage", () => {
     });
   });
 
+  it("preserves the file-manager dialog no-Escape dismissal contract", async () => {
+    const user = userEvent.setup();
+    renderWithRoute("/files");
+
+    await screen.findAllByText("AGENTS.md");
+    await user.click(screen.getByRole("button", { name: "New folder" }));
+    await screen.findByRole("dialog", { name: "Create folder" });
+    await user.keyboard("{Escape}");
+
+    expect(screen.getByRole("dialog", { name: "Create folder" })).toBeInTheDocument();
+  });
+
+  it("closes a file-manager dialog on overlay click", async () => {
+    const user = userEvent.setup();
+    renderWithRoute("/files");
+
+    await screen.findAllByText("AGENTS.md");
+    await user.click(screen.getByRole("button", { name: "New folder" }));
+    await screen.findByRole("dialog", { name: "Create folder" });
+    const overlay = document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]');
+    expect(overlay).not.toBeNull();
+    await user.click(overlay!);
+
+    expect(screen.queryByRole("dialog", { name: "Create folder" })).not.toBeInTheDocument();
+  });
+
   it("uses in-app dialogs for rename and delete", async () => {
     renderWithRoute("/files");
 
@@ -362,13 +395,14 @@ describe("FileManagerPage", () => {
   });
 
   it("moves an entry with the move dialog", async () => {
+    const user = userEvent.setup();
     renderWithRoute("/files");
 
     await screen.findAllByText("src");
 
-    fireEvent.click(screen.getByTestId("file-row-src"));
-    fireEvent.click(screen.getByRole("tab", { name: "Actions" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Move directory" }));
+    await user.click(screen.getByTestId("file-row-src"));
+    await user.click(screen.getByRole("tab", { name: "Actions" }));
+    await user.click(await screen.findByRole("button", { name: "Move directory" }));
 
     expect(screen.getByRole("dialog", { name: "Move entry" })).toBeInTheDocument();
     await waitFor(() => {

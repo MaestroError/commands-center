@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -196,7 +197,8 @@ describe("BuiltInSkillsPage", () => {
     expect(scrollPanel).toHaveClass("h-full", "min-h-0", "overflow-y-auto");
   });
 
-  it("filters the skill list by search text and source", () => {
+  it("filters the skill list by search text and source", async () => {
+    const user = userEvent.setup();
     renderPage();
 
     expect(screen.getByText("Code Review")).toBeInTheDocument();
@@ -209,9 +211,8 @@ describe("BuiltInSkillsPage", () => {
     expect(screen.queryByText("Code Review")).not.toBeInTheDocument();
     expect(screen.getByText("Workspace Helper")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByDisplayValue("All sources"), {
-      target: { value: "built-in" },
-    });
+    await user.click(screen.getByRole("combobox", { name: "Skill source" }));
+    await user.click(await screen.findByRole("option", { name: "Built-in" }));
 
     expect(screen.getByText("No skills match this filter")).toBeInTheDocument();
   });
@@ -321,7 +322,7 @@ describe("BuiltInSkillsPage", () => {
     updateMutateAsync.mockResolvedValue(agent);
 
     renderPage();
-    selectAgent("Writer");
+    await selectAgent("Writer");
 
     fireEvent.click(screen.getByRole("button", { name: "Assign to specialist" }));
 
@@ -363,7 +364,7 @@ describe("BuiltInSkillsPage", () => {
 
     renderPage();
     clickSkillCard("Workspace Helper");
-    selectAgent("Writer");
+    await selectAgent("Writer");
 
     fireEvent.click(screen.getByRole("button", { name: "Remove from specialist" }));
 
@@ -434,11 +435,11 @@ function renderPage(initialEntries: string[] = ["/skills"]) {
   );
 }
 
-function selectAgent(name: string) {
+async function selectAgent(name: string): Promise<void> {
+  const user = userEvent.setup();
   const context = screen.getByTestId("workspace-context");
-  fireEvent.change(within(context).getByRole("combobox"), {
-    target: { value: name === "Writer" ? "agent-1" : "" },
-  });
+  await user.click(within(context).getByRole("combobox", { name: "Specialist assignment" }));
+  await user.click(await screen.findByRole("option", { name }));
 }
 
 function clickSkillCard(name: string) {

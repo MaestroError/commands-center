@@ -318,6 +318,61 @@ export function createFileManagerService(options: { config: RuntimeConfig }) {
       await rm(absolutePath, { recursive: true, force: false });
     },
 
+    async resolveDownloadTarget(
+      root: RootReference,
+      path: string,
+    ): Promise<{ absolutePath: string; name: string; sizeBytes: number; mimeType?: string }> {
+      const absolutePath = resolveEntryPath(root, path);
+      const stats = await statOrNotFound(absolutePath);
+
+      if (!stats.isFile()) {
+        throw new BadRequestError("Only files can be downloaded.");
+      }
+
+      const name = basename(absolutePath);
+
+      return { absolutePath, name, sizeBytes: stats.size, mimeType: guessMimeType(name) };
+    },
+
+    async collectZipEntries(
+      root: RootReference,
+      path: string,
+    ): Promise<{ name: string; files: Array<{ absolutePath: string; archivePath: string }> }> {
+      const absolutePath = resolveEntryPath(root, path);
+      const stats = await statOrNotFound(absolutePath);
+
+      if (!stats.isDirectory()) {
+        throw new BadRequestError("Only folders can be downloaded as a zip.");
+      }
+
+      const name = basename(absolutePath) || "archive";
+      const files: Array<{ absolutePath: string; archivePath: string }> = [];
+
+      const walk = async (directoryPath: string, prefix: string): Promise<void> => {
+        const entries = await readdir(directoryPath, { withFileTypes: true });
+
+        for (const entry of entries) {
+          if (!entry.isDirectory() && !entry.isFile()) {
+            continue;
+          }
+
+          const entryAbsolutePath = resolve(directoryPath, entry.name);
+          ensureDescendant(root, entryAbsolutePath);
+          const archivePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+
+          if (entry.isDirectory()) {
+            await walk(entryAbsolutePath, archivePath);
+          } else {
+            files.push({ absolutePath: entryAbsolutePath, archivePath });
+          }
+        }
+      };
+
+      await walk(absolutePath, name);
+
+      return { name, files };
+    },
+
     async readFileContent(
       root: RootReference,
       path: string,

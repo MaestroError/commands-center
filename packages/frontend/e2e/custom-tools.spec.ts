@@ -51,7 +51,8 @@ test("creates a tool, resolves copy conflict with rename, and removes specialist
   await expect(page).toHaveURL(/\/files\?/);
   await page.goto("/tools");
   await expect(page.getByRole("heading", { name: "Release Helper" })).toBeVisible();
-  await page.getByRole("combobox").selectOption("agent-1");
+  await page.getByRole("combobox", { name: "Specialist tools" }).click();
+  await page.getByRole("option", { name: "Writer" }).click();
   await page.getByRole("button", { name: ">>" }).click();
 
   await expect(page.getByText("Tool name conflict")).toBeVisible();

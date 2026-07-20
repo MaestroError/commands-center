@@ -3,6 +3,7 @@
 import { ModelSelector } from "@/components/chat/ModelSelector";
 import { PageHeader } from "@/components/common/PageHeader";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
+import { SearchableSelect } from "@/components/common/SearchableSelect";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import { formatRepeatSummary, formatToken } from "@/components/tasks/task-format";
 import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-specialists-query";
@@ -27,6 +28,17 @@ import {
   readError,
   templateToForm,
 } from "./task-helpers";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function TaskTemplateForm(props: {
   agents: Specialist[];
@@ -71,30 +83,24 @@ export function TaskTemplateForm(props: {
       <div className="grid gap-4 lg:grid-cols-2">
         <label className="grid gap-1 text-sm text-text-secondary">
           Title
-          <input
-            className="cc-input"
+          <Input
             data-testid="task-template-title-input"
             required
             value={form.title}
             onChange={(event) => updateForm({ title: event.target.value })}
           />
         </label>
-        <label className="grid gap-1 text-sm text-text-secondary">
-          Default specialist
-          <select
-            className="cc-input"
+        <div className="grid gap-1 text-sm text-text-secondary">
+          <span>Default specialist</span>
+          <SearchableSelect
             required
+            ariaLabel="Default specialist"
+            onChange={(agentId) => updateForm({ agentId })}
+            options={props.agents.map((agent) => ({ id: agent.id, label: agent.name }))}
+            placeholder="Search specialists..."
             value={form.agentId}
-            onChange={(event) => updateForm({ agentId: event.target.value })}
-          >
-            <option value="">Select a specialist</option>
-            {props.agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
         <label className="grid gap-1 text-sm text-text-secondary">
           Model
           <ModelSelector
@@ -155,75 +161,80 @@ export function TaskTemplateForm(props: {
         {form.repeatEnabled ? (
           <>
             <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-              <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
-                Repeat
-                <select
-                  className="cc-input min-w-0"
+              <div className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                <span>Repeat</span>
+                <Select
                   value={form.repeatPreset}
-                  onChange={(event) =>
-                    updateForm({ repeatPreset: event.target.value as RepeatPreset })
+                  onValueChange={(repeatPreset) =>
+                    updateForm({ repeatPreset: repeatPreset as RepeatPreset })
                   }
                 >
-                  {REPEAT_PRESETS.map((preset) => (
-                    <option key={preset} value={preset}>
-                      {formatRepeatPreset(preset)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <SelectTrigger aria-label="Repeat">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REPEAT_PRESETS.map((preset) => (
+                      <SelectItem key={preset} value={preset}>
+                        {formatRepeatPreset(preset)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
                 First occurrence
-                <input
-                  className="cc-input min-w-0"
+                <Input
+                  className="min-w-0"
                   type="datetime-local"
                   value={form.anchorAtLocal}
                   onChange={(event) => updateForm({ anchorAtLocal: event.target.value })}
                 />
               </label>
-              <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
-                Timezone
-                <select
-                  className="cc-input min-w-0"
-                  data-testid="task-template-timezone-input"
+              <div className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                <span>Timezone</span>
+                <SearchableSelect
+                  ariaLabel="Timezone"
+                  className="min-w-0"
+                  onChange={(timezone) => updateForm({ timezone })}
+                  options={timezones.map((zone) => ({ id: zone, label: zone }))}
+                  placeholder="Search timezones..."
+                  testId="task-template-timezone-input"
                   value={form.timezone}
-                  onChange={(event) => updateForm({ timezone: event.target.value })}
-                >
-                  {timezones.map((zone) => (
-                    <option key={zone} value={zone}>
-                      {zone}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                />
+              </div>
             </div>
             {form.repeatPreset === "custom" ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
                   Every
-                  <input
-                    className="cc-input min-w-0"
+                  <Input
+                    className="min-w-0"
                     min={1}
                     type="number"
                     value={form.repeatInterval}
                     onChange={(event) => updateForm({ repeatInterval: event.target.value })}
                   />
                 </label>
-                <label className="grid min-w-0 gap-1 text-sm text-text-secondary">
-                  Unit
-                  <select
-                    className="cc-input min-w-0"
+                <div className="grid min-w-0 gap-1 text-sm text-text-secondary">
+                  <span>Unit</span>
+                  <Select
                     value={form.repeatFrequency}
-                    onChange={(event) =>
-                      updateForm({ repeatFrequency: event.target.value as RepeatFrequency })
+                    onValueChange={(repeatFrequency) =>
+                      updateForm({ repeatFrequency: repeatFrequency as RepeatFrequency })
                     }
                   >
-                    {REPEAT_FREQUENCIES.map((frequency) => (
-                      <option key={frequency} value={frequency}>
-                        {formatToken(frequency)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    <SelectTrigger aria-label="Unit">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REPEAT_FREQUENCIES.map((frequency) => (
+                        <SelectItem key={frequency} value={frequency}>
+                          {formatToken(frequency)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 {form.repeatFrequency === "week" ? (
                   <WeekdayPicker form={form} updateForm={updateForm} />
                 ) : null}
@@ -244,23 +255,18 @@ export function TaskTemplateForm(props: {
         )}
       </section>
       <div className="sticky bottom-3 z-10 flex flex-wrap gap-2 rounded-lg bg-surface py-2">
-        <button
-          className="cc-button"
-          data-testid="task-template-save"
-          disabled={props.isBusy}
-          type="submit"
-        >
+        <Button data-testid="task-template-save" disabled={props.isBusy} type="submit">
           {props.submitLabel}
-        </button>
-        <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+        </Button>
+        <Button variant="secondary" onClick={props.onCancel} type="button">
           {props.cancelLabel}
-        </button>
+        </Button>
       </div>
       <div className="grid gap-1">
         <label className="grid gap-1 text-sm text-text-secondary">
           Acceptance criteria, one per line
-          <textarea
-            className="cc-input min-h-24 resize-none"
+          <Textarea
+            className="min-h-24 resize-none"
             value={form.todosText}
             onChange={(event) => updateForm({ todosText: event.target.value })}
           />
@@ -337,8 +343,7 @@ function McpConfigSection(props: {
         <div className="grid gap-3">
           <label className="grid gap-1 text-sm text-text-secondary">
             Tool name
-            <input
-              className="cc-input"
+            <Input
               data-testid="template-mcp-tool-name-input"
               onChange={(event) => updateForm({ mcpToolName: event.target.value })}
               placeholder={derivedName || "create_linkedin_post"}
@@ -352,8 +357,8 @@ function McpConfigSection(props: {
 
           <label className="grid gap-1 text-sm text-text-secondary">
             Tool description
-            <textarea
-              className="cc-input min-h-16 resize-y"
+            <Textarea
+              className="min-h-16 resize-y"
               onChange={(event) => updateForm({ mcpToolDescription: event.target.value })}
               placeholder="Falls back to the task prompt when empty."
               value={form.mcpToolDescription}
@@ -362,8 +367,7 @@ function McpConfigSection(props: {
 
           <label className="grid gap-1 text-sm text-text-secondary">
             &ldquo;text&rdquo; argument description
-            <input
-              className="cc-input"
+            <Input
               onChange={(event) => updateForm({ mcpTextFieldDescription: event.target.value })}
               placeholder="What the caller should pass as text context."
               value={form.mcpTextFieldDescription}
@@ -383,8 +387,7 @@ function McpConfigSection(props: {
           {form.mcpAllowFiles ? (
             <label className="grid gap-1 text-sm text-text-secondary">
               &ldquo;files&rdquo; argument description
-              <input
-                className="cc-input"
+              <Input
                 onChange={(event) => updateForm({ mcpFilesFieldDescription: event.target.value })}
                 placeholder="What files the caller should attach."
                 value={form.mcpFilesFieldDescription}
@@ -445,7 +448,7 @@ export function TaskTemplateFormPage(props: { mode?: "create" | "edit" } = {}) {
       <div className="grid gap-4">
         <PageHeader
           actions={
-            <Link className="cc-button cc-button-secondary" to="/tasks?view=templates">
+            <Link className={buttonVariants({ variant: "secondary" })} to="/tasks?view=templates">
               Cancel
             </Link>
           }
@@ -481,7 +484,7 @@ export function TaskTemplateFormPage(props: { mode?: "create" | "edit" } = {}) {
     <div className="grid gap-4">
       <PageHeader
         actions={
-          <Link className="cc-button cc-button-secondary" to="/tasks?view=templates">
+          <Link className={buttonVariants({ variant: "secondary" })} to="/tasks?view=templates">
             Cancel
           </Link>
         }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, Cpu } from "lucide-react";
 
 import { useProvidersQuery } from "../../hooks/use-providers-query";
 
@@ -369,43 +370,13 @@ export function ModelSelector({
 }
 
 function ChipIcon() {
-  return (
-    <svg className="h-3 w-3 shrink-0 text-text-secondary" fill="none" viewBox="0 0 24 24">
-      <rect x="7" y="7" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M4 10v4M20 10v4M10 4h4M10 20h4"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+  return <Cpu aria-hidden="true" className="h-3 w-3 shrink-0 text-text-secondary" />;
 }
 
 function ChevronIcon() {
-  return (
-    <svg className="h-3 w-3 shrink-0 text-text-secondary" fill="none" viewBox="0 0 24 24">
-      <path
-        d="m6 9 6 6 6-6"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  return <ChevronDown aria-hidden="true" className="h-3 w-3 shrink-0 text-text-secondary" />;
 }
 
 function CheckIcon() {
-  return (
-    <svg className="h-3.5 w-3.5 shrink-0 text-accent" fill="none" viewBox="0 0 24 24">
-      <path
-        d="m5 12 5 5 9-11"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  return <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-accent" />;
 }

@@ -10,11 +10,11 @@ vi.mock("@/lib/api", () => ({
 import { WorkspaceFilePickerDialog } from "./WorkspaceFilePickerDialog";
 import { searchWorkspaceFiles } from "@/lib/api";
 
-function renderDialog(onSelect = vi.fn()) {
+function renderDialog(onSelect = vi.fn(), onClose = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <WorkspaceFilePickerDialog onClose={() => undefined} onSelect={onSelect} />
+      <WorkspaceFilePickerDialog onClose={onClose} onSelect={onSelect} />
     </QueryClientProvider>,
   );
   return onSelect;
@@ -83,5 +83,27 @@ describe("WorkspaceFilePickerDialog", () => {
 
     await user.type(screen.getByRole("textbox", { name: "Search workspace files" }), "nope");
     expect(await screen.findByText("No files found.")).toBeInTheDocument();
+  });
+
+  it("closes on Escape from the search field", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    renderDialog(vi.fn(), onClose);
+
+    await user.keyboard("{Escape}");
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes on overlay click", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    renderDialog(vi.fn(), onClose);
+
+    const overlay = document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]');
+    expect(overlay).not.toBeNull();
+    await user.click(overlay!);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,7 +1,12 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import { RotateCw, Save } from "lucide-react";
 
 import type { FileManagerFileRevision } from "@cc/shared/schemas";
+
+import { useTheme } from "@/context/use-theme";
+
+import { getMonacoThemeId, registerMonacoTheme, type MonacoThemeApi } from "./monaco-theme";
+import { Button } from "@/components/ui/button";
 
 const MonacoEditor = lazy(async () => {
   const mod = await import("@monaco-editor/react");
@@ -27,6 +32,8 @@ type Props = {
 };
 
 export function MonacoFileEditor(props: Props) {
+  const { resolvedColorMode } = useTheme();
+  const monacoRef = useRef<MonacoThemeApi | null>(null);
   const {
     busy,
     conflict,
@@ -45,6 +52,23 @@ export function MonacoFileEditor(props: Props) {
   } = props;
 
   const language = useMemo(() => guessLanguage(name, mimeType), [name, mimeType]);
+
+  const handleBeforeMount = useCallback(
+    (monaco: MonacoThemeApi) => {
+      monacoRef.current = monaco;
+      registerMonacoTheme(monaco, resolvedColorMode);
+    },
+    [resolvedColorMode],
+  );
+
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) {
+      return;
+    }
+    const themeId = registerMonacoTheme(monaco, resolvedColorMode);
+    monaco.editor.setTheme(themeId);
+  }, [resolvedColorMode]);
 
   const handleSave = useCallback(() => {
     if (busy || !dirty || !isWritable) return;
@@ -74,7 +98,7 @@ export function MonacoFileEditor(props: Props) {
           {dirty ? (
             <span
               aria-label="Unsaved changes"
-              className="inline-block h-2 w-2 shrink-0 rounded-full bg-amber-500"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-warning"
             />
           ) : null}
         </div>
@@ -91,7 +115,7 @@ export function MonacoFileEditor(props: Props) {
           </button>
           <button
             aria-label={busy ? "Saving" : "Save"}
-            className="inline-flex h-7 w-7 items-center justify-center rounded bg-accent text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-7 w-7 items-center justify-center rounded bg-accent text-on-accent hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             disabled={busy || !isWritable || !dirty}
             onClick={handleSave}
             title="Save (⌘/Ctrl+S)"
@@ -102,16 +126,16 @@ export function MonacoFileEditor(props: Props) {
         </div>
       </div>
       {!isWritable ? (
-        <div className="border-b border-border bg-amber-500/10 px-4 py-2 text-xs text-amber-700 dark:text-amber-300">
+        <div className="border-b border-border bg-warning-surface px-4 py-2 text-xs text-warning-foreground">
           This root is read-only. Enable host-filesystem editing in Settings to save changes.
         </div>
       ) : null}
       {conflict ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-warning-border bg-warning-surface px-4 py-3 text-sm text-warning-foreground">
           <span className="min-w-0">{conflict.message}</span>
           <div className="flex shrink-0 gap-2">
-            <button
-              className="cc-button cc-button-secondary"
+            <Button
+              variant="secondary"
               onClick={() => {
                 onDiscardConflict();
                 onReloadRequested();
@@ -119,15 +143,15 @@ export function MonacoFileEditor(props: Props) {
               type="button"
             >
               Reload from disk
-            </button>
-            <button
-              className="cc-button cc-button-secondary"
+            </Button>
+            <Button
+              variant="secondary"
               disabled={busy}
               onClick={() => onSaveRequested(conflict.currentRevision)}
               type="button"
             >
               Overwrite
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -145,6 +169,7 @@ export function MonacoFileEditor(props: Props) {
           }
         >
           <MonacoEditor
+            beforeMount={handleBeforeMount}
             value={draft}
             language={language}
             onChange={(value) => onDraftChange(value ?? "")}
@@ -156,7 +181,7 @@ export function MonacoFileEditor(props: Props) {
               wordWrap: "on",
               scrollBeyondLastLine: false,
             }}
-            theme="vs-dark"
+            theme={getMonacoThemeId(resolvedColorMode)}
           />
         </Suspense>
       </div>

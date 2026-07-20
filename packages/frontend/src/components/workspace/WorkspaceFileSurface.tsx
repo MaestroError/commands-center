@@ -1,6 +1,7 @@
 import type { FileManagerFileContentKind, FileManagerFileRevision } from "@cc/shared/schemas";
 
 import { MonacoFileEditor } from "./MonacoFileEditor";
+import { Button } from "@/components/ui/button";
 
 export type WorkspaceFileSurfaceFile = {
   name: string;
@@ -51,13 +52,9 @@ export function WorkspaceFileSurface(props: Props) {
     return (
       <div className="flex h-full min-h-[24rem] flex-col items-center justify-center gap-3 px-6 text-sm text-danger">
         <p>{file.error}</p>
-        <button
-          className="cc-button cc-button-secondary"
-          onClick={props.onReloadRequested}
-          type="button"
-        >
+        <Button variant="secondary" onClick={props.onReloadRequested} type="button">
           Try again
-        </button>
+        </Button>
       </div>
     );
   }

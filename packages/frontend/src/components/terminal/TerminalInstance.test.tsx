@@ -10,6 +10,12 @@ vi.mock("@/lib/api", () => ({
 import { connectTerminalWebSocket } from "@/lib/api";
 import { consumeSessionPrefillCommand, setSessionPrefillCommand } from "@/lib/terminal-prefill";
 
+const themeHarness = vi.hoisted(() => ({ mode: "light" as "light" | "dark" }));
+
+vi.mock("@/context/use-theme", () => ({
+  useTheme: () => ({ resolvedColorMode: themeHarness.mode }),
+}));
+
 import { TerminalInstance } from "./TerminalInstance";
 
 type MockSocket = {
@@ -24,6 +30,7 @@ type MockSocket = {
 
 type MockTerminalInstance = {
   focus: ReturnType<typeof vi.fn>;
+  options: { theme?: Record<string, string> };
   write: ReturnType<typeof vi.fn>;
   paste: ReturnType<typeof vi.fn>;
   selection: string;
@@ -46,6 +53,8 @@ describe("TerminalInstance", () => {
     getTestHarness().__ccTestXterm.mockTerminalInstances.length = 0;
     getTestHarness().__ccTestXterm.mockWebLinksAddonInstances.length = 0;
     getTestHarness().__ccTestXterm.mockSerializeAddonInstances.length = 0;
+    themeHarness.mode = "light";
+    setTerminalThemeCss("light");
   });
 
   afterEach(() => {
@@ -67,6 +76,43 @@ describe("TerminalInstance", () => {
 
     const terminal = getLastTerminal();
     expect(terminal.write).toHaveBeenCalledWith("restored output", expect.any(Function));
+  });
+
+  it("builds the initial terminal theme from CC semantic values", async () => {
+    const socket = createSocket();
+    vi.mocked(connectTerminalWebSocket).mockReturnValue(socket as never);
+
+    render(<TerminalInstance session={session} onResize={vi.fn()} onExit={vi.fn()} />);
+    await waitForTerminalReady();
+
+    expect(getLastTerminal().options.theme).toMatchObject({
+      background: "#e2e8f0",
+      foreground: "#0f172a",
+      selectionBackground: "rgba(37, 99, 235, 0.16)",
+      blue: "#172554",
+    });
+  });
+
+  it("updates the mounted terminal theme without reconnecting", async () => {
+    const socket = createSocket();
+    const onExit = vi.fn();
+    const onResize = vi.fn();
+    vi.mocked(connectTerminalWebSocket).mockReturnValue(socket as never);
+    const view = render(<TerminalInstance session={session} onResize={onResize} onExit={onExit} />);
+    await waitForTerminalReady();
+    const terminal = getLastTerminal();
+
+    themeHarness.mode = "dark";
+    setTerminalThemeCss("dark");
+    view.rerender(<TerminalInstance session={session} onResize={onResize} onExit={onExit} />);
+
+    expect(terminal.options.theme).toMatchObject({
+      background: "#020617",
+      foreground: "#cbd5e1",
+      blue: "#569cd6",
+    });
+    expect(getTestHarness().__ccTestXterm.mockTerminalInstances).toHaveLength(1);
+    expect(connectTerminalWebSocket).toHaveBeenCalledTimes(1);
   });
 
   it("persists a serialized buffer snapshot on unmount", async () => {
@@ -281,4 +327,19 @@ function getLastSerializeAddon() {
 
 async function waitForTerminalReady() {
   await vi.dynamicImportSettled();
+}
+
+function setTerminalThemeCss(mode: "light" | "dark") {
+  document.documentElement.style.setProperty(
+    "--terminal-bg",
+    mode === "light" ? "#e2e8f0" : "#020617",
+  );
+  document.documentElement.style.setProperty(
+    "--terminal-fg",
+    mode === "light" ? "#0f172a" : "#cbd5e1",
+  );
+  document.documentElement.style.setProperty(
+    "--selection",
+    mode === "light" ? "rgba(37, 99, 235, 0.16)" : "rgba(56, 189, 248, 0.18)",
+  );
 }

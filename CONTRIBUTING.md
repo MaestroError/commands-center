@@ -61,22 +61,23 @@ The shared backend and CLI bootstrap path validates these environment variables 
 
 ### Root-level (runs across all packages)
 
-| Command                | Description                         |
-| ---------------------- | ----------------------------------- |
-| `pnpm dev`             | Start all dev servers in parallel   |
-| `pnpm build`           | Build all packages                  |
-| `pnpm test`            | Run unit/integration tests          |
-| `pnpm test:coverage`   | Run tests with V8 coverage          |
-| `pnpm test:e2e`        | Run Playwright E2E tests            |
-| `pnpm lint`            | Run ESLint across all packages      |
-| `pnpm format`          | Check Prettier formatting           |
-| `pnpm format:fix`      | Auto-fix Prettier formatting        |
-| `pnpm typecheck`       | Run TypeScript type checking        |
-| `pnpm knip`            | Dead-code analysis (CI gate)        |
-| `pnpm knip:production` | Stricter, production-only knip scan |
-| `pnpm clean`           | Remove build artifacts              |
-| `pnpm build:cli`       | Build production CLI binary         |
-| `pnpm release:check`   | Run the full publish gate locally   |
+| Command                    | Description                                      |
+| -------------------------- | ------------------------------------------------ |
+| `pnpm dev`                 | Start all dev servers in parallel                |
+| `pnpm build`               | Build all packages                               |
+| `pnpm test`                | Run unit/integration tests                       |
+| `pnpm test:coverage`       | Run tests with V8 coverage                       |
+| `pnpm test:e2e`            | Run Playwright E2E tests                         |
+| `pnpm lint`                | Run ESLint across all packages                   |
+| `pnpm format`              | Check Prettier formatting                        |
+| `pnpm format:fix`          | Auto-fix Prettier formatting                     |
+| `pnpm typecheck`           | Run TypeScript type checking                     |
+| `pnpm knip`                | Dead-code analysis (CI gate)                     |
+| `pnpm knip:production`     | Stricter, production-only knip scan              |
+| `pnpm design-system:audit` | Run design-system ratchets and negative fixtures |
+| `pnpm clean`               | Remove build artifacts                           |
+| `pnpm build:cli`           | Build production CLI binary                      |
+| `pnpm release:check`       | Run the full publish gate locally                |
 
 ### Package-specific
 
@@ -148,7 +149,26 @@ See [AGENTS.md](AGENTS.md) for the full coding style guide, including:
 - File and naming conventions
 - Error handling patterns
 - Database and migration rules
-- Testing requirements (90% coverage target)
+- Testing requirements (95% coverage target)
+
+## Design-System Workflow
+
+Start with the [CC design-system guide](docs/design-system/README.md). It
+explains when to use semantic HTML, Tailwind, CC-owned primitives, common
+compositions, protected content, or a third-party bridge. Theme work follows
+[the theme runbook](docs/design-system/themes.md); exceptional artwork or
+controlled palettes follow [the exception workflow](docs/design-system/exceptions.md).
+
+Run the same deterministic audit used by CI:
+
+```bash
+pnpm design-system:audit
+```
+
+The development-only gallery is available at
+`http://localhost:5173/__design-system-baseline`. It is excluded from production
+builds. Use the `surface` query parameter documented by the gallery fixture
+manifest when reviewing focused states.
 
 ## Dead-Code Analysis (knip)
 

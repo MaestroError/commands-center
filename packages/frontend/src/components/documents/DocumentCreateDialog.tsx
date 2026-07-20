@@ -1,9 +1,21 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { createDocument } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import type { DocumentScope } from "@cc/shared/schemas";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 type DocumentCreateDialogProps = {
   onClose: () => void;
@@ -19,12 +31,22 @@ export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
   const [path, setPath] = useState(folderPrefix);
   const [description, setDescription] = useState("");
   const queryClient = useQueryClient();
+  const restoreFocusRef = useRef(
+    typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+  );
+
+  const close = () => {
+    props.onClose();
+    requestAnimationFrame(() => restoreFocusRef.current?.focus());
+  };
 
   const mutation = useMutation({
     mutationFn: createDocument,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.documentTree });
-      props.onClose();
+      close();
     },
   });
 
@@ -59,28 +81,16 @@ export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/80 p-4 backdrop-blur-sm"
-      onClick={props.onClose}
-    >
-      <section
-        aria-labelledby="create-document-title"
-        aria-modal="true"
-        className="cc-panel w-full max-w-lg p-6"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-      >
-        <h2 className="text-xl font-semibold text-text-primary" id="create-document-title">
-          New Document
-        </h2>
-        <p className="mt-1 text-sm text-text-secondary">
-          Create a markdown document in the Documents folder.
-        </p>
+    <Dialog open onOpenChange={(open) => !open && close()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New Document</DialogTitle>
+          <DialogDescription>Create a markdown document in the Documents folder.</DialogDescription>
+        </DialogHeader>
 
         <label className="mt-4 grid gap-1 text-sm text-text-secondary">
           Title
-          <input
-            className="cc-input"
+          <Input
             placeholder="e.g. Architecture Overview"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -89,8 +99,8 @@ export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
 
         <label className="mt-3 grid gap-1 text-sm text-text-secondary">
           Path
-          <input
-            className="cc-input font-mono text-xs"
+          <Input
+            className="font-mono text-xs"
             placeholder={derivedPath || "e.g. design/overview.md"}
             value={path}
             onChange={(e) => setPath(e.target.value)}
@@ -102,8 +112,8 @@ export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
 
         <label className="mt-3 grid gap-1 text-sm text-text-secondary">
           Description
-          <textarea
-            className="cc-input min-h-16 resize-y"
+          <Textarea
+            className="min-h-16 resize-y"
             placeholder="Short description (optional)"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -118,21 +128,16 @@ export function DocumentCreateDialog(props: DocumentCreateDialogProps) {
           </p>
         ) : null}
 
-        <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
-            Cancel
-          </button>
-          <button
-            className="cc-button"
-            disabled={!derivedPath || mutation.isPending}
-            onClick={handleSubmit}
-            type="button"
-          >
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary">Cancel</Button>
+          </DialogClose>
+          <Button disabled={!derivedPath || mutation.isPending} onClick={handleSubmit}>
             {mutation.isPending ? "Creating..." : "Create"}
-          </button>
-        </div>
-      </section>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

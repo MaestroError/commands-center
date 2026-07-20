@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProviderConnectionsPage } from "./ProviderConnectionsPage";
@@ -211,6 +212,7 @@ describe("ProviderConnectionsPage", () => {
   });
 
   it("starts and completes a manual oauth flow with filtered prompts", async () => {
+    const user = userEvent.setup();
     startOauthMutateAsync.mockResolvedValue({
       url: "https://example.com/oauth",
       method: "code",
@@ -224,9 +226,8 @@ describe("ProviderConnectionsPage", () => {
     render(<ProviderConnectionsPage />);
     fireEvent.click(screen.getByRole("button", { name: "Connect OAuth" }));
 
-    fireEvent.change(screen.getByLabelText("Choose region"), {
-      target: { value: "eu" },
-    });
+    await user.click(screen.getByRole("combobox", { name: "Choose region" }));
+    await user.click(await screen.findByRole("option", { name: "EU" }));
     fireEvent.change(screen.getByLabelText("Workspace slug"), {
       target: { value: "workspace-1" },
     });

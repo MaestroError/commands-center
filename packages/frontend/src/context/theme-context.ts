@@ -1,11 +1,13 @@
 import { createContext } from "react";
 
-import type { ThemeName } from "@/stores/ui-store";
+import type { ColorModePreference, ResolvedColorMode, ThemeId } from "@/lib/appearance";
 
 export type ThemeContextValue = {
-  theme: ThemeName;
-  setTheme: (theme: ThemeName) => void;
-  themes: readonly ThemeName[];
+  colorModePreference: ColorModePreference;
+  colorModePreferences: readonly ColorModePreference[];
+  resolvedColorMode: ResolvedColorMode;
+  setColorModePreference: (preference: ColorModePreference) => void;
+  theme: ThemeId;
 };
 
 export const ThemeContext = createContext<ThemeContextValue | null>(null);

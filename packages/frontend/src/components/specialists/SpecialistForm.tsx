@@ -33,6 +33,10 @@ import type {
   McpServer,
   WorkspaceSkill,
 } from "@cc/shared/schemas";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 type PermissionAction = "allow" | "ask" | "deny";
 
@@ -159,11 +163,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
       >
         <Field error={errors.name} label="Name" required>
           <div className="grid gap-2">
-            <input
-              className="cc-input"
-              onChange={(event) => update("name", event.target.value)}
-              value={value.name}
-            />
+            <Input onChange={(event) => update("name", event.target.value)} value={value.name} />
             <p className="text-xs text-text-secondary" data-testid="specialist-slug-preview">
               Identifier: <span className="font-medium text-text-primary">{slug}</span>
               {slugTaken ? <span className="ml-1 text-danger">(already in use)</span> : null}
@@ -171,11 +171,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
           </div>
         </Field>
         <Field error={errors.role} label="Role" required>
-          <input
-            className="cc-input"
-            onChange={(event) => update("role", event.target.value)}
-            value={value.role}
-          />
+          <Input onChange={(event) => update("role", event.target.value)} value={value.role} />
         </Field>
         <div className="lg:col-span-2">
           <Field error={undefined} label="Avatar">
@@ -189,8 +185,8 @@ export function SpecialistForm(props: SpecialistFormProps) {
         </div>
         <div className="lg:col-span-2">
           <Field error={errors.instructions} label="Instructions" required>
-            <textarea
-              className="cc-input min-h-48 resize-y"
+            <Textarea
+              className="min-h-48 resize-y"
               onChange={(event) => update("instructions", event.target.value)}
               value={value.instructions}
             />
@@ -215,14 +211,14 @@ export function SpecialistForm(props: SpecialistFormProps) {
                   </span>
                 </span>
               </label>
-              <button
+              <Button
                 aria-label="Save changes near instructions"
-                className="cc-button shrink-0"
+                className="shrink-0"
                 disabled={props.isSaving || !hasProviderModels}
                 type="submit"
               >
                 {props.isSaving ? "Saving..." : "Save changes"}
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
@@ -236,7 +232,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
               Only models from connected providers are selectable here.
             </p>
           </div>
-          <Link className="cc-button cc-button-secondary" to="/providers">
+          <Link className={buttonVariants({ variant: "secondary" })} to="/providers">
             Manage providers
           </Link>
         </div>
@@ -263,7 +259,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
 
       <CollapsibleSection
         action={
-          <Link className="cc-button cc-button-secondary" to="/skills">
+          <Link className={buttonVariants({ variant: "secondary" })} to="/skills">
             Browse skills
           </Link>
         }
@@ -294,8 +290,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
 
             <div className="grid gap-3 border-t border-border pt-5">
               <Field error={undefined} label="Search skills">
-                <input
-                  className="cc-input"
+                <Input
                   onChange={(event) => setSkillSearch(event.target.value)}
                   placeholder="Search built-in and workspace skills"
                   value={skillSearch}
@@ -329,7 +324,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
 
       <CollapsibleSection
         action={
-          <Link className="cc-button cc-button-secondary" to="/tools">
+          <Link className={buttonVariants({ variant: "secondary" })} to="/tools">
             Open tools library
           </Link>
         }
@@ -368,8 +363,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
 
             <div className="grid gap-3 border-t border-border pt-5">
               <Field error={undefined} label="Search global tools">
-                <input
-                  className="cc-input"
+                <Input
                   onChange={(event) => setCustomToolSearch(event.target.value)}
                   placeholder="Search tools by name, slug, or description"
                   value={customToolSearch}
@@ -532,7 +526,7 @@ export function SpecialistForm(props: SpecialistFormProps) {
 
       <CollapsibleSection
         action={
-          <Link className="cc-button cc-button-secondary" to="/integrations">
+          <Link className={buttonVariants({ variant: "secondary" })} to="/integrations">
             Manage integrations
           </Link>
         }
@@ -724,17 +718,17 @@ function McpServerPermissionControl(props: {
     {
       value: "disabled" as const,
       label: "Disabled",
-      selectedClassName: "border-rose-500 bg-rose-500/10 text-rose-600",
+      selectedClassName: "border-danger-border bg-danger-surface text-danger-foreground",
     },
     {
       value: "ask" as const,
       label: "Ask",
-      selectedClassName: "border-amber-500 bg-amber-500/10 text-amber-600",
+      selectedClassName: "border-warning-border bg-warning-surface text-warning-foreground",
     },
     {
       value: "allow" as const,
       label: "Allow",
-      selectedClassName: "border-emerald-500 bg-emerald-500/10 text-emerald-600",
+      selectedClassName: "border-success-border bg-success-surface text-success-foreground",
     },
   ];
 
@@ -773,17 +767,17 @@ function AppMcpServerPermissionControl(props: {
     {
       value: "deny" as const,
       label: "Disabled",
-      selectedClassName: "border-rose-500 bg-rose-500/10 text-rose-600",
+      selectedClassName: "border-danger-border bg-danger-surface text-danger-foreground",
     },
     {
       value: "ask" as const,
       label: "Ask",
-      selectedClassName: "border-amber-500 bg-amber-500/10 text-amber-600",
+      selectedClassName: "border-warning-border bg-warning-surface text-warning-foreground",
     },
     {
       value: "allow" as const,
       label: "Allow",
-      selectedClassName: "border-emerald-500 bg-emerald-500/10 text-emerald-600",
+      selectedClassName: "border-success-border bg-success-surface text-success-foreground",
     },
   ];
 
@@ -826,11 +820,11 @@ function StatusBadge(props: { status: CustomToolDriftStatus }) {
     global_only: "rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary",
     agent_only: "rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary",
     matching:
-      "rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-700 dark:text-emerald-300",
+      "rounded-full border border-success-border bg-success-surface px-2 py-0.5 text-xs text-success-foreground",
     outdated:
-      "rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300",
+      "rounded-full border border-warning-border bg-warning-surface px-2 py-0.5 text-xs text-warning-foreground",
     modified:
-      "rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-xs text-rose-700 dark:text-rose-300",
+      "rounded-full border border-danger-border bg-danger-surface px-2 py-0.5 text-xs text-danger-foreground",
     unknown: "rounded-full border border-border px-2 py-0.5 text-xs text-text-secondary",
   }[props.status];
 
@@ -933,9 +927,9 @@ function statusLabel(server: McpServer): string {
 function statusBadgeClassName(server: McpServer): string {
   switch (server.runtimeStatus?.status) {
     case "connected":
-      return "rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400";
+      return "rounded-full bg-success-surface px-2 py-0.5 text-xs font-medium text-success-foreground";
     case "needs_auth":
-      return "rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400";
+      return "rounded-full bg-warning-surface px-2 py-0.5 text-xs font-medium text-warning-foreground";
     case "failed":
     case "needs_client_registration":
       return "rounded-full bg-danger/15 px-2 py-0.5 text-xs font-medium text-danger";

@@ -15,6 +15,16 @@ import {
   validateForm,
 } from "./integration-helpers";
 import { ChevronIcon, CloseIcon } from "./integration-icons";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function McpServerDialog(props: {
   agents: Specialist[];
@@ -123,9 +133,8 @@ export function McpServerDialog(props: {
         >
           <div className="grid min-h-0 flex-1 auto-rows-max content-start gap-4 overflow-y-auto pr-1 pb-6">
             <Field error={errors.name} label="Name" required>
-              <input
+              <Input
                 aria-label="Name"
-                className="cc-input"
                 onChange={(event) => updateField("name", event.target.value)}
                 value={form.name}
               />
@@ -133,43 +142,49 @@ export function McpServerDialog(props: {
 
             <div className="grid gap-4 md:grid-cols-2">
               <Field error={errors.transport} label="Transport" required>
-                <select
-                  aria-label="Transport"
-                  className="cc-input"
-                  onChange={(event) =>
-                    updateField("transport", event.target.value as FormState["transport"])
-                  }
+                <Select
                   value={form.transport}
+                  onValueChange={(transport) =>
+                    updateField("transport", transport as FormState["transport"])
+                  }
                 >
-                  <option value="streamable-http">streamable-http</option>
-                  <option value="sse">sse</option>
-                  <option value="stdio">stdio</option>
-                </select>
+                  <SelectTrigger aria-label="Transport">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="streamable-http">streamable-http</SelectItem>
+                    <SelectItem value="sse">sse</SelectItem>
+                    <SelectItem value="stdio">stdio</SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
 
               <Field error={errors.authMethod} label="Auth method" required>
-                <select
-                  aria-label="Auth method"
-                  className="cc-input"
-                  onChange={(event) =>
-                    updateField("authMethod", event.target.value as FormState["authMethod"])
-                  }
+                <Select
                   disabled={form.transport === "stdio"}
                   value={form.authMethod}
+                  onValueChange={(authMethod) =>
+                    updateField("authMethod", authMethod as FormState["authMethod"])
+                  }
                 >
-                  <option value="none">none</option>
-                  <option value="oauth">oauth</option>
-                  <option value="headers">headers</option>
-                </select>
+                  <SelectTrigger aria-label="Auth method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">none</SelectItem>
+                    <SelectItem value="oauth">oauth</SelectItem>
+                    <SelectItem value="headers">headers</SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
             </div>
 
             {form.transport === "stdio" ? (
               <>
                 <Field error={errors.commandText} label="Command" required>
-                  <textarea
+                  <Textarea
                     aria-label="Command"
-                    className="cc-input min-h-24 resize-y font-mono text-xs"
+                    className="min-h-24 resize-y font-mono text-xs"
                     onChange={(event) => updateField("commandText", event.target.value)}
                     placeholder="npx\n-y\n@modelcontextprotocol/server-filesystem\n/Users/revazgh/Projects/cc"
                     value={form.commandText}
@@ -189,9 +204,8 @@ export function McpServerDialog(props: {
             ) : (
               <>
                 <Field error={errors.url} label="URL" required>
-                  <input
+                  <Input
                     aria-label="URL"
-                    className="cc-input"
                     onChange={(event) => updateField("url", event.target.value)}
                     placeholder="https://example.com/mcp"
                     value={form.url}
@@ -211,7 +225,7 @@ export function McpServerDialog(props: {
             )}
 
             {missingSecrets.length > 0 ? (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-500">
+              <div className="rounded-lg border border-warning-border bg-warning-surface p-3 text-sm text-warning-foreground">
                 Referenced secrets without values: {missingSecrets.join(", ")}
               </div>
             ) : null}
@@ -249,9 +263,8 @@ export function McpServerDialog(props: {
               {agentsExpanded ? (
                 props.agents.length > 0 ? (
                   <div className="border-t border-border p-4 pt-3">
-                    <input
+                    <Input
                       aria-label="Search specialists"
-                      className="cc-input"
                       onChange={(event) => setAgentSearch(event.target.value)}
                       placeholder="Search specialists"
                       value={agentSearch}
@@ -299,12 +312,12 @@ export function McpServerDialog(props: {
           </div>
 
           <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-surface pt-4">
-            <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+            <Button variant="secondary" onClick={props.onClose} type="button">
               Cancel
-            </button>
-            <button className="cc-button" disabled={props.busy} type="submit">
+            </Button>
+            <Button disabled={props.busy} type="submit">
               {props.busy ? "Saving..." : props.mode === "create" ? "Add server" : "Save changes"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -414,49 +427,50 @@ function VariableTextarea(props: {
 
   return (
     <div className="grid gap-3">
-      <textarea
+      <Textarea
         aria-label={props.ariaLabel}
-        className="cc-input min-h-32 resize-y font-mono text-xs"
+        className="min-h-32 resize-y font-mono text-xs"
         onChange={(event) => props.onChange(event.target.value)}
         placeholder={props.placeholder}
         ref={textareaRef}
         value={props.value}
       />
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          className="cc-button cc-button-secondary"
+        <Button
+          variant="secondary"
           onClick={() => setPickerOpen((current) => !current)}
           type="button"
         >
           {pickerOpen ? "Hide variables" : "Variables"}
-        </button>
+        </Button>
         <span className="text-xs text-text-secondary">
           Click a variable to insert and copy <code>{"{env:...}"}</code>.
         </span>
       </div>
       {pickerOpen ? (
         <div className="grid gap-3 rounded-lg border border-border bg-surface-elevated/70 p-3">
-          <input
+          <Input
             aria-label={`${props.ariaLabel} variable search`}
-            className="cc-input"
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search variables"
             value={search}
           />
           <div className="flex flex-wrap gap-2">
             {candidateKeys.map((key) => (
-              <button
-                className="cc-button cc-button-secondary font-mono text-xs"
+              <Button
+                variant="secondary"
+                className="font-mono text-xs"
                 key={key}
                 onClick={() => void handleInsert(key)}
                 type="button"
               >
                 {key}
-              </button>
+              </Button>
             ))}
             {candidateKeys.length === 0 && search.trim() ? (
-              <button
-                className="cc-button cc-button-secondary font-mono text-xs"
+              <Button
+                variant="secondary"
+                className="font-mono text-xs"
                 onClick={() =>
                   void handleInsert(
                     search
@@ -472,7 +486,7 @@ function VariableTextarea(props: {
                   .trim()
                   .replace(/[^A-Za-z0-9_]/g, "_")
                   .toUpperCase()}
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { ConversationHistoryModal } from "./ConversationHistoryModal";
@@ -121,14 +122,15 @@ describe("ConversationHistoryModal", () => {
   });
 
   it("calls onClose when clicking the backdrop", async () => {
-    const { container } = render(<ConversationHistoryModal {...defaultProps} />, {
+    const user = userEvent.setup();
+    render(<ConversationHistoryModal {...defaultProps} />, {
       wrapper: makeWrapper(),
     });
     await waitFor(() => screen.getByText("First conversation"));
 
-    // Click the fixed backdrop overlay (first child of the container root)
-    const backdrop = container.firstElementChild!;
-    fireEvent.click(backdrop);
+    const backdrop = document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]');
+    expect(backdrop).not.toBeNull();
+    await user.click(backdrop!);
 
     expect(defaultProps.onClose).toHaveBeenCalled();
   });
@@ -188,12 +190,13 @@ describe("ConversationHistoryModal", () => {
     expect(api.deleteConversation).not.toHaveBeenCalledWith("agent-1", "conv-1");
   });
 
-  it("closes when pressing Escape key", async () => {
+  it("preserves the existing no-Escape dismissal contract", async () => {
+    const user = userEvent.setup();
     render(<ConversationHistoryModal {...defaultProps} />, { wrapper: makeWrapper() });
     await waitFor(() => screen.getByText("First conversation"));
 
-    fireEvent.keyDown(document, { key: "Escape" });
-    // Escape is not wired yet — this test documents the expected behavior
-    // In a future enhancement, pressing Escape should close the modal
+    await user.keyboard("{Escape}");
+
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
   });
 });

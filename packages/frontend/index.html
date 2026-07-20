@@ -9,8 +9,43 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <meta name="theme-color" content="#095d65" />
+    <meta name="theme-color" content="#eef2f7" />
     <title>CommandsCenter</title>
+    <script>
+      (() => {
+        const root = document.documentElement;
+        let preference = null;
+        let legacyTheme = null;
+
+        try {
+          preference = window.localStorage.getItem("cc.color-mode");
+          legacyTheme = window.localStorage.getItem("cc.theme");
+        } catch {}
+
+        if (preference !== "light" && preference !== "dark" && preference !== "system") {
+          preference = legacyTheme === "light" || legacyTheme === "dark" ? legacyTheme : "system";
+
+          if (legacyTheme === "modern") {
+            preference = "dark";
+          }
+
+          try {
+            window.localStorage.setItem("cc.color-mode", preference);
+            window.localStorage.removeItem("cc.theme");
+          } catch {}
+        }
+
+        const systemColorMode =
+          window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+        const resolvedColorMode = preference === "system" ? systemColorMode : preference;
+
+        root.setAttribute("data-theme", "default");
+        root.setAttribute("data-color-mode", resolvedColorMode);
+        root.style.colorScheme = resolvedColorMode;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

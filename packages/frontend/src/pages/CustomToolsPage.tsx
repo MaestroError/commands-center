@@ -9,12 +9,16 @@ import type {
 } from "@cc/shared/schemas";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
+import { SearchableSelect } from "@/components/common/SearchableSelect";
 import { useSpecialistsQuery } from "@/hooks/use-specialists-query";
 import {
   useSpecialistCustomToolsQuery,
   useCustomToolMutations,
   useCustomToolsQuery,
 } from "@/hooks/use-custom-tools-query";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 type CopyConflictState =
   | {
@@ -205,29 +209,26 @@ export function CustomToolsPage() {
             </div>
 
             <div className="grid max-w-2xl gap-2">
-              <input
-                className="cc-input"
+              <Input
                 onChange={(event) => setNewName(event.target.value)}
                 placeholder="Tool name"
                 value={newName}
               />
-              <input
-                className="cc-input"
+              <Input
                 onChange={(event) => setNewDescription(event.target.value)}
                 placeholder="Description"
                 value={newDescription}
               />
               <div className="flex flex-wrap gap-2">
-                <button
-                  className="cc-button"
+                <Button
                   disabled={mutations.create.isPending || newName.trim().length === 0}
                   onClick={() => void handleCreateTool()}
                   type="button"
                 >
                   {mutations.create.isPending ? "Creating..." : "Create"}
-                </button>
+                </Button>
                 <Link
-                  className="cc-button cc-button-secondary"
+                  className={buttonVariants({ variant: "secondary" })}
                   to="/files?root=workspace&path=custom-tools"
                 >
                   Browse
@@ -236,13 +237,13 @@ export function CustomToolsPage() {
             </div>
 
             <div className="lg:hidden">
-              <button
-                className="cc-button cc-button-secondary"
+              <Button
+                variant="secondary"
                 onClick={() => setShowMobileDrift((current) => !current)}
                 type="button"
               >
                 {showMobileDrift ? "Hide drift" : "Show drift"}
-              </button>
+              </Button>
               {showMobileDrift ? <MobileDriftLegend /> : null}
             </div>
           </div>
@@ -263,8 +264,8 @@ export function CustomToolsPage() {
             <div>
               <h2 className="text-lg font-semibold text-text-primary">Global tools</h2>
             </div>
-            <input
-              className="cc-input w-full sm:max-w-xs"
+            <Input
+              className="w-full sm:max-w-xs"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search tools"
               value={search}
@@ -310,20 +311,20 @@ export function CustomToolsPage() {
                         </span>
                       </div>
                       {tool.warnings.length > 0 ? (
-                        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                        <div className="mt-3 rounded-lg border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning-foreground">
                           {tool.warnings.map((warning) => warning.message).join(" ")}
                         </div>
                       ) : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Link
-                        className="cc-button cc-button-secondary"
+                        className={buttonVariants({ variant: "secondary" })}
                         to={buildGlobalToolFileManagerUrl(tool)}
                       >
                         Open
                       </Link>
-                      <button
-                        className="cc-button cc-button-secondary"
+                      <Button
+                        variant="secondary"
                         onClick={() => {
                           setCopyTool(tool);
                           setSelectedCopyAgentIds([]);
@@ -331,16 +332,16 @@ export function CustomToolsPage() {
                         type="button"
                       >
                         Copy to specialists
-                      </button>
-                      <button
-                        className="cc-button cc-button-secondary"
+                      </Button>
+                      <Button
+                        variant="secondary"
                         onClick={() => void handleDeleteTool(tool)}
                         type="button"
                       >
                         Delete
-                      </button>
-                      <button
-                        className="cc-button cc-button-secondary"
+                      </Button>
+                      <Button
+                        variant="secondary"
                         disabled={!selectedAgent}
                         onClick={() =>
                           selectedAgent
@@ -358,7 +359,7 @@ export function CustomToolsPage() {
                         type="button"
                       >
                         &gt;&gt;
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   {tool.usage.length > 0 ? (
@@ -397,18 +398,14 @@ export function CustomToolsPage() {
                 updated tool set.
               </p>
             </div>
-            <select
-              className="cc-input"
-              onChange={(event) => setSelectedAgentId(event.target.value || undefined)}
+            <SearchableSelect
+              ariaLabel="Specialist tools"
+              emptyOptionLabel="No specialist"
+              onChange={(agentId) => setSelectedAgentId(agentId || undefined)}
+              options={agents.map((agent) => ({ id: agent.id, label: agent.name }))}
+              placeholder="Search specialists..."
               value={selectedAgentId ?? ""}
-            >
-              <option value="">Select a specialist</option>
-              {agents.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
 
           {!selectedAgent ? (
@@ -446,29 +443,25 @@ export function CustomToolsPage() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Link
-                        className="cc-button cc-button-secondary"
+                        className={buttonVariants({ variant: "secondary" })}
                         to={buildSpecialistToolFileManagerUrl(selectedAgent, tool)}
                       >
                         Open
                       </Link>
-                      <button
-                        className="cc-button cc-button-secondary"
+                      <Button
+                        variant="secondary"
                         onClick={() => void handleCopyAgentToolToGlobal(tool)}
                         type="button"
                       >
                         Copy to global
-                      </button>
-                      <button
-                        className="cc-button cc-button-secondary"
-                        onClick={() => setRemoveTool(tool)}
-                        type="button"
-                      >
+                      </Button>
+                      <Button variant="secondary" onClick={() => setRemoveTool(tool)} type="button">
                         Remove
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   {tool.warnings.length > 0 ? (
-                    <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                    <div className="mt-3 rounded-lg border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning-foreground">
                       {tool.warnings.map((warning) => warning.message).join(" ")}
                     </div>
                   ) : null}
@@ -495,13 +488,9 @@ export function CustomToolsPage() {
                   open chat, start a fresh chat after copying.
                 </p>
               </div>
-              <button
-                className="cc-button cc-button-secondary"
-                onClick={() => setCopyTool(undefined)}
-                type="button"
-              >
+              <Button variant="secondary" onClick={() => setCopyTool(undefined)} type="button">
                 Close
-              </button>
+              </Button>
             </div>
             <div className="mt-4 grid max-h-80 gap-3 overflow-auto">
               {agents.map((agent) => {
@@ -532,8 +521,7 @@ export function CustomToolsPage() {
               })}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                className="cc-button"
+              <Button
                 disabled={
                   selectedCopyAgentIds.length === 0 || mutations.copyToSpecialists.isPending
                 }
@@ -541,14 +529,10 @@ export function CustomToolsPage() {
                 type="button"
               >
                 {mutations.copyToSpecialists.isPending ? "Copying..." : "Copy selected specialists"}
-              </button>
-              <button
-                className="cc-button cc-button-secondary"
-                onClick={() => setCopyTool(undefined)}
-                type="button"
-              >
+              </Button>
+              <Button variant="secondary" onClick={() => setCopyTool(undefined)} type="button">
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         </section>
@@ -667,9 +651,9 @@ function StatusBadge(props: { status: CustomToolDriftStatus }) {
   const className = {
     global_only: "border-border bg-surface-elevated text-text-secondary",
     agent_only: "border-border bg-surface-elevated text-text-secondary",
-    matching: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    outdated: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-    modified: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+    matching: "border-success-border bg-success-surface text-success-foreground",
+    outdated: "border-warning-border bg-warning-surface text-warning-foreground",
+    modified: "border-danger-border bg-danger-surface text-danger-foreground",
     unknown: "border-border bg-surface-elevated text-text-secondary",
   }[props.status];
 
@@ -759,32 +743,30 @@ function CopyConflictDialog(props: {
         <p className="mt-2 text-sm text-text-secondary">{props.message}</p>
         <label className="mt-4 grid gap-2 text-sm text-text-primary">
           <span>Name</span>
-          <input
-            className="cc-input"
+          <Input
             onChange={(event) => props.onChange(event.target.value)}
             value={props.destinationName}
           />
         </label>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+          <Button variant="secondary" onClick={props.onCancel} type="button">
             Cancel
-          </button>
-          <button
-            className="cc-button cc-button-secondary"
+          </Button>
+          <Button
+            variant="secondary"
             disabled={!rewriteEnabled || props.busy}
             onClick={props.onRewrite}
             type="button"
           >
             Rewrite
-          </button>
-          <button
-            className="cc-button"
+          </Button>
+          <Button
             disabled={!renameEnabled || props.busy}
             onClick={props.onCopyWithNewName}
             type="button"
           >
             Copy with new name
-          </button>
+          </Button>
         </div>
       </div>
     </section>
@@ -806,17 +788,12 @@ function RemoveAgentToolDialog(props: {
           specialist workspace.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+          <Button variant="secondary" onClick={props.onCancel} type="button">
             Cancel
-          </button>
-          <button
-            className="cc-button"
-            disabled={props.busy}
-            onClick={props.onConfirm}
-            type="button"
-          >
+          </Button>
+          <Button disabled={props.busy} onClick={props.onConfirm} type="button">
             Remove
-          </button>
+          </Button>
         </div>
       </div>
     </section>

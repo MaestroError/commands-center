@@ -108,7 +108,7 @@ export function SlashCommandPopover({
               <div className="flex items-center gap-2">
                 <span className="font-mono text-sm text-text-primary">/{command.name}</span>
                 {command.type === "skill" && (
-                  <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-xs text-blue-400">
+                  <span className="rounded bg-info-surface px-1.5 py-0.5 text-xs text-info-foreground">
                     skill
                   </span>
                 )}

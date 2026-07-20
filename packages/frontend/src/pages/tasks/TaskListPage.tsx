@@ -39,6 +39,9 @@ import {
   setSelectedTemplate,
   setTaskView,
 } from "./task-helpers";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function TaskListPage() {
   const navigate = useNavigate();
@@ -105,11 +108,11 @@ export function TaskListPage() {
       <PageHeader
         actions={
           view === "templates" ? (
-            <button className="cc-button" onClick={() => setIsCreatingTemplate(true)} type="button">
+            <Button onClick={() => setIsCreatingTemplate(true)} type="button">
               Create template
-            </button>
+            </Button>
           ) : (
-            <Link className="cc-button" to="/tasks/new">
+            <Link className={buttonVariants({})} to="/tasks/new">
               Create task
             </Link>
           )
@@ -147,13 +150,9 @@ export function TaskListPage() {
       {error ? (
         <ErrorState
           action={
-            <button
-              className="cc-button cc-button-secondary"
-              onClick={() => void activeQuery.refetch()}
-              type="button"
-            >
+            <Button variant="secondary" onClick={() => void activeQuery.refetch()} type="button">
               Try again
-            </button>
+            </Button>
           }
           description={error}
           title="Tasks could not be loaded."
@@ -163,7 +162,7 @@ export function TaskListPage() {
       {!isLoading && !error && view === "board" && boardTasks.length === 0 ? (
         <EmptyState
           action={
-            <Link className="cc-button" to="/tasks/new">
+            <Link className={buttonVariants({})} to="/tasks/new">
               Create your first task
             </Link>
           }
@@ -427,7 +426,7 @@ function TaskViewNav(props: {
             aria-current={props.view === view ? "page" : undefined}
             className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
               props.view === view
-                ? "bg-accent text-accent-contrast"
+                ? "bg-accent text-on-accent"
                 : "text-text-secondary hover:bg-surface hover:text-text-primary"
             }`}
             data-testid={`task-view-tab-${view}`}
@@ -462,8 +461,7 @@ function TaskFilterPanel(props: {
     <section aria-label="Task filter" className="cc-panel grid gap-3 p-4">
       <label className="grid gap-1 text-sm text-text-secondary">
         Filter tasks
-        <input
-          className="cc-input"
+        <Input
           data-testid="task-filter-input"
           placeholder="Search titles, descriptions, statuses, badges, specialists..."
           value={props.filterText}
@@ -482,13 +480,14 @@ function TaskFilterPanel(props: {
           </button>
         ))}
         {props.filterText ? (
-          <button
-            className="cc-button cc-button-secondary h-8 px-3 text-xs"
+          <Button
+            variant="secondary"
+            className="h-8 px-3 text-xs"
             onClick={props.onClear}
             type="button"
           >
             Clear
-          </button>
+          </Button>
         ) : null}
       </div>
     </section>

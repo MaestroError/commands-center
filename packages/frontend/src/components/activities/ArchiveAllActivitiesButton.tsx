@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { useArchiveAllActivitiesMutation } from "@/hooks/use-activities-query";
 
 type ArchiveAllActivitiesButtonProps = {
@@ -24,7 +25,7 @@ export function ArchiveAllActivitiesButton({ count, compact }: ArchiveAllActivit
     <>
       <button
         className={
-          compact ? "text-xs text-accent hover:underline" : "cc-button cc-button-secondary"
+          compact ? "text-xs text-accent hover:underline" : buttonVariants({ variant: "secondary" })
         }
         onClick={() => setConfirming(true)}
         type="button"

@@ -65,8 +65,10 @@ class MockTerminal {
 
   selection = "";
   _onData?: (data: string) => void;
+  options: { theme?: Record<string, string> };
 
-  constructor() {
+  constructor(options: { theme?: Record<string, string> } = {}) {
+    this.options = options;
     mockTerminalInstances.push(this);
   }
 }
@@ -159,6 +161,7 @@ Object.defineProperty(window.navigator, "clipboard", {
 
 class MockResizeObserver {
   observe = vi.fn();
+  unobserve = vi.fn();
   disconnect = vi.fn();
 }
 
@@ -172,6 +175,22 @@ Object.defineProperty(window, "open", {
   configurable: true,
   value: vi.fn(),
 });
+
+Object.defineProperty(Element.prototype, "scrollIntoView", {
+  configurable: true,
+  writable: true,
+  value: vi.fn(),
+});
+
+// jsdom lacks the Pointer Capture API that Radix menu/select primitives call
+// during pointer interactions; provide inert implementations.
+for (const method of ["hasPointerCapture", "setPointerCapture", "releasePointerCapture"] as const) {
+  Object.defineProperty(Element.prototype, method, {
+    configurable: true,
+    writable: true,
+    value: method === "hasPointerCapture" ? vi.fn(() => false) : vi.fn(),
+  });
+}
 
 Object.assign(globalThis, {
   __ccTestXterm: {

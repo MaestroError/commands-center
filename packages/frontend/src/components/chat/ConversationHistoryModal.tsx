@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Search, Trash2, X } from "lucide-react";
 
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { listConversations, deleteConversation } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -73,61 +75,37 @@ export function ConversationHistoryModal({
   const deletableCount = conversations.filter((c) => c.id !== currentConversationId).length;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20"
-      onClick={() => {
-        setConfirmingId(null);
-        onClose();
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) {
+          setConfirmingId(null);
+          onClose();
+        }
       }}
+      open
     >
-      <div
-        className="w-full max-w-lg rounded-md border border-border bg-surface shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
+      <DialogContent
         aria-label="Conversation history"
+        className="top-20 max-h-[calc(100dvh-6rem)] max-w-lg translate-y-0 overflow-hidden p-0"
+        onEscapeKeyDown={(event) => event.preventDefault()}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-text-primary">History</h2>
+          <DialogTitle className="text-sm">History</DialogTitle>
           <button
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary hover:bg-surface-elevated hover:text-text-primary transition"
             onClick={onClose}
             aria-label="Close"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <X aria-hidden="true" size={14} strokeWidth={2.5} />
           </button>
         </div>
 
         {/* Search */}
         <div className="border-b border-border px-4 py-2">
           <div className="flex items-center gap-2 rounded-md bg-surface-elevated px-3 py-1.5">
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-text-secondary shrink-0"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+            <Search aria-hidden="true" className="shrink-0 text-text-secondary" size={13} />
             <input
               type="text"
               placeholder="Search conversations..."
@@ -142,19 +120,7 @@ export function ConversationHistoryModal({
                 onClick={() => setSearch("")}
                 className="text-text-secondary hover:text-text-primary"
               >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                <X aria-hidden="true" size={12} strokeWidth={2.5} />
               </button>
             )}
           </div>
@@ -214,21 +180,7 @@ export function ConversationHistoryModal({
                           setConfirmingId(conv.id);
                         }}
                       >
-                        <svg
-                          width="13"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                          <path d="M10 11v6M14 11v6" />
-                          <path d="M9 6V4h6v2" />
-                        </svg>
+                        <Trash2 aria-hidden="true" size={13} />
                       </button>
                     )}
                   </button>
@@ -301,7 +253,7 @@ export function ConversationHistoryModal({
             )}
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

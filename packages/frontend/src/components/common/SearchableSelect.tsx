@@ -1,4 +1,13 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 
 export type SearchableSelectOption = { id: string; label: string };
 
@@ -10,6 +19,9 @@ type SearchableSelectProps = {
   disabled?: boolean;
   className?: string;
   ariaLabel?: string;
+  emptyOptionLabel?: string;
+  required?: boolean;
+  testId?: string;
 };
 
 /**
@@ -21,119 +33,103 @@ export function SearchableSelect(props: SearchableSelectProps) {
   const { value, onChange, options, disabled } = props;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [highlight, setHighlight] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const listId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const selectedLabel = options.find((option) => option.id === value)?.label ?? value;
-  const normalizedQuery = query.trim().toLowerCase();
-  const filtered = normalizedQuery
-    ? options.filter((option) =>
-        `${option.label} ${option.id}`.toLowerCase().includes(normalizedQuery),
-      )
-    : options;
 
   useEffect(() => {
-    setHighlight(0);
-  }, [query, open]);
+    inputRef.current?.setCustomValidity(props.required && !value ? "Please select an option." : "");
+  }, [props.required, value]);
 
   function commit(option: SearchableSelectOption): void {
     onChange(option.id);
     setQuery("");
     setOpen(false);
-  }
-
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>): void {
-    if (disabled) {
-      return;
-    }
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      if (!open) {
-        setOpen(true);
-        return;
-      }
-      setHighlight((current) =>
-        filtered.length === 0 ? 0 : Math.min(filtered.length - 1, current + 1),
-      );
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setHighlight((current) => Math.max(0, current - 1));
-    } else if (event.key === "Enter") {
-      const option = filtered[highlight];
-      if (open && option) {
-        event.preventDefault();
-        commit(option);
-      }
-    } else if (event.key === "Escape") {
-      setOpen(false);
-      setQuery("");
-    }
+    inputRef.current?.focus();
   }
 
   return (
-    <div
+    <Command
       className="relative"
-      ref={containerRef}
-      onBlur={(event) => {
-        if (!containerRef.current?.contains(event.relatedTarget as Node | null)) {
-          setOpen(false);
-          setQuery("");
-        }
-      }}
+      label={props.ariaLabel ?? props.placeholder ?? "Options"}
+      shouldFilter
     >
-      <input
-        aria-autocomplete="list"
-        aria-controls={listId}
-        aria-expanded={open}
-        aria-label={props.ariaLabel}
-        className={props.className ?? "cc-input"}
-        disabled={disabled}
-        placeholder={props.placeholder}
-        role="combobox"
-        value={open ? query : selectedLabel}
-        onChange={(event) => {
-          setQuery(event.target.value);
-          setOpen(true);
+      <Popover
+        open={open && !disabled}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (!nextOpen) {
+            setQuery("");
+          }
         }}
-        onFocus={() => {
-          setOpen(true);
-          setQuery("");
-        }}
-        onKeyDown={handleKeyDown}
-      />
-      {open && !disabled ? (
-        <ul
-          className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-md border border-border bg-surface shadow-lg"
-          id={listId}
-          role="listbox"
+      >
+        <PopoverAnchor asChild>
+          <CommandInput
+            ref={inputRef}
+            aria-expanded={open && !disabled}
+            aria-label={props.ariaLabel}
+            aria-required={props.required || undefined}
+            className={props.className}
+            data-testid={props.testId}
+            disabled={disabled}
+            placeholder={props.placeholder}
+            required={props.required}
+            value={open ? query : selectedLabel}
+            onFocus={() => {
+              setQuery("");
+              setOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown" && !open) {
+                setOpen(true);
+              }
+              if (event.key === "Escape") {
+                setOpen(false);
+                setQuery("");
+              }
+            }}
+            onValueChange={(nextQuery) => {
+              setQuery(nextQuery);
+              setOpen(true);
+            }}
+          />
+        </PopoverAnchor>
+        <PopoverContent
+          className="w-[var(--radix-popover-trigger-width)] p-0"
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          onInteractOutside={(event) => {
+            if (event.target === inputRef.current) {
+              event.preventDefault();
+            }
+          }}
+          onOpenAutoFocus={(event) => event.preventDefault()}
         >
-          {filtered.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-text-secondary">No matches</li>
-          ) : (
-            filtered.map((option, index) => (
-              <li key={option.id}>
-                <button
-                  aria-selected={option.id === value}
-                  className={
-                    index === highlight
-                      ? "block w-full px-3 py-2 text-left text-sm bg-accent/10 text-accent"
-                      : "block w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-surface-elevated"
-                  }
-                  onClick={() => commit(option)}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseEnter={() => setHighlight(index)}
-                  role="option"
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-      ) : null}
-    </div>
+          <CommandList>
+            <CommandEmpty>No matches</CommandEmpty>
+            {props.emptyOptionLabel ? (
+              <CommandItem
+                keywords={[props.emptyOptionLabel]}
+                value="__cc-empty-option"
+                onPointerDown={(event) => event.preventDefault()}
+                onSelect={() => commit({ id: "", label: props.emptyOptionLabel ?? "" })}
+              >
+                {props.emptyOptionLabel}
+              </CommandItem>
+            ) : null}
+            {options.map((option) => (
+              <CommandItem
+                key={option.id}
+                keywords={[option.label]}
+                value={option.id}
+                onPointerDown={(event) => event.preventDefault()}
+                onSelect={() => commit(option)}
+              >
+                {option.label}
+              </CommandItem>
+            ))}
+          </CommandList>
+        </PopoverContent>
+      </Popover>
+    </Command>
   );
 }

@@ -133,7 +133,7 @@ function SortableEditorTab(props: {
       {tab.dirty ? (
         <span
           aria-label="Unsaved changes"
-          className="inline-block h-2 w-2 shrink-0 rounded-full bg-amber-500"
+          className="inline-block h-2 w-2 shrink-0 rounded-full bg-warning"
           data-testid={`editor-tab-dirty-${tab.key}`}
         />
       ) : null}

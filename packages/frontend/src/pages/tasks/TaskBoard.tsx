@@ -54,6 +54,9 @@ import {
   readTaskCardIconActionClassName,
   taskCardActionTestId,
 } from "./task-helpers";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function TaskBoard(props: {
   tasks: Task[];
@@ -324,7 +327,7 @@ export function TaskTimingBadges(props: {
         </span>
       ) : null}
       {props.task.dueAt && isDueSoon(props.task.dueAt) ? (
-        <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 text-xs text-amber-700 dark:text-amber-300">
+        <span className="rounded-full border border-warning-border bg-warning-surface px-3 py-1 text-xs text-warning-foreground">
           {`Due: ${formatDateOnly(props.task.dueAt)}`}
         </span>
       ) : null}
@@ -364,9 +367,8 @@ export function TaskScheduleDropDialog(props: {
         </div>
         <label className="grid gap-1 text-sm text-text-secondary">
           Schedule for
-          <input
+          <Input
             autoFocus
-            className="cc-input"
             required
             type="datetime-local"
             value={scheduledAtLocal}
@@ -374,17 +376,12 @@ export function TaskScheduleDropDialog(props: {
           />
         </label>
         <div className="flex flex-wrap justify-end gap-2">
-          <button
-            className="cc-button cc-button-secondary"
-            disabled={props.busy}
-            onClick={props.onCancel}
-            type="button"
-          >
+          <Button variant="secondary" disabled={props.busy} onClick={props.onCancel} type="button">
             Cancel
-          </button>
-          <button className="cc-button" disabled={props.busy || !scheduledAtLocal} type="submit">
+          </Button>
+          <Button disabled={props.busy || !scheduledAtLocal} type="submit">
             Schedule task
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -393,37 +390,37 @@ export function TaskScheduleDropDialog(props: {
 
 function ColumnDescriptionTooltip(props: { title: string; description: string }) {
   return (
-    <span className="group relative inline-flex shrink-0" tabIndex={0}>
-      <Info
-        aria-label={`${props.title} info`}
-        className="h-4 w-4 rounded-full text-text-secondary transition group-hover:text-accent group-focus-visible:text-accent"
-      />
-      <span
-        className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-56 -translate-x-1/2 rounded-md border border-border bg-surface-elevated px-3 py-2 text-left text-xs leading-5 text-text-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-        role="tooltip"
-      >
-        {props.description}
-      </span>
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          aria-label={`${props.title} info`}
+          className="shrink-0 rounded-full text-text-secondary transition hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          type="button"
+        >
+          <Info aria-hidden="true" className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="w-56 px-3 py-2">{props.description}</TooltipContent>
+    </Tooltip>
   );
 }
 
 function TaskResultMessageTooltip(props: { message: string }) {
   return (
-    <span className="group relative inline-flex shrink-0" tabIndex={0}>
-      <span
-        aria-label="Latest result message"
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-surface-elevated text-text-secondary transition group-hover:border-accent/50 group-hover:text-accent group-focus-visible:border-accent/50 group-focus-visible:text-accent"
-      >
-        <MessageSquareText aria-hidden="true" className="h-3.5 w-3.5" />
-      </span>
-      <span
-        className="pointer-events-none absolute right-0 top-full z-30 mt-2 w-64 rounded-md border border-border bg-surface-elevated px-3 py-2 text-left text-xs leading-5 text-text-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-        role="tooltip"
-      >
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          aria-label="Latest result message"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-surface-elevated text-text-secondary transition hover:border-accent/50 hover:text-accent focus-visible:border-accent/50 focus-visible:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          tabIndex={0}
+        >
+          <MessageSquareText aria-hidden="true" className="h-3.5 w-3.5" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent align="end" className="w-64 px-3 py-2">
         {formatResultMessagePreview(props.message)}
-      </span>
-    </span>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -462,21 +459,22 @@ function TaskBoardCardMeta(props: { task: Task; progress?: TaskSubtaskProgress }
 
 function TaskSubtaskDot(props: { subtask: TaskSubtaskProgress["subtasks"][number] }) {
   return (
-    <span
-      className="group relative inline-flex transition-[margin] duration-150 ease-out"
-      tabIndex={0}
-    >
-      <span
-        aria-label={formatSubtaskDotLabel(props.subtask.description)}
-        className={readSubtaskDotClassName(props.subtask.status)}
-      />
-      <span
-        className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-56 -translate-x-1/2 rounded-md border border-border bg-surface-elevated px-2 py-1.5 text-left text-xs leading-5 text-text-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-        role="tooltip"
-      >
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="inline-flex transition-[margin] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          tabIndex={0}
+        >
+          <span
+            aria-label={formatSubtaskDotLabel(props.subtask.description)}
+            className={readSubtaskDotClassName(props.subtask.status)}
+          />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="w-56">
         {formatSubtaskPreview(props.subtask.description)}
-      </span>
-    </span>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -484,25 +482,25 @@ function BoardAssigneeAvatar(props: { agent?: Specialist; fallbackName: string }
   const name = props.agent?.name ?? props.fallbackName;
 
   return (
-    <span
-      aria-label={`Assignee: ${name}`}
-      className="group relative inline-flex shrink-0"
-      tabIndex={0}
-      title={name}
-    >
-      <SpecialistAvatar
-        className="h-7 w-7 rounded-full text-[11px]"
-        iconPath={props.agent?.iconPath}
-        name={name}
-        size="sm"
-      />
-      <span
-        className="pointer-events-none absolute right-0 top-full z-30 mt-2 w-max max-w-48 whitespace-normal break-words [overflow-wrap:anywhere] rounded-md border border-border bg-surface-elevated px-2 py-1 text-left text-xs text-text-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-        role="tooltip"
-      >
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          aria-label={`Assignee: ${name}`}
+          className="inline-flex shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          tabIndex={0}
+        >
+          <SpecialistAvatar
+            className="h-7 w-7 rounded-full text-[11px]"
+            iconPath={props.agent?.iconPath}
+            name={name}
+            size="sm"
+          />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent align="end" className="max-w-48 [overflow-wrap:anywhere]">
         {name}
-      </span>
-    </span>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -686,17 +684,21 @@ export function TaskCardIconButton(props: {
   const Icon = props.icon;
 
   return (
-    <button
-      aria-label={props.label}
-      className={readTaskCardIconActionClassName(props.variant)}
-      data-testid={props.testId ?? taskCardActionTestId(props.label)}
-      disabled={props.disabled}
-      onClick={props.onClick}
-      type="button"
-    >
-      <Icon aria-hidden="true" className="h-4 w-4" />
-      <TaskCardIconActionTooltip label={props.label} />
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          aria-label={props.label}
+          className={readTaskCardIconActionClassName(props.variant)}
+          data-testid={props.testId ?? taskCardActionTestId(props.label)}
+          disabled={props.disabled}
+          onClick={props.onClick}
+          type="button"
+        >
+          <Icon aria-hidden="true" className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{props.label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -756,26 +758,19 @@ function TaskCardIconLink(props: {
   const Icon = props.icon;
 
   return (
-    <Link
-      aria-label={props.label}
-      className={readTaskCardIconActionClassName(props.variant)}
-      data-testid={props.testId ?? taskCardActionTestId(props.label)}
-      onClick={props.onClick}
-      to={props.to}
-    >
-      <Icon aria-hidden="true" className="h-4 w-4" />
-      <TaskCardIconActionTooltip label={props.label} />
-    </Link>
-  );
-}
-
-function TaskCardIconActionTooltip(props: { label: string }) {
-  return (
-    <span
-      className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-max max-w-48 -translate-x-1/2 whitespace-normal rounded-md border border-border bg-surface-elevated px-2 py-1 text-xs font-medium text-text-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-      role="tooltip"
-    >
-      {props.label}
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          aria-label={props.label}
+          className={readTaskCardIconActionClassName(props.variant)}
+          data-testid={props.testId ?? taskCardActionTestId(props.label)}
+          onClick={props.onClick}
+          to={props.to}
+        >
+          <Icon aria-hidden="true" className="h-4 w-4" />
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent>{props.label}</TooltipContent>
+    </Tooltip>
   );
 }

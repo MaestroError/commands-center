@@ -6,6 +6,7 @@ import {
   aggregateRunArtifacts,
   formToTemplateInput,
   getTaskTemplateCreationPrefill,
+  readCardClassName,
   templateToForm,
 } from "./task-helpers";
 
@@ -15,6 +16,12 @@ const validRecurrence = {
   timezone: "UTC",
   repeatRule: { frequency: "week", interval: 1 },
 };
+
+describe("task card appearance", () => {
+  it("uses the subtle danger surface for failed cards", () => {
+    expect(readCardClassName("failed", false)).toContain("bg-danger-surface-subtle");
+  });
+});
 
 describe("getTaskTemplateCreationPrefill", () => {
   it("returns undefined when there is no templatePrefill", () => {

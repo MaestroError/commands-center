@@ -88,7 +88,7 @@ describe("ActivityThread", () => {
     await waitFor(() => expect(screen.getByText("Mark all as read")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Mark all as read"));
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Mark all as read" }),
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Mark all as read" }),
     );
     await waitFor(() => expect(api.archiveAllActivities).toHaveBeenCalledOnce());
   });

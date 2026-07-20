@@ -10,7 +10,7 @@
 
 - Before starting editing code, always Plan changes as todo tasks and implement them one by one
 - Always run linters (`eslint --fix`) and tests after finishing changes, before reporting task as done.
-- Always try to use CSS classes influenced by our themes, so that changing colors inside the theme doesn't skip any component in codebase
+- Follow the mandatory [CC design-system rules](docs/design-system/README.md) for all frontend appearance work
 - Before writing a filesystem migration, always check `skills/write-filesystem-migration/SKILL.md` to learn how.
 - Plans should be persisted as .md files under the "plans/" directory.
 - Never git commit without explicitly asking the user.
@@ -39,8 +39,8 @@ These are the chosen technologies. Do not introduce alternatives without explici
 | Build tool   | Vite (dev: native ESM HMR, prod: Rollup code-splitting)                |
 | Styling      | Tailwind CSS v4 (CSS-native config via `@theme {}`, no JS config file) |
 | Components   | Shadcn/UI (copy-owned, Radix primitives underneath)                    |
-| Chat UI      | `assistant-ui` (streaming text, tool calls, generative UI)             |
-| File manager | SVAR React File Manager (`RestDataProvider`)                           |
+| Chat UI      | CC-owned React chat and `react-markdown` rendering                     |
+| File manager | CC-owned React workspace/file UI with `react-dropzone` and Monaco      |
 | Code editor  | Monaco Editor (`@monaco-editor/react`)                                 |
 | Terminal     | `xterm.js` + `xterm-addon-fit` + `xterm-addon-attach`                  |
 | Server state | TanStack Query (`@tanstack/react-query`) for all API-derived data      |
@@ -88,6 +88,35 @@ The CLI bundles backend + frontend into `packages/cli/dist/`. The backend expose
 | Formatting         | Prettier                                                                  |
 | Git hooks          | Husky + `lint-staged`                                                     |
 | CI                 | GitHub Actions                                                            |
+
+---
+
+## CC Design System
+
+The canonical contributor guide is [docs/design-system/README.md](docs/design-system/README.md),
+with separate [theme](docs/design-system/themes.md) and
+[exception](docs/design-system/exceptions.md) runbooks.
+
+- Use Tailwind for ordinary layout and styling. Theme-dependent roles must use
+  CC semantic utilities/tokens; do not add raw palette roles or fixed colors in
+  components.
+- Use unclassed semantic HTML for generic content. Preserve `.cc-md` and
+  `.cc-md--chat` exactly, and keep Milkdown below its scoped wrapper.
+- Prefer native controls when sufficient. Otherwise consume CC-owned
+  `@/components/ui/*` primitives or existing common compositions; Radix imports
+  are restricted to `components/ui/`.
+- Use `lucide-react` for icons. Inline SVG and controlled palettes require an
+  exact-path `EX-NNN` exception.
+- Keep authored CSS to tokens, base rules, complex states, protected content,
+  third-party bridges, and retained compatibility definitions. Do not add new
+  `cc-*` compatibility consumers.
+- Monaco, xterm, and Milkdown appearance must flow through their approved
+  adapters. Bridge code must not read persistence, media queries, or DOM theme
+  attributes directly.
+- A theme supplies complete light/dark semantic sets plus shared shape and
+  emphasis. Adding one must not require component appearance changes and must
+  follow the Portable Workspace Rule.
+- Run `pnpm design-system:audit` for design-system changes.
 
 ---
 
@@ -309,6 +338,10 @@ describe("conversation routes", () => {
 - Use `data-testid` attributes for stable selectors (not CSS classes or text content)
 - E2E tests run against a fully built app with a real database (SQLite for CI speed)
 - Keep E2E tests focused on user flows, not implementation details
+- Prefer platform-independent semantic, computed-style, layout, and interaction
+  assertions for appearance contracts. Do not add committed Playwright
+  screenshot baselines unless the user explicitly approves them and CI owns a
+  pinned baseline-generation environment.
 
 ### What to Test
 
@@ -340,7 +373,7 @@ describe("conversation routes", () => {
 | Interaction latency    | < 100ms         |
 | JS bundle (gzipped)    | < 200KB initial |
 
-Heavy dependencies (Monaco, xterm.js, SVAR) must be lazy-loaded — only fetch them when the user navigates to a screen that needs them.
+Heavy dependencies (Milkdown, Monaco, and xterm.js) must be lazy-loaded — only fetch them when the user navigates to a screen that needs them.
 
 ---
 

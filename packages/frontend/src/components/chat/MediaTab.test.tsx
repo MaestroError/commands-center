@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MediaTab } from "./MediaTab";
@@ -43,6 +44,7 @@ describe("MediaTab", () => {
   });
 
   it("groups media and opens an image preview modal", async () => {
+    const user = userEvent.setup();
     vi.mocked(api.fetchConversationMedia).mockResolvedValue([
       {
         id: "img-1",
@@ -85,7 +87,7 @@ describe("MediaTab", () => {
 
     expect(screen.getByRole("dialog", { name: "Image preview" })).toBeInTheDocument();
 
-    fireEvent.keyDown(window, { key: "Escape" });
+    await user.keyboard("{Escape}");
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Image preview" })).not.toBeInTheDocument();

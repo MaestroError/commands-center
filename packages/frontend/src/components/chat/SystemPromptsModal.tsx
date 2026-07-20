@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 
 import type { ResolvedSystemPrompt } from "@cc/shared/schemas";
+
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 type SystemPromptsModalProps = {
   prompts: ResolvedSystemPrompt[];
@@ -12,29 +14,14 @@ type SystemPromptsModalProps = {
 };
 
 export function SystemPromptsModal({ prompts, isFallback, onClose }: SystemPromptsModalProps) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[70vh] w-full max-w-lg flex-col rounded-md border border-border bg-surface shadow-xl"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
+    <Dialog onOpenChange={(open) => !open && onClose()} open>
+      <DialogContent
         aria-label="System prompts sent with this message"
+        className="top-20 max-h-[70vh] max-w-lg translate-y-0 overflow-hidden p-0"
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-text-primary">System prompts</h2>
+          <DialogTitle className="text-sm">System prompts</DialogTitle>
           <button
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
@@ -60,8 +47,8 @@ export function SystemPromptsModal({ prompts, isFallback, onClose }: SystemPromp
             prompts.map((prompt) => <PromptSection key={prompt.id} prompt={prompt} />)
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

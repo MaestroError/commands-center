@@ -1,74 +1,67 @@
-import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { ChevronDown, Monitor, Moon, Sun } from "lucide-react";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useTheme } from "@/context/use-theme";
 
 export function ThemeMenu() {
-  const { theme, themes, setTheme } = useTheme();
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    function onPointerDown(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-
-    window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  const { colorModePreference, colorModePreferences, setColorModePreference } = useTheme();
 
   return (
-    <div className="relative hidden sm:block" ref={containerRef}>
-      <button
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-surface px-3 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
-        onClick={() => setOpen((value) => !value)}
-        type="button"
-      >
-        Theme: {theme}
-        <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
-      </button>
-      {open ? (
-        <div
-          aria-label="Choose theme"
-          className="absolute right-0 z-40 mt-2 min-w-36 rounded-md border border-border bg-surface p-1 shadow-xl"
-          role="menu"
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          aria-label={`Choose color mode, current: ${colorModeLabel(colorModePreference)}`}
+          className="inline-flex h-9 w-9 items-center justify-center gap-2 rounded-md border border-border bg-surface px-2 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary sm:w-auto sm:px-3"
+          type="button"
         >
-          {themes.map((option) => (
-            <button
-              aria-checked={option === theme}
-              className="flex w-full items-center justify-between gap-3 rounded px-3 py-2 text-left text-xs capitalize text-text-secondary transition hover:bg-border/40 hover:text-text-primary"
-              key={option}
-              onClick={() => {
-                setTheme(option);
-                setOpen(false);
-              }}
-              role="menuitemradio"
-              type="button"
-            >
-              {option}
-              {option === theme ? <Check aria-hidden="true" className="h-3.5 w-3.5" /> : null}
-            </button>
+          <ColorModeIcon mode={colorModePreference} />
+          <span className="hidden sm:inline">{colorModeLabel(colorModePreference)}</span>
+          <ChevronDown aria-hidden="true" className="hidden h-3.5 w-3.5 sm:block" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" aria-label="Choose color mode">
+        <DropdownMenuRadioGroup
+          onValueChange={(value) => setColorModePreference(value as ColorMode)}
+          value={colorModePreference}
+        >
+          {colorModePreferences.map((option) => (
+            <DropdownMenuRadioItem className="capitalize" key={option} value={option}>
+              <ColorModeIcon mode={option} />
+              {colorModeLabel(option)}
+            </DropdownMenuRadioItem>
           ))}
-        </div>
-      ) : null}
-    </div>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
+}
+
+type ColorMode = "light" | "dark" | "system";
+
+function ColorModeIcon(props: { mode: ColorMode }) {
+  if (props.mode === "light") {
+    return <Sun aria-hidden="true" className="h-3.5 w-3.5" />;
+  }
+
+  if (props.mode === "dark") {
+    return <Moon aria-hidden="true" className="h-3.5 w-3.5" />;
+  }
+
+  return <Monitor aria-hidden="true" className="h-3.5 w-3.5" />;
+}
+
+function colorModeLabel(mode: ColorMode): string {
+  const labels = {
+    dark: "Dark",
+    light: "Light",
+    system: "System",
+  } as const;
+
+  return labels[mode];
 }

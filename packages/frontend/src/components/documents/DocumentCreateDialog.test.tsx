@@ -45,6 +45,24 @@ function lastCreateDocumentInput() {
 }
 
 describe("DocumentCreateDialog", () => {
+  it("closes through Escape", async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    renderDialog({ onClose });
+
+    await user.keyboard("{Escape}");
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("exposes an accessible dialog name and description", () => {
+    renderDialog();
+
+    expect(screen.getByRole("dialog", { name: "New Document" })).toHaveAccessibleDescription(
+      "Create a markdown document in the Documents folder.",
+    );
+  });
+
   it("derives a path from the title", async () => {
     vi.mocked(createDocument).mockResolvedValue({ documents: [] });
     const user = userEvent.setup();
@@ -98,5 +116,30 @@ describe("DocumentCreateDialog", () => {
     await user.click(screen.getByRole("button", { name: "Create" }));
 
     expect(lastCreateDocumentInput()).toMatchObject({ path: "design/overview.md" });
+  });
+
+  it("preserves private scope, owner, metadata, and markdown extension", async () => {
+    vi.mocked(createDocument).mockResolvedValue({ documents: [] });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <DocumentCreateDialog onClose={vi.fn()} ownerSlug="planner" scope="private" />
+      </QueryClientProvider>,
+    );
+
+    await user.type(screen.getByLabelText("Title"), "Plan");
+    await user.type(screen.getByLabelText("Description"), "Delivery plan");
+    await user.clear(getPathInput());
+    await user.type(getPathInput(), "plans/current.markdown");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(lastCreateDocumentInput()).toEqual({
+      scope: "private",
+      ownerSlug: "planner",
+      path: "plans/current.markdown",
+      title: "Plan",
+      description: "Delivery plan",
+    });
   });
 });

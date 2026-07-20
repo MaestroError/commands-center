@@ -3,6 +3,7 @@
 import { ModelSelector } from "@/components/chat/ModelSelector";
 import { PageHeader } from "@/components/common/PageHeader";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
+import { SearchableSelect } from "@/components/common/SearchableSelect";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { TaskPromptComposer } from "@/components/tasks/TaskPromptComposer";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
@@ -26,6 +27,10 @@ import {
   readError,
   taskToForm,
 } from "./task-helpers";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 export function TaskFormPage(props: { mode: "create" | "edit" }) {
   const navigate = useNavigate();
@@ -63,7 +68,7 @@ export function TaskFormPage(props: { mode: "create" | "edit" }) {
       <PageHeader
         actions={
           <Link
-            className="cc-button cc-button-secondary"
+            className={buttonVariants({ variant: "secondary" })}
             to={task ? `/tasks/${task.id}` : "/tasks"}
           >
             Cancel
@@ -107,28 +112,22 @@ export function TaskFormPage(props: { mode: "create" | "edit" }) {
               <div className="grid gap-4 lg:grid-cols-2">
                 <label className="grid gap-1 text-sm text-text-secondary">
                   Title
-                  <input
-                    className="cc-input"
+                  <Input
                     value={form.title}
                     onChange={(event) => updateForm({ title: event.target.value })}
                   />
                 </label>
-                <label className="grid gap-1 text-sm text-text-secondary">
-                  Assigned specialist
-                  <select
-                    className="cc-input"
+                <div className="grid gap-1 text-sm text-text-secondary">
+                  <span>Assigned specialist</span>
+                  <SearchableSelect
                     required
+                    ariaLabel="Assigned specialist"
+                    onChange={handleAgentChange}
+                    options={agents.map((agent) => ({ id: agent.id, label: agent.name }))}
+                    placeholder="Search specialists..."
                     value={form.agentId}
-                    onChange={(event) => handleAgentChange(event.target.value)}
-                  >
-                    <option value="">Select a specialist</option>
-                    {agents.map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
                 <label className="grid gap-1 text-sm text-text-secondary">
                   Model
                   <ModelSelector
@@ -165,8 +164,7 @@ export function TaskFormPage(props: { mode: "create" | "edit" }) {
               <div className="grid gap-4 lg:grid-cols-2">
                 <label className="grid gap-1 text-sm text-text-secondary">
                   Schedule for
-                  <input
-                    className="cc-input"
+                  <Input
                     type="datetime-local"
                     value={form.scheduledAtLocal}
                     onChange={(event) => updateForm({ scheduledAtLocal: event.target.value })}
@@ -174,8 +172,7 @@ export function TaskFormPage(props: { mode: "create" | "edit" }) {
                 </label>
                 <label className="grid gap-1 text-sm text-text-secondary">
                   Due by
-                  <input
-                    className="cc-input"
+                  <Input
                     type="datetime-local"
                     value={form.dueAtLocal}
                     onChange={(event) => updateForm({ dueAtLocal: event.target.value })}
@@ -183,20 +180,21 @@ export function TaskFormPage(props: { mode: "create" | "edit" }) {
                 </label>
               </div>
               {props.mode === "edit" && task?.scheduledAt ? (
-                <button
-                  className="cc-button cc-button-secondary w-fit"
+                <Button
+                  variant="secondary"
+                  className="w-fit"
                   onClick={() => updateForm({ scheduledAtLocal: "" })}
                   type="button"
                 >
                   Clear schedule
-                </button>
+                </Button>
               ) : null}
 
               <div className="grid gap-1">
                 <label className="grid gap-1 text-sm text-text-secondary">
                   Acceptance criteria, one per line
-                  <textarea
-                    className="cc-input min-h-28 resize-y"
+                  <Textarea
+                    className="min-h-28 resize-y"
                     value={form.todosText}
                     onChange={(event) => updateForm({ todosText: event.target.value })}
                   />
@@ -216,15 +214,14 @@ export function TaskFormPage(props: { mode: "create" | "edit" }) {
               </section>
 
               <div className="flex flex-wrap gap-2">
-                <button
-                  className="cc-button"
+                <Button
                   disabled={mutations.create.isPending || mutations.update.isPending}
                   type="submit"
                 >
                   {props.mode === "create" ? "Create task" : "Save task"}
-                </button>
+                </Button>
                 <Link
-                  className="cc-button cc-button-secondary"
+                  className={buttonVariants({ variant: "secondary" })}
                   to={task ? `/tasks/${task.id}` : "/tasks"}
                 >
                   Cancel

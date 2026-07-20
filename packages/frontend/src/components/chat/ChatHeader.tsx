@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { History, Pencil, Plus, Terminal } from "lucide-react";
 
 import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 
@@ -48,28 +49,18 @@ export function ChatHeader({
       <div className="flex items-center gap-1 shrink-0">
         {/* Start Fresh */}
         <button
+          aria-label="Start fresh conversation"
           type="button"
           title="Start fresh conversation"
           className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
           onClick={onStartFresh}
         >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 5v14" />
-            <path d="M5 12h14" />
-          </svg>
+          <Plus aria-hidden="true" size={15} />
         </button>
 
         {onToggleTerminal ? (
           <button
+            aria-label="Workspace terminal"
             type="button"
             title="Workspace terminal"
             className={[
@@ -80,24 +71,13 @@ export function ChatHeader({
             ].join(" ")}
             onClick={onToggleTerminal}
           >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="4 17 10 11 4 5" />
-              <line x1="12" x2="20" y1="19" y2="19" />
-            </svg>
+            <Terminal aria-hidden="true" size={15} />
           </button>
         ) : null}
 
         {/* History */}
         <button
+          aria-label="Conversation history"
           type="button"
           title="Conversation history"
           className={[
@@ -108,23 +88,12 @@ export function ChatHeader({
           ].join(" ")}
           onClick={() => setShowHistory(true)}
         >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
+          <History aria-hidden="true" size={15} />
         </button>
 
         {onToggleQuickEditor ? (
           <button
+            aria-label="Quick editor"
             aria-pressed={quickEditorOpen}
             disabled={!quickEditorAvailable}
             type="button"
@@ -137,19 +106,7 @@ export function ChatHeader({
             ].join(" ")}
             onClick={onToggleQuickEditor}
           >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-            </svg>
+            <Pencil aria-hidden="true" size={15} />
           </button>
         ) : null}
       </div>

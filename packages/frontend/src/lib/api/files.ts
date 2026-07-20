@@ -127,6 +127,46 @@ export async function uploadFileManagerEntries(
   );
 }
 
+export function buildFileManagerDownloadHref(query: FileManagerFileContentQuery): string {
+  const parsed = fileManagerFileContentQuerySchema.parse(query);
+  const params = new URLSearchParams();
+  params.set("root", parsed.root);
+  params.set("path", parsed.path);
+  return `/api/file-manager/files/download?${params.toString()}`;
+}
+
+export function downloadFileManagerFile(
+  query: FileManagerFileContentQuery,
+  filename: string,
+): void {
+  triggerAnchorDownload(buildFileManagerDownloadHref(query), filename);
+}
+
+export function buildFileManagerZipDownloadHref(query: FileManagerFileContentQuery): string {
+  const parsed = fileManagerFileContentQuerySchema.parse(query);
+  const params = new URLSearchParams();
+  params.set("root", parsed.root);
+  params.set("path", parsed.path);
+  return `/api/file-manager/files/download-zip?${params.toString()}`;
+}
+
+export function downloadFileManagerFolderZip(
+  query: FileManagerFileContentQuery,
+  folderName: string,
+): void {
+  triggerAnchorDownload(buildFileManagerZipDownloadHref(query), `${folderName}.zip`);
+}
+
+function triggerAnchorDownload(href: string, filename: string): void {
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 export async function getFileManagerFileContent(
   query: FileManagerFileContentQuery,
 ): Promise<FileManagerFileContentResponse> {

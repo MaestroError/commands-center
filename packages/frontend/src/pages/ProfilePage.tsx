@@ -7,6 +7,7 @@ import { useTheme } from "@/context/use-theme";
 import { useOwnerAuth } from "@/context/use-owner-auth";
 import { changeOwnerPassword } from "@/lib/api";
 import { queryClient } from "@/lib/query-client";
+import { Button } from "@/components/ui/button";
 
 const MIN_PASSWORD_LENGTH = 10;
 const UPPERCASE_LETTER_PATTERN = /[A-Z]/;
@@ -15,7 +16,7 @@ const NUMBER_PATTERN = /\d/;
 const SYMBOL_PATTERN = /[^A-Za-z0-9]/;
 
 export function ProfilePage() {
-  const { theme, themes, setTheme } = useTheme();
+  const { theme } = useTheme();
   const auth = useOwnerAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -77,26 +78,18 @@ export function ProfilePage() {
   return (
     <div className="grid gap-4">
       <PageHeader
-        description="Theme selection is available now and persists locally so later UX epics can inherit the chosen visual mood immediately."
+        description="Choose your workspace theme here. Color mode is controlled separately from the header."
         eyebrow="Profile"
         title="Personalize your workspace"
       />
       <section className="cc-panel p-6">
         <h2 className="text-lg font-semibold text-text-primary">Theme</h2>
         <p className="mt-2 text-sm text-text-secondary">
-          Themes change the mood, not the layout or information architecture.
+          Themes define the visual character across light and dark modes. Default is the only
+          available theme today.
         </p>
         <div className="mt-5 flex flex-wrap gap-3">
-          {themes.map((option) => (
-            <button
-              className={option === theme ? "cc-tab cc-tab-active" : "cc-tab"}
-              key={option}
-              onClick={() => setTheme(option)}
-              type="button"
-            >
-              {option}
-            </button>
-          ))}
+          <span className={theme === "default" ? "cc-tab cc-tab-active" : "cc-tab"}>Default</span>
         </div>
       </section>
       <section className="cc-panel p-6">
@@ -143,13 +136,9 @@ export function ProfilePage() {
           {passwordError ? <p className="text-sm text-danger">{passwordError}</p> : null}
           {passwordSuccess ? <p className="text-sm text-success">{passwordSuccess}</p> : null}
           <div>
-            <button
-              className="cc-button cc-button-primary"
-              disabled={passwordSubmitting}
-              type="submit"
-            >
+            <Button disabled={passwordSubmitting} type="submit">
               {passwordSubmitting ? "Changing password..." : "Change password"}
-            </button>
+            </Button>
           </div>
         </form>
       </section>
@@ -158,14 +147,15 @@ export function ProfilePage() {
         <p className="mt-2 text-sm text-text-secondary">
           Sign out of this browser without changing the workspace owner password.
         </p>
-        <button
-          className="cc-button cc-button-secondary mt-5"
+        <Button
+          variant="secondary"
+          className="mt-5"
           disabled={logoutSubmitting}
           onClick={() => void onLogout()}
           type="button"
         >
           {logoutSubmitting ? "Signing out..." : "Sign out"}
-        </button>
+        </Button>
         {logoutError ? <p className="mt-3 text-sm text-danger">{logoutError}</p> : null}
       </section>
     </div>

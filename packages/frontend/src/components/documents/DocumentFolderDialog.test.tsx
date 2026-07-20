@@ -38,6 +38,24 @@ function lastCreateFolderInput() {
 }
 
 describe("DocumentFolderDialog", () => {
+  it("closes through Escape", async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    renderDialog({ onClose });
+
+    await user.keyboard("{Escape}");
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("exposes an accessible dialog name and description", () => {
+    renderDialog();
+
+    expect(screen.getByRole("dialog", { name: "New Folder" })).toHaveAccessibleDescription(
+      "Create a folder inside the Documents directory.",
+    );
+  });
+
   it("creates a folder at the typed path", async () => {
     vi.mocked(createDocumentFolder).mockResolvedValue(undefined);
     const user = userEvent.setup();
@@ -83,5 +101,25 @@ describe("DocumentFolderDialog", () => {
 
     expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
     expect(createDocumentFolder).not.toHaveBeenCalled();
+  });
+
+  it("preserves private scope and owner in the mutation payload", async () => {
+    vi.mocked(createDocumentFolder).mockResolvedValue(undefined);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <DocumentFolderDialog onClose={vi.fn()} ownerSlug="planner" scope="private" />
+      </QueryClientProvider>,
+    );
+
+    await user.type(screen.getByRole("textbox"), "design/specs");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(lastCreateFolderInput()).toEqual({
+      scope: "private",
+      ownerSlug: "planner",
+      path: "design/specs",
+    });
   });
 });

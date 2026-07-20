@@ -285,7 +285,7 @@ function MessageCopyButton(props: { copyText: string }) {
       type="button"
     >
       {copied ? (
-        <Check aria-hidden="true" className="h-3.5 w-3.5 text-green-500" />
+        <Check aria-hidden="true" className="h-3.5 w-3.5 text-success" />
       ) : (
         <Copy aria-hidden="true" className="h-3.5 w-3.5" />
       )}
