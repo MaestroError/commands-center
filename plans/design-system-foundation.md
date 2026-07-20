@@ -1,4 +1,4 @@
-# CC Design System Foundation
+# CC Design System Foundation | Done
 
 ## Goal
 

@@ -1,4 +1,4 @@
-# CC_OPENCODE_STATE_DIR: persist OpenCode global state
+# CC_OPENCODE_STATE_DIR: persist OpenCode global state | Done
 
 ## Problem
 
