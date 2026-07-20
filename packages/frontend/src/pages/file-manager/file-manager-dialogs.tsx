@@ -5,6 +5,10 @@ import type { FileManagerNode, FileManagerRootKind } from "@cc/shared/schemas";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
 export function MoveEntryDialog(props: {
   root: FileManagerRootKind;
   currentPath: string;
@@ -94,10 +98,10 @@ export function MoveEntryDialog(props: {
           <label className="grid gap-2 text-sm text-text-primary">
             <span>Destination folder</span>
             <span className="relative">
-              <input
+              <Input
                 aria-label="Search destination folders"
                 autoFocus
-                className="cc-input pr-10"
+                className="pr-10"
                 onChange={(event) => {
                   setQuery(event.target.value);
                   props.onChange("");
@@ -154,16 +158,12 @@ export function MoveEntryDialog(props: {
           )}
         </div>
         <div className="mt-auto flex justify-end gap-2 border-t border-border px-4 py-4">
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          <Button variant="secondary" onClick={props.onClose} type="button">
             Cancel
-          </button>
-          <button
-            className="cc-button"
-            disabled={props.busy || props.destinationPath.trim().length === 0}
-            type="submit"
-          >
+          </Button>
+          <Button disabled={props.busy || props.destinationPath.trim().length === 0} type="submit">
             {props.busy ? "Moving..." : "Move"}
-          </button>
+          </Button>
         </div>
       </form>
     </ModalFrame>
@@ -198,26 +198,21 @@ export function CreateEntryDialog(props: {
         <div className="grid gap-3 px-4 py-4">
           <label className="grid gap-2 text-sm text-text-primary">
             <span>Name</span>
-            <input
+            <Input
               aria-label="Name"
               autoFocus
-              className="cc-input"
               onChange={(event) => props.onChange(event.target.value)}
               value={props.name}
             />
           </label>
         </div>
         <div className="mt-auto flex justify-end gap-2 border-t border-border px-4 py-4">
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          <Button variant="secondary" onClick={props.onClose} type="button">
             Cancel
-          </button>
-          <button
-            className="cc-button"
-            disabled={props.busy || props.name.trim().length === 0}
-            type="submit"
-          >
+          </Button>
+          <Button disabled={props.busy || props.name.trim().length === 0} type="submit">
             {props.busy ? "Creating..." : `Create ${label}`}
-          </button>
+          </Button>
         </div>
       </form>
     </ModalFrame>
@@ -250,26 +245,21 @@ export function RenameEntryDialog(props: {
         <div className="grid gap-3 px-4 py-4">
           <label className="grid gap-2 text-sm text-text-primary">
             <span>New name</span>
-            <input
+            <Input
               aria-label="New name"
               autoFocus
-              className="cc-input"
               onChange={(event) => props.onChange(event.target.value)}
               value={props.name}
             />
           </label>
         </div>
         <div className="mt-auto flex justify-end gap-2 border-t border-border px-4 py-4">
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          <Button variant="secondary" onClick={props.onClose} type="button">
             Cancel
-          </button>
-          <button
-            className="cc-button"
-            disabled={props.busy || props.name.trim().length === 0}
-            type="submit"
-          >
+          </Button>
+          <Button disabled={props.busy || props.name.trim().length === 0} type="submit">
             {props.busy ? "Renaming..." : "Rename"}
-          </button>
+          </Button>
         </div>
       </form>
     </ModalFrame>
@@ -292,17 +282,12 @@ export function DeleteEntryDialog(props: {
           </p>
         </div>
         <div className="mt-auto flex justify-end gap-2 border-t border-border px-4 py-4">
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          <Button variant="secondary" onClick={props.onClose} type="button">
             Cancel
-          </button>
-          <button
-            className="cc-button"
-            disabled={props.busy}
-            onClick={props.onConfirm}
-            type="button"
-          >
+          </Button>
+          <Button disabled={props.busy} onClick={props.onConfirm} type="button">
             {props.busy ? "Deleting..." : "Delete"}
-          </button>
+          </Button>
         </div>
       </div>
     </ModalFrame>
@@ -311,18 +296,14 @@ export function DeleteEntryDialog(props: {
 
 function ModalFrame(props: { ariaLabel: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-20"
-      onClick={props.onClose}
-    >
-      <div
-        aria-label={props.ariaLabel}
-        className="w-full max-w-md rounded-md border border-border bg-surface shadow-xl"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
+    <Dialog onOpenChange={(open) => !open && props.onClose()} open>
+      <DialogContent
+        className="top-20 max-w-md translate-y-0 overflow-hidden p-0"
+        onEscapeKeyDown={(event) => event.preventDefault()}
       >
+        <DialogTitle className="sr-only">{props.ariaLabel}</DialogTitle>
         {props.children}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { SearchableSelect } from "./SearchableSelect";
@@ -107,15 +108,111 @@ describe("SearchableSelect", () => {
     expect(screen.queryByRole("option")).not.toBeInTheDocument();
   });
 
-  it("closes and clears the query when focus leaves the component", () => {
-    render(<SearchableSelect value="" onChange={vi.fn()} options={options} placeholder="Search" />);
+  it("closes and clears the query when focus leaves the component", async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <SearchableSelect value="" onChange={vi.fn()} options={options} placeholder="Search" />
+        <button type="button">Next field</button>
+      </>,
+    );
 
     const input = screen.getByPlaceholderText("Search");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "opus" } });
-    fireEvent.blur(input, { relatedTarget: document.body });
+    await user.tab();
 
-    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("option")).not.toBeInTheDocument());
     expect(input).toHaveValue("");
+  });
+
+  it("exposes named combobox and listbox relationships", () => {
+    render(
+      <SearchableSelect ariaLabel="Default model" value="" onChange={vi.fn()} options={options} />,
+    );
+
+    const input = screen.getByRole("combobox", { name: "Default model" });
+    fireEvent.focus(input);
+
+    const listbox = screen.getByRole("listbox");
+    expect(input).toHaveAttribute("aria-expanded", "true");
+    expect(input).toHaveAttribute("aria-controls", listbox.id);
+    expect(screen.getAllByRole("option")[0]).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("reflects controlled value and option changes without stale query text", () => {
+    const { rerender } = render(
+      <SearchableSelect value="openai/gpt-4.1" onChange={vi.fn()} options={options} />,
+    );
+
+    const input = screen.getByDisplayValue("GPT-4.1");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "opus" } });
+
+    rerender(
+      <SearchableSelect
+        value="anthropic/claude-sonnet-4-6"
+        onChange={vi.fn()}
+        options={options.slice(1)}
+      />,
+    );
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(input).toHaveValue("Claude Sonnet 4.6");
+  });
+
+  it("dismisses on outside interaction", async () => {
+    const user = userEvent.setup();
+    render(<SearchableSelect value="" onChange={vi.fn()} options={options} placeholder="Search" />);
+
+    fireEvent.focus(screen.getByPlaceholderText("Search"));
+    await user.click(document.body);
+
+    await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
+  });
+
+  it("preserves an additive class name", () => {
+    render(<SearchableSelect className="w-full" value="" onChange={vi.fn()} options={options} />);
+
+    expect(screen.getByRole("combobox")).toHaveClass("cc-input", "w-full");
+  });
+
+  it("requires a committed option when configured as required", async () => {
+    render(
+      <SearchableSelect
+        required
+        value=""
+        onChange={vi.fn()}
+        options={options}
+        placeholder="Search"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole("combobox")).toBeInvalid());
+  });
+
+  it("accepts a committed value when configured as required", async () => {
+    render(
+      <SearchableSelect required value="openai/gpt-4.1" onChange={vi.fn()} options={options} />,
+    );
+
+    await waitFor(() => expect(screen.getByRole("combobox")).toBeValid());
+  });
+
+  it("clears an optional selection through its empty option", () => {
+    const onChange = vi.fn();
+    render(
+      <SearchableSelect
+        emptyOptionLabel="No model"
+        value="openai/gpt-4.1"
+        onChange={onChange}
+        options={options}
+      />,
+    );
+
+    fireEvent.focus(screen.getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "No model" }));
+
+    expect(onChange).toHaveBeenCalledWith("");
   });
 });

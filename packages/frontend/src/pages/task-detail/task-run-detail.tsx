@@ -29,6 +29,8 @@ import {
   readToolStateField,
   readToolStatus,
 } from "./task-detail-helpers";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
 
 export function RunHistory(props: {
   taskId: string;
@@ -109,14 +111,14 @@ export function RunHistory(props: {
                     <td className="py-3 pr-3">
                       <div className="flex flex-wrap gap-2">
                         <Link
-                          className="cc-button cc-button-secondary"
+                          className={buttonVariants({ variant: "secondary" })}
                           data-testid={`task-run-inspect-${run.id}`}
                           to={`/tasks/${props.taskId}/runs/${run.id}`}
                         >
                           Inspect
                         </Link>
-                        <button
-                          className="cc-button cc-button-secondary"
+                        <Button
+                          variant="secondary"
                           data-testid={`task-run-reply-${run.id}`}
                           disabled={!run.opencodeSessionId}
                           onClick={() =>
@@ -132,7 +134,7 @@ export function RunHistory(props: {
                           type="button"
                         >
                           Reply
-                        </button>
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -180,7 +182,7 @@ export function TaskRunDetail(props: {
         actions={
           <>
             <Link
-              className="cc-button cc-button-secondary"
+              className={buttonVariants({ variant: "secondary" })}
               to={
                 props.taskId
                   ? `/tasks/${props.taskId}${location.search}`
@@ -190,9 +192,9 @@ export function TaskRunDetail(props: {
               Back to task
             </Link>
             {sessionQuery.data?.canOpenInChat && props.taskId && props.runId && agentSlug ? (
-              <button className="cc-button" onClick={() => void openInChat()} type="button">
+              <Button onClick={() => void openInChat()} type="button">
                 Continue in chat
-              </button>
+              </Button>
             ) : null}
           </>
         }

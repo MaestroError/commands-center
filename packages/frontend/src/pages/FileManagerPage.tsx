@@ -4,6 +4,8 @@ import { useEditorTabs } from "@/hooks/use-editor-tabs";
 import {
   createFileManagerEntry,
   deleteFileManagerEntry,
+  downloadFileManagerFile,
+  downloadFileManagerFolderZip,
   listFileManagerNodes,
   moveFileManagerEntry,
   renameFileManagerEntry,
@@ -395,6 +397,12 @@ export function FileManagerPage() {
                 <SelectionActions
                   busyAction={busyAction}
                   onOpen={openNode}
+                  onDownload={(node) =>
+                    downloadFileManagerFile({ root, path: node.path }, node.name)
+                  }
+                  onDownloadZip={(node) =>
+                    downloadFileManagerFolderZip({ root, path: node.path }, node.name)
+                  }
                   onStartMove={(node) => {
                     setMoveTarget(node);
                     setMoveValue(currentPath);
@@ -625,7 +633,7 @@ export function FileManagerPage() {
                           {node.isCritical ? (
                             <span
                               aria-label="Critical"
-                              className="shrink-0 rounded-full border border-amber-400/40 bg-amber-500/10 p-0.5 text-amber-700 dark:text-amber-300"
+                              className="shrink-0 rounded-full border border-warning-border bg-warning-surface p-0.5 text-warning-foreground"
                               title="Critical"
                             >
                               <Shield className="h-3 w-3" />

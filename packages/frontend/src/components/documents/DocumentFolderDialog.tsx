@@ -1,9 +1,20 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { createDocumentFolder } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import type { DocumentScope } from "@cc/shared/schemas";
+import { Input } from "@/components/ui/input";
 
 type DocumentFolderDialogProps = {
   onClose: () => void;
@@ -16,12 +27,22 @@ type DocumentFolderDialogProps = {
 export function DocumentFolderDialog(props: DocumentFolderDialogProps) {
   const [path, setPath] = useState(props.defaultParent ? `${props.defaultParent}/` : "");
   const queryClient = useQueryClient();
+  const restoreFocusRef = useRef(
+    typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+  );
+
+  const close = () => {
+    props.onClose();
+    requestAnimationFrame(() => restoreFocusRef.current?.focus());
+  };
 
   const mutation = useMutation({
     mutationFn: createDocumentFolder,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.documentTree });
-      props.onClose();
+      close();
     },
   });
 
@@ -43,28 +64,17 @@ export function DocumentFolderDialog(props: DocumentFolderDialogProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/80 p-4 backdrop-blur-sm"
-      onClick={props.onClose}
-    >
-      <section
-        aria-labelledby="create-folder-title"
-        aria-modal="true"
-        className="cc-panel w-full max-w-lg p-6"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-      >
-        <h2 className="text-xl font-semibold text-text-primary" id="create-folder-title">
-          New Folder
-        </h2>
-        <p className="mt-1 text-sm text-text-secondary">
-          Create a folder inside the Documents directory.
-        </p>
+    <Dialog open onOpenChange={(open) => !open && close()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New Folder</DialogTitle>
+          <DialogDescription>Create a folder inside the Documents directory.</DialogDescription>
+        </DialogHeader>
 
         <label className="mt-4 grid gap-1 text-sm text-text-secondary">
           Folder path
-          <input
-            className="cc-input font-mono text-xs"
+          <Input
+            className="font-mono text-xs"
             placeholder="e.g. design/specs"
             value={path}
             onChange={(e) => setPath(e.target.value)}
@@ -80,20 +90,15 @@ export function DocumentFolderDialog(props: DocumentFolderDialogProps) {
           </p>
         ) : null}
 
-        <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
-            Cancel
-          </button>
-          <button
-            className="cc-button"
-            disabled={!canSubmit || mutation.isPending}
-            onClick={handleSubmit}
-            type="button"
-          >
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary">Cancel</Button>
+          </DialogClose>
+          <Button disabled={!canSubmit || mutation.isPending} onClick={handleSubmit}>
             {mutation.isPending ? "Creating..." : "Create"}
-          </button>
-        </div>
-      </section>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

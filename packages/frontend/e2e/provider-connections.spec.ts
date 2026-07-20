@@ -40,7 +40,7 @@ test("renders the global shell and provider page", async ({ page, isMobile }) =>
       "/specialists",
     );
     await expect(page.getByTestId("sidebar-navigation")).toBeVisible();
-    await expect(page.getByText("Theme:")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Choose color mode/ })).toBeVisible();
   }
   await expect(page.getByText("1 connected model")).toBeVisible();
 });
@@ -78,11 +78,14 @@ test("starts and completes OAuth from the provider screen", async ({ page }) => 
   await expect(page.getByText("Provider connected successfully")).toBeVisible();
 });
 
-test("supports theme changes through the profile page", async ({ page }) => {
+test("supports color-mode changes from the header", async ({ page }) => {
   await page.goto("/profile");
-  await page.getByRole("button", { name: "modern" }).click();
+  await expect(page.getByText("Default", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /Choose color mode/ }).click();
+  await page.getByRole("menuitemradio", { name: "Dark" }).click();
 
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "modern");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "default");
+  await expect(page.locator("html")).toHaveAttribute("data-color-mode", "dark");
 });
 
 test("keeps the shell usable on mobile", async ({ page, isMobile }) => {

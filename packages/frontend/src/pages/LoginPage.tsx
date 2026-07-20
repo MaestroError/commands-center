@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { PasswordInput } from "@/components/common/PasswordInput";
 import { useOwnerAuth } from "@/context/use-owner-auth";
+import { Button } from "@/components/ui/button";
 
 export function LoginPage() {
   const auth = useOwnerAuth();
@@ -60,13 +61,9 @@ export function LoginPage() {
             Remember this browser
           </label>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
-          <button
-            className="cc-button cc-button-primary justify-center"
-            disabled={submitting}
-            type="submit"
-          >
+          <Button className="justify-center" disabled={submitting} type="submit">
             {submitting ? "Signing in..." : "Sign in"}
-          </button>
+          </Button>
         </form>
       </section>
     </main>

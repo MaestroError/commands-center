@@ -18,6 +18,10 @@ vi.mock("@monaco-editor/react", () => ({
   ),
 }));
 
+vi.mock("@/context/use-theme", () => ({
+  useTheme: () => ({ resolvedColorMode: "light" }),
+}));
+
 vi.mock("@/lib/api", () => {
   class FileSaveConflictErrorMock extends Error {
     currentRevision?: unknown;

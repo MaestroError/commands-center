@@ -1,5 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, ChevronLeft, Clipboard, Clock3, ListChecks, Menu, Search } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  Clipboard,
+  Clock3,
+  ListChecks,
+  Menu,
+  Search,
+  UserRound,
+} from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { ActivityBell } from "@/components/activities/ActivityBell";
@@ -8,6 +17,7 @@ import { ManageSidebarSection } from "@/components/shell/ManageSidebarSection";
 import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { AppLogo } from "@/components/common/AppLogo";
 import { GlobalSearchPalette } from "@/components/search/GlobalSearchPalette";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useEngineStatusQuery } from "@/hooks/use-engine-status-query";
 import { useSystemVersionQuery } from "@/hooks/use-system-version-query";
@@ -23,6 +33,8 @@ import {
 import { readRecentSpecialists } from "@/lib/recent-specialists";
 
 import { ThemeMenu } from "./ThemeMenu";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "cc-sidebar-collapsed";
 const FIRST_RUN_ENV_NOTICE_STORAGE_KEY = "cc-first-run-env-notice-dismissed";
@@ -138,8 +150,8 @@ export function AppShell() {
 
         <div className="min-w-0">
           <header className="sticky top-0 z-30 border-b border-border bg-app-bg/90 backdrop-blur">
-            <div className="flex min-h-16 items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-              <div className="flex items-center gap-3">
+            <div className="flex min-h-16 items-center justify-between gap-2 px-3 py-3 sm:gap-4 sm:px-6 lg:px-8">
+              <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
                 {!isDesktop ? (
                   <button
                     aria-label="Open navigation"
@@ -150,14 +162,14 @@ export function AppShell() {
                     <Menu className="h-4 w-4" />
                   </button>
                 ) : null}
-                <h1 className="whitespace-nowrap text-sm font-semibold text-text-primary sm:text-xl">
+                <h1 className="min-w-0 truncate text-sm font-semibold text-text-primary sm:text-xl">
                   {title}
                 </h1>
                 <EngineStatusBadge state={engineState} />
                 {runningRuns.length > 0 ? <ActiveRunsBadge count={runningRuns.length} /> : null}
                 {queuedRuns.length > 0 ? <QueuedRunsBadge count={queuedRuns.length} /> : null}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1 sm:gap-2">
                 <button
                   aria-label="Open global search"
                   className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-text-secondary transition hover:border-accent/50 hover:text-text-primary"
@@ -172,8 +184,16 @@ export function AppShell() {
                 </button>
                 <ThemeMenu />
                 <ActivityBell />
-                <NavLink className="cc-button cc-button-secondary h-9 rounded-md" to="/profile">
-                  Profile
+                <NavLink
+                  aria-label="Profile"
+                  className={buttonVariants({
+                    variant: "secondary",
+                    className: "h-9 w-9 rounded-md px-0 sm:w-auto sm:px-4",
+                  })}
+                  to="/profile"
+                >
+                  <UserRound aria-hidden="true" className="h-4 w-4 sm:hidden" />
+                  <span className="hidden sm:inline">Profile</span>
                 </NavLink>
               </div>
             </div>
@@ -222,17 +242,16 @@ function FirstRunEnvNotice(props: {
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-app-bg/75 px-4 backdrop-blur-sm">
-      <section
-        aria-labelledby="first-run-env-title"
-        className="w-full max-w-lg rounded-lg border border-border bg-surface p-6 shadow-2xl"
-        role="dialog"
+    <Dialog onOpenChange={(open) => !open && props.onClose()} open>
+      <DialogContent
+        className="z-[70] max-w-lg"
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+        overlayClassName="z-[70] backdrop-blur-sm"
       >
         <div className="grid gap-4">
           <div className="grid gap-2">
-            <h2 className="text-lg font-semibold text-text-primary" id="first-run-env-title">
-              Save your CC_SECRET_KEY
-            </h2>
+            <DialogTitle className="text-lg">Save your CC_SECRET_KEY</DialogTitle>
             <p className="text-sm leading-6 text-text-secondary">
               {props.secretKey
                 ? "CommandsCenter generated a secure CC_SECRET_KEY that encrypts your stored secrets. Copy it now and store it somewhere private — it will not be shown again."
@@ -244,8 +263,9 @@ function FirstRunEnvNotice(props: {
           </div>
           <div className="flex justify-end gap-2">
             {props.secretKey ? (
-              <button
-                className="cc-button cc-button-secondary inline-flex items-center gap-2"
+              <Button
+                variant="secondary"
+                className="inline-flex items-center gap-2"
                 disabled={!clipboardAvailable}
                 onClick={() => void copyKey()}
                 title={clipboardAvailable ? "Copy key" : "Clipboard is unavailable"}
@@ -253,15 +273,15 @@ function FirstRunEnvNotice(props: {
               >
                 {copied ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
                 {copied ? "Copied" : "Copy"}
-              </button>
+              </Button>
             ) : null}
-            <button className="cc-button cc-button-primary" onClick={props.onClose} type="button">
+            <Button onClick={props.onClose} type="button">
               I saved it
-            </button>
+            </Button>
           </div>
         </div>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -494,7 +514,7 @@ function SidebarRouteLink(props: {
 function ActiveRunsBadge(props: { count: number }) {
   return (
     <NavLink
-      className="hidden items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs text-amber-300 transition hover:border-amber-300/60 sm:inline-flex"
+      className="hidden items-center gap-1.5 rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-xs text-warning transition hover:border-warning/60 sm:inline-flex"
       to="/tasks?status=running"
       title="Active task runs can delay refresh, shutdown, or update operations until they finish."
     >
@@ -528,12 +548,12 @@ function EngineStatusBadge(props: { state: string | undefined }) {
 
   switch (props.state) {
     case "healthy":
-      dotClass = "bg-emerald-500";
+      dotClass = "bg-success";
       label = "healthy";
       break;
     case "starting":
     case "stopping":
-      dotClass = "bg-amber-400";
+      dotClass = "bg-warning";
       label = props.state;
       pulse = true;
       break;
@@ -542,7 +562,7 @@ function EngineStatusBadge(props: { state: string | undefined }) {
       label = "unhealthy";
       break;
     case undefined:
-      dotClass = "bg-amber-400";
+      dotClass = "bg-warning";
       label = "restarting";
       pulse = true;
       break;
@@ -552,7 +572,10 @@ function EngineStatusBadge(props: { state: string | undefined }) {
   }
 
   return (
-    <div className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-text-secondary">
+    <div
+      aria-label={`Engine ${label}`}
+      className="hidden items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-text-secondary sm:flex"
+    >
       <span className={`h-1.5 w-1.5 rounded-full ${dotClass} ${pulse ? "animate-pulse" : ""}`} />
       {label}
     </div>

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "@/App";
 import { queryClient } from "@/lib/query-client";
 import { RECENT_SPECIALISTS_STORAGE_KEY } from "@/lib/recent-specialists";
-import { THEME_STORAGE_KEY } from "@/stores/ui-store";
+import { COLOR_MODE_STORAGE_KEY } from "@/lib/appearance";
 
 const connectedProvider = {
   provider: {
@@ -468,15 +468,14 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/providers");
   });
 
-  it("persists theme selection from the profile page", async () => {
+  it("shows Default as the only profile theme", async () => {
     render(<App />);
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("link", { name: "Profile" }));
-    await user.click(screen.getByRole("button", { name: "modern" }));
 
-    expect(document.documentElement.getAttribute("data-theme")).toBe("modern");
-    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("modern");
+    expect(screen.getByText("Default")).toHaveClass("cc-tab-active");
+    expect(screen.queryByRole("button", { name: "modern" })).not.toBeInTheDocument();
   });
 
   it("redirects protected routes to claim when the workspace is unclaimed", async () => {
@@ -939,7 +938,7 @@ function resetStorage() {
   }
 
   if (typeof window.localStorage?.removeItem === "function") {
-    window.localStorage.removeItem(THEME_STORAGE_KEY);
+    window.localStorage.removeItem(COLOR_MODE_STORAGE_KEY);
     window.localStorage.removeItem(RECENT_SPECIALISTS_STORAGE_KEY);
     window.localStorage.removeItem("cc-sidebar-collapsed");
   }

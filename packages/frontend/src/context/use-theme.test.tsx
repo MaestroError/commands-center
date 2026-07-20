@@ -1,8 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { themeNames } from "@/stores/ui-store";
-
 import { ThemeContext } from "./theme-context";
 import { useTheme } from "./use-theme";
 
@@ -17,9 +15,11 @@ describe("useTheme", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <ThemeContext.Provider
         value={{
-          theme: "modern",
-          setTheme: () => undefined,
-          themes: themeNames,
+          colorModePreference: "system",
+          colorModePreferences: ["light", "dark", "system"],
+          resolvedColorMode: "dark",
+          setColorModePreference: () => undefined,
+          theme: "default",
         }}
       >
         {children}
@@ -28,7 +28,8 @@ describe("useTheme", () => {
 
     const { result } = renderHook(() => useTheme(), { wrapper });
 
-    expect(result.current.theme).toBe("modern");
-    expect(result.current.themes).toEqual(themeNames);
+    expect(result.current.theme).toBe("default");
+    expect(result.current.colorModePreference).toBe("system");
+    expect(result.current.resolvedColorMode).toBe("dark");
   });
 });

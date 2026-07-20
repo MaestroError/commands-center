@@ -15,6 +15,9 @@ No auth, no multi-tenancy. You install it, you run it, you own it.
 | Testing  | Vitest, Playwright                                  |
 | Tooling  | pnpm workspaces, ESLint, Prettier, Husky, GitHub CI |
 
+Frontend contributors should start with the
+[CC design-system guide](docs/design-system/README.md).
+
 ## Prerequisites
 
 - Node.js >= 24

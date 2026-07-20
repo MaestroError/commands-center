@@ -6,9 +6,10 @@ import { SpecialistAvatarPicker } from "@/components/specialists/SpecialistAvata
 import { SpecialistAvatar } from "@/components/specialists/specialist-avatar";
 import { SearchableSelect } from "@/components/common/SearchableSelect";
 import { useSpecialistCatalogQuery, useSpecialistsQuery } from "@/hooks/use-specialists-query";
+import { Button } from "@/components/ui/button";
 
 import {
-  getActionClassName,
+  getActionButtonProps,
   getFallbackActions,
   getInitialValues,
   isActionDisabled,
@@ -159,15 +160,15 @@ export function LiveRequestReviewForm(props: Props) {
       <div className="shrink-0 border-t border-border bg-surface p-4">
         <div className="mx-auto flex w-full max-w-2xl flex-wrap items-center gap-2">
           {actions.map((action) => (
-            <button
-              className={getActionClassName(action)}
+            <Button
+              {...getActionButtonProps(action)}
               disabled={busy || isActionDisabled(action, values)}
               key={action.id}
               type="button"
               onClick={() => void handleAction(action)}
             >
               {action.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -244,24 +245,23 @@ function renderField(args: {
   }
 
   if (AGENT_FIELD_NAMES.has(field.name)) {
+    const availableAgents = agents.map((agent) => ({ id: agent.id, label: agent.name }));
+    const agentOptions =
+      value && !agents.some((agent) => agent.id === value)
+        ? [{ id: value, label: value }, ...availableAgents]
+        : availableAgents;
     return (
-      <select
-        aria-label={field.label}
+      <SearchableSelect
+        ariaLabel={field.label}
         className={inputClass}
         disabled={busy}
+        emptyOptionLabel={field.required ? undefined : "No specialist"}
+        onChange={onChange}
+        options={agentOptions}
+        placeholder="Search specialists..."
+        required={field.required}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {!field.required ? <option value="">No specialist</option> : null}
-        {value && !agents.some((agent) => agent.id === value) ? (
-          <option value={value}>{value}</option>
-        ) : null}
-        {agents.map((agent) => (
-          <option key={agent.id} value={agent.id}>
-            {agent.name}
-          </option>
-        ))}
-      </select>
+      />
     );
   }
 

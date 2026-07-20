@@ -18,6 +18,15 @@ import type { PendingToolInteraction } from "@/components/chat/tools/pending-int
 import { buildPendingInteractionMap } from "@/components/chat/tools/pending-interaction-map";
 import { ErrorState, LoadingState } from "@/components/common/PageStates";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { QuickFileModal } from "@/components/workspace/QuickFileModal";
 import { QuickFilePanel } from "@/components/workspace/QuickFilePanel";
 import { WorkspaceFilesTab } from "@/components/workspace/WorkspaceFilesTab";
@@ -32,6 +41,7 @@ import {
   createTaskPrefillFromUserMessage,
   type TaskCreationPrefill,
 } from "@/services/task-prefill-service";
+import { Button } from "@/components/ui/button";
 
 const DevDebugPanel = import.meta.env.DEV
   ? lazy(() => import("@/components/dev/DevDebugPanel").then((m) => ({ default: m.DevDebugPanel })))
@@ -476,87 +486,34 @@ export function WorkspaceChatPage() {
         </Suspense>
       )}
       {pendingTaskPrefill ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div
-            aria-describedby="attachment-warning-description"
-            aria-labelledby="attachment-warning-title"
-            aria-modal="true"
-            className="cc-panel w-full max-w-md p-5"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                setPendingTaskPrefill(null);
-                return;
-              }
-
-              if (event.key !== "Tab") {
-                return;
-              }
-
-              const focusableElements = Array.from(
-                event.currentTarget.querySelectorAll<HTMLElement>(
-                  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-                ),
-              ).filter((element) => !element.hasAttribute("disabled") && element.tabIndex !== -1);
-
-              if (focusableElements.length === 0) {
-                event.preventDefault();
-                return;
-              }
-
-              const firstElement = focusableElements[0];
-              const lastElement = focusableElements[focusableElements.length - 1];
-
-              if (!firstElement || !lastElement) {
-                event.preventDefault();
-                return;
-              }
-
-              const activeElement = document.activeElement;
-
-              if (event.shiftKey) {
-                if (
-                  activeElement === firstElement ||
-                  !event.currentTarget.contains(activeElement)
-                ) {
-                  event.preventDefault();
-                  lastElement.focus();
-                }
-                return;
-              }
-
-              if (activeElement === lastElement) {
-                event.preventDefault();
-                firstElement.focus();
-              }
-            }}
-            role="alertdialog"
-          >
-            <h2 className="text-lg font-semibold text-text-primary" id="attachment-warning-title">
-              Attachments cannot be copied
-            </h2>
-            <p
-              className="mt-2 text-sm leading-6 text-text-secondary"
-              id="attachment-warning-description"
-            >
+        <AlertDialog
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingTaskPrefill(null);
+            }
+          }}
+          open
+        >
+          <AlertDialogContent className="max-w-md p-5">
+            <AlertDialogTitle className="text-lg">Attachments cannot be copied</AlertDialogTitle>
+            <AlertDialogDescription className="mt-2">
               Task prompts do not support chat attachments. Continue without attachments, then
               upload the files and mention them while creating the task if they are still needed.
-            </p>
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button
-                autoFocus
-                className="cc-button cc-button-secondary"
-                onClick={() => setPendingTaskPrefill(null)}
-                type="button"
-              >
-                Cancel
-              </button>
-              <button className="cc-button" onClick={handleConfirmAttachmentWarning} type="button">
-                Continue without attachments
-              </button>
-            </div>
-          </div>
-        </div>
+            </AlertDialogDescription>
+            <AlertDialogFooter className="mt-5">
+              <AlertDialogCancel asChild>
+                <Button variant="secondary" autoFocus type="button">
+                  Cancel
+                </Button>
+              </AlertDialogCancel>
+              <AlertDialogAction asChild>
+                <Button onClick={handleConfirmAttachmentWarning} type="button">
+                  Continue without attachments
+                </Button>
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       ) : null}
     </>
   );

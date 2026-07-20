@@ -46,6 +46,9 @@ import {
   readResultClassName,
   useTaskComposerSkills,
 } from "./task-helpers";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function TaskDetailPanel(props: {
   taskId: string;
@@ -126,9 +129,9 @@ export function TaskDetailPanel(props: {
                   );
                 }}
               >
-                <input
+                <Input
                   aria-label="Task title"
-                  className="cc-input min-w-0 flex-1 text-3xl font-bold"
+                  className="min-w-0 flex-1 text-3xl font-bold"
                   data-testid="task-title-input"
                   onChange={(event) => setTitleDraft(event.target.value)}
                   value={titleDraft}
@@ -176,9 +179,9 @@ export function TaskDetailPanel(props: {
               </button>
             )}
           </div>
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          <Button variant="secondary" onClick={props.onClose} type="button">
             Close
-          </button>
+          </Button>
         </div>
 
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-surface-elevated p-4 sm:p-5">
@@ -243,16 +246,15 @@ export function TaskDetailPanel(props: {
                       </p>
                     ) : null}
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        className="cc-button"
+                      <Button
                         data-testid="task-prompt-save"
                         disabled={mutations.update.isPending}
                         type="submit"
                       >
                         {mutations.update.isPending ? "Saving..." : "Save"}
-                      </button>
-                      <button
-                        className="cc-button cc-button-secondary"
+                      </Button>
+                      <Button
+                        variant="secondary"
                         disabled={mutations.update.isPending}
                         onClick={() => {
                           setPromptDraft(createTaskPromptValue(task.description));
@@ -261,7 +263,7 @@ export function TaskDetailPanel(props: {
                         type="button"
                       >
                         Cancel
-                      </button>
+                      </Button>
                     </div>
                   </form>
                 ) : (
@@ -270,9 +272,9 @@ export function TaskDetailPanel(props: {
                     data-testid="task-prompt-display"
                   >
                     <div className="mb-3 flex justify-end">
-                      <button
+                      <Button
+                        variant="secondary"
                         aria-label="Edit task prompt"
-                        className="cc-button cc-button-secondary"
                         data-testid="task-prompt-edit"
                         onClick={() => {
                           setPromptDraft(createTaskPromptValue(task.description));
@@ -282,7 +284,7 @@ export function TaskDetailPanel(props: {
                       >
                         <Pencil aria-hidden="true" className="h-4 w-4" />
                         Edit prompt
-                      </button>
+                      </Button>
                     </div>
                     {task.description ? (
                       <Markdown
@@ -334,8 +336,8 @@ export function TaskDetailPanel(props: {
                     onReopen={() => props.onReopen(task)}
                     task={task}
                   />
-                  <button
-                    className="cc-button cc-button-secondary"
+                  <Button
+                    variant="secondary"
                     onClick={() => {
                       mutations.previewQueue.mutate(
                         { id: task.id },
@@ -345,7 +347,7 @@ export function TaskDetailPanel(props: {
                     type="button"
                   >
                     Preview context
-                  </button>
+                  </Button>
                 </div>
                 {queuePreview ? <QueuePreviewSummary preview={queuePreview} /> : null}
               </div>
@@ -393,28 +395,28 @@ export function TaskDetailPanel(props: {
         {task ? (
           <div className="flex flex-wrap gap-2 border-t border-border bg-surface-elevated p-4 sm:p-5">
             <Link
-              className="cc-button"
+              className={buttonVariants({})}
               to={`/tasks/${task.id}${buildFullPageSearch(props.currentSearch)}`}
             >
               Open full page
             </Link>
-            <button
-              className="cc-button cc-button-secondary"
+            <Button
+              variant="secondary"
               disabled={mutations.update.isPending}
               onClick={() => mutations.update.mutate({ id: task.id, input: { status: "backlog" } })}
               type="button"
             >
               Back to Backlog
-            </button>
+            </Button>
             <Link
-              className="cc-button cc-button-secondary"
+              className={buttonVariants({ variant: "secondary" })}
               to={`/tasks/${task.id}/edit${buildFullPageSearch(props.currentSearch)}`}
             >
               Edit
             </Link>
-            <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+            <Button variant="secondary" onClick={props.onClose} type="button">
               Back to board
-            </button>
+            </Button>
           </div>
         ) : null}
       </aside>
@@ -436,16 +438,16 @@ function TaskPanelPrimaryActions(props: {
 
   if (props.task.archived || status === "archived") {
     return (
-      <button className="cc-button" onClick={props.onRestore} type="button">
+      <Button onClick={props.onRestore} type="button">
         Restore
-      </button>
+      </Button>
     );
   }
 
   if (status === "queued" && props.activeRun) {
     return (
       <Link
-        className="cc-button"
+        className={buttonVariants({})}
         to={`/tasks/${props.task.id}/runs/${props.activeRun.id}${props.currentSearch}`}
       >
         {props.activeRun.status === "running" ? "View active run" : "View queued run"}
@@ -455,29 +457,29 @@ function TaskPanelPrimaryActions(props: {
 
   if (status === "ready_to_check") {
     return (
-      <button className="cc-button" onClick={props.onAccept} type="button">
+      <Button onClick={props.onAccept} type="button">
         Accept
-      </button>
+      </Button>
     );
   }
 
   if (status === "failed") {
     return (
-      <button className="cc-button" onClick={props.onQueue} type="button">
+      <Button onClick={props.onQueue} type="button">
         Rerun
-      </button>
+      </Button>
     );
   }
 
   if (status === "review") {
     return (
       <>
-        <button className="cc-button" onClick={props.onAccept} type="button">
+        <Button onClick={props.onAccept} type="button">
           Accept
-        </button>
-        <button className="cc-button cc-button-secondary" onClick={props.onQueue} type="button">
+        </Button>
+        <Button variant="secondary" onClick={props.onQueue} type="button">
           Rerun
-        </button>
+        </Button>
       </>
     );
   }
@@ -485,20 +487,20 @@ function TaskPanelPrimaryActions(props: {
   if (status === "done") {
     return (
       <>
-        <button className="cc-button" onClick={props.onArchive} type="button">
+        <Button onClick={props.onArchive} type="button">
           Archive
-        </button>
-        <button className="cc-button cc-button-secondary" onClick={props.onReopen} type="button">
+        </Button>
+        <Button variant="secondary" onClick={props.onReopen} type="button">
           Reopen
-        </button>
+        </Button>
       </>
     );
   }
 
   return (
-    <button className="cc-button" onClick={props.onQueue} type="button">
+    <Button onClick={props.onQueue} type="button">
       {status === "scheduled" ? "Queue now" : "Queue"}
-    </button>
+    </Button>
   );
 }
 
@@ -613,13 +615,9 @@ function QueuePreviewSummary(props: { preview: TaskQueuePreview }) {
             {props.preview.subtask ? ` · subtask ${props.preview.subtask.id}` : " · parent task"}
           </p>
         </div>
-        <button
-          className="cc-button cc-button-secondary"
-          onClick={() => setOpen((value) => !value)}
-          type="button"
-        >
+        <Button variant="secondary" onClick={() => setOpen((value) => !value)} type="button">
           {open ? "Hide" : "Show"}
-        </button>
+        </Button>
       </div>
       {open ? (
         <div className="mt-3 grid gap-3">

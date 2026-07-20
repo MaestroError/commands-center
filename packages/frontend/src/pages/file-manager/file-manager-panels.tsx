@@ -8,6 +8,7 @@ import type {
 } from "@cc/shared/schemas";
 import { RefreshCw, Upload } from "lucide-react";
 import { ROOT_LABELS, formatLineCount, formatSize } from "./file-manager-helpers";
+import { Button } from "@/components/ui/button";
 
 export function SelectionDetails(props: {
   root: FileManagerRootKind;
@@ -63,7 +64,7 @@ export function SelectionDetails(props: {
         <DetailMetric label="Lines" value={formatLineCount(props.selectedNode.lineCount)} />
       ) : null}
       {props.selectedNode.isCritical ? (
-        <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-3 text-amber-800 dark:text-amber-200">
+        <div className="rounded-lg border border-warning-border bg-warning-surface px-3 py-3 text-warning-foreground">
           {props.selectedNode.criticalReason}
         </div>
       ) : null}
@@ -105,20 +106,12 @@ export function UploadPanel(props: {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            className="cc-button cc-button-secondary"
-            onClick={props.onSelectFiles}
-            type="button"
-          >
+          <Button variant="secondary" onClick={props.onSelectFiles} type="button">
             Files
-          </button>
-          <button
-            className="cc-button cc-button-secondary"
-            onClick={props.onSelectFolder}
-            type="button"
-          >
+          </Button>
+          <Button variant="secondary" onClick={props.onSelectFolder} type="button">
             Folder
-          </button>
+          </Button>
         </div>
       </div>
       <div className="mt-3 flex items-center gap-3 text-sm text-text-secondary">
@@ -148,6 +141,8 @@ export function SelectionActions(props: {
   selectedNode?: FileManagerNode;
   busyAction?: string;
   onOpen: (node: FileManagerNode) => void;
+  onDownload: (node: FileManagerNode) => void;
+  onDownloadZip: (node: FileManagerNode) => void;
   onStartMove: (node: FileManagerNode) => void;
   onStartRename: (node: FileManagerNode) => void;
   onStartDelete: (node: FileManagerNode) => void;
@@ -163,41 +158,58 @@ export function SelectionActions(props: {
   return (
     <div className="flex flex-col gap-2">
       {props.selectedNode.type === "directory" ? (
-        <button
-          className="cc-button cc-button-secondary"
-          disabled={actionBusy}
-          onClick={() => props.onOpen(props.selectedNode!)}
+        <>
+          <Button
+            variant="secondary"
+            disabled={actionBusy}
+            onClick={() => props.onOpen(props.selectedNode!)}
+            type="button"
+          >
+            Open directory
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => props.onDownloadZip(props.selectedNode!)}
+            type="button"
+          >
+            Download as zip
+          </Button>
+        </>
+      ) : (
+        <Button
+          variant="secondary"
+          onClick={() => props.onDownload(props.selectedNode!)}
           type="button"
         >
-          Open directory
-        </button>
-      ) : null}
+          Download file
+        </Button>
+      )}
       {props.selectedNode.isCritical ? null : (
         <>
-          <button
-            className="cc-button cc-button-secondary"
+          <Button
+            variant="secondary"
             disabled={actionBusy}
             onClick={() => props.onStartMove(props.selectedNode!)}
             type="button"
           >
             Move {props.selectedNode.type}
-          </button>
-          <button
-            className="cc-button cc-button-secondary"
+          </Button>
+          <Button
+            variant="secondary"
             disabled={actionBusy}
             onClick={() => props.onStartRename(props.selectedNode!)}
             type="button"
           >
             Rename {props.selectedNode.type}
-          </button>
-          <button
-            className="cc-button cc-button-secondary"
+          </Button>
+          <Button
+            variant="secondary"
             disabled={actionBusy}
             onClick={() => props.onStartDelete(props.selectedNode!)}
             type="button"
           >
             Delete {props.selectedNode.type}
-          </button>
+          </Button>
         </>
       )}
     </div>

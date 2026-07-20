@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { COMPOSIO_API_KEY_HEADER, DEFAULT_COMPOSIO_NAME, readError } from "./integration-helpers";
 import { CloseIcon } from "./integration-icons";
 import { Field } from "./mcp-server-dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function ComposioDialog(props: {
   busy: boolean;
@@ -43,9 +45,8 @@ export function ComposioDialog(props: {
 
         <form className="mt-6 grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
           <Field label="Name" required>
-            <input
+            <Input
               aria-label="Composio name"
-              className="cc-input"
               onChange={(event) => {
                 setName(event.target.value);
                 setSubmitError(undefined);
@@ -71,12 +72,12 @@ export function ComposioDialog(props: {
           {submitError ? <p className="text-sm text-danger">{submitError}</p> : null}
 
           <div className="mt-2 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-            <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+            <Button variant="secondary" onClick={props.onClose} type="button">
               Cancel
-            </button>
-            <button className="cc-button" disabled={props.busy} type="submit">
+            </Button>
+            <Button disabled={props.busy} type="submit">
               {props.busy ? "Connecting..." : "Activate Composio"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -165,14 +166,13 @@ export function McpAuthDialog(props: {
 
         <div className="mt-6 grid min-h-0 flex-1 gap-4 overflow-y-auto">
           {props.composio ? (
-            <button
-              className="cc-button"
+            <Button
               disabled={props.browserBusy}
               onClick={() => void handleAuthenticateBrowser()}
               type="button"
             >
               {props.browserBusy ? "Waiting for browser sign-in..." : "Authenticate in browser"}
-            </button>
+            </Button>
           ) : awaiting ? (
             <div className="grid gap-3">
               <p className="text-sm text-text-secondary">
@@ -188,37 +188,32 @@ export function McpAuthDialog(props: {
                   Reopen sign-in page
                 </a>
               ) : null}
-              <button
-                className="cc-button cc-button-secondary justify-self-start"
+              <Button
+                variant="secondary"
+                className="justify-self-start"
                 onClick={() => void checkOnce()}
                 type="button"
               >
                 Check now
-              </button>
+              </Button>
             </div>
           ) : (
-            <button
-              className="cc-button"
+            <Button
               disabled={props.startBusy}
               onClick={() => void handleStartHosted()}
               type="button"
             >
               {props.startBusy ? "Preparing sign-in..." : "Authenticate"}
-            </button>
+            </Button>
           )}
 
           {error ? <p className="text-sm text-danger">{error}</p> : null}
         </div>
 
         <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-surface pt-4">
-          <button
-            className="cc-button cc-button-secondary"
-            disabled={busy}
-            onClick={props.onClose}
-            type="button"
-          >
+          <Button variant="secondary" disabled={busy} onClick={props.onClose} type="button">
             {busy ? "Cancel disabled" : "Close"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

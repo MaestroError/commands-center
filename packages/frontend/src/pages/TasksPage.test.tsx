@@ -372,10 +372,12 @@ describe("TasksPage", () => {
     expect(screen.getByRole("heading", { name: "Ready to Check" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Done" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Queued info")).toBeInTheDocument();
-    expect(screen.getByText("Tasks with queued or running AI work.")).toHaveAttribute(
-      "role",
-      "tooltip",
+    const user = userEvent.setup();
+    const queuedInfo = screen.getByLabelText("Queued info");
+    expect(queuedInfo).toBeInTheDocument();
+    await user.hover(queuedInfo);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Tasks with queued or running AI work.",
     );
   });
 
@@ -478,15 +480,18 @@ describe("TasksPage", () => {
     renderWithRouter(<TasksPage />, "/tasks");
 
     await screen.findByRole("link", { name: "Ship release" });
-    expect(screen.getByLabelText("Assignee: Planner")).toHaveAttribute("title", "Planner");
-    expect(screen.getByText("Planner", { selector: '[role="tooltip"]' })).toBeInTheDocument();
+    const user = userEvent.setup();
+    const assignee = screen.getByLabelText("Assignee: Planner");
+    await user.hover(assignee);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Planner");
     expect(screen.getByText("PL")).toBeInTheDocument();
     expect(screen.queryByText("Prepare release notes.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Queue" })).toBeInTheDocument();
-    expect(screen.getByText("Queue", { selector: '[role="tooltip"]' })).toBeInTheDocument();
+    const queueButton = screen.getByRole("button", { name: "Queue" });
+    await user.unhover(assignee);
+    await user.hover(queueButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Queue");
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Queue" }));
+    await user.click(queueButton);
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
@@ -507,10 +512,15 @@ describe("TasksPage", () => {
     renderWithRouter(<TasksPage />, "/tasks");
 
     expect(await screen.findByLabelText("Subtasks")).toBeInTheDocument();
-    expect(screen.getByLabelText("Subtask: Implement the docs updates.")).toBeInTheDocument();
-    expect(
-      screen.getByText(`${"Review generated content. ".repeat(3)}Review generated conte...`),
-    ).toBeInTheDocument();
+    const user = userEvent.setup();
+    const subtasks = screen.getAllByLabelText(/^Subtask:/);
+    expect(subtasks).toHaveLength(2);
+    const longSubtask = subtasks[1];
+    if (!longSubtask) throw new Error("Expected a second subtask.");
+    await user.hover(longSubtask.parentElement ?? longSubtask);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      `${"Review generated content. ".repeat(3)}Review generated conte...`,
+    );
   });
 
   it("keeps ready-to-check cards constrained inside the board column", async () => {
@@ -994,7 +1004,7 @@ describe("TasksPage", () => {
     expect(screen.getByText("Tests failed.")).toBeInTheDocument();
     expect(screen.getByText("Planner replied")).toBeInTheDocument();
     expect(screen.getByText("Planner commented")).toBeInTheDocument();
-    expect(screen.getAllByText("Done.").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Done.")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Retry subtask" })).not.toBeInTheDocument();
 
     const comments = screen.getByRole("region", { name: "Feedback comments" });
@@ -1709,8 +1719,10 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks");
 
-    expect(await screen.findByLabelText("Latest result message")).toBeInTheDocument();
-    expect(screen.getByText(`${"A".repeat(200)}...`)).toBeInTheDocument();
+    const user = userEvent.setup();
+    const resultMessage = await screen.findByLabelText("Latest result message");
+    await user.hover(resultMessage);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(`${"A".repeat(200)}...`);
     expect(screen.queryByText(longMessage)).not.toBeInTheDocument();
   });
 
@@ -1725,8 +1737,10 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks");
 
-    expect(await screen.findByLabelText("Latest result message")).toBeInTheDocument();
-    expect(screen.getByText("Explicit agent result.")).toBeInTheDocument();
+    const user = userEvent.setup();
+    const resultMessage = await screen.findByLabelText("Latest result message");
+    await user.hover(resultMessage);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Explicit agent result.");
     expect(screen.queryByText("Session summary text.")).not.toBeInTheDocument();
   });
 
@@ -1741,8 +1755,10 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks");
 
-    expect(await screen.findByLabelText("Latest result message")).toBeInTheDocument();
-    expect(screen.getByText("Session summary text.")).toBeInTheDocument();
+    const user = userEvent.setup();
+    const resultMessage = await screen.findByLabelText("Latest result message");
+    await user.hover(resultMessage);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Session summary text.");
   });
 
   it("deletes a template from the templates view", async () => {
@@ -1852,7 +1868,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Create template" }));
     await user.type(screen.getByLabelText("Title"), "Reusable release checklist");
-    await user.selectOptions(screen.getByLabelText("Default specialist"), "agent-1");
+    await chooseComboboxOption(user, "Default specialist", "Planner");
     await user.type(screen.getByLabelText("Task prompt"), "Draft release notes.");
     const createButtons = screen.getAllByRole("button", { name: "Create template" });
     expect(createButtons[1]).toBeDefined();
@@ -2209,9 +2225,11 @@ describe("TasksPage", () => {
 
     renderWithRouter(<TasksPage />, "/tasks");
 
-    expect(await screen.findByText("Release notes are ready.")).toBeInTheDocument();
-
     const user = userEvent.setup();
+    const resultMessage = await screen.findByLabelText("Latest result message");
+    await user.hover(resultMessage);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Release notes are ready.");
+    await user.unhover(resultMessage);
     await user.click(screen.getByRole("link", { name: "Ship release" }));
     expect(
       await screen.findByRole("tab", { name: "Overview", selected: true }),
@@ -2330,7 +2348,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     const prompt = "Draft nightly release notes for the platform launch and summarize blockers";
     await screen.findByRole("combobox", { name: /Assigned specialist/i });
-    await user.selectOptions(screen.getByLabelText(/Assigned specialist/i), "agent-1");
+    await chooseComboboxOption(user, /Assigned specialist/i, "Planner");
     expect(
       screen.queryByText("Browse workspace files and drag relevant files into the task prompt."),
     ).not.toBeInTheDocument();
@@ -2365,10 +2383,7 @@ describe("TasksPage", () => {
     renderWithRouter(<TasksPage mode="create" />, "/tasks/new");
 
     const user = userEvent.setup();
-    await user.selectOptions(
-      await screen.findByRole("combobox", { name: /Assigned specialist/i }),
-      "agent-1",
-    );
+    await chooseComboboxOption(user, /Assigned specialist/i, "Planner");
     await screen.findByText("GOAL.md");
 
     expect(
@@ -2462,7 +2477,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await screen.findByRole("combobox", { name: /Assigned specialist/i });
     await user.type(screen.getByLabelText(/Title/i), "Requirements review");
-    await user.selectOptions(screen.getByLabelText(/Assigned specialist/i), "agent-1");
+    await chooseComboboxOption(user, /Assigned specialist/i, "Planner");
     await user.type(screen.getByLabelText(/Task prompt/i), "#GOAL");
     await user.click(await screen.findByRole("button", { name: /GOAL.md/i }));
     await user.type(screen.getByLabelText(/Task prompt/i), "/code");
@@ -2511,7 +2526,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await screen.findByRole("combobox", { name: /Assigned specialist/i });
 
-    expect(screen.getByLabelText(/Assigned specialist/i)).toHaveValue("agent-1");
+    expect(screen.getByLabelText(/Assigned specialist/i)).toHaveValue("Planner");
     expect(screen.getByLabelText(/Task prompt/i)).toHaveValue("Update requirements");
     expect(screen.getByText("/code-reviewer")).toBeInTheDocument();
     expect(screen.getByText("GOAL.md")).toBeInTheDocument();
@@ -2567,7 +2582,7 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await screen.findByRole("combobox", { name: /Assigned specialist/i });
 
-    await user.selectOptions(screen.getByLabelText(/Assigned specialist/i), "agent-2");
+    await chooseComboboxOption(user, /Assigned specialist/i, "Writer");
 
     expect(screen.getByLabelText(/Task prompt/i)).toHaveValue("Update requirements");
     expect(screen.queryByText("/code-reviewer")).not.toBeInTheDocument();
@@ -2595,13 +2610,13 @@ describe("TasksPage", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Create template" }));
     await user.type(screen.getByLabelText("Title"), "Hourly review");
-    await user.selectOptions(screen.getByLabelText("Default specialist"), "agent-1");
+    await chooseComboboxOption(user, "Default specialist", "Planner");
     await user.click(screen.getByLabelText(/Repeat on a schedule/i));
-    await user.selectOptions(screen.getByLabelText(/^Repeat$/i), "custom");
-    await user.selectOptions(screen.getByLabelText(/Unit/i), "hour");
+    await chooseComboboxOption(user, /^Repeat$/i, "Custom");
+    await chooseComboboxOption(user, /Unit/i, "Hour");
     await user.clear(screen.getByLabelText(/Every/i));
     await user.type(screen.getByLabelText(/Every/i), "4");
-    await user.selectOptions(screen.getByLabelText(/Timezone/i), "UTC");
+    await chooseComboboxOption(user, /Timezone/i, "UTC");
     const createButtons = screen.getAllByRole("button", { name: "Create template" });
     expect(createButtons[1]).toBeDefined();
     await user.click(createButtons[1] as HTMLElement);
@@ -2639,7 +2654,7 @@ describe("TaskDetailPage", () => {
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
     await screen.findByText(`Scheduled ${formatDate(runAt)}`);
-    expect(screen.getAllByText("Done.").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Done.")).length).toBeGreaterThan(0);
   });
 
   it("renders the latest run result as markdown on the task detail page", async () => {
@@ -2674,7 +2689,7 @@ describe("TaskDetailPage", () => {
 
     expect(screen.queryByRole("tab", { name: "Feedback" })).not.toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "Feedback comments" })).toBeInTheDocument();
-    expect(screen.getByText("Please retest the release flow.")).toBeInTheDocument();
+    expect(await screen.findByText("Please retest the release flow.")).toBeInTheDocument();
     expect(screen.getByText("Planner replied")).toBeInTheDocument();
     expect(screen.getByText("Tests failed.")).toBeInTheDocument();
     expect(screen.getByText("Planner commented")).toBeInTheDocument();
@@ -2739,7 +2754,7 @@ describe("TaskDetailPage", () => {
     renderWithRouter(<TaskDetailPage />, "/tasks/task-1");
 
     const comments = await screen.findByRole("region", { name: "Feedback comments" });
-    const replyButtons = within(comments).getAllByRole("button", { name: "Reply" });
+    const replyButtons = await within(comments).findAllByRole("button", { name: "Reply" });
 
     expect(
       within(comments).getAllByText("Replies require a recorded OpenCode session.").length,
@@ -3755,6 +3770,15 @@ function jsonResponse(status: number, body: unknown): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+async function chooseComboboxOption(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string | RegExp,
+  option: string,
+): Promise<void> {
+  await user.click(await screen.findByRole("combobox", { name: label }));
+  await user.click(await screen.findByRole("option", { name: option }));
 }
 
 function fireDragEvent(element: Element, eventName: "dragStart" | "dragOver" | "drop") {

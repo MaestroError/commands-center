@@ -12,6 +12,7 @@ import {
 } from "@/hooks/use-system-prompts-query";
 
 import { SystemPromptVariablePills } from "./SystemPromptVariablePills";
+import { Button } from "@/components/ui/button";
 
 type SystemPromptCardProps = {
   prompt: SystemPromptListItem;
@@ -135,9 +136,9 @@ export function SystemPromptCard({ prompt, variables }: SystemPromptCardProps) {
               </div>
 
               <div className="flex justify-end">
-                <button
+                <Button
+                  variant="danger"
                   type="button"
-                  className="cc-button cc-button-danger"
                   disabled={busy || !isCustomized}
                   onClick={() => setConfirmingReset(true)}
                   title={
@@ -147,7 +148,7 @@ export function SystemPromptCard({ prompt, variables }: SystemPromptCardProps) {
                   }
                 >
                   Reset to default
-                </button>
+                </Button>
               </div>
             </div>
           )}

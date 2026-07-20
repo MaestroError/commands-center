@@ -6,10 +6,11 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { TabBar, type TabItem } from "@/components/common/TabBar";
+import { Button } from "@/components/ui/button";
 
 type Tab = TabItem & {
   content: ReactNode;
@@ -111,58 +112,36 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
     <div className="flex h-[calc(100vh-5.3rem)] flex-col gap-2" data-testid="workspace-layout">
       {!isDesktop && (props.contextPane || props.bottomPane) ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
+          <Button
+            variant="secondary"
             aria-label="Reload page"
-            className="cc-button cc-button-secondary"
             onClick={() => window.location.reload()}
             type="button"
           >
             <RotateCcw size={14} />
-          </button>
+          </Button>
           {props.contextPane ? (
-            <button
+            <Button
+              variant="secondary"
               aria-label="Open context pane"
-              className="cc-button cc-button-secondary"
               onClick={() => setMobileContextOpen(true)}
               type="button"
             >
-              <svg
-                fill="none"
-                height="14"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                width="14"
-              >
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </button>
+              <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
+            </Button>
           ) : null}
           {props.bottomPane ? (
-            <button
+            <Button
+              variant="secondary"
               aria-label="Open bottom pane"
-              className="cc-button cc-button-secondary"
               onClick={() => {
                 setMobileBottomOpen(true);
                 props.bottomPane?.onOpenChange?.(true);
               }}
               type="button"
             >
-              <svg
-                fill="none"
-                height="14"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                width="14"
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
+              <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -211,18 +190,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                   onClick={() => setContextCollapsed(false)}
                   type="button"
                 >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="15 18 9 12 15 6" />
-                  </svg>
+                  <ChevronLeft aria-hidden="true" className="h-3.5 w-3.5" />
                 </button>
               ) : null}
             </>
@@ -264,18 +232,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                       }}
                       type="button"
                     >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
+                      <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
                     </button>
                     <div className="min-w-0 flex-1">
                       <TabBar
@@ -305,9 +262,10 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                 <div className="min-h-0 flex-1 overflow-auto p-0">{activeBottomContent}</div>
               </section>
             ) : (
-              <button
+              <Button
+                variant="secondary"
                 aria-label="Restore bottom pane"
-                className="cc-button cc-button-secondary hidden self-start lg:inline-flex"
+                className="hidden self-start lg:inline-flex"
                 onClick={() => {
                   setBottomCollapsed(false);
                   props.bottomPane?.onOpenChange?.(true);
@@ -315,7 +273,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
                 type="button"
               >
                 Restore bottom pane
-              </button>
+              </Button>
             )}
           </>
         ) : null}
@@ -368,18 +326,7 @@ function PaneHeader(props: { title: string; onToggle: () => void; toggleLabel: s
         onClick={props.onToggle}
         type="button"
       >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
+        <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
       </button>
       <span className="text-sm font-medium text-text-primary">{props.title}</span>
     </div>
@@ -407,9 +354,9 @@ function MobilePane(props: {
             <p className="text-sm font-semibold text-text-primary">{props.title}</p>
             <p className="text-xs text-text-secondary">Mobile overlay panel</p>
           </div>
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          <Button variant="secondary" onClick={props.onClose} type="button">
             Close
-          </button>
+          </Button>
         </div>
         {props.children}
       </section>

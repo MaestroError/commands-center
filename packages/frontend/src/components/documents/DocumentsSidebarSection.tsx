@@ -6,12 +6,15 @@ import { BookOpenText, ChevronRight, FilePlus, Folder, FolderPlus, Search } from
 import type { DocumentScope, DocumentTreeNode } from "@cc/shared/schemas";
 
 import { isRouteActive } from "@/app/routes";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { getDocumentTree, listSpecialists } from "@/lib/api";
 import { buildDocumentFolderHref } from "@/lib/document-href";
 import { queryKeys } from "@/lib/query-keys";
 
 import { DocumentCreateDialog } from "./DocumentCreateDialog";
 import { DocumentFolderDialog } from "./DocumentFolderDialog";
+import { Button } from "@/components/ui/button";
+import { SearchableSelect } from "@/components/common/SearchableSelect";
 
 const DOCUMENTS_PATH = "/documents";
 /** Folders may nest up to this depth. Folders at the max depth can only hold documents. */
@@ -513,52 +516,38 @@ function PrivateDocumentTargetDialog(props: {
   const [selectedSlug, setSelectedSlug] = useState("");
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-app-bg/80 p-4 backdrop-blur-sm"
-      onClick={props.onClose}
-    >
-      <section
-        aria-labelledby="private-document-target-title"
-        aria-modal="true"
-        className="cc-panel w-full max-w-md p-6"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        <h2 className="text-xl font-semibold text-text-primary" id="private-document-target-title">
-          New Private Document
-        </h2>
+    <Dialog onOpenChange={(open) => !open && props.onClose()} open>
+      <DialogContent className="max-w-md" onEscapeKeyDown={(event) => event.preventDefault()}>
+        <DialogTitle>New Private Document</DialogTitle>
 
-        <label className="mt-4 grid gap-1 text-sm text-text-secondary">
-          Specialist
-          <select
-            className="cc-input"
+        <div className="mt-4 grid gap-1 text-sm text-text-secondary">
+          <span>Specialist</span>
+          <SearchableSelect
+            ariaLabel="Specialist"
             disabled={props.isLoading || props.specialists.length === 0}
+            onChange={setSelectedSlug}
+            options={props.specialists.map((specialist) => ({
+              id: specialist.slug,
+              label: specialist.name,
+            }))}
+            placeholder={props.isLoading ? "Loading..." : "Search specialists..."}
             value={selectedSlug}
-            onChange={(event) => setSelectedSlug(event.target.value)}
-          >
-            <option value="">{props.isLoading ? "Loading..." : "Select a specialist"}</option>
-            {props.specialists.map((specialist) => (
-              <option key={specialist.slug} value={specialist.slug}>
-                {specialist.name}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
 
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button className="cc-button cc-button-secondary" onClick={props.onClose} type="button">
+          <Button variant="secondary" onClick={props.onClose} type="button">
             Cancel
-          </button>
-          <button
-            className="cc-button"
+          </Button>
+          <Button
             disabled={!selectedSlug}
             onClick={() => props.onSelect(selectedSlug)}
             type="button"
           >
             Continue
-          </button>
+          </Button>
         </div>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,4 +1,5 @@
 import { CopyIdButton } from "./CopyIdButton";
+import { Button } from "@/components/ui/button";
 
 type Permission = {
   id: string;
@@ -56,27 +57,15 @@ export function PermissionDock({ permission, pendingCount = 1, onReply }: Permis
       ) : null}
 
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          className="cc-button cc-button-danger"
-          onClick={() => onReply(permission.id, "reject")}
-        >
+        <Button variant="danger" type="button" onClick={() => onReply(permission.id, "reject")}>
           Deny
-        </button>
-        <button
-          type="button"
-          className="cc-button cc-button-secondary"
-          onClick={() => onReply(permission.id, "once")}
-        >
+        </Button>
+        <Button variant="secondary" type="button" onClick={() => onReply(permission.id, "once")}>
           Allow Once
-        </button>
-        <button
-          type="button"
-          className="cc-button"
-          onClick={() => onReply(permission.id, "always")}
-        >
+        </Button>
+        <Button type="button" onClick={() => onReply(permission.id, "always")}>
           Always Allow
-        </button>
+        </Button>
       </div>
     </div>
   );

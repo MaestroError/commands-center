@@ -1,5 +1,16 @@
-import type { ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useRef, type ReactNode } from "react";
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 
 export function ConfirmDialog(props: {
   title: string;
@@ -12,49 +23,71 @@ export function ConfirmDialog(props: {
   onSecondary?: () => void;
   confirmDisabled?: boolean;
 }) {
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-app-bg/75 p-3 sm:items-center sm:p-6"
-      onClick={props.onCancel}
-      onMouseDown={(event) => event.stopPropagation()}
+  const actionCloseRef = useRef(false);
+  // Consumers render ConfirmDialog conditionally and unmount it on confirm or
+  // cancel, so the AlertDialog never transitions open -> closed while mounted
+  // and Radix's onCloseAutoFocus never runs. Capture the invoking control at
+  // mount (before Radix moves focus inward) and restore it ourselves so focus
+  // returns to the trigger. Do not remove this in favor of Radix's built-in
+  // focus return unless ConfirmDialog is changed to own its open state.
+  const restoreFocusRef = useRef(
+    typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+  );
+
+  const restoreFocus = () => {
+    requestAnimationFrame(() => restoreFocusRef.current?.focus());
+  };
+
+  const runAction = (action: () => void) => {
+    actionCloseRef.current = true;
+    action();
+    restoreFocus();
+  };
+
+  return (
+    <AlertDialog
+      open
+      onOpenChange={(open) => {
+        if (open) return;
+        if (actionCloseRef.current) {
+          actionCloseRef.current = false;
+          return;
+        }
+        props.onCancel();
+        restoreFocus();
+      }}
     >
-      <section
-        aria-labelledby="confirm-dialog-title"
-        aria-modal="true"
-        className="cc-panel w-full max-w-lg p-6"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        <h2 className="text-xl font-semibold text-text-primary" id="confirm-dialog-title">
-          {props.title}
-        </h2>
-        <div className="mt-3 text-sm leading-6 text-text-secondary">{props.description}</div>
-        <div className="mt-6 flex flex-wrap gap-2">
-          <button
-            className={
-              props.confirmVariant === "danger" ? "cc-button cc-button-danger" : "cc-button"
-            }
-            disabled={props.confirmDisabled}
-            onClick={props.onConfirm}
-            type="button"
-          >
-            {props.confirmLabel}
-          </button>
-          {props.secondaryLabel && props.onSecondary ? (
-            <button
-              className="cc-button cc-button-secondary"
-              onClick={props.onSecondary}
-              type="button"
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{props.title}</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="mt-3 text-sm leading-6 text-text-secondary">{props.description}</div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="justify-start">
+          <AlertDialogAction asChild>
+            <Button
+              disabled={props.confirmDisabled}
+              onClick={() => runAction(props.onConfirm)}
+              variant={props.confirmVariant === "danger" ? "danger" : "primary"}
             >
-              {props.secondaryLabel}
-            </button>
+              {props.confirmLabel}
+            </Button>
+          </AlertDialogAction>
+          {props.secondaryLabel && props.onSecondary ? (
+            <AlertDialogAction asChild>
+              <Button variant="secondary" onClick={() => runAction(props.onSecondary!)}>
+                {props.secondaryLabel}
+              </Button>
+            </AlertDialogAction>
           ) : null}
-          <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
-            Cancel
-          </button>
-        </div>
-      </section>
-    </div>,
-    document.body,
+          <AlertDialogCancel asChild>
+            <Button variant="secondary">Cancel</Button>
+          </AlertDialogCancel>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

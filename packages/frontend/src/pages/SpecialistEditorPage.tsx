@@ -22,6 +22,8 @@ import {
   useSpecialistQuery,
   useSpecialistsQuery,
 } from "@/hooks/use-specialists-query";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
 
 type SpecialistEditorPageProps = {
   mode: "create" | "edit";
@@ -102,7 +104,10 @@ export function SpecialistEditorPage(props: SpecialistEditorPageProps) {
       <PageHeader
         actions={
           props.mode === "edit" && specialist ? (
-            <Link className="cc-button cc-button-secondary" to={`/chat/${specialist.slug}`}>
+            <Link
+              className={buttonVariants({ variant: "secondary" })}
+              to={`/chat/${specialist.slug}`}
+            >
               Open chat
             </Link>
           ) : undefined
@@ -152,8 +157,7 @@ export function SpecialistEditorPage(props: SpecialistEditorPageProps) {
 
           <div className="flex flex-wrap gap-2">
             {saveError ? <p className="w-full text-sm text-danger">{saveError}</p> : null}
-            <button
-              className="cc-button"
+            <Button
               disabled={
                 specialistMutations.create.isPending ||
                 specialistMutations.update.isPending ||
@@ -166,8 +170,8 @@ export function SpecialistEditorPage(props: SpecialistEditorPageProps) {
                 : props.mode === "create"
                   ? "Create specialist"
                   : "Save changes"}
-            </button>
-            <Link className="cc-button cc-button-secondary" to="/specialists">
+            </Button>
+            <Link className={buttonVariants({ variant: "secondary" })} to="/specialists">
               Back to specialists
             </Link>
           </div>

@@ -8,6 +8,9 @@ import type { Terminal } from "@xterm/xterm";
 
 import { connectTerminalWebSocket } from "@/lib/api";
 import { consumeSessionPrefillCommand } from "@/lib/terminal-prefill";
+import { useTheme } from "@/context/use-theme";
+
+import { buildXtermTheme } from "./xterm-theme";
 
 type Props = {
   session: TerminalSession;
@@ -36,6 +39,9 @@ function stripTerminalControlFrames(text: string) {
 
 export function TerminalInstance(props: Props) {
   const { session, onResize, onExit } = props;
+  const { resolvedColorMode } = useTheme();
+  const resolvedColorModeRef = useRef(resolvedColorMode);
+  resolvedColorModeRef.current = resolvedColorMode;
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XTermInstance | null>(null);
   const fitAddonRef = useRef<FitAddonInstance | null>(null);
@@ -300,29 +306,7 @@ export function TerminalInstance(props: Props) {
         cursorBlink: true,
         fontSize: 14,
         fontFamily: "Menlo, Monaco, 'Courier New', monospace",
-        theme: {
-          background: "#1e1e1e",
-          foreground: "#d4d4d4",
-          cursor: "#d4d4d4",
-          cursorAccent: "#1e1e1e",
-          selectionBackground: "#264f78",
-          black: "#181818",
-          red: "#f44747",
-          green: "#608b4e",
-          yellow: "#dcdcaa",
-          blue: "#569cd6",
-          magenta: "#c586c0",
-          cyan: "#4ec9b0",
-          white: "#d4d4d4",
-          brightBlack: "#6a6a6a",
-          brightRed: "#ff6b6b",
-          brightGreen: "#8cc265",
-          brightYellow: "#f5f5a5",
-          brightBlue: "#7db7ff",
-          brightMagenta: "#d7a6d1",
-          brightCyan: "#7fe7d5",
-          brightWhite: "#ffffff",
-        },
+        theme: buildXtermTheme(resolvedColorModeRef.current),
         convertEol: true,
       });
 
@@ -426,6 +410,12 @@ export function TerminalInstance(props: Props) {
       resizeObserver?.disconnect();
     };
   }, [session.id, onExit, onResize]);
+
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.options.theme = buildXtermTheme(resolvedColorMode);
+    }
+  }, [resolvedColorMode]);
 
   return (
     <div

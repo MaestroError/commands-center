@@ -4,6 +4,8 @@ import {
   FileSaveConflictError,
   WorkspaceSkillUploadRenameError,
   abortConversation,
+  buildFileManagerDownloadHref,
+  buildFileManagerZipDownloadHref,
   archiveActivity,
   archiveAllActivities,
   archiveSpecialist,
@@ -771,6 +773,22 @@ describe("wrappers with bespoke error handling", () => {
     stubError(500, "Server Error");
     await expect(updateWorkspaceSkillCategory("skill-1", { category: "docs" })).rejects.toThrow(
       "boom",
+    );
+  });
+});
+
+describe("buildFileManagerDownloadHref", () => {
+  it("builds an encoded download URL for the given root and path", () => {
+    expect(buildFileManagerDownloadHref({ root: "workspace", path: "notes/report card.md" })).toBe(
+      "/api/file-manager/files/download?root=workspace&path=notes%2Freport+card.md",
+    );
+  });
+});
+
+describe("buildFileManagerZipDownloadHref", () => {
+  it("builds an encoded zip download URL for the given root and folder path", () => {
+    expect(buildFileManagerZipDownloadHref({ root: "all-specialists", path: "agent-a/docs" })).toBe(
+      "/api/file-manager/files/download-zip?root=all-specialists&path=agent-a%2Fdocs",
     );
   });
 });

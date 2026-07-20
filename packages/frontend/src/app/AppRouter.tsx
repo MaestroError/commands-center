@@ -28,6 +28,10 @@ function ProtectedAppRoute() {
   const auth = useOwnerAuth();
   const location = useLocation();
 
+  if (import.meta.env.DEV && location.pathname === "/__design-system-baseline") {
+    return <Outlet />;
+  }
+
   if (auth.loading) {
     return <AuthLoading />;
   }

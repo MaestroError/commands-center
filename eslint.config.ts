@@ -5,7 +5,9 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import globals from "globals";
 
 export default tseslint.config(
-  { ignores: ["**/dist/", "**/node_modules/", "**/coverage/", "examples/"] },
+  {
+    ignores: ["**/dist/", "**/node_modules/", "**/coverage/", ".claude/worktrees/", "examples/"],
+  },
 
   js.configs.recommended,
 
@@ -58,6 +60,35 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+    },
+  },
+
+  // Design-system boundary (DS-0202): Radix is CC's behavior foundation but its
+  // public API, styling, and theme integration are owned inside components/ui.
+  // Application, common, and domain code must import CC-owned primitives from
+  // @/components/ui/* instead of importing Radix directly. A justified exception
+  // requires an adoption-matrix row before this rule is relaxed for a path.
+  {
+    files: ["packages/frontend/src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["radix-ui", "radix-ui/*", "@radix-ui/*"],
+              message:
+                "Import Radix only inside src/components/ui/. Consume CC-owned primitives from @/components/ui/* elsewhere.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["packages/frontend/src/components/ui/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": "off",
     },
   },
 

@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -49,14 +51,14 @@ describe("TabBar", () => {
     expect(onTabChange).toHaveBeenCalledWith("search");
   });
 
-  it("does not call onTabChange when the active tab is clicked again", async () => {
+  it("preserves the callback contract when the active tab is clicked again", async () => {
     const onTabChange = vi.fn();
     const user = userEvent.setup();
     render(<TabBar tabs={TABS} activeTabId="files" onTabChange={onTabChange} />);
 
     await user.click(screen.getByRole("tab", { name: "Files" }));
 
-    // onTabChange still fires — caller decides whether to no-op
+    expect(onTabChange).toHaveBeenCalledOnce();
     expect(onTabChange).toHaveBeenCalledWith("files");
   });
 
@@ -91,5 +93,61 @@ describe("TabBar", () => {
 
     expect(onTabChange).toHaveBeenCalledWith("settings");
     expect(screen.getByRole("tab", { name: "Specialist settings" })).toBeInTheDocument();
+  });
+
+  it("uses arrow keys and Home/End for roving focus with automatic activation", async () => {
+    const onTabChange = vi.fn();
+    const user = userEvent.setup();
+
+    function ControlledTabBar() {
+      const [activeTabId, setActiveTabId] = useState("files");
+
+      return (
+        <TabBar
+          tabs={TABS}
+          activeTabId={activeTabId}
+          onTabChange={(tabId) => {
+            onTabChange(tabId);
+            setActiveTabId(tabId);
+          }}
+        />
+      );
+    }
+
+    render(<ControlledTabBar />);
+
+    const files = screen.getByRole("tab", { name: "Files" });
+    files.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "Search" })).toHaveFocus();
+    expect(onTabChange).toHaveBeenLastCalledWith("search");
+
+    await user.keyboard("{End}");
+    expect(screen.getByRole("tab", { name: "Git" })).toHaveFocus();
+    expect(onTabChange).toHaveBeenLastCalledWith("git");
+
+    await user.keyboard("{Home}");
+    expect(files).toHaveFocus();
+    expect(onTabChange).toHaveBeenLastCalledWith("files");
+  });
+
+  it("emits panel relationships only when a panel id is provided", () => {
+    render(
+      <TabBar
+        activeTabId="files"
+        onTabChange={vi.fn()}
+        tabs={[
+          { id: "files", label: "Files", panelId: "files-panel", triggerId: "files-trigger" },
+          { id: "search", label: "Search" },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute(
+      "aria-controls",
+      "files-panel",
+    );
+    expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("id", "files-trigger");
+    expect(screen.getByRole("tab", { name: "Search" })).not.toHaveAttribute("aria-controls");
   });
 });

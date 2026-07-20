@@ -28,7 +28,8 @@
     "create-claim-code": "tsx scripts/create-claim-code.ts",
     "seed-activities": "tsx scripts/seed-activities.ts",
     "check:node-versions": "node scripts/check-node-version-consistency.mjs",
-    "release:check": "pnpm check:node-versions && pnpm typecheck && pnpm lint && pnpm knip && pnpm --filter commandscenter test && pnpm build:cli",
+    "design-system:audit": "node scripts/design-system-audit.mjs && node --test scripts/design-system-audit.test.mjs",
+    "release:check": "pnpm check:node-versions && pnpm design-system:audit && pnpm typecheck && pnpm lint && pnpm knip && pnpm --filter commandscenter test && pnpm build:cli",
     "prepare": "husky"
   },
   "devDependencies": {

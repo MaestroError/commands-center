@@ -123,7 +123,7 @@ describe("CustomToolsPage", () => {
       screen.getByText(/Tool changes apply to new chats\. Start a fresh chat/i),
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "agent-1" } });
+    selectWriter();
 
     expect(screen.getByRole("button", { name: ">>" })).toBeEnabled();
   });
@@ -237,7 +237,7 @@ describe("CustomToolsPage", () => {
       });
 
     renderPage();
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "agent-1" } });
+    selectWriter();
     fireEvent.click(screen.getByRole("button", { name: "Copy to specialists" }));
 
     expect(screen.getByText(/Newly copied tools are picked up in new chats/i)).toBeInTheDocument();
@@ -271,7 +271,7 @@ describe("CustomToolsPage", () => {
     deleteSpecialistToolMutateAsync.mockResolvedValue(undefined);
 
     renderPage();
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "agent-1" } });
+    selectWriter();
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
 
     await screen.findByText("Remove specialist-local tool");
@@ -311,7 +311,7 @@ describe("CustomToolsPage", () => {
       });
 
     renderPage();
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "agent-1" } });
+    selectWriter();
     fireEvent.click(screen.getByRole("button", { name: "Copy to global" }));
 
     await screen.findByText("Tool name conflict");
@@ -339,4 +339,9 @@ function renderPage() {
       <CustomToolsPage />
     </MemoryRouter>,
   );
+}
+
+function selectWriter(): void {
+  fireEvent.focus(screen.getByRole("combobox", { name: "Specialist tools" }));
+  fireEvent.click(screen.getByRole("option", { name: "Writer" }));
 }

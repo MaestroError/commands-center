@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resolvePromptAttachmentMimeType } from "@cc/shared/lib";
 import type { SendConversationAttachmentInput } from "@cc/shared/schemas";
+import { BookOpen, FileText, Folder, Paperclip, X, Zap } from "lucide-react";
 import { usePromptHistory } from "../../hooks/use-prompt-history";
 import { useMediaQuery } from "../../hooks/use-media-query";
 
@@ -16,6 +17,7 @@ import {
 } from "./file-mention";
 import { ModelSelector } from "./ModelSelector";
 import { SlashCommandPopover, type SlashCommand } from "./SlashCommandPopover";
+import { Button } from "@/components/ui/button";
 
 type ComposerMode = "normal" | "shell";
 
@@ -563,19 +565,7 @@ export function ChatComposer({
             title="Attach files"
             disabled={disabled || mode === "shell"}
           >
-            <svg
-              className="h-3.5 w-3.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
-              />
-            </svg>
+            <Paperclip aria-hidden="true" className="h-3.5 w-3.5" />
           </button>
           <input
             ref={fileInputRef}
@@ -595,33 +585,16 @@ export function ChatComposer({
           {/* Skill & File Mention Pills */}
           {selectedSkill && (
             <span
-              className="inline-flex items-center gap-1 rounded-md bg-purple-500/15 px-2 py-1 text-xs font-medium text-purple-400"
+              className="inline-flex items-center gap-1 rounded-md bg-accent-surface px-2 py-1 text-xs font-medium text-accent"
               title={selectedSkill.description}
             >
-              <svg
-                className="h-3 w-3"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              /{selectedSkill.slug}
+              <Zap aria-hidden="true" className="h-3 w-3" />/{selectedSkill.slug}
               <button
                 type="button"
-                className="ml-0.5 rounded-full p-0.5 hover:bg-purple-500/20"
+                className="ml-0.5 rounded-full p-0.5 hover:bg-accent/20"
                 onClick={() => setSelectedSkill(null)}
               >
-                <svg
-                  className="h-3 w-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <X aria-hidden="true" className="h-3 w-3" />
               </button>
             </span>
           )}
@@ -632,47 +605,11 @@ export function ChatComposer({
               title={isGlobalDocumentMention(file) ? `Global Document: ${file.path}` : file.path}
             >
               {isGlobalDocumentMention(file) ? (
-                <svg
-                  className="h-3 w-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                  />
-                </svg>
+                <BookOpen aria-hidden="true" className="h-3 w-3" />
               ) : file.path.endsWith("/") ? (
-                <svg
-                  className="h-3 w-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                  />
-                </svg>
+                <Folder aria-hidden="true" className="h-3 w-3" />
               ) : (
-                <svg
-                  className="h-3 w-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
+                <FileText aria-hidden="true" className="h-3 w-3" />
               )}
               {isGlobalDocumentMention(file) ? (
                 <span className="opacity-70">Global Document:</span>
@@ -683,15 +620,7 @@ export function ChatComposer({
                 className="ml-0.5 rounded-full p-0.5 hover:bg-accent/20"
                 onClick={() => handleRemoveMention(file)}
               >
-                <svg
-                  className="h-3 w-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <X aria-hidden="true" className="h-3 w-3" />
               </button>
             </span>
           ))}
@@ -731,7 +660,7 @@ export function ChatComposer({
       <div className="relative p-3">
         {/* Mode Badge */}
         {mode === "shell" && (
-          <div className="absolute left-3 top-3 rounded bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-400">
+          <div className="absolute left-3 top-3 rounded bg-info-surface px-2 py-0.5 text-xs font-medium text-info-foreground">
             Shell
           </div>
         )}
@@ -758,18 +687,18 @@ export function ChatComposer({
           />
 
           {isBusy ? (
-            <button type="button" className="cc-button cc-button-danger shrink-0" onClick={onAbort}>
+            <Button variant="danger" type="button" className="shrink-0" onClick={onAbort}>
               Stop
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
-              className="cc-button shrink-0"
+              className="shrink-0"
               disabled={disabled || (!text.trim() && mentionedFiles.length === 0 && !selectedSkill)}
               onClick={handleSend}
             >
               Send
-            </button>
+            </Button>
           )}
         </div>
         {/* Popovers */}

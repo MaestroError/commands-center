@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 
 import type { LiveRequest, LiveRequestAction } from "@cc/shared/schemas";
 
+import { Button } from "@/components/ui/button";
 import {
-  getActionClassName,
+  getActionButtonProps,
   getFallbackActions,
   getInitialValues,
   isActionDisabled,
@@ -131,15 +132,15 @@ export function LiveRequestPane(props: Props) {
 
         <div className="mt-6 flex flex-wrap items-center gap-2">
           {actions.map((action) => (
-            <button
-              className={getActionClassName(action)}
+            <Button
+              {...getActionButtonProps(action)}
               disabled={busy || isActionDisabled(action, values)}
               key={action.id}
               type="button"
               onClick={() => void handleAction(action)}
             >
               {action.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

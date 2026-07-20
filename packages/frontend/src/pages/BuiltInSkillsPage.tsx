@@ -6,6 +6,7 @@ import type { Specialist, BuiltInSkill } from "@cc/shared/schemas";
 import { CopyableCode } from "@/components/api/EndpointsTab";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/PageStates";
 import { PageHeader } from "@/components/common/PageHeader";
+import { SearchableSelect } from "@/components/common/SearchableSelect";
 import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import {
   useSpecialistCatalogQuery,
@@ -15,6 +16,16 @@ import {
 import { useWorkspaceSkillMutations } from "@/hooks/use-workspace-skills-query";
 import { normalizeUploadableFiles, toFileManagerUploadEntries } from "@/lib/file-transfer";
 import { WorkspaceSkillUploadRenameError } from "@/lib/api";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type SkillEntry = {
   source: "built-in" | "workspace";
@@ -141,28 +152,24 @@ export function BuiltInSkillsPage() {
               </p>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <input
-                className="cc-input"
+              <Input
                 onChange={(event) => setNewName(event.target.value)}
                 placeholder="Skill name"
                 value={newName}
               />
-              <input
-                className="cc-input"
+              <Input
                 onChange={(event) => setNewCategory(event.target.value)}
                 placeholder="Category (optional)"
                 value={newCategory}
               />
             </div>
-            <input
-              className="cc-input"
+            <Input
               onChange={(event) => setNewDescription(event.target.value)}
               placeholder="Description"
               value={newDescription}
             />
             <div>
-              <button
-                className="cc-button"
+              <Button
                 disabled={
                   workspaceSkillMutations.create.isPending ||
                   newName.trim().length === 0 ||
@@ -172,7 +179,7 @@ export function BuiltInSkillsPage() {
                 type="button"
               >
                 {workspaceSkillMutations.create.isPending ? "Creating..." : "Create"}
-              </button>
+              </Button>
             </div>
             <input
               className="hidden"
@@ -206,16 +213,16 @@ export function BuiltInSkillsPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
-                className="cc-button cc-button-secondary"
+              <Button
+                variant="secondary"
                 disabled={workspaceSkillMutations.upload.isPending}
                 onClick={() => uploadInputRef.current?.click()}
                 type="button"
               >
                 Upload skill
-              </button>
+              </Button>
               <Link
-                className="cc-button cc-button-secondary"
+                className={buttonVariants({ variant: "secondary" })}
                 to="/files?root=workspace&path=skills"
               >
                 Browse folder
@@ -223,23 +230,26 @@ export function BuiltInSkillsPage() {
             </div>
           </div>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_14rem]">
-            <input
-              className="cc-input"
+            <Input
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search skills"
               value={search}
             />
-            <select
-              className="cc-input"
-              onChange={(event) =>
-                setSourceFilter(event.target.value as "all" | "built-in" | "workspace")
-              }
+            <Select
               value={sourceFilter}
+              onValueChange={(source) =>
+                setSourceFilter(source as "all" | "built-in" | "workspace")
+              }
             >
-              <option value="all">All sources</option>
-              <option value="built-in">Built-in</option>
-              <option value="workspace">Workspace</option>
-            </select>
+              <SelectTrigger aria-label="Skill source">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All sources</SelectItem>
+                <SelectItem value="built-in">Built-in</SelectItem>
+                <SelectItem value="workspace">Workspace</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </section>
@@ -682,71 +692,60 @@ function SkillActions(props: {
   return (
     <div className="grid gap-3 rounded-lg border border-border bg-surface p-4">
       <p className="font-medium text-text-primary">Specialist assignment</p>
-      <select
-        className="cc-input"
-        onChange={(event) => props.onSelectAgent(event.target.value || undefined)}
+      <SearchableSelect
+        ariaLabel="Specialist assignment"
+        emptyOptionLabel="No specialist"
+        onChange={(agentId) => props.onSelectAgent(agentId || undefined)}
+        options={props.agents.map((agent) => ({ id: agent.id, label: agent.name }))}
+        placeholder="Search specialists..."
         value={props.selectedAgentId ?? ""}
-      >
-        <option value="">Select a specialist</option>
-        {props.agents.map((agent) => (
-          <option key={agent.id} value={agent.id}>
-            {agent.name}
-          </option>
-        ))}
-      </select>
+      />
       <div className="flex flex-wrap gap-2">
-        <button
-          className="cc-button"
+        <Button
           disabled={props.agent === undefined || assigned || props.actionBusy}
           onClick={props.onAssign}
           type="button"
         >
           Assign to specialist
-        </button>
-        <button
-          className="cc-button cc-button-secondary"
+        </Button>
+        <Button
+          variant="secondary"
           disabled={props.agent === undefined || !assigned || props.actionBusy}
           onClick={props.onRemove}
           type="button"
         >
           Remove from specialist
-        </button>
+        </Button>
         {props.entry.source === "workspace" ? (
           <Link
-            className="cc-button cc-button-secondary"
+            className={buttonVariants({ variant: "secondary" })}
             to={buildWorkspaceSkillFileManagerUrl(props.entry.skill)}
           >
             Open files
           </Link>
         ) : null}
         {props.entry.source === "workspace" ? (
-          <button
-            className="cc-button cc-button-secondary"
+          <Button
+            variant="secondary"
             disabled={props.actionBusy}
             onClick={props.onDelete}
             type="button"
           >
             Delete
-          </button>
+          </Button>
         ) : null}
       </div>
       {props.entry.source === "workspace" ? (
         <div className="grid gap-3 rounded-lg border border-border bg-surface p-4">
           <p className="font-medium text-text-primary">Category</p>
-          <input
-            className="cc-input"
+          <Input
             onChange={(event) => props.onCategoryChange(event.target.value)}
             value={props.categoryDraft}
           />
           <div>
-            <button
-              className="cc-button"
-              disabled={props.actionBusy}
-              onClick={props.onSaveCategory}
-              type="button"
-            >
+            <Button disabled={props.actionBusy} onClick={props.onSaveCategory} type="button">
               Save category
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -773,17 +772,12 @@ function SkillUploadRenameDialog(props: {
           <span className="font-medium text-text-primary">{props.renameTo}</span> before import.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button className="cc-button cc-button-secondary" onClick={props.onCancel} type="button">
+          <Button variant="secondary" onClick={props.onCancel} type="button">
             Cancel
-          </button>
-          <button
-            className="cc-button"
-            disabled={props.busy}
-            onClick={props.onConfirm}
-            type="button"
-          >
+          </Button>
+          <Button disabled={props.busy} onClick={props.onConfirm} type="button">
             Rename and import
-          </button>
+          </Button>
         </div>
       </div>
     </section>

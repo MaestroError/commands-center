@@ -56,6 +56,12 @@ function setViewport(size: "mobile" | "medium" | "large") {
   });
 }
 
+async function selectOption(label: string, option: string): Promise<void> {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: label }));
+  await user.click(await screen.findByRole("option", { name: option }));
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   setViewport("large");
@@ -303,9 +309,7 @@ describe("IntegrationsPage", () => {
     fireEvent.change(screen.getByLabelText("Headers"), {
       target: { value: "Authorization: Bearer secret" },
     });
-    fireEvent.change(screen.getByLabelText("Auth method"), {
-      target: { value: "headers" },
-    });
+    await selectOption("Auth method", "headers");
 
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
 
@@ -352,9 +356,7 @@ describe("IntegrationsPage", () => {
     fireEvent.change(screen.getByLabelText("Headers"), {
       target: { value: "Authorization: Bearer token" },
     });
-    fireEvent.change(screen.getByLabelText("Auth method"), {
-      target: { value: "headers" },
-    });
+    await selectOption("Auth method", "headers");
     fireEvent.click(screen.getByRole("button", { name: /Enable for specialists/i }));
     fireEvent.click(screen.getByLabelText("Writer"));
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
@@ -398,7 +400,7 @@ describe("IntegrationsPage", () => {
     fireEvent.change(screen.getByLabelText("URL"), {
       target: { value: "https://mcp.notion.com/mcp" },
     });
-    fireEvent.change(screen.getByLabelText("Auth method"), { target: { value: "oauth" } });
+    await selectOption("Auth method", "oauth");
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
 
     // Non-Composio OAuth servers use the CC-hosted redirect flow ("Authenticate"),
@@ -435,7 +437,7 @@ describe("IntegrationsPage", () => {
     fireEvent.change(screen.getByLabelText("Headers"), {
       target: { value: "Authorization: Bearer secret" },
     });
-    fireEvent.change(screen.getByLabelText("Auth method"), { target: { value: "headers" } });
+    await selectOption("Auth method", "headers");
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
 
     await waitFor(() => {
@@ -453,7 +455,7 @@ describe("IntegrationsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "filesystem" } });
-    fireEvent.change(screen.getByLabelText("Transport"), { target: { value: "stdio" } });
+    await selectOption("Transport", "stdio");
     fireEvent.change(screen.getByLabelText("Command"), {
       target: { value: "npx\n-y\n@modelcontextprotocol/server-filesystem\n/tmp/workspace" },
     });
@@ -478,12 +480,12 @@ describe("IntegrationsPage", () => {
     });
   });
 
-  it("validates stdio command and environment input", () => {
+  it("validates stdio command and environment input", async () => {
     render(<IntegrationsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add custom MCP server" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "filesystem" } });
-    fireEvent.change(screen.getByLabelText("Transport"), { target: { value: "stdio" } });
+    await selectOption("Transport", "stdio");
     fireEvent.change(screen.getByLabelText("Environment"), { target: { value: "INVALID" } });
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
 
@@ -538,9 +540,7 @@ describe("IntegrationsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "github-updated" } });
-    fireEvent.change(screen.getByLabelText("Auth method"), {
-      target: { value: "headers" },
-    });
+    await selectOption("Auth method", "headers");
     fireEvent.change(screen.getByLabelText("Headers"), {
       target: { value: "X-API-Key: secret" },
     });
@@ -821,7 +821,7 @@ describe("IntegrationsPage", () => {
 
     expect(screen.getByLabelText("Name")).toHaveValue("notion");
     expect(screen.getByLabelText("URL")).toHaveValue("https://mcp.notion.com/mcp");
-    expect(screen.getByLabelText("Auth method")).toHaveValue("oauth");
+    expect(screen.getByRole("combobox", { name: "Auth method" })).toHaveTextContent("oauth");
   });
 
   it("hides a suggestion when a server with the same name is already configured", () => {

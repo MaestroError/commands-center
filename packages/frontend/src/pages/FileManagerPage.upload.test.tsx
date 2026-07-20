@@ -38,6 +38,10 @@ vi.mock("@monaco-editor/react", () => ({
   default: () => <textarea aria-label="monaco-mock" />,
 }));
 
+vi.mock("@/context/use-theme", () => ({
+  useTheme: () => ({ resolvedColorMode: "light" }),
+}));
+
 function makeFile(content: string, name: string): File {
   const file = new File([content], name, { type: "text/plain" });
   Object.defineProperty(file, "arrayBuffer", {
