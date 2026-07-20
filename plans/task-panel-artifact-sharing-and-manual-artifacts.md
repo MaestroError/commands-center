@@ -1,4 +1,4 @@
-# Task panel artifact sharing and manual chat artifacts
+# Task panel artifact sharing and manual chat artifacts | Done
 
 ## Goal
 
